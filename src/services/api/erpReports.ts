@@ -12,8 +12,8 @@ import {
 import { supplierAPI } from './suppliers';
 import {
   buildEkstreRows,
-  isCariCreditorBalance,
-  isCariDebtorBalance,
+  isCariCreditorsReportRow,
+  isCariDebtorsReportRow,
   resolveEkstreDescription,
 } from '../../utils/cariAccountStatement';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
@@ -681,16 +681,24 @@ export const erpReportsAPI = {
      */
     onlyDebit?: boolean;
     /**
-     * Borçlu / alacaklı — cardType simetrisi korunur (`getCariBalanceDirection` /
-     * `isCariDebtorBalance` / `isCariCreditorBalance`). Sıfır bakiyeler hariç.
+     * Borçlu / alacaklı rapor filtresi (iş kuralı):
+     * - debtor → yalnızca borçlu müşteri (buyer; bizim alacağımız)
+     * - creditor → yalnızca alacaklı tedarikçi (seller; bizim borcumuz)
+     * Partner / personel ve ters yöndeki bakiyeler hariç. `cardType` override edilir.
      */
     balanceSide?: 'debtor' | 'creditor';
     cariFilter?: string;
   }): Promise<CariBalanceRow[]> {
-    const want = opts?.cardType ?? 'all';
     const onlyNonZero = opts?.onlyNonZero !== false;
     const onlyDebit = opts?.onlyDebit === true;
     const balanceSide = opts?.balanceSide;
+    // Rapor iş kuralı: borçlu=müşteri, alacaklı=tedarikçi (partner/personel yok)
+    const want: 'customer' | 'supplier' | 'employee' | 'all' =
+      balanceSide === 'debtor'
+        ? 'customer'
+        : balanceSide === 'creditor'
+          ? 'supplier'
+          : (opts?.cardType ?? 'all');
     const rawFilter = String(opts?.cariFilter ?? '').trim();
     const filterKey = normalizeTrText(rawFilter);
     const filterExactCode = rawFilter;
@@ -701,8 +709,8 @@ export const erpReportsAPI = {
       balance: number,
       cardType: CariBalanceRow['cardType'],
     ) => {
-      if (balanceSide === 'debtor') return isCariDebtorBalance(cardType, balance);
-      if (balanceSide === 'creditor') return isCariCreditorBalance(cardType, balance);
+      if (balanceSide === 'debtor') return isCariDebtorsReportRow(cardType, balance);
+      if (balanceSide === 'creditor') return isCariCreditorsReportRow(cardType, balance);
       if (onlyDebit) return balance > 0.009;
       if (onlyNonZero) return Math.abs(balance) > 0.009;
       return true;

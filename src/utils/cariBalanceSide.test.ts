@@ -1,11 +1,14 @@
 /**
  * Borçlu / alacaklı cari bakiye yönü — ABS yok, müşteri↔tedarikçi simetrisi.
+ * Rapor satırları: borçlu = müşteri, alacaklı = tedarikçi.
  */
 import { describe, expect, it } from 'vitest';
 import {
   getCariBalanceDirection,
   isCariCreditorBalance,
+  isCariCreditorsReportRow,
   isCariDebtorBalance,
+  isCariDebtorsReportRow,
   resolveCariBalanceSide,
 } from './cariAccountStatement';
 
@@ -54,5 +57,35 @@ describe('resolveCariBalanceSide / isCariDebtorBalance / isCariCreditorBalance',
     for (const { ct, bal } of cases) {
       expect(resolveCariBalanceSide(ct, bal)).toBe(getCariBalanceDirection(ct, bal, tm).side);
     }
+  });
+});
+
+describe('isCariDebtorsReportRow / isCariCreditorsReportRow (rapor iş kuralı)', () => {
+  it('borçlu raporu: yalnızca borçlu müşteri (buyer)', () => {
+    expect(isCariDebtorsReportRow('customer', 1500)).toBe(true);
+    expect(isCariDebtorsReportRow('customer', -200)).toBe(false);
+    expect(isCariDebtorsReportRow('customer', 0)).toBe(false);
+  });
+
+  it('borçlu raporu: tedarikçi / partner / personel hariç (bakiye yönü ne olursa olsun)', () => {
+    // Tedarikçi − = ledger’da borçlu ama rapor müşteriye kilitli
+    expect(isCariDebtorsReportRow('supplier', -300)).toBe(false);
+    expect(isCariDebtorsReportRow('supplier', 800)).toBe(false);
+    expect(isCariDebtorsReportRow('partner', 100)).toBe(false);
+    expect(isCariDebtorsReportRow('employee', -40)).toBe(false);
+  });
+
+  it('alacaklı raporu: yalnızca alacaklı tedarikçi (seller)', () => {
+    expect(isCariCreditorsReportRow('supplier', 800)).toBe(true);
+    expect(isCariCreditorsReportRow('supplier', -300)).toBe(false);
+    expect(isCariCreditorsReportRow('supplier', 0)).toBe(false);
+  });
+
+  it('alacaklı raporu: müşteri / partner / personel hariç', () => {
+    // Müşteri − = ledger’da alacaklı ama rapor tedarikçiye kilitli
+    expect(isCariCreditorsReportRow('customer', -200)).toBe(false);
+    expect(isCariCreditorsReportRow('customer', 1500)).toBe(false);
+    expect(isCariCreditorsReportRow('partner', -50)).toBe(false);
+    expect(isCariCreditorsReportRow('employee', 40)).toBe(false);
   });
 });

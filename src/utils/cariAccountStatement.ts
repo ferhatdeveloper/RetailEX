@@ -60,6 +60,22 @@ export function isCariCreditorBalance(cardType: ExtCardType, balance: number): b
   return resolveCariBalanceSide(cardType, balance) === 'A';
 }
 
+/**
+ * Borçlu cariler raporu satırı — yalnızca borçlu müşteri (buyer).
+ * Partner / personel / tedarikçi (negatif bakiye dahil) bu rapora girmez.
+ */
+export function isCariDebtorsReportRow(cardType: ExtCardType, balance: number): boolean {
+  return cardType === 'customer' && isCariDebtorBalance(cardType, balance);
+}
+
+/**
+ * Alacaklı cariler raporu satırı — yalnızca alacaklı tedarikçi (seller).
+ * Partner / personel / müşteri (kredi bakiyesi dahil) bu rapora girmez.
+ */
+export function isCariCreditorsReportRow(cardType: ExtCardType, balance: number): boolean {
+  return cardType === 'supplier' && isCariCreditorBalance(cardType, balance);
+}
+
 export function getCariBalanceDirection(
   cardType: ExtCardType,
   balance: number,

@@ -1,8 +1,11 @@
 /**
- * Borçlu cariler / Alacaklı cariler raporları.
+ * Borçlu müşteriler / Alacaklı tedarikçiler raporları.
  *
- * Muhasebe: `getCariBalanceDirection` / `isCariDebtorBalance` / `isCariCreditorBalance`
- * ile aynı işaret — ABS ile yön ezilmez; müşteri ↔ tedarikçi simetrisi korunur.
+ * İş kuralı:
+ * - Borçlu → yalnızca müşteri (buyer) + borçlu bakiye (bizim alacağımız)
+ * - Alacaklı → yalnızca tedarikçi (seller) + alacaklı bakiye (bizim borcumuz)
+ * Partner / personel ve ters yön bakiyeleri bu raporlara girmez.
+ *
  * Bakiye kaynağı: `erpReportsAPI.getCariBalances` → Cari Hesaplar ledger (`accountBalance`).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,8 +25,8 @@ import { getAppDefaultCurrency } from '../../services/postgres';
 import { formatMoneyAmount } from '../../utils/formatMoney';
 import {
   getCariBalanceDirection,
-  isCariCreditorBalance,
-  isCariDebtorBalance,
+  isCariCreditorsReportRow,
+  isCariDebtorsReportRow,
 } from '../../utils/cariAccountStatement';
 import { erpReportsAPI, type CariBalanceRow } from '../../services/api/erpReports';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
@@ -34,8 +37,6 @@ import {
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
 
 export type CariBalanceSideMode = 'debtor' | 'creditor';
-
-type CardFilter = 'all' | 'customer' | 'supplier';
 
 type GridRow = CariBalanceRow & {
   typeLabel: string;
@@ -70,7 +71,6 @@ function ReportShell({
   loading,
   onRefresh,
   onExport,
-  filters,
   children,
 }: {
   title: string;
@@ -78,7 +78,6 @@ function ReportShell({
   loading: boolean;
   onRefresh: () => void;
   onExport?: () => void;
-  filters?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const { darkMode } = useTheme();
@@ -97,7 +96,6 @@ function ReportShell({
             <p className={`text-sm ${muted}`}>{subtitle}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {filters}
             <button
               type="button"
               onClick={onRefresh}
@@ -134,7 +132,6 @@ export function CariDebtorCreditorReport({ mode }: { mode: CariBalanceSideMode }
   const moneyDec = getCurrencyDecimalPlaces(currency);
   const fmtAmt = (n: number) => formatMoneyAmount(n, { minFrac: moneyDec, maxFrac: moneyDec });
 
-  const [cardType, setCardType] = useState<CardFilter>('all');
   const [rows, setRows] = useState<CariBalanceRow[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -142,16 +139,16 @@ export function CariDebtorCreditorReport({ mode }: { mode: CariBalanceSideMode }
     setLoading(true);
     try {
       const list = await erpReportsAPI.getCariBalances({
-        cardType,
+        // getCariBalances balanceSide ile kart türünü kilitler (müşteri / tedarikçi)
         onlyNonZero: true,
         balanceSide: mode,
       });
-      // Savunmacı ikinci filtre — API ile aynı kural (ABS yok)
+      // Savunmacı ikinci filtre — API ile aynı iş kuralı
       setRows(
         list.filter((r) =>
           mode === 'debtor'
-            ? isCariDebtorBalance(r.cardType, r.balance)
-            : isCariCreditorBalance(r.cardType, r.balance),
+            ? isCariDebtorsReportRow(r.cardType, r.balance)
+            : isCariCreditorsReportRow(r.cardType, r.balance),
         ),
       );
     } catch (err: unknown) {
@@ -161,7 +158,7 @@ export function CariDebtorCreditorReport({ mode }: { mode: CariBalanceSideMode }
     } finally {
       setLoading(false);
     }
-  }, [cardType, mode]);
+  }, [mode]);
 
   useEffect(() => {
     void load();
@@ -193,7 +190,6 @@ export function CariDebtorCreditorReport({ mode }: { mode: CariBalanceSideMode }
     return { count: rows.length, sumSigned, sumAbs };
   }, [rows]);
 
-  const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const isDebtor = mode === 'debtor';
   const title = isDebtor ? tm('cariDebtorsReportTitle') : tm('cariCreditorsReportTitle');
@@ -217,17 +213,7 @@ export function CariDebtorCreditorReport({ mode }: { mode: CariBalanceSideMode }
           size: 140,
           type: 'currency',
           cell: (r) => (
-            <span
-              className={`font-semibold ${
-                isDebtor
-                  ? r.cardType === 'supplier'
-                    ? 'text-amber-600'
-                    : 'text-blue-600'
-                  : r.cardType === 'supplier'
-                    ? 'text-orange-600'
-                    : 'text-emerald-600'
-              }`}
-            >
+            <span className={`font-semibold ${isDebtor ? 'text-blue-600' : 'text-orange-600'}`}>
               {formatLedgerAmount(r.balance, currency)}
             </span>
           ),
@@ -254,7 +240,7 @@ export function CariDebtorCreditorReport({ mode }: { mode: CariBalanceSideMode }
       onRefresh={() => void load()}
       onExport={() =>
         exportCsv(
-          isDebtor ? 'borclu_cariler' : 'alacakli_cariler',
+          isDebtor ? 'borclu_musteriler' : 'alacakli_tedarikciler',
           [
             tm('erpColCode') || 'Kod',
             tm('erpColAccount') || 'Unvan',
@@ -272,17 +258,6 @@ export function CariDebtorCreditorReport({ mode }: { mode: CariBalanceSideMode }
             r.phone || '',
           ]),
         )
-      }
-      filters={
-        <select
-          value={cardType}
-          onChange={(e) => setCardType(e.target.value as CardFilter)}
-          className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`}
-        >
-          <option value="all">{tm('erpCardAll')}</option>
-          <option value="customer">{tm('erpCardCustomers')}</option>
-          <option value="supplier">{tm('erpCardSuppliers')}</option>
-        </select>
       }
     >
       <ReportKpiStrip
