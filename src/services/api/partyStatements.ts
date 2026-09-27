@@ -158,7 +158,28 @@ export async function getPartyStatement(
    *     üretilen ledger iptal kaydı).
    */
   const cancelledSql = showCancelled ? '' : ` AND cl.transaction_type NOT LIKE 'CANCELLED_%'`;
-  const cancelledLedgerSql = showCancelled ? '' : ` AND pl.source_module IS DISTINCT FROM 'cash_delete' AND pl.source_module IS DISTINCT FROM 'period_net_share_removed' AND pl.transaction_type NOT LIKE 'CANCELLED_%'`;
+  /**
+   * İptal gizleme: cash_delete / CANCELLED_* satırlarını gizle VE
+   * aynı cash_line_id'ye bağlı orijinal hareketi de gizle (çiftin neti = 0).
+   * Aksi halde ekstre kart bakiyesinden ~sermaye kadar şişer (ör. +75M).
+   */
+  const cancelledLedgerSql = showCancelled
+    ? ''
+    : ` AND pl.source_module IS DISTINCT FROM 'cash_delete'
+        AND pl.source_module IS DISTINCT FROM 'period_net_share_removed'
+        AND pl.transaction_type NOT LIKE 'CANCELLED_%'
+        AND (
+          pl.cash_line_id IS NULL
+          OR pl.cash_line_id NOT IN (
+            SELECT cx.cash_line_id
+            FROM ${partyLedgerTable()} cx
+            WHERE cx.cash_line_id IS NOT NULL
+              AND (
+                cx.source_module = 'cash_delete'
+                OR cx.transaction_type LIKE 'CANCELLED_%'
+              )
+          )
+        )`;
 
   /** "İşletmenin ortağa/personele borçlandığı" transaction_type'lar (sign > 0 partner hareketleri) */
   const COMPANY_DEBT_TYPES = [
@@ -313,7 +334,23 @@ export async function getPartyStatement(
   // showCancelled/excludeCompanyDebts filtreleri ana sorgu ile aynı uygulanır
   // (running balance tutarlılığı için gerekli).
   // party_ledger_movements tablosu için: source_module='cash_delete' + CANCELLED_ transaction_type
-  const opCancelledSql = showCancelled ? '' : ` AND source_module IS DISTINCT FROM 'cash_delete' AND source_module IS DISTINCT FROM 'period_net_share_removed' AND transaction_type NOT LIKE 'CANCELLED_%'`;
+  const opCancelledSql = showCancelled
+    ? ''
+    : ` AND source_module IS DISTINCT FROM 'cash_delete'
+        AND source_module IS DISTINCT FROM 'period_net_share_removed'
+        AND transaction_type NOT LIKE 'CANCELLED_%'
+        AND (
+          cash_line_id IS NULL
+          OR cash_line_id NOT IN (
+            SELECT cx.cash_line_id
+            FROM ${partyLedgerTable()} cx
+            WHERE cx.cash_line_id IS NOT NULL
+              AND (
+                cx.source_module = 'cash_delete'
+                OR cx.transaction_type LIKE 'CANCELLED_%'
+              )
+          )
+        )`;
   // cash_lines tablosu için: SADECE transaction_type LIKE 'CANCELLED_%' (source_module kolonu yok)
   const opCancelledCashLinesSql = showCancelled ? '' : ` AND transaction_type NOT LIKE 'CANCELLED_%'`;
   const opCompanyDebtSql = excludeCompanyDebts

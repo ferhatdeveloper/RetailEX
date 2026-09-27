@@ -86,6 +86,8 @@ export function PartiesModule({
       let partnerBalances = new Map<string, number>();
       if (tab === 'partner' || tab === 'all') {
         try {
+          // Pay satırı yazmaz (manual mod); yalnızca ledger Σ → kart bakiyesi.
+          // Eski otomatik dönem payı sync'i geri yüklemeleri eziyordu.
           partnerBalances = await partnerAPI.syncBalancesFromYearNet();
         } catch (err) {
           console.warn('[PartiesModule] ortak bakiye yazılamadı', err);

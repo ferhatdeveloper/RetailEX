@@ -186,17 +186,19 @@ export const partnerAPI = {
   },
 
   /**
-   * Aylık ciro−gider netini ortak payına göre ledger hareketi yazar
-   * (Yıllık Ay Özeti ile aynı kaynak). Bakiye ledger toplamından güncellenir.
+   * Aylık net (Aylık Gün Özeti ile aynı: ciro − birleşik masraf) → ortak payı.
+   * distribution_mode === 'manual' ise pay satırlarını YAZMAZ; yalnızca ledger Σ → kart bakiyesi.
+   * (Eski otomatik sync, manuel firmada sahte kâr payı üretiyordu.)
    */
-  async syncBalancesFromYearNet(): Promise<Map<string, number>> {
+  async syncBalancesFromYearNet(opts?: { forceWriteShares?: boolean }): Promise<Map<string, number>> {
     const result = new Map<string, number>();
     const year = parseInt(localTodayDateKey().slice(0, 4), 10) || new Date().getFullYear();
     const cacheKey = yearNetSyncCacheKey(year);
     if (
       yearNetSyncCache &&
       yearNetSyncCache.key === cacheKey &&
-      Date.now() - yearNetSyncCache.at < YEAR_NET_SYNC_TTL_MS
+      Date.now() - yearNetSyncCache.at < YEAR_NET_SYNC_TTL_MS &&
+      !opts?.forceWriteShares
     ) {
       return yearNetSyncCache.map;
     }
@@ -204,97 +206,115 @@ export const partnerAPI = {
     const partners = await this.getActive();
     if (!partners.length) return result;
 
-    let months: Awaited<ReturnType<typeof computeYearMonthlyNets>> = [];
-    try {
-      months = await computeYearMonthlyNets(year);
-    } catch (err) {
-      console.warn('[partnerAPI] dönem neti hesaplanamadı, bakiye güncellenmedi', err);
-      return result;
+    let writeShares = opts?.forceWriteShares === true;
+    if (!writeShares) {
+      try {
+        const { getPartnerSettings } = await import('./partnerSettings');
+        const settings = await getPartnerSettings();
+        // daily / period: otomatik pay yaz; manual: yalnızca bakiye yenile
+        writeShares = settings.distribution_mode === 'daily' || settings.distribution_mode === 'period';
+      } catch {
+        writeShares = false;
+      }
     }
 
-    const slices = partners.map((p) => ({
-      id: p.id,
-      name: p.name || p.code || p.id,
-      sharePct: p.share_pct || 0,
-    }));
+    const ids = partners.map((p) => p.id);
 
     try {
       await ensurePartyPeriodTables();
-      const ids = partners.map((p) => p.id);
-      const { rows: existingRows } = await postgres.query(
-        `SELECT id, party_id::text AS party_id, to_char(date, 'YYYY-MM') AS ym
-         FROM ${ledgerTable()}
-         WHERE party_id = ANY($1::text::uuid[])
-           AND source_module = $2::text
-           AND date >= $3::date AND date <= $4::date`,
-        [ids, PERIOD_SHARE_MODULE, `${year}-01-01`, `${year}-12-31`],
-      );
-      const existing = new Map<string, string>();
-      for (const r of existingRows || []) {
-        existing.set(`${r.party_id}|${r.ym}`, String(r.id));
-      }
 
-      const { rows: distRows } = await postgres.query(
-        `SELECT party_id::text AS party_id, to_char(date, 'YYYY-MM') AS ym
-         FROM ${ledgerTable()}
-         WHERE party_id = ANY($1::text::uuid[])
-           AND source_module = 'partner_distribution'
-           AND date >= $2::date AND date <= $3::date`,
-        [ids, `${year}-01-01`, `${year}-12-31`],
-      );
-      const distMonths = new Set((distRows || []).map((r: { party_id: string; ym: string }) => `${r.party_id}|${r.ym}`));
+      if (writeShares) {
+        let months: Awaited<ReturnType<typeof computeYearMonthlyNets>> = [];
+        try {
+          months = await computeYearMonthlyNets(year);
+        } catch (err) {
+          console.warn('[partnerAPI] dönem neti hesaplanamadı, pay yazılmadı', err);
+          months = [];
+        }
 
-      const { rows: removedRows } = await postgres.query(
-        `SELECT party_id::text AS party_id, to_char(date, 'YYYY-MM') AS ym
-         FROM ${ledgerTable()}
-         WHERE party_id = ANY($1::text::uuid[])
-           AND source_module = $2::text
-           AND date >= $3::date AND date <= $4::date`,
-        [ids, PERIOD_SHARE_REMOVED_MODULE, `${year}-01-01`, `${year}-12-31`],
-      );
-      const removedMonths = new Set(
-        (removedRows || []).map((r: { party_id: string; ym: string }) => `${r.party_id}|${r.ym}`),
-      );
+        const slices = partners.map((p) => ({
+          id: p.id,
+          name: p.name || p.code || p.id,
+          sharePct: p.share_pct || 0,
+        }));
 
-      for (const month of months) {
-        if (!month.hasActivity) continue;
-        const shares = splitAmountByPartners(month.netRemaining, slices);
-        const monthIdx = parseInt(month.monthKey.slice(5, 7), 10) - 1;
-        const monthLabel = `${MONTH_TR[monthIdx] || month.monthKey} ${year}`;
-        for (const share of shares) {
-          const amt = Math.round((share.amount || 0) * 100) / 100;
-          if (!amt) continue;
-          const isProfit = amt > 0;
-          const abs = Math.abs(amt);
-          const txType = isProfit ? 'KAR_DAGITIMI' : 'ZARAR_DAGITIMI';
-          const sign = isProfit ? 1 : -1;
-          const pct = partners.find((p) => p.id === share.id)?.share_pct || share.sharePct || 0;
-          const definition = isProfit
-            ? `${monthLabel} kâr payı (%${Number(pct).toFixed(0)})`
-            : `${monthLabel} zarar payı (%${Number(pct).toFixed(0)})`;
-          const key = `${share.id}|${month.monthKey}`;
-          const foundId = existing.get(key);
-          if (!foundId && distMonths.has(key)) continue;
-          if (!foundId && removedMonths.has(key)) continue;
-          const dateIso = `${month.lastDay}T12:00:00`;
-          if (foundId) {
-            await postgres.query(
-              `UPDATE ${ledgerTable()}
-               SET amount = $1::text::numeric, sign = $2::integer,
-                   transaction_type = $3::text, definition = $4::text, date = $5::text::timestamptz
-               WHERE id = $6::text::uuid`,
-              [abs.toString(), sign, txType, definition, dateIso, foundId],
-            );
-          } else {
-            await writePartnerLedger({
-              partyId: share.id,
-              transactionType: txType,
-              amount: abs,
-              sign,
-              definition,
-              sourceModule: PERIOD_SHARE_MODULE,
-              date: dateIso,
-            });
+        const { rows: existingRows } = await postgres.query(
+          `SELECT id, party_id::text AS party_id, to_char(date, 'YYYY-MM') AS ym
+           FROM ${ledgerTable()}
+           WHERE party_id = ANY($1::text::uuid[])
+             AND source_module = $2::text
+             AND date >= $3::date AND date <= $4::date`,
+          [ids, PERIOD_SHARE_MODULE, `${year}-01-01`, `${year}-12-31`],
+        );
+        const existing = new Map<string, string>();
+        for (const r of existingRows || []) {
+          existing.set(`${r.party_id}|${r.ym}`, String(r.id));
+        }
+
+        const { rows: distRows } = await postgres.query(
+          `SELECT party_id::text AS party_id, to_char(date, 'YYYY-MM') AS ym
+           FROM ${ledgerTable()}
+           WHERE party_id = ANY($1::text::uuid[])
+             AND source_module = 'partner_distribution'
+             AND date >= $2::date AND date <= $3::date`,
+          [ids, `${year}-01-01`, `${year}-12-31`],
+        );
+        const distMonths = new Set(
+          (distRows || []).map((r: { party_id: string; ym: string }) => `${r.party_id}|${r.ym}`),
+        );
+
+        const { rows: removedRows } = await postgres.query(
+          `SELECT party_id::text AS party_id, to_char(date, 'YYYY-MM') AS ym
+           FROM ${ledgerTable()}
+           WHERE party_id = ANY($1::text::uuid[])
+             AND source_module = $2::text
+             AND date >= $3::date AND date <= $4::date`,
+          [ids, PERIOD_SHARE_REMOVED_MODULE, `${year}-01-01`, `${year}-12-31`],
+        );
+        const removedMonths = new Set(
+          (removedRows || []).map((r: { party_id: string; ym: string }) => `${r.party_id}|${r.ym}`),
+        );
+
+        for (const month of months) {
+          if (!month.hasActivity) continue;
+          const shares = splitAmountByPartners(month.netRemaining, slices);
+          const monthIdx = parseInt(month.monthKey.slice(5, 7), 10) - 1;
+          const monthLabel = `${MONTH_TR[monthIdx] || month.monthKey} ${year}`;
+          for (const share of shares) {
+            const amt = Math.round((share.amount || 0) * 100) / 100;
+            if (!amt) continue;
+            const isProfit = amt > 0;
+            const abs = Math.abs(amt);
+            const txType = isProfit ? 'KAR_DAGITIMI' : 'ZARAR_DAGITIMI';
+            const sign = isProfit ? 1 : -1;
+            const pct = partners.find((p) => p.id === share.id)?.share_pct || share.sharePct || 0;
+            const definition = isProfit
+              ? `${monthLabel} kâr payı (%${Number(pct).toFixed(0)})`
+              : `${monthLabel} zarar payı (%${Number(pct).toFixed(0)})`;
+            const key = `${share.id}|${month.monthKey}`;
+            const foundId = existing.get(key);
+            if (!foundId && distMonths.has(key)) continue;
+            if (!foundId && removedMonths.has(key)) continue;
+            const dateIso = `${month.lastDay}T12:00:00`;
+            if (foundId) {
+              await postgres.query(
+                `UPDATE ${ledgerTable()}
+                 SET amount = $1::text::numeric, sign = $2::integer,
+                     transaction_type = $3::text, definition = $4::text, date = $5::text::timestamptz
+                 WHERE id = $6::text::uuid`,
+                [abs.toString(), sign, txType, definition, dateIso, foundId],
+              );
+            } else {
+              await writePartnerLedger({
+                partyId: share.id,
+                transactionType: txType,
+                amount: abs,
+                sign,
+                definition,
+                sourceModule: PERIOD_SHARE_MODULE,
+                date: dateIso,
+              });
+            }
           }
         }
       }
@@ -323,7 +343,7 @@ export const partnerAPI = {
         }
       }
     } catch (err) {
-      console.warn('[partnerAPI] dönem payı hareketleri yazılamadı', err);
+      console.warn('[partnerAPI] dönem payı / bakiye senkronu yazılamadı', err);
       return result;
     }
 
