@@ -2269,9 +2269,18 @@ export function ReportsModule({
 
       const appointmentId = extractBeautyAppointmentIdFromSaleNotes(sale.notes);
       const appointment = appointmentId ? appointmentById.get(appointmentId) ?? null : null;
-      const createdAt = String(sale.created_at ?? '');
-      const createdDate = createdAt.slice(0, 10);
-      const createdTime = createdAt.slice(11, 16);
+      // created_at ISO/UTC — slice(11,16) UTC saatini yereldeymiş gibi gösterir (TR +3 kayması).
+      // Yerel gün/saat: localCalendarDateKey + Date getHours/getMinutes (saleWallClock ile aynı mantık).
+      const createdAt = String(sale.created_at ?? '').trim();
+      const createdWall = createdAt ? new Date(createdAt) : null;
+      const createdWallOk = createdWall != null && Number.isFinite(createdWall.getTime());
+      const createdDate = createdWallOk
+        ? localCalendarDateKey(createdWall)
+        : localCalendarDateKey(createdAt);
+      const createdTime =
+        createdWallOk && !isBusinessDayClockAnchor(createdAt)
+          ? `${String(createdWall.getHours()).padStart(2, '0')}:${String(createdWall.getMinutes()).padStart(2, '0')}`
+          : '';
       const customerName =
         String(appointment?.customer_name ?? '').trim() ||
         String(sale.customer_name ?? '').trim() ||
@@ -2285,7 +2294,7 @@ export function ReportsModule({
         : '';
       const appointmentTime = appointmentTimeRaw
         ? appointmentTimeRaw.slice(0, 5)
-        : createdTime || '—';
+        : createdTime;
 
       for (const [idx, item] of (sale.items ?? []).entries()) {
         if (String(item.item_type ?? '').toLowerCase() !== 'product') continue;
@@ -2398,11 +2407,13 @@ export function ReportsModule({
   }, [beautyServiceSales]);
 
   const beautyAppointmentProductSummary = useMemo(() => {
+    // İşlem = benzersiz satış fişi; grid satırı = ürün kalemi (çok kalemli fişte satır > işlem).
     const transactionCount = new Set(
-      beautyAppointmentProductRows.map((row) => `${row.saleId}|${row.appointmentId}`)
+      beautyAppointmentProductRows.map((row) => String(row.saleId || '').trim()).filter(Boolean)
     ).size;
     return {
       transactionCount,
+      lineCount: beautyAppointmentProductRows.length,
       totalQty: beautyAppointmentProductRows.reduce((sum, row) => sum + row.quantity, 0),
       totalRevenue: beautyAppointmentProductRows.reduce((sum, row) => sum + row.total, 0),
     };
@@ -8680,12 +8691,17 @@ export function ReportsModule({
                     ) : (
                       <div className="space-y-4">
                         <ReportKpiStrip
-                          columns={3}
+                          columns={4}
                           items={[
                             {
                               key: 'tx',
                               label: tm('transactionCount'),
                               value: formatNumber(beautyAppointmentProductSummary.transactionCount, 0, false),
+                            },
+                            {
+                              key: 'lines',
+                              label: tm('beautyAppointmentProductLineCount'),
+                              value: formatNumber(beautyAppointmentProductSummary.lineCount, 0, false),
                             },
                             {
                               key: 'qty',
@@ -8716,8 +8732,17 @@ export function ReportsModule({
                                   header: tm('date'),
                                   type: 'date',
                                   size: 150,
-                                  cell: (row) =>
-                                    formatReportDateCell(row.appointmentDate, row.appointmentTime || undefined),
+                                  cell: (row) => {
+                                    // Randevu saati veya yerel created_at yedeği → gg.aa.yyyy - HH:mm
+                                    const hm = String(row.appointmentTime || '').trim();
+                                    if (hm) {
+                                      return formatReportDateCell(row.appointmentDate, hm);
+                                    }
+                                    // Saat yoksa tam ISO → formatDateTimeShort (yerel, iptal ödeme raporu ile aynı)
+                                    return row.createdAt
+                                      ? formatReportDateCell(row.createdAt)
+                                      : formatReportDateCell(row.appointmentDate);
+                                  },
                                 },
                                 { key: 'customerName', header: tm('customer'), size: 160 },
                                 { key: 'productName', header: tm('product'), size: 160 },

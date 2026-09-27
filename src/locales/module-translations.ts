@@ -2617,10 +2617,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'کۆکردنەوە بەپێی بەرهەم',
   },
   beautyAppointmentProductLineCount: {
-    tr: 'satır',
-    en: 'lines',
-    ar: 'سطر',
-    ku: 'ڕیز',
+    tr: 'Ürün satırı',
+    en: 'Product lines',
+    ar: 'بنود المنتج',
+    ku: 'هێڵی بەرهەم',
   },
   beautyAppointmentProductFilterLabel: {
     tr: 'Ürün filtresi',
