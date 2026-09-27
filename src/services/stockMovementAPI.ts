@@ -1,7 +1,10 @@
 import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
 import { postgres, ERP_SETTINGS } from './postgres';
 import { toSqlDateInputString } from '../utils/localCalendarDate';
-import { SQL_PRODUCT_CARD_REPORT_FIELDS } from '../utils/productCardReportFields';
+import {
+    SQL_PRODUCT_CARD_REPORT_FIELDS,
+    mapSqlRowProductCardFields,
+} from '../utils/productCardReportFields';
 import {
     aggregateInOutTotals,
     classifyStockLineDirection,
@@ -67,10 +70,19 @@ export interface StockMovementLine {
     source_kind: 'slip' | 'invoice';
     product_code: string;
     product_name: string;
-    /** Ürün kartı: special_code_1 */
+    /** Ürün kartı: special_code_1 (geriye uyum) */
     special_code: string;
+    special_code_1: string;
+    special_code_2: string;
+    special_code_3: string;
+    special_code_4: string;
+    special_code_5: string;
+    special_code_6: string;
     /** Ürün kartı: brand */
     brand: string;
+    /** Ürün kartı: group_code */
+    group: string;
+    group_code: string;
     /** Ürün kartı: category_code */
     category: string;
     quantity: number;
@@ -562,11 +574,7 @@ class StockMovementAPI {
                 console.warn('[StockMovementAPI] getAllLines invoices failed:', err);
             }
 
-            const mapCardFields = (r: any) => ({
-                special_code: String(r.special_code || '').trim(),
-                brand: String(r.brand || '').trim(),
-                category: String(r.category || '').trim(),
-            });
+            const mapCardFields = (r: any) => mapSqlRowProductCardFields(r);
 
             const slips: StockMovementLine[] = slipRows.map((r: any) => ({
                 id: String(r.id),
@@ -1433,9 +1441,7 @@ class StockMovementAPI {
                 product_id: String(r.product_id || '').trim(),
                 product_code: productCode,
                 product_name: String(r.product_name || r.item_name || '').trim(),
-                special_code: String(r.special_code || '').trim(),
-                brand: String(r.brand || '').trim(),
-                category: String(r.category || '').trim(),
+                ...mapSqlRowProductCardFields(r),
                 warehouse_id: r.warehouse_id != null ? String(r.warehouse_id) : '',
                 target_warehouse_id: r.target_warehouse_id != null ? String(r.target_warehouse_id) : '',
                 unit_name: String(r.unit_name || r.unit || '').trim() || 'Adet',

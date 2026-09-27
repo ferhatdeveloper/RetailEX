@@ -13,7 +13,13 @@ import { ReportColumnTable } from './shared/ReportDataGrid';
 import { useRegisterDatagridRefresh } from '../../hooks/useRegisterDatagridRefresh';
 import { getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
-import { productCardReportFields } from '../../utils/productCardReportFields';
+import {
+  productCardReportFields,
+  productCardCodesCamel,
+  specialCodeColumnHeader,
+  productCardGroupHeader,
+  DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY,
+} from '../../utils/productCardReportFields';
 
 interface Movement {
   id: string;
@@ -21,7 +27,14 @@ interface Movement {
   productCode: string;
   productName: string;
   specialCode: string;
+  specialCode1: string;
+  specialCode2: string;
+  specialCode3: string;
+  specialCode4: string;
+  specialCode5: string;
+  specialCode6: string;
   brand: string;
+  group: string;
   category: string;
   type: 'purchase' | 'sale' | 'transfer' | 'adjustment' | 'return';
   quantity: number;
@@ -145,6 +158,9 @@ export function MaterialMovementReport() {
   const [movements, setMovements] = useState<Movement[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(false);
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
+    () => ({ ...DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY }),
+  );
 
   const getTypeLabel = (type: string) => {
     switch (type) {
@@ -218,13 +234,16 @@ export function MaterialMovementReport() {
         );
 
         const card = productCardReportFields(r);
+        const codes = productCardCodesCamel(card);
         mapped.push({
           id: String(r.id || `${r.movement_id}-${mapped.length}`),
           date: formatReportDateCell(r.movement_date || r.created_at || r.movement?.movement_date),
           productCode: displayItemCode(r.product_code),
           productName: r.product_name || '',
-          specialCode: card.specialCode,
+          ...codes,
+          specialCode: card.specialCode1,
           brand: card.brand,
+          group: card.group,
           category: card.category,
           type: dbTypeToUiType(dbTypeRow, ficheType),
           quantity: displayQty,
@@ -395,6 +414,8 @@ export function MaterialMovementReport() {
               data={movements}
               height={520}
               storageNamespace="material-movement"
+              columnVisibility={columnVisibility}
+              onColumnVisibilityChange={setColumnVisibility}
               columns={[
                 { key: 'date', header: tm('mmDateTimeCol'), type: 'date', size: 140 },
                 {
@@ -411,13 +432,43 @@ export function MaterialMovementReport() {
                   ),
                 },
                 {
-                  key: 'specialCode',
-                  header: tm('specialCode') || 'Özel Kod',
-                  size: 110,
+                  key: 'specialCode1',
+                  header: specialCodeColumnHeader(tm, 1),
+                  size: 100,
+                },
+                {
+                  key: 'specialCode2',
+                  header: specialCodeColumnHeader(tm, 2),
+                  size: 100,
+                },
+                {
+                  key: 'specialCode3',
+                  header: specialCodeColumnHeader(tm, 3),
+                  size: 100,
+                },
+                {
+                  key: 'specialCode4',
+                  header: specialCodeColumnHeader(tm, 4),
+                  size: 100,
+                },
+                {
+                  key: 'specialCode5',
+                  header: specialCodeColumnHeader(tm, 5),
+                  size: 100,
+                },
+                {
+                  key: 'specialCode6',
+                  header: specialCodeColumnHeader(tm, 6),
+                  size: 100,
                 },
                 {
                   key: 'brand',
                   header: tm('brand') || 'Marka',
+                  size: 110,
+                },
+                {
+                  key: 'group',
+                  header: productCardGroupHeader(tm),
                   size: 110,
                 },
                 {

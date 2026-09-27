@@ -160,6 +160,8 @@ export function ReportColumnTable<T extends object>({
   groupByColumnId,
   enableGrouping,
   enableFiltering,
+  columnVisibility,
+  onColumnVisibilityChange,
 }: {
   data: T[];
   columns: ReportColumnTableCol<T>[];
@@ -174,6 +176,8 @@ export function ReportColumnTable<T extends object>({
   /** PDKS gün ızgarası gibi sık kolonlarda grup ikonunu kapat */
   enableGrouping?: boolean;
   enableFiltering?: boolean;
+  columnVisibility?: Record<string, boolean>;
+  onColumnVisibilityChange?: (visibility: Record<string, boolean>) => void;
 }) {
   const { selectedFirm } = useFirmaDonem();
   const footerCurrency = useMemo(
@@ -233,6 +237,8 @@ export function ReportColumnTable<T extends object>({
         groupByColumnId={groupByColumnId}
         enableGrouping={enableGrouping}
         enableFiltering={enableFiltering}
+        columnVisibility={columnVisibility}
+        onColumnVisibilityChange={onColumnVisibilityChange}
         height="100%"
       />
     </div>

@@ -24,7 +24,13 @@ import {
 import { displayItemCode } from '../../../utils/lastPurchaseCostSql';
 import { formatReportDateCell } from '../../../utils/dateLocale';
 import { receiptNotesForDisplay } from '../../../utils/receiptNotes';
-import { productCardReportFields } from '../../../utils/productCardReportFields';
+import {
+    productCardReportFields,
+    productCardCodesSnake,
+    specialCodeColumnHeader,
+    productCardGroupHeader,
+    DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY_SNAKE,
+} from '../../../utils/productCardReportFields';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { ReportHtmlPrintPreviewModal } from '../../reports/ReportHtmlPrintPreviewModal';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
@@ -83,7 +89,14 @@ interface ExtractRow {
     product_code?: string;
     product_name?: string;
     special_code?: string;
+    special_code_1?: string;
+    special_code_2?: string;
+    special_code_3?: string;
+    special_code_4?: string;
+    special_code_5?: string;
+    special_code_6?: string;
     brand?: string;
+    group?: string;
     category?: string;
 }
 
@@ -91,8 +104,14 @@ type ExtractGridRow = ExtractRow & {
     dateLabel: string;
     productCodeLabel: string;
     productNameLabel: string;
-    specialCodeLabel: string;
+    specialCode1Label: string;
+    specialCode2Label: string;
+    specialCode3Label: string;
+    specialCode4Label: string;
+    specialCode5Label: string;
+    specialCode6Label: string;
     brandLabel: string;
+    groupLabel: string;
     categoryLabel: string;
     typeLabel: string;
     descLabel: string;
@@ -143,6 +162,9 @@ export function MaterialExtractReport() {
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [showDropdown, setShowDropdown] = useState(false);
     const [rows, setRows] = useState<ExtractRow[]>([]);
+    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
+        () => ({ ...DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY_SNAKE }),
+    );
     /** Rapor en az bir kez başarıyla hazırlandı (seçimsiz tümü dahil). */
     const [reportReady, setReportReady] = useState(false);
     /** true = malzeme seçilmeden tüm malzemeler yüklendi */
@@ -230,7 +252,14 @@ export function MaterialExtractReport() {
             code?: string;
             name?: string;
             special_code?: string;
+            special_code_1?: string;
+            special_code_2?: string;
+            special_code_3?: string;
+            special_code_4?: string;
+            special_code_5?: string;
+            special_code_6?: string;
             brand?: string;
+            group?: string;
             category?: string;
         },
     ): ExtractRow => {
@@ -261,6 +290,12 @@ export function MaterialExtractReport() {
             displayItemCode(m.product_code, m.productCode, selectedProduct?.code, selectedProduct?.barcode);
         const fromMove = productCardReportFields(m);
         const fromSelected = productCardReportFields(selectedProduct);
+        const code1 =
+            productMeta?.special_code_1 ||
+            productMeta?.special_code ||
+            fromMove.specialCode1 ||
+            fromSelected.specialCode1 ||
+            '';
         return {
             id: `${m.id || idx}`,
             date: m.movement?.movement_date || m.movement_date || m.created_at,
@@ -280,9 +315,20 @@ export function MaterialExtractReport() {
             product_id: productMeta?.id || String(m.product_id || '').trim() || undefined,
             product_code: code === '—' ? '' : code,
             product_name: productMeta?.name || String(m.product_name || '').trim() || selectedProduct?.name || '',
-            special_code:
-                productMeta?.special_code || fromMove.specialCode || fromSelected.specialCode || '',
+            special_code: code1,
+            special_code_1: code1,
+            special_code_2:
+                productMeta?.special_code_2 || fromMove.specialCode2 || fromSelected.specialCode2 || '',
+            special_code_3:
+                productMeta?.special_code_3 || fromMove.specialCode3 || fromSelected.specialCode3 || '',
+            special_code_4:
+                productMeta?.special_code_4 || fromMove.specialCode4 || fromSelected.specialCode4 || '',
+            special_code_5:
+                productMeta?.special_code_5 || fromMove.specialCode5 || fromSelected.specialCode5 || '',
+            special_code_6:
+                productMeta?.special_code_6 || fromMove.specialCode6 || fromSelected.specialCode6 || '',
             brand: productMeta?.brand || fromMove.brand || fromSelected.brand || '',
+            group: productMeta?.group || fromMove.group || fromSelected.group || '',
             category: productMeta?.category || fromMove.category || fromSelected.category || '',
         };
     };
@@ -321,9 +367,7 @@ export function MaterialExtractReport() {
                         id: selectedProduct.id,
                         code: displayItemCode(selectedProduct.code, selectedProduct.barcode),
                         name: selectedProduct.name || '',
-                        special_code: card.specialCode,
-                        brand: card.brand,
-                        category: card.category,
+                        ...productCardCodesSnake(card),
                     });
                 });
                 setRows(mapped);
@@ -353,9 +397,7 @@ export function MaterialExtractReport() {
                         id: String(m.product_id || '').trim(),
                         code: displayItemCode(m.product_code),
                         name: String(m.product_name || '').trim(),
-                        special_code: card.specialCode,
-                        brand: card.brand,
-                        category: card.category,
+                        ...productCardCodesSnake(card),
                     });
                 });
                 setRows(mapped);
@@ -425,8 +467,14 @@ export function MaterialExtractReport() {
                 dateLabel: row.date ? formatReportDateCell(row.date) : '',
                 productCodeLabel: displayItemCode(row.product_code) === '—' ? '' : displayItemCode(row.product_code),
                 productNameLabel: row.product_name || '',
-                specialCodeLabel: row.special_code || '',
+                specialCode1Label: row.special_code_1 || row.special_code || '',
+                specialCode2Label: row.special_code_2 || '',
+                specialCode3Label: row.special_code_3 || '',
+                specialCode4Label: row.special_code_4 || '',
+                specialCode5Label: row.special_code_5 || '',
+                specialCode6Label: row.special_code_6 || '',
                 brandLabel: row.brand || '',
+                groupLabel: row.group || '',
                 categoryLabel: row.category || '',
                 typeLabel: labelTrcode(row.trcode, row.movement_type, row.source_type, row.fiche_type),
                 descLabel: row.description || row.warehouse_name || '',
@@ -468,19 +516,55 @@ export function MaterialExtractReport() {
                               cell: (r: ExtractGridRow) => r.productNameLabel || '',
                           },
                           {
-                              id: 'specialCodeLabel' as const,
-                              header: tm('specialCode') || 'Özel Kod',
-                              size: 110,
-                              cell: (r: ExtractGridRow) => r.specialCodeLabel || '',
+                              id: 'special_code_1' as const,
+                              header: specialCodeColumnHeader(tm, 1),
+                              size: 100,
+                              cell: (r: ExtractGridRow) => r.specialCode1Label || '',
                           },
                           {
-                              id: 'brandLabel' as const,
+                              id: 'special_code_2' as const,
+                              header: specialCodeColumnHeader(tm, 2),
+                              size: 100,
+                              cell: (r: ExtractGridRow) => r.specialCode2Label || '',
+                          },
+                          {
+                              id: 'special_code_3' as const,
+                              header: specialCodeColumnHeader(tm, 3),
+                              size: 100,
+                              cell: (r: ExtractGridRow) => r.specialCode3Label || '',
+                          },
+                          {
+                              id: 'special_code_4' as const,
+                              header: specialCodeColumnHeader(tm, 4),
+                              size: 100,
+                              cell: (r: ExtractGridRow) => r.specialCode4Label || '',
+                          },
+                          {
+                              id: 'special_code_5' as const,
+                              header: specialCodeColumnHeader(tm, 5),
+                              size: 100,
+                              cell: (r: ExtractGridRow) => r.specialCode5Label || '',
+                          },
+                          {
+                              id: 'special_code_6' as const,
+                              header: specialCodeColumnHeader(tm, 6),
+                              size: 100,
+                              cell: (r: ExtractGridRow) => r.specialCode6Label || '',
+                          },
+                          {
+                              id: 'brand' as const,
                               header: tm('brand') || 'Marka',
                               size: 110,
                               cell: (r: ExtractGridRow) => r.brandLabel || '',
                           },
                           {
-                              id: 'categoryLabel' as const,
+                              id: 'group' as const,
+                              header: productCardGroupHeader(tm),
+                              size: 110,
+                              cell: (r: ExtractGridRow) => r.groupLabel || '',
+                          },
+                          {
+                              id: 'category' as const,
                               header: tm('category') || 'Kategori',
                               size: 120,
                               cell: (r: ExtractGridRow) => r.categoryLabel || '',
@@ -973,7 +1057,9 @@ export function MaterialExtractReport() {
                         data={gridRows}
                         columns={gridColumns}
                         {...REPORT_GRID_DEFAULTS}
-                        storageNamespace="materialExtractReport"
+                        columnVisibility={columnVisibility}
+                        onColumnVisibilityChange={setColumnVisibility}
+                        storageNamespace="materialExtractReport-v2"
                         autoFooterSums={false}
                         height="100%"
                         excelFileName={tm('materialExtractReport') || 'malzeme_ekstresi'}

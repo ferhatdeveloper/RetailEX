@@ -14,7 +14,12 @@ import { getAppDefaultCurrency } from '../../services/postgres';
 import { useProductStore, useCustomerStore } from '../../store';
 import { expiryReportsAPI, type ExpiringPurchaseItem } from '../../services/api/expiryReports';
 import { productAPI } from '../../services/api/products';
-import { productCardReportFields } from '../../utils/productCardReportFields';
+import {
+  productCardReportFields,
+  specialCodeColumnHeader,
+  productCardGroupHeader,
+  DEFAULT_SPECIAL_CODE_COLUMN_VISIBILITY_SNAKE,
+} from '../../utils/productCardReportFields';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -1089,6 +1094,9 @@ export function ReportsModule({
   const [expiringProducts, setExpiringProducts] = useState<any[]>([]);
   const [expiringDays, setExpiringDays] = useState<number>(30);
   const [loadingExpiring, setLoadingExpiring] = useState(false);
+  const [expiringColumnVisibility, setExpiringColumnVisibility] = useState<Record<string, boolean>>(
+    () => ({ ...DEFAULT_SPECIAL_CODE_COLUMN_VISIBILITY_SNAKE }),
+  );
   const [collapsed, setCollapsed] = useState(false);
   const [reportMenuSearch, setReportMenuSearch] = useState('');
   const prevIsMobileRef = useRef(false);
@@ -1767,13 +1775,31 @@ export function ReportsModule({
 
   const mapExpiringPurchaseToReportRow = useCallback((
     item: ExpiringPurchaseItem,
-    card?: { specialCode?: string; brand?: string; category?: string },
+    card?: {
+      specialCode?: string;
+      specialCode1?: string;
+      specialCode2?: string;
+      specialCode3?: string;
+      specialCode4?: string;
+      specialCode5?: string;
+      specialCode6?: string;
+      brand?: string;
+      group?: string;
+      category?: string;
+    },
   ) => ({
     id: `${item.productId || item.itemCode}|${item.expiryDate}|${item.batchNo || ''}|${item.saleItemId || item.invoiceId || ''}`,
     product_code: item.itemCode || '-',
     product_name: item.itemName || '-',
-    special_code: card?.specialCode || '',
+    special_code: card?.specialCode1 || card?.specialCode || '',
+    special_code_1: card?.specialCode1 || card?.specialCode || '',
+    special_code_2: card?.specialCode2 || '',
+    special_code_3: card?.specialCode3 || '',
+    special_code_4: card?.specialCode4 || '',
+    special_code_5: card?.specialCode5 || '',
+    special_code_6: card?.specialCode6 || '',
     brand: card?.brand || '',
+    group: card?.group || '',
     category: card?.category || '',
     lot_no: item.batchNo || '',
     serial_no: '',
@@ -7911,8 +7937,15 @@ export function ReportsModule({
                                 id: product.id,
                                 product_code: product.product_code || '-',
                                 product_name: product.product_name || '-',
-                                special_code: product.special_code || '',
+                                special_code: product.special_code || product.special_code_1 || '',
+                                special_code_1: product.special_code_1 || product.special_code || '',
+                                special_code_2: product.special_code_2 || '',
+                                special_code_3: product.special_code_3 || '',
+                                special_code_4: product.special_code_4 || '',
+                                special_code_5: product.special_code_5 || '',
+                                special_code_6: product.special_code_6 || '',
                                 brand: product.brand || '',
+                                group: product.group || '',
                                 category: product.category || '',
                                 lot_no: product.lot_no || '',
                                 serial_no: product.serial_no || '',
@@ -7934,12 +7967,20 @@ export function ReportsModule({
                                 height={520}
                                 storageNamespace="expiring-products"
                                 footerLabel={tm('reportsFooterTotalUpper')}
+                                columnVisibility={expiringColumnVisibility}
+                                onColumnVisibilityChange={setExpiringColumnVisibility}
                                 columns={[
                                   { key: 'product_code', header: tm('reportsExpiringThProductCode'), size: 140 },
                                   { key: 'product_name', header: tm('reportsThProductName'), size: 180 },
-                                  { key: 'special_code', header: tm('specialCode') || 'Özel Kod', size: 110 },
+                                  { key: 'special_code_1', header: specialCodeColumnHeader(tm, 1), size: 100 },
                                   { key: 'brand', header: tm('brand') || 'Marka', size: 110 },
+                                  { key: 'group', header: productCardGroupHeader(tm), size: 110 },
                                   { key: 'category', header: tm('category') || 'Kategori', size: 120 },
+                                  { key: 'special_code_2', header: specialCodeColumnHeader(tm, 2), size: 100 },
+                                  { key: 'special_code_3', header: specialCodeColumnHeader(tm, 3), size: 100 },
+                                  { key: 'special_code_4', header: specialCodeColumnHeader(tm, 4), size: 100 },
+                                  { key: 'special_code_5', header: specialCodeColumnHeader(tm, 5), size: 100 },
+                                  { key: 'special_code_6', header: specialCodeColumnHeader(tm, 6), size: 100 },
                                   {
                                     key: 'lot_no',
                                     header: tm('reportsExpiringThLotSerial'),

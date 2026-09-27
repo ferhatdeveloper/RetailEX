@@ -14,14 +14,27 @@ import { formatNumber } from '../../../utils/formatNumber';
 import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
 import { getAppDefaultCurrency } from '../../../services/postgres';
 import { productCardUnitCost } from '../../../utils/productCardUnitCost';
-import { productCardReportFields } from '../../../utils/productCardReportFields';
+import {
+    productCardReportFields,
+    productCardCodesSnake,
+    specialCodeColumnHeader,
+    productCardGroupHeader,
+    DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY_SNAKE,
+} from '../../../utils/productCardReportFields';
 
 interface ValuationRow {
     product_id: string;
     product_code: string;
     product_name: string;
     special_code: string;
+    special_code_1: string;
+    special_code_2: string;
+    special_code_3: string;
+    special_code_4: string;
+    special_code_5: string;
+    special_code_6: string;
     brand: string;
+    group: string;
     category: string;
     unit: string;
     quantity: number;
@@ -42,6 +55,9 @@ export function MaterialValueReport() {
     const [avgByProduct, setAvgByProduct] = useState<Map<string, number>>(new Map());
     const [avgByCode, setAvgByCode] = useState<Map<string, number>>(new Map());
     const [loading, setLoading] = useState(true);
+    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
+        () => ({ ...DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY_SNAKE }),
+    );
     const { tm } = useLanguage();
     const { selectedFirm, selectedPeriod } = useFirmaDonem();
     const currency = getFirmLedgerCurrency(
@@ -110,12 +126,14 @@ export function MaterialValueReport() {
                 }
                 const total_cost = qty * average_unit_cost;
                 const card = productCardReportFields(p);
+                const codes = productCardCodesSnake(card);
                 return {
                     product_id: p.id,
                     product_code: p.code || '',
                     product_name: p.name || '',
-                    special_code: card.specialCode,
+                    ...codes,
                     brand: card.brand,
+                    group: card.group,
                     category: card.category,
                     unit: p.unit || '',
                     quantity: qty,
@@ -126,11 +144,53 @@ export function MaterialValueReport() {
     }, [products, avgByProduct, avgByCode]);
 
     const columnHelper = createColumnHelper<ValuationRow>();
+    const specialCodeCell = (value: unknown) =>
+        value != null && String(value).trim() !== '' ? String(value).trim() : '—';
     const columns = useMemo<ColumnDef<ValuationRow, any>[]>(() => [
         columnHelper.accessor('product_code', { header: tm('materialCode') }),
         columnHelper.accessor('product_name', { header: tm('materialDescription') }),
-        columnHelper.accessor('special_code', { header: tm('specialCode') || 'Özel Kod' }),
+        columnHelper.accessor('special_code_1', {
+            id: 'special_code_1',
+            header: specialCodeColumnHeader(tm, 1),
+            cell: info => specialCodeCell(info.getValue()),
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_2', {
+            id: 'special_code_2',
+            header: specialCodeColumnHeader(tm, 2),
+            cell: info => specialCodeCell(info.getValue()),
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_3', {
+            id: 'special_code_3',
+            header: specialCodeColumnHeader(tm, 3),
+            cell: info => specialCodeCell(info.getValue()),
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_4', {
+            id: 'special_code_4',
+            header: specialCodeColumnHeader(tm, 4),
+            cell: info => specialCodeCell(info.getValue()),
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_5', {
+            id: 'special_code_5',
+            header: specialCodeColumnHeader(tm, 5),
+            cell: info => specialCodeCell(info.getValue()),
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_6', {
+            id: 'special_code_6',
+            header: specialCodeColumnHeader(tm, 6),
+            cell: info => specialCodeCell(info.getValue()),
+            size: 100,
+        }),
         columnHelper.accessor('brand', { header: tm('brand') || 'Marka' }),
+        columnHelper.accessor('group', {
+            id: 'group',
+            header: productCardGroupHeader(tm),
+            cell: info => specialCodeCell(info.getValue()),
+        }),
         columnHelper.accessor('category', { header: tm('category') || 'Kategori' }),
         columnHelper.accessor('unit', { header: tm('unit'), size: 80 }),
         columnHelper.accessor('quantity', {
@@ -173,6 +233,9 @@ export function MaterialValueReport() {
                         data={rows}
                         columns={columns}
                         {...REPORT_GRID_DEFAULTS}
+                        columnVisibility={columnVisibility}
+                        onColumnVisibilityChange={setColumnVisibility}
+                        storageNamespace="report-material-value-v2"
                         autoFooterSums={false}
                         footerSumColumns={[
                             {

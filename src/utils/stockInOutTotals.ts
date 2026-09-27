@@ -6,10 +6,18 @@ export interface InOutTotalsRow {
     productId: string;
     productCode: string;
     productName: string;
-    /** Ürün kartı special_code_1 */
+    /** Ürün kartı special_code_1 (geriye uyum) */
     specialCode?: string;
+    specialCode1?: string;
+    specialCode2?: string;
+    specialCode3?: string;
+    specialCode4?: string;
+    specialCode5?: string;
+    specialCode6?: string;
     /** Ürün kartı brand */
     brand?: string;
+    /** Ürün kartı group_code */
+    group?: string;
     /** Ürün kartı category_code */
     category?: string;
     inQty: number;
@@ -299,7 +307,14 @@ export function collapseInOutTotalsRows(rows: InOutTotalsRow[]): InOutTotalsRow[
             if (!prev.productCode && r.productCode) prev.productCode = r.productCode;
             if (!prev.productName && r.productName) prev.productName = r.productName;
             if (!prev.specialCode && r.specialCode) prev.specialCode = r.specialCode;
+            if (!prev.specialCode1 && r.specialCode1) prev.specialCode1 = r.specialCode1;
+            if (!prev.specialCode2 && r.specialCode2) prev.specialCode2 = r.specialCode2;
+            if (!prev.specialCode3 && r.specialCode3) prev.specialCode3 = r.specialCode3;
+            if (!prev.specialCode4 && r.specialCode4) prev.specialCode4 = r.specialCode4;
+            if (!prev.specialCode5 && r.specialCode5) prev.specialCode5 = r.specialCode5;
+            if (!prev.specialCode6 && r.specialCode6) prev.specialCode6 = r.specialCode6;
             if (!prev.brand && r.brand) prev.brand = r.brand;
+            if (!prev.group && r.group) prev.group = r.group;
             if (!prev.category && r.category) prev.category = r.category;
             if (r.isService) prev.isService = true;
         }

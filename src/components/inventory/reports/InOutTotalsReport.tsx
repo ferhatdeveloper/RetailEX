@@ -12,7 +12,13 @@ import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../../utils/formatNumber';
 import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
 import { getAppDefaultCurrency } from '../../../services/postgres';
-import { productCardReportFields } from '../../../utils/productCardReportFields';
+import {
+    productCardReportFields,
+    productCardCodesCamel,
+    specialCodeColumnHeader,
+    productCardGroupHeader,
+    DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY,
+} from '../../../utils/productCardReportFields';
 
 const INCLUDE_SERVICES_KEY = 'retailex_inOutTotals_includeServices_v1';
 const columnHelper = createColumnHelper<InOutTotalsRow>();
@@ -38,6 +44,9 @@ function loadIncludeServicesPref(): boolean {
 export function InOutTotalsReport() {
     const [rows, setRows] = useState<InOutTotalsRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
+        () => ({ ...DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY }),
+    );
     const { tm } = useLanguage();
     const { selectedFirm, selectedPeriod } = useFirmaDonem();
     const currency = getFirmLedgerCurrency(
@@ -88,6 +97,7 @@ export function InOutTotalsReport() {
                             const p = byId.get(r.productId) || byCode.get(r.productCode);
                             if (!p) return r;
                             const card = productCardReportFields(p);
+                            const codes = productCardCodesCamel(card);
                             const isService =
                                 r.isService === true ||
                                 p.isService === true ||
@@ -97,8 +107,10 @@ export function InOutTotalsReport() {
                                 productId: r.productId || p.id || r.productCode,
                                 productCode: r.productCode || p.code || '',
                                 productName: r.productName || p.name || '',
-                                specialCode: r.specialCode || card.specialCode,
+                                ...codes,
+                                specialCode: r.specialCode || card.specialCode1,
                                 brand: r.brand || card.brand,
+                                group: r.group || card.group,
                                 category: r.category || card.category,
                                 isService,
                             };
@@ -126,12 +138,54 @@ export function InOutTotalsReport() {
         };
     }, [startDate, endDate, selectedFirm?.firm_nr, selectedPeriod?.nr, includeServices]);
 
+    const specialCodeCell = (value: unknown) =>
+        value != null && String(value).trim() !== '' ? String(value).trim() : '—';
     const columns = useMemo<ColumnDef<InOutTotalsRow, any>[]>(() => {
         const cols: ColumnDef<InOutTotalsRow, any>[] = [
             columnHelper.accessor('productCode', { header: tm('materialCode') }),
             columnHelper.accessor('productName', { header: tm('materialName') }),
-            columnHelper.accessor('specialCode', { header: tm('specialCode') || 'Özel Kod' }),
+            columnHelper.accessor('specialCode1', {
+                id: 'specialCode1',
+                header: specialCodeColumnHeader(tm, 1),
+                cell: (info) => specialCodeCell(info.getValue() || info.row.original.specialCode),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode2', {
+                id: 'specialCode2',
+                header: specialCodeColumnHeader(tm, 2),
+                cell: (info) => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode3', {
+                id: 'specialCode3',
+                header: specialCodeColumnHeader(tm, 3),
+                cell: (info) => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode4', {
+                id: 'specialCode4',
+                header: specialCodeColumnHeader(tm, 4),
+                cell: (info) => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode5', {
+                id: 'specialCode5',
+                header: specialCodeColumnHeader(tm, 5),
+                cell: (info) => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode6', {
+                id: 'specialCode6',
+                header: specialCodeColumnHeader(tm, 6),
+                cell: (info) => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
             columnHelper.accessor('brand', { header: tm('brand') || 'Marka' }),
+            columnHelper.accessor('group', {
+                id: 'group',
+                header: productCardGroupHeader(tm),
+                cell: (info) => specialCodeCell(info.getValue()),
+            }),
             columnHelper.accessor('category', { header: tm('category') || 'Kategori' }),
         ];
         if (includeServices) {
@@ -252,7 +306,9 @@ export function InOutTotalsReport() {
                         data={rows}
                         columns={columns}
                         {...REPORT_GRID_DEFAULTS}
-                        storageNamespace="report-in-out-totals"
+                        columnVisibility={columnVisibility}
+                        onColumnVisibilityChange={setColumnVisibility}
+                        storageNamespace="report-in-out-totals-v2"
                         excelFileName={tm('inOutTotals') || 'giris_cikis'}
                         printTitle={tm('inOutTotals') || 'Giriş Çıkış Toplamları'}
                         height="100%"

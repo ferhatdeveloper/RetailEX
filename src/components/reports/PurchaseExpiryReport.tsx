@@ -19,11 +19,24 @@ import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 import { formatNumber } from '../../utils/formatNumber';
 import { formatReportDateCell } from '../../utils/dateLocale';
 import { expiryReturnLineAmounts } from '../../utils/expiryPurchaseReturn';
-import { productCardReportFields } from '../../utils/productCardReportFields';
+import {
+  productCardReportFields,
+  productCardCodesCamel,
+  specialCodeColumnHeader,
+  productCardGroupHeader,
+  DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY,
+} from '../../utils/productCardReportFields';
 
 type ExpiryGridRow = ExpiringPurchaseItem & {
   specialCode: string;
+  specialCode1: string;
+  specialCode2: string;
+  specialCode3: string;
+  specialCode4: string;
+  specialCode5: string;
+  specialCode6: string;
   brand: string;
+  group: string;
   category: string;
 };
 
@@ -32,6 +45,9 @@ export function PurchaseExpiryReport() {
   const { selectedFirm } = useFirmaDonem();
   const [rows, setRows] = useState<ExpiryGridRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
+    () => ({ ...DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY }),
+  );
   const [error, setError] = useState<string | null>(null);
   const [daysAhead, setDaysAhead] = useState(EXPIRY_REPORT_DEFAULT_DAYS);
   const [pending, setPending] = useState<ExpiringPurchaseItem | null>(null);
@@ -59,8 +75,10 @@ export function PurchaseExpiryReport() {
           const card = productCardReportFields(p);
           return {
             ...item,
-            specialCode: card.specialCode,
+            ...productCardCodesCamel(card),
+            specialCode: card.specialCode1,
             brand: card.brand,
+            group: card.group,
             category: card.category,
           };
         }),
@@ -177,13 +195,50 @@ export function PurchaseExpiryReport() {
         );
       },
     }),
-    columnHelper.accessor('specialCode', {
-      header: tm('specialCode') || 'Özel Kod',
+    columnHelper.accessor('specialCode1', {
+      id: 'specialCode1',
+      header: specialCodeColumnHeader(tm, 1),
+      cell: info => info.getValue() || info.row.original.specialCode || '',
+      size: 100,
+    }),
+    columnHelper.accessor('specialCode2', {
+      id: 'specialCode2',
+      header: specialCodeColumnHeader(tm, 2),
       cell: info => info.getValue() || '',
-      size: 110,
+      size: 100,
+    }),
+    columnHelper.accessor('specialCode3', {
+      id: 'specialCode3',
+      header: specialCodeColumnHeader(tm, 3),
+      cell: info => info.getValue() || '',
+      size: 100,
+    }),
+    columnHelper.accessor('specialCode4', {
+      id: 'specialCode4',
+      header: specialCodeColumnHeader(tm, 4),
+      cell: info => info.getValue() || '',
+      size: 100,
+    }),
+    columnHelper.accessor('specialCode5', {
+      id: 'specialCode5',
+      header: specialCodeColumnHeader(tm, 5),
+      cell: info => info.getValue() || '',
+      size: 100,
+    }),
+    columnHelper.accessor('specialCode6', {
+      id: 'specialCode6',
+      header: specialCodeColumnHeader(tm, 6),
+      cell: info => info.getValue() || '',
+      size: 100,
     }),
     columnHelper.accessor('brand', {
       header: tm('brand') || 'Marka',
+      cell: info => info.getValue() || '',
+      size: 110,
+    }),
+    columnHelper.accessor('group', {
+      id: 'group',
+      header: productCardGroupHeader(tm),
       cell: info => info.getValue() || '',
       size: 110,
     }),
@@ -331,7 +386,15 @@ export function PurchaseExpiryReport() {
               </p>
             </div>
           ) : (
-            <DevExDataGrid data={rows} columns={columns} {...REPORT_GRID_DEFAULTS} height="100%" />
+            <DevExDataGrid
+              data={rows}
+              columns={columns}
+              {...REPORT_GRID_DEFAULTS}
+              columnVisibility={columnVisibility}
+              onColumnVisibilityChange={setColumnVisibility}
+              storageNamespace="report-purchase-expiry-v2"
+              height="100%"
+            />
           )}
         </div>
       </div>

@@ -12,13 +12,20 @@ import { formatNumber } from '../../../utils/formatNumber';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRefresh';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
-import { productCardReportFields } from '../../../utils/productCardReportFields';
+import {
+    productCardReportFields,
+    productCardCodesCamel,
+    DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY,
+    specialCodeColumnHeader,
+    productCardGroupHeader,
+} from '../../../utils/productCardReportFields';
 
 interface WarehouseStockRow {
     productCode: string;
     productName: string;
     category: string;
     brand: string;
+    group: string;
     specialCode1: string;
     specialCode2: string;
     specialCode3: string;
@@ -38,17 +45,10 @@ export function WarehouseStatusReport() {
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
-    /** Özel Kod 1 + marka + kategori varsayılan açık; diğer özel kodlar Kolonlar’dan */
-    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
-        category: true,
-        brand: true,
-        specialCode1: true,
-        specialCode2: true,
-        specialCode3: false,
-        specialCode4: false,
-        specialCode5: false,
-        specialCode6: false,
-    });
+    /** Özel Kod 1 + Marka + Grup + Kategori varsayılan açık; Özel Kod 2–6 Kolonlar’dan */
+    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
+        () => ({ ...DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY }),
+    );
     const { tm } = useLanguage();
     const { selectedFirm } = useFirmaDonem();
 
@@ -88,17 +88,14 @@ export function WarehouseStatusReport() {
         return products.map(p => {
             const total = Number(p.stock) || 0;
             const card = productCardReportFields(p);
+            const codes = productCardCodesCamel(card);
             const row: WarehouseStockRow = {
                 productCode: p.code || '',
                 productName: p.name || '',
+                ...codes,
                 category: card.category || trimOrEmpty(p.category),
                 brand: card.brand || trimOrEmpty(p.brand),
-                specialCode1: card.specialCode || trimOrEmpty(p.specialCode1),
-                specialCode2: trimOrEmpty(p.specialCode2),
-                specialCode3: trimOrEmpty(p.specialCode3),
-                specialCode4: trimOrEmpty(p.specialCode4),
-                specialCode5: trimOrEmpty(p.specialCode5),
-                specialCode6: trimOrEmpty(p.specialCode6),
+                group: card.group || trimOrEmpty(p.groupCode),
                 total,
             };
             // Çoklu depo şeması yok — tüm stok ilk depoya atanır
@@ -110,7 +107,6 @@ export function WarehouseStatusReport() {
     }, [products, warehouses]);
 
     const columnHelper = createColumnHelper<WarehouseStockRow>();
-    const specialCodeHeader = (n: number) => `${tm('specialCode')} ${n}`;
     const specialCodeCell = (value: unknown) =>
         value != null && String(value).trim() !== '' ? String(value).trim() : '—';
 
@@ -120,7 +116,37 @@ export function WarehouseStatusReport() {
             columnHelper.accessor('productName', { header: tm('materialName') }),
             columnHelper.accessor('specialCode1', {
                 id: 'specialCode1',
-                header: specialCodeHeader(1),
+                header: specialCodeColumnHeader(tm, 1),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode2', {
+                id: 'specialCode2',
+                header: specialCodeColumnHeader(tm, 2),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 110,
+            }),
+            columnHelper.accessor('specialCode3', {
+                id: 'specialCode3',
+                header: specialCodeColumnHeader(tm, 3),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode4', {
+                id: 'specialCode4',
+                header: specialCodeColumnHeader(tm, 4),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode5', {
+                id: 'specialCode5',
+                header: specialCodeColumnHeader(tm, 5),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode6', {
+                id: 'specialCode6',
+                header: specialCodeColumnHeader(tm, 6),
                 cell: info => specialCodeCell(info.getValue()),
                 size: 100,
             }),
@@ -129,40 +155,15 @@ export function WarehouseStatusReport() {
                 header: tm('brand'),
                 cell: info => specialCodeCell(info.getValue()),
             }),
+            columnHelper.accessor('group', {
+                id: 'group',
+                header: productCardGroupHeader(tm),
+                cell: info => specialCodeCell(info.getValue()),
+            }),
             columnHelper.accessor('category', {
                 id: 'category',
                 header: tm('category'),
                 cell: info => specialCodeCell(info.getValue()),
-            }),
-            columnHelper.accessor('specialCode2', {
-                id: 'specialCode2',
-                header: specialCodeHeader(2),
-                cell: info => specialCodeCell(info.getValue()),
-                size: 110,
-            }),
-            columnHelper.accessor('specialCode3', {
-                id: 'specialCode3',
-                header: specialCodeHeader(3),
-                cell: info => specialCodeCell(info.getValue()),
-                size: 100,
-            }),
-            columnHelper.accessor('specialCode4', {
-                id: 'specialCode4',
-                header: specialCodeHeader(4),
-                cell: info => specialCodeCell(info.getValue()),
-                size: 100,
-            }),
-            columnHelper.accessor('specialCode5', {
-                id: 'specialCode5',
-                header: specialCodeHeader(5),
-                cell: info => specialCodeCell(info.getValue()),
-                size: 100,
-            }),
-            columnHelper.accessor('specialCode6', {
-                id: 'specialCode6',
-                header: specialCodeHeader(6),
-                cell: info => specialCodeCell(info.getValue()),
-                size: 100,
             }),
             columnHelper.accessor('total', {
                 header: tm('totalStock') || 'Toplam Stok',
@@ -210,6 +211,7 @@ export function WarehouseStatusReport() {
                         {...REPORT_GRID_DEFAULTS}
                         columnVisibility={columnVisibility}
                         onColumnVisibilityChange={setColumnVisibility}
+                        storageNamespace="report-warehouse-status-v2"
                         excelFileName={tm('warehouseStatus') || 'malzeme-ambar-durum'}
                         printTitle={tm('warehouseStatus') || 'Malzeme Ambar Durum'}
                         height="100%"

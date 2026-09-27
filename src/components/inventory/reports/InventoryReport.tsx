@@ -23,6 +23,11 @@ import {
     fetchWeightedAverageUnitCosts,
     lookupWeightedAvgUnitCost,
 } from '../../../services/weightedAverageUnitCost';
+import {
+    specialCodeColumnHeader,
+    productCardGroupHeader,
+    DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY,
+} from '../../../utils/productCardReportFields';
 
 /** Envanter satırı + ambar stok klon alanları (wh_{id}) */
 type InventoryRow = Product & Record<string, unknown>;
@@ -37,15 +42,10 @@ export function InventoryReport() {
     const [avgByProduct, setAvgByProduct] = useState<Map<string, number>>(new Map());
     const [avgByCode, setAvgByCode] = useState<Map<string, number>>(new Map());
     const [loading, setLoading] = useState(true);
-    /** Özel Kod 1 + 2 varsayılan açık; diğerleri Kolonlar’dan seçilir */
-    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
-        specialCode1: true,
-        specialCode2: true,
-        specialCode3: false,
-        specialCode4: false,
-        specialCode5: false,
-        specialCode6: false,
-    });
+    /** Özel Kod 1 + Marka + Grup + Kategori varsayılan açık; Özel Kod 2–6 Kolonlar’dan */
+    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
+        () => ({ ...DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY }),
+    );
     const { tm } = useLanguage();
     const { selectedFirm, selectedPeriod } = useFirmaDonem();
     const currency = selectedFirm?.ana_para_birimi || 'IQD';
@@ -132,7 +132,6 @@ export function InventoryReport() {
     }, [products, warehouses]);
 
     const columnHelper = createColumnHelper<InventoryRow>();
-    const specialCodeHeader = (n: number) => `${tm('specialCode')} ${n}`;
     const specialCodeCell = (value: unknown) =>
         value != null && String(value).trim() !== '' ? String(value).trim() : '—';
 
@@ -148,13 +147,48 @@ export function InventoryReport() {
             }),
             columnHelper.accessor('specialCode1', {
                 id: 'specialCode1',
-                header: specialCodeHeader(1),
+                header: specialCodeColumnHeader(tm, 1),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode2', {
+                id: 'specialCode2',
+                header: specialCodeColumnHeader(tm, 2),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 110,
+            }),
+            columnHelper.accessor('specialCode3', {
+                id: 'specialCode3',
+                header: specialCodeColumnHeader(tm, 3),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode4', {
+                id: 'specialCode4',
+                header: specialCodeColumnHeader(tm, 4),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode5', {
+                id: 'specialCode5',
+                header: specialCodeColumnHeader(tm, 5),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode6', {
+                id: 'specialCode6',
+                header: specialCodeColumnHeader(tm, 6),
                 cell: info => specialCodeCell(info.getValue()),
                 size: 100,
             }),
             columnHelper.accessor('brand', {
                 header: tm('brand'),
                 cell: info => info.getValue() || '-',
+            }),
+            columnHelper.accessor('groupCode', {
+                id: 'group',
+                header: productCardGroupHeader(tm),
+                cell: info => specialCodeCell(info.getValue()),
             }),
             columnHelper.accessor('category', {
                 header: tm('category'),
@@ -183,36 +217,6 @@ export function InventoryReport() {
             columnHelper.accessor('min_stock', {
                 header: tm('minStock'),
                 cell: info => info.getValue() || 0,
-            }),
-            columnHelper.accessor('specialCode2', {
-                id: 'specialCode2',
-                header: specialCodeHeader(2),
-                cell: info => specialCodeCell(info.getValue()),
-                size: 110,
-            }),
-            columnHelper.accessor('specialCode3', {
-                id: 'specialCode3',
-                header: specialCodeHeader(3),
-                cell: info => specialCodeCell(info.getValue()),
-                size: 100,
-            }),
-            columnHelper.accessor('specialCode4', {
-                id: 'specialCode4',
-                header: specialCodeHeader(4),
-                cell: info => specialCodeCell(info.getValue()),
-                size: 100,
-            }),
-            columnHelper.accessor('specialCode5', {
-                id: 'specialCode5',
-                header: specialCodeHeader(5),
-                cell: info => specialCodeCell(info.getValue()),
-                size: 100,
-            }),
-            columnHelper.accessor('specialCode6', {
-                id: 'specialCode6',
-                header: specialCodeHeader(6),
-                cell: info => specialCodeCell(info.getValue()),
-                size: 100,
             }),
             columnHelper.accessor((row) => {
                 const fromAvg = lookupWeightedAvgUnitCost(
@@ -295,6 +299,7 @@ export function InventoryReport() {
                         {...REPORT_GRID_DEFAULTS}
                         columnVisibility={columnVisibility}
                         onColumnVisibilityChange={setColumnVisibility}
+                        storageNamespace="report-inventory-v2"
                         excelFileName={tm('inventoryList') || 'envanter'}
                         printTitle={tm('inventoryList') || 'Envanter'}
                         height="100%"

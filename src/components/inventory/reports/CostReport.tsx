@@ -12,14 +12,28 @@ import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '..
 import { getAppDefaultCurrency } from '../../../services/postgres';
 import { format } from 'date-fns';
 import { toSqlDateInputString } from '../../../utils/localCalendarDate';
-import { productCardReportFields } from '../../../utils/productCardReportFields';
+import {
+    productCardReportFields,
+    productCardCodesSnake,
+    specialCodeColumnHeader,
+    productCardGroupHeader,
+    DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY_SNAKE,
+    type ProductCardReportFields,
+} from '../../../utils/productCardReportFields';
 
 interface CostRow {
     product_id: string;
     product_code: string;
     product_name: string;
     special_code: string;
+    special_code_1: string;
+    special_code_2: string;
+    special_code_3: string;
+    special_code_4: string;
+    special_code_5: string;
+    special_code_6: string;
     brand: string;
+    group: string;
     category: string;
     line_kind: 'service' | 'product';
     line_kind_label: string;
@@ -34,15 +48,19 @@ interface CostRow {
 function mapAnalysisRow(
     r: CostProfitRow,
     labels: { service: string; material: string },
-    card?: { specialCode: string; brand: string; category: string },
+    card?: ProductCardReportFields,
 ): CostRow {
     const lineKind = r.lineKind === 'service' ? 'service' : 'product';
+    const codes = card
+        ? productCardCodesSnake(card)
+        : productCardCodesSnake(productCardReportFields(null));
     return {
         product_id: r.productId,
         product_code: r.productCode,
         product_name: r.productName,
-        special_code: card?.specialCode || '',
+        ...codes,
         brand: card?.brand || '',
+        group: card?.group || '',
         category: card?.category || '',
         line_kind: lineKind,
         line_kind_label: lineKind === 'service' ? labels.service : labels.material,
@@ -64,6 +82,9 @@ function mapAnalysisRow(
 export function CostReport() {
     const [rows, setRows] = useState<CostRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
+        () => ({ ...DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY_SNAKE }),
+    );
     const { tm } = useLanguage();
     const { selectedFirm, selectedPeriod } = useFirmaDonem();
     const currency = getFirmLedgerCurrency(
@@ -151,6 +172,8 @@ export function CostReport() {
     }, [rows, tm]);
 
     const columnHelper = createColumnHelper<CostRow>();
+    const specialCodeCell = (value: unknown) =>
+        value != null && String(value).trim() !== '' ? String(value).trim() : '—';
     const columns = useMemo<ColumnDef<CostRow, any>[]>(() => [
         columnHelper.accessor('line_kind_label', {
             id: 'line_kind',
@@ -158,8 +181,48 @@ export function CostReport() {
         }),
         columnHelper.accessor('product_code', { header: tm('materialCode') }),
         columnHelper.accessor('product_name', { header: tm('materialName') }),
-        columnHelper.accessor('special_code', { header: tm('specialCode') || 'Özel Kod' }),
+        columnHelper.accessor('special_code_1', {
+            id: 'special_code_1',
+            header: specialCodeColumnHeader(tm, 1),
+            cell: info => specialCodeCell(info.getValue()),
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_2', {
+            id: 'special_code_2',
+            header: specialCodeColumnHeader(tm, 2),
+            cell: info => specialCodeCell(info.getValue()),
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_3', {
+            id: 'special_code_3',
+            header: specialCodeColumnHeader(tm, 3),
+            cell: info => specialCodeCell(info.getValue()),
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_4', {
+            id: 'special_code_4',
+            header: specialCodeColumnHeader(tm, 4),
+            cell: info => specialCodeCell(info.getValue()),
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_5', {
+            id: 'special_code_5',
+            header: specialCodeColumnHeader(tm, 5),
+            cell: info => specialCodeCell(info.getValue()),
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_6', {
+            id: 'special_code_6',
+            header: specialCodeColumnHeader(tm, 6),
+            cell: info => specialCodeCell(info.getValue()),
+            size: 100,
+        }),
         columnHelper.accessor('brand', { header: tm('brand') || 'Marka' }),
+        columnHelper.accessor('group', {
+            id: 'group',
+            header: productCardGroupHeader(tm),
+            cell: info => specialCodeCell(info.getValue()),
+        }),
         columnHelper.accessor('category', { header: tm('category') || 'Kategori' }),
         columnHelper.accessor('quantity_sold', {
             header: tm('soldQuantity'),
@@ -256,6 +319,9 @@ export function CostReport() {
                         data={rows}
                         columns={columns}
                         {...REPORT_GRID_DEFAULTS}
+                        columnVisibility={columnVisibility}
+                        onColumnVisibilityChange={setColumnVisibility}
+                        storageNamespace="report-cost-profit-v2"
                         excelFileName={tm('costAndProfitAnalysis') || 'maliyet_kar'}
                         printTitle={tm('costAndProfitAnalysis') || 'Maliyet ve Kar Analizi'}
                         height="100%"

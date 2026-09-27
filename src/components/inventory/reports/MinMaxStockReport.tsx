@@ -10,7 +10,13 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRefresh';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
-import { productCardReportFields } from '../../../utils/productCardReportFields';
+import {
+    productCardReportFields,
+    productCardCodesSnake,
+    specialCodeColumnHeader,
+    productCardGroupHeader,
+    DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY_SNAKE,
+} from '../../../utils/productCardReportFields';
 
 /** Min/Max satırı — ürün × depo (mümkünse depo bazlı stok). */
 export interface MinMaxStockRow {
@@ -18,7 +24,14 @@ export interface MinMaxStockRow {
     code: string;
     name: string;
     special_code: string;
+    special_code_1: string;
+    special_code_2: string;
+    special_code_3: string;
+    special_code_4: string;
+    special_code_5: string;
+    special_code_6: string;
     brand: string;
+    group: string;
     category: string;
     warehouse_id: string;
     warehouse_name: string;
@@ -97,6 +110,9 @@ export function MinMaxStockReport() {
     const [loading, setLoading] = useState(true);
     const [filterType, setFilterType] = useState<'all' | 'low' | 'out'>('all');
     const [warehouseFilter, setWarehouseFilter] = useState<string>('all');
+    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
+        () => ({ ...DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY_SNAKE }),
+    );
     const { tm } = useLanguage();
     const { selectedFirm } = useFirmaDonem();
 
@@ -139,6 +155,7 @@ export function MinMaxStockReport() {
                 const code = p.code || '';
                 const name = p.name || '';
                 const card = productCardReportFields(p);
+                const codes = productCardCodesSnake(card);
                 const minStock = Number(p.min_stock) || 0;
                 const maxStock =
                     p.max_stock != null && p.max_stock !== undefined
@@ -156,8 +173,9 @@ export function MinMaxStockReport() {
                             id: `${pid}::${b.warehouseId || 'none'}`,
                             code,
                             name,
-                            special_code: card.specialCode,
+                            ...codes,
                             brand: card.brand,
+                            group: card.group,
                             category: card.category,
                             warehouse_id: b.warehouseId || defaultWhId,
                             warehouse_name: whName,
@@ -171,8 +189,9 @@ export function MinMaxStockReport() {
                         id: `${pid}::${defaultWhId || 'default'}`,
                         code,
                         name,
-                        special_code: card.specialCode,
+                        ...codes,
                         brand: card.brand,
+                        group: card.group,
                         category: card.category,
                         warehouse_id: defaultWhId,
                         warehouse_name: defaultWhName,
@@ -215,6 +234,8 @@ export function MinMaxStockReport() {
     }, [rows, filterType, warehouseFilter]);
 
     const columnHelper = createColumnHelper<MinMaxStockRow>();
+    const specialCodeCell = (value: unknown) =>
+        value != null && String(value).trim() !== '' ? String(value).trim() : '—';
     const columns = useMemo<ColumnDef<MinMaxStockRow, any>[]>(
         () => [
             columnHelper.accessor('code', {
@@ -229,11 +250,49 @@ export function MinMaxStockReport() {
             columnHelper.accessor('name', {
                 header: tm('materialName'),
             }),
-            columnHelper.accessor('special_code', {
-                header: tm('specialCode') || 'Özel Kod',
+            columnHelper.accessor('special_code_1', {
+                id: 'special_code_1',
+                header: specialCodeColumnHeader(tm, 1),
+                cell: (info) => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('special_code_2', {
+                id: 'special_code_2',
+                header: specialCodeColumnHeader(tm, 2),
+                cell: (info) => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('special_code_3', {
+                id: 'special_code_3',
+                header: specialCodeColumnHeader(tm, 3),
+                cell: (info) => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('special_code_4', {
+                id: 'special_code_4',
+                header: specialCodeColumnHeader(tm, 4),
+                cell: (info) => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('special_code_5', {
+                id: 'special_code_5',
+                header: specialCodeColumnHeader(tm, 5),
+                cell: (info) => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('special_code_6', {
+                id: 'special_code_6',
+                header: specialCodeColumnHeader(tm, 6),
+                cell: (info) => specialCodeCell(info.getValue()),
+                size: 100,
             }),
             columnHelper.accessor('brand', {
                 header: tm('brand') || 'Marka',
+            }),
+            columnHelper.accessor('group', {
+                id: 'group',
+                header: productCardGroupHeader(tm),
+                cell: (info) => specialCodeCell(info.getValue()),
             }),
             columnHelper.accessor('category', {
                 header: tm('category') || 'Kategori',
@@ -377,6 +436,9 @@ export function MinMaxStockReport() {
                         data={filteredRows}
                         columns={columns}
                         {...REPORT_GRID_DEFAULTS}
+                        columnVisibility={columnVisibility}
+                        onColumnVisibilityChange={setColumnVisibility}
+                        storageNamespace="report-minmax-stock-v2"
                         excelFileName={tm('minMaxStockControl') || 'min-max-stok'}
                         printTitle={tm('minMaxStockControl') || 'Min/Max Stok Kontrol'}
                         height="100%"

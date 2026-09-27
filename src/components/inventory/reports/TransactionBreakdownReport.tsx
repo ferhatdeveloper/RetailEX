@@ -8,13 +8,26 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatNumber } from '../../../utils/formatNumber';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
+import {
+    specialCodeColumnHeader,
+    productCardGroupHeader,
+    DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY_SNAKE,
+} from '../../../utils/productCardReportFields';
+
 interface TxRow {
     id: string;
     movement_date: string;
     product_code: string;
     product_name: string;
     special_code: string;
+    special_code_1: string;
+    special_code_2: string;
+    special_code_3: string;
+    special_code_4: string;
+    special_code_5: string;
+    special_code_6: string;
     brand: string;
+    group: string;
     category: string;
     line_kind: 'service' | 'product';
     line_kind_label: string;
@@ -38,13 +51,21 @@ function lineToRow(
     const lineKind = line.line_kind === 'service' ? 'service' : 'product';
     const inQty = isIn ? qty : 0;
     const outQty = isIn ? 0 : qty;
+    const code1 = line.special_code_1 || line.special_code || '';
     return {
         id: line.id,
         movement_date: line.movement_date || line.created_at,
         product_code: line.product_code || '',
         product_name: line.product_name || '',
-        special_code: line.special_code || '',
+        special_code: code1,
+        special_code_1: code1,
+        special_code_2: line.special_code_2 || '',
+        special_code_3: line.special_code_3 || '',
+        special_code_4: line.special_code_4 || '',
+        special_code_5: line.special_code_5 || '',
+        special_code_6: line.special_code_6 || '',
         brand: line.brand || '',
+        group: line.group || line.group_code || '',
         category: line.category || '',
         line_kind: lineKind,
         line_kind_label: lineKind === 'service' ? labels.service : labels.material,
@@ -67,6 +88,9 @@ function lineToRow(
 export function TransactionBreakdownReport() {
     const [rows, setRows] = useState<TxRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
+        () => ({ ...DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY_SNAKE }),
+    );
     const { tm } = useLanguage();
 
     const kindLabels = useMemo(
@@ -114,8 +138,69 @@ export function TransactionBreakdownReport() {
         }),
         columnHelper.accessor('product_code', { header: tm('materialCode') || 'Malzeme Kodu' }),
         columnHelper.accessor('product_name', { header: tm('materialName') || 'Malzeme Adı' }),
-        columnHelper.accessor('special_code', { header: tm('specialCode') || 'Özel Kod' }),
+        columnHelper.accessor('special_code_1', {
+            id: 'special_code_1',
+            header: specialCodeColumnHeader(tm, 1),
+            cell: (info) => {
+                const v = info.getValue();
+                return v != null && String(v).trim() !== '' ? String(v).trim() : '—';
+            },
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_2', {
+            id: 'special_code_2',
+            header: specialCodeColumnHeader(tm, 2),
+            cell: (info) => {
+                const v = info.getValue();
+                return v != null && String(v).trim() !== '' ? String(v).trim() : '—';
+            },
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_3', {
+            id: 'special_code_3',
+            header: specialCodeColumnHeader(tm, 3),
+            cell: (info) => {
+                const v = info.getValue();
+                return v != null && String(v).trim() !== '' ? String(v).trim() : '—';
+            },
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_4', {
+            id: 'special_code_4',
+            header: specialCodeColumnHeader(tm, 4),
+            cell: (info) => {
+                const v = info.getValue();
+                return v != null && String(v).trim() !== '' ? String(v).trim() : '—';
+            },
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_5', {
+            id: 'special_code_5',
+            header: specialCodeColumnHeader(tm, 5),
+            cell: (info) => {
+                const v = info.getValue();
+                return v != null && String(v).trim() !== '' ? String(v).trim() : '—';
+            },
+            size: 100,
+        }),
+        columnHelper.accessor('special_code_6', {
+            id: 'special_code_6',
+            header: specialCodeColumnHeader(tm, 6),
+            cell: (info) => {
+                const v = info.getValue();
+                return v != null && String(v).trim() !== '' ? String(v).trim() : '—';
+            },
+            size: 100,
+        }),
         columnHelper.accessor('brand', { header: tm('brand') || 'Marka' }),
+        columnHelper.accessor('group', {
+            id: 'group',
+            header: productCardGroupHeader(tm),
+            cell: (info) => {
+                const v = info.getValue();
+                return v != null && String(v).trim() !== '' ? String(v).trim() : '—';
+            },
+        }),
         columnHelper.accessor('category', { header: tm('category') || 'Kategori' }),
         columnHelper.accessor('in_qty', {
             header: tm('inQuantity') || 'Giriş Miktar',
@@ -183,7 +268,9 @@ export function TransactionBreakdownReport() {
                         data={rows}
                         columns={columns}
                         {...REPORT_GRID_DEFAULTS}
-                        storageNamespace="report-transaction-breakdown"
+                        columnVisibility={columnVisibility}
+                        onColumnVisibilityChange={setColumnVisibility}
+                        storageNamespace="report-transaction-breakdown-v2"
                         excelFileName={tm('transactionBreakdown') || 'hareket_dokumu'}
                         printTitle={tm('transactionBreakdown') || 'Hareket Dökümü'}
                         height="100%"
