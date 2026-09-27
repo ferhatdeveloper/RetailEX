@@ -207,19 +207,19 @@ BEGIN
     );
     EXECUTE format(
       'INSERT INTO public.%I (id, firm_nr, name, month, day, days_before, send_time, template_id, gender_filter, is_active)
-       VALUES (%L, %L, %L, %s, %s, %s, %L, %L, 'female', false)
+       VALUES (%L, %L, %L, %s, %s, %s, %L, %L, %L, false)
        ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, month=EXCLUDED.month, day=EXCLUDED.day,
          days_before=EXCLUDED.days_before, send_time=EXCLUDED.send_time, template_id=EXCLUDED.template_id,
          gender_filter=EXCLUDED.gender_filter, is_active=false, updated_at=CURRENT_TIMESTAMP',
-      v_sd, 'a2000001-bbbb-4bbb-8bbb-000000000005', v_fn, E'[Taslak] Kadınlar Günü KU', 3, 8, 3, '10:00', 'a1000001-aaaa-4aaa-8aaa-000000000005'
+      v_sd, 'a2000001-bbbb-4bbb-8bbb-000000000005', v_fn, E'[Taslak] Kadınlar Günü KU', 3, 8, 3, '10:00', 'a1000001-aaaa-4aaa-8aaa-000000000005', 'female'
     );
     EXECUTE format(
       'INSERT INTO public.%I (id, firm_nr, name, month, day, days_before, send_time, template_id, gender_filter, is_active)
-       VALUES (%L, %L, %L, %s, %s, %s, %L, %L, 'female', false)
+       VALUES (%L, %L, %L, %s, %s, %s, %L, %L, %L, false)
        ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, month=EXCLUDED.month, day=EXCLUDED.day,
          days_before=EXCLUDED.days_before, send_time=EXCLUDED.send_time, template_id=EXCLUDED.template_id,
          gender_filter=EXCLUDED.gender_filter, is_active=false, updated_at=CURRENT_TIMESTAMP',
-      v_sd, 'a2000001-bbbb-4bbb-8bbb-000000000006', v_fn, E'[Taslak] Kadınlar Günü AR', 3, 8, 3, '11:00', 'a1000001-aaaa-4aaa-8aaa-000000000006'
+      v_sd, 'a2000001-bbbb-4bbb-8bbb-000000000006', v_fn, E'[Taslak] Kadınlar Günü AR', 3, 8, 3, '11:00', 'a1000001-aaaa-4aaa-8aaa-000000000006', 'female'
     );
     EXECUTE format(
       'INSERT INTO public.%I (id, firm_nr, name, month, day, days_before, send_time, template_id, gender_filter, is_active)

@@ -219,6 +219,7 @@ export function MsgSpecialDaysPanel({ panel, inputCls, labelCls }: PanelProps) {
     send_time: '10:00',
     template_id: '',
     gender_filter: '',
+    is_active: true,
   });
   const [editId, setEditId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -226,9 +227,10 @@ export function MsgSpecialDaysPanel({ panel, inputCls, labelCls }: PanelProps) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Taslaklar (is_active=false) listeye dahil; şablon dropdown’da tüm şablonlar
       const [days, tpls] = await Promise.all([
         specialDayService.list(false),
-        messageTemplateService.list(true),
+        messageTemplateService.list(false),
       ]);
       setRows(days);
       setTemplates(tpls);
@@ -245,7 +247,16 @@ export function MsgSpecialDaysPanel({ panel, inputCls, labelCls }: PanelProps) {
 
   const resetForm = () => {
     setEditId(null);
-    setForm({ name: '', month: 1, day: 1, days_before: 0, send_time: '10:00', template_id: '', gender_filter: '' });
+    setForm({
+      name: '',
+      month: 1,
+      day: 1,
+      days_before: 0,
+      send_time: '10:00',
+      template_id: '',
+      gender_filter: '',
+      is_active: true,
+    });
   };
 
   const handleSave = async () => {
@@ -263,6 +274,7 @@ export function MsgSpecialDaysPanel({ panel, inputCls, labelCls }: PanelProps) {
         send_time: form.send_time,
         template_id: form.template_id || null,
         gender_filter: form.gender_filter || null,
+        is_active: form.is_active,
       };
       if (editId) {
         await specialDayService.update(editId, payload);
@@ -376,6 +388,20 @@ export function MsgSpecialDaysPanel({ panel, inputCls, labelCls }: PanelProps) {
             <option value="other">{tm('msgNotifyFilterGenderOther')}</option>
           </select>
         </div>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.is_active}
+            onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
+            className="rounded border-gray-300"
+          />
+          <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+            {tm('msgNotifySpecialActive')}
+          </span>
+        </label>
+        {!form.is_active ? (
+          <p className="text-xs text-amber-600">{tm('msgNotifySpecialDraftHint')}</p>
+        ) : null}
         <button
           type="button"
           disabled={saving}
@@ -409,15 +435,22 @@ export function MsgSpecialDaysPanel({ panel, inputCls, labelCls }: PanelProps) {
                       send_time: r.send_time || '10:00',
                       template_id: r.template_id || '',
                       gender_filter: r.gender_filter || '',
+                      is_active: r.is_active !== false,
                     });
                   }}
                 >
-                  <div className="font-medium">{r.name}</div>
+                  <div className="font-medium flex flex-wrap items-center gap-2">
+                    <span>{r.name}</span>
+                    {r.is_active === false ? (
+                      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800">
+                        {tm('msgNotifyDraft')}
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="text-xs text-gray-500">
                     {String(r.month).padStart(2, '0')}/{String(r.day).padStart(2, '0')} · −
                     {r.days_before}g · {r.send_time}
                     {r.gender_filter ? ` · ${r.gender_filter}` : ''}
-                    {r.is_active === false ? ` · ${tm('msgNotifyDraft')}` : ''}
                   </div>
                 </button>
                 <button

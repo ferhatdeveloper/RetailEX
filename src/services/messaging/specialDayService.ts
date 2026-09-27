@@ -42,7 +42,8 @@ function mapRow(r: Record<string, unknown>): SpecialDayRow {
     send_time: String(r.send_time || '10:00').slice(0, 8),
     template_id: r.template_id != null ? String(r.template_id) : null,
     gender_filter: r.gender_filter != null ? String(r.gender_filter).trim().toLowerCase() || null : null,
-    is_active: r.is_active !== false,
+    // PG/PostgREST boolean false korunmalı (taslaklar is_active=false)
+    is_active: !(r.is_active === false || r.is_active === 'f' || r.is_active === 0),
     created_at: r.created_at != null ? String(r.created_at) : undefined,
     updated_at: r.updated_at != null ? String(r.updated_at) : undefined,
   };

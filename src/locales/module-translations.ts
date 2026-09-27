@@ -7890,6 +7890,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   },
   msgNotifySpecialList: { tr: 'Özel günler', en: 'Special days', ar: 'الأيام الخاصة', ku: 'ڕۆژە تایبەتەکان' },
   msgNotifySpecialEmpty: { tr: 'Özel gün yok', en: 'No special days', ar: 'لا توجد أيام خاصة', ku: 'ڕۆژی تایبەت نییە' },
+  msgNotifySpecialActive: {
+    tr: 'Aktif kampanya (otomatik gönder)',
+    en: 'Active campaign (auto-send)',
+    ar: 'حملة نشطة (إرسال تلقائي)',
+    ku: 'کەمپەینی چالاک (ناردنی ئۆتۆماتیک)',
+  },
+  msgNotifySpecialDraftHint: {
+    tr: 'Taslak: listede görünür ama otomatik gönderilmez. Aktif etmek için kutuyu işaretleyin.',
+    en: 'Draft: visible in the list but not auto-sent. Check the box to activate.',
+    ar: 'مسودة: تظهر في القائمة دون إرسال تلقائي. فعّلها بتحديد المربع.',
+    ku: 'ڕەشنووس: لە لیستدا دیارە بەڵام ئۆتۆماتیک نانێردرێت. بۆ چالاککردن سندوقەکە هەڵبژێرە.',
+  },
   msgNotifyInactive: { tr: 'pasif', en: 'inactive', ar: 'غير نشط', ku: 'ناچالاک' },
   msgNotifyDraft: { tr: 'Taslak', en: 'Draft', ar: 'مسودة', ku: 'ڕەشنووس' },
   msgNotifyAutoTitle: {
