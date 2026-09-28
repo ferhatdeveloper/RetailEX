@@ -16,7 +16,7 @@ import SetupWizard from './components/system/SetupWizard';
 import { NeonLogo } from './components/ui/NeonLogo';
 import { readNeonProductLineFromStorage } from './utils/neonProductLine';
 import { supabase } from './utils/supabase/client';
-import { IS_TAURI, safeInvoke } from './utils/env';
+import { IS_TAURI, isTauriApp, safeInvoke } from './utils/env';
 import { mergeRustIntoStoredWebConfig } from './utils/retailexWebConfigMerge';
 import { APP_VERSION } from './core/version';
 import { initRetailexDataSync } from './services/retailexDataSync';
@@ -40,6 +40,8 @@ export type { Product, ProductVariant, Customer, Sale, SaleItem, Campaign, User 
 function App() {
   const { user, isAuthenticated, logout, loading: authLoading } = useAuth();
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
+  /** Login değnek: event ile zorla SetupWizard (IS_TAURI sabiti false kalsa bile) */
+  const [wizardForced, setWizardForced] = useState(false);
   const [isPgReady, setIsPgReady] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [installingPg, setInstallingPg] = useState(false);
@@ -47,6 +49,7 @@ function App() {
   const recentSaleReceiptsRef = useRef<Map<string, number>>(new Map());
   /** Acil zamanlayıcı closure’da `isInitialized` hep eski kalır; yalnızca ref ile gerçek tamamlanmayı izleyin. */
   const startupCompleteRef = useRef(false);
+  const deskApp = isTauriApp() || IS_TAURI;
   const hasWebTenantResolution = (config?: any) => {
     try {
       const cfg = config ?? (() => {
@@ -65,13 +68,15 @@ function App() {
     initRetailexDataSync();
   }, []);
 
-  // Login → siyah SetupWizard: state ile (reload şart değil)
+  // Login → siyah SetupWizard: state ile (reload şart değil). IS_TAURI sabiti false olsa bile dinle.
   useEffect(() => {
-    if (!IS_TAURI) return;
     const openWizard = () => {
+      consumeForceSetupWizard(); // event ile açıldı → Login reload yedeği iptal
       clearSetupWizardLocalFlags();
+      setWizardForced(true);
       setIsConfigured(false);
       setIsPgReady(true);
+      setInstallingPg(false);
       if ((window as any).removeLoader) (window as any).removeLoader();
     };
     window.addEventListener(SETUP_WIZARD_EVENT, openWizard);
@@ -115,7 +120,7 @@ function App() {
 
     const startupFlow = async () => {
       try {
-        if (IS_TAURI) {
+        if (isTauriApp() || IS_TAURI) {
           // ── SLOW PATH (Source of Truth) ──────────────────────────────────────────
           const results = await Promise.race([
             Promise.allSettled([
@@ -148,6 +153,7 @@ function App() {
 
           // DeskApp: yalnızca config.db is_configured — legacy localStorage tek başına wizard atlamasın
           const forceWizard = consumeForceSetupWizard();
+          if (forceWizard) setWizardForced(true);
           const configured = !forceWizard && config?.is_configured === true;
           if (config) {
             applyConfig(configured ? config : { ...config, is_configured: false });
@@ -375,7 +381,7 @@ function App() {
   }, [isAuthenticated, isConfigured]);
 
   // Yükleme ekranı: siyah yerine gradient arka plan, böylece ekran boş görünmez
-  if (isConfigured === null || !isPgReady || installingPg) {
+  if ((isConfigured === null && !wizardForced) || !isPgReady || installingPg) {
     return (
       <div className="fixed inset-0 flex items-center justify-center animate-in fade-in duration-300 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <div className="text-center flex flex-col items-center gap-6">
@@ -391,12 +397,15 @@ function App() {
     );
   }
 
+  const showSetupWizard =
+    wizardForced || ((deskApp || isTauriApp()) && isConfigured === false);
+
   return (
     <FirmaDonemProvider>
       <VersionProvider>
         <ErrorBoundary>
           {/* Global Loading / Setup Wizard Check */}
-          {isConfigured === null || (authLoading && !(IS_TAURI && isConfigured === false)) ? (
+          {isConfigured === null && !wizardForced ? (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
               <div className="text-center flex flex-col items-center gap-6">
                 <NeonLogo size="lg" className="animate-pulse justify-center" productLine={readNeonProductLineFromStorage()} />
@@ -404,7 +413,15 @@ function App() {
                 <p className="text-slate-400 text-sm">Yükleniyor...</p>
               </div>
             </div>
-          ) : (IS_TAURI && !isConfigured) ? (
+          ) : authLoading && !showSetupWizard ? (
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+              <div className="text-center flex flex-col items-center gap-6">
+                <NeonLogo size="lg" className="animate-pulse justify-center" productLine={readNeonProductLineFromStorage()} />
+                <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
+                <p className="text-slate-400 text-sm">Yükleniyor...</p>
+              </div>
+            </div>
+          ) : showSetupWizard ? (
             <SetupWizard />
           ) : (
             <>

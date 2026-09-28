@@ -39,6 +39,7 @@ import {
 } from '../../services/merkezTenantRegistry';
 import {
   markForceSetupWizard,
+  peekForceSetupWizard,
   requestOpenSetupWizard,
 } from '../../utils/setupWizardGate';
 
@@ -502,6 +503,13 @@ export function Login({ onLogin }: LoginProps) {
         setShowSetupWizard(false);
         requestOpenSetupWizard();
         toast.success(tm('loginWizardOpening'));
+
+        // Event App’e ulaşmazsa (IS_TAURI yarışı): force bayrak kalır → yenile → SetupWizard
+        window.setTimeout(() => {
+          if (peekForceSetupWizard()) {
+            window.location.reload();
+          }
+        }, 700);
 
         try {
           const { invoke } = await import('@tauri-apps/api/core');

@@ -4,7 +4,15 @@
 
 import { APP_VERSION } from '../core/version';
 
-export const IS_TAURI = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+/** Çalışma anında Tauri — modül yüklenirken erken false kalmasın (Login vs App yarışı). */
+export function isTauriApp(): boolean {
+  if (typeof window === 'undefined') return false;
+  const w = window as any;
+  return !!(w.__TAURI_INTERNALS__ || w.__TAURI__ || w.isTauri);
+}
+
+/** @deprecated Tercihen isTauriApp() — sabit ilk import anına kilitlenir */
+export const IS_TAURI = isTauriApp();
 export const IS_BROWSER = !IS_TAURI;
 
 const BRIDGE_URL_OVERRIDE_RAW =
@@ -38,7 +46,7 @@ const BRIDGE_URL_OVERRIDE = effectiveBridgeUrlOverride(BRIDGE_URL_OVERRIDE_RAW);
  * If running in a browser, returns a fallback value or throws a descriptive error.
  */
 export async function safeInvoke<T>(command: string, args?: any, fallback?: T): Promise<T> {
-  if (IS_TAURI) {
+  if (isTauriApp()) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       return await invoke(command, args) as T;
@@ -65,7 +73,7 @@ export async function safeInvoke<T>(command: string, args?: any, fallback?: T): 
 
 /** Windows Tauri: RetailEX arka plan / SQL Bridge / Logo Windows hizmetlerini durdurur ve kaldırır. */
 export async function removeRetailexWindowsServicesIfTauri(): Promise<{ ok: boolean; detail?: string }> {
-  if (!IS_TAURI) return { ok: true };
+  if (!isTauriApp()) return { ok: true };
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     const detail = await invoke<string>('remove_retailex_windows_services');
@@ -77,7 +85,7 @@ export async function removeRetailexWindowsServicesIfTauri(): Promise<{ ok: bool
 
 /** Windows Tauri: `C:\\RetailEX` klasorunu siler (fabrika / yeniden kurulum secenegi). */
 export async function deleteCRetailexFolderIfTauri(): Promise<{ ok: boolean; detail?: string }> {
-  if (!IS_TAURI) return { ok: true };
+  if (!isTauriApp()) return { ok: true };
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     const detail = await invoke<string>('delete_c_retailex_folder');
