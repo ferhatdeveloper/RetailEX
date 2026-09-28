@@ -1,0 +1,29 @@
+{
+  "runId": "be40d0f7-5a09-4578-9430-d3416a225044",
+  "testId": "f492c32a-68a1-4206-b40e-f9cadf3d59c9",
+  "testTitle": "Market 001 — Kasa Kartları veya Kasa İşlemleri açılır",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "userId": "a4780428-d0e1-7069-e42d-f6b7a71d6fe7",
+  "status": "passed",
+  "source": "cli",
+  "createdAt": "2026-09-13T19:56:48.189Z",
+  "startedAt": null,
+  "finishedAt": "2026-09-13T20:05:58.053Z",
+  "codeVersion": null,
+  "targetUrl": null,
+  "createdFrom": null,
+  "failedStepIndex": null,
+  "failureKind": null,
+  "error": "",
+  "videoUrl": "https://testsprite-videos.s3.us-east-1.amazonaws.com/20260913-200557-1dd99221.webm",
+  "stepSummary": {
+    "total": 18,
+    "completed": 18,
+    "passedCount": 18,
+    "failedCount": 0
+  },
+  "dashboardUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/f492c32a-68a1-4206-b40e-f9cadf3d59c9",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/execution/dfdd5c9a-1bfd-4d68-81c9-c8818ca2fd39",
+  "apiOutput": null,
+  "trace": null
+}

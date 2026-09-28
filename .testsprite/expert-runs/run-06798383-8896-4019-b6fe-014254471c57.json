@@ -1,0 +1,29 @@
+{
+  "runId": "ecdfbefd-3e05-4da7-8fbe-1615d2f885e6",
+  "testId": "06798383-8896-4019-b6fe-014254471c57",
+  "testTitle": "Restoran 010 — Servis kat/masa planı açılır",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "userId": "a4780428-d0e1-7069-e42d-f6b7a71d6fe7",
+  "status": "passed",
+  "source": "cli",
+  "createdAt": "2026-09-13T23:18:13.373Z",
+  "startedAt": null,
+  "finishedAt": "2026-09-13T23:30:28.436Z",
+  "codeVersion": null,
+  "targetUrl": null,
+  "createdFrom": null,
+  "failedStepIndex": null,
+  "failureKind": null,
+  "error": "",
+  "videoUrl": "https://testsprite-videos.s3.us-east-1.amazonaws.com/20260913-233028-b09770bc.webm",
+  "stepSummary": {
+    "total": 28,
+    "completed": 28,
+    "passedCount": 28,
+    "failedCount": 0
+  },
+  "dashboardUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/06798383-8896-4019-b6fe-014254471c57",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/execution/721ea19e-47a5-4360-ba42-22831ee65deb",
+  "apiOutput": null,
+  "trace": null
+}

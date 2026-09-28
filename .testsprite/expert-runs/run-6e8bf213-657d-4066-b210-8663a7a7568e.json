@@ -1,0 +1,29 @@
+{
+  "runId": "3f060678-566c-4feb-a1aa-27fb7f71faee",
+  "testId": "6e8bf213-657d-4066-b210-8663a7a7568e",
+  "testTitle": "Güzellik 020 — Randevular takvim/liste açılır",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "userId": "a4780428-d0e1-7069-e42d-f6b7a71d6fe7",
+  "status": "passed",
+  "source": "cli",
+  "createdAt": "2026-09-13T22:24:32.349Z",
+  "startedAt": null,
+  "finishedAt": "2026-09-13T22:28:39.580Z",
+  "codeVersion": null,
+  "targetUrl": null,
+  "createdFrom": null,
+  "failedStepIndex": null,
+  "failureKind": null,
+  "error": "",
+  "videoUrl": "https://testsprite-videos.s3.us-east-1.amazonaws.com/20260913-222839-3f3a256f.webm",
+  "stepSummary": {
+    "total": 12,
+    "completed": 12,
+    "passedCount": 12,
+    "failedCount": 0
+  },
+  "dashboardUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/6e8bf213-657d-4066-b210-8663a7a7568e",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/execution/4930c288-9406-49a3-a8c4-450b4725cef0",
+  "apiOutput": null,
+  "trace": null
+}

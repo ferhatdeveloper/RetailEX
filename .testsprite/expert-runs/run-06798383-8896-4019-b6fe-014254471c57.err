@@ -1,0 +1,36 @@
+idempotency-key: cli-run-51c42214-167c-440d-a85e-23b78b5c7aa9
+[tunnel] Reaching http://127.0.0.1:6173 through TestSprite (client 8d4bee27-6dad-4543-9e26-1dd0f4b65195).
+Run ecdfbefd-3e05-4da7-8fbe-1615d2f885e6
+Dashboard: https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/06798383-8896-4019-b6fe-014254471c57
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for 127.0.0.1:3002: connect ECONNREFUSED 127.0.0.1:3002
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+[tunnel] Target connect failed: Target connect failed for localhost:8000: connect ECONNREFUSED ::1:8000
+requestId: cli_21217ce4-3398-4fe7-ba0a-d7eb739ac370

@@ -1,0 +1,29 @@
+{
+  "runId": "105d384c-f2e0-434a-9549-61edaa36c829",
+  "testId": "3e5357b4-9948-430e-bb2f-f54f0bbe42e9",
+  "testTitle": "Restoran 010 — Siparişler geçmişi açılır",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "userId": "a4780428-d0e1-7069-e42d-f6b7a71d6fe7",
+  "status": "passed",
+  "source": "cli",
+  "createdAt": "2026-09-13T20:35:43.107Z",
+  "startedAt": null,
+  "finishedAt": "2026-09-13T20:47:54.221Z",
+  "codeVersion": null,
+  "targetUrl": null,
+  "createdFrom": null,
+  "failedStepIndex": null,
+  "failureKind": null,
+  "error": "",
+  "videoUrl": "https://testsprite-videos.s3.us-east-1.amazonaws.com/20260913-204753-7f0584fa.webm",
+  "stepSummary": {
+    "total": 32,
+    "completed": 32,
+    "passedCount": 32,
+    "failedCount": 0
+  },
+  "dashboardUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/3e5357b4-9948-430e-bb2f-f54f0bbe42e9",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/execution/0b964cc6-ddd2-4601-b357-d0a0f25c8e50",
+  "apiOutput": null,
+  "trace": null
+}

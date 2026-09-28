@@ -1,0 +1,29 @@
+{
+  "runId": "5e20f7eb-7430-47dc-9d2a-f1a47d25e87b",
+  "testId": "e3324127-64c8-4242-8a0c-3ee908e7baac",
+  "testTitle": "Restoran 010 — Kasa karosu açılır",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "userId": "a4780428-d0e1-7069-e42d-f6b7a71d6fe7",
+  "status": "passed",
+  "source": "cli",
+  "createdAt": "2026-09-13T23:30:31.882Z",
+  "startedAt": null,
+  "finishedAt": "2026-09-13T23:35:20.861Z",
+  "codeVersion": null,
+  "targetUrl": null,
+  "createdFrom": null,
+  "failedStepIndex": null,
+  "failureKind": null,
+  "error": "",
+  "videoUrl": "https://testsprite-videos.s3.us-east-1.amazonaws.com/20260913-233520-f392c729.webm",
+  "stepSummary": {
+    "total": 12,
+    "completed": 12,
+    "passedCount": 12,
+    "failedCount": 0
+  },
+  "dashboardUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/e3324127-64c8-4242-8a0c-3ee908e7baac",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/execution/aab4013d-bc7e-4478-8b57-fa9f0bc8291b",
+  "apiOutput": null,
+  "trace": null
+}

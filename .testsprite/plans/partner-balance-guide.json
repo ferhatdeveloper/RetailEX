@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/TestSprite/testsprite-cli/v0.11.0/schemas/plan.schema.json",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Cari Hesaplar — Şirket Ortağı Nasıl Hesaplanır rehberi açılır",
+  "description": "Şirket Ortağı sekmesinde Nasıl Hesaplanır? butonu açılır; basit bakiye anlatımı görünür.",
+  "planSteps": [
+    {
+      "type": "action",
+      "description": "Uygulamaya giriş yap (admin/admin veya mevcut demo kimlik bilgileri) ve firma/dönem seçimini tamamla; ana kabuğa gir."
+    },
+    {
+      "type": "action",
+      "description": "Cari Hesaplar (veya eşdeğer cari/müşteri-tedarikçi) ekranını aç."
+    },
+    {
+      "type": "action",
+      "description": "ŞİRKET ORTAĞI sekmesine tıkla."
+    },
+    {
+      "type": "assertion",
+      "description": "Nasıl Hesaplanır? (veya How is it calculated?) butonu görünür."
+    },
+    {
+      "type": "action",
+      "description": "Nasıl Hesaplanır? butonuna tıkla."
+    },
+    {
+      "type": "assertion",
+      "description": "Modal açılır; başlıkta şirket ortağı bakiyesi / basit anlatım veya Partner balance / plain English görünür; Satış − Gider veya Sales − Expenses formül metni görünür; Anladım / Got it kapatma butonu vardır."
+    }
+  ]
+}

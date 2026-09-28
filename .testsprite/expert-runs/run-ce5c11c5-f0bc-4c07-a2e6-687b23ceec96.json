@@ -1,0 +1,29 @@
+{
+  "runId": "13e9c709-983e-4c76-ab88-1e19f5e94b7b",
+  "testId": "ce5c11c5-f0bc-4c07-a2e6-687b23ceec96",
+  "testTitle": "Güzellik 020 — Müşteriler listesi A→Z",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "userId": "a4780428-d0e1-7069-e42d-f6b7a71d6fe7",
+  "status": "passed",
+  "source": "cli",
+  "createdAt": "2026-09-13T22:28:43.536Z",
+  "startedAt": null,
+  "finishedAt": "2026-09-13T22:34:38.892Z",
+  "codeVersion": null,
+  "targetUrl": null,
+  "createdFrom": null,
+  "failedStepIndex": null,
+  "failureKind": null,
+  "error": "",
+  "videoUrl": "https://testsprite-videos.s3.us-east-1.amazonaws.com/20260913-223438-efca77b4.webm",
+  "stepSummary": {
+    "total": 16,
+    "completed": 16,
+    "passedCount": 16,
+    "failedCount": 0
+  },
+  "dashboardUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/ce5c11c5-f0bc-4c07-a2e6-687b23ceec96",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/execution/6edfc176-e26f-4f6f-b5a9-a4c9eca3a9de",
+  "apiOutput": null,
+  "trace": null
+}

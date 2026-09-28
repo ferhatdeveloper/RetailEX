@@ -1,0 +1,29 @@
+{
+  "runId": "f4c58a43-00d4-49b3-a580-39880ba56643",
+  "testId": "a4e4a43c-c096-44de-a400-5744e46a1e79",
+  "testTitle": "Market 001 — Satışlar POS kabuğu açılır (WMS/Mobil POS yok)",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "userId": "a4780428-d0e1-7069-e42d-f6b7a71d6fe7",
+  "status": "passed",
+  "source": "cli",
+  "createdAt": "2026-09-13T20:18:28.901Z",
+  "startedAt": null,
+  "finishedAt": "2026-09-13T20:22:56.282Z",
+  "codeVersion": null,
+  "targetUrl": null,
+  "createdFrom": null,
+  "failedStepIndex": null,
+  "failureKind": null,
+  "error": "",
+  "videoUrl": "https://testsprite-videos.s3.us-east-1.amazonaws.com/20260913-202256-674281cb.webm",
+  "stepSummary": {
+    "total": 10,
+    "completed": 10,
+    "passedCount": 10,
+    "failedCount": 0
+  },
+  "dashboardUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/a4e4a43c-c096-44de-a400-5744e46a1e79",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/execution/c467bd8a-b3bb-4348-9d34-7571dfefa2b7",
+  "apiOutput": null,
+  "trace": null
+}

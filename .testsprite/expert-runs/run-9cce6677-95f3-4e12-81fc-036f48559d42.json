@@ -1,0 +1,29 @@
+{
+  "runId": "8ef99f34-b4ed-4038-9247-d8577366bbda",
+  "testId": "9cce6677-95f3-4e12-81fc-036f48559d42",
+  "testTitle": "Güzellik 020 — Personel / uzman listesi açılır",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "userId": "a4780428-d0e1-7069-e42d-f6b7a71d6fe7",
+  "status": "passed",
+  "source": "cli",
+  "createdAt": "2026-09-13T22:13:35.265Z",
+  "startedAt": null,
+  "finishedAt": "2026-09-13T22:24:28.986Z",
+  "codeVersion": null,
+  "targetUrl": null,
+  "createdFrom": null,
+  "failedStepIndex": null,
+  "failureKind": null,
+  "error": "",
+  "videoUrl": "https://testsprite-videos.s3.us-east-1.amazonaws.com/20260913-222428-77258cc8.webm",
+  "stepSummary": {
+    "total": 26,
+    "completed": 26,
+    "passedCount": 26,
+    "failedCount": 0
+  },
+  "dashboardUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/9cce6677-95f3-4e12-81fc-036f48559d42",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/execution/ddbaeff9-6e24-461f-a5ab-7ba06ba89f59",
+  "apiOutput": null,
+  "trace": null
+}

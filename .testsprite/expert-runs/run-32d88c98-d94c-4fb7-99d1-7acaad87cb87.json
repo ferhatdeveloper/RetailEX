@@ -1,0 +1,29 @@
+{
+  "runId": "ffc961df-73f8-460b-bc38-3756940c2923",
+  "testId": "32d88c98-d94c-4fb7-99d1-7acaad87cb87",
+  "testTitle": "Market 001 — Satış Faturaları listesi A→Z",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "userId": "a4780428-d0e1-7069-e42d-f6b7a71d6fe7",
+  "status": "passed",
+  "source": "cli",
+  "createdAt": "2026-09-13T19:51:35.884Z",
+  "startedAt": null,
+  "finishedAt": "2026-09-13T19:56:39.468Z",
+  "codeVersion": null,
+  "targetUrl": null,
+  "createdFrom": null,
+  "failedStepIndex": null,
+  "failureKind": null,
+  "error": "",
+  "videoUrl": "https://testsprite-videos.s3.us-east-1.amazonaws.com/20260913-195639-ff8c854a.webm",
+  "stepSummary": {
+    "total": 14,
+    "completed": 14,
+    "passedCount": 14,
+    "failedCount": 0
+  },
+  "dashboardUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/32d88c98-d94c-4fb7-99d1-7acaad87cb87",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/execution/bc4e02d9-e061-4bbb-924a-d364bc02b730",
+  "apiOutput": null,
+  "trace": null
+}

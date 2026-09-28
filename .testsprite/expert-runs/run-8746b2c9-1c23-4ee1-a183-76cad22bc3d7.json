@@ -1,0 +1,29 @@
+{
+  "runId": "37e8bd3f-74ac-4fc7-bae3-dc2e17b3e3bb",
+  "testId": "8746b2c9-1c23-4ee1-a183-76cad22bc3d7",
+  "testTitle": "Market 001 — Cari Hesaplar listesi ve yeni iptal",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "userId": "a4780428-d0e1-7069-e42d-f6b7a71d6fe7",
+  "status": "passed",
+  "source": "cli",
+  "createdAt": "2026-09-13T19:44:15.593Z",
+  "startedAt": null,
+  "finishedAt": "2026-09-13T19:51:27.264Z",
+  "codeVersion": null,
+  "targetUrl": null,
+  "createdFrom": null,
+  "failedStepIndex": null,
+  "failureKind": null,
+  "error": "",
+  "videoUrl": "https://testsprite-videos.s3.us-east-1.amazonaws.com/20260913-195127-ee8087f5.webm",
+  "stepSummary": {
+    "total": 18,
+    "completed": 18,
+    "passedCount": 18,
+    "failedCount": 0
+  },
+  "dashboardUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/8746b2c9-1c23-4ee1-a183-76cad22bc3d7",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/execution/60ff9f26-f127-4f39-93d4-d9d524a91012",
+  "apiOutput": null,
+  "trace": null
+}

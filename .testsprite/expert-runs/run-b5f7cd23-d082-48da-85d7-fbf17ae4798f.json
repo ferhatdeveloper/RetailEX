@@ -1,0 +1,29 @@
+{
+  "runId": "835da7b2-424b-4ac5-b062-f78f670cdd6e",
+  "testId": "b5f7cd23-d082-48da-85d7-fbf17ae4798f",
+  "testTitle": "Giyim 030 — Satış Faturaları listesi açılır",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "userId": "a4780428-d0e1-7069-e42d-f6b7a71d6fe7",
+  "status": "passed",
+  "source": "cli",
+  "createdAt": "2026-09-13T23:35:24.588Z",
+  "startedAt": null,
+  "finishedAt": "2026-09-13T23:41:44.944Z",
+  "codeVersion": null,
+  "targetUrl": null,
+  "createdFrom": null,
+  "failedStepIndex": null,
+  "failureKind": null,
+  "error": "",
+  "videoUrl": "https://testsprite-videos.s3.us-east-1.amazonaws.com/20260913-234144-df8b8db4.webm",
+  "stepSummary": {
+    "total": 15,
+    "completed": 15,
+    "passedCount": 15,
+    "failedCount": 0
+  },
+  "dashboardUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/b5f7cd23-d082-48da-85d7-fbf17ae4798f",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/execution/35622e52-0f10-411c-9a69-cdb6dffba7db",
+  "apiOutput": null,
+  "trace": null
+}

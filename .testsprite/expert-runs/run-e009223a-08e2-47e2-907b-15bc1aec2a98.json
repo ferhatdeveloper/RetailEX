@@ -1,0 +1,29 @@
+{
+  "runId": "56b8d7a9-c37b-44d1-a5ef-30a6f3db8a0f",
+  "testId": "e009223a-08e2-47e2-907b-15bc1aec2a98",
+  "testTitle": "Giyim 030 — Varyantlar tanım ekranı açılır",
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "userId": "a4780428-d0e1-7069-e42d-f6b7a71d6fe7",
+  "status": "passed",
+  "source": "cli",
+  "createdAt": "2026-09-13T22:42:00.597Z",
+  "startedAt": null,
+  "finishedAt": "2026-09-13T22:54:35.738Z",
+  "codeVersion": null,
+  "targetUrl": null,
+  "createdFrom": null,
+  "failedStepIndex": null,
+  "failureKind": null,
+  "error": "",
+  "videoUrl": "https://testsprite-videos.s3.us-east-1.amazonaws.com/20260913-225435-c74679d8.webm",
+  "stepSummary": {
+    "total": 14,
+    "completed": 14,
+    "passedCount": 14,
+    "failedCount": 0
+  },
+  "dashboardUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/test-cases/e009223a-08e2-47e2-907b-15bc1aec2a98",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/f6fd0988-d8d0-5eb0-8261-e1d761b658fc/projects/e344cf40-19d9-41c3-b5fd-bc2f4665ff95/execution/c041d142-9f47-473c-aabe-a348c50b6259",
+  "apiOutput": null,
+  "trace": null
+}
