@@ -13,6 +13,7 @@ const CUSTOMER_DB_COLUMNS = new Set([
   'city',
   'district',
   'neighborhood',
+  'postal_code',
   'tax_nr',
   'tax_office',
   'notes',
@@ -31,6 +32,7 @@ const CUSTOMER_DB_COLUMNS = new Set([
   'call_plan_note',
   'call_plan_caller_user_id',
   'call_plan_caller_name',
+  'call_plan_time',
   'call_last_status',
   'call_last_note',
   'call_last_at',
@@ -46,6 +48,7 @@ const SUPPLIER_DB_COLUMNS = new Set([
   'city',
   'district',
   'neighborhood',
+  'postal_code',
   'tax_nr',
   'tax_office',
   'notes',
@@ -62,7 +65,6 @@ function formKeyToDbColumn(key: string): string | null {
   if (key === 'tax_number' || key === 'taxNumber') return 'tax_nr';
   if (key === 'tax_office' || key === 'taxOffice') return 'tax_office';
   if (key === 'cardType' || key === 'id' || key === 'created_at' || key === 'updated_at') return null;
-  if (key === 'postal_code') return null;
   if (key === 'country') return null;
   return key;
 }

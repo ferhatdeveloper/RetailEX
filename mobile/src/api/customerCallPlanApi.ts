@@ -24,9 +24,13 @@ export type CallPlanCustomer = {
   code: string | null;
   name: string;
   phone: string | null;
+  address: string | null;
+  city: string | null;
+  postal_code: string | null;
   call_plan_enabled: boolean;
   call_plan_weekdays: number[];
   call_plan_note: string | null;
+  call_plan_time: string | null;
   call_last_status: CustomerCallStatus;
   call_last_note: string | null;
   call_last_at: string | null;
@@ -47,7 +51,20 @@ export type CallPlanWeeklyRow = {
 };
 
 const LIVE_SELECT =
-  'id,code,name,phone,call_plan_enabled,call_plan_weekdays,call_plan_note,call_last_status,call_last_note,call_last_at';
+  'id,code,name,phone,address,city,postal_code,call_plan_enabled,call_plan_weekdays,call_plan_note,call_plan_time,call_last_status,call_last_note,call_last_at';
+
+function normalizeTime(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  const s = String(value).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) {
+    return null;
+  }
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
 
 function mapLive(r: Record<string, unknown>): CallPlanCustomer {
   return {
@@ -55,9 +72,13 @@ function mapLive(r: Record<string, unknown>): CallPlanCustomer {
     code: r.code != null ? String(r.code) : null,
     name: String(r.name ?? ''),
     phone: r.phone != null ? String(r.phone) : null,
+    address: r.address != null ? String(r.address) : null,
+    city: r.city != null ? String(r.city) : null,
+    postal_code: r.postal_code != null ? String(r.postal_code) : null,
     call_plan_enabled: r.call_plan_enabled === true || r.call_plan_enabled === 'true',
     call_plan_weekdays: normalizeCustomerCallWeekdays(r.call_plan_weekdays),
     call_plan_note: r.call_plan_note != null ? String(r.call_plan_note) : null,
+    call_plan_time: normalizeTime(r.call_plan_time),
     call_last_status: normalizeCustomerCallStatus(r.call_last_status),
     call_last_note: r.call_last_note != null ? String(r.call_last_note) : null,
     call_last_at: r.call_last_at != null ? String(r.call_last_at) : null,
@@ -122,10 +143,11 @@ export async function fetchCallPlanCustomers(limit = 500): Promise<CallPlanCusto
     },
     viaBridge: async () => {
       const res = await pgQuery<Record<string, unknown>>(
-        `SELECT id::text AS id, code, name, phone,
+        `SELECT id::text AS id, code, name, phone, address, city, postal_code,
                 COALESCE(call_plan_enabled, false) AS call_plan_enabled,
                 COALESCE(call_plan_weekdays, ARRAY[]::int[]) AS call_plan_weekdays,
-                call_plan_note, call_last_status, call_last_note,
+                call_plan_note, call_plan_time::text AS call_plan_time,
+                call_last_status, call_last_note,
                 call_last_at::text AS call_last_at
          FROM ${table}
          WHERE COALESCE(call_plan_enabled, false) = true
@@ -147,9 +169,14 @@ export async function updateCallPlanCustomer(
   patch: {
     call_plan_weekdays?: number[];
     call_plan_note?: string | null;
+    call_plan_time?: string | null;
     call_last_status?: CustomerCallStatus;
     call_last_note?: string | null;
     call_plan_enabled?: boolean;
+    phone?: string | null;
+    address?: string | null;
+    city?: string | null;
+    postal_code?: string | null;
   },
 ): Promise<void> {
   const table = customersTable();
@@ -158,6 +185,11 @@ export async function updateCallPlanCustomer(
     body.call_plan_weekdays = normalizeCustomerCallWeekdays(patch.call_plan_weekdays);
   }
   if (patch.call_plan_note !== undefined) body.call_plan_note = patch.call_plan_note;
+  if (patch.call_plan_time !== undefined) body.call_plan_time = patch.call_plan_time;
+  if (patch.phone !== undefined) body.phone = patch.phone;
+  if (patch.address !== undefined) body.address = patch.address;
+  if (patch.city !== undefined) body.city = patch.city;
+  if (patch.postal_code !== undefined) body.postal_code = patch.postal_code;
   if (patch.call_last_status != null) {
     body.call_last_status = normalizeCustomerCallStatus(patch.call_last_status);
     body.call_last_at = new Date().toISOString();
@@ -195,6 +227,26 @@ export async function updateCallPlanCustomer(
       if (body.call_plan_note !== undefined) {
         sets.push(`call_plan_note = $${i++}`);
         params.push(body.call_plan_note);
+      }
+      if (body.call_plan_time !== undefined) {
+        sets.push(`call_plan_time = $${i++}::time`);
+        params.push(body.call_plan_time);
+      }
+      if (body.phone !== undefined) {
+        sets.push(`phone = $${i++}`);
+        params.push(body.phone);
+      }
+      if (body.address !== undefined) {
+        sets.push(`address = $${i++}`);
+        params.push(body.address);
+      }
+      if (body.city !== undefined) {
+        sets.push(`city = $${i++}`);
+        params.push(body.city);
+      }
+      if (body.postal_code !== undefined) {
+        sets.push(`postal_code = $${i++}`);
+        params.push(body.postal_code);
       }
       if (body.call_last_status != null) {
         sets.push(`call_last_status = $${i++}`);

@@ -1461,6 +1461,9 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   callPlanSaveFailed: { tr: 'Arama planı kaydedilemedi', en: 'Could not save call plan', ar: 'تعذر حفظ خطة الاتصال', ku: 'پلانی پەیوەندی پاشەکەوت نەکرا' },
   callPlanLoadFailed: { tr: 'Müşteri arama listesi yüklenemedi', en: 'Could not load customer call list', ar: 'تعذر تحميل قائمة اتصال العملاء', ku: 'لیستی پەیوەندی کڕیار بارنەکرا' },
   callPlanNote: { tr: 'Plan notu', en: 'Plan note', ar: 'ملاحظة الخطة', ku: 'تێبینی پلان' },
+  callPlanTime: { tr: 'Arama saati', en: 'Call time', ar: 'وقت الاتصال', ku: 'کاتی پەیوەندی' },
+  callPlanContact: { tr: 'İletişim', en: 'Contact', ar: 'اتصال', ku: 'پەیوەندی' },
+  postalCode: { tr: 'Posta kodu', en: 'Postal code', ar: 'الرمز البريدي', ku: 'کۆدی پۆستە' },
   callPlanCaller: { tr: 'Arayan kişi', en: 'Caller', ar: 'المتصل', ku: 'پەیوەندیکەر' },
   callPlanCallerNone: { tr: 'Seçilmedi', en: 'Not selected', ar: 'غير محدد', ku: 'هەڵنەبژێردراوە' },
   callPlanCallerHint: {

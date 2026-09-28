@@ -29,8 +29,10 @@ import {
 import { formatCallPlanLastAt, formatCallPlanWeekRange, isBeforeCallPlanWeekStart } from '../../../utils/customerCallPlanWeek';
 import {
   CUSTOMER_CALL_STATUSES,
+  callPlanTimeInputValue,
   customerCallStatusMeta,
   customerCallWeekdaysLabel,
+  normalizeCallPlanTime,
   normalizeCustomerCallStatus,
   normalizeCustomerCallWeekdays,
   type CustomerCallStatus,
@@ -52,6 +54,11 @@ export function CustomerCallPlanModule() {
   const [planNote, setPlanNote] = useState('');
   const [callerUserId, setCallerUserId] = useState('');
   const [callerName, setCallerName] = useState('');
+  const [callPlanTime, setCallPlanTime] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editPostalCode, setEditPostalCode] = useState('');
+  const [editCity, setEditCity] = useState('');
   const [callUsers, setCallUsers] = useState<User[]>([]);
   const [lastStatus, setLastStatus] = useState('planned');
   const [lastNote, setLastNote] = useState('');
@@ -272,23 +279,33 @@ export function CustomerCallPlanModule() {
   const displayedCustomers = useMemo(() => {
     if (isListCurrentWeek) return currentWeekCustomers;
     if (!listWeekRows) return [];
+    const byId = new Map(customers.map(c => [c.id, c]));
     return listWeekRows
       .filter(r => r.call_plan_weekdays && r.call_plan_weekdays.length > 0)
-      .map(r => ({
-        id: r.customer_id,
-        code: r.customer_code ?? '',
-        name: r.customer_name,
-        call_plan_enabled: true,
-        call_plan_weekdays: r.call_plan_weekdays,
-        call_plan_note: r.call_plan_note ?? '',
-        call_plan_caller_user_id: r.call_plan_caller_user_id ?? undefined,
-        call_plan_caller_name: r.call_plan_caller_name ?? undefined,
-        call_last_status: r.call_last_status,
-        call_last_note: r.call_last_note ?? undefined,
-        call_last_at: r.call_last_at ?? undefined,
-        cardType: 'customer' as const,
-      })) as unknown as Supplier[];
-  }, [isListCurrentWeek, currentWeekCustomers, listWeekRows]);
+      .map(r => {
+        const live = byId.get(r.customer_id);
+        return {
+          id: r.customer_id,
+          code: r.customer_code ?? live?.code ?? '',
+          name: r.customer_name,
+          phone: live?.phone,
+          email: live?.email,
+          address: live?.address,
+          city: live?.city,
+          postal_code: live?.postal_code,
+          call_plan_enabled: true,
+          call_plan_weekdays: r.call_plan_weekdays,
+          call_plan_note: r.call_plan_note ?? '',
+          call_plan_caller_user_id: r.call_plan_caller_user_id ?? undefined,
+          call_plan_caller_name: r.call_plan_caller_name ?? undefined,
+          call_plan_time: callPlanTimeInputValue(r.call_plan_time ?? live?.call_plan_time) || undefined,
+          call_last_status: r.call_last_status,
+          call_last_note: r.call_last_note ?? undefined,
+          call_last_at: r.call_last_at ?? undefined,
+          cardType: 'customer' as const,
+        };
+      }) as unknown as Supplier[];
+  }, [isListCurrentWeek, currentWeekCustomers, listWeekRows, customers]);
 
   const currentWeekFiltered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('tr-TR');
@@ -316,6 +333,11 @@ export function CustomerCallPlanModule() {
     setPlanNote(String(customer.call_plan_note ?? ''));
     setCallerUserId(String(customer.call_plan_caller_user_id ?? ''));
     setCallerName(String(customer.call_plan_caller_name ?? ''));
+    setCallPlanTime(callPlanTimeInputValue(customer.call_plan_time));
+    setEditPhone(String(customer.phone ?? ''));
+    setEditAddress(String(customer.address ?? ''));
+    setEditPostalCode(String(customer.postal_code ?? ''));
+    setEditCity(String(customer.city ?? ''));
     setLastStatus(normalizeCustomerCallStatus(customer.call_last_status));
     setLastNote(String(customer.call_last_note ?? ''));
   };
@@ -343,11 +365,16 @@ export function CustomerCallPlanModule() {
       await supplierAPI.update(editing.id, {
         ...editing,
         cardType: 'customer',
+        phone: editPhone.trim(),
+        address: editAddress.trim(),
+        postal_code: editPostalCode.trim(),
+        city: editCity.trim(),
         call_plan_enabled: nextDays.length > 0,
         call_plan_weekdays: nextDays,
         call_plan_note: planNote.trim() || null,
         call_plan_caller_user_id: nextCallerId,
         call_plan_caller_name: nextCallerName,
+        call_plan_time: nextDays.length > 0 ? normalizeCallPlanTime(callPlanTime) : null,
         call_last_status: normalizeCustomerCallStatus(lastStatus),
         call_last_note: lastNote.trim() || null,
         call_last_at: new Date().toISOString(),
@@ -570,15 +597,48 @@ export function CustomerCallPlanModule() {
       cell: info => <span className="font-semibold text-slate-900">{info.getValue()}</span>,
     }),
     columnHelper.display({
+      id: 'callPlanTime',
+      header: tm('callPlanTime'),
+      cell: ({ row }) => {
+        const t = callPlanTimeInputValue(row.original.call_plan_time);
+        return t ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-black text-slate-700">
+            <Clock className="h-3 w-3" />
+            {t}
+          </span>
+        ) : <span className="text-xs text-slate-400">—</span>;
+      },
+      size: 100,
+    }),
+    columnHelper.display({
       id: 'contact',
-      header: tm('contact'),
+      header: tm('callPlanContact'),
       cell: ({ row }) => (
         <div className="flex flex-col gap-1 text-xs text-slate-600">
           {row.original.phone ? <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{row.original.phone}</span> : '-'}
           {row.original.email ? <span>{row.original.email}</span> : null}
         </div>
       ),
-      size: 160,
+      size: 150,
+    }),
+    columnHelper.accessor('address', {
+      header: tm('address'),
+      cell: info => (
+        <span className="block max-w-[200px] truncate text-xs text-slate-600" title={info.getValue() || ''}>
+          {info.getValue() || '—'}
+        </span>
+      ),
+      size: 180,
+    }),
+    columnHelper.accessor('postal_code', {
+      header: tm('postalCode'),
+      cell: info => <span className="text-xs font-semibold text-slate-700">{info.getValue() || '—'}</span>,
+      size: 100,
+    }),
+    columnHelper.accessor('city', {
+      header: tm('city'),
+      cell: info => <span className="text-xs font-semibold text-slate-700">{info.getValue() || '—'}</span>,
+      size: 110,
     }),
     columnHelper.display({
       id: 'days',
@@ -681,6 +741,20 @@ export function CustomerCallPlanModule() {
     reportColumnHelper.accessor('customer_name', {
       header: tm('customer'),
       cell: info => <span className="font-semibold text-slate-900">{info.getValue()}</span>,
+    }),
+    reportColumnHelper.display({
+      id: 'callPlanTime',
+      header: tm('callPlanTime'),
+      cell: ({ row }) => {
+        const t = callPlanTimeInputValue(row.original.call_plan_time);
+        return t ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-black text-slate-700">
+            <Clock className="h-3 w-3" />
+            {t}
+          </span>
+        ) : <span className="text-xs text-slate-400">—</span>;
+      },
+      size: 100,
     }),
     reportColumnHelper.display({
       id: 'days',
@@ -1208,6 +1282,58 @@ export function CustomerCallPlanModule() {
           </div>
 
           <PercentBodyModalScrollBody className="p-6 sm:p-8">
+            <div className="mb-6 grid grid-cols-12 gap-4">
+              <div className="col-span-12 md:col-span-4">
+                <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <Clock className="h-3.5 w-3.5" />
+                  {tm('callPlanTime')}
+                </label>
+                <input
+                  type="time"
+                  value={callPlanTime}
+                  onChange={e => setCallPlanTime(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="col-span-12 md:col-span-4">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanContact')}</label>
+                <input
+                  type="tel"
+                  value={editPhone}
+                  onChange={e => setEditPhone(e.target.value)}
+                  placeholder={tm('phoneLabel')}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="col-span-12 md:col-span-4">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('city')}</label>
+                <input
+                  type="text"
+                  value={editCity}
+                  onChange={e => setEditCity(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="col-span-12 md:col-span-8">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('address')}</label>
+                <input
+                  type="text"
+                  value={editAddress}
+                  onChange={e => setEditAddress(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="col-span-12 md:col-span-4">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('postalCode')}</label>
+                <input
+                  type="text"
+                  value={editPostalCode}
+                  onChange={e => setEditPostalCode(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
             <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <UserRound className="h-3.5 w-3.5" />
               {tm('callPlanCaller')}

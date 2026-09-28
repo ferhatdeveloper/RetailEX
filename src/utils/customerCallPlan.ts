@@ -68,3 +68,22 @@ export function customerCallStatusMeta(value: unknown) {
   const status = normalizeCustomerCallStatus(value);
   return CUSTOMER_CALL_STATUSES.find(row => row.value === status) ?? CUSTOMER_CALL_STATUSES[0];
 }
+
+/** Tercih edilen arama saati → HH:MM veya null */
+export function normalizeCallPlanTime(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  const s = String(value).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) {
+    return null;
+  }
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+/** HTML time input / liste gösterimi için HH:MM */
+export function callPlanTimeInputValue(value: unknown): string {
+  return normalizeCallPlanTime(value) ?? '';
+}

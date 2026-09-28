@@ -172,3 +172,4 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `171_whatsapp_campaign_drafts_seed.sql` — beauty WhatsApp kampanya taslakları (Valentine…Miladi yılbaşı + birthday şablonları); özel günler `is_active=false`.
 - `172_ramadan_eid_whatsapp_draft.sql` — Ramazan Bayramı 9/3 taslak (gönderim 1/3, −8g, KU+AR).
 - `173_kurban_eid_whatsapp_draft.sql` — Kurban Bayramı 16/5 taslak (gönderim 1/5, −15g, KU+AR).
+- `174_customers_call_plan_time_postal.sql` — `rex_*_customers.call_plan_time` + `postal_code`; `rex_*_suppliers.postal_code`; haftalık arşive `call_plan_time`.

@@ -85,6 +85,11 @@ export function CustomerCallPlanScreen() {
   const [edit, setEdit] = useState<CallPlanCustomer | null>(null);
   const [editStatus, setEditStatus] = useState<CustomerCallStatus>('planned');
   const [editNote, setEditNote] = useState('');
+  const [editCallTime, setEditCallTime] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editPostal, setEditPostal] = useState('');
+  const [editCity, setEditCity] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -176,6 +181,11 @@ export function CustomerCallPlanScreen() {
     setEdit(c);
     setEditStatus(c.call_last_status);
     setEditNote(c.call_last_note || '');
+    setEditCallTime(c.call_plan_time || '');
+    setEditPhone(c.phone || '');
+    setEditAddress(c.address || '');
+    setEditPostal(c.postal_code || '');
+    setEditCity(c.city || '');
   };
 
   const saveStatus = async () => {
@@ -185,6 +195,11 @@ export function CustomerCallPlanScreen() {
       await updateCallPlanCustomer(edit.id, {
         call_last_status: editStatus,
         call_last_note: editNote.trim() || null,
+        call_plan_time: editCallTime.trim() || null,
+        phone: editPhone.trim() || null,
+        address: editAddress.trim() || null,
+        postal_code: editPostal.trim() || null,
+        city: editCity.trim() || null,
       });
       setEdit(null);
       await load();
@@ -242,7 +257,21 @@ export function CustomerCallPlanScreen() {
         </View>
         <Text style={{ color: colors.textMuted, fontSize: 12 }}>
           {c.code || '—'} · {customerCallWeekdaysLabel(c.call_plan_weekdays, true) || 'Gün yok'}
+          {c.call_plan_time ? ` · ${c.call_plan_time}` : ''}
         </Text>
+        {c.phone ? (
+          <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>İletişim: {c.phone}</Text>
+        ) : null}
+        {c.address ? (
+          <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 2 }} numberOfLines={2}>
+            Adres: {c.address}
+          </Text>
+        ) : null}
+        {(c.postal_code || c.city) ? (
+          <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 2 }}>
+            {[c.postal_code, c.city].filter(Boolean).join(' · ')}
+          </Text>
+        ) : null}
         {c.call_plan_note ? (
           <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }} numberOfLines={2}>
             {c.call_plan_note}
@@ -457,8 +486,59 @@ export function CustomerCallPlanScreen() {
           >
             <Text style={[styles.name, { color: colors.text }]}>{edit?.name}</Text>
             <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 8 }}>
-              Durum güncelle
+              Durum ve iletişim güncelle
             </Text>
+            <TextInput
+              value={editCallTime}
+              onChangeText={setEditCallTime}
+              placeholder="Arama saati (HH:MM)"
+              placeholderTextColor={colors.textSubtle}
+              style={[
+                styles.noteInput,
+                { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.inputBg, minHeight: 40 },
+              ]}
+            />
+            <TextInput
+              value={editPhone}
+              onChangeText={setEditPhone}
+              placeholder="İletişim (telefon)"
+              placeholderTextColor={colors.textSubtle}
+              keyboardType="phone-pad"
+              style={[
+                styles.noteInput,
+                { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.inputBg, minHeight: 40 },
+              ]}
+            />
+            <TextInput
+              value={editAddress}
+              onChangeText={setEditAddress}
+              placeholder="Adres"
+              placeholderTextColor={colors.textSubtle}
+              style={[
+                styles.noteInput,
+                { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.inputBg, minHeight: 40 },
+              ]}
+            />
+            <TextInput
+              value={editPostal}
+              onChangeText={setEditPostal}
+              placeholder="Posta kodu"
+              placeholderTextColor={colors.textSubtle}
+              style={[
+                styles.noteInput,
+                { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.inputBg, minHeight: 40 },
+              ]}
+            />
+            <TextInput
+              value={editCity}
+              onChangeText={setEditCity}
+              placeholder="Şehir"
+              placeholderTextColor={colors.textSubtle}
+              style={[
+                styles.noteInput,
+                { color: colors.text, borderColor: colors.cardBorder, backgroundColor: colors.inputBg, minHeight: 40 },
+              ]}
+            />
             <View style={styles.statusGrid}>
               {CUSTOMER_CALL_STATUSES.map((s) => {
                 const on = editStatus === s.value;

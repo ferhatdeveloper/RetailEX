@@ -10,6 +10,8 @@ import {
   PercentBodyModalScrollBody,
 } from '../../shared/PercentBodyModal';
 import {
+  normalizeCallPlanTime,
+  callPlanTimeInputValue,
   normalizeCustomerCallWeekdays,
   customerCallWeekdaysLabel,
 } from '../../../utils/customerCallPlan';
@@ -34,6 +36,7 @@ interface FormState {
   email: string;
   address: string;
   city: string;
+  postal_code: string;
   payment_terms: number;
   credit_limit: number;
   tax_number: string;
@@ -44,6 +47,7 @@ interface FormState {
   call_plan_note: string;
   call_plan_caller_user_id: string;
   call_plan_caller_name: string;
+  call_plan_time: string;
   cardType: SupplierCardType;
 }
 
@@ -54,6 +58,7 @@ const EMPTY_FORM: FormState = {
   email: '',
   address: '',
   city: '',
+  postal_code: '',
   payment_terms: 30,
   credit_limit: 0,
   tax_number: '',
@@ -64,6 +69,7 @@ const EMPTY_FORM: FormState = {
   call_plan_note: '',
   call_plan_caller_user_id: '',
   call_plan_caller_name: '',
+  call_plan_time: '',
   cardType: 'supplier',
 };
 
@@ -86,6 +92,7 @@ export function SupplierEditModal({
         email: initial.email || '',
         address: initial.address || '',
         city: initial.city || '',
+        postal_code: initial.postal_code || '',
         payment_terms: typeof initial.payment_terms === 'number' ? initial.payment_terms : 30,
         credit_limit: initial.credit_limit || 0,
         tax_number: initial.tax_number || '',
@@ -96,6 +103,7 @@ export function SupplierEditModal({
         call_plan_note: initial.call_plan_note || '',
         call_plan_caller_user_id: initial.call_plan_caller_user_id || '',
         call_plan_caller_name: initial.call_plan_caller_name || '',
+        call_plan_time: callPlanTimeInputValue(initial.call_plan_time),
         cardType: (initial.cardType as SupplierCardType) || 'supplier',
       };
     }
@@ -198,6 +206,7 @@ export function SupplierEditModal({
       : null;
     const saveData = {
       ...formData,
+      postal_code: formData.postal_code.trim() || null,
       call_plan_enabled: weekdays.length > 0,
       call_plan_weekdays: weekdays,
       call_plan_note:
@@ -206,6 +215,10 @@ export function SupplierEditModal({
           : null,
       call_plan_caller_user_id: callerId,
       call_plan_caller_name: callerName,
+      call_plan_time:
+        formData.cardType === 'customer' && weekdays.length > 0
+          ? normalizeCallPlanTime(formData.call_plan_time)
+          : null,
     };
     setSaving(true);
     try {
@@ -398,6 +411,14 @@ export function SupplierEditModal({
                 className={inputClass}
               />
             </Field>
+            <Field label={tm('postalCode') || 'Posta kodu'}>
+              <input
+                type="text"
+                value={formData.postal_code}
+                onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })}
+                className={inputClass}
+              />
+            </Field>
             <Field label={tm('taxNumberLabel') || 'Vergi no'}>
               <input
                 type="text"
@@ -485,6 +506,16 @@ export function SupplierEditModal({
                 ))}
               </select>
               <p className="mt-1 mb-3 text-[11px] text-slate-500">{tm('callPlanCallerHint')}</p>
+
+              <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                {tm('callPlanTime')}
+              </label>
+              <input
+                type="time"
+                value={formData.call_plan_time}
+                onChange={(e) => setFormData({ ...formData, call_plan_time: e.target.value })}
+                className={`${inputClass} mb-3 w-full sm:max-w-[200px]`}
+              />
 
               <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 {tm('callPlanSelectDays')}

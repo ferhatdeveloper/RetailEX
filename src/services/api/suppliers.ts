@@ -194,14 +194,14 @@ export const supplierAPI = {
         ${sqlSupplierAccountBalancesCte(suppTable)}
         SELECT
           c.id, c.ref_id, c.code, c.name, c.phone, c.phone2, c.email,
-          c.address, c.city, c.district, c.neighborhood,
+          c.address, c.city, c.district, c.neighborhood, c.postal_code,
           c.tax_nr, c.tax_office, c.notes,
           c.payment_terms::text AS payment_terms, COALESCE(c.credit_limit, 0) AS credit_limit,
           NULL::varchar AS contact_person, NULL::varchar AS contact_person_phone,
           c.age, c.file_id, c.occupation, c.gender, c.customer_tier, c.heard_from,
           c.points, c.total_spent,
           c.call_plan_enabled, c.call_plan_weekdays, c.call_plan_note,
-          c.call_plan_caller_user_id, c.call_plan_caller_name,
+          c.call_plan_caller_user_id, c.call_plan_caller_name, c.call_plan_time,
           c.call_last_status, c.call_last_note, c.call_last_at,
           ${sqlResolvedCustomerBalanceExpr('c')} as balance,
           c.is_active, c.created_at, 'customer' as card_type
@@ -214,7 +214,7 @@ export const supplierAPI = {
 
         SELECT
           s.id, s.ref_id, s.code, s.name, s.phone, NULL::varchar AS phone2, s.email,
-          s.address, s.city, s.district, s.neighborhood,
+          s.address, s.city, s.district, s.neighborhood, s.postal_code,
           s.tax_nr, s.tax_office, s.notes,
           s.payment_terms::text AS payment_terms, COALESCE(s.credit_limit, 0) AS credit_limit,
           s.contact_person, s.contact_person_phone,
@@ -222,7 +222,7 @@ export const supplierAPI = {
           NULL::varchar AS gender, NULL::varchar AS customer_tier, NULL::varchar AS heard_from,
           NULL::numeric AS points, NULL::numeric AS total_spent,
           false AS call_plan_enabled, ARRAY[]::smallint[] AS call_plan_weekdays, NULL::text AS call_plan_note,
-          NULL::uuid AS call_plan_caller_user_id, NULL::text AS call_plan_caller_name,
+          NULL::uuid AS call_plan_caller_user_id, NULL::text AS call_plan_caller_name, NULL::time AS call_plan_time,
           NULL::varchar AS call_last_status, NULL::text AS call_last_note, NULL::timestamptz AS call_last_at,
           ${sqlResolvedSupplierBalanceExpr('s')} as balance,
           s.is_active, s.created_at, 'supplier' as card_type
@@ -372,12 +372,12 @@ export const supplierAPI = {
         : `rex_${ERP_SETTINGS.firmNr}_customers`;
 
       const columns = [
-        'code', 'name', 'phone', 'email', 'address', 'city',
+        'code', 'name', 'phone', 'email', 'address', 'city', 'postal_code',
         'tax_nr', 'tax_office', 'is_active'
       ];
       const values: unknown[] = [
         account.code, account.name, account.phone, account.email,
-        account.address, account.city, account.tax_number,
+        account.address, account.city, account.postal_code || null, account.tax_number,
         account.tax_office, true
       ];
 
@@ -391,6 +391,7 @@ export const supplierAPI = {
           'call_plan_note',
           'call_plan_caller_user_id',
           'call_plan_caller_name',
+          'call_plan_time',
           'call_last_status',
           'call_last_note',
           'call_last_at',
@@ -401,6 +402,7 @@ export const supplierAPI = {
           account.call_plan_note || null,
           account.call_plan_enabled === true ? account.call_plan_caller_user_id || null : null,
           account.call_plan_enabled === true ? account.call_plan_caller_name || null : null,
+          account.call_plan_enabled === true ? account.call_plan_time || null : null,
           account.call_last_status || 'planned',
           account.call_last_note || null,
           account.call_last_at || null,
@@ -417,6 +419,7 @@ export const supplierAPI = {
             email: account.email,
             address: account.address,
             city: account.city,
+            postal_code: account.postal_code,
             tax_number: account.tax_number,
             tax_office: account.tax_office,
             notes: account.notes,
@@ -437,6 +440,10 @@ export const supplierAPI = {
                   call_plan_caller_name:
                     account.call_plan_enabled === true
                       ? account.call_plan_caller_name || null
+                      : null,
+                  call_plan_time:
+                    account.call_plan_enabled === true
+                      ? account.call_plan_time || null
                       : null,
                   call_last_status: account.call_last_status || 'planned',
                   call_last_note: account.call_last_note || null,
@@ -575,6 +582,7 @@ export const supplierAPI = {
       email: account.email ?? existing.email,
       address: account.address ?? existing.address,
       city: account.city ?? existing.city,
+      postal_code: account.postal_code ?? existing.postal_code,
       tax_number: account.tax_number ?? existing.tax_nr,
       tax_office: account.tax_office ?? existing.tax_office,
       notes: account.notes ?? existing.notes,
@@ -584,6 +592,7 @@ export const supplierAPI = {
       call_plan_caller_user_id:
         account.call_plan_caller_user_id ?? existing.call_plan_caller_user_id,
       call_plan_caller_name: account.call_plan_caller_name ?? existing.call_plan_caller_name,
+      call_plan_time: account.call_plan_time ?? existing.call_plan_time,
       call_last_status: account.call_last_status ?? existing.call_last_status,
       call_last_note: account.call_last_note ?? existing.call_last_note,
       call_last_at: account.call_last_at ?? existing.call_last_at,
@@ -927,6 +936,19 @@ function mapDatabaseSupplierToSupplier(dbSupplier: any): Supplier {
     call_plan_caller_name: dbSupplier.call_plan_caller_name
       ? String(dbSupplier.call_plan_caller_name)
       : undefined,
+    call_plan_time: (() => {
+      const raw = dbSupplier.call_plan_time;
+      if (raw == null || raw === '') return undefined;
+      const s = String(raw).trim();
+      const m = s.match(/^(\d{1,2}):(\d{2})/);
+      if (!m) return s.slice(0, 5) || undefined;
+      const h = Number(m[1]);
+      const min = Number(m[2]);
+      if (!Number.isFinite(h) || !Number.isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) {
+        return undefined;
+      }
+      return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+    })(),
     call_last_status: dbSupplier.call_last_status || undefined,
     call_last_note: dbSupplier.call_last_note || undefined,
     call_last_at: dbSupplier.call_last_at || undefined,
