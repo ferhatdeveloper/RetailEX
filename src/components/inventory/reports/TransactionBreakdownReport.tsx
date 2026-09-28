@@ -7,6 +7,8 @@ import { format } from 'date-fns';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatNumber } from '../../../utils/formatNumber';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
+import { labelMaterialExtractFiche } from '../../../utils/materialExtractLabels';
+import { displayItemCode } from '../../../utils/lastPurchaseCostSql';
 
 import {
     specialCodeColumnHeader,
@@ -30,7 +32,8 @@ interface TxRow {
     group: string;
     category: string;
     line_kind: 'service' | 'product';
-    line_kind_label: string;
+    /** Fiş / hareket tipi (Satış İade, Satınalma, …) */
+    type_label: string;
     in_qty: number;
     in_amount: number;
     out_qty: number;
@@ -41,10 +44,7 @@ interface TxRow {
     customer_name: string;
 }
 
-function lineToRow(
-    line: StockMovementLine,
-    labels: { service: string; material: string },
-): TxRow {
+function lineToRow(line: StockMovementLine, tm: (key: string) => string): TxRow {
     const qty = Number(line.quantity) || 0;
     const unitPrice = Number(line.unit_price) || 0;
     const isIn = line.movement_type === 'in';
@@ -52,10 +52,11 @@ function lineToRow(
     const inQty = isIn ? qty : 0;
     const outQty = isIn ? 0 : qty;
     const code1 = line.special_code_1 || line.special_code || '';
+    const shownCode = displayItemCode(line.product_code);
     return {
         id: line.id,
         movement_date: line.movement_date || line.created_at,
-        product_code: line.product_code || '',
+        product_code: shownCode === '—' ? '' : shownCode,
         product_name: line.product_name || '',
         special_code: code1,
         special_code_1: code1,
@@ -68,7 +69,13 @@ function lineToRow(
         group: line.group || line.group_code || '',
         category: line.category || '',
         line_kind: lineKind,
-        line_kind_label: lineKind === 'service' ? labels.service : labels.material,
+        type_label: labelMaterialExtractFiche(
+            tm,
+            Number(line.trcode ?? 0),
+            String(line.movement_type || ''),
+            String(line.source_kind || ''),
+            String(line.fiche_type || ''),
+        ),
         in_qty: inQty,
         in_amount: inQty * unitPrice,
         out_qty: outQty,
@@ -93,25 +100,17 @@ export function TransactionBreakdownReport() {
     );
     const { tm } = useLanguage();
 
-    const kindLabels = useMemo(
-        () => ({
-            service: tm('service') || 'Hizmet',
-            material: tm('material') || 'Malzeme',
-        }),
-        [tm],
-    );
-
     const load = useCallback(async () => {
         setLoading(true);
         try {
             const lines = await stockMovementAPI.getAllLines();
-            setRows(lines.map((line) => lineToRow(line, kindLabels)));
+            setRows(lines.map((line) => lineToRow(line, tm)));
         } catch (err) {
             console.error('[TransactionBreakdownReport] load failed', err);
         } finally {
             setLoading(false);
         }
-    }, [kindLabels]);
+    }, [tm]);
 
     useEffect(() => {
         void load();
@@ -132,9 +131,10 @@ export function TransactionBreakdownReport() {
                 }
             },
         }),
-        columnHelper.accessor('line_kind_label', {
-            id: 'line_kind',
+        columnHelper.accessor('type_label', {
+            id: 'type_label',
             header: tm('type') || 'Tür',
+            size: 140,
         }),
         columnHelper.accessor('product_code', { header: tm('materialCode') || 'Malzeme Kodu' }),
         columnHelper.accessor('product_name', { header: tm('materialName') || 'Malzeme Adı' }),
@@ -270,7 +270,7 @@ export function TransactionBreakdownReport() {
                         {...REPORT_GRID_DEFAULTS}
                         columnVisibility={columnVisibility}
                         onColumnVisibilityChange={setColumnVisibility}
-                        storageNamespace="report-transaction-breakdown-v2"
+                        storageNamespace="report-transaction-breakdown-v3"
                         excelFileName={tm('transactionBreakdown') || 'hareket_dokumu'}
                         printTitle={tm('transactionBreakdown') || 'Hareket Dökümü'}
                         height="100%"

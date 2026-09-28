@@ -107,6 +107,52 @@ COALESCE(
 )
 `.trim();
 
+/**
+ * sale_items → products: orphan product_id / boş item_code (iade satırları) için
+ * kod, barkod, UUID item_code ve son çare ad eşlemesi.
+ * Alias her zaman `p` — SQL_PRODUCT_CARD_REPORT_FIELDS ile uyumlu.
+ */
+export const SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN = `
+LEFT JOIN LATERAL (
+  SELECT px.*
+  FROM products px
+  WHERE (si.product_id IS NOT NULL AND px.id = si.product_id)
+     OR (
+          NULLIF(TRIM(si.item_code), '') IS NOT NULL
+          AND TRIM(si.item_code) ~* '${SQL_UUID_TEXT_RE}'
+          AND px.id::text = TRIM(si.item_code)
+        )
+     OR (
+          NULLIF(TRIM(si.item_code), '') IS NOT NULL
+          AND TRIM(si.item_code) !~* '${SQL_UUID_TEXT_RE}'
+          AND (
+            px.code = TRIM(si.item_code)
+            OR COALESCE(NULLIF(TRIM(px.barcode), ''), '') = TRIM(si.item_code)
+          )
+        )
+     OR (
+          NULLIF(TRIM(si.item_name), '') IS NOT NULL
+          AND lower(trim(px.name)) = lower(trim(si.item_name))
+        )
+  ORDER BY
+    CASE WHEN si.product_id IS NOT NULL AND px.id = si.product_id THEN 0 ELSE 1 END,
+    CASE
+      WHEN NULLIF(TRIM(si.item_code), '') IS NOT NULL
+           AND TRIM(si.item_code) ~* '${SQL_UUID_TEXT_RE}'
+           AND px.id::text = TRIM(si.item_code)
+      THEN 0 ELSE 1
+    END,
+    CASE
+      WHEN NULLIF(TRIM(si.item_code), '') IS NOT NULL
+           AND TRIM(si.item_code) !~* '${SQL_UUID_TEXT_RE}'
+           AND px.code = TRIM(si.item_code)
+      THEN 0 ELSE 1
+    END,
+    2
+  LIMIT 1
+) p ON true
+`.trim();
+
 /** firmNrParam: örn. `$1` — alış CTE ve satış filtresinde aynı indeks kullanılmalı */
 export function buildLastPurchaseCte(firmNrParam = '$1'): string {
   return `

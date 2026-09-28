@@ -130,6 +130,15 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
     expect(displayItemCode(null, '', '—', uuid)).toBe('—');
   });
 
+  it('SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN orphan product_id + ad/kod yedeklerini içerir', async () => {
+    const { SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN } = await import('../../utils/lastPurchaseCostSql');
+    expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).toContain('LEFT JOIN LATERAL');
+    expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).toContain('si.product_id');
+    expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).toContain('si.item_code');
+    expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).toContain('si.item_name');
+    expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).toContain('LIMIT 1');
+  });
+
   it('restServiceUnitCost zinciri: 0 satır → purchase_price → beauty cost_price → reçete', () => {
     expect(
       restServiceUnitCost({

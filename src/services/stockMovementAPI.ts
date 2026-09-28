@@ -19,6 +19,7 @@ import {
     displayItemCode,
     isUuidText,
     SQL_NON_UUID_ITEM_CODE,
+    SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN,
 } from '../utils/lastPurchaseCostSql';
 import { resolveLineGrossProfit } from '../utils/lineGrossProfit';
 import {
@@ -68,6 +69,10 @@ export interface StockMovementLine {
     created_at: string;
     movement_type: string;
     source_kind: 'slip' | 'invoice';
+    /** Logo / fatura trcode (fiş tipi etiketi için) */
+    trcode: number;
+    /** purchase_invoice | sales_invoice | return_invoice | '' (ambar) */
+    fiche_type: string;
     product_code: string;
     product_name: string;
     /** Ürün kartı: special_code_1 (geriye uyum) */
@@ -92,6 +97,17 @@ export interface StockMovementLine {
     description: string;
     /** Hizmet | Malzeme — CostReport / analysisSaleLine ile aynı kova */
     line_kind: 'service' | 'product';
+}
+
+/** Rapor satırı: UUID/— item_code gösterme; boşsa ''. */
+function mapDisplayedProductCode(r: {
+    product_code?: unknown;
+    productCode?: unknown;
+    item_code?: unknown;
+    barcode?: unknown;
+}): string {
+    const shown = displayItemCode(r.product_code, r.productCode, r.item_code, r.barcode);
+    return shown === '—' ? '' : shown;
 }
 
 /** Depo görünen adı: kod + ad; yoksa yalnız ad/kod. */
@@ -487,6 +503,8 @@ class StockMovementAPI {
                         m.movement_date,
                         m.created_at,
                         m.movement_type,
+                        COALESCE(m.trcode, 0)::int AS trcode,
+                        '' AS fiche_type,
                         COALESCE(p.code, '') AS product_code,
                         COALESCE(p.name, '') AS product_name,
                         ${SQL_PRODUCT_CARD_REPORT_FIELDS},
@@ -527,6 +545,8 @@ class StockMovementAPI {
                             WHEN sl.fiche_type = 'return_invoice' THEN 'out'
                             ELSE 'out'
                         END AS movement_type,
+                        COALESCE(sl.trcode, 0)::int AS trcode,
+                        COALESCE(sl.fiche_type, '') AS fiche_type,
                         COALESCE(NULLIF(TRIM(p.code), ''), ${SQL_NON_UUID_ITEM_CODE}, '—') AS product_code,
                         COALESCE(p.name, si.item_name, '') AS product_name,
                         ${SQL_PRODUCT_CARD_REPORT_FIELDS},
@@ -555,9 +575,7 @@ class StockMovementAPI {
                         COALESCE(si.item_code, '') AS item_code
                      FROM sale_items si
                      JOIN sales sl ON si.invoice_id = sl.id
-                     LEFT JOIN products p ON p.id = si.product_id
-                        OR (si.product_id IS NULL AND p.code = si.item_code)
-                        OR (si.product_id IS NULL AND p.id::text = si.item_code)
+                     ${SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN}
                      LEFT JOIN stores st ON sl.store_id = st.id
                      LEFT JOIN customers c ON c.id::text = sl.customer_id::text
                      LEFT JOIN suppliers sup ON sup.id::text = sl.customer_id::text
@@ -576,28 +594,44 @@ class StockMovementAPI {
 
             const mapCardFields = (r: any) => mapSqlRowProductCardFields(r);
 
-            const slips: StockMovementLine[] = slipRows.map((r: any) => ({
-                id: String(r.id),
-                document_no: String(r.document_no || ''),
-                movement_date: r.movement_date || r.created_at || '',
-                created_at: r.created_at || '',
-                movement_type: String(r.movement_type || ''),
-                source_kind: 'slip' as const,
-                product_code: String(r.product_code || ''),
-                product_name: String(r.product_name || ''),
-                ...mapCardFields(r),
-                quantity: Number(r.quantity) || 0,
-                unit_price: Number(r.unit_price) || 0,
-                warehouse_name:
-                    formatWarehouseLabel(r.warehouse_code, r.warehouse_name_raw) || defaultWarehouse,
-                customer_name: String(r.customer_name || ''),
-                description: String(r.description || ''),
-                line_kind: resolveLineKind(r),
-            }));
+            const slips: StockMovementLine[] = slipRows.map((r: any) => {
+                const classified = resolveExtractSourceMeta({
+                    movement_type: r.movement_type,
+                    trcode: r.trcode,
+                    source_type: 'slip',
+                    fiche_type: '',
+                });
+                return {
+                    id: String(r.id),
+                    document_no: String(r.document_no || ''),
+                    movement_date: r.movement_date || r.created_at || '',
+                    created_at: r.created_at || '',
+                    movement_type: String(r.movement_type || ''),
+                    source_kind: 'slip' as const,
+                    trcode: Number(r.trcode ?? 0),
+                    fiche_type: classified.fiche_type,
+                    product_code: mapDisplayedProductCode(r),
+                    product_name: String(r.product_name || ''),
+                    ...mapCardFields(r),
+                    quantity: Number(r.quantity) || 0,
+                    unit_price: Number(r.unit_price) || 0,
+                    warehouse_name:
+                        formatWarehouseLabel(r.warehouse_code, r.warehouse_name_raw) || defaultWarehouse,
+                    customer_name: String(r.customer_name || ''),
+                    description: String(r.description || ''),
+                    line_kind: resolveLineKind(r),
+                };
+            });
 
             const invoices: StockMovementLine[] = invRows.map((r: any) => {
                 const fromStore = formatWarehouseLabel(r.warehouse_code, r.warehouse_name_raw);
                 const fromHeader = String(r.warehouse_header || '').trim();
+                const classified = resolveExtractSourceMeta({
+                    movement_type: r.movement_type,
+                    trcode: r.trcode,
+                    source_type: 'invoice',
+                    fiche_type: r.fiche_type,
+                });
                 return {
                     id: `inv-line-${r.id}`,
                     document_no: String(r.document_no || ''),
@@ -605,7 +639,9 @@ class StockMovementAPI {
                     created_at: r.created_at || '',
                     movement_type: String(r.movement_type || ''),
                     source_kind: 'invoice' as const,
-                    product_code: String(r.product_code || ''),
+                    trcode: Number(r.trcode ?? 0),
+                    fiche_type: classified.fiche_type || String(r.fiche_type || ''),
+                    product_code: mapDisplayedProductCode(r),
                     product_name: String(r.product_name || ''),
                     ...mapCardFields(r),
                     quantity: Number(r.quantity) || 0,
@@ -1432,10 +1468,7 @@ class StockMovementAPI {
 
         const mapExtractRow = (r: any) => {
             const classified = resolveExtractSourceMeta(r);
-            const productCode = (() => {
-                const shown = displayItemCode(r.product_code, r.productCode, r.item_code, r.barcode);
-                return shown === '—' ? '' : shown;
-            })();
+            const productCode = mapDisplayedProductCode(r);
             return {
                 ...r,
                 product_id: String(r.product_id || '').trim(),
@@ -1521,6 +1554,7 @@ class StockMovementAPI {
                     COALESCE(si.product_id::text, p.id::text, si.item_code) AS product_id,
                     COALESCE(NULLIF(TRIM(p.code), ''), ${SQL_NON_UUID_ITEM_CODE}, '—') AS product_code,
                     COALESCE(p.name, si.item_name, '') AS product_name,
+                    COALESCE(si.item_code, '') AS item_code,
                     ${SQL_PRODUCT_CARD_REPORT_FIELDS},
                     si.quantity,
                     COALESCE(
@@ -1556,9 +1590,7 @@ class StockMovementAPI {
                     COALESCE(sl.currency, 'IQD') AS currency
                  FROM sale_items si
                  JOIN sales sl ON si.invoice_id = sl.id
-                 LEFT JOIN products p ON p.id = si.product_id
-                    OR (si.product_id IS NULL AND p.code = si.item_code)
-                    OR (si.product_id IS NULL AND p.id::text = si.item_code)
+                 ${SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN}
                  LEFT JOIN stores st ON sl.store_id = st.id
                  WHERE sl.date::date >= $1::date
                    AND sl.date::date <= $2::date
@@ -1982,9 +2014,7 @@ class StockMovementAPI {
                     sl.trcode
                  FROM sale_items si
                  JOIN sales sl ON si.invoice_id = sl.id
-                 LEFT JOIN products p ON p.id = si.product_id
-                    OR (si.product_id IS NULL AND p.code = si.item_code)
-                    OR (si.product_id IS NULL AND p.id::text = si.item_code)
+                 ${SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN}
                  WHERE sl.date::date >= $1::date
                    AND sl.date::date <= $2::date
                    AND LOWER(TRIM(COALESCE(sl.fiche_type, ''))) IN (
