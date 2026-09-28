@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, Calendar, Search, Save, Wallet, CheckCircle2, FileText } from 'lucide-react';
+import { X, Calendar, Search, Save, Wallet, FileText } from 'lucide-react';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
@@ -40,8 +40,6 @@ interface KasaIslemModalProps {
   editingIslem?: KasaIslemi | null;
   initialCari?: CariHesap | null;
   initialDescription?: string;
-  /** Açılışta cari bakiyenin tamamını tutara yazar (hesabı tamamla / kapat). */
-  initialSettleClose?: boolean;
 }
 
 interface CariHesap {
@@ -61,7 +59,6 @@ export function KasaIslemModal({
   editingIslem,
   initialCari,
   initialDescription,
-  initialSettleClose = false,
 }: KasaIslemModalProps) {
   const { selectedFirma, selectedDonem } = useFirmaDonem();
   const { t, tm } = useLanguage();
@@ -178,29 +175,6 @@ export function KasaIslemModal({
   const [cariSearch, setCariSearch] = useState(initialCari?.unvan || initialCari?.kod || '');
   const [selectedCariBakiye, setSelectedCariBakiye] = useState<number | null>(initialCari?.ledgerBalance ?? initialCari?.bakiye ?? null);
   const [selectedCariCardType, setSelectedCariCardType] = useState<CariHesap['cardType']>(initialCari?.cardType);
-  const [settleClose, setSettleClose] = useState(!!initialSettleClose && !isEdit);
-
-  const applySettleCloseAmount = (bakiye: number | null | undefined, opts?: { forceDesc?: boolean }) => {
-    const abs = Math.abs(Number(bakiye) || 0);
-    if (abs < 0.005) {
-      toast.error(tm('settleCloseNoBalance'));
-      return false;
-    }
-    setFormData((prev) => {
-      const desc =
-        opts?.forceDesc || !String(prev.islem_aciklamasi || '').trim()
-          ? `${tm('settleCloseAccount')}: ${prev.cari_hesap_kodu || ''} - ${prev.cari_hesap_unvani || ''}`.trim()
-          : prev.islem_aciklamasi;
-      return {
-        ...prev,
-        tutar: abs,
-        dovizli_tutar: abs,
-        islem_aciklamasi: desc,
-      };
-    });
-    setDisplayAmount(formatNumber(abs));
-    return true;
-  };
 
   // Ortak adına ödeme (CH_ODEME_PARTNER): firma ortak adına tedarikçiye ödeme yapıyor
   const [ortakAdina, setOrtakAdina] = useState(false);
@@ -208,16 +182,6 @@ export function KasaIslemModal({
   const isInvoiceCash = isKasaInvoiceIslemTipi(islemTipi);
   const [showInvoicePicker, setShowInvoicePicker] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-
-  useEffect(() => {
-    if (!initialSettleClose || isEdit) return;
-    const bal = initialCari?.ledgerBalance ?? initialCari?.bakiye ?? null;
-    if (bal == null) return;
-    applySettleCloseAmount(bal, { forceDesc: !initialDescription });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- yalnız açılışta bir kez
-  }, []);
-
-
 
   useEffect(() => {
     if (selectedFirma && (islemTipi === 'CH_TAHSILAT' || islemTipi === 'CH_ODEME' || islemTipi === 'VERILEN_SERBEST_MESLEK' || islemTipi === 'ALINAN_SERBEST_MESLEK' || islemTipi === 'MUSTAHSIL_MAKBUZU')) {
@@ -397,9 +361,6 @@ export function KasaIslemModal({
     setSelectedCariCardType(cari.cardType);
     setShowCariDropdown(false);
     setCariSearch(cari.unvan || cari.kod);
-    if (settleClose) {
-      applySettleCloseAmount(bal);
-    }
   };
 
   const filteredCariHesaplar = cariHesaplar.filter(c => {
@@ -636,49 +597,6 @@ export function KasaIslemModal({
                     bakiye: selectedCariBakiye,
                   })}
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Hesabı tamamla / kapat — cari bakiyenin tamamını tutara yazar */}
-          {(islemTipi === 'CH_TAHSILAT' || islemTipi === 'CH_ODEME') && !isEdit && (
-            <div className="space-y-2 p-3 rounded border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20">
-              <label className="flex items-start gap-2 text-sm font-bold text-emerald-900 dark:text-emerald-100 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={settleClose}
-                  onChange={(e) => {
-                    const on = e.target.checked;
-                    setSettleClose(on);
-                    if (on) {
-                      if (!formData.cari_hesap_id) {
-                        toast.error(tm('settleCloseNeedCari'));
-                        setSettleClose(false);
-                        return;
-                      }
-                      applySettleCloseAmount(selectedCariBakiye);
-                    }
-                  }}
-                  className="w-4 h-4 mt-0.5 accent-emerald-600 shrink-0"
-                />
-                <span className="flex flex-col gap-0.5">
-                  <span className="inline-flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 shrink-0" />
-                    {tm('settleCloseAccount')}
-                  </span>
-                  <span className="text-xs font-medium text-emerald-800/80 dark:text-emerald-200/80 normal-case tracking-normal">
-                    {tm('settleCloseAccountDesc')}
-                  </span>
-                </span>
-              </label>
-              {settleClose && formData.cari_hesap_id && Math.abs(Number(selectedCariBakiye) || 0) >= 0.005 && (
-                <button
-                  type="button"
-                  onClick={() => applySettleCloseAmount(selectedCariBakiye, { forceDesc: true })}
-                  className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-200 underline underline-offset-2 hover:text-emerald-950"
-                >
-                  {tm('settleCloseAccount')} — {formatCurrency(Math.abs(Number(selectedCariBakiye) || 0))}
-                </button>
               )}
             </div>
           )}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../../utils/formatNumber';
 import {
   Truck, Users, X, Search, Edit, Trash2, Mail, Phone, MapPin, Wallet,
-  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock, ArrowRightLeft, Copy, GitMerge, CheckCircle2
+  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock, ArrowRightLeft, Copy, GitMerge
 } from 'lucide-react';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { toast } from 'sonner';
@@ -128,7 +128,6 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
   const [cashAction, setCashAction] = useState<{
     type: 'CH_TAHSILAT' | 'CH_ODEME';
     account: Supplier;
-    settleClose?: boolean;
   } | null>(null);
 
   // Master-detail: selected account + ekstresi data
@@ -1512,29 +1511,6 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
                     setContextMenu(null);
                   }
                 },
-            {
-              id: 'settle-close',
-              label: tm('settleCloseAccount'),
-              icon: CheckCircle2,
-              onClick: () => {
-                if (!contextMenu.supplier) {
-                  setContextMenu(null);
-                  return;
-                }
-                const bal = Math.abs(Number(contextMenu.supplier.balance) || 0);
-                if (bal < 0.005) {
-                  toast.error(tm('settleCloseNoBalance'));
-                  setContextMenu(null);
-                  return;
-                }
-                setCashAction({
-                  type: contextMenu.supplier.cardType === 'customer' ? 'CH_TAHSILAT' : 'CH_ODEME',
-                  account: contextMenu.supplier,
-                  settleClose: true,
-                });
-                setContextMenu(null);
-              },
-            },
             { id: 'edit', label: tm('edit'), icon: Edit, onClick: () => { if (contextMenu.supplier) handleEditClick(contextMenu.supplier); setContextMenu(null); } },
             {
               id: 'extract',
@@ -1628,12 +1604,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
             cardType: cashAction.account.cardType,
             ledgerBalance: cashAction.account.balance || 0,
           }}
-          initialDescription={
-            cashAction.settleClose
-              ? `${tm('settleCloseAccount')}: ${cashAction.account.code || ''} - ${cashAction.account.name}`
-              : `${cashAction.type === 'CH_TAHSILAT' ? 'Tahsilat' : 'Ödeme'}: ${cashAction.account.code || ''} - ${cashAction.account.name}`
-          }
-          initialSettleClose={!!cashAction.settleClose}
+          initialDescription={`${cashAction.type === 'CH_TAHSILAT' ? 'Tahsilat' : 'Ödeme'}: ${cashAction.account.code || ''} - ${cashAction.account.name}`}
           onClose={() => setCashAction(null)}
           onSuccess={() => {
             setCashAction(null);
