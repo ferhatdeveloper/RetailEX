@@ -1,20 +1,20 @@
 RetailEX Portable
-=================
+================
 
-Bu dosya zip paketine VERSION.txt ile birlikte kopyalanır; asıl metin
-scripts/pack-retailex-portable-zip.mjs içinde üretilir.
+Kurulum: RetailEX-Portable-{version}.exe dosyasını Yönetici olarak çalıştırın (UAC: Evet).
+Varsayılan dizin: C:\RetailEx\App
 
-Hızlı özet
-- Zip'i C:\RetailEx\App\ altına açın (PostgreSQL elle kurulu olmalı)
-- RetailEX_Config.exe → C:\RetailEx\config.db
-- RetailEX_Tools.exe setup-db  (DB oluştur + migration) veya menü 9
-- retailex.exe
-- Güncelleme: RetailEX_Tools.exe update / menü 7
-- SQL güncelle + migrate: RetailEX_Tools.exe sync-migrate / menü C
-- Yalnız SQL çek: RetailEX_Tools.exe fetch-sql / menü B
-- Yalnız migration: RetailEX_Tools.exe migrate / menü 8
+Kurulum şu Windows hizmetlerini otomatik kurar:
+  - RetailEX_Service (senkron)
+  - RetailEX_SQL_Bridge (port 3001)
+  - RetailEX_Printer
+  - RetailEX_PostgREST (port 3002)
 
-RetailEX_Tools.exe zip kökünde ve RetailEXTools\ altında bulunur.
-SQL kaynağı: GitHub ferhatdeveloper/RetailEX (ref: main, RETAILEX_SQL_REF ile değiştirilebilir)
+Hizmetler eksikse: install-services-manual.cmd (Yönetici)
 
-Mark of the Web: scripts/customer-unblock-portable.ps1
+Sonraki adımlar:
+  1. RetailEX_Config.exe → C:\RetailEx\config.db
+  2. RetailEX_Tools.exe setup-db (veya menü 9)
+  3. retailex.exe
+
+Güncelleme: RetailEX_Tools.exe update (menü 7)

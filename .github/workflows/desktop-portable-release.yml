@@ -1,8 +1,9 @@
 name: Desktop Portable Release
 
-# RetailEX Tauri masaüstü — NSIS yok, RetailEX-Portable-{version}.zip
+# RetailEX Tauri masaüstü — yönetici NSIS EXE (RetailEX-Portable-{version}.exe)
+# Tam yetkili: Sync / SQL Bridge / Printer / PostgREST hizmetlerini kurar.
 # Tetikleme:
-#   git tag portable-v0.1.263 && git push origin portable-v0.1.263
+#   git tag portable-v0.1.271 && git push origin portable-v0.1.271
 # veya Actions → "Desktop Portable Release" → Run workflow
 
 on:
@@ -36,6 +37,18 @@ jobs:
         with:
           node-version: 20
           cache: npm
+
+      - name: Install NSIS (makensis)
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          $makensis = @(
+            "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
+            "${env:ProgramFiles}\NSIS\makensis.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $makensis) { throw "makensis bulunamadi (choco nsis)" }
+          echo "MAKENSIS=$makensis" >> $env:GITHUB_ENV
+          & $makensis /VERSION
 
       - name: Read package version
         shell: pwsh
@@ -77,7 +90,7 @@ jobs:
           WINDOWS_CODESIGN_DISABLE: '1'
         run: npm run prebuild
 
-      - name: Build Tauri (no NSIS bundle)
+      - name: Build Tauri (no DeskApp NSIS bundle)
         shell: pwsh
         env:
           CI: 'true'
@@ -86,21 +99,23 @@ jobs:
           WINDOWS_CODESIGN_DISABLE: '1'
         run: node scripts/tauri-build-portable.mjs
 
-      - name: Pack portable zip
+      - name: Pack portable EXE (admin + services)
         shell: pwsh
+        env:
+          MAKENSIS: ${{ env.MAKENSIS }}
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           node scripts/pack-retailex-portable-zip.mjs
-          $zip = "dist/RetailEX-Portable-$env:PACKAGE_VERSION.zip"
-          if (-not (Test-Path $zip)) { throw "Portable zip yok: $zip" }
-          echo "PORTABLE_ZIP=RetailEX-Portable-$env:PACKAGE_VERSION.zip" >> $env:GITHUB_ENV
-          (Get-Item $zip).Length | Out-Host
+          $exe = "dist/RetailEX-Portable-$env:PACKAGE_VERSION.exe"
+          if (-not (Test-Path $exe)) { throw "Portable EXE yok: $exe" }
+          echo "PORTABLE_EXE=RetailEX-Portable-$env:PACKAGE_VERSION.exe" >> $env:GITHUB_ENV
+          (Get-Item $exe).Length | Out-Host
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: RetailEX-Portable-${{ env.PACKAGE_VERSION }}
-          path: dist/RetailEX-Portable-${{ env.PACKAGE_VERSION }}.zip
+          path: dist/RetailEX-Portable-${{ env.PACKAGE_VERSION }}.exe
           retention-days: 30
 
       - name: Create GitHub Release
@@ -109,24 +124,28 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           name: RetailEX Portable ${{ env.PACKAGE_VERSION }}
           body: |
-            ## RetailEX Portable (Windows)
+            ## RetailEX Portable (Windows EXE)
 
-            Kurulumsuz zip — NSIS setup yok. Otomatik derleme: `${{ github.workflow }}` (#${{ github.run_number }})
+            Yönetici kurulum — otomatik derleme: `${{ github.workflow }}` (#${{ github.run_number }})
 
             ### Kurulum
-            1. `RetailEX-Portable-${{ env.PACKAGE_VERSION }}.zip` indirin ve örn. `C:\RetailEx\App\` altına açın
-            2. PostgreSQL erişilebilir olmalı
-            3. `RetailEX_Config.exe` ile `C:\RetailEx\config.db` ayarlayın
-            4. `retailex.exe` çalıştırın
+            1. `RetailEX-Portable-${{ env.PACKAGE_VERSION }}.exe` indirin ve **Yönetici** olarak çalıştırın (UAC: Evet)
+            2. Varsayılan dizin: `C:\RetailEx\App`
+            3. Kurulum şu Windows hizmetlerini kurar: Sync, SQL Bridge, Printer, PostgREST
+            4. `RetailEX_Config.exe` ile `C:\RetailEx\config.db` ayarlayın
+            5. `retailex.exe` çalıştırın
+
+            ### Hizmet kurtarma
+            `C:\RetailEx\App\install-services-manual.cmd` (Yönetici)
 
             ### Güncelleme
             `RetailEX_Tools.exe` → **Güncelle (portable)** veya `RetailEX_Tools.exe update`
 
             ### Dosyalar
-            - **RetailEX-Portable-${{ env.PACKAGE_VERSION }}.zip** — taşınabilir paket
+            - **RetailEX-Portable-${{ env.PACKAGE_VERSION }}.exe** — yönetici NSIS kurulum (ZIP değil)
 
             Sürüm: `${{ env.PACKAGE_VERSION }}` (kök `package.json`)
-          files: dist/RetailEX-Portable-${{ env.PACKAGE_VERSION }}.zip
+          files: dist/RetailEX-Portable-${{ env.PACKAGE_VERSION }}.exe
           draft: false
           prerelease: false
           make_latest: false

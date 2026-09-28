@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 /**
- * RetailEX DeskApp portable zip — NSIS yok.
+ * RetailEX DeskApp portable — yönetici NSIS EXE (ZIP değil).
  * Kaynak: DeskApp/target/release (+ resources).
- * Çıktı: dist/RetailEX-Portable-{version}.zip
+ * Çıktı: dist/RetailEX-Portable-{version}.exe
  *
  *   node scripts/pack-retailex-portable-zip.mjs
- *   node scripts/pack-retailex-portable-zip.mjs --out /path/to.zip
+ *   node scripts/pack-retailex-portable-zip.mjs --out /path/to.exe
+ *   node scripts/pack-retailex-portable-zip.mjs --zip   # isteğe bağlı zip de üret
+ *
+ * Windows'ta makensis gerekir (CI: choco install nsis).
  */
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,13 +24,16 @@ const version = String(pkg.version || '0.0.0');
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  let out = path.join(root, 'dist', `RetailEX-Portable-${version}.zip`);
+  let out = path.join(root, 'dist', `RetailEX-Portable-${version}.exe`);
+  let alsoZip = false;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--out' && args[i + 1]) {
       out = path.resolve(args[++i]);
+    } else if (args[i] === '--zip') {
+      alsoZip = true;
     }
   }
-  return { out };
+  return { out, alsoZip };
 }
 
 function mustExist(p, label) {
@@ -74,28 +80,26 @@ function copyIfExists(src, dest) {
 const README = `RetailEX Portable ${version}
 ========================
 
-Kurulum (hızlı)
-1. Bu zip'i örn. C:\\RetailEx\\App\\ altına açın.
-2. PostgreSQL sunucusu elle kurulu olmalı (bu paket PG kurmaz).
-3. RetailEX_Config.exe ile C:\\RetailEx\\config.db ayarlarını doldurun.
-4. RetailEX_Tools.exe setup-db  (veya menü 9: DB oluştur + migration)
-   — SQL güncellemek için: RetailEX_Tools.exe sync-migrate (menü C)
-5. retailex.exe çalıştırın.
+Kurulum (EXE — Yönetici)
+1. RetailEX-Portable-${version}.exe dosyasını çalıştırın (UAC: Evet).
+2. Varsayılan dizin: C:\\RetailEx\\App
+3. Kurulum Windows hizmetlerini otomatik kurar:
+   RetailEX_Service, RetailEX_SQL_Bridge, RetailEX_Printer, PostgREST
+4. RetailEX_Config.exe ile C:\\RetailEx\\config.db ayarlayın.
+5. RetailEX_Tools.exe setup-db (veya menü 9) — DB oluştur + migration
+6. retailex.exe çalıştırın.
+
+Hizmetler eksikse (Yönetici):
+  C:\\RetailEx\\App\\install-services-manual.cmd
 
 Güncelleme
-- Uygulama: RetailEX_Tools.exe update (menü 7)
-- Yalnız şema: RetailEX_Tools.exe sync-migrate (GitHub SQL + migrate)
-- Ortam: RETAILEX_SQL_REF=main (varsayılan)
-
-Araçlar
-- RetailEX_Tools.exe (kök) ve RetailEXTools\\RetailEX_Tools.exe
-- setup-db | fetch-sql | sync-migrate | migrate | update | config
+- RetailEX_Tools.exe update (menü 7) — GitHub'dan yeni EXE indirir
+- Yalnız şema: RetailEX_Tools.exe sync-migrate
 
 Notlar
-- config.db, PG verisi ve yedekler zip içinde DEĞİLDİR (C:\\RetailEx\\ altında kalır).
-- WebView2 Runtime gerekir (Windows 10/11 genelde yüklü).
-- Windows "Mark of the Web" uyarısı: dosyaya sağ tık → Özellikler → Engellemeyi kaldır.
-- NSIS kurulum (setup.exe) bu pakette yoktur.
+- config.db, PG verisi ve yedekler paket içinde DEĞİLDİR (C:\\RetailEx\\ altında kalır).
+- WebView2 Runtime gerekir.
+- Mark of the Web: sağ tık → Özellikler → Engellemeyi kaldır.
 
 Sürüm: ${version}
 Repo: https://github.com/ferhatdeveloper/RetailEX
@@ -124,7 +128,6 @@ function stagePortable(stageRoot) {
 
   copyIfExists(path.join(deskApp, 'wintun.dll'), path.join(stageRoot, 'wintun.dll'));
 
-  // Tools: RetailEXTools\\RetailEX_Tools.exe (NSIS ile aynı düzen)
   fs.mkdirSync(path.join(stageRoot, 'RetailEXTools'), { recursive: true });
   copyFile(
     path.join(releaseDir, 'RetailEX_Tools.exe'),
@@ -164,21 +167,14 @@ function stagePortable(stageRoot) {
   copyIfExists(path.join(res, 'postgrest', 'postgrest.exe'), path.join(stageRoot, 'postgrest.exe'));
   copyIfExists(path.join(res, 'sumatra'), path.join(stageRoot, '_up_', 'sumatra'));
 
-  // Node runtime + bridge node_modules
   copyIfExists(path.join(res, 'nodejs-runtime', 'node.exe'), path.join(stageRoot, 'runtime', 'node', 'node.exe'));
   copyIfExists(path.join(res, 'node_modules'), path.join(stageRoot, 'node_modules'));
 
-  // Migrations for startup / Tools
   copyIfExists(path.join(root, 'database', 'migrations'), path.join(stageRoot, '_up_', 'database', 'migrations'));
   copyIfExists(path.join(root, 'database', 'init'), path.join(stageRoot, '_up_', 'database', 'init'));
   copyIfExists(path.join(root, 'database', 'sys'), path.join(stageRoot, '_up_', 'database', 'sys'));
   copyIfExists(path.join(root, 'config', 'postgrest.conf'), path.join(stageRoot, '_up_', 'config', 'postgrest.conf'));
-
-  // Migration runner (Tools → node)
-  copyIfExists(
-    path.join(root, 'database', 'scripts'),
-    path.join(stageRoot, '_up_', 'database', 'scripts'),
-  );
+  copyIfExists(path.join(root, 'database', 'scripts'), path.join(stageRoot, '_up_', 'database', 'scripts'));
 
   const pgRemote = path.join(root, 'tools', 'postgresql-remote-enable', 'RetailEX_PostgreSQLRemote.exe');
   const pgRemoteAlt = path.join(deskApp, 'target', 'release', 'RetailEX_PostgreSQLRemote.exe');
@@ -206,23 +202,99 @@ function zipStage(stageRoot, outZip) {
       stdio: 'inherit',
     });
   } else {
-    // macOS/Linux CI veya yerel: zip CLI
     execSync(`cd "${stageRoot}" && zip -r -q "${outZip}" .`, { stdio: 'inherit', shell: true });
   }
 }
 
+function resolveMakensis() {
+  const candidates = [
+    process.env.MAKENSIS,
+    'makensis',
+    'C:\\Program Files (x86)\\NSIS\\makensis.exe',
+    'C:\\Program Files\\NSIS\\makensis.exe',
+  ].filter(Boolean);
+  for (const c of candidates) {
+    try {
+      const r = spawnSync(c, ['/VERSION'], { encoding: 'utf8' });
+      if (r.status === 0 || (r.stdout || r.stderr || '').length > 0) {
+        return c;
+      }
+    } catch {
+      /* next */
+    }
+  }
+  return null;
+}
+
+function nsisPath(p) {
+  // NSIS File / OutFile: forward slash daha güvenli
+  return path.resolve(p).replace(/\\/g, '/');
+}
+
+function buildExe(stageRoot, outExe) {
+  if (process.platform !== 'win32') {
+    throw new Error(
+      '[portable-pack] EXE paketi yalnızca Windows + makensis ile üretilir (GitHub Actions windows-latest).',
+    );
+  }
+  const makensis = resolveMakensis();
+  if (!makensis) {
+    throw new Error(
+      '[portable-pack] makensis bulunamadı. CI: choco install nsis -y — veya MAKENSIS=... ayarlayın.',
+    );
+  }
+
+  const template = path.join(deskApp, 'portable-installer.nsi');
+  mustExist(template, 'portable-installer.nsi');
+  const icon = path.join(deskApp, 'icons', 'icon.ico');
+  mustExist(icon, 'icons/icon.ico');
+
+  fs.mkdirSync(path.dirname(outExe), { recursive: true });
+  if (fs.existsSync(outExe)) fs.unlinkSync(outExe);
+
+  let nsi = fs.readFileSync(template, 'utf8');
+  nsi = nsi
+    .replaceAll('__VERSION__', version)
+    .replaceAll('__OUTFILE__', nsisPath(outExe))
+    .replaceAll('__STAGE_DIR__', nsisPath(stageRoot))
+    .replaceAll('__ICON__', nsisPath(icon));
+
+  const nsiOut = path.join(root, 'dist', `portable-installer-${version}.nsi`);
+  fs.mkdirSync(path.dirname(nsiOut), { recursive: true });
+  fs.writeFileSync(nsiOut, nsi, 'utf8');
+
+  console.log(`[portable-pack] makensis: ${makensis}`);
+  console.log(`[portable-pack] NSI: ${nsiOut}`);
+  const r = spawnSync(makensis, ['/V2', nsiOut], { stdio: 'inherit', shell: false });
+  if (r.status !== 0) {
+    throw new Error(`[portable-pack] makensis başarısız (exit ${r.status})`);
+  }
+  mustExist(outExe, 'portable exe çıktısı');
+}
+
 function main() {
-  const { out } = parseArgs();
+  const { out, alsoZip } = parseArgs();
   const stageRoot = path.join(root, 'dist', 'portable-stage');
   console.log(`[portable-pack] Sürüm ${version}`);
   console.log(`[portable-pack] Stage: ${stageRoot}`);
   stagePortable(stageRoot);
-  zipStage(stageRoot, out);
-  const size = fs.statSync(out).size;
-  console.log(`[portable-pack] OK: ${out} (${Math.round(size / 1024 / 1024)} MB)`);
+
+  const exeOut = out.toLowerCase().endsWith('.exe')
+    ? out
+    : path.join(path.dirname(out), `RetailEX-Portable-${version}.exe`);
+  buildExe(stageRoot, exeOut);
+  const size = fs.statSync(exeOut).size;
+  console.log(`[portable-pack] OK EXE: ${exeOut} (${Math.round(size / 1024 / 1024)} MB)`);
+
+  if (alsoZip) {
+    const zipOut = path.join(path.dirname(exeOut), `RetailEX-Portable-${version}.zip`);
+    zipStage(stageRoot, zipOut);
+    console.log(`[portable-pack] OK ZIP (opsiyonel): ${zipOut}`);
+  }
+
   if (process.env.GITHUB_ENV) {
-    fs.appendFileSync(process.env.GITHUB_ENV, `PORTABLE_ZIP=${path.basename(out)}\n`);
-    fs.appendFileSync(process.env.GITHUB_ENV, `PORTABLE_ZIP_PATH=${out}\n`);
+    fs.appendFileSync(process.env.GITHUB_ENV, `PORTABLE_EXE=${path.basename(exeOut)}\n`);
+    fs.appendFileSync(process.env.GITHUB_ENV, `PORTABLE_EXE_PATH=${exeOut}\n`);
   }
 }
 

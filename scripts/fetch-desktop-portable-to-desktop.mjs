@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * GitHub Release'ten RetailEX-Portable-{version}.zip indirir (Masaüstü).
+ * GitHub Release'ten RetailEX-Portable-{version}.exe indirir (Masaüstü).
  *
  *   npm run desktop:portable:ci:fetch
- *   npm run desktop:portable:ci:fetch -- --tag portable-v0.1.263
+ *   npm run desktop:portable:ci:fetch -- --tag portable-v0.1.272
  */
 import { spawnSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -27,7 +27,7 @@ function parseArgs() {
 
 const { tag } = parseArgs();
 const version = tag.replace(/^portable-v/, '');
-const zipName = `RetailEX-Portable-${version}.zip`;
+const exeName = `RetailEX-Portable-${version}.exe`;
 const destDir = path.join(os.homedir(), 'Desktop');
 
 const remote = execSync('git remote get-url origin', { encoding: 'utf8' }).trim();
@@ -37,10 +37,10 @@ if (!/RetailEX/i.test(remote)) {
 }
 
 fs.mkdirSync(destDir, { recursive: true });
-console.log(`[portable:fetch] ${tag} / ${zipName} → ${destDir}`);
+console.log(`[portable:fetch] ${tag} / ${exeName} → ${destDir}`);
 const r = spawnSync(
   'gh',
-  ['release', 'download', tag, '--repo', repo, '--pattern', zipName, '--dir', destDir, '--clobber'],
+  ['release', 'download', tag, '--repo', repo, '--pattern', exeName, '--dir', destDir, '--clobber'],
   { stdio: 'inherit' },
 );
 process.exit(r.status ?? 1);

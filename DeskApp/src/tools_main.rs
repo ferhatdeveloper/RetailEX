@@ -142,7 +142,7 @@ fn menu_loop(install_dir: &Path) -> i32 {
         println!("4) Yönetim menüsü (retailex-admin.ps1)");
         println!("5) PostgreSQL uzaktan erisim (pg-windows-expose-remote.ps1)");
         println!("6) PostgreSQL LAN (.exe, UAC) — RetailEX_PostgreSQLRemote.exe");
-        println!("7) Güncelle (portable zip, GitHub)");
+        println!("7) Güncelle (portable EXE, GitHub)");
         println!("8) Migration uygula (yerel SQL → PG)");
         println!("9) DB oluştur + migration (config.db)");
         println!("B) GitHub'dan güncel SQL çek");
@@ -243,7 +243,7 @@ fn dispatch_cli(install_dir: &Path, args: &[String]) -> i32 {
                 "Kullanım: RetailEX_Tools.exe [komut]\n\
                  Komutlar: services | bridge-npm | bridge | admin | pg | pg-remote\n\
                            update | migrate | setup-db | fetch-sql | sync-migrate | config\n\
-                 update: GitHub RetailEX-Portable-*.zip indirip kurulum dizinine yazar\n\
+                 update: GitHub RetailEX-Portable-*.exe indirip kurulum dizinine yazar\n\
                  migrate: yerel SQL → PostgreSQL bekleyen migration\n\
                  setup-db: CREATE DATABASE (yoksa) + migration\n\
                  fetch-sql: GitHub main database/migrations → _up_\\database\\migrations\n\

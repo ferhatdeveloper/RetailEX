@@ -8,7 +8,7 @@ alwaysApply: true
 `git-ask-upload-after-task.mdc` ile uyumlu **2. adım**. Yalnızca **commit + `push origin main` başarıyla bittikten sonra** sor.
 
 > Mobil Android = **React Native / Expo (`mobile/`)** — Capacitor değil. Ayrıntı: `retailex-mobile-react-native.mdc`.  
-> Portable = **RetailEX-Portable zip** (NSIS değil). Ayrıntı: `retailex-desktop-portable-ci-build.mdc`, `retailex-desktop-portable-release-guard.mdc`.
+> Portable = **RetailEX-Portable EXE** (yönetici NSIS; ZIP değil). Ayrıntı: `retailex-desktop-portable-ci-build.mdc`, `retailex-desktop-portable-release-guard.mdc`.
 
 ## Ne zaman
 
@@ -38,7 +38,7 @@ Soru örneği:
 |---------|--------|
 | **1** | Android App Release — **React Native / Expo (`mobile/`)** |
 | **2** | Desktop App Release — NSIS `RetailEX-Desktop-Setup-{version}.exe` |
-| **3** | Desktop Portable Release — `RetailEX-Portable-{version}.zip` |
+| **3** | Desktop Portable Release — `RetailEX-Portable-{version}.exe` |
 | **4** | Android RN + DeskApp NSIS + Portable (paralel veya sırayla tetik) |
 | **5** | CI yok; kısa onay yeterli |
 
@@ -70,7 +70,7 @@ Her tetiklemede önce `git remote -v` → `origin` URL’de **RetailEX** olmalı
    **veya** `npm run desktop:portable:ci:build`
 2. Kurallar: `retailex-desktop-portable-ci-build.mdc`, `retailex-desktop-portable-release-guard.mdc`
 3. Workflow: `.github/workflows/desktop-portable-release.yml`
-4. Run sayfasını **aç** ve link ver; bitince release + `RetailEX-Portable-{version}.zip`
+4. Run sayfasını **aç** ve link ver; bitince release + `RetailEX-Portable-{version}.exe`
 
 ### 4 — Hepsi
 

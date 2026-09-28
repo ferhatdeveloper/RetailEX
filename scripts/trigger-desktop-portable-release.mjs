@@ -105,13 +105,13 @@ async function main() {
   if (!ok) process.exit(1);
 
   if (fetchAfter) {
-    const zipName = `RetailEX-Portable-${pkg.version}.zip`;
+    const exeName = `RetailEX-Portable-${pkg.version}.exe`;
     const destDir = path.join(os.homedir(), 'Desktop');
     fs.mkdirSync(destDir, { recursive: true });
     console.log(`[desktop:portable:ci] İndiriliyor: ${tag} → ${destDir}`);
     spawnSync(
       'gh',
-      ['release', 'download', tag, '--repo', repo, '--pattern', zipName, '--dir', destDir, '--clobber'],
+      ['release', 'download', tag, '--repo', repo, '--pattern', exeName, '--dir', destDir, '--clobber'],
       { stdio: 'inherit' },
     );
   }

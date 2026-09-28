@@ -30,15 +30,15 @@ Yalnızca **bu** repoda ve **RetailEX** markasıyla:
 
 | Öğe | Kalıp |
 |-----|--------|
-| Zip | `RetailEX-Portable-{version}.zip` |
+| EXE | `RetailEX-Portable-{version}.exe` (yönetici NSIS; ZIP değil) |
 | Tag | `portable-v{version}` (yalnızca `origin` = RetailEX) |
 | Release adı | `RetailEX Portable {version}` |
 | Workflow | `.github/workflows/desktop-portable-release.yml` (RetailEX) |
-| Pack | `scripts/pack-retailex-portable-zip.mjs` |
+| Pack | `scripts/pack-retailex-portable-zip.mjs` + `DeskApp/portable-installer.nsi` |
 | Tetikleme | `npm run desktop:portable:ci:build` |
-| Güncelleme | `RetailEX_Tools.exe update` / menü 7 (config.db + GitHub) |
+| Güncelleme | `RetailEX_Tools.exe update` / menü 7 (config.db + GitHub EXE) |
 
-NSIS kurulum: `RetailEX-Desktop-Setup-{version}.exe` + tag `app-v{version}` (`retailex-desktop-release-filename.mdc`).
+DeskApp NSIS kurulum: `RetailEX-Desktop-Setup-{version}.exe` + tag `app-v{version}` (`retailex-desktop-release-filename.mdc`).
 
 Terazi yardımcı portable: `RetailEX.TeraziManager-Portable-{version}.zip` — yine RetailEX markası; AsinERP değil.
 
@@ -53,5 +53,5 @@ Terazi yardımcı portable: `RetailEX.TeraziManager-Portable-{version}.zip` — 
 
 - [ ] `origin` = RetailEX mi doğrulandı?
 - [ ] Release asset / title’da `AsinERP` yok mu?
-- [ ] Portable gerekiyorsa ad `RetailEX-Portable-…` mi (Asin script kopyası değil)?
+- [ ] Portable gerekiyorsa ad `RetailEX-Portable-….exe` mi (Asin script / zip değil)?
 - [ ] CI yalnızca doküman/kural değişikliğinde tetiklenmedi mi?

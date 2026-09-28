@@ -18,7 +18,7 @@ struct GhRelease {
     assets: Vec<GhAsset>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct GhAsset {
     name: String,
     browser_download_url: String,
@@ -138,10 +138,18 @@ fn find_latest_portable_release() -> Result<(String, GhAsset), String> {
         if !r.tag_name.starts_with("portable-v") {
             continue;
         }
+        // Önce yönetici EXE, yoksa eski zip
         let asset = r
             .assets
-            .into_iter()
-            .find(|a| a.name.starts_with("RetailEX-Portable-") && a.name.ends_with(".zip"));
+            .iter()
+            .find(|a| a.name.starts_with("RetailEX-Portable-") && a.name.ends_with(".exe"))
+            .cloned()
+            .or_else(|| {
+                r.assets
+                    .iter()
+                    .find(|a| a.name.starts_with("RetailEX-Portable-") && a.name.ends_with(".zip"))
+                    .cloned()
+            });
         let Some(asset) = asset else { continue };
         let tag = r.tag_name.clone();
         match &best {
@@ -154,7 +162,7 @@ fn find_latest_portable_release() -> Result<(String, GhAsset), String> {
         }
     }
     best.ok_or_else(|| {
-        "GitHub'da portable-v* release / RetailEX-Portable-*.zip bulunamadı.".to_string()
+        "GitHub'da portable-v* release / RetailEX-Portable-*.exe bulunamadı.".to_string()
     })
 }
 
@@ -471,7 +479,7 @@ fn try_start_services() {
     }
 }
 
-/// Menü: portable zip güncellemesi.
+/// Menü: portable EXE (veya eski zip) güncellemesi.
 pub fn run_portable_update(install_dir: &Path) -> i32 {
     println!("=== RetailEX Portable Güncelleme ===");
     println!("Kurulum dizini: {}", install_dir.display());
@@ -534,24 +542,54 @@ pub fn run_portable_update(install_dir: &Path) -> i32 {
         return 0;
     }
 
-    let zip_path = std::env::temp_dir().join(&asset.name);
+    let dl_path = std::env::temp_dir().join(&asset.name);
     println!("İndiriliyor: {}", asset.browser_download_url);
-    if let Err(e) = download_file(&asset.browser_download_url, &zip_path) {
+    if let Err(e) = download_file(&asset.browser_download_url, &dl_path) {
         eprintln!("İndirme hatası: {}", e);
         return 1;
     }
-    println!("İndirildi: {}", zip_path.display());
+    println!("İndirildi: {}", dl_path.display());
 
     println!("Servisler durduruluyor (varsa)...");
     try_stop_services();
 
-    println!("Paket açılıyor → {}", install_dir.display());
-    if let Err(e) = expand_zip_overwrite(&zip_path, install_dir) {
-        eprintln!("Kurulum hatası: {}", e);
-        try_start_services();
-        return 1;
+    let is_exe = asset.name.to_ascii_lowercase().ends_with(".exe");
+    if is_exe {
+        // Yönetici NSIS: /S sessiz, /D=hedef (tırnaksız, son argüman)
+        let dest = install_dir
+            .canonicalize()
+            .unwrap_or_else(|_| install_dir.to_path_buf());
+        let dest_s = dest.to_string_lossy().trim_end_matches('\\').to_string();
+        println!("EXE sessiz kurulum → {}", dest_s);
+        let status = Command::new(&dl_path)
+            .arg("/S")
+            .arg(format!("/D={}", dest_s))
+            .status();
+        match status {
+            Ok(s) if s.success() => {}
+            Ok(s) => {
+                eprintln!("Kurulum EXE çıkış kodu: {:?}", s.code());
+                try_start_services();
+                let _ = fs::remove_file(&dl_path);
+                return 1;
+            }
+            Err(e) => {
+                eprintln!("Kurulum EXE çalıştırılamadı: {}", e);
+                try_start_services();
+                let _ = fs::remove_file(&dl_path);
+                return 1;
+            }
+        }
+        let _ = fs::remove_file(&dl_path);
+    } else {
+        println!("Paket açılıyor → {}", install_dir.display());
+        if let Err(e) = expand_zip_overwrite(&dl_path, install_dir) {
+            eprintln!("Kurulum hatası: {}", e);
+            try_start_services();
+            return 1;
+        }
+        let _ = fs::remove_file(&dl_path);
     }
-    let _ = fs::remove_file(&zip_path);
 
     // Tools kopyası RetailEXTools altında da olsun
     let tools_src = install_dir.join("RetailEX_Tools.exe");
@@ -559,6 +597,30 @@ pub fn run_portable_update(install_dir: &Path) -> i32 {
     if tools_src.exists() {
         let _ = fs::create_dir_all(tools_dst.parent().unwrap());
         let _ = fs::copy(&tools_src, &tools_dst);
+    }
+
+    // Güncelleme sonrası hizmetleri yeniden kur / başlat
+    let setup = install_dir.join("install-services-setup.ps1");
+    if setup.exists() {
+        println!("Hizmetler yeniden kuruluyor (install-services-setup.ps1)...");
+        let marker = install_dir.join("retailex_install_prefix.txt");
+        let _ = fs::write(
+            &marker,
+            install_dir
+                .canonicalize()
+                .unwrap_or_else(|_| install_dir.to_path_buf())
+                .to_string_lossy()
+                .as_ref(),
+        );
+        let _ = Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                setup.to_string_lossy().as_ref(),
+            ])
+            .status();
     }
 
     println!("Servisler başlatılıyor (varsa)...");
@@ -583,7 +645,7 @@ fn resolve_migrations_dir(install_dir: &Path) -> Result<PathBuf, String> {
         }
     }
     Err(format!(
-        "Migration klasörü yok. Önce 'fetch-sql' veya portable zip kullanın. Beklenen: {}",
+        "Migration klasörü yok. Önce 'fetch-sql' veya portable EXE kullanın. Beklenen: {}",
         preferred.display()
     ))
 }
