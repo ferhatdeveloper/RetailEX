@@ -39,7 +39,6 @@ import {
 } from '../../services/merkezTenantRegistry';
 import {
   markForceSetupWizard,
-  peekForceSetupWizard,
   requestOpenSetupWizard,
 } from '../../utils/setupWizardGate';
 
@@ -493,24 +492,13 @@ export function Login({ onLogin }: LoginProps) {
     }
   };
 
-  /** Gerçek SetupWizard (App.tsx): önce UI, sonra config.db (save başarısız olsa bile sihirbaz açılsın) */
+  /** Gerçek SetupWizard: fabrika sıfırlama ile aynı — kaydet + force + yenile (event yarışına güvenme) */
   const enterDesktopSetupWizard = async () => {
     if (isEnteringFullSetup) return;
     setIsEnteringFullSetup(true);
     try {
       if (isTauri) {
-        markForceSetupWizard();
-        setShowSetupWizard(false);
-        requestOpenSetupWizard();
         toast.success(tm('loginWizardOpening'));
-
-        // Event App’e ulaşmazsa (IS_TAURI yarışı): force bayrak kalır → yenile → SetupWizard
-        window.setTimeout(() => {
-          if (peekForceSetupWizard()) {
-            window.location.reload();
-          }
-        }, 700);
-
         try {
           const { invoke } = await import('@tauri-apps/api/core');
           let current: Record<string, unknown> = {};
@@ -528,7 +516,10 @@ export function Login({ onLogin }: LoginProps) {
         } catch (saveErr) {
           console.warn('enterDesktopSetupWizard save_app_config:', saveErr);
         }
-        setIsEnteringFullSetup(false);
+        setShowSetupWizard(false);
+        markForceSetupWizard();
+        // Event’e güvenme — Login’de kalıyordu; yenileme force bayrağı ile SetupWizard açar
+        window.location.reload();
         return;
       }
 

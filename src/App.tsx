@@ -24,6 +24,7 @@ import {
   SETUP_WIZARD_EVENT,
   clearSetupWizardLocalFlags,
   consumeForceSetupWizard,
+  peekForceSetupWizard,
 } from './utils/setupWizardGate';
 
 // Import WebSocket patch FIRST to suppress all WebSocket errors globally
@@ -40,8 +41,8 @@ export type { Product, ProductVariant, Customer, Sale, SaleItem, Campaign, User 
 function App() {
   const { user, isAuthenticated, logout, loading: authLoading } = useAuth();
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
-  /** Login değnek: event ile zorla SetupWizard (IS_TAURI sabiti false kalsa bile) */
-  const [wizardForced, setWizardForced] = useState(false);
+  /** Login değnek / fabrika: session force ile ilk boyamada bile SetupWizard */
+  const [wizardForced, setWizardForced] = useState(() => peekForceSetupWizard());
   const [isPgReady, setIsPgReady] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [installingPg, setInstallingPg] = useState(false);
@@ -380,8 +381,11 @@ function App() {
     };
   }, [isAuthenticated, isConfigured]);
 
-  // Yükleme ekranı: siyah yerine gradient arka plan, böylece ekran boş görünmez
-  if ((isConfigured === null && !wizardForced) || !isPgReady || installingPg) {
+  const showSetupWizard =
+    wizardForced || ((deskApp || isTauriApp()) && isConfigured === false);
+
+  // Yükleme ekranı — SetupWizard açılacaksa PG kurulumu splash’i engellemesin
+  if (!showSetupWizard && ((isConfigured === null && !wizardForced) || !isPgReady || installingPg)) {
     return (
       <div className="fixed inset-0 flex items-center justify-center animate-in fade-in duration-300 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <div className="text-center flex flex-col items-center gap-6">
@@ -397,15 +401,12 @@ function App() {
     );
   }
 
-  const showSetupWizard =
-    wizardForced || ((deskApp || isTauriApp()) && isConfigured === false);
-
   return (
     <FirmaDonemProvider>
       <VersionProvider>
         <ErrorBoundary>
           {/* Global Loading / Setup Wizard Check */}
-          {isConfigured === null && !wizardForced ? (
+          {isConfigured === null && !wizardForced && !showSetupWizard ? (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
               <div className="text-center flex flex-col items-center gap-6">
                 <NeonLogo size="lg" className="animate-pulse justify-center" productLine={readNeonProductLineFromStorage()} />
