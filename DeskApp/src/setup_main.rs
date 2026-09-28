@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 #[path = "config.rs"]
 mod config;
 
@@ -31,7 +33,19 @@ fn get_config_db_path() -> PathBuf {
 }
 
 fn main() -> anyhow::Result<()> {
-    let ui = SetupWindow::new()?;
+    let ui = match SetupWindow::new() {
+        Ok(u) => u,
+        Err(e) => {
+            let _ = MessageDialog::new()
+                .set_title("RetailEX Config")
+                .set_text(&format!(
+                    "Setup window could not open:\n{}\n\nIf Smart App Control blocked this app, turn it Off in Windows Security, then run RetailEX_Config.exe again.",
+                    e
+                ))
+                .show_alert();
+            return Err(e.into());
+        }
+    };
 
     if let Ok(cfg) = load_config() {
         ui.set_terminal_name(cfg.terminal_name.into());

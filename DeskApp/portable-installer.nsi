@@ -4,6 +4,8 @@
 Unicode true
 RequestExecutionLevel admin
 SetCompressor /SOLID lzma
+SilentInstall normal
+ShowInstDetails show
 
 !include "MUI2.nsh"
 !include "x64.nsh"
@@ -34,6 +36,15 @@ ShowInstDetails show
 !insertmacro MUI_LANGUAGE "English"
 
 Function .onInit
+  ; Log: if UI never appears, check %TEMP%\retailex_portable_setup.log (SAC / silent kill)
+  ClearErrors
+  FileOpen $R9 "$TEMP\retailex_portable_setup.log" w
+  IfErrors skip_log
+    FileWrite $R9 "RetailEX Portable setup onInit OK$\r$\n"
+    FileWrite $R9 "Version=${PRODUCT_VERSION}$\r$\n"
+    FileClose $R9
+  skip_log:
+
   ${IfNot} ${RunningX64}
     MessageBox MB_OK|MB_ICONSTOP "RetailEX Portable requires 64-bit Windows."
     Abort

@@ -82,6 +82,20 @@ const SetupWizard: React.FC = () => {
     const [downloadedSqlPath, setDownloadedSqlPath] = useState<string | null>(null);
     const [isDumpingSql, setIsDumpingSql] = useState(false);
     const [loadDemoData, setLoadDemoData] = useState(false); // Demo data loading option
+    /** Kurulumda yalnızca admin kullanıcısı (personel/depo/kasiyer seed yok) */
+    const [adminOnlyUsers, setAdminOnlyUsers] = useState(true);
+    /** SQL kaynağı: paket (yerel) veya GitHub main/tag */
+    const [sqlSourceMode, setSqlSourceMode] = useState<'local' | 'github'>('local');
+    const [sqlGitRef, setSqlGitRef] = useState('main');
+    const [sqlGitPresets, setSqlGitPresets] = useState<string[]>(['main']);
+    const [sqlFetchLoading, setSqlFetchLoading] = useState(false);
+    const [sqlSourceInfo, setSqlSourceInfo] = useState<{
+        path?: string;
+        file_count?: number;
+        has_master?: boolean;
+        source?: string;
+        message?: string;
+    } | null>(null);
     const [config, setConfig] = useState<AppConfig>(createInitialSetupConfig());
 
     const [postgrestWizardEntryMode, setPostgrestWizardEntryMode] = useState<'retailex_cloud' | 'custom_url'>(
@@ -115,6 +129,67 @@ const SetupWizard: React.FC = () => {
     useEffect(() => {
         if (demoSeedConflictsWithLogoObjects && loadDemoData) setLoadDemoData(false);
     }, [demoSeedConflictsWithLogoObjects, loadDemoData]);
+
+    useEffect(() => {
+        if (!isTauri) return;
+        void (async () => {
+            try {
+                const presets = (await safeInvoke('list_sql_git_ref_presets')) as string[];
+                if (Array.isArray(presets) && presets.length) setSqlGitPresets(presets);
+            } catch { /* ignore */ }
+            try {
+                const info = (await safeInvoke('get_migrations_source_info')) as {
+                    path?: string;
+                    file_count?: number;
+                    has_master?: boolean;
+                    source?: string;
+                };
+                if (info) {
+                    setSqlSourceInfo(info);
+                    if (info.source === 'github') setSqlSourceMode('github');
+                }
+            } catch { /* ignore */ }
+        })();
+    }, [isTauri]);
+
+    const fetchMasterSqlFromGit = async () => {
+        if (!isTauri) {
+            toast.error('Git SQL indirme yalnızca masaüstü (Tauri) kurulumunda.');
+            return;
+        }
+        const ref = (sqlGitRef || 'main').trim();
+        if (!ref) {
+            toast.error('Git branch / tag girin (ör. main).');
+            return;
+        }
+        setSqlFetchLoading(true);
+        try {
+            const result = (await safeInvoke('fetch_migrations_from_github', { gitRef: ref })) as {
+                message?: string;
+                ok?: number;
+                has_master?: boolean;
+                path?: string;
+                sha?: string;
+                git_ref?: string;
+            };
+            setSqlSourceMode('github');
+            setSqlSourceInfo({
+                path: result?.path,
+                file_count: result?.ok,
+                has_master: result?.has_master,
+                source: 'github',
+                message: result?.message,
+            });
+            toast.success(result?.message || 'GitHub SQL indirildi.');
+            setSyncLogs((prev) => [...prev, `📥 ${result?.message || 'GitHub SQL indirildi'}`]);
+        } catch (e: any) {
+            const msg = e?.message || String(e);
+            toast.error('Git SQL indirme hatası: ' + msg);
+            setSyncLogs((prev) => [...prev, `❌ Git SQL: ${msg}`]);
+        } finally {
+            setSqlFetchLoading(false);
+        }
+    };
 
     /** Bağımsız mod + terminal + merkez DB: yeni firma formu atlanır; doğrudan uzak PostgreSQL ayarları. */
     const skipStandaloneFirmStep =
@@ -796,8 +871,30 @@ const SetupWizard: React.FC = () => {
             const primaryTarget = resolvePrimaryMigrationTarget(normalized.db_mode as 'online' | 'offline' | 'hybrid');
 
             if (isTauri) {
-                
-                const rawResult = await safeInvoke('run_migrations', { config: normalized, target: primaryTarget, loadDemoData: false }) as string;
+                if (sqlSourceMode === 'github') {
+                    toast.info(`GitHub SQL indiriliyor (${sqlGitRef || 'main'})…`);
+                    const result = (await safeInvoke('fetch_migrations_from_github', {
+                        gitRef: (sqlGitRef || 'main').trim(),
+                    })) as { message?: string; has_master?: boolean; path?: string; ok?: number };
+                    setSqlSourceInfo({
+                        path: result?.path,
+                        file_count: result?.ok,
+                        has_master: result?.has_master,
+                        source: 'github',
+                        message: result?.message,
+                    });
+                    setSyncLogs((prev) => [...prev, `📥 ${result?.message || 'GitHub SQL indirildi'}`]);
+                }
+
+                const migrationLoadDemo =
+                    loadDemoData === true &&
+                    !demoSeedConflictsWithLogoObjects &&
+                    !config.is_nebim_migration;
+                const rawResult = await safeInvoke('run_migrations', {
+                    config: normalized,
+                    target: primaryTarget,
+                    loadDemoData: migrationLoadDemo,
+                }) as string;
 
                 let report: MigrationStatus[] = [];
                 try {
@@ -1033,6 +1130,29 @@ const SetupWizard: React.FC = () => {
                         await emit('sync-event', '⏭️ Rest API (PostgREST) seçildi: Uzak migrations atlandı.');
                         setDbInitialized(true);
                     } else {
+                        if (sqlSourceMode === 'github') {
+                            await emit('sync-event', `📥 GitHub SQL hazırlanıyor (ref=${sqlGitRef || 'main'})...`);
+                            try {
+                                const result = (await safeInvoke('fetch_migrations_from_github', {
+                                    gitRef: (sqlGitRef || 'main').trim(),
+                                })) as { message?: string; has_master?: boolean; path?: string; ok?: number };
+                                setSqlSourceInfo({
+                                    path: result?.path,
+                                    file_count: result?.ok,
+                                    has_master: result?.has_master,
+                                    source: 'github',
+                                    message: result?.message,
+                                });
+                                await emit('sync-event', `✅ ${result?.message || 'GitHub SQL indirildi'}`);
+                                if (!result?.has_master) {
+                                    await emit('sync-event', '⚠️ 000_master_schema indirilen listede yok — paket SQL ile devam edilebilir.');
+                                }
+                            } catch (gitErr) {
+                                const g = String(gitErr);
+                                await emit('sync-event', `❌ Git SQL indirme başarısız: ${g}`);
+                                throw new Error('GitHub master SQL indirilemedi: ' + g);
+                            }
+                        }
                         // Demo seed (001_demo_data.sql) yalnızca kutu işaretliyse; Nebim veya Logo Objects ile gerçek veri hedefleniyorsa atlanır
                         const migrationLoadDemo =
                             loadDemoData === true &&
@@ -1274,17 +1394,29 @@ const SetupWizard: React.FC = () => {
                     }
 
                     const { emit } = await import('@tauri-apps/api/event');
-                    await emit('sync-event', `Firma ${currentFirmId}: Varsayılan kullanıcılar (admin, personel, depo, kasiyer) oluşturuluyor...`);
+                    await emit(
+                        'sync-event',
+                        adminOnlyUsers
+                            ? `Firma ${currentFirmId}: Yalnızca admin kullanıcısı oluşturuluyor...`
+                            : `Firma ${currentFirmId}: Varsayılan kullanıcılar (admin, personel, depo, kasiyer) oluşturuluyor...`
+                    );
                 }
 
-                const defaultUsers: AppUser[] = [
-                    { username: 'admin', password: 'admin', full_name: 'Sistem Yöneticisi', role: 'admin' },
-                    { username: 'personel', password: 'personel', full_name: 'Saha Personeli', role: 'user' },
-                    { username: 'depo', password: 'depo', full_name: 'Depo Sorumlusu', role: 'warehouse' },
-                    { username: 'kasiyer', password: 'kasiyer', full_name: 'Kasa Görevlisi', role: 'cashier' }
-                ];
+                const defaultUsers: AppUser[] = adminOnlyUsers
+                    ? [{ username: 'admin', password: 'admin', full_name: 'Sistem Yöneticisi', role: 'admin' }]
+                    : [
+                        { username: 'admin', password: 'admin', full_name: 'Sistem Yöneticisi', role: 'admin' },
+                        { username: 'personel', password: 'personel', full_name: 'Saha Personeli', role: 'user' },
+                        { username: 'depo', password: 'depo', full_name: 'Depo Sorumlusu', role: 'warehouse' },
+                        { username: 'kasiyer', password: 'kasiyer', full_name: 'Kasa Görevlisi', role: 'cashier' },
+                    ];
 
-                const erpUsers = (firmData?.users && firmData.users.length > 0) ? firmData.users : [];
+                const erpUsers =
+                    adminOnlyUsers
+                        ? []
+                        : (firmData?.users && firmData.users.length > 0)
+                            ? firmData.users
+                            : [];
 
                 // Skip legacy user migration as public.users is removed
                 console.log('SetupWizard: Skipping legacy user migration (migrated to auth.users).');
@@ -1357,6 +1489,26 @@ const SetupWizard: React.FC = () => {
                             const { emit } = await import('@tauri-apps/api/event');
                             await emit('sync-event', `❌ Kullanıcı hatası (${currentUser.username}): ${errDetail}`);
                         }
+                    }
+                }
+
+                // Sadece admin: auth + public.users içindeki diğer seed hesapları temizle
+                if (adminOnlyUsers && isTauri && authConnStr) {
+                    try {
+                        const { invoke: invClean } = await import('@tauri-apps/api/core');
+                        const { emit } = await import('@tauri-apps/api/event');
+                        await invClean('pg_execute', {
+                            connStr: authConnStr,
+                            sql: `
+                                DELETE FROM auth.users
+                                WHERE COALESCE(raw_user_meta_data->>'username', split_part(email, '@', 1))
+                                      NOT ILIKE 'admin';
+                                DELETE FROM public.users WHERE LOWER(username) <> 'admin';
+                            `,
+                        });
+                        await emit('sync-event', '✅ Kullanıcılar: yalnızca admin bırakıldı.');
+                    } catch (cleanErr) {
+                        console.warn('[SetupWizard] admin-only cleanup:', cleanErr);
                     }
                 }
 
@@ -2345,6 +2497,112 @@ const SetupWizard: React.FC = () => {
                                                             />
                                                         </div>
                                                     </div>
+                                                </div>
+
+                                                {/* Master SQL: paket veya GitHub */}
+                                                {isTauri && (
+                                                    <div className="pt-4 border-t border-white/5 space-y-3">
+                                                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">
+                                                            Master SQL kaynağı
+                                                        </label>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSqlSourceMode('local')}
+                                                                className={`py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
+                                                                    sqlSourceMode === 'local'
+                                                                        ? 'bg-blue-600 text-white border-blue-500'
+                                                                        : 'bg-slate-900/60 text-slate-400 border-white/10 hover:border-white/20'
+                                                                }`}
+                                                            >
+                                                                Yerel paket
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSqlSourceMode('github')}
+                                                                className={`py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
+                                                                    sqlSourceMode === 'github'
+                                                                        ? 'bg-emerald-600 text-white border-emerald-500'
+                                                                        : 'bg-slate-900/60 text-slate-400 border-white/10 hover:border-white/20'
+                                                                }`}
+                                                            >
+                                                                GitHub
+                                                            </button>
+                                                        </div>
+                                                        {sqlSourceMode === 'github' && (
+                                                            <div className="space-y-2 p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/20">
+                                                                <p className="text-[10px] text-emerald-200/80 leading-relaxed">
+                                                                    ferhatdeveloper/RetailEX → database/migrations (000_master_schema + numaralı SQL). Kurulumdan önce indirin.
+                                                                </p>
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {sqlGitPresets.map((p) => (
+                                                                        <button
+                                                                            key={p}
+                                                                            type="button"
+                                                                            onClick={() => setSqlGitRef(p)}
+                                                                            className={`px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider border ${
+                                                                                sqlGitRef === p
+                                                                                    ? 'bg-emerald-600 text-white border-emerald-500'
+                                                                                    : 'bg-slate-900/60 text-slate-400 border-white/10'
+                                                                            }`}
+                                                                        >
+                                                                            {p}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                                <input
+                                                                    type="text"
+                                                                    value={sqlGitRef}
+                                                                    onChange={(e) => setSqlGitRef(e.target.value)}
+                                                                    placeholder="branch veya tag (main, app-v0.1.275…)"
+                                                                    className="w-full bg-slate-900/60 border border-white/10 rounded-xl px-3 py-2.5 text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={sqlFetchLoading}
+                                                                    onClick={() => void fetchMasterSqlFromGit()}
+                                                                    className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] tracking-wide transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                                                >
+                                                                    {sqlFetchLoading ? (
+                                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                    ) : (
+                                                                        <Download className="w-3.5 h-3.5" />
+                                                                    )}
+                                                                    Git’ten master SQL indir
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        {sqlSourceInfo && (
+                                                            <p className="text-[9px] text-slate-500 font-mono leading-relaxed break-all">
+                                                                {sqlSourceInfo.message
+                                                                    || `${sqlSourceInfo.source || '?'} · ${sqlSourceInfo.file_count ?? 0} dosya · master=${sqlSourceInfo.has_master ? 'evet' : 'hayır'} · ${sqlSourceInfo.path || ''}`}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Sadece admin kullanıcı */}
+                                                <div className="pt-4 border-t border-white/5">
+                                                    <label className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-slate-700/20 to-blue-600/10 border border-white/10 cursor-pointer hover:border-blue-500/30 transition-all group">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={adminOnlyUsers}
+                                                            onChange={(e) => setAdminOnlyUsers(e.target.checked)}
+                                                            className="w-5 h-5 rounded border-2 border-blue-500/50 bg-slate-900/60 checked:bg-blue-600 checked:border-blue-600 focus:ring-2 focus:ring-blue-500/50 transition-all cursor-pointer"
+                                                        />
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-sm font-bold text-white">Sadece admin kullanıcı</span>
+                                                                <span className="px-2 py-0.5 bg-blue-600/20 text-blue-300 text-[9px] font-black uppercase tracking-wider rounded-full">Önerilen</span>
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                                                                İşaretliyse kurulumda yalnızca admin (şifre: admin) oluşturulur; personel / depo / kasiyer seed kullanıcıları eklenmez.
+                                                            </p>
+                                                        </div>
+                                                        <div className="w-8 h-8 rounded-lg bg-blue-600/20 flex items-center justify-center group-hover:bg-blue-600/30 transition-all">
+                                                            <User className="w-4 h-4 text-blue-400" />
+                                                        </div>
+                                                    </label>
                                                 </div>
 
                                                 {/* Demo seed: yalnızca kutu işaretliyse 001_demo_data.sql — Logo ile karıştırma; Logo verisi ayrıca MSSQL'den gelir */}

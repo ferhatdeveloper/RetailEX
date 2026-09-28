@@ -396,7 +396,7 @@ function App() {
       <VersionProvider>
         <ErrorBoundary>
           {/* Global Loading / Setup Wizard Check */}
-          {isConfigured === null || authLoading ? (
+          {isConfigured === null || (authLoading && !(IS_TAURI && isConfigured === false)) ? (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
               <div className="text-center flex flex-col items-center gap-6">
                 <NeonLogo size="lg" className="animate-pulse justify-center" productLine={readNeonProductLineFromStorage()} />

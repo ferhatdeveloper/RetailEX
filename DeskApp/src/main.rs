@@ -2,6 +2,7 @@
 
 mod db_ops;
 mod db_utils;
+mod github_sql;
 mod schema_gap;
 mod sql_migration_split;
 mod mssql;
@@ -2190,6 +2191,7 @@ fn main() {
         pg_query, pg_execute, read_init_sqls,
         db_ops::create_database, db_ops::run_migrations, db_ops::open_migration_log, db_ops::diagnose_schema_gaps_cmd, db_ops::init_firm_schema, db_ops::init_period_schema, db_ops::check_db_status, db_ops::get_db_version,
         db_ops::pg_execute_supabase_dump,
+        github_sql::fetch_migrations_from_github, github_sql::get_migrations_source_info, github_sql::list_sql_git_ref_presets,
         sync::send_websocket_message, sync::announce_node, sync::get_last_sync_info, sync::mpos_pull_master_now,
         sync::consume_pending_kasa_data_arrival,
         sync::list_kasa_service_sync_history,

@@ -141,8 +141,12 @@ pub async fn create_database(config: AppConfig, target: Option<String>) -> Resul
 }
 
 /// Wizard / migration runner ile aynı arama sırası (dev + Tauri resource).
+/// Git'ten indirilen `exe/_up_/database/migrations` (numaralı SQL varsa) en önde.
 pub fn resolve_migrations_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     let mut search_paths = Vec::new();
+    if let Some(git_dir) = crate::github_sql::migrations_fetch_dest_near_exe() {
+        search_paths.push(git_dir);
+    }
     search_paths.push(std::path::PathBuf::from("database/migrations"));
     search_paths.push(std::path::PathBuf::from("../database/migrations"));
     if let Ok(res) = app.path().resolve("database/migrations", BaseDirectory::Resource) {
@@ -158,16 +162,22 @@ pub fn resolve_migrations_dir(app: &tauri::AppHandle) -> Result<std::path::PathB
     }
 
     let mut attempted_paths = Vec::new();
+    let mut first_existing: Option<std::path::PathBuf> = None;
     for path in search_paths {
         attempted_paths.push(path.to_string_lossy().to_string());
         if path.exists() && path.is_dir() {
-            println!("Migration directory found: {:?}", path);
-            if let Ok(entries) = std::fs::read_dir(&path) {
-                let count = entries.filter_map(|e| e.ok()).count();
-                println!("Total files in migration directory: {}", count);
+            if crate::github_sql::dir_has_numbered_sql(&path) {
+                println!("Migration directory found (numbered SQL): {:?}", path);
+                return Ok(path);
             }
-            return Ok(path);
+            if first_existing.is_none() {
+                first_existing = Some(path);
+            }
         }
+    }
+    if let Some(path) = first_existing {
+        println!("Migration directory found (fallback empty/partial): {:?}", path);
+        return Ok(path);
     }
     Err(format!(
         "Migration klasörü bulunamadı!\nDenenen yollar:\n{}",

@@ -492,28 +492,34 @@ export function Login({ onLogin }: LoginProps) {
     }
   };
 
-  /** Gerçek SetupWizard (App.tsx): config.db is_configured=false + App state (reload şart değil) */
+  /** Gerçek SetupWizard (App.tsx): önce UI, sonra config.db (save başarısız olsa bile sihirbaz açılsın) */
   const enterDesktopSetupWizard = async () => {
     if (isEnteringFullSetup) return;
     setIsEnteringFullSetup(true);
     try {
       if (isTauri) {
-        const { invoke } = await import('@tauri-apps/api/core');
-        let current: Record<string, unknown> = {};
-        try {
-          current = (await invoke('get_app_config')) as Record<string, unknown>;
-        } catch {
-          current = {};
-        }
-        await invoke('save_app_config', {
-          config: {
-            ...current,
-            is_configured: false,
-          },
-        });
+        markForceSetupWizard();
         setShowSetupWizard(false);
-        toast.success(tm('loginWizardOpening'));
         requestOpenSetupWizard();
+        toast.success(tm('loginWizardOpening'));
+
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          let current: Record<string, unknown> = {};
+          try {
+            current = (await invoke('get_app_config')) as Record<string, unknown>;
+          } catch {
+            current = {};
+          }
+          await invoke('save_app_config', {
+            config: {
+              ...current,
+              is_configured: false,
+            },
+          });
+        } catch (saveErr) {
+          console.warn('enterDesktopSetupWizard save_app_config:', saveErr);
+        }
         setIsEnteringFullSetup(false);
         return;
       }
@@ -1351,10 +1357,22 @@ export function Login({ onLogin }: LoginProps) {
               <button
                 type="button"
                 title={tm('loginSetupWizardTitle')}
-                onClick={() => setShowSetupWizard(true)}
-                className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md group"
+                disabled={isEnteringFullSetup}
+                onClick={() => {
+                  // DeskApp/portable: ara modal stacking altında kalabiliyor → doğrudan SetupWizard
+                  if (isTauri) {
+                    void enterDesktopSetupWizard();
+                    return;
+                  }
+                  setShowSetupWizard(true);
+                }}
+                className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md group disabled:opacity-50"
               >
-                <Wand2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                {isEnteringFullSetup ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Wand2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                )}
               </button>
               <button
                 type="button"
@@ -1767,10 +1785,16 @@ export function Login({ onLogin }: LoginProps) {
       )}
 
 
-      {/* Kurulum seçimi — asıl adımlar SetupWizard (App); bu modal giriş kapısı */}
-      {showSetupWizard && (
+      {/* Kurulum seçimi — body portal (DB ayarları gibi); zoom/stacking altında kalmasın */}
+      {showSetupWizard &&
+        typeof document !== 'undefined' &&
+        createPortal(
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[5000] p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          style={{ zIndex: 2147483646, isolation: 'isolate' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={tm('loginSetupWizardTitle')}
           onClick={() => !isSetupLoading && !isEnteringFullSetup && setShowSetupWizard(false)}
         >
           <div
@@ -2019,7 +2043,8 @@ export function Login({ onLogin }: LoginProps) {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Live Logs Modal */}
