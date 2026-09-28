@@ -1,5 +1,6 @@
 # CI: Portable stage + final EXE Authenticode imza (secret varsa).
-# Env: WINDOWS_CODESIGN_THUMBPRINT veya PFX mağazada; WINDOWS_CODESIGN_DISABLE=1 ise atla.
+# Env: WINDOWS_CODESIGN_THUMBPRINT veya PFX magazada; WINDOWS_CODESIGN_DISABLE=1 ise atla.
+# ONEMLI: em-dash / Turkce UTF-8 kullanma - PS 5.1 BOM'suz UTF-8'i bozar (parse hatasi).
 param(
   [Parameter(Mandatory = $true)]
   [string[]]$Paths
@@ -7,7 +8,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 if ($env:WINDOWS_CODESIGN_DISABLE -eq "1" -or $env:WINDOWS_CODESIGN_DISABLE -eq "true") {
-  Write-Host "[sign-portable] WINDOWS_CODESIGN_DISABLE — atlandi."
+  Write-Host "[sign-portable] WINDOWS_CODESIGN_DISABLE - atlandi."
   exit 0
 }
 
@@ -25,7 +26,7 @@ $signtool = @(
 ) | Get-ChildItem -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
 
 if (-not $signtool) {
-  Write-Warning "[sign-portable] signtool.exe yok — imza atlandi."
+  Write-Warning "[sign-portable] signtool.exe yok - imza atlandi."
   exit 0
 }
 
@@ -40,7 +41,7 @@ if (-not $thumb) {
 }
 
 if (-not $thumb) {
-  Write-Host "[sign-portable] Sertifika yok — atlandi."
+  Write-Host "[sign-portable] Sertifika yok - atlandi."
   exit 0
 }
 
@@ -50,7 +51,7 @@ foreach ($p in $Paths) {
     Write-Warning "[sign-portable] Yok: $p"
     continue
   }
-  Write-Host "[sign-portable] Imzalanıyor: $p"
+  Write-Host "[sign-portable] Imzalaniyor: $p"
   & $signtool sign /fd sha256 /tr $ts /td sha256 /sha1 $thumb $p
   if ($LASTEXITCODE -ne 0) { throw "signtool failed: $p exit $LASTEXITCODE" }
   & $signtool verify /pa $p | Out-Host
