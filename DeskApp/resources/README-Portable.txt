@@ -1,20 +1,22 @@
 RetailEX Portable
 ================
 
-Kurulum: RetailEX-Portable-{version}.exe dosyasını Yönetici olarak çalıştırın (UAC: Evet).
-Varsayılan dizin: C:\RetailEx\App
+Kurulum: RetailEX-Portable-{version}.exe (Yonetici / UAC: Evet)
+Varsayilan dizin: C:\RetailEx\App
 
-Kurulum şu Windows hizmetlerini otomatik kurar:
-  - RetailEX_Service (senkron)
-  - RetailEX_SQL_Bridge (port 3001)
-  - RetailEX_Printer
-  - RetailEX_PostgREST (port 3002)
+Hizmetler: Sync, SQL Bridge, Printer, PostgREST
 
-Hizmetler eksikse: install-services-manual.cmd (Yönetici)
+Akilli Uygulama Denetimi (SAC) engellediyse
+------------------------------------------
+1. Windows Guvenlik > Uygulama ve tarayici denetimi
+2. Akilli Uygulama Denetimi = Kapali
+3. C:\RetailEx\App\unblock-and-install-services.cmd (Yonetici)
 
-Sonraki adımlar:
+veya: install-services-manual.cmd
+
+Sonraki adimlar
   1. RetailEX_Config.exe → C:\RetailEx\config.db
-  2. RetailEX_Tools.exe setup-db (veya menü 9)
+  2. RetailEX_Tools.exe setup-db
   3. retailex.exe
 
-Güncelleme: RetailEX_Tools.exe update (menü 7)
+Guncelleme: RetailEX_Tools.exe update (menu 7)

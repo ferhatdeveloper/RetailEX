@@ -35,7 +35,14 @@ function Install-RetailExWindowsService {
         throw "$Label bulunamadi: $ExePath"
     }
 
+    # Indirilmis / engellenmis (Mark of the Web) dosyalari ac
+    try { Unblock-File -LiteralPath $ExePath -ErrorAction SilentlyContinue } catch {}
+
     $logPath = "C:\ProgramData\RetailEX\${ServiceName}_install_last_error.txt"
+    $logDir = "C:\ProgramData\RetailEX"
+    if (-not (Test-Path -LiteralPath $logDir)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    }
     Write-Host "[RetailEX] Kuruluyor: $Label ($ServiceName)"
 
     $svc = $null
@@ -50,7 +57,6 @@ function Install-RetailExWindowsService {
                 }
                 catch {}
             }
-            # Kilitli/eski kayit: sc delete + kısa bekleme (CreateService ERROR_SERVICE_EXISTS disinda)
             if ($existing -and $attempt -eq $MaxAttempts) {
                 sc.exe stop $ServiceName 2>$null | Out-Null
                 sc.exe delete $ServiceName 2>$null | Out-Null
@@ -58,16 +64,39 @@ function Install-RetailExWindowsService {
             }
         }
 
-        $null = Start-Process -FilePath $ExePath -ArgumentList @('--install') -Wait -PassThru -WindowStyle Hidden
+        $proc = $null
+        try {
+            $proc = Start-Process -FilePath $ExePath -ArgumentList @('--install') -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+        }
+        catch {
+            Write-Warning "[RetailEX] $Label --install baslatilamadi: $($_.Exception.Message)"
+        }
         Start-Sleep -Seconds 2
 
         $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
         if ($svc) { break }
+
+        # Yedek: sc create (EXE calismadan / SAC engellese bile kayit denemesi)
+        if ($attempt -eq $MaxAttempts) {
+            Write-Host "[RetailEX] sc.exe create yedegi: $ServiceName"
+            $binQuoted = '"' + $ExePath + '"'
+            sc.exe create $ServiceName binPath= $binQuoted start= auto DisplayName= $Label 2>$null | Out-Null
+            Start-Sleep -Seconds 1
+            $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+            if ($svc) { break }
+        }
+
+        if ($proc -and $null -ne $proc.ExitCode -and $proc.ExitCode -ne 0) {
+            Write-Warning "[RetailEX] $Label --install cikis kodu: $($proc.ExitCode)"
+        }
     }
 
     if (-not $svc) {
         $hint = if (Test-Path -LiteralPath $logPath) { " Log: $logPath" } else { '' }
-        throw "$Label kurulamadi ($ServiceName kaydi yok, $MaxAttempts deneme).$hint"
+        $sac = ' Akilli Uygulama Denetimi (SAC) imzasiz EXE engelliyorsa: Windows Guvenlik > Uygulama ve tarayici denetimi > Akilli Uygulama Denetimi = Kapali; sonra install-services-manual.cmd (Yonetici).'
+        $msg = "$Label kurulamadi ($ServiceName kaydi yok, $MaxAttempts deneme).$hint$sac"
+        $msg | Out-File -FilePath (Join-Path $logDir 'install_services_setup_last.log') -Append -Encoding utf8
+        throw $msg
     }
 
     Write-Host "[RetailEX] $Label hazir: $ServiceName ($($svc.Status))"
@@ -80,11 +109,11 @@ function Install-RetailExWindowsService {
                 Write-Host "[RetailEX] Baslatildi: $ServiceName (Running)"
             }
             else {
-                Write-Warning "$ServiceName Start-Service tamamlandi ancak durum: $($svc.Status). Log: C:\ProgramData\RetailEX\ (service.log / sql_bridge_service.log). Manuel: Start-Service $ServiceName"
+                Write-Warning "$ServiceName Start-Service tamamlandi ancak durum: $($svc.Status). SAC engeli veya PostgreSQL kapali olabilir. Manuel: Start-Service $ServiceName"
             }
         }
         catch {
-            Write-Warning "$ServiceName kuruldu ancak baslatilamadi: $($_.Exception.Message)"
+            Write-Warning "$ServiceName kuruldu ancak baslatilamadi: $($_.Exception.Message) (SAC / bagimlilik kontrol edin)"
         }
     }
     return $svc

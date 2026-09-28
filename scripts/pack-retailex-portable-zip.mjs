@@ -91,6 +91,11 @@ Kurulum (EXE — Yönetici)
 
 Hizmetler eksikse (Yönetici):
   C:\\RetailEx\\App\\install-services-manual.cmd
+  veya: unblock-and-install-services.cmd
+
+Akilli Uygulama Denetimi (SAC) engellerse:
+  Windows Guvenlik > Uygulama ve tarayici denetimi > Akilli Uygulama Denetimi = Kapali
+  Sonra unblock-and-install-services.cmd (Yonetici)
 
 Güncelleme
 - RetailEX_Tools.exe update (menü 7) — GitHub'dan yeni EXE indirir
@@ -159,6 +164,8 @@ function stagePortable(stageRoot) {
     'start-postgrest-lan.cmd',
     'install-postgrest-service.ps1',
     'install-postgrest-service.cmd',
+    'unblock-and-install-services.ps1',
+    'unblock-and-install-services.cmd',
   ];
   for (const f of flatResources) {
     copyIfExists(path.join(res, f), path.join(stageRoot, f));

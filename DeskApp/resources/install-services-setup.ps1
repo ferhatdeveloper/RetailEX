@@ -30,6 +30,13 @@ if (-not (Test-Path -LiteralPath $Prefix)) {
     exit 1
 }
 
+# Mark of the Web / indirme engeli: tum EXE/PS1/CMD ac
+try {
+    Get-ChildItem -LiteralPath $Prefix -Recurse -Include *.exe,*.ps1,*.cmd,*.dll -File -ErrorAction SilentlyContinue |
+        ForEach-Object { Unblock-File -LiteralPath $_.FullName -ErrorAction SilentlyContinue }
+}
+catch {}
+
 if (-not (Test-RetailExAdmin)) {
     $code = Invoke-RetailExServiceSetupElevation -ScriptPath $PSCommandPath -Prefix $Prefix
     exit $code

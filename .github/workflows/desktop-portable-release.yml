@@ -74,6 +74,48 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Configure Windows code signing
+        shell: pwsh
+        env:
+          SIGN_THUMB: ${{ secrets.WINDOWS_CODESIGN_THUMBPRINT }}
+          SIGN_PFX_B64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          SIGN_PFX_PASS: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CERT_FINGERPRINT: ${{ secrets.SM_CERT_FINGERPRINT }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+        run: |
+          $hasSign = $false
+          if ($env:SIGN_PFX_B64) {
+            $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:SIGN_PFX_B64))
+            $pass = ConvertTo-SecureString $env:SIGN_PFX_PASS -AsPlainText -Force
+            Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $pass | Out-Null
+            Write-Host "Kod imza PFX magazaya aktarildi."
+            $hasSign = $true
+          }
+          if ($env:SM_CLIENT_CERT_FILE_B64) {
+            $p12Path = Join-Path $env:RUNNER_TEMP "digicert_client.p12"
+            [IO.File]::WriteAllBytes($p12Path, [Convert]::FromBase64String($env:SM_CLIENT_CERT_FILE_B64))
+            echo "SM_CLIENT_CERT_FILE=$p12Path" >> $env:GITHUB_ENV
+            $hasSign = $true
+          }
+          if ($env:SM_API_KEY) { echo "SM_API_KEY=$env:SM_API_KEY" >> $env:GITHUB_ENV; $hasSign = $true }
+          if ($env:SM_CERT_FINGERPRINT) { echo "SM_CERT_FINGERPRINT=$env:SM_CERT_FINGERPRINT" >> $env:GITHUB_ENV; $hasSign = $true }
+          if ($env:SM_CLIENT_CERT_PASSWORD) { echo "SM_CLIENT_CERT_PASSWORD=$env:SM_CLIENT_CERT_PASSWORD" >> $env:GITHUB_ENV }
+          if ($env:SIGN_THUMB) {
+            echo "WINDOWS_CODESIGN_THUMBPRINT=$env:SIGN_THUMB" >> $env:GITHUB_ENV
+            $hasSign = $true
+          }
+          if ($hasSign) {
+            echo "CODESIGN_ENABLED=1" >> $env:GITHUB_ENV
+            Write-Host "Kod imzalama etkin (portable)."
+          } else {
+            echo "WINDOWS_CODESIGN_DISABLE=1" >> $env:GITHUB_ENV
+            echo "CODESIGN_ENABLED=0" >> $env:GITHUB_ENV
+            Write-Host "Imza secret yok; imzasiz portable (SAC musteride engelleyebilir)."
+          }
+
       - name: Fetch Windows extras (Sumatra, PostgREST, Node)
         shell: pwsh
         run: |
@@ -87,7 +129,8 @@ jobs:
       - name: Sync app version + prebuild extras
         shell: pwsh
         env:
-          WINDOWS_CODESIGN_DISABLE: '1'
+          WINDOWS_CODESIGN_DISABLE: ${{ env.WINDOWS_CODESIGN_DISABLE }}
+          WINDOWS_CODESIGN_THUMBPRINT: ${{ env.WINDOWS_CODESIGN_THUMBPRINT }}
         run: npm run prebuild
 
       - name: Build Tauri (no DeskApp NSIS bundle)
@@ -96,8 +139,25 @@ jobs:
           CI: 'true'
           CARGO_BUILD_JOBS: '2'
           CARGO_INCREMENTAL: '0'
-          WINDOWS_CODESIGN_DISABLE: '1'
+          WINDOWS_CODESIGN_DISABLE: ${{ env.WINDOWS_CODESIGN_DISABLE }}
+          WINDOWS_CODESIGN_THUMBPRINT: ${{ env.WINDOWS_CODESIGN_THUMBPRINT }}
         run: node scripts/tauri-build-portable.mjs
+
+      - name: Sign release binaries (if secrets)
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_DISABLE: ${{ env.WINDOWS_CODESIGN_DISABLE }}
+          WINDOWS_CODESIGN_THUMBPRINT: ${{ env.WINDOWS_CODESIGN_THUMBPRINT }}
+          SM_CERT_FINGERPRINT: ${{ env.SM_CERT_FINGERPRINT }}
+        run: |
+          $rel = "DeskApp/target/release"
+          $bins = @(
+            "retailex.exe","RetailEX_Service.exe","RetailEX_Config.exe",
+            "RetailEX_SQL_Bridge.exe","RetailEX_Printer.exe","RetailEX_Tools.exe"
+          ) | ForEach-Object { Join-Path $rel $_ } | Where-Object { Test-Path $_ }
+          if ($bins.Count -gt 0) {
+            powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign-portable-binaries.ps1 -Paths $bins
+          }
 
       - name: Pack portable EXE (admin + services)
         shell: pwsh
@@ -110,6 +170,16 @@ jobs:
           if (-not (Test-Path $exe)) { throw "Portable EXE yok: $exe" }
           echo "PORTABLE_EXE=RetailEX-Portable-$env:PACKAGE_VERSION.exe" >> $env:GITHUB_ENV
           (Get-Item $exe).Length | Out-Host
+
+      - name: Sign portable installer EXE (if secrets)
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_DISABLE: ${{ env.WINDOWS_CODESIGN_DISABLE }}
+          WINDOWS_CODESIGN_THUMBPRINT: ${{ env.WINDOWS_CODESIGN_THUMBPRINT }}
+          SM_CERT_FINGERPRINT: ${{ env.SM_CERT_FINGERPRINT }}
+        run: |
+          $exe = "dist/RetailEX-Portable-$env:PACKAGE_VERSION.exe"
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign-portable-binaries.ps1 -Paths @($exe)
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -131,20 +201,19 @@ jobs:
             ### Kurulum
             1. `RetailEX-Portable-${{ env.PACKAGE_VERSION }}.exe` indirin ve **Yönetici** olarak çalıştırın (UAC: Evet)
             2. Varsayılan dizin: `C:\RetailEx\App`
-            3. Kurulum şu Windows hizmetlerini kurar: Sync, SQL Bridge, Printer, PostgREST
-            4. `RetailEX_Config.exe` ile `C:\RetailEx\config.db` ayarlayın
-            5. `retailex.exe` çalıştırın
+            3. Kurulum Sync, SQL Bridge, Printer, PostgREST hizmetlerini kurar
+
+            ### Akilli Uygulama Denetimi (SAC) engellediyse
+            1. Windows Guvenlik → Uygulama ve tarayici denetimi → **Akilli Uygulama Denetimi = Kapali**
+            2. `C:\RetailEx\App\unblock-and-install-services.cmd` (Yonetici)
 
             ### Hizmet kurtarma
-            `C:\RetailEx\App\install-services-manual.cmd` (Yönetici)
+            `C:\RetailEx\App\install-services-manual.cmd` veya `unblock-and-install-services.cmd`
 
             ### Güncelleme
             `RetailEX_Tools.exe` → **Güncelle (portable)** veya `RetailEX_Tools.exe update`
 
-            ### Dosyalar
-            - **RetailEX-Portable-${{ env.PACKAGE_VERSION }}.exe** — yönetici NSIS kurulum (ZIP değil)
-
-            Sürüm: `${{ env.PACKAGE_VERSION }}` (kök `package.json`)
+            Sürüm: `${{ env.PACKAGE_VERSION }}`
           files: dist/RetailEX-Portable-${{ env.PACKAGE_VERSION }}.exe
           draft: false
           prerelease: false
