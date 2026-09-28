@@ -14,7 +14,6 @@ const EXACT_SCREENS = new Set<string>([
   'category-group-profit-report',
   'product-analytics',
   'profit-dashboard',
-  'bi-dashboard',
   'analytics-group',
   'sales-stock-group',
   'finance-reps-group',

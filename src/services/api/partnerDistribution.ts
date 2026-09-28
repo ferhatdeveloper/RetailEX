@@ -7,7 +7,7 @@
  *   - manual: PartnerDistributionModal'dan manuel
  *
  * 3 dağıtım tabanı:
- *   - net_profit: brüt satış − alış iade − gider
+ *   - net_profit: işaretli satış cirosu (satış iade −; alış/alış iade hariç) − gider
  *   - cash_net: kasa + banka net pozisyonu (işaret dahil)
  *   - manual: kullanıcı tutarı girer
  *
@@ -126,9 +126,28 @@ export async function computeDistributionBaseAmount(baseType: PartnerDistributio
   if (baseType === 'net_profit') {
     const salesTable = `rex_${firm}_${period}_sales`;
     const expensesTable = `rex_${firm}_expenses`;
-    // brüt satışlar
+    // İşaretli satış cirosu: satış +, satış iade (2/3) −; alış ve alış iade (6) hariç
     const salesRes = await postgres.query(
-      `SELECT COALESCE(SUM(net_amount), 0) AS total FROM ${salesTable}
+      `SELECT COALESCE(SUM(
+         CASE
+           WHEN COALESCE(trcode, 0) = 6 THEN 0
+           WHEN LOWER(TRIM(COALESCE(fiche_type, ''))) IN ('purchase_invoice', 'a', 'opening_balance')
+             OR COALESCE(trcode, 0) IN (1, 4, 5, 13, 26, 41, 42)
+           THEN 0
+           WHEN COALESCE(trcode, 0) IN (2, 3)
+             OR (
+               LOWER(TRIM(COALESCE(fiche_type, ''))) = 'return_invoice'
+               AND COALESCE(trcode, 0) NOT IN (1, 4, 5, 6, 13, 26, 41, 42)
+             )
+           THEN -ABS(COALESCE(net_amount, 0))
+           WHEN LOWER(TRIM(COALESCE(fiche_type, ''))) IN (
+             'sales_invoice', 'service', 'hizmet', 's', 'pos', 'retail', 'beauty', 'beauty_sale', 'market_pos'
+           )
+             OR COALESCE(trcode, 0) IN (7, 8, 9, 14, 29, 32)
+           THEN ABS(COALESCE(net_amount, 0))
+           ELSE 0
+         END
+       ), 0) AS total FROM ${salesTable}
        WHERE COALESCE(is_cancelled, false) = false
          AND ($1::text IS NULL OR date >= $1::date) AND ($2::text IS NULL OR date <= $2::date)`,
       [startDate || null, endDate || null],

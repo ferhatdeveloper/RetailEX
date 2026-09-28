@@ -315,7 +315,6 @@ export const MENU_SECTIONS: MenuSection[] = [
         children: [
           { id: 'product-analytics', label: 'AI Ürün Analitiği', screen: 'product-analytics', badge: 'AI' },
           { id: 'profit-dashboard', label: 'Karlılık Analizi', screen: 'profit-dashboard' },
-          { id: 'bi-dashboard', label: 'BI Dashboard & AI', screen: 'bi-dashboard' },
         ],
       },
       { id: 'customreports', label: 'Genel Rapor', screen: 'customreports' },
@@ -498,7 +497,6 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'report-sales-summary': 'ReportSales',
   'product-analytics': 'ReportProductSales',
   'profit-dashboard': 'ReportProductSales',
-  'bi-dashboard': 'ReportSales',
   'category-group-profit-report': 'ReportProductSales',
   // web: financereports → ReportsModule (hub); mizan = cari bakiye özeti (GL değil)
   financereports: 'Reports',

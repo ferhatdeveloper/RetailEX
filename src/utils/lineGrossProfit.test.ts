@@ -138,6 +138,26 @@ describe('lineGrossProfit — SABUN senaryosu', () => {
     ).toBe(-3000);
   });
 
+  it('alış iadesinde kâr yok (null) — satış brüt kârına girmez', () => {
+    expect(
+      computeLineGrossProfit({
+        kind: 'purchase_return',
+        revenue: 60000,
+        quantity: 5,
+        unitCost: 12000,
+      }),
+    ).toBeNull();
+    expect(
+      resolveLineGrossProfit({
+        kind: 'purchase_return',
+        storedGrossProfit: -60000,
+        revenue: 60000,
+        quantity: 5,
+        unitCost: 12000,
+      }),
+    ).toBeNull();
+  });
+
   it('net senaryo: satış 13k + iade 13k + satış 15k → net kâr 5k', () => {
     const sale1 = computeLineGrossProfit({
       kind: 'sales',

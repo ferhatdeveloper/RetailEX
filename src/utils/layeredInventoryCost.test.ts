@@ -90,6 +90,189 @@ describe('applyFifoLayers — stok maliyeti', () => {
     expect(periodCogs).toBe(20000);
     expect(periodCogsByProductId.get('el-kremi')).toBe(20000);
   });
+
+  it('alış iade (trcode 6): stok çıkar ama todayCogs / dönem SMM’ye girmez', () => {
+    const moves: LayerMovement[] = [
+      {
+        id: 'in-50',
+        productId: 'p1',
+        date: '2026-09-20',
+        createdAt: '2026-09-20T10:00:00',
+        direction: 'in',
+        quantity: 5,
+        unitCost: 12000,
+        source: 'invoice',
+        documentNo: 'A1',
+      },
+      {
+        id: 'sale-1',
+        productId: 'p1',
+        date: '2026-09-21',
+        createdAt: '2026-09-21T11:00:00',
+        direction: 'out',
+        quantity: 1,
+        unitCost: 0,
+        source: 'invoice',
+        documentNo: 'S1',
+        cogsKind: 'sale',
+      },
+      {
+        // Alış iade — cogsKind yok (loadInvoiceMovements ile aynı)
+        id: 'pr-6',
+        productId: 'p1',
+        date: '2026-09-21',
+        createdAt: '2026-09-21T14:00:00',
+        direction: 'out',
+        quantity: 3,
+        unitCost: 0,
+        source: 'invoice',
+        documentNo: 'PR1',
+      },
+    ];
+    const { todayCogs, periodCogs, byProductId } = applyFifoLayers(moves, {
+      todayKey: '2026-09-21',
+      cogsFromKey: '2026-09-01',
+      cogsToKey: '2026-09-21',
+    });
+    // Yalnızca 1 adet satış × 12.000 — alış iade 3×12k SMM sayılmaz
+    expect(todayCogs).toBe(12000);
+    expect(periodCogs).toBe(12000);
+    // Elde 5−1−3 = 1 @ 12k
+    expect(byProductId.get('p1')!.quantity).toBeCloseTo(1, 6);
+    expect(byProductId.get('p1')!.layeredCost).toBeCloseTo(12000, 6);
+  });
+
+  it('satış iadesi: todayCogs ve dönem SMM tersine (COGS geri alınır)', () => {
+    const moves: LayerMovement[] = [
+      {
+        id: 'in-1',
+        productId: 'p1',
+        date: '2026-09-20',
+        direction: 'in',
+        quantity: 2,
+        unitCost: 10000,
+        source: 'invoice',
+      },
+      {
+        id: 'sale-1',
+        productId: 'p1',
+        date: '2026-09-21',
+        direction: 'out',
+        quantity: 1,
+        unitCost: 0,
+        source: 'invoice',
+        cogsKind: 'sale',
+      },
+      {
+        id: 'sr-3',
+        productId: 'p1',
+        date: '2026-09-21',
+        direction: 'in',
+        quantity: 1,
+        unitCost: 10000,
+        source: 'invoice',
+        cogsKind: 'return',
+      },
+    ];
+    const { todayCogs, periodCogs } = applyFifoLayers(moves, {
+      todayKey: '2026-09-21',
+      cogsFromKey: '2026-09-01',
+      cogsToKey: '2026-09-21',
+    });
+    expect(todayCogs).toBe(0);
+    expect(periodCogs).toBe(0);
+  });
+
+  it('SABUN: satış 2×25k maliyet 10k → kâr 30k; iade 1 (unit_cost=0) → kâr 15k / todayCogs 10k', () => {
+    const moves: LayerMovement[] = [
+      {
+        id: 'buy',
+        productId: 'sabun',
+        date: '2026-09-27',
+        createdAt: '2026-09-27T10:00:00',
+        direction: 'in',
+        quantity: 10,
+        unitCost: 10000,
+        source: 'invoice',
+        documentNo: 'A1',
+      },
+      {
+        id: 'beauty-sale',
+        productId: 'sabun',
+        date: '2026-09-28',
+        createdAt: '2026-09-28T11:00:00',
+        direction: 'out',
+        quantity: 2,
+        unitCost: 0,
+        source: 'invoice',
+        documentNo: 'S1',
+        cogsKind: 'sale',
+      },
+      {
+        // Satış iade satırında unit_cost çoğu zaman 0 kaydedilir
+        id: 'sales-return',
+        productId: 'sabun',
+        date: '2026-09-28',
+        createdAt: '2026-09-28T15:00:00',
+        direction: 'in',
+        quantity: 1,
+        unitCost: 0,
+        source: 'invoice',
+        documentNo: 'R1',
+        cogsKind: 'return',
+      },
+    ];
+    const beforeReturn = applyFifoLayers(moves.filter((m) => m.id !== 'sales-return'), {
+      todayKey: '2026-09-28',
+    });
+    expect(beforeReturn.todayCogs).toBe(20000);
+    // Net ciro 50.000 − SMM 20.000 = kâr 30.000
+    expect(50000 - beforeReturn.todayCogs).toBe(30000);
+
+    const afterReturn = applyFifoLayers(moves, { todayKey: '2026-09-28' });
+    expect(afterReturn.todayCogs).toBe(10000);
+    // Net ciro 25.000 − SMM 10.000 = kâr 15.000 (dashboard formülü)
+    expect(25000 - afterReturn.todayCogs).toBe(15000);
+  });
+
+  it('satış iadesinde satırda satış fiyatı yazılmışsa bile son satış SMM kullanılır', () => {
+    const moves: LayerMovement[] = [
+      {
+        id: 'buy',
+        productId: 'sabun',
+        date: '2026-09-27',
+        direction: 'in',
+        quantity: 5,
+        unitCost: 10000,
+        source: 'invoice',
+      },
+      {
+        id: 'sale',
+        productId: 'sabun',
+        date: '2026-09-28',
+        direction: 'out',
+        quantity: 2,
+        unitCost: 0,
+        source: 'invoice',
+        cogsKind: 'sale',
+      },
+      {
+        // Hatalı: unitCost = satış fiyatı 25.000 (eski unitCostFromPurchaseLine net/qty)
+        id: 'ret',
+        productId: 'sabun',
+        date: '2026-09-28',
+        direction: 'in',
+        quantity: 1,
+        unitCost: 25000,
+        source: 'invoice',
+        cogsKind: 'return',
+      },
+    ];
+    // Aynı tarih + id 'ret'<'sale' olsa bile rank satış iadeden önce işler
+    const { todayCogs } = applyFifoLayers(moves, { todayKey: '2026-09-28' });
+    expect(todayCogs).toBe(10000);
+    expect(25000 - todayCogs).toBe(15000);
+  });
 });
 
 describe('dedupeLayerMovements', () => {

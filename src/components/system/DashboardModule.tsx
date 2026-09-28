@@ -449,8 +449,12 @@ export function DashboardModule({
                   </span>
                 )}
               </div>
-              <div className={`text-base font-semibold ${darkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>{formatNumber(totalProfitToday, 2, false)} {currency}</div>
-              <div className={cellMuted}>{tLabel(t.profitMargin, 'Kâr Marjı')}: {totalRevenue > 0 ? formatNumber((totalProfitToday / totalRevenue) * 100, 1, false) : 0}%</div>
+              <div className={`text-base font-semibold ${
+                totalProfitToday < 0
+                  ? (darkMode ? 'text-red-400' : 'text-red-600')
+                  : (darkMode ? 'text-emerald-400' : 'text-emerald-700')
+              }`}>{formatNumber(totalProfitToday, 2, false)} {currency}</div>
+              <div className={cellMuted}>{tLabel(t.profitMargin, 'Kâr Marjı')}: {Math.abs(totalRevenue) > 0.009 ? formatNumber((totalProfitToday / totalRevenue) * 100, 1, false) : 0}%</div>
             </div>
 
             <div className="p-3">

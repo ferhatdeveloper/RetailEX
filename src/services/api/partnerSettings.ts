@@ -7,8 +7,8 @@
  *   - manual: yönetici PartnerDistributionModal'dan tetikler
  *
  * distribution_base: 'net_profit' | 'cash_net' | 'manual'
- *   - net_profit: brüt satış − alış iade − gider
- *   - cash_net: kasa + banka net pozisyonu
+ *   - net_profit: işaretli satış cirosu (satış iade −; alış/alış iade hariç) − gider
+ *   - cash_net: kasa + banka net pozisyonu (işaret dahil)
  *   - manual: kullanıcı tutarı girer
  */
 

@@ -166,7 +166,6 @@ export const DEFAULT_MENU_ITEM_ORDERS: Readonly<Record<string, number>> = {
   'hybrid-sync': 4,
   performance: 15,
   storeconfig: 8,
-  'bi-dashboard': 112,
   'cost-centers': 85,
   integrations: 10,
   salesinvoice: 53,

@@ -239,8 +239,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 children: [
                     { label: 'AI Ürün Analitiği', screen: 'product-analytics', icon: BarChart3 },
                     { label: 'Karlılık Analizi Dashboard', screen: 'profit-dashboard', icon: TrendingUp },
-                    { label: 'Grafiksel Analiz', screen: 'graphanalysis', icon: TrendingUp },
-                    { label: 'BI Dashboard & AI', screen: 'bi-dashboard', icon: PieChart }
+                    { label: 'Grafiksel Analiz', screen: 'graphanalysis', icon: TrendingUp }
                 ]
             },
             {

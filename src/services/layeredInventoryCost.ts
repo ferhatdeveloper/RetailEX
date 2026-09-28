@@ -299,6 +299,7 @@ async function loadInvoiceMovements(
       }
 
       const tr = Number(r.trcode ?? 0);
+      // Alış iade (trcode 6): stok çıkar (FIFO out), cogsKind yok → SMM / bugünkü kâr yok
       if (tr === PURCHASE_RETURN_TRCODE || (String(r.fiche_type || '').toLowerCase() === 'return_invoice' && !isSalesReturnFiche(fiche) && !isPlSalesOrReturnFiche(fiche))) {
         out.push({
           id: `inv:${String(r.id)}`,
@@ -310,13 +311,15 @@ async function loadInvoiceMovements(
           unitCost: 0,
           source: 'invoice',
           documentNo: doc,
+          // cogsKind bilinçli olarak yok — applyFifoLayers yalnızca 'sale'/'return' sayar
         });
         continue;
       }
 
       if (isSalesReturnFiche(fiche)) {
-        const restored =
-          Number(r.unit_cost) || unitCostFromPurchaseLine({ ...r, unit_price: 0 }) || 0;
+        // Yalnız satır unit_cost — net_amount/unit_price satış fiyatıdır, SMM değildir.
+        // unit_cost=0 ise applyFifoLayers son satış birim SMM’sini kullanır.
+        const restored = Math.max(0, Number(r.unit_cost) || 0);
         out.push({
           id: `inv:${String(r.id)}`,
           productId,
@@ -324,7 +327,7 @@ async function loadInvoiceMovements(
           createdAt,
           direction: 'in',
           quantity: qty,
-          unitCost: Math.max(0, restored),
+          unitCost: restored,
           source: 'invoice',
           documentNo: doc,
           cogsKind: 'return',

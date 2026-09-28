@@ -18,7 +18,7 @@ export type ModuleId =
   | 'campaigns' | 'roles' | 'loyalty' | 'gift-cards'
   | 'notifications' | 'multi-currency' | 'commission'
   | 'users' | 'whatsapp' | 'restaurant' | 'appointments'
-  | 'bi-dashboard' | 'ecommerce' | 'cargo' | 'marketplace'
+  | 'ecommerce' | 'cargo' | 'marketplace'
   | 'payment-integration' | 'accounting-integration'
   | 'central-broadcast' | 'enterprise-data' | 'module-management'
   | 'system-management' | 'store-transfer' | 'mobile-inventory'
@@ -101,7 +101,6 @@ export const modulesConfig: ModuleConfig[] = [
   { id: 'whatsapp', translationKey: 'whatsappIntegration', badge: null, isActive: true, category: 'integrations' },
   { id: 'restaurant', translationKey: 'restaurant', badge: null, isActive: true, category: 'operations' },
   { id: 'appointments', translationKey: 'appointment', badge: null, isActive: true, category: 'operations' },
-  { id: 'bi-dashboard', translationKey: 'advancedBI', badge: 'BETA', isActive: true, category: 'analytics' },
   { id: 'ecommerce', translationKey: 'ecommerce', badge: null, isActive: true, category: 'integrations' },
   { id: 'cargo', translationKey: 'cargoIntegration', badge: null, isActive: true, category: 'integrations' },
   { id: 'marketplace', translationKey: 'marketplaces', badge: null, isActive: true, category: 'integrations' },

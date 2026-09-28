@@ -308,8 +308,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: PieChart,
                 children: [
                     { label: t.menu.aiProductAnalytics, screen: 'product-analytics', icon: BarChart3, badge: 'AI' },
-                    { label: t.menu.profitabilityAnalyticsDashboard, screen: 'profit-dashboard', icon: TrendingUp },
-                    { label: t.menu.biDashboardAi, screen: 'bi-dashboard', icon: PieChart }
+                    { label: t.menu.profitabilityAnalyticsDashboard, screen: 'profit-dashboard', icon: TrendingUp }
                 ]
             },
             {
@@ -464,7 +463,6 @@ export const staticMenuSections = getStaticMenuSections({
         aiProductAnalytics: 'AI Ürün Analitiği',
         profitabilityAnalyticsDashboard: 'Karlılık Analizi',
         graphicalAnalysis: 'Grafiksel Analiz',
-        biDashboardAi: 'BI Dashboard & AI',
         trialBalance: 'Mizan (Trial Balance)',
         incomeStatement: 'Gelir Tablosu',
         balanceSheet: 'Bilanço (Balance Sheet)',

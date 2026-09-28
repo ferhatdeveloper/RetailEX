@@ -202,7 +202,6 @@ export const SYSTEM_ROLES: Role[] = [
     permissions: [
       { module: 'dashboard', actions: ['READ'] },
       { module: 'reports', actions: ['READ', 'EXECUTE'] },
-      { module: 'bi-dashboard', actions: ['READ'] },
       { module: 'advanced-reporting', actions: ['READ', 'EXECUTE'] },
       { module: 'excel', actions: ['READ', 'EXECUTE'] }
     ],

@@ -4,7 +4,8 @@
  *
  * Yöntem: Girişler (alış fişi, alış faturası) birim maliyetle katman açar;
  * çıkışlar (satış, sarf, alış iade) en eski katmanı tüketir (FIFO).
- * Satılan malın maliyeti (COGS) = tüketilen katman tutarı.
+ * Satılan malın maliyeti (COGS) = tüketilen katman tutarı — yalnızca cogsKind='sale'.
+ * Alış iade stok çıkarır ama SMM/kâr sayılmaz; satış iade (cogsKind='return') SMM geri alır.
  */
 
 export type LayerDirection = 'in' | 'out';
@@ -53,7 +54,13 @@ const COST_EPS = 0.0000001;
 export function movementSortKey(m: LayerMovement): string {
   const d = String(m.date || '').slice(0, 19);
   const c = String(m.createdAt || '').slice(0, 19);
-  return `${d}\t${c}\t${m.id}`;
+  // Aynı an: alış giriş → satış çıkış → diğer çıkış → satış iade (SMM geri alma için satış önce)
+  let rank = 4;
+  if (m.direction === 'in' && m.cogsKind !== 'return') rank = 0;
+  else if (m.direction === 'out' && m.cogsKind === 'sale') rank = 1;
+  else if (m.direction === 'out') rank = 2;
+  else if (m.cogsKind === 'return') rank = 3;
+  return `${d}\t${c}\t${rank}\t${m.id}`;
 }
 
 export function sortLayerMovements(movements: LayerMovement[]): LayerMovement[] {
@@ -124,6 +131,10 @@ function inCogsRange(dateKey: string, fromKey: string, toKey: string): boolean {
  * Hareketleri tarih sırasıyla FIFO uygular.
  * `onHandByProductId` verilirse kalan katman miktarı kart stokuna hizalanır
  * (eksik çıkış varsa FIFO tüketilir; fazla stok katmansız = maliyet 0).
+ *
+ * Satış iadesi (cogsKind=return): SMM geri alınır.
+ * Satır unitCost yoksa veya 0 ise son satışın birim SMM’si kullanılır
+ * (iade satırında unit_cost=0 / satış fiyatı yazılmış olma yaygın).
  */
 export function applyFifoLayers(
   movements: LayerMovement[],
@@ -140,6 +151,8 @@ export function applyFifoLayers(
   const layersByProduct = new Map<string, RemainingLayer[]>();
   const todayCogsByProduct = new Map<string, number>();
   const periodCogsByProductId = new Map<string, number>();
+  /** Ürün bazında son satış çıkışının birim SMM’si — iade geri alma yedeği */
+  const lastSaleUnitCogsByProduct = new Map<string, number>();
 
   const addPeriodCogs = (productId: string, amount: number) => {
     if (Math.abs(amount) <= COST_EPS) return;
@@ -162,20 +175,44 @@ export function applyFifoLayers(
     const inRange = inCogsRange(dateKey, fromKey, toKey);
 
     if (raw.direction === 'in') {
-      const unitCost = Math.max(0, Number(raw.unitCost) || 0);
-      layers.push({ quantity: qty, unitCost });
-      if (inRange && raw.cogsKind === 'return') {
-        addPeriodCogs(productId, -(qty * unitCost));
+      let unitCost = Math.max(0, Number(raw.unitCost) || 0);
+      // Satış iadesi: SMM geri alınır. Alış iadesi buraya gelmez (cogsKind yok).
+      if (raw.cogsKind === 'return') {
+        const lastSaleUnit = lastSaleUnitCogsByProduct.get(productId) || 0;
+        // Son satış SMM tercih: satırda 0 veya satış fiyatı yazılmış olabilir
+        if (lastSaleUnit > COST_EPS) {
+          unitCost = lastSaleUnit;
+        }
+        layers.push({ quantity: qty, unitCost });
+        const restored = qty * unitCost;
+        if (inRange) addPeriodCogs(productId, -restored);
+        if (isToday && restored > COST_EPS) {
+          todayCogsByProduct.set(
+            productId,
+            (todayCogsByProduct.get(productId) || 0) - restored,
+          );
+        }
+        continue;
       }
+      layers.push({ quantity: qty, unitCost });
       continue;
     }
 
     const { cogs } = consumeLayers(layers, qty);
-    if (isToday && cogs > COST_EPS && (raw.cogsKind === 'sale' || (raw.source === 'invoice' && !raw.cogsKind))) {
-      todayCogsByProduct.set(productId, (todayCogsByProduct.get(productId) || 0) + cogs);
-    }
-    if (inRange && raw.cogsKind === 'sale') {
-      addPeriodCogs(productId, cogs);
+    // Yalnızca satış çıkışı (cogsKind=sale) bugünkü/dönem SMM’ye girer.
+    // Alış iade (trcode 6): stok katmanı tüketir ama cogsKind yok → kârı etkilemez.
+    // Eski fallback (source=invoice && !cogsKind) alış iadeyi SMM’ye yazıyordu — kaldırıldı.
+    if (raw.cogsKind === 'sale') {
+      const unitCogs = qty > QTY_EPS ? cogs / qty : 0;
+      if (unitCogs > COST_EPS) {
+        lastSaleUnitCogsByProduct.set(productId, unitCogs);
+      }
+      if (isToday && cogs > COST_EPS) {
+        todayCogsByProduct.set(productId, (todayCogsByProduct.get(productId) || 0) + cogs);
+      }
+      if (inRange) {
+        addPeriodCogs(productId, cogs);
+      }
     }
   }
 

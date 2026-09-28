@@ -14,7 +14,6 @@ export interface MenuTranslations {
   bankReports: string;
   bankSlips: string;
   banks: string;
-  biDashboardAi: string;
   brandDefinitions: string;
   campaignDefinitions: string;
   cards: string;
@@ -1472,7 +1471,6 @@ export const translations: any = {
     barcodeNotFound: 'Barkod bulunamadı',
     barcodeNotFoundWarning: 'Barkod bulunamadı: {barcode}',
     barcodeSearchPlaceholder: 'Barkod ya da Ürün Adı...',
-    biDashboardAi: 'BI Dashboard & AI',
     branchStockStatus: 'Şube Stok Durumu',
     branchStocks: 'Şube Stokları',
     branchVariantStocks: 'Şube Varyant Stokları',
@@ -1905,7 +1903,6 @@ export const translations: any = {
       bankReports: 'Banka Raporları',
       bankSlips: 'Banka Fişleri',
       banks: 'Bankalar',
-      biDashboardAi: 'BI Dashboard & AI',
       brandDefinitions: 'Marka Tanımları',
       campaignDefinitions: 'Kampanya Tanımları',
       cards: 'Kartlar',
@@ -3253,7 +3250,6 @@ export const translations: any = {
     barcodeNotFound: 'Barcode not found',
     barcodeNotFoundWarning: 'Barcode not found: {barcode}',
     barcodeSearchPlaceholder: 'Scan barcode or product name',
-    biDashboardAi: 'BI Dashboard & AI',
     branchStockStatus: 'Branch Stock Status',
     branchStocks: 'Branch Stocks',
     branchVariantStocks: 'Branch Variant Stocks',
@@ -3692,7 +3688,6 @@ export const translations: any = {
       bankReports: 'Bank Reports',
       bankSlips: 'Bank Slips',
       banks: 'Banks',
-      biDashboardAi: 'BI Dashboard & AI',
       brandDefinitions: 'Brand Definitions',
       serviceCards: 'Service Cards',
       campaignDefinitions: 'Campaign Definitions',
@@ -4913,7 +4908,6 @@ export const translations: any = {
     barcodeNotFound: 'لم يتم العثور على الباركود',
     barcodeNotFoundWarning: 'لم يتم العثور على الباركود: {barcode}',
     barcodeSearchPlaceholder: 'الباركود أو اسم المنتج...',
-    biDashboardAi: 'لوحة BI والذكاء الاصطناعي',
     branchStockStatus: 'حالة مخزون الفرع',
     branchStocks: 'مخزون الفروع',
     branchVariantStocks: 'مخزون متغيرات الفرع',
@@ -5347,7 +5341,6 @@ export const translations: any = {
       bankReports: 'تقارير البنوك',
       bankSlips: 'سندات البنوك',
       banks: 'البنوك',
-      biDashboardAi: 'لوحة BI والذكاء الاصطناعي',
       brandDefinitions: 'تعريفات العلامات التجارية',
       serviceCards: 'بطاقات الخدمة',
       campaignDefinitions: 'تعريفات الحملات',
@@ -6561,7 +6554,6 @@ export const translations: any = {
     barcodeNotFound: 'Barkod bulunamadı',
     barcodeNotFoundWarning: 'Barkod bulunamadı: {barcode}',
     barcodeSearchPlaceholder: 'بارکۆد یان ناوی بەرهەم...',
-    biDashboardAi: 'BI Dashboard & AI',
     branchStockStatus: 'Şube Stok Durumu',
     branchStocks: 'Şube Stokları',
     branchVariantStocks: 'Şube Varyant Stokları',
@@ -6995,7 +6987,6 @@ export const translations: any = {
       bankReports: 'ڕاپۆرتەکانی بانک',
       bankSlips: 'پسوڵەکانی بانک',
       banks: 'بانکەکان',
-      biDashboardAi: 'BI Dashboard & AI',
       brandDefinitions: 'پێناسەی براندەکان',
       serviceCards: 'کارتەکانی خزمەتگوزاری',
       campaignDefinitions: 'پێناسەی کەمپەینەکان',

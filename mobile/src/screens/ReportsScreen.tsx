@@ -152,14 +152,6 @@ const MENU_REPORTS: ReportEntry[] = [
     Icon: TrendingUp,
   },
   {
-    id: 'bi',
-    title: 'BI Dashboard & AI',
-    desc: 'Menü: bi-dashboard',
-    kind: 'module',
-    screen: 'bi-dashboard',
-    Icon: BarChart3,
-  },
-  {
     id: 'cat',
     title: 'Kategori grup satış/kar',
     desc: 'Menü: category-group-profit-report',
