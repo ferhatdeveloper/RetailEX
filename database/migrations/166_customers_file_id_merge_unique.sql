@@ -22,6 +22,15 @@ BEGIN
     EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS merged_at TIMESTAMPTZ', r.tablename);
     EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS merged_by TEXT', r.tablename);
     EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS merge_notes TEXT', r.tablename);
+    -- Eski kiracı tablolarında yok (111 atlanmış / eski CREATE); mükerrer file_id UPDATE updated_at yazar
+    EXECUTE format(
+      'ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP',
+      r.tablename
+    );
+    EXECUTE format(
+      'ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP',
+      r.tablename
+    );
 
     EXECUTE format(
       'CREATE INDEX IF NOT EXISTS %I ON public.%I (merged_into_id) WHERE merged_into_id IS NOT NULL',
