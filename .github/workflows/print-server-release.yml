@@ -37,10 +37,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: .NET 9 SDK kur
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "9.0.x"
 
@@ -144,7 +144,7 @@ jobs:
           Write-Host "SETUP: $setup ($([math]::Round((Get-Item $setup).Length/1MB,1)) MB)"
 
       - name: Artifact yükle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.SETUP_EXE }}
           path: PrintServer/installer/output/${{ env.SETUP_EXE }}
@@ -152,7 +152,7 @@ jobs:
 
       - name: GitHub Release oluştur
         if: env.SHOULD_RELEASE == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: RetailEX Printer ${{ env.APP_VERSION }}

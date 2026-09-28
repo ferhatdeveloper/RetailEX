@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Guard origin product (RetailEX)
         shell: pwsh
@@ -33,9 +33,9 @@ jobs:
           Write-Host "origin OK: $url"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install NSIS (makensis)
@@ -184,14 +184,14 @@ jobs:
           & .\scripts\sign-portable-binaries.ps1 -Paths @($exe)
           if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: RetailEX-Portable-${{ env.PACKAGE_VERSION }}
           path: dist/RetailEX-Portable-${{ env.PACKAGE_VERSION }}.exe
           retention-days: 30
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: RetailEX Portable ${{ env.PACKAGE_VERSION }}
