@@ -6,6 +6,7 @@ import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import { IS_TAURI } from '../../utils/env';
 import { type Invoice } from '../../core/types';
 import { customerAPI } from './customers';
+import { supplierAPI } from './suppliers';
 import { productAPI } from './products';
 import { hydrateWeightLineFromDb, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
@@ -2026,6 +2027,40 @@ export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
   };
 }
 
+/**
+ * getById (özellikle PostgREST, join yok): customer_id → cari kod doldur.
+ * sales satırında kod kolonu yok; unvan dolu / kod boş hatasını önler.
+ */
+async function hydrateInvoiceCariCodes(invoice: Invoice): Promise<void> {
+  const partnerId = String(invoice.customer_id || invoice.supplier_id || '').trim();
+  if (!partnerId) return;
+  if (String(invoice.customer_code || invoice.supplier_code || '').trim()) return;
+
+  const purchaseSide = isInvoicePurchaseSide({
+    category: invoice.invoice_category,
+    code: Number(invoice.invoice_type ?? (invoice as { trcode?: number }).trcode ?? 0),
+  });
+
+  try {
+    if (purchaseSide) {
+      const sup = await supplierAPI.getById(partnerId);
+      const code = String((sup as { code?: string } | null)?.code || '').trim();
+      if (code) {
+        invoice.supplier_code = code;
+        invoice.customer_code = code;
+      }
+      return;
+    }
+    const cust = await customerAPI.getById(partnerId);
+    const code = String((cust as { code?: string } | null)?.code || '').trim();
+    if (code) {
+      invoice.customer_code = code;
+    }
+  } catch (e) {
+    console.warn('[InvoicesAPI] hydrateInvoiceCariCodes failed:', e);
+  }
+}
+
 async function hydrateInvoiceItemDisplayCodes(items: Invoice['items'] | undefined): Promise<void> {
   if (!items?.length) return;
   const need = items.filter((it) => {
@@ -3044,6 +3079,7 @@ export const invoicesAPI = {
 
         invoice.items = itemRows.map((row) => mapSaleItemRowToInvoiceLine(row, invoice));
         await hydrateInvoiceItemDisplayCodes(invoice.items);
+        await hydrateInvoiceCariCodes(invoice);
         if (itemRows.length === 0) {
           console.warn('[InvoicesAPI] getById PostgREST: sale_items boş', cleanId, { itemsPath });
         }
@@ -3061,7 +3097,8 @@ export const invoicesAPI = {
       const sessionOpts = { firmNr: sessionFirmPad, periodNr: sessionPeriodPad };
       /* join_* ile s.customer_name çakışması yok; tedarikçi adı her zaman join'den gelir */
       let res = await postgres.query(
-        `SELECT s.*, c.name AS join_customer_name, sup.name AS join_supplier_name
+        `SELECT s.*, c.name AS join_customer_name, c.code AS join_customer_code,
+                sup.name AS join_supplier_name, sup.code AS join_supplier_code
          FROM sales s
          LEFT JOIN customers c ON s.customer_id = c.id
          LEFT JOIN suppliers sup ON s.customer_id = sup.id
@@ -3074,7 +3111,8 @@ export const invoicesAPI = {
         for (let i = 1; i < firmVariants.length; i++) {
           const fn = String(firmVariants[i]).padStart(3, '0');
           res = await postgres.query(
-            `SELECT s.*, c.name AS join_customer_name, sup.name AS join_supplier_name
+            `SELECT s.*, c.name AS join_customer_name, c.code AS join_customer_code,
+                    sup.name AS join_supplier_name, sup.code AS join_supplier_code
              FROM sales s
              LEFT JOIN customers c ON s.customer_id = c.id
              LEFT JOIN suppliers sup ON s.customer_id = sup.id
@@ -3091,7 +3129,8 @@ export const invoicesAPI = {
       /* firm_nr 1 vs 001 uyuşmazlığı: yalnızca seçili firma tablosunda id ara (çapraz firma yok) */
       if (rows.length === 0) {
         res = await postgres.query(
-          `SELECT s.*, c.name AS join_customer_name, sup.name AS join_supplier_name
+          `SELECT s.*, c.name AS join_customer_name, c.code AS join_customer_code,
+                  sup.name AS join_supplier_name, sup.code AS join_supplier_code
            FROM sales s
            LEFT JOIN customers c ON s.customer_id = c.id
            LEFT JOIN suppliers sup ON s.customer_id = sup.id
@@ -3210,6 +3249,7 @@ export const invoicesAPI = {
 
     invoice.items = itemRows.map((row) => mapSaleItemRowToInvoiceLine(row, invoice));
     await hydrateInvoiceItemDisplayCodes(invoice.items);
+    await hydrateInvoiceCariCodes(invoice);
 
     if (itemRows.length === 0) {
       console.warn('[InvoicesAPI] getById: no sale_items for invoice', cleanId, itemTableOpts);
@@ -4999,6 +5039,35 @@ function inferInvoiceCategoryFromDbRow(dbInv: any): Invoice['invoice_category'] 
   return 'Hizmet';
 }
 
+/**
+ * Fatura düzenlemede cari kod — sales satırında yok; customers/suppliers join veya açık alan.
+ * Unvan dolu / kod boş regresyonunu önlemek için map + form hydrate ortak kaynak.
+ */
+export function resolveMappedInvoiceCariCodes(
+  dbInv: {
+    join_customer_code?: unknown;
+    join_supplier_code?: unknown;
+    customer_code?: unknown;
+    supplier_code?: unknown;
+  },
+  purchaseSide: boolean,
+): { customer_code?: string; supplier_code?: string } {
+  const joinCust = String(dbInv.join_customer_code ?? '').trim();
+  const joinSup = String(dbInv.join_supplier_code ?? '').trim();
+  const explicitCust = String(dbInv.customer_code ?? '').trim();
+  const explicitSup = String(dbInv.supplier_code ?? '').trim();
+  if (purchaseSide) {
+    const code = joinSup || explicitSup || joinCust || explicitCust;
+    return code ? { supplier_code: code, customer_code: code } : {};
+  }
+  const code = joinCust || explicitCust;
+  const out: { customer_code?: string; supplier_code?: string } = {};
+  if (code) out.customer_code = code;
+  const sc = joinSup || explicitSup;
+  if (sc) out.supplier_code = sc;
+  return out;
+}
+
 function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
   const category = inferInvoiceCategoryFromDbRow(dbInv);
   const inferredType =
@@ -5024,6 +5093,7 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     category,
     code: inferredType,
   });
+  const cariCodes = resolveMappedInvoiceCariCodes(dbInv, purchaseSide);
 
   const netAmount = normalizeSalesHeaderNetAmount(dbInv, category);
 
@@ -5035,8 +5105,10 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     invoice_date: dbInv.date || dbInv.created_at,
     customer_id: dbInv.customer_id,
     customer_name: purchaseSide ? partnerNameAlis : partnerNameSatis,
+    customer_code: cariCodes.customer_code,
     supplier_id: dbInv.customer_id,
     supplier_name: purchaseSide ? partnerNameAlis : (joinSup || dbInv.supplier_name || ''),
+    supplier_code: cariCodes.supplier_code,
     trcode: inferredType || undefined,
     subtotal: parseFloat(dbInv.total_net || 0) || parseFloat(dbInv.total_gross || 0),
     tax: parseFloat(dbInv.total_vat || 0),

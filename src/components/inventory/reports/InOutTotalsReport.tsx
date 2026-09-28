@@ -235,6 +235,58 @@ export function InOutTotalsReport() {
                     </span>
                 ),
             }),
+            columnHelper.accessor('purchaseReturnQty', {
+                id: 'purchaseReturnQty',
+                header: tm('inOutPurchaseReturnQty') || 'Alış iade miktar',
+                cell: (info) => {
+                    const n = Number(info.getValue()) || 0;
+                    if (!n) return <span className="text-gray-400">—</span>;
+                    return (
+                        <span className="text-amber-700 font-medium">
+                            {formatNumber(n, 2)}
+                        </span>
+                    );
+                },
+            }),
+            columnHelper.accessor('purchaseReturnAmount', {
+                id: 'purchaseReturnAmount',
+                header: tm('inOutPurchaseReturnAmount') || 'Alış iade tutar',
+                cell: (info) => {
+                    const n = Number(info.getValue()) || 0;
+                    if (!n) return <span className="text-gray-400">—</span>;
+                    return (
+                        <span className="text-amber-800 font-medium">
+                            {formatLedgerAmount(n, currency)}
+                        </span>
+                    );
+                },
+            }),
+            columnHelper.accessor('salesReturnQty', {
+                id: 'salesReturnQty',
+                header: tm('inOutSalesReturnQty') || 'Satış iade miktar',
+                cell: (info) => {
+                    const n = Number(info.getValue()) || 0;
+                    if (!n) return <span className="text-gray-400">—</span>;
+                    return (
+                        <span className="text-orange-600 font-medium">
+                            {formatNumber(n, 2)}
+                        </span>
+                    );
+                },
+            }),
+            columnHelper.accessor('salesReturnAmount', {
+                id: 'salesReturnAmount',
+                header: tm('inOutSalesReturnAmount') || 'Satış iade tutar',
+                cell: (info) => {
+                    const n = Number(info.getValue()) || 0;
+                    if (!n) return <span className="text-gray-400">—</span>;
+                    return (
+                        <span className="text-orange-700 font-medium">
+                            {formatLedgerAmount(n, currency)}
+                        </span>
+                    );
+                },
+            }),
         );
         return cols;
     }, [tm, currency, includeServices]);
@@ -308,7 +360,7 @@ export function InOutTotalsReport() {
                         {...REPORT_GRID_DEFAULTS}
                         columnVisibility={columnVisibility}
                         onColumnVisibilityChange={setColumnVisibility}
-                        storageNamespace="report-in-out-totals-v2"
+                        storageNamespace="report-in-out-totals-v3"
                         excelFileName={tm('inOutTotals') || 'giris_cikis'}
                         printTitle={tm('inOutTotals') || 'Giriş Çıkış Toplamları'}
                         height="100%"

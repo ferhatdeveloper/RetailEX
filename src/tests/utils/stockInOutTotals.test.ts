@@ -70,14 +70,92 @@ describe('stockInOutTotals — EL KREMI senaryosu', () => {
 
     it('UUID ve kod aynı ürünü tek satırda birleştirir', () => {
         const merged = collapseInOutTotalsRows([
-            { productId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', productCode: 'ELKREMI', productName: 'EL KREMI', inQty: 50, inAmount: 5000, outQty: 0, outAmount: 0 },
-            { productId: 'ELKREMI', productCode: 'ELKREMI', productName: 'EL KREMI', inQty: 10, inAmount: 1000, outQty: 2, outAmount: 500 },
+            {
+                productId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+                productCode: 'ELKREMI',
+                productName: 'EL KREMI',
+                inQty: 50,
+                inAmount: 5000,
+                outQty: 0,
+                outAmount: 0,
+                purchaseReturnQty: 0,
+                purchaseReturnAmount: 0,
+                salesReturnQty: 0,
+                salesReturnAmount: 0,
+            },
+            {
+                productId: 'ELKREMI',
+                productCode: 'ELKREMI',
+                productName: 'EL KREMI',
+                inQty: 10,
+                inAmount: 1000,
+                outQty: 2,
+                outAmount: 500,
+                purchaseReturnQty: 1,
+                purchaseReturnAmount: 100,
+                salesReturnQty: 2,
+                salesReturnAmount: 400,
+            },
         ]);
         expect(merged).toHaveLength(1);
         expect(merged[0].inQty).toBe(60);
         expect(merged[0].outQty).toBe(2);
         expect(merged[0].inAmount).toBe(6000);
         expect(merged[0].outAmount).toBe(500);
+        expect(merged[0].purchaseReturnQty).toBe(1);
+        expect(merged[0].purchaseReturnAmount).toBe(100);
+        expect(merged[0].salesReturnQty).toBe(2);
+        expect(merged[0].salesReturnAmount).toBe(400);
+    });
+
+    it('alış iadesi ve satış iadesini ayrı kolonlarda toplar', () => {
+        const rows = aggregateInOutTotals([
+            {
+                productId: 'p1',
+                productCode: 'SABUN',
+                productName: 'SABUN',
+                quantity: 11,
+                unitPrice: 5000,
+                ficheType: 'purchase_invoice',
+                trcode: 1,
+            },
+            {
+                productId: 'p1',
+                productCode: 'SABUN',
+                productName: 'SABUN',
+                quantity: 2,
+                unitPrice: 5000,
+                ficheType: 'return_invoice',
+                trcode: 6,
+                movementType: 'out',
+            },
+            {
+                productId: 'p1',
+                productCode: 'SABUN',
+                productName: 'SABUN',
+                quantity: 4,
+                unitPrice: 15000,
+                ficheType: 'sales_invoice',
+                trcode: 8,
+            },
+            {
+                productId: 'p1',
+                productCode: 'SABUN',
+                productName: 'SABUN',
+                quantity: 1,
+                unitPrice: 15000,
+                ficheType: 'return_invoice',
+                trcode: 3,
+                movementType: 'in',
+            },
+        ]);
+        expect(rows).toHaveLength(1);
+        expect(rows[0].purchaseReturnQty).toBe(2);
+        expect(rows[0].purchaseReturnAmount).toBe(10000);
+        expect(rows[0].salesReturnQty).toBe(1);
+        expect(rows[0].salesReturnAmount).toBe(15000);
+        expect(rows[0].inQty).toBe(12); // alış 11 + satış iade 1
+        expect(rows[0].outQty).toBe(6); // satış 4 + alış iade 2
     });
 
     it('tutarları tek toplamda netlemez', () => {

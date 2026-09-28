@@ -278,7 +278,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
     fetchMasterData();
   }, [serviceId]);
 
-  // Yeni kart: sıradaki 6 haneli kod (000001…). Kullanıcı elle değiştirebilir.
+  // Yeni kart: sıradaki 7 haneli kod (0000001…). Kullanıcı elle değiştirebilir.
   useEffect(() => {
     if (serviceId) return;
     let cancelled = false;
@@ -296,7 +296,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
         if (cancelled) return;
         setFormData((prev) => {
           if (String(prev.code || '').trim()) return prev;
-          return { ...prev, code: '000001' };
+          return { ...prev, code: '0000001' };
         });
       }
     })();
@@ -418,9 +418,9 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
     let code = String(current.code || '').trim();
     if (!code) {
       try {
-        code = (await serviceAPI.getNextCode()) || '000001';
+        code = (await serviceAPI.getNextCode()) || '0000001';
       } catch {
-        code = '000001';
+        code = '0000001';
       }
       setFormData((prev) => ({ ...prev, code }));
     }

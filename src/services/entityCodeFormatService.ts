@@ -1,12 +1,14 @@
 /**
  * Fatura / ürün / hizmet kod formatı — app_settings JSON.
  * Fatura mevcut invoice_code_formats anahtarını kullanır; ürün ve hizmet ayrı key.
- * Format yoksa null — çağıran mevcut varsayılanı korur (hizmet 000001, fatura damga, ürün PROD-tarih).
+ * Format yoksa 7 haneli sayısal sıra (0000001…).
  */
 import { postgres, ERP_SETTINGS } from './postgres';
 import {
   INVOICE_CODE_FORMAT_SETTINGS_KEY,
+  DEFAULT_ENTITY_CODE_PATTERN,
   compileInvoiceCodePattern,
+  formatDefaultNumericEntityCode,
   formatInvoiceCode,
   generateDefaultInvoiceStamp,
   isInvoiceCodePatternDefined,
@@ -88,11 +90,16 @@ async function listMatchingCodes(
 ): Promise<string[]> {
   const table = codeTable(entity);
   try {
+    const numericOnly = likePrefix === '%';
     const { rows } = await postgres.query<{ code: string }>(
-      `SELECT code FROM ${table}
-        WHERE code LIKE $1 ESCAPE '\\'
-        LIMIT 8000`,
-      [likePrefix]
+      numericOnly
+        ? `SELECT code FROM ${table}
+            WHERE code::text ~ '^[0-9]+$'
+            LIMIT 8000`
+        : `SELECT code FROM ${table}
+            WHERE code LIKE $1 ESCAPE '\\'
+            LIMIT 8000`,
+      numericOnly ? [] : [likePrefix]
     );
     return (rows || []).map((r) => String(r.code || '')).filter(Boolean);
   } catch (e) {
@@ -119,7 +126,7 @@ async function codeExists(entity: 'product' | 'service', code: string): Promise<
 
 /**
  * Tanımlı format varsa sıradaki benzersiz kod.
- * Format yoksa null — çağıran mevcut varsayılanı kullanır.
+ * Format yoksa 7 haneli sayısal sıra (0000001…).
  */
 export async function allocateNextEntityCode(
   entity: CodeFormatEntity,
@@ -130,7 +137,7 @@ export async function allocateNextEntityCode(
     return allocateNextInvoiceCode(typeCode, date);
   }
   const settings = await getEntityCodeFormats(entity);
-  const pattern = resolveInvoiceCodePattern(settings, typeCode);
+  const pattern = resolveInvoiceCodePattern(settings, typeCode) || DEFAULT_ENTITY_CODE_PATTERN;
   const compiled = compileInvoiceCodePattern(pattern, date);
   if (!compiled) return null;
 
@@ -145,11 +152,9 @@ export async function allocateNextEntityCode(
   return formatInvoiceCode(compiled, seq);
 }
 
-/** Format yokken mevcut ürün varsayılanı (PROD-YYYYMMDD-xxxx). */
-export function generateDefaultProductCode(now: Date = new Date()): string {
-  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-  return `PROD-${dateStr}-${random}`;
+/** Format yokken senkron yedek — 0000001. */
+export function generateDefaultProductCode(_now: Date = new Date()): string {
+  return formatDefaultNumericEntityCode(1n);
 }
 
 export function generateDefaultInvoiceCode(now: Date = new Date()): string {

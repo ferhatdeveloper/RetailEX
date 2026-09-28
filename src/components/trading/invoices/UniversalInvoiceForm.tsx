@@ -590,7 +590,8 @@ export function UniversalInvoiceForm({
   // customerId gerçek ID'yi saklar, customerCode görüntüleme için kullanılır
   const [customerId, setCustomerId] = useState(() => editData?.customer_id || '');
   const [customerCode, setCustomerCode] = useState(() => {
-    if (editData?.customer_code) return editData.customer_code;
+    const explicit = String(editData?.customer_code || editData?.supplier_code || '').trim();
+    if (explicit) return explicit;
     if (editData?.customer_id && customers.length > 0) {
       const customer = customers.find(c => c.id === editData.customer_id);
       return customer ? ((customer as any).code || '') : '';
@@ -598,9 +599,13 @@ export function UniversalInvoiceForm({
     return '';
   });
   const [customerTitle, setCustomerTitle] = useState(() => editData?.customer_name || '');
-  const [supplierCode, setSupplierCode] = useState(() => editData?.supplier_code || '');
-  const [supplierId, setSupplierId] = useState(() => editData?.supplier_id || '');
-  const [supplierTitle, setSupplierTitle] = useState(() => editData?.supplier_name || '');
+  const [supplierCode, setSupplierCode] = useState(() =>
+    String(editData?.supplier_code || editData?.customer_code || '').trim(),
+  );
+  const [supplierId, setSupplierId] = useState(() => editData?.supplier_id || editData?.customer_id || '');
+  const [supplierTitle, setSupplierTitle] = useState(() =>
+    editData?.supplier_name || (isInvoicePurchaseSide(invoiceType) ? editData?.customer_name : '') || '',
+  );
   const [customerBarcode, setCustomerBarcode] = useState(''); // Cari Hesap Barkodu
   const [showCameraScanner, setShowCameraScanner] = useState(false);
   const [quickBarcodeInput, setQuickBarcodeInput] = useState('');
@@ -3422,18 +3427,63 @@ export function UniversalInvoiceForm({
     };
   }, [customerId, customerTitle, customers, supplierId, supplierTitle, suppliers, invoiceType.category]);
 
-  /* Alış düzenleme: tedarikçi UUID/ünvanı customer_id üzerinde; suppliers async yüklenince kod/ünvanı doldur */
+  /*
+   * Düzenleme: sales'ta yalnızca customer_id + customer_name var; kod karttan gelir.
+   * getById customer_code/supplier_code doldurur; PostgREST/async listede yoksa
+   * customers/suppliers yüklenince kodu tamamla (satış / alış / iade / hizmet).
+   */
   useEffect(() => {
-    if (!editData?.id || invoiceType.category !== 'Alis') return;
-    const sid = (editData as any).supplier_id || editData.customer_id;
-    const st = (editData as any).supplier_name || (editData as any).customer_name;
-    if (sid) setSupplierId(String(sid));
-    if (st) setSupplierTitle(String(st));
-    if (sid && suppliers.length > 0) {
-      const sup = suppliers.find((s: any) => String(s.id) === String(sid));
-      if (sup && (sup as any).code) setSupplierCode(String((sup as any).code));
+    if (!editData) return;
+    const purchaseSide = isInvoicePurchaseSide(invoiceType);
+    const partnerId = String(
+      (editData as any).supplier_id || editData.customer_id || '',
+    ).trim();
+    const partnerName = String(
+      (purchaseSide
+        ? (editData as any).supplier_name || editData.customer_name
+        : editData.customer_name) || '',
+    ).trim();
+    const explicitCode = String(
+      (purchaseSide
+        ? (editData as any).supplier_code || (editData as any).customer_code
+        : (editData as any).customer_code || (editData as any).supplier_code) || '',
+    ).trim();
+
+    if (purchaseSide) {
+      if (partnerId) setSupplierId(partnerId);
+      if (partnerName) setSupplierTitle(partnerName);
+      if (explicitCode) {
+        setSupplierCode(explicitCode);
+        return;
+      }
+      if (partnerId && suppliers.length > 0) {
+        const sup = suppliers.find((s: any) => String(s.id) === partnerId);
+        if (sup && (sup as any).code) setSupplierCode(String((sup as any).code));
+      }
+      return;
     }
-  }, [editData?.id, editData?.customer_id, (editData as any)?.supplier_id, invoiceType.category, suppliers]);
+
+    if (partnerId) setCustomerId(partnerId);
+    if (partnerName) setCustomerTitle(partnerName);
+    if (explicitCode) {
+      setCustomerCode(explicitCode);
+      return;
+    }
+    if (partnerId && customers.length > 0) {
+      const cust = customers.find((c: any) => String(c.id) === partnerId);
+      if (cust && (cust as any).code) setCustomerCode(String((cust as any).code));
+    }
+  }, [
+    editData,
+    editData?.id,
+    editData?.customer_id,
+    (editData as any)?.supplier_id,
+    (editData as any)?.customer_code,
+    (editData as any)?.supplier_code,
+    invoiceType,
+    customers,
+    suppliers,
+  ]);
 
   // Click outside
   useEffect(() => {

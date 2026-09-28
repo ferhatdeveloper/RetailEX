@@ -42,9 +42,9 @@ function emptyHintKey(entity: CodeFormatEntity): string {
 async function fallbackCode(entity: CodeFormatEntity): Promise<string> {
   if (entity === 'service') {
     try {
-      return (await serviceAPI.getNextCode()) || '000001';
+      return (await serviceAPI.getNextCode()) || '0000001';
     } catch {
-      return '000001';
+      return '0000001';
     }
   }
   if (entity === 'product') return generateDefaultProductCode();
@@ -64,8 +64,8 @@ export function CodeFormatFieldButton({
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<InvoiceCodeFormatsSettings>({});
   const [prefix, setPrefix] = useState('');
-  const [includeYear, setIncludeYear] = useState(true);
-  const [seqDigits, setSeqDigits] = useState(6);
+  const [includeYear, setIncludeYear] = useState(false);
+  const [seqDigits, setSeqDigits] = useState(7);
   const [pattern, setPattern] = useState('');
 
   const typeKey = String(typeCode ?? '').trim();
@@ -77,13 +77,13 @@ export function CodeFormatFieldButton({
     if (m) {
       setPrefix(m[1] || '');
       setIncludeYear(Boolean(m[2]));
-      setSeqDigits(Math.min(12, Math.max(1, parseInt(m[3], 10) || 6)));
+      setSeqDigits(Math.min(12, Math.max(1, parseInt(m[3], 10) || 7)));
       return;
     }
     if (!trimmed) {
       setPrefix('');
-      setIncludeYear(true);
-      setSeqDigits(6);
+      setIncludeYear(false);
+      setSeqDigits(7);
     }
   };
 
@@ -256,7 +256,7 @@ export function CodeFormatFieldButton({
                     max={12}
                     value={seqDigits}
                     onChange={(e) => {
-                      const v = Math.min(12, Math.max(1, Number(e.target.value) || 6));
+                      const v = Math.min(12, Math.max(1, Number(e.target.value) || 7));
                       setSeqDigits(v);
                       syncPatternFromFields(prefix, includeYear, v);
                     }}
@@ -272,7 +272,7 @@ export function CodeFormatFieldButton({
                     value={pattern}
                     onChange={(e) => applyPatternToFields(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    placeholder={`${examplePrefix}-{YYYY}-{SEQ:6}`}
+                    placeholder={`${examplePrefix}-{YYYY}-{SEQ:7}`}
                   />
                   <p className="text-[11px] text-slate-500 mt-1">{tm('invoiceCodeFormatPatternHint')}</p>
                 </div>

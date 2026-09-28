@@ -578,8 +578,12 @@ export interface Invoice {
   invoice_category: 'Satis' | 'Alis' | 'Iade' | 'Irsaliye' | 'Siparis' | 'Teklif' | 'Hizmet';
   customer_id?: string;
   customer_name?: string;
+  /** Cari hesap kodu (müşteri / satış tarafı) — sales tablosunda yok; join veya karttan */
+  customer_code?: string;
   supplier_id?: string;
   supplier_name?: string;
+  /** Cari hesap kodu (tedarikçi / alış tarafı) */
+  supplier_code?: string;
   total_amount: number;
   total?: number;
   total_cost?: number;

@@ -4,6 +4,8 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { moduleTranslations } from '../../../locales/module-translations';
 import type { UnitMasterRow } from '../../../utils/unitOptions';
 import { serviceAPI } from '../../../services/serviceAPI';
+import { allocateNextEntityCode } from '../../../services/entityCodeFormatService';
+import { formatDefaultNumericEntityCode } from '../../../utils/invoiceCodeFormat';
 
 export interface QuickCreateFormValue {
     code: string;
@@ -56,7 +58,7 @@ export const QuickProductCreateModal: React.FC<QuickProductCreateModalProps> = (
     const [touched, setTouched] = useState(false);
     const [codeLoading, setCodeLoading] = useState(false);
 
-    // Modal her açıldığında initial değerlerle sıfırla; hizmette kod boşsa getNextCode (000001…)
+    // Modal her açıldığında initial değerlerle sıfırla; kod boşsa 0000001…
     useEffect(() => {
         setName(initialName);
         setUnit('Adet');
@@ -67,13 +69,16 @@ export const QuickProductCreateModal: React.FC<QuickProductCreateModalProps> = (
 
         let cancelled = false;
         const bootstrapCode = async () => {
-            if (kind === 'service' && !String(initialCode || '').trim()) {
+            if (!String(initialCode || '').trim()) {
                 setCodeLoading(true);
                 try {
-                    const next = await serviceAPI.getNextCode();
-                    if (!cancelled) setCode(next || '000001');
+                    const next =
+                        (await allocateNextEntityCode(kind === 'service' ? 'service' : 'product')) ||
+                        (kind === 'service' ? await serviceAPI.getNextCode() : null) ||
+                        formatDefaultNumericEntityCode(1n);
+                    if (!cancelled) setCode(next);
                 } catch {
-                    if (!cancelled) setCode('000001');
+                    if (!cancelled) setCode(formatDefaultNumericEntityCode(1n));
                 } finally {
                     if (!cancelled) setCodeLoading(false);
                 }
@@ -151,7 +156,7 @@ export const QuickProductCreateModal: React.FC<QuickProductCreateModalProps> = (
                             autoFocus={!(kind === 'service' && !initialCode)}
                             disabled={codeLoading}
                             className={`px-3 py-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium ${codeMissing ? 'border-red-400 bg-red-50/40' : 'border-slate-200 bg-white'}`}
-                            placeholder={kind === 'service' ? '000001' : 'PRD-001'}
+                            placeholder="0000001"
                         />
                     </label>
 

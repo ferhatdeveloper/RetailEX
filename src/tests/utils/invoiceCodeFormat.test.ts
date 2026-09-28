@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   buildInvoiceCodePattern,
   compileInvoiceCodePattern,
+  DEFAULT_ENTITY_CODE_PATTERN,
   extractInvoiceCodeSequence,
+  formatDefaultNumericEntityCode,
   formatInvoiceCode,
   generateDefaultInvoiceStamp,
   isInvoiceCodePatternDefined,
@@ -12,16 +14,24 @@ import {
 } from '../../utils/invoiceCodeFormat';
 
 describe('invoiceCodeFormat', () => {
-  it('boş şablon tanımsızdır; format yoksa damga YYYYMMDD + rastgele', () => {
+  it('boş şablon tanımsızdır; format yoksa 7 haneli 0000001', () => {
     expect(isInvoiceCodePatternDefined('')).toBe(false);
     expect(isInvoiceCodePatternDefined('  ')).toBe(false);
     expect(isInvoiceCodePatternDefined('FTR-{YYYY}-{SEQ:6}')).toBe(true);
+    expect(DEFAULT_ENTITY_CODE_PATTERN).toBe('{SEQ:7}');
+    expect(formatDefaultNumericEntityCode(1n)).toBe('0000001');
+    expect(formatDefaultNumericEntityCode(12)).toBe('0000012');
+    expect(generateDefaultInvoiceStamp(new Date('2026-09-17T18:48:36.000Z'))).toBe('0000001');
+  });
 
-    const stamp = generateDefaultInvoiceStamp(new Date('2026-09-17T18:48:36.000Z'));
-    expect(stamp.startsWith('20260917')).toBe(true);
-    expect(stamp.length).toBeGreaterThanOrEqual(8);
-    expect(stamp.length).toBeLessThanOrEqual(14);
-    expect(/^\d+$/.test(stamp)).toBe(true);
+  it('{SEQ:7} ilk kodu 0000001 üretir', () => {
+    const compiled = compileInvoiceCodePattern('{SEQ:7}');
+    expect(compiled).not.toBeNull();
+    expect(compiled!.prefix).toBe('');
+    expect(compiled!.seqWidth).toBe(7);
+    expect(formatInvoiceCode(compiled!, 1n)).toBe('0000001');
+    expect(nextInvoiceSequenceFromCodes(compiled!, [])).toBe(1n);
+    expect(nextInvoiceSequenceFromCodes(compiled!, ['0000001', '0000003'])).toBe(4n);
   });
 
   it('FTR-{YYYY}-{SEQ:6} bir sonraki numarayı üretir', () => {
@@ -59,9 +69,9 @@ describe('invoiceCodeFormat', () => {
     expect(nextInvoiceSequenceFromCodes(compiled, [])).toBe(1n);
   });
 
-  it('önizleme ve wizard şablonu FTR-2026-000001 üretir', () => {
-    const pattern = buildInvoiceCodePattern({ prefix: 'FTR', includeYear: true, seqDigits: 6 });
-    expect(pattern).toBe('FTR-{YYYY}-{SEQ:6}');
-    expect(previewInvoiceCode(pattern, 1n, new Date(2026, 8, 18))).toBe('FTR-2026-000001');
+  it('önizleme ve wizard şablonu FTR-2026-0000001 üretir (7 hane)', () => {
+    const pattern = buildInvoiceCodePattern({ prefix: 'FTR', includeYear: true, seqDigits: 7 });
+    expect(pattern).toBe('FTR-{YYYY}-{SEQ:7}');
+    expect(previewInvoiceCode(pattern, 1n, new Date(2026, 8, 18))).toBe('FTR-2026-0000001');
   });
 });

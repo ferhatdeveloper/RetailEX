@@ -1,11 +1,17 @@
 /**
- * Fatura kod formatı — Logo benzeri şablon + varsayılan damga.
+ * Fatura / malzeme / hizmet kod formatı — Logo benzeri şablon.
  *
  * Örnek şablon: FTR-{YYYY}-{SEQ:6} → FTR-2026-000001
- * Şablon boşsa mevcut varsayılan: YYYYMMDD + rastgele (ekran görüntüsündeki 20260917512868).
+ * Şablon boşsa varsayılan: 7 haneli sıfır dolgulu sıra (0000001, 0000002, …).
  */
 
 export const INVOICE_CODE_FORMAT_SETTINGS_KEY = 'invoice_code_formats';
+
+/** İlk kayıt ve format yokken kullanılan sıra genişliği (malzeme / fatura / hizmet). */
+export const DEFAULT_ENTITY_CODE_SEQ_DIGITS = 7;
+
+/** Implicit şablon — app_settings boşken allocate bu kalıbı kullanır. */
+export const DEFAULT_ENTITY_CODE_PATTERN = `{SEQ:${DEFAULT_ENTITY_CODE_SEQ_DIGITS}}`;
 
 export interface InvoiceCodeFormatRule {
   /** Boş = bu yuvada format yok (tür için varsayılana / damgaya düş) */
@@ -28,9 +34,19 @@ export interface CompiledInvoiceCodePattern {
 
 const SEQ_PLACEHOLDER = '\u0001SEQ\u0001';
 
-/** Mevcut UniversalInvoiceForm damgası — format yoksa bunu kırma. */
-export function generateDefaultInvoiceStamp(now: Date = new Date()): string {
-  return `${now.toISOString().split('T')[0].replace(/-/g, '')}${Math.floor(Math.random() * 1000000)}`;
+/** Sıfır dolgulu sayısal kod (örn. 1 → 0000001). */
+export function formatDefaultNumericEntityCode(seq: bigint | number = 1n): string {
+  const n = typeof seq === 'bigint' ? seq : BigInt(Math.max(0, Math.trunc(Number(seq)) || 0));
+  const v = n < 1n ? 1n : n;
+  return v.toString().padStart(DEFAULT_ENTITY_CODE_SEQ_DIGITS, '0');
+}
+
+/**
+ * Format / allocate yokken senkron yedek — 7 haneli ilk kod.
+ * (Eski davranış: YYYYMMDD + rastgele damga.)
+ */
+export function generateDefaultInvoiceStamp(_now: Date = new Date()): string {
+  return formatDefaultNumericEntityCode(1n);
 }
 
 export function isInvoiceCodePatternDefined(pattern: string | undefined | null): boolean {
@@ -68,7 +84,7 @@ function escapeLikeLiteral(value: string): string {
 
 /**
  * Şablonu tarih + sıra yuvasına derler.
- * {YYYY} {YY} {MM} {DD} {SEQ} {SEQ:n} — SEQ yoksa sonda 6 haneli sıra eklenir.
+ * {YYYY} {YY} {MM} {DD} {SEQ} {SEQ:n} — SEQ yoksa sonda DEFAULT_ENTITY_CODE_SEQ_DIGITS haneli sıra eklenir.
  */
 export function compileInvoiceCodePattern(
   pattern: string,
@@ -78,7 +94,7 @@ export function compileInvoiceCodePattern(
   if (!raw) return null;
 
   const { yyyy, yy, mm, dd } = dateParts(date);
-  let seqWidth = 6;
+  let seqWidth = DEFAULT_ENTITY_CODE_SEQ_DIGITS;
   let hasSeq = false;
 
   const resolved = raw.replace(/\{(YYYY|YY|MM|DD|SEQ(?::(\d+))?)\}/gi, (_m, token: string, width?: string) => {
@@ -88,8 +104,10 @@ export function compileInvoiceCodePattern(
     if (head === 'MM') return mm;
     if (head === 'DD') return dd;
     hasSeq = true;
-    const n = width ? parseInt(width, 10) : 6;
-    seqWidth = Number.isFinite(n) ? Math.min(12, Math.max(1, n)) : 6;
+    const n = width ? parseInt(width, 10) : DEFAULT_ENTITY_CODE_SEQ_DIGITS;
+    seqWidth = Number.isFinite(n)
+      ? Math.min(12, Math.max(1, n))
+      : DEFAULT_ENTITY_CODE_SEQ_DIGITS;
     return SEQ_PLACEHOLDER;
   });
 
@@ -160,7 +178,10 @@ export function buildInvoiceCodePattern(opts: {
 }): string {
   const prefix = String(opts.prefix || '').trim();
   const includeYear = opts.includeYear !== false;
-  const seqDigits = Math.min(12, Math.max(1, Number(opts.seqDigits) || 6));
+  const seqDigits = Math.min(
+    12,
+    Math.max(1, Number(opts.seqDigits) || DEFAULT_ENTITY_CODE_SEQ_DIGITS)
+  );
   const sep = opts.separator ?? '-';
   const parts: string[] = [];
   if (prefix) parts.push(prefix);

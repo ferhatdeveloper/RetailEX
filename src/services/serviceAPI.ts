@@ -277,9 +277,9 @@ class ServiceAPI {
     }
 
     /**
-     * Sonraki hizmet kodu — sayısal 6 hane (000001, 000002, …).
-     * Yalnızca tamamen sayısal kodlar dikkate alınır; yoksa 000001.
-     * Çakışmada (000001 doluysa) sıradaki boş pad'li kodu verir. Ürün barkodunu etkilemez.
+     * Sonraki hizmet kodu — sayısal 7 hane (0000001, 0000002, …).
+     * Yalnızca tamamen sayısal kodlar dikkate alınır; yoksa 0000001.
+     * Çakışmada sıradaki boş pad'li kodu verir. Ürün barkodunu etkilemez.
      */
     async getNextCode(): Promise<string> {
         const { rows } = await postgres.query(
@@ -307,7 +307,7 @@ class ServiceAPI {
             next += 1n;
             if (next > 9999999n) break;
         }
-        return next.toString().padStart(6, '0');
+        return next.toString().padStart(7, '0');
     }
 
     async create(service: CreateServiceInput): Promise<Service> {

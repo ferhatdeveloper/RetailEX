@@ -23,6 +23,8 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { toast } from 'sonner';
 import { CodeFormatFieldButton } from '../../shared/CodeFormatFieldButton';
+import { allocateNextEntityCode } from '../../../services/entityCodeFormatService';
+import { formatDefaultNumericEntityCode } from '../../../utils/invoiceCodeFormat';
 import type { Product, ProductVariant, Invoice } from '../../../core/types';
 import { ProductLabelPrint } from './ProductLabelPrint';
 import { translateToAllLanguages } from '../../../services/translationService';
@@ -1045,16 +1047,27 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     loadMasterData();
   }, []);
 
-  // Auto-generate product code
+  // Auto-generate product code — 7 haneli sıra (0000001…)
   useEffect(() => {
-    if (!productId && !formData.code) {
-      // Generate code: PROD-YYYYMMDD-RANDOM
-      const date = new Date();
-      const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-      const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-      const generatedCode = `PROD-${dateStr}-${random}`;
-      setFormData((prev: any) => ({ ...prev, code: generatedCode }));
-    }
+    if (productId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const next = await allocateNextEntityCode('product');
+        if (cancelled || !next) return;
+        setFormData((prev: any) => (prev.code ? prev : { ...prev, code: next }));
+      } catch (e) {
+        console.warn('[ProductFormPage] allocate product code:', e);
+        if (!cancelled) {
+          setFormData((prev: any) =>
+            prev.code ? prev : { ...prev, code: formatDefaultNumericEntityCode(1n) }
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [productId]);
 
   // Auto-translate descriptions when Turkish field loses focus
@@ -2043,12 +2056,15 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       {!formData.code && (
                         <button
                           onClick={() => {
-                            const date = new Date();
-                            const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-                            const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-                            const generatedCode = `PROD-${dateStr}-${random}`;
-                            handleInputChange('code', generatedCode);
-                            toast.info(tm('codeGenerated'));
+                            void allocateNextEntityCode('product')
+                              .then((code) => {
+                                handleInputChange('code', code || formatDefaultNumericEntityCode(1n));
+                                toast.info(tm('codeGenerated'));
+                              })
+                              .catch(() => {
+                                handleInputChange('code', formatDefaultNumericEntityCode(1n));
+                                toast.info(tm('codeGenerated'));
+                              });
                           }}
                           className="p-1 text-blue-600 hover:bg-blue-50 rounded"
                           title={tm('prodFormGenerateCode')}

@@ -5,6 +5,7 @@
 import { postgres, ERP_SETTINGS } from './postgres';
 import {
   INVOICE_CODE_FORMAT_SETTINGS_KEY,
+  DEFAULT_ENTITY_CODE_PATTERN,
   compileInvoiceCodePattern,
   formatInvoiceCode,
   nextInvoiceSequenceFromCodes,
@@ -64,11 +65,17 @@ async function listMatchingFicheNos(
   periodNr: string
 ): Promise<string[]> {
   try {
+    // Saf sayısal şablon ({SEQ:7}) → LIKE '%' yerine yalnızca rakam kodlar (eski damgaları sıraya karıştırma)
+    const numericOnly = likePrefix === '%';
     const { rows } = await postgres.query<{ fiche_no: string }>(
-      `SELECT fiche_no FROM sales
-        WHERE fiche_no LIKE $1 ESCAPE '\\'
-        LIMIT 8000`,
-      [likePrefix],
+      numericOnly
+        ? `SELECT fiche_no FROM sales
+            WHERE fiche_no::text ~ '^[0-9]+$'
+            LIMIT 8000`
+        : `SELECT fiche_no FROM sales
+            WHERE fiche_no LIKE $1 ESCAPE '\\'
+            LIMIT 8000`,
+      numericOnly ? [] : [likePrefix],
       { firmNr, periodNr }
     );
     return (rows || []).map((r) => String(r.fiche_no || '')).filter(Boolean);
@@ -96,7 +103,7 @@ async function ficheNoExists(ficheNo: string, firmNr: string, periodNr: string):
 
 /**
  * Tanımlı format varsa sıradaki benzersiz kodu üretir (firma+dönem sales).
- * Format yoksa null — çağıran YYYYMMDD damgasını korur.
+ * Format yoksa 7 haneli sayısal sıra (0000001…).
  * Mevcut (posted dahil) numaralar atlanır; yeniden kullanılmaz.
  */
 export async function allocateNextInvoiceCode(
@@ -105,7 +112,7 @@ export async function allocateNextInvoiceCode(
   opts?: { firmNr?: string; periodNr?: string }
 ): Promise<string | null> {
   const settings = await getInvoiceCodeFormats(opts?.firmNr);
-  const pattern = resolveInvoiceCodePattern(settings, trcode);
+  const pattern = resolveInvoiceCodePattern(settings, trcode) || DEFAULT_ENTITY_CODE_PATTERN;
   const compiled = compileInvoiceCodePattern(pattern, date);
   if (!compiled) return null;
 

@@ -1,5 +1,6 @@
 import { classifyAnalysisSaleLine } from './analysisSaleLine';
 import { toSqlDateInputString } from './localCalendarDate';
+import { classifyProductHistoryType } from './lastPurchaseCostSql';
 
 /** Ürün bazında giriş/çıkış özeti — tutarlar netlenmez. */
 export interface InOutTotalsRow {
@@ -24,6 +25,14 @@ export interface InOutTotalsRow {
     inAmount: number;
     outQty: number;
     outAmount: number;
+    /** Satınalma iadesi (trcode 6) miktar toplamı */
+    purchaseReturnQty: number;
+    /** Satınalma iadesi tutar toplamı */
+    purchaseReturnAmount: number;
+    /** Satış iadesi (trcode 2/3) miktar toplamı */
+    salesReturnQty: number;
+    /** Satış iadesi tutar toplamı */
+    salesReturnAmount: number;
     /** true → güzellik/hizmet satırı (includeServices açıkken gelir) */
     isService?: boolean;
 }
@@ -179,6 +188,48 @@ export function classifyStockLineDirection(row: {
     return 'skip';
 }
 
+/** Alış / satış iadesi — ayrı kolonlar için (giriş/çıkış yönünden bağımsız). */
+export function classifyStockLineReturnKind(row: {
+    movementType?: string;
+    movement_type?: string;
+    ficheType?: string;
+    fiche_type?: string;
+    trcode?: number;
+}): 'purchase_return' | 'sales_return' | null {
+    const mt = String(row.movementType || row.movement_type || '').toLowerCase();
+    if (mt === 'purchase_return') return 'purchase_return';
+    if (mt === 'sales_return') return 'sales_return';
+
+    const fiche = String(row.ficheType || row.fiche_type || '').trim();
+    const tr = Number(row.trcode ?? 0);
+    const kind = classifyProductHistoryType(fiche, tr);
+    if (kind === 'purchase_return') return 'purchase_return';
+    if (kind === 'sales_return') return 'sales_return';
+    return null;
+}
+
+function emptyInOutTotalsRow(
+    productId: string,
+    productCode: string,
+    productName: string,
+    isService?: boolean,
+): InOutTotalsRow {
+    return {
+        productId,
+        productCode,
+        productName,
+        inQty: 0,
+        inAmount: 0,
+        outQty: 0,
+        outAmount: 0,
+        purchaseReturnQty: 0,
+        purchaseReturnAmount: 0,
+        salesReturnQty: 0,
+        salesReturnAmount: 0,
+        isService,
+    };
+}
+
 /** Satır tutarı: net_amount/total yoksa miktar × birim (veya maliyet). Mutlak değer. */
 export function stockLineAmount(row: {
     quantity?: number;
@@ -260,16 +311,8 @@ export function aggregateInOutTotals(
         const code = String(line.productCode || line.itemCode || '').trim();
         const name = String(line.productName || '').trim();
         const prev = agg.get(key);
-        const row: InOutTotalsRow = prev || {
-            productId: String(line.productId || key),
-            productCode: code,
-            productName: name,
-            inQty: 0,
-            inAmount: 0,
-            outQty: 0,
-            outAmount: 0,
-            isService: asService,
-        };
+        const row: InOutTotalsRow =
+            prev || emptyInOutTotalsRow(String(line.productId || key), code, name, asService);
         if (!row.productCode && code) row.productCode = code;
         if (!row.productName && name) row.productName = name;
         if (asService) row.isService = true;
@@ -279,6 +322,14 @@ export function aggregateInOutTotals(
         } else {
             row.outQty += qty;
             row.outAmount += amount;
+        }
+        const returnKind = classifyStockLineReturnKind(line);
+        if (returnKind === 'purchase_return') {
+            row.purchaseReturnQty += qty;
+            row.purchaseReturnAmount += amount;
+        } else if (returnKind === 'sales_return') {
+            row.salesReturnQty += qty;
+            row.salesReturnAmount += amount;
         }
         agg.set(key, row);
     }
@@ -298,12 +349,29 @@ export function collapseInOutTotalsRows(rows: InOutTotalsRow[]): InOutTotalsRow[
         else if (code) codeToKey.set(code, key);
         const prev = byKey.get(key);
         if (!prev) {
-            byKey.set(key, { ...r, productId: UUID_KEY_RE.test(r.productId) ? r.productId : key });
+            byKey.set(key, {
+                ...emptyInOutTotalsRow(
+                    UUID_KEY_RE.test(r.productId) ? r.productId : key,
+                    r.productCode || '',
+                    r.productName || '',
+                    r.isService,
+                ),
+                ...r,
+                productId: UUID_KEY_RE.test(r.productId) ? r.productId : key,
+                purchaseReturnQty: Number(r.purchaseReturnQty) || 0,
+                purchaseReturnAmount: Number(r.purchaseReturnAmount) || 0,
+                salesReturnQty: Number(r.salesReturnQty) || 0,
+                salesReturnAmount: Number(r.salesReturnAmount) || 0,
+            });
         } else {
             prev.inQty += r.inQty;
             prev.inAmount += r.inAmount;
             prev.outQty += r.outQty;
             prev.outAmount += r.outAmount;
+            prev.purchaseReturnQty += Number(r.purchaseReturnQty) || 0;
+            prev.purchaseReturnAmount += Number(r.purchaseReturnAmount) || 0;
+            prev.salesReturnQty += Number(r.salesReturnQty) || 0;
+            prev.salesReturnAmount += Number(r.salesReturnAmount) || 0;
             if (!prev.productCode && r.productCode) prev.productCode = r.productCode;
             if (!prev.productName && r.productName) prev.productName = r.productName;
             if (!prev.specialCode && r.specialCode) prev.specialCode = r.specialCode;
