@@ -2,11 +2,17 @@
 # Env: WINDOWS_CODESIGN_THUMBPRINT veya PFX magazada; WINDOWS_CODESIGN_DISABLE=1 ise atla.
 # ONEMLI: em-dash / Turkce UTF-8 kullanma - PS 5.1 BOM'suz UTF-8'i bozar (parse hatasi).
 param(
-  [Parameter(Mandatory = $true)]
+  [Parameter(Mandatory = $true, ValueFromRemainingArguments = $false)]
   [string[]]$Paths
 )
 
 $ErrorActionPreference = "Stop"
+
+# -File cagrisinda dizi bozulursa tek string gelmis olabilir
+if ($Paths.Count -eq 1 -and $Paths[0] -match ';|,') {
+  $Paths = @($Paths[0] -split '[;,]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
 if ($env:WINDOWS_CODESIGN_DISABLE -eq "1" -or $env:WINDOWS_CODESIGN_DISABLE -eq "true") {
   Write-Host "[sign-portable] WINDOWS_CODESIGN_DISABLE - atlandi."
   exit 0

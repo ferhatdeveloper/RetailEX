@@ -156,7 +156,9 @@ jobs:
             "RetailEX_SQL_Bridge.exe","RetailEX_Printer.exe","RetailEX_Tools.exe"
           ) | ForEach-Object { Join-Path $rel $_ } | Where-Object { Test-Path $_ }
           if ($bins.Count -gt 0) {
-            powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign-portable-binaries.ps1 -Paths $bins
+            # -File + dizi: sonraki elemanlar pozisyonel arg olur; & ile cagir
+            & .\scripts\sign-portable-binaries.ps1 -Paths $bins
+            if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { exit $LASTEXITCODE }
           }
 
       - name: Pack portable EXE (admin + services)
@@ -179,8 +181,8 @@ jobs:
           SM_CERT_FINGERPRINT: ${{ env.SM_CERT_FINGERPRINT }}
         run: |
           $exe = "dist/RetailEX-Portable-$env:PACKAGE_VERSION.exe"
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign-portable-binaries.ps1 -Paths @($exe)
-
+          & .\scripts\sign-portable-binaries.ps1 -Paths @($exe)
+          if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
