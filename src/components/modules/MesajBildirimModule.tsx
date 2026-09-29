@@ -61,7 +61,7 @@ import {
   type WhatsAppFreeTextPresetId,
   type WhatsAppMessageLang,
 } from '../../services/messaging/whatsappMessageLang';
-import { messageTemplateService, type MessageTemplateRow } from '../../services/messaging/messageTemplateService';
+import { messageTemplateService, splitHeadlineAndBody, type MessageTemplateRow } from '../../services/messaging/messageTemplateService';
 import {
   MsgAutomationPanel,
   MsgQueueLogPanel,
@@ -196,6 +196,18 @@ export function MesajBildirimModule({
     if (!selectedMetaTpl) return;
     setMetaParams(selectedMetaTpl.parameterLabels.map(() => ''));
   }, [selectedMetaTpl?.id]);
+
+  // Üst mavi banner tıklaması → ilgili sekmeyi aç (örn. auto, queue, special, templates)
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as string | undefined;
+      if (detail === 'send' || detail === 'templates' || detail === 'special' || detail === 'auto' || detail === 'queue') {
+        setMainTab(detail);
+      }
+    };
+    window.addEventListener('retailex:mesaj-bildirim:open-tab', handler as EventListener);
+    return () => window.removeEventListener('retailex:mesaj-bildirim:open-tab', handler as EventListener);
+  }, []);
 
   const applyLangAndPreset = useCallback(
     (lang: WhatsAppMessageLang, preset: WhatsAppFreeTextPresetId) => {
@@ -1137,11 +1149,17 @@ export function MesajBildirimModule({
                       }}
                     >
                       <option value="">{tm('msgNotifyCustomTplNone')}</option>
-                      {customTemplates.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
+                      {customTemplates.map((t) => {
+                        const split = splitHeadlineAndBody(t.body_text);
+                        const label = split.headline
+                          ? `${t.name} — ${split.headline}`
+                          : t.name;
+                        return (
+                          <option key={t.id} value={t.id}>
+                            {label}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                 ) : null}

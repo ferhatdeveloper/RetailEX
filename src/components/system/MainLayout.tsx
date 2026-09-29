@@ -54,6 +54,7 @@ import { FirmSelector } from './FirmSelector';
 import { HybridSyncToolbarButtons } from './HybridSyncToolbarButtons';
 import { MarketRatesToolbarButton } from './MarketRatesToolbarButton';
 import { QrServiceNotificationsButton } from './QrServiceNotificationsButton';
+import { MesajBildirimTopBanner } from './MesajBildirimTopBanner';
 import { POS_MASTER_OVERRIDE_PASSWORD } from '../pos/posUiConstants';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { cn } from '../ui/utils';
@@ -1552,6 +1553,9 @@ export function MainLayout({
 
       {/* 🎤 Sesli Asistan - Global */}
       <VoiceAssistantWeb hideFloatingButton={true} />
+
+      {/* Mesaj Bildirim — üst mavi bildirim bandı (yaklaşan doğum günü / özel gün / planlı kuyruk) */}
+      <MesajBildirimTopBanner />
 
       {/* Global Caller ID quick card */}
       {incomingCall && typeof document !== 'undefined' && createPortal((

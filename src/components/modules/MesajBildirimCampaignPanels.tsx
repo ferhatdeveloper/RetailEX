@@ -8,6 +8,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import {
   messageTemplateService,
+  splitHeadlineAndBody,
+  composeHeadlineAndBody,
   type MessageTemplateRow,
 } from '../../services/messaging/messageTemplateService';
 import {
@@ -36,8 +38,10 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [body, setBody] = useState('');
+  const [headline, setHeadline] = useState('');
   const [category, setCategory] = useState('general');
   const [editId, setEditId] = useState<string | null>(null);
+  const [inputMode, setInputMode] = useState<'separate' | 'combined'>('separate');
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -59,11 +63,21 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
     setEditId(null);
     setName('');
     setBody('');
+    setHeadline('');
+    setInputMode('separate');
     setCategory('general');
   };
 
   const handleSave = async () => {
-    if (!name.trim() || !body.trim()) {
+    if (!name.trim()) {
+      toast.warning(tm('msgNotifyTplRequired'));
+      return;
+    }
+    const composed =
+      inputMode === 'separate'
+        ? composeHeadlineAndBody(headline, body)
+        : body;
+    if (!composed.trim()) {
       toast.warning(tm('msgNotifyTplRequired'));
       return;
     }
@@ -72,14 +86,14 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
       if (editId) {
         await messageTemplateService.update(editId, {
           name: name.trim(),
-          body_text: body,
+          body_text: composed,
           category,
         });
         toast.success(tm('msgNotifyTplUpdated'));
       } else {
         await messageTemplateService.create({
           name: name.trim(),
-          body_text: body,
+          body_text: composed,
           category,
         });
         toast.success(tm('msgNotifyTplCreated'));
@@ -96,7 +110,16 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
   const handleEdit = (r: MessageTemplateRow) => {
     setEditId(r.id);
     setName(r.name);
-    setBody(r.body_text);
+    const split = splitHeadlineAndBody(r.body_text);
+    if (split.headline) {
+      setInputMode('separate');
+      setHeadline(split.headline);
+      setBody(split.body);
+    } else {
+      setInputMode('combined');
+      setHeadline('');
+      setBody(r.body_text);
+    }
     setCategory(r.category || 'general');
   };
 
@@ -139,15 +162,73 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
           </select>
         </div>
         <div>
-          <label className={labelCls}>{tm('msgNotifyTplBody')}</label>
-          <textarea
-            className={`${inputCls} min-h-[120px]`}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="{customer_name} {birth_date} {special_day_name} {date}"
-          />
-          <p className="text-xs text-gray-500 mt-1">{tm('msgNotifyTplPlaceholders')}</p>
+          <label className={labelCls}>{tm('msgNotifyTplInputMode')}</label>
+          <div className={`inline-flex rounded-lg border overflow-hidden text-xs font-semibold ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+            <button
+              type="button"
+              onClick={() => setInputMode('separate')}
+              className={`px-3 py-1.5 transition ${
+                inputMode === 'separate'
+                  ? 'bg-emerald-600 text-white'
+                  : darkMode
+                    ? 'text-gray-200 hover:bg-gray-700'
+                    : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {tm('msgNotifyTplModeSeparate')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputMode('combined')}
+              className={`px-3 py-1.5 transition border-l ${darkMode ? 'border-gray-600' : 'border-gray-200'} ${
+                inputMode === 'combined'
+                  ? 'bg-emerald-600 text-white'
+                  : darkMode
+                    ? 'text-gray-200 hover:bg-gray-700'
+                    : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {tm('msgNotifyTplModeCombined')}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-500 mt-1">{tm('msgNotifyTplInputModeHint')}</p>
         </div>
+        {inputMode === 'separate' ? (
+          <>
+            <div>
+              <label className={labelCls}>{tm('msgNotifyTplHeadline')}</label>
+              <input
+                className={inputCls}
+                value={headline}
+                onChange={(e) => setHeadline(e.target.value)}
+                placeholder={tm('msgNotifyTplHeadlinePh')}
+                maxLength={120}
+              />
+              <p className="text-[11px] text-gray-500 mt-1">{tm('msgNotifyTplHeadlineHint')}</p>
+            </div>
+            <div>
+              <label className={labelCls}>{tm('msgNotifyTplBody')}</label>
+              <textarea
+                className={`${inputCls} min-h-[120px]`}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="{customer_name} {birth_date} {special_day_name} {date}"
+              />
+              <p className="text-xs text-gray-500 mt-1">{tm('msgNotifyTplPlaceholders')}</p>
+            </div>
+          </>
+        ) : (
+          <div>
+            <label className={labelCls}>{tm('msgNotifyTplCombined')}</label>
+            <textarea
+              className={`${inputCls} min-h-[140px]`}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder={tm('msgNotifyTplCombinedPh')}
+            />
+            <p className="text-[11px] text-gray-500 mt-1">{tm('msgNotifyTplCombinedHint')}</p>
+          </div>
+        )}
         <div className="flex gap-2">
           <button
             type="button"
@@ -177,7 +258,10 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
           <p className="text-sm text-gray-500">{tm('msgNotifyTplEmpty')}</p>
         ) : (
           <ul className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
-            {rows.map((r) => (
+            {rows.map((r) => {
+              const split = splitHeadlineAndBody(r.body_text);
+              const preview = split.headline ? split.body : r.body_text;
+              return (
               <li key={r.id} className="py-2 flex items-start gap-2">
                 <button
                   type="button"
@@ -186,7 +270,12 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
                 >
                   <div className="font-medium text-sm truncate">{r.name}</div>
                   <div className="text-xs text-gray-500 truncate">{r.category}</div>
-                  <div className="text-xs text-gray-400 line-clamp-2">{r.body_text}</div>
+                  {split.headline ? (
+                    <div className="text-xs font-semibold text-blue-600 truncate">
+                      {split.headline}
+                    </div>
+                  ) : null}
+                  <div className="text-xs text-gray-400 line-clamp-2">{preview}</div>
                 </button>
                 <button
                   type="button"
@@ -197,7 +286,8 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
                   <Trash2 className="h-4 w-4" />
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>

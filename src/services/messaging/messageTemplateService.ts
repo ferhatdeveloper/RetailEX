@@ -18,6 +18,33 @@ export interface MessageTemplateRow {
   updated_at?: string;
 }
 
+/**
+ * Mesaj gövdesini iki parçaya ayır: kısa başlık (headline) + ana metin (body).
+ * Saklama formatı: `headline` boşsa tüm metin `body`; doluysa `headline\n\nbody`.
+ * Birleşik modda kaydedilen metinler (kullanıcı tek alana yazdı) olduğu gibi
+ * döner — sadece ilk "\n\n" sınırında ayrılır; sınır yoksa `body` dolu, `headline` boş kalır.
+ */
+export function splitHeadlineAndBody(bodyText: string): { headline: string; body: string } {
+  const raw = String(bodyText ?? '');
+  if (!raw) return { headline: '', body: '' };
+  const idx = raw.indexOf('\n\n');
+  if (idx <= 0) return { headline: '', body: raw };
+  const head = raw.slice(0, idx).trim();
+  const body = raw.slice(idx + 2);
+  // Başlık tek satır olmalı; aksi halde ayrımı koruma
+  if (head.includes('\n')) return { headline: '', body: raw };
+  if (!head) return { headline: '', body: raw };
+  return { headline: head, body };
+}
+
+export function composeHeadlineAndBody(headline: string, body: string): string {
+  const h = headline.trim();
+  const b = body.trim();
+  if (!h) return b;
+  if (!b) return h;
+  return `${h}\n\n${b}`;
+}
+
 function firmNrRow(): string {
   return String(ERP_SETTINGS.firmNr ?? '001').padStart(3, '0').slice(0, 10);
 }
