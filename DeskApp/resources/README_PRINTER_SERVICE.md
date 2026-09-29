@@ -2,6 +2,15 @@
 
 `RetailEX_Printer`, RetailEX yazdırma işlerini Windows hizmeti olarak arka planda çalıştıran birleşik servistir. EXE adı ve worker dosyası kurulum uyumluluğu için değişmedi: servis `RetailEX_Printer`, script `kitchen-print-service.mjs`.
 
+## İki yazıcı yolu (karıştırma)
+
+| Bileşen | Konum | Ne yapar |
+|---|---|---|
+| **Portable `RetailEX_Printer.exe` (Rust)** | DeskApp `printer_main.rs` + `kitchen-print-service.mjs` | PG `print_jobs` / `kitchen_print_jobs` kuyruğu: ESC/POS, HTML→PDF→Sumatra, Design Center JSON |
+| **FastReport Printer (`PrintServer/`)** | `RetailEX.QrPrint.exe` + `RetailEX_Printer_Service.exe` | API’den QR/mutfak/hesap siparişi; **gerçek `.frx` FastReport** şablonları; tepsi WinForms |
+
+Her ikisi de Windows servis adı olarak `RetailEX_Printer` kullanır — **aynı makinede ikisini birden kurmayın**. FastReport yolu ayrı release: tag `print-v*`, workflow `print-server-release.yml`. Portable NSIS hâlâ Rust + Node worker paketler; özellik eşleşmesi olmadığı için FastReport ile otomatik birleştirilmedi.
+
 ## Etkinleştirme
 
 1. Uygulamada Windows servisinden yazdırma seçeneğini etkinleştirin. Restoran mutfak fişleri için mevcut `printViaWindowsService` bayrağı kullanılmaya devam eder.

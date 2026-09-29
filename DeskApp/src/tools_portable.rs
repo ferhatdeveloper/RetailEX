@@ -1040,30 +1040,39 @@ async fn apply_migrations_async(
 }
 
 /// config.db özeti (teşhis).
+/// GUI için kısa config.db özeti (çok satırlı metin).
+pub fn config_summary_text() -> Result<String, String> {
+    let c = load_config_from_db().map_err(|e| e.to_string())?;
+    let mut lines = vec![
+        format!("config.db: {}", CONFIG_DB),
+        format!("  is_configured: {}", c.is_configured),
+        format!("  db_mode: {}", c.db_mode),
+        format!("  local_db: {}", c.local_db),
+        format!("  remote_db: {}", c.remote_db),
+        format!("  update_source: {}", c.update_source),
+        format!("  role: {}", c.role),
+    ];
+    if Path::new(CONFIG_DB).exists() {
+        if let Ok(conn) = Connection::open(CONFIG_DB) {
+            let _: Result<(), _> = conn.query_row(
+                "SELECT length(data) FROM config WHERE id = 1",
+                [],
+                |row| {
+                    let n: i64 = row.get(0)?;
+                    lines.push(format!("  config JSON uzunluk: {}", n));
+                    Ok(())
+                },
+            );
+        }
+    }
+    Ok(lines.join("\n"))
+}
+
+#[allow(dead_code)]
 pub fn print_config_summary() -> i32 {
-    match load_config_from_db() {
-        Ok(c) => {
-            println!("config.db: {}", CONFIG_DB);
-            println!("  is_configured: {}", c.is_configured);
-            println!("  db_mode: {}", c.db_mode);
-            println!("  local_db: {}", c.local_db);
-            println!("  remote_db: {}", c.remote_db);
-            println!("  update_source: {}", c.update_source);
-            println!("  role: {}", c.role);
-            // SQLite varlık kontrolü
-            if Path::new(CONFIG_DB).exists() {
-                if let Ok(conn) = Connection::open(CONFIG_DB) {
-                    let _: Result<(), _> = conn.query_row(
-                        "SELECT length(data) FROM config WHERE id = 1",
-                        [],
-                        |row| {
-                            let n: i64 = row.get(0)?;
-                            println!("  config JSON uzunluk: {}", n);
-                            Ok(())
-                        },
-                    );
-                }
-            }
+    match config_summary_text() {
+        Ok(text) => {
+            println!("{}", text);
             0
         }
         Err(e) => {

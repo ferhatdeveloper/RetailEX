@@ -1,0 +1,184 @@
+import { Button, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
+
+export component ToolsWindow inherits Window {
+    title: "RetailEX Tools";
+    width: 560px;
+    height: 640px;
+    background: #121212;
+
+    /// Komut kimliği: services | bridge-npm | bridge | admin | pg | pg-remote |
+    /// update | migrate | setup-db | fetch-sql | sync-migrate | config | refresh
+    callback run-command(string);
+
+    in-out property <string> install-dir: "";
+    in-out property <string> status-msg: "Hazır";
+    in-out property <string> script-status: "";
+    in-out property <bool> busy: false;
+
+    VerticalBox {
+        padding: 24px;
+        spacing: 14px;
+
+        VerticalBox {
+            spacing: 4px;
+            Text {
+                text: "RetailEX Tools";
+                font-size: 24px;
+                font-weight: 900;
+                color: #ffffff;
+            }
+            Text {
+                text: "Kurulum ve bakım — butonlu panel";
+                font-size: 13px;
+                color: #888888;
+            }
+        }
+
+        VerticalBox {
+            spacing: 4px;
+            Text {
+                text: "KURULUM DİZİNİ";
+                font-size: 10px;
+                font-weight: 800;
+                color: #555555;
+            }
+            Text {
+                text: root.install-dir;
+                font-size: 12px;
+                color: #bbbbbb;
+                wrap: word-wrap;
+            }
+        }
+
+        VerticalBox {
+            spacing: 4px;
+            Text {
+                text: "SCRIPT / DOSYA DURUMU";
+                font-size: 10px;
+                font-weight: 800;
+                color: #555555;
+            }
+            Text {
+                text: root.script-status;
+                font-size: 12px;
+                color: #9ca3af;
+                wrap: word-wrap;
+            }
+        }
+
+        Text {
+            text: "SERVİSLER VE KÖPRÜ";
+            font-size: 10px;
+            font-weight: 800;
+            color: #555555;
+        }
+        HorizontalBox {
+            spacing: 8px;
+            Button {
+                text: "Servisleri kur";
+                enabled: !root.busy;
+                clicked => { root.run-command("services"); }
+            }
+            Button {
+                text: "Bridge npm";
+                enabled: !root.busy;
+                clicked => { root.run-command("bridge-npm"); }
+            }
+            Button {
+                text: "Bridge kur";
+                enabled: !root.busy;
+                clicked => { root.run-command("bridge"); }
+            }
+        }
+        HorizontalBox {
+            spacing: 8px;
+            Button {
+                text: "Yönetim menüsü";
+                enabled: !root.busy;
+                clicked => { root.run-command("admin"); }
+            }
+            Button {
+                text: "PG uzaktan (.ps1)";
+                enabled: !root.busy;
+                clicked => { root.run-command("pg"); }
+            }
+            Button {
+                text: "PG LAN (UAC)";
+                enabled: !root.busy;
+                clicked => { root.run-command("pg-remote"); }
+            }
+        }
+
+        Text {
+            text: "PORTABLE / VERİTABANI";
+            font-size: 10px;
+            font-weight: 800;
+            color: #555555;
+        }
+        HorizontalBox {
+            spacing: 8px;
+            Button {
+                text: "Güncelle";
+                primary: true;
+                enabled: !root.busy;
+                clicked => { root.run-command("update"); }
+            }
+            Button {
+                text: "Migration";
+                enabled: !root.busy;
+                clicked => { root.run-command("migrate"); }
+            }
+            Button {
+                text: "DB oluştur";
+                enabled: !root.busy;
+                clicked => { root.run-command("setup-db"); }
+            }
+        }
+        HorizontalBox {
+            spacing: 8px;
+            Button {
+                text: "SQL çek (GitHub)";
+                enabled: !root.busy;
+                clicked => { root.run-command("fetch-sql"); }
+            }
+            Button {
+                text: "SQL + migrate";
+                enabled: !root.busy;
+                clicked => { root.run-command("sync-migrate"); }
+            }
+            Button {
+                text: "config.db özeti";
+                enabled: !root.busy;
+                clicked => { root.run-command("config"); }
+            }
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            Button {
+                text: "Durumu yenile";
+                enabled: !root.busy;
+                clicked => { root.run-command("refresh"); }
+            }
+        }
+
+        VerticalBox {
+            spacing: 4px;
+            Text {
+                text: "DURUM";
+                font-size: 10px;
+                font-weight: 800;
+                color: #555555;
+            }
+            ScrollView {
+                height: 120px;
+                Text {
+                    text: root.status-msg;
+                    font-size: 12px;
+                    color: root.busy ? #fbbf24 : #86efac;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+}

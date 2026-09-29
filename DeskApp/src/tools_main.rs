@@ -1,6 +1,9 @@
 //! RetailEX_Tools — Kurulum dizinindeki .ps1 yardımcılarını ExecutionPolicy Bypass ile çalıştırır.
 //! Portable: config.db tabanlı güncelleme + migration (tools_portable).
+//! Argümansız: Slint (Config benzeri) butonlu pencere. CLI: mevcut komutlar.
 //! Önerilen konum: INSTDIR\RetailEXTools\RetailEX_Tools.exe (kurulum dosyaları INSTDIR kökünde).
+
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[path = "config.rs"]
 mod config;
@@ -12,6 +15,9 @@ mod tools_portable;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
+
+slint::include_modules!();
 
 /// INSTDIR\RetailEXTools\ içinden: üst dizinde servis/bridge dosyaları aranır.
 /// Düz kurulum (exe ile aynı klasörde .ps1) veya üst klasörlerde arama da desteklenir.
@@ -98,6 +104,26 @@ fn list_scripts(install_dir: &Path) {
     println!();
 }
 
+fn script_status_text(install_dir: &Path) -> String {
+    let names = [
+        "install-services-manual.ps1",
+        "install-bridge-npm.ps1",
+        "install-bridge.ps1",
+        "retailex-admin.ps1",
+        "pg-windows-expose-remote.ps1",
+        "RetailEX_PostgreSQLRemote.exe",
+        "VERSION.txt",
+    ];
+    names
+        .iter()
+        .map(|n| {
+            let ok = install_dir.join(n).exists();
+            format!("[{}] {}", if ok { "OK" } else { "--" }, n)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Yonetici (UAC) ile RetailEX_PostgreSQLRemote.exe — argümansız menü icin.
 fn run_postgres_remote_elevated(install_dir: &Path) -> i32 {
     let exe = install_dir.join("RetailEX_PostgreSQLRemote.exe");
@@ -132,6 +158,66 @@ fn pause() {
     let _ = io::stdin().lock().read_line(&mut buf);
 }
 
+fn run_named_action(install_dir: &Path, action: &str) -> (i32, String) {
+    match action {
+        "services" => (
+            run_ps1(install_dir, "install-services-manual.ps1", &[]),
+            "Servis kurulumu tamamlandı.".into(),
+        ),
+        "bridge-npm" => {
+            let prefix = install_dir.display().to_string();
+            let code = run_ps1(
+                install_dir,
+                "install-bridge-npm.ps1",
+                &["-Prefix".into(), prefix],
+            );
+            (code, "Bridge npm adımı bitti.".into())
+        }
+        "bridge" => (
+            run_ps1(install_dir, "install-bridge.ps1", &[]),
+            "SQL Bridge kur / onar bitti.".into(),
+        ),
+        "admin" => (
+            run_ps1(install_dir, "retailex-admin.ps1", &["-Menu".into()]),
+            "Yönetim menüsü kapandı.".into(),
+        ),
+        "pg" => (
+            run_ps1(install_dir, "pg-windows-expose-remote.ps1", &[]),
+            "PostgreSQL uzaktan erişim scripti bitti.".into(),
+        ),
+        "pg-remote" => (
+            run_postgres_remote_elevated(install_dir),
+            "PostgreSQL LAN (UAC) bitti.".into(),
+        ),
+        "update" => (
+            tools_portable::run_portable_update(install_dir),
+            "Güncelleme işlemi bitti.".into(),
+        ),
+        "migrate" => (
+            tools_portable::run_portable_migrate(install_dir),
+            "Migration işlemi bitti.".into(),
+        ),
+        "setup-db" => (
+            tools_portable::run_portable_setup_db(install_dir),
+            "DB oluştur + migration bitti.".into(),
+        ),
+        "fetch-sql" => (
+            tools_portable::run_portable_fetch_sql(install_dir),
+            "GitHub SQL çekme bitti.".into(),
+        ),
+        "sync-migrate" => (
+            tools_portable::run_portable_sync_migrate(install_dir),
+            "SQL çek + migration bitti.".into(),
+        ),
+        "config" => match tools_portable::config_summary_text() {
+            Ok(text) => (0, text),
+            Err(e) => (1, e),
+        },
+        "refresh" => (0, "Script durumu yenilendi.".into()),
+        other => (1, format!("Bilinmeyen komut: {}", other)),
+    }
+}
+
 fn menu_loop(install_dir: &Path) -> i32 {
     loop {
         print_banner(install_dir);
@@ -157,26 +243,19 @@ fn menu_loop(install_dir: &Path) -> i32 {
             return 1;
         }
         let choice = line.trim().to_ascii_lowercase();
-        let code = match choice.as_str() {
-            "1" => run_ps1(install_dir, "install-services-manual.ps1", &[]),
-            "2" => {
-                let prefix = install_dir.display().to_string();
-                run_ps1(
-                    install_dir,
-                    "install-bridge-npm.ps1",
-                    &["-Prefix".into(), prefix],
-                )
-            }
-            "3" => run_ps1(install_dir, "install-bridge.ps1", &[]),
-            "4" => run_ps1(install_dir, "retailex-admin.ps1", &["-Menu".into()]),
-            "5" => run_ps1(install_dir, "pg-windows-expose-remote.ps1", &[]),
-            "6" => run_postgres_remote_elevated(install_dir),
-            "7" => tools_portable::run_portable_update(install_dir),
-            "8" => tools_portable::run_portable_migrate(install_dir),
-            "9" => tools_portable::run_portable_setup_db(install_dir),
-            "b" => tools_portable::run_portable_fetch_sql(install_dir),
-            "c" => tools_portable::run_portable_sync_migrate(install_dir),
-            "a" | "10" => tools_portable::print_config_summary(),
+        let (code, detail) = match choice.as_str() {
+            "1" => run_named_action(install_dir, "services"),
+            "2" => run_named_action(install_dir, "bridge-npm"),
+            "3" => run_named_action(install_dir, "bridge"),
+            "4" => run_named_action(install_dir, "admin"),
+            "5" => run_named_action(install_dir, "pg"),
+            "6" => run_named_action(install_dir, "pg-remote"),
+            "7" => run_named_action(install_dir, "update"),
+            "8" => run_named_action(install_dir, "migrate"),
+            "9" => run_named_action(install_dir, "setup-db"),
+            "b" => run_named_action(install_dir, "fetch-sql"),
+            "c" => run_named_action(install_dir, "sync-migrate"),
+            "a" | "10" => run_named_action(install_dir, "config"),
             "l" => {
                 println!();
                 continue;
@@ -187,6 +266,9 @@ fn menu_loop(install_dir: &Path) -> i32 {
                 continue;
             }
         };
+        if choice == "a" || choice == "10" {
+            println!("\n{}", detail);
+        }
         println!("\nÇıkış kodu: {}\n", code);
         pause();
         println!();
@@ -198,15 +280,8 @@ fn dispatch_cli(install_dir: &Path, args: &[String]) -> i32 {
         return menu_loop(install_dir);
     }
     match args[0].as_str() {
-        "services" | "servisler" => run_ps1(install_dir, "install-services-manual.ps1", &[]),
-        "bridge-npm" | "npm" => {
-            let prefix = install_dir.display().to_string();
-            run_ps1(
-                install_dir,
-                "install-bridge-npm.ps1",
-                &["-Prefix".into(), prefix],
-            )
-        }
+        "services" | "servisler" => run_named_action(install_dir, "services").0,
+        "bridge-npm" | "npm" => run_named_action(install_dir, "bridge-npm").0,
         "bridge" => run_ps1(install_dir, "install-bridge.ps1", &args[1..].to_vec()),
         "admin" => {
             let mut v = vec!["-Menu".into()];
@@ -232,25 +307,31 @@ fn dispatch_cli(install_dir: &Path, args: &[String]) -> i32 {
                 }
             }
         }
-        "update" | "guncelle" | "güncelle" => tools_portable::run_portable_update(install_dir),
-        "migrate" | "migration" => tools_portable::run_portable_migrate(install_dir),
-        "setup-db" | "init-db" | "createdb" => tools_portable::run_portable_setup_db(install_dir),
-        "fetch-sql" | "pull-sql" | "sql" => tools_portable::run_portable_fetch_sql(install_dir),
-        "sync-migrate" | "sync-sql" => tools_portable::run_portable_sync_migrate(install_dir),
-        "config" | "config-db" => tools_portable::print_config_summary(),
+        "update" | "guncelle" | "güncelle" => run_named_action(install_dir, "update").0,
+        "migrate" | "migration" => run_named_action(install_dir, "migrate").0,
+        "setup-db" | "init-db" | "createdb" => run_named_action(install_dir, "setup-db").0,
+        "fetch-sql" | "pull-sql" | "sql" => run_named_action(install_dir, "fetch-sql").0,
+        "sync-migrate" | "sync-sql" => run_named_action(install_dir, "sync-migrate").0,
+        "config" | "config-db" => {
+            let (code, detail) = run_named_action(install_dir, "config");
+            println!("{}", detail);
+            code
+        }
+        "menu" | "console" => menu_loop(install_dir),
         "help" | "-h" | "/?" => {
             println!(
                 "Kullanım: RetailEX_Tools.exe [komut]\n\
+                 Argümansız: butonlu pencere (Slint).\n\
                  Komutlar: services | bridge-npm | bridge | admin | pg | pg-remote\n\
                            update | migrate | setup-db | fetch-sql | sync-migrate | config\n\
+                           menu (eski konsol menü)\n\
                  update: GitHub RetailEX-*.exe indirip kurulum dizinine yazar\n\
                  migrate: yerel SQL → PostgreSQL bekleyen migration\n\
                  setup-db: CREATE DATABASE (yoksa) + migration\n\
                  fetch-sql: GitHub main database/migrations → _up_\\database\\migrations\n\
                  sync-migrate: fetch-sql + migrate (önerilen SQL güncelleme)\n\
                  Ortam: RETAILEX_SQL_REF=main (veya tag/branch)\n\
-                 config: config.db özeti\n\
-                 Argümansız açılırsa etkileşimli menü."
+                 config: config.db özeti"
             );
             0
         }
@@ -259,6 +340,83 @@ fn dispatch_cli(install_dir: &Path, args: &[String]) -> i32 {
             1
         }
     }
+}
+
+#[cfg(windows)]
+fn attach_or_alloc_console() {
+    use windows::Win32::System::Console::{AllocConsole, AttachConsole, ATTACH_PARENT_PROCESS};
+    unsafe {
+        if AttachConsole(ATTACH_PARENT_PROCESS).is_err() {
+            let _ = AllocConsole();
+        }
+    }
+}
+
+fn run_gui(install_dir: PathBuf) -> i32 {
+    let ui = match ToolsWindow::new() {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("Tools penceresi açılamadı: {}", e);
+            return 1;
+        }
+    };
+
+    ui.set_install_dir(install_dir.display().to_string().into());
+    ui.set_script_status(script_status_text(&install_dir).into());
+    ui.set_status_msg("Hazır — bir işlem seçin.".into());
+    ui.set_busy(false);
+
+    let install_dir = Arc::new(install_dir);
+
+    ui.on_run_command({
+        let ui_handle = ui.as_weak();
+        let install_dir = Arc::clone(&install_dir);
+        move |cmd| {
+            let action = cmd.to_string();
+            let ui_handle = ui_handle.clone();
+            let install_dir = Arc::clone(&install_dir);
+
+            if let Some(ui) = ui_handle.upgrade() {
+                if ui.get_busy() {
+                    return;
+                }
+                ui.set_busy(true);
+                ui.set_status_msg(format!("Çalışıyor: {} …", action).into());
+            }
+
+            std::thread::spawn(move || {
+                let (code, detail) = if action == "refresh" {
+                    let status = script_status_text(&install_dir);
+                    (0, status)
+                } else {
+                    run_named_action(&install_dir, &action)
+                };
+
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_handle.upgrade() {
+                        ui.set_busy(false);
+                        if action == "refresh" {
+                            ui.set_script_status(detail.clone().into());
+                            ui.set_status_msg("Script durumu yenilendi.".into());
+                        } else if action == "config" {
+                            ui.set_status_msg(detail.into());
+                        } else {
+                            ui.set_script_status(script_status_text(&install_dir).into());
+                            ui.set_status_msg(
+                                format!("{}\nÇıkış kodu: {}", detail, code).into(),
+                            );
+                        }
+                    }
+                });
+            });
+        }
+    });
+
+    if let Err(e) = ui.run() {
+        eprintln!("Tools UI: {}", e);
+        return 1;
+    }
+    0
 }
 
 fn main() {
@@ -276,6 +434,13 @@ fn main() {
 
     let install_dir = resolve_install_dir(&exe_dir);
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let code = dispatch_cli(&install_dir, &args);
+
+    let code = if args.is_empty() {
+        run_gui(install_dir)
+    } else {
+        #[cfg(windows)]
+        attach_or_alloc_console();
+        dispatch_cli(&install_dir, &args)
+    };
     std::process::exit(code);
 }
