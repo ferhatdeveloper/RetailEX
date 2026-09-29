@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import {
     Package, Plus, X, Save, Edit2, Trash2,
-    CheckCircle2, AlertCircle, Calendar
+    CheckCircle2, AlertCircle, Calendar, Percent, User
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '@/components/shared/PercentBodyModal';
 import { useBeautyStore } from '../store/useBeautyStore';
+import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { BeautyPackage } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
@@ -21,15 +23,35 @@ const EMPTY_FORM: Partial<BeautyPackage> = {
 };
 
 export function PackageManagement() {
-    const { packages, isLoading, loadPackages, createPackage, updatePackage, deletePackage } = useBeautyStore();
+    const {
+        packages, services, specialists, isLoading,
+        loadPackages, loadServices, loadSpecialists,
+        createPackage, updatePackage, deletePackage,
+    } = useBeautyStore();
     const { tm } = useLanguage();
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState<Partial<BeautyPackage>>(EMPTY_FORM);
     const [isEdit, setIsEdit] = useState(false);
     const [saving, setSaving] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+    /** Paket → hizmet → personel+yüzde satırları (paket oluşturma akışı) */
+    const [pkgServiceItems, setPkgServiceItems] = useState<Array<{
+        service_id: string;
+        staff_id: string;
+        percent: number;
+    }>>([]);
+    /** Hizmet ekleme modalı */
+    const [addSvcOpen, setAddSvcOpen] = useState(false);
+    const [addSvcDraftServiceId, setAddSvcDraftServiceId] = useState('');
+    const [addSvcDraftStaffId, setAddSvcDraftStaffId] = useState('');
+    const [addSvcDraftPct, setAddSvcDraftPct] = useState<number>(0);
+    const [addSvcLoading, setAddSvcLoading] = useState(false);
 
-    useEffect(() => { loadPackages(); }, []);
+    useEffect(() => {
+        loadPackages();
+        loadServices();
+        loadSpecialists();
+    }, [loadPackages, loadServices, loadSpecialists]);
 
     const openCreate = () => { setEditing(EMPTY_FORM); setIsEdit(false); setShowModal(true); };
     const openEdit = (pkg: BeautyPackage) => { setEditing({ ...pkg }); setIsEdit(true); setShowModal(true); };
@@ -38,10 +60,75 @@ export function PackageManagement() {
         if (!editing.name?.trim()) return;
         setSaving(true);
         try {
-            if (isEdit && editing.id) await updatePackage(editing.id, editing);
-            else await createPackage(editing);
+            if (isEdit && editing.id) {
+                await updatePackage(editing.id, editing);
+                await syncPackageServiceCommissions(editing.id);
+            } else {
+                const newId = await beautyService.createPackage(editing);
+                await loadPackages();
+                if (newId) {
+                    await syncPackageServiceCommissions(newId);
+                }
+            }
             setShowModal(false);
+            setPkgServiceItems([]);
         } finally { setSaving(false); }
+    };
+
+    /**
+     * Paket tanımındaki `pkgServiceItems` satırlarını `service_staff_commissions`
+     * tablosuna uygular. Tek bir pakete bağlı değildir; her hizmet × personel
+     * çifti global olarak saklanır. Aynı hizmet birden çok pakete eklenirse
+     * son yazılan değer baskın olur (yönetici bilinçli karar verir).
+     */
+    const syncPackageServiceCommissions = async (pkgId: string) => {
+        if (pkgServiceItems.length === 0) return;
+        for (const it of pkgServiceItems) {
+            const pct = Math.max(0, Math.min(100, Number(it.percent ?? 0) || 0));
+            if (pct <= 0) {
+                await beautyService.deleteServiceStaffCommission(it.service_id, it.staff_id).catch(() => undefined);
+            } else {
+                await beautyService.upsertServiceStaffCommission(it.service_id, it.staff_id, pct);
+            }
+        }
+        void pkgId; // paket başına ek alanlar ileride burada yazılabilir
+    };
+
+    const openAddServiceRow = () => {
+        setAddSvcDraftServiceId('');
+        setAddSvcDraftStaffId('');
+        setAddSvcDraftPct(0);
+        setAddSvcOpen(true);
+    };
+
+    const submitAddServiceRow = async () => {
+        if (!addSvcDraftServiceId || !addSvcDraftStaffId) return;
+        setAddSvcLoading(true);
+        try {
+            const pct = Math.max(0, Math.min(100, Number(addSvcDraftPct ?? 0) || 0));
+            // Öneri: eğer kullanıcı yüzde girmediyse service × staff için mevcut
+            // yüzdeyi veya service.commission_rate'i kullan.
+            let suggested = pct;
+            if (suggested <= 0) {
+                try {
+                    const rows = await beautyService.getServiceStaffCommissions(addSvcDraftServiceId);
+                    const hit = rows.find(r => String(r.staff_id) === addSvcDraftStaffId);
+                    if (hit && Number(hit.percent ?? 0) > 0) {
+                        suggested = Number(hit.percent);
+                    } else {
+                        const svc = services.find(s => String(s.id) === addSvcDraftServiceId);
+                        suggested = Number(svc?.commission_rate ?? 0) || 0;
+                    }
+                } catch { /* no-op */ }
+            }
+            setPkgServiceItems(prev => [
+                ...prev,
+                { service_id: addSvcDraftServiceId, staff_id: addSvcDraftStaffId, percent: suggested },
+            ]);
+            setAddSvcOpen(false);
+        } finally {
+            setAddSvcLoading(false);
+        }
     };
 
     const handleDelete = async (id: string) => {
@@ -193,6 +280,77 @@ export function PackageManagement() {
                                     <span className="text-sm font-black text-green-700">{formatMoneyAmount(finalPrice(editing), { minFrac: 0, maxFrac: 0 })}</span>
                                 </div>
                             )}
+
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
+                                        {tm('bPackageCommissionAssign')}
+                                    </label>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={openAddServiceRow}
+                                        className="rounded-xl border-indigo-200 text-indigo-600 font-bold text-xs"
+                                    >
+                                        <Plus size={14} className="mr-1" />
+                                        {tm('bPackageAddService')}
+                                    </Button>
+                                </div>
+                                {pkgServiceItems.length === 0 ? (
+                                    <div className="text-[11px] text-slate-500 italic px-1 py-2">
+                                        {tm('bPackageCommissionEmpty')}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {pkgServiceItems.map((it, idx) => {
+                                            const svc = services.find(s => String(s.id) === it.service_id);
+                                            const sp = specialists.find(s => String(s.id) === it.staff_id);
+                                            return (
+                                                <div
+                                                    key={`${it.service_id}::${it.staff_id}::${idx}`}
+                                                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                                                >
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="text-xs font-black text-slate-800 truncate">
+                                                            {svc?.name ?? it.service_id}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-500 flex items-center gap-1">
+                                                            <User size={10} /> {sp?.name ?? it.staff_id}
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-24 shrink-0">
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            max={100}
+                                                            step={0.01}
+                                                            value={it.percent}
+                                                            onChange={e => {
+                                                                const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                                                setPkgServiceItems(prev =>
+                                                                    prev.map((row, i) => i === idx ? { ...row, percent: v } : row),
+                                                                );
+                                                            }}
+                                                            className="w-full border border-slate-200 rounded-lg px-2 py-1 text-xs text-right font-bold"
+                                                            aria-label={tm('bPackageCommissionPercent')}
+                                                        />
+                                                        <div className="text-[10px] text-slate-400 text-right">% {it.percent.toFixed(2)}</div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPkgServiceItems(prev => prev.filter((_, i) => i !== idx))}
+                                                        className="text-slate-400 hover:text-red-500 transition"
+                                                        aria-label={tm('delete')}
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
                             <div>
                                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2 block">{tm('bPackageColor')}</label>
                                 <div className="flex gap-2 flex-wrap">
@@ -211,6 +369,91 @@ export function PackageManagement() {
                     </div>
                 </div>
             )}
+
+            {/* Hizmet / personel / yüzde ekleme modalı (paket tanımı içinden) */}
+            <PercentBodyModal
+                onClose={() => setAddSvcOpen(false)}
+                size="compact"
+                ariaLabel={tm('bPackageCommissionAssign')}
+            >
+                <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-8 py-6 text-white shrink-0 flex items-center justify-between">
+                    <div>
+                        <h2 className="text-lg font-black">{tm('bPackageCommissionAssign')}</h2>
+                        <p className="text-white/70 text-xs mt-1">{tm('bPackageCommissionSubtitle')}</p>
+                    </div>
+                    <button
+                        type="button"
+                        aria-label="close"
+                        onClick={() => setAddSvcOpen(false)}
+                        className="p-2 hover:bg-white/20 rounded-xl transition"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+                <PercentBodyModalScrollBody className="p-8 space-y-4">
+                    <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">
+                            {tm('bPackageCommissionService')}
+                        </label>
+                        <select
+                            className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-11 text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-400"
+                            value={addSvcDraftServiceId}
+                            onChange={e => setAddSvcDraftServiceId(e.target.value)}
+                        >
+                            <option value="">{tm('bSelectServicePlaceholder')}</option>
+                            {services.filter(s => s.is_active !== false).map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">
+                            {tm('bPackageCommissionStaff')}
+                        </label>
+                        <select
+                            className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-11 text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-400"
+                            value={addSvcDraftStaffId}
+                            onChange={e => setAddSvcDraftStaffId(e.target.value)}
+                        >
+                            <option value="">{tm('bPackageCommissionStaffPlaceholder')}</option>
+                            {specialists.filter(s => s.is_active !== false).map(s => (
+                                <option key={s.id} value={s.id}>{s.name}{s.specialty ? ` — ${s.specialty}` : ''}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">
+                            {tm('bPackageCommissionPercent')}
+                        </label>
+                        <div className="relative">
+                            <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={0.01}
+                                value={addSvcDraftPct}
+                                onChange={e => setAddSvcDraftPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                                className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-11 text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-400"
+                                placeholder="0"
+                            />
+                            <Percent size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                            {tm('bPackageCommissionPercentHint')}
+                        </p>
+                    </div>
+                </PercentBodyModalScrollBody>
+                <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-3 shrink-0">
+                    <Button variant="outline" onClick={() => setAddSvcOpen(false)} className="flex-1 rounded-xl border-slate-200 font-bold">{tm('cancel')}</Button>
+                    <Button
+                        onClick={submitAddServiceRow}
+                        disabled={!addSvcDraftServiceId || !addSvcDraftStaffId || addSvcLoading}
+                        className="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+                    >
+                        <Plus size={16} className="mr-2" />{addSvcLoading ? tm('bSaving') : tm('bAdd')}
+                    </Button>
+                </div>
+            </PercentBodyModal>
 
             {/* Delete Confirm */}
             {deleteConfirm && (

@@ -116,6 +116,14 @@ function App() {
         // Clear ghost flags if backend says not configured
         localStorage.removeItem('exretail_firma_donem_configured');
         localStorage.removeItem('retailex_web_config');
+        // DeskApp: backend "yapılandırılmadı" diyor → Login'e düşmeden doğrudan SetupWizard
+        // (kullanıcı online giriş zorunda kalmasın; force flag ile App seviyesinde tetikle)
+        if (deskApp || isTauriApp()) {
+          if (peekForceSetupWizard()) {
+            consumeForceSetupWizard();
+          }
+          setWizardForced(true);
+        }
       }
     };
 
@@ -212,6 +220,7 @@ function App() {
           // DeskApp: hata / timeout → SetupWizard (Login UUID modalına sıkışma)
           consumeForceSetupWizard();
           setIsConfigured(false);
+          setWizardForced(true);
         } else {
           setIsConfigured(localStorage.getItem('exretail_firma_donem_configured') === 'true');
         }
@@ -241,7 +250,12 @@ function App() {
         if (isTauriApp() || IS_TAURI) {
           // Yalnızca cache’te açık is_configured:true → Login; aksi / force → SetupWizard
           // Legacy exretail_firma_donem_configured tek başına atlama yapmaz
-          setIsConfigured(!forceWizard && cacheIsConfigured);
+          const resolved = !forceWizard && cacheIsConfigured;
+          setIsConfigured(resolved);
+          // DeskApp emergency fallback: cache boş / bozuksa zorla wizard
+          if (!resolved) {
+            setWizardForced(true);
+          }
         } else {
           const hasLegacyFlag = localStorage.getItem('exretail_firma_donem_configured') === 'true';
           setIsConfigured(cacheIsConfigured || hasLegacyFlag);

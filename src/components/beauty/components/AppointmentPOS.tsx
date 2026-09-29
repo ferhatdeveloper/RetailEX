@@ -15,7 +15,7 @@ import {
     ArrowLeft, Plus, Minus, X, Search, User, UserPlus, UserRound, Users, Banknote,
     CalendarDays, Clock, Cpu, Activity, AlertTriangle, CheckCircle2, Scissors, Package,
     Sparkles, Receipt, ChevronDown, ChevronUp, MoreHorizontal, ShoppingBag, RefreshCw,
-    PanelLeft, Repeat,
+    PanelLeft, Repeat, Percent,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus, appointmentStatusMatches } from '../../../types/beauty';
@@ -96,6 +96,13 @@ interface CartLine {
     staff_id?: string;
     color?: string;
     duration_min?: number;
+    /**
+     * Satır başına prim yüzdesi override'ı. null/undefined = override yok;
+     * 0..100 = kullanıcının bu satır için ezdiği yüzde. Öncelik:
+     * override > service_staff_commissions > service.commission_rate
+     *          > specialist.commission_rate.
+     */
+    commission_percent_override?: number | null;
 }
 
 /** Mevcut randevuda «Güncelle» için karşılaştırma anlığı (baseline yalnızca yükleme / kayıt sonrası yenilenir) */
@@ -429,6 +436,11 @@ export function AppointmentPOS({
     /** Sepet satırı hizmet birim fiyatı — düzenleme modalı (uid) */
     const [cartLinePriceUid, setCartLinePriceUid] = useState<string | null>(null);
     const [cartLinePriceDraft, setCartLinePriceDraft] = useState('');
+    /** Sepet satırı komisyon yüzdesi override modalı (uid) */
+    const [cartLineCommissionUid, setCartLineCommissionUid] = useState<string | null>(null);
+    const [cartLineCommissionDraft, setCartLineCommissionDraft] = useState('');
+    /** Yüzde override aktif mi (kullanıcı override'ı kaldırıp sıfırladı mı) */
+    const [cartLineCommissionOverride, setCartLineCommissionOverride] = useState(false);
 
     useEffect(() => {
         const defaultOpts = ['Instagram', 'Google', 'Tavsiye', 'Yoldan Geçerken', 'WhatsApp', 'Diğer'];
@@ -1122,6 +1134,43 @@ export function AppointmentPOS({
     };
     const remLine = (uid: string) => setCart(c => c.filter(l => l.uid !== uid));
     const setStaff = (uid: string, sid: string) => setCart(c => c.map(l => l.uid === uid ? { ...l, staff_id: sid } : l));
+    /**
+     * Hizmet × personel yüzdesi cache'i. Anahtar: `${service_id}::${staff_id}`.
+     * Yalnızca sepet aktif hizmet satırları için yüklenir (performans).
+     */
+    const [serviceStaffPctMap, setServiceStaffPctMap] = useState<Map<string, number>>(new Map());
+    useEffect(() => {
+        const serviceIds = Array.from(new Set(
+            cart
+                .filter(l => l.type === 'service' && l.staff_id && l.item_id)
+                .map(l => String(l.item_id)),
+        ));
+        if (serviceIds.length === 0) {
+            setServiceStaffPctMap(new Map());
+            return;
+        }
+        let cancelled = false;
+        Promise.allSettled(
+            serviceIds.map(sid => beautyService.getServiceStaffCommissions(sid)),
+        ).then(results => {
+            if (cancelled) return;
+            const next = new Map<string, number>();
+            for (const r of results) {
+                if (r.status !== 'fulfilled') continue;
+                for (const row of r.value) {
+                    const pct = Number(row.percent ?? 0) || 0;
+                    if (pct > 0 && row.is_active !== false) {
+                        next.set(`${row.service_id}::${row.staff_id}`, pct);
+                    }
+                }
+            }
+            setServiceStaffPctMap(next);
+        }).catch(() => {
+            if (!cancelled) setServiceStaffPctMap(new Map());
+        });
+        return () => { cancelled = true; };
+    }, [cart]);
+
     const activeSpecialists = useMemo(() => specialists.filter(s => s.is_active), [specialists]);
     const assignStaffToLine = useCallback(async (line: CartLine, nextStaffIdRaw: string) => {
         const nextStaffId = String(nextStaffIdRaw ?? '').trim();
@@ -2129,6 +2178,19 @@ export function AppointmentPOS({
             const resolveLineCommissionRate = (line: CartLine): number => {
                 const sid = String(line.staff_id ?? '').trim();
                 if (!sid) return 0;
+                // Öncelik 1: satır override
+                const override = Number(line.commission_percent_override ?? NaN);
+                if (Number.isFinite(override) && override > 0) {
+                    return Math.max(0, Math.min(100, override));
+                }
+                // Öncelik 2: service × staff eşleşmesi (varsa)
+                if (line.type === 'service') {
+                    const svcId = String(line.item_id ?? '').trim();
+                    const hit = serviceStaffPctMap.get(`${svcId}::${sid}`);
+                    if (hit != null && Number.isFinite(hit) && hit > 0) {
+                        return Math.max(0, Math.min(100, hit));
+                    }
+                }
                 const specialist = specialists.find((s) => String(s.id) === sid);
                 const specialistRate = Math.max(0, Number(specialist?.commission_rate ?? 0));
                 if (line.type === 'service') {
@@ -3735,7 +3797,7 @@ export function AppointmentPOS({
                                                                 cursor: 'pointer',
                                                                 display: 'flex',
                                                                 alignItems: 'center',
-                                                                justifyContent: 'center',
+                                                                    justifyContent: 'center',
                                                                 color: '#059669',
                                                                 touchAction: 'manipulation',
                                                                 WebkitTapHighlightColor: 'transparent',
@@ -3744,6 +3806,53 @@ export function AppointmentPOS({
                                                             }}
                                                         >
                                                             <Banknote size={18} strokeWidth={2.25} />
+                                                        </button>
+                                                        ) : null}
+                                                        {line.type === 'service' ? (
+                                                        <button
+                                                            type="button"
+                                                            title={tm('bCartLineCommissionPctTitle')}
+                                                            aria-label={tm('bCartLineCommissionPctTitle')}
+                                                            onClick={() => {
+                                                                const sid = String(line.staff_id ?? '').trim();
+                                                                const svcId = String(line.item_id ?? '').trim();
+                                                                // Mevcut effective yüzdeyi öner
+                                                                let suggested = 0;
+                                                                const ov = Number(line.commission_percent_override ?? NaN);
+                                                                if (Number.isFinite(ov) && ov > 0) {
+                                                                    suggested = ov;
+                                                                    setCartLineCommissionOverride(true);
+                                                                } else {
+                                                                    const hit = serviceStaffPctMap.get(`${svcId}::${sid}`);
+                                                                    if (hit != null && hit > 0) suggested = hit;
+                                                                    else {
+                                                                        const sp = specialists.find(s => String(s.id) === sid);
+                                                                        const svc = services.find(s => String(s.id) === svcId);
+                                                                        suggested = Number(svc?.commission_rate ?? 0) || Number(sp?.commission_rate ?? 0) || 0;
+                                                                    }
+                                                                    setCartLineCommissionOverride(Number.isFinite(ov));
+                                                                }
+                                                                setCartLineCommissionDraft(String(Math.round(suggested * 100) / 100));
+                                                                queueMicrotask(() => setCartLineCommissionUid(line.uid));
+                                                            }}
+                                                            style={{
+                                                                width: 44,
+                                                                height: 44,
+                                                                borderRadius: 10,
+                                                                border: '1px solid #fde68a',
+                                                                background: '#fffbeb',
+                                                                cursor: 'pointer',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                color: '#b45309',
+                                                                touchAction: 'manipulation',
+                                                                WebkitTapHighlightColor: 'transparent',
+                                                                flexShrink: 0,
+                                                                padding: 0,
+                                                            }}
+                                                        >
+                                                            <Percent size={18} strokeWidth={2.25} />
                                                         </button>
                                                         ) : null}
                                                         {line.type === 'service' && (
@@ -4430,6 +4539,64 @@ export function AppointmentPOS({
                         onChange={e => setCartLinePriceDraft(e.target.value)}
                         className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-violet-500/30 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                     />
+                </div>
+            </RetailExFlatModal>
+
+            <RetailExFlatModal
+                open={!!cartLineCommissionUid}
+                onClose={() => setCartLineCommissionUid(null)}
+                title={tm('bCartLineCommissionPctTitle')}
+                subtitle={
+                    cartLineCommissionUid
+                        ? (cart.find(l => l.uid === cartLineCommissionUid)?.name ?? undefined)
+                        : undefined
+                }
+                headerIcon={<Percent size={22} />}
+                maxWidthClass="max-w-md"
+                cancelLabel={tm('cancel')}
+                confirmLabel={tm('save')}
+                confirmDisabled={cartLineCommissionOverride && !cartLineCommissionDraft.trim()}
+                onConfirm={() => {
+                    const uid = cartLineCommissionUid;
+                    if (!uid) return;
+                    let next: number | null = null;
+                    if (cartLineCommissionOverride) {
+                        const parsed = Number(cartLineCommissionDraft);
+                        if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 100) {
+                            next = parsed;
+                        }
+                    }
+                    setCart(c => c.map(l => l.uid === uid ? { ...l, commission_percent_override: next } : l));
+                    setCartLineCommissionUid(null);
+                    setCartLineCommissionDraft('');
+                    setCartLineCommissionOverride(false);
+                }}
+            >
+                <div className="space-y-3">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        <input
+                            type="checkbox"
+                            checked={cartLineCommissionOverride}
+                            onChange={e => setCartLineCommissionOverride(e.target.checked)}
+                            className="rounded border-slate-300"
+                        />
+                        {tm('bCartLineCommissionOverrideLabel')}
+                    </label>
+                    {cartLineCommissionOverride && (
+                        <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={0.01}
+                            value={cartLineCommissionDraft}
+                            onChange={e => setCartLineCommissionDraft(e.target.value)}
+                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-amber-500/30 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                            aria-label={tm('bCartLineCommissionPctTitle')}
+                        />
+                    )}
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                        {tm('bCartLineCommissionPctHelp')}
+                    </p>
                 </div>
             </RetailExFlatModal>
 

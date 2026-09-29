@@ -23,6 +23,7 @@ import {
     InfoCircleOutlined,
     FileExcelOutlined,
 } from '@ant-design/icons';
+import { Percent as PercentOutlined } from 'lucide-react';
 import { ChevronDown, Scissors } from 'lucide-react';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
 import { useBeautyStore } from '../store/useBeautyStore';
@@ -94,7 +95,7 @@ const EMPTY_FORM: Partial<BeautyService> = {
 };
 
 export function ServiceManagement() {
-    const { services, isLoading, error, loadServices, createService, updateService, deleteService } = useBeautyStore();
+    const { services, specialists, isLoading, error, loadServices, createService, updateService, deleteService, loadSpecialists } = useBeautyStore();
     const { tm } = useLanguage();
     const { selectedFirm } = useFirmaDonem();
     const firmNr = String(selectedFirm?.firm_nr || ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0');
@@ -113,6 +114,11 @@ export function ServiceManagement() {
     const [editing, setEditing] = useState<Partial<BeautyService>>(EMPTY_FORM);
     const [isEdit, setIsEdit] = useState(false);
     const [saving, setSaving] = useState(false);
+    /** Personel prim yüzdeleri modalı (hizmet bazında) */
+    const [staffPctModalSvc, setStaffPctModalSvc] = useState<BeautyService | null>(null);
+    const [staffPctDraft, setStaffPctDraft] = useState<Array<{ staff_id: string; percent: number }>>([]);
+    const [staffPctSaving, setStaffPctSaving] = useState(false);
+    const [staffPctLoaded, setStaffPctLoaded] = useState(false);
     const [categoryModalOpen, setCategoryModalOpen] = useState(false);
     const [categoryModalMode, setCategoryModalMode] = useState<'create' | 'edit'>('create');
     const [categoryModalName, setCategoryModalName] = useState('');
@@ -148,7 +154,8 @@ export function ServiceManagement() {
         const hasBeauty = !!normalizeFirmEnabledModules(selectedFirm?.enabled_modules)?.includes('beauty');
         if (!hasBeauty) return;
         loadServices();
-    }, [firmNr, selectedFirm?.enabled_modules, loadServices]);
+        loadSpecialists();
+    }, [firmNr, selectedFirm?.enabled_modules, loadServices, loadSpecialists]);
 
     useEffect(() => {
         let mounted = true;
@@ -761,6 +768,53 @@ export function ServiceManagement() {
         }
     };
 
+    const openStaffPctModal = async (svc: BeautyService) => {
+        setStaffPctModalSvc(svc);
+        setStaffPctLoaded(false);
+        const activeStaff = (await beautyService.getSpecialists().catch(() => []) as Array<{ id: string; is_active?: boolean }>);
+        const staffList = activeStaff
+            .filter(sp => sp?.is_active !== false)
+            .map(sp => String(sp.id))
+            .filter(Boolean);
+        try {
+            const rows = await beautyService.getServiceStaffCommissions(svc.id);
+            const map = new Map(rows.map(r => [String(r.staff_id), Number(r.percent ?? 0) || 0]));
+            setStaffPctDraft(
+                staffList.map(sid => ({ staff_id: sid, percent: map.get(sid) ?? 0 })),
+            );
+        } catch {
+            setStaffPctDraft(staffList.map(sid => ({ staff_id: sid, percent: 0 })));
+        } finally {
+            setStaffPctLoaded(true);
+        }
+    };
+
+    const handleStaffPctSave = async () => {
+        const svc = staffPctModalSvc;
+        if (!svc) return;
+        setStaffPctSaving(true);
+        try {
+            // Eski değerleri sıfırlayıp yeniden yazmak yerine yalnızca değişenleri upsert ediyoruz;
+            // silinen (0'a düşen) personeller delete ile kaldırılır.
+            for (const row of staffPctDraft) {
+                const pct = Math.max(0, Math.min(100, Number(row.percent ?? 0) || 0));
+                if (pct <= 0) {
+                    await beautyService.deleteServiceStaffCommission(svc.id, row.staff_id).catch(() => undefined);
+                } else {
+                    await beautyService.upsertServiceStaffCommission(svc.id, row.staff_id, pct);
+                }
+            }
+            toast.success(tm('bServiceStaffCommissionsSaved'));
+            setStaffPctModalSvc(null);
+            setStaffPctDraft([]);
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : String(e));
+            throw e;
+        } finally {
+            setStaffPctSaving(false);
+        }
+    };
+
     const openBulkUpdateModal = () => {
         const firstKey = selectedRowKeys.length ? String(selectedRowKeys[0]) : '';
         const sample = firstKey ? services.find(s => s.id === firstKey) : undefined;
@@ -1001,11 +1055,20 @@ export function ServiceManagement() {
             {
                 title: '',
                 key: 'actions',
-                width: 100,
+                width: 160,
                 fixed: 'right',
                 align: 'center',
                 render: (_, s) => (
                     <Space size={0}>
+                        <Tooltip title={tm('bServiceStaffCommissionsOpenAria')}>
+                            <Button
+                                type="text"
+                                size="small"
+                                icon={<PercentOutlined />}
+                                onClick={() => openStaffPctModal(s)}
+                                aria-label={tm('bServiceStaffCommissionsOpenAria')}
+                            />
+                        </Tooltip>
                         <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(s)} aria-label={tm('edit')} />
                         <Popconfirm
                             title={tm('bServiceDeleteConfirm')}
@@ -1409,6 +1472,86 @@ export function ServiceManagement() {
                                 />
                             </div>
                         </div>
+                    </div>
+                </RetailExFlatModal>
+
+                <RetailExFlatModal
+                    open={!!staffPctModalSvc}
+                    onClose={() => {
+                        if (staffPctSaving) return;
+                        setStaffPctModalSvc(null);
+                        setStaffPctDraft([]);
+                    }}
+                    title={tm('bServiceStaffCommissionsTitle')}
+                    subtitle={staffPctModalSvc?.name}
+                    headerIcon={<PercentOutlined className="text-xl" aria-hidden />}
+                    maxWidthClass="max-w-2xl"
+                    cancelLabel={tm('cancel')}
+                    confirmLabel={staffPctSaving ? tm('bSaving') : tm('bServiceStaffCommissionsSave')}
+                    confirmLoading={staffPctSaving}
+                    onConfirm={async () => {
+                        try {
+                            await handleStaffPctSave();
+                        } catch {
+                            /* handled */
+                        }
+                    }}
+                >
+                    <div className="flex w-full flex-col gap-3">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                            {tm('bServiceStaffCommissionsSubtitle')}
+                        </p>
+                        {!staffPctLoaded ? (
+                            <div className="py-6 text-center text-sm text-slate-400">{tm('bLoading')}</div>
+                        ) : staffPctDraft.length === 0 ? (
+                            <div className="py-6 text-center text-sm text-slate-400">{tm('bServiceStaffCommissionsEmpty')}</div>
+                        ) : (
+                            <div className="space-y-2 max-h-[min(60vh,420px)] overflow-y-auto pr-1">
+                                {staffPctDraft.map(row => {
+                                    const sid = row.staff_id;
+                                    const sp = specialists.find(s => String(s.id) === sid);
+                                    return (
+                                        <div
+                                            key={sid}
+                                            className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                                        >
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                                                    {sp?.name ?? sid}
+                                                </div>
+                                                <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                                                    {sp?.specialty ?? '—'}
+                                                </div>
+                                            </div>
+                                            <div className="w-32 shrink-0">
+                                                <InputNumber
+                                                    className="w-full !rounded-xl"
+                                                    min={0}
+                                                    max={100}
+                                                    step={0.01}
+                                                    value={row.percent}
+                                                    onChange={v => {
+                                                        const next = Math.max(0, Math.min(100, Number(v) || 0));
+                                                        setStaffPctDraft(prev =>
+                                                            prev.map(r => r.staff_id === sid ? { ...r, percent: next } : r),
+                                                        );
+                                                    }}
+                                                    formatter={(value) => value != null ? `% ${value}` : ''}
+                                                    parser={((value: string | undefined) => {
+                                                        const num = String(value ?? '').replace(/[^\d.]/g, '');
+                                                        return num === '' ? 0 : Number(num);
+                                                    }) as any}
+                                                    aria-label={tm('bServiceStaffCommissionsTitle')}
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                            {tm('bServiceStaffCommissionsHelp')}
+                        </p>
                     </div>
                 </RetailExFlatModal>
 

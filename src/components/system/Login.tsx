@@ -260,20 +260,33 @@ export function Login({ onLogin }: LoginProps) {
     const hasWebConfig = !!localStorage.getItem('retailex_web_config');
     const isMobileNative = !isTauriApp() && isCapacitorNative();
 
-    // DeskApp: App.tsx yanlışlıkla Login’e düştüyse siyah SetupWizard’a geç (mavi UUID modal değil)
-    if (isTauriApp() && !isConfiguredFromStorage) {
+    // DeskApp: App.tsx yanlışlıkla Login'e düştüyse siyah SetupWizard'a geç (mavi UUID modal değil)
+    // ÖNEMLİ: Tauri'de her mount'ta config.db'nin gerçek is_configured durumunu kontrol et.
+    // Sadece localStorage flag'ine güvenmek, eski/bozuk config.db + flag=true senaryosunda
+    // kullanıcıyı online girişe zorlar; wizard otomatik açılmalı.
+    if (isTauriApp()) {
       void (async () => {
-        try {
-          const { invoke } = await import('@tauri-apps/api/core');
-          const cfg: any = await invoke('get_app_config');
-          if (cfg?.is_configured === true) {
-            localStorage.setItem('exretail_firma_donem_configured', 'true');
-            return;
+        let needWizard = !isConfiguredFromStorage;
+        if (!needWizard) {
+          // Flag true olsa bile Rust config.db'ye sor — bozuk/yanlış cache'i ez
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const cfg: any = await invoke('get_app_config');
+            if (cfg?.is_configured === true) {
+              // config.db onaylıyor → Login normal devam
+              localStorage.setItem('exretail_firma_donem_configured', 'true');
+              return;
+            }
+            // config.db "yapılandırılmadı" diyor → flag yalan, wizard gerekli
+            needWizard = true;
+          } catch {
+            // config.db yok / erişilemez → flag'e güvenme, wizard tetikle
+            needWizard = true;
           }
-        } catch {
-          /* config.db yok / erişilemez → siyah wizard */
         }
-        requestOpenSetupWizard();
+        if (needWizard) {
+          requestOpenSetupWizard();
+        }
       })();
     }
 

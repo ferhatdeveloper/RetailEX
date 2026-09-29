@@ -2474,6 +2474,96 @@ export const beautyService = {
         );
     },
 
+    // =========================================================================
+    // SERVICE STAFF COMMISSIONS
+    // Personel başına hizmet prim yüzdesi (177 migration).
+    // Öncelik (uygulama tarafı):
+    //   satır override > service_staff_commission > service.commission_rate
+    //   > specialist.commission_rate
+    // =========================================================================
+    async getServiceStaffCommissions(serviceId: string): Promise<Array<{
+        service_id: string;
+        staff_id: string;
+        percent: number;
+        is_active: boolean;
+    }>> {
+        const id = String(serviceId ?? '').trim();
+        if (!id) return [];
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const rows = await postgrest.get<any[]>(
+                `/rex_${fn}_service_staff_commissions`,
+                { select: 'service_id,staff_id,percent,is_active', filter: `service_id=eq.${encodeURIComponent(id)}`, limit: 500 },
+                { schema: 'beauty' }
+            );
+            return (rows || []).map((r) => ({
+                service_id: String(r.service_id ?? id),
+                staff_id: String(r.staff_id ?? ''),
+                percent: Number(r.percent ?? 0) || 0,
+                is_active: r.is_active !== false,
+            }));
+        }
+        const t = postgres.getCardTableName('service_staff_commissions', 'beauty');
+        const { rows } = await postgres.query(
+            `SELECT service_id, staff_id, percent, is_active
+               FROM ${t}
+              WHERE service_id = $1`,
+            [id]
+        );
+        return (rows as any[]).map((r) => ({
+            service_id: String(r.service_id ?? id),
+            staff_id: String(r.staff_id ?? ''),
+            percent: Number(r.percent ?? 0) || 0,
+            is_active: r.is_active !== false,
+        }));
+    },
+
+    async upsertServiceStaffCommission(
+        serviceId: string,
+        staffId: string,
+        percent: number
+    ): Promise<void> {
+        const sid = String(serviceId ?? '').trim();
+        const stid = String(staffId ?? '').trim();
+        if (!sid || !stid) throw new Error('serviceId ve staffId zorunlu');
+        const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.post(
+                `/rpc/upsert_service_staff_commission`,
+                { p_firm_nr: fn, p_service_id: sid, p_staff_id: stid, p_percent: pct },
+                { schema: 'beauty' }
+            );
+            return;
+        }
+        await postgres.query(
+            `SELECT beauty.upsert_service_staff_commission($1, $2, $3, $4)`,
+            [erpFirmNrForRow(), sid, stid, pct]
+        );
+    },
+
+    async deleteServiceStaffCommission(serviceId: string, staffId: string): Promise<void> {
+        const sid = String(serviceId ?? '').trim();
+        const stid = String(staffId ?? '').trim();
+        if (!sid || !stid) return;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.post(
+                `/rpc/delete_service_staff_commission`,
+                { p_firm_nr: fn, p_service_id: sid, p_staff_id: stid },
+                { schema: 'beauty' }
+            );
+            return;
+        }
+        await postgres.query(
+            `SELECT beauty.delete_service_staff_commission($1, $2, $3)`,
+            [erpFirmNrForRow(), sid, stid]
+        );
+    },
+
     async deleteService(id: string): Promise<void> {
         const t = postgres.getCardTableName('beauty_services', 'beauty');
         if (shouldUseTenantPostgrestApi()) {
