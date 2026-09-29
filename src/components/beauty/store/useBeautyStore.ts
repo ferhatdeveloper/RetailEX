@@ -27,6 +27,17 @@ interface BeautyState {
     error:              string | null;
     /** Son yüklenen randevu aralığı (yenileme / kayıt sonrası aynı görünümü korumak için). */
     lastAppointmentRange: { start: string; end: string } | null;
+    /**
+     * Paket → hizmet × personel × yüzde satırları. 177 migration global
+     * `service_staff_commissions` tablosunu kullanır; paket başına hangi
+     * eşleşmelerin pakete eklendiğini client tarafında tutuyoruz (paket_id
+     * bağlamı olmadan da commission hesaplanabilir).
+     */
+    packageCommissions: Record<string, Array<{
+        service_id: string;
+        staff_id: string;
+        percent: number;
+    }>>;
 
     // Appointment actions
     loadAppointments:       (date: string) => Promise<void>;
@@ -49,9 +60,35 @@ interface BeautyState {
 
     // Package actions
     loadPackages:       () => Promise<void>;
-    createPackage:      (data: Partial<BeautyPackage>) => Promise<void>;
+    createPackage:      (data: Partial<BeautyPackage>) => Promise<string>;
     updatePackage:      (id: string, data: Partial<BeautyPackage>) => Promise<void>;
     deletePackage:      (id: string) => Promise<void>;
+    /**
+     * Bir pakete (veya taslak pakete) hizmet × personel × yüzde satırı ekler.
+     * 177 migration global `service_staff_commissions` tablosunu yazar; liste
+     * client state'te paket_id başına gruplanır.
+     * `pkgId === null` ise henüz paket kaydedilmemiş taslak ekleme yapılır
+     * (form state'inden ayrı bir taslak listesi olarak tutulur).
+     */
+    addPackageCommissionRow: (
+        pkgId: string | null,
+        row: { service_id: string; staff_id: string; percent: number },
+    ) => Promise<void>;
+    removePackageCommissionRow: (
+        pkgId: string | null,
+        idx: number,
+    ) => Promise<void>;
+    updatePackageCommissionRow: (
+        pkgId: string | null,
+        idx: number,
+        percent: number,
+    ) => Promise<void>;
+    /**
+     * Mevcut paket için kaydedilmiş yüzdeleri yükler. Henüz DB'de paket
+     * başına bir eşleme yok; bu fonksiyon yalnızca `pkgId` null değilse ve
+     * DB'de commission satırı varsa getirir, yoksa boş liste döner.
+     */
+    loadPackageCommissions: (pkgId: string) => Promise<void>;
 
     // Device actions
     loadDevices:        () => Promise<void>;
@@ -85,6 +122,7 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     isLoading:      false,
     error:          null,
     lastAppointmentRange: null,
+    packageCommissions: {},
 
     // -------------------------------------------------------------------------
     // Appointments
@@ -261,8 +299,9 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
 
     createPackage: async (data) => {
         try {
-            await beautyService.createPackage(data);
+            const newId = await beautyService.createPackage(data);
             await get().loadPackages();
+            return newId;
         } catch (e: any) {
             logger.crudError('BeautyStore', 'createPackage', e);
             throw e;
@@ -282,11 +321,124 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     deletePackage: async (id) => {
         try {
             await beautyService.deletePackage(id);
-            set((state) => ({ packages: state.packages.filter(p => p.id !== id) }));
+            set((state) => ({
+                packages: state.packages.filter(p => p.id !== id),
+                packageCommissions: Object.fromEntries(
+                    Object.entries(state.packageCommissions).filter(([k]) => k !== id),
+                ),
+            }));
         } catch (e: any) {
             logger.crudError('BeautyStore', 'deletePackage', e, { id });
             throw e;
         }
+    },
+
+    addPackageCommissionRow: async (pkgId, row) => {
+        const sid = String(row.service_id ?? '').trim();
+        const stid = String(row.staff_id ?? '').trim();
+        if (!sid || !stid) return;
+        const pct = Math.max(0, Math.min(100, Number(row.percent ?? 0) || 0));
+        // 177 migration: yüzdeyi global service_staff_commissions tablosuna yaz
+        try {
+            if (pct <= 0) {
+                await beautyService.deleteServiceStaffCommission(sid, stid).catch(() => undefined);
+            } else {
+                await beautyService.upsertServiceStaffCommission(sid, stid, pct);
+            }
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'addPackageCommissionRow', e, { row });
+            throw e;
+        }
+        // Paket başına listeyi client state'te güncelle
+        if (pkgId == null) {
+            // Taslak liste (henüz paket kaydedilmemiş)
+            set((state) => {
+                const draft = state.packageCommissions['__draft__'] ?? [];
+                const exists = draft.some(
+                    r => r.service_id === sid && r.staff_id === stid,
+                );
+                if (exists) return {};
+                return { packageCommissions: { ...state.packageCommissions, '__draft__': [...draft, { service_id: sid, staff_id: stid, percent: pct }] } };
+            });
+        } else {
+            set((state) => {
+                const list = state.packageCommissions[pkgId] ?? [];
+                const exists = list.some(
+                    r => r.service_id === sid && r.staff_id === stid,
+                );
+                if (exists) return {};
+                return { packageCommissions: { ...state.packageCommissions, [pkgId]: [...list, { service_id: sid, staff_id: stid, percent: pct }] } };
+            });
+        }
+    },
+
+    removePackageCommissionRow: async (pkgId, idx) => {
+        type Row = { service_id: string; staff_id: string; percent: number };
+        const key = pkgId == null ? '__draft__' : pkgId;
+        let removed: Row | undefined;
+        const currentList: Array<{ service_id: string; staff_id: string; percent: number }>
+            = get().packageCommissions[key] ?? [];
+        if (idx < 0 || idx >= currentList.length) return;
+        removed = currentList[idx] as Row;
+        set((state) => {
+            const list = state.packageCommissions[key] ?? [];
+            if (idx < 0 || idx >= list.length) return {};
+            return {
+                packageCommissions: {
+                    ...state.packageCommissions,
+                    [key]: list.filter((_, i) => i !== idx),
+                },
+            };
+        });
+        // DB'den de kaldır (yüzde > 0 ise — 177 migration)
+        if (removed && Number(removed.percent) > 0) {
+            try {
+                await beautyService.deleteServiceStaffCommission(removed.service_id, removed.staff_id);
+            } catch (e: any) {
+                logger.crudError('BeautyStore', 'removePackageCommissionRow', e, { removed });
+            }
+        }
+    },
+
+    updatePackageCommissionRow: async (pkgId, idx, percent) => {
+        type Row = { service_id: string; staff_id: string; percent: number };
+        const key = pkgId == null ? '__draft__' : pkgId;
+        const currentList: Array<{ service_id: string; staff_id: string; percent: number }>
+            = get().packageCommissions[key] ?? [];
+        if (idx < 0 || idx >= currentList.length) return;
+        const next = Math.max(0, Math.min(100, Number(percent) || 0));
+        const updated: Row = { ...(currentList[idx] as Row), percent: next };
+        set((state) => {
+            const list = state.packageCommissions[key] ?? [];
+            if (idx < 0 || idx >= list.length) return {};
+            return {
+                packageCommissions: {
+                    ...state.packageCommissions,
+                    [key]: list.map((r, i) => i === idx ? { ...r, percent: next } : r),
+                },
+            };
+        });
+        try {
+            if (Number(updated.percent) <= 0) {
+                await beautyService.deleteServiceStaffCommission(updated.service_id, updated.staff_id);
+            } else {
+                await beautyService.upsertServiceStaffCommission(updated.service_id, updated.staff_id, Number(updated.percent));
+            }
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'updatePackageCommissionRow', e, { updated });
+        }
+    },
+
+    loadPackageCommissions: async (pkgId) => {
+        // 177 migration paket_id içermez; paket başına gösterim için client
+        // state zaten dolu. Yine de taslak temizliği yapalım.
+        if (!pkgId) return;
+        set((state) => {
+            if (!state.packageCommissions['__draft__']) return {};
+            const next = { ...state.packageCommissions };
+            delete next['__draft__'];
+            return { packageCommissions: next };
+        });
     },
 
     // -------------------------------------------------------------------------
