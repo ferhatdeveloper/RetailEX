@@ -52,6 +52,12 @@ export interface SetupAppConfig {
   bayi_seti: boolean;
   default_currency: string;
   regulatory_region: 'TR' | 'IQ';
+  /**
+   * **Tauri sadeleştirme:** `true` ise SetupWizard tek-adım ekranını gösterir.
+   * Bu alan Rust AppConfig tarafında tanınmaz (ekstra alan olarak kalır);
+   * sadece frontend'de kullanılır.
+   */
+  simplified_setup?: boolean;
 }
 
 export interface SetupCompany {

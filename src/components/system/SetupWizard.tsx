@@ -31,6 +31,7 @@ import {
 } from './setup/setupDbTargets';
 import { initErpFirmSchemas, initErpPeriodSchema, initOptionalModuleSchemas } from './setup/setupErpSchema';
 import { getSetupFinalStep, getSetupWizardSteps, getDbSettingsStep, getFirmPeriodStep, getSummaryStep, getDeviceStep } from './setup/setupSteps';
+import SimpleConfigPanel from './setup/SimpleConfigPanel';
 import type {
   AppConfig,
   AppUser,
@@ -142,6 +143,14 @@ const SetupWizard: React.FC = () => {
         message?: string;
     } | null>(null);
     const [config, setConfig] = useState<AppConfig>(createInitialSetupConfig());
+    /**
+     * Tauri (masaüstü) için sadeleştirilmiş tek-ekran akışı.
+     * `true` ise SetupWizard ilk adımda SimpleConfigPanel'i gösterir;
+     * kullanıcı şifresini girip kaydedince panele yönlendirilir.
+     * "Gelişmiş Ayarlar" butonu `false` yaparak tam sihirbaza geçer.
+     * Web'de (SaaS) her zaman false — bulut kurulumu için tam wizard açılır.
+     */
+    const [useSimplifiedFlow, setUseSimplifiedFlow] = useState<boolean>(IS_TAURI);
 
     const [postgrestWizardEntryMode, setPostgrestWizardEntryMode] = useState<'retailex_cloud' | 'custom_url'>(
         'custom_url',
@@ -1889,21 +1898,43 @@ const SetupWizard: React.FC = () => {
                     </div>
 
                     <div className="space-y-3 flex-1 text-left">
-                        {wizardSteps.map((s) => (
-                            <div
-                                key={s.id}
-                                className={`flex items-center gap-4 p-3.5 rounded-xl transition-all ${step === s.id ? 'bg-blue-600/10 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'
-                                    }`}
-                            >
-                                <div className={`p-2 rounded-lg transition-colors ${step === s.id ? 'bg-blue-600 text-white' : 'bg-white/5'}`}>
-                                    <s.icon className="w-4 h-4" />
+                        {useSimplifiedFlow && step === 1 ? (
+                            <div className="space-y-4 animate-in fade-in duration-300">
+                                <div className="p-4 rounded-2xl bg-blue-600/10 border border-blue-500/30">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-md shadow-blue-600/30">
+                                            <ShieldCheck className="w-4 h-4 text-white" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-200/80">
+                                                Hızlı Kurulum
+                                            </div>
+                                            <div className="text-xs font-black text-white">Yapılandırmayı Aç</div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <span className={`text-xs font-bold tracking-wide ${step === s.id ? 'text-blue-50' : ''}`}>{s.label}</span>
-                                {step > s.id && !isUpdateMode && (
-                                    <CheckCircle className="w-3.5 h-3.5 ml-auto text-blue-400" />
-                                )}
+                                <div className="px-3 space-y-2 text-[10px] text-slate-500 leading-relaxed">
+                                    <p>• Yerel PostgreSQL bağlantısı tek adımda kurulur.</p>
+                                    <p>• PostgREST, hibrit, Logo/Nebim entegrasyonu için <span className="text-blue-300/90 font-bold">Gelişmiş Ayarlar</span>'a geçin.</p>
+                                </div>
                             </div>
-                        ))}
+                        ) : (
+                            wizardSteps.map((s) => (
+                                <div
+                                    key={s.id}
+                                    className={`flex items-center gap-4 p-3.5 rounded-xl transition-all ${step === s.id ? 'bg-blue-600/10 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                                        }`}
+                                >
+                                    <div className={`p-2 rounded-lg transition-colors ${step === s.id ? 'bg-blue-600 text-white' : 'bg-white/5'}`}>
+                                        <s.icon className="w-4 h-4" />
+                                    </div>
+                                    <span className={`text-xs font-bold tracking-wide ${step === s.id ? 'text-blue-50' : ''}`}>{s.label}</span>
+                                    {step > s.id && !isUpdateMode && (
+                                        <CheckCircle className="w-3.5 h-3.5 ml-auto text-blue-400" />
+                                    )}
+                                </div>
+                            ))
+                        )}
                     </div>
 
                     {/* Active Session / User Display */}
@@ -1931,8 +1962,26 @@ const SetupWizard: React.FC = () => {
                 <div className="flex-1 flex flex-col relative overflow-hidden h-[700px]">
                     {/* Scrollable Content */}
                     <div className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
+                        {/* STEP 1 — Tauri Sadeleştirilmiş Akış */}
+                        {step === 1 && useSimplifiedFlow && (
+                            <SimpleConfigPanel
+                                initialUser={config.pg_local_user || 'postgres'}
+                                initialLocalDb={config.local_db || '127.0.0.1:5432/retailex_local'}
+                                onSwitchToAdvanced={() => setUseSimplifiedFlow(false)}
+                                onCompleted={() => {
+                                    if (typeof window !== 'undefined') {
+                                        try {
+                                            localStorage.setItem('exretail_firma_donem_configured', 'true');
+                                        } catch {
+                                            /* ignore */
+                                        }
+                                        window.location.href = '/';
+                                    }
+                                }}
+                            />
+                        )}
                         {/* STEP 1: BUSINESS TYPE & ROLE */}
-                        {step === 1 && (
+                        {step === 1 && !useSimplifiedFlow && (
                             <div className="space-y-12 animate-in fade-in slide-in-from-right-4 duration-500">
                                 {hasExistingConfig && (
                                     <div className="p-8 rounded-[32px] bg-gradient-to-br from-blue-600/20 to-indigo-600/10 border border-white/10 shadow-2xl relative overflow-hidden group">
@@ -4413,18 +4462,20 @@ const SetupWizard: React.FC = () => {
                         )}
 
                     </div>
-                    <AppFooter
-                        showNavigation={true}
-                        onPrev={() => {
-                            console.log("Navigating back from step:", step);
-                            prevStep();
-                        }}
-                        onNext={step < finalStep ? nextStep : undefined}
-                        prevDisabled={step === 1 || loading || (step === finalStep && installationStep !== 'COMPLETED')}
-                        nextDisabled={loading || step === finalStep}
-                        nextLabel={step === summaryStep ? (isUpdateMode ? "GÜNCELLE" : "SİSTEMİ KUR") : "DEVAM ET"}
-                        prevLabel="GERİ DÖN"
-                    />
+                    {!(step === 1 && useSimplifiedFlow) && (
+                        <AppFooter
+                            showNavigation={true}
+                            onPrev={() => {
+                                console.log("Navigating back from step:", step);
+                                prevStep();
+                            }}
+                            onNext={step < finalStep ? nextStep : undefined}
+                            prevDisabled={step === 1 || loading || (step === finalStep && installationStep !== 'COMPLETED')}
+                            nextDisabled={loading || step === finalStep}
+                            nextLabel={step === summaryStep ? (isUpdateMode ? "GÜNCELLE" : "SİSTEMİ KUR") : "DEVAM ET"}
+                            prevLabel="GERİ DÖN"
+                        />
+                    )}
                 </div>
 
                 {step === finalStep && (
