@@ -26,6 +26,8 @@ export interface CustomerOutstandingInvoice {
   paid_amount: number;
   remaining: number;
   currency?: string;
+  /** Kaynak tablo — debug / audit için; UI'da gizli. */
+  source?: 'sales' | 'beauty_sales';
 }
 
 export interface CollectCustomerDebtInput {
@@ -41,6 +43,13 @@ export interface CollectCustomerDebtInput {
   paymentMethodLabel?: string;
   /** İsteğe bağlı açıklama (varsayılan: "Müşteri cari borç tahsilatı"). */
   description?: string;
+  /**
+   * invoiceId → kaynak tablo eşlemesi. `getCustomerOutstandingInvoices`
+   * döner; güzellik satışlarında `beauty_sales`, market satışlarında `sales`.
+   * Verilirse `paid_amount` UPDATE'i doğru tabloya gider; verilmezse
+   * geriye dönük uyumluluk için `sales` varsayılır.
+   */
+  invoiceSources?: Record<string, 'sales' | 'beauty_sales'>;
 }
 
 export interface CollectCustomerDebtResult {
@@ -57,38 +66,27 @@ export async function getCustomerOutstandingInvoices(
   const firmNr = String(ERP_SETTINGS.firmNr ?? '').padStart(3, '0').slice(0, 10);
   const periodNr = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0').slice(0, 10);
   const salesTable = `rex_${firmNr}_${periodNr}_sales`;
+  // Güzellik POS satışları ayrı şemada (beauty.rex_*_*_beauty_sales) — market
+  // satışlarıyla birlikte getir. Tek tabloya bağlı kalmak (güzellik müşterisinin
+  // borcu görünmez) bug'ın kök nedeni.
+  // İki sorgu ayrı çalıştırılır: bir parçadaki kolon eksikliği (örn. eski kurulumda
+  // sales.paid_amount yoksa) diğerini etkilemez; ayrıca güzellik faturaları
+  // her zaman gelir.
+  const beautySalesTable = `beauty.rex_${firmNr}_${periodNr}_beauty_sales`;
 
-  // remaining: net_amount (KDV hariç tutar) — bakiye borç hesabı net üzerinden
-  // gidiyor; tahsil edilen kısım da net ile yazılır. Çift sayımı önler.
-  // paid_amount kolonu yoksa 0 kabul edilir.
-  const sql = `
-    SELECT id::text AS id,
-           fiche_no AS invoice_no,
-           date::text AS invoice_date,
-           COALESCE(net_amount, total_amount, 0)::numeric AS total_amount,
-           COALESCE(paid_amount, 0)::numeric AS paid_amount,
-           (COALESCE(net_amount, total_amount, 0) - COALESCE(paid_amount, 0))::numeric AS remaining,
-           COALESCE(currency, 'IQD') AS currency
-      FROM ${salesTable}
-     WHERE customer_id = $1::text::uuid
-       AND COALESCE(is_cancelled, false) = false
-       AND (COALESCE(net_amount, total_amount, 0) - COALESCE(paid_amount, 0)) > 0.005
-     ORDER BY date ASC, fiche_no ASC
-     LIMIT 200
-  `;
+  type Row = {
+    id: string;
+    invoice_no: string;
+    invoice_date: string;
+    total_amount: string | number;
+    paid_amount: string | number;
+    remaining: string | number;
+    currency: string;
+    source: 'sales' | 'beauty_sales';
+  };
 
-  try {
-    const { rows } = await postgres.query<{
-      id: string;
-      invoice_no: string;
-      invoice_date: string;
-      total_amount: string | number;
-      paid_amount: string | number;
-      remaining: string | number;
-      currency: string;
-    }>(sql, [customerId], { firmNr, periodNr });
-
-    return (rows || []).map((r) => ({
+  const mapRows = (rows: Row[]): CustomerOutstandingInvoice[] =>
+    (rows || []).map((r) => ({
       id: String(r.id),
       invoice_no: String(r.invoice_no || ''),
       invoice_date: String(r.invoice_date || ''),
@@ -96,11 +94,73 @@ export async function getCustomerOutstandingInvoices(
       paid_amount: Number(r.paid_amount) || 0,
       remaining: Number(r.remaining) || 0,
       currency: String(r.currency || 'IQD'),
+      source: r.source,
     }));
-  } catch (err) {
-    console.warn('[CustomerDebtCollection] getCustomerOutstandingInvoices failed:', err);
-    return [];
+
+  const salesSql = `
+    SELECT id::text AS id,
+           fiche_no AS invoice_no,
+           date::text AS invoice_date,
+           COALESCE(net_amount, total_net, total_gross, 0)::numeric AS total_amount,
+           COALESCE(paid_amount, 0)::numeric AS paid_amount,
+           (COALESCE(net_amount, total_net, total_gross, 0) - COALESCE(paid_amount, 0))::numeric AS remaining,
+           COALESCE(currency, 'IQD') AS currency,
+           'sales'::text AS source
+      FROM ${salesTable}
+     WHERE customer_id = $1::text::uuid
+       AND COALESCE(is_cancelled, false) = false
+       AND (COALESCE(net_amount, total_net, total_gross, 0) - COALESCE(paid_amount, 0)) > 0.005
+     ORDER BY date ASC, fiche_no ASC
+     LIMIT 200
+  `;
+
+  const beautySql = `
+    SELECT id::text AS id,
+           invoice_number AS invoice_no,
+           created_at::text AS invoice_date,
+           COALESCE(remaining_amount, total - COALESCE(paid_amount, 0), 0)::numeric AS total_amount,
+           COALESCE(total - COALESCE(remaining_amount, total), 0)::numeric AS paid_amount,
+           COALESCE(remaining_amount, total - COALESCE(paid_amount, 0), 0)::numeric AS remaining,
+           COALESCE(currency, 'IQD') AS currency,
+           'beauty_sales'::text AS source
+      FROM ${beautySalesTable}
+     WHERE customer_id = $1::text::uuid
+       AND LOWER(COALESCE(payment_status, 'paid')) NOT IN ('cancelled', 'canceled', 'void')
+       AND COALESCE(remaining_amount, total - COALESCE(paid_amount, 0), 0) > 0.005
+     ORDER BY created_at ASC, invoice_number ASC
+     LIMIT 200
+  `;
+
+  // İki sorguyu paralel çalıştır; birinin hatası diğerini düşürmesin.
+  const [salesResult, beautyResult] = await Promise.allSettled([
+    postgres.query<Row>(salesSql, [customerId], { firmNr, periodNr }),
+    postgres.query<Row>(beautySql, [customerId], { firmNr, periodNr }),
+  ]);
+
+  if (salesResult.status === 'rejected') {
+    console.warn('[CustomerDebtCollection] sales query failed:', salesResult.reason);
   }
+  if (beautyResult.status === 'rejected') {
+    console.warn('[CustomerDebtCollection] beauty_sales query failed:', beautyResult.reason);
+  }
+
+  const combined: Row[] = [];
+  if (salesResult.status === 'fulfilled') {
+    combined.push(...(salesResult.value.rows || []));
+  }
+  if (beautyResult.status === 'fulfilled') {
+    combined.push(...(beautyResult.value.rows || []));
+  }
+
+  // Tarihe göre sırala (sales + beauty karışık)
+  combined.sort((a, b) => {
+    const da = String(a.invoice_date || '');
+    const db = String(b.invoice_date || '');
+    if (da !== db) return da < db ? -1 : 1;
+    return String(a.invoice_no || '').localeCompare(String(b.invoice_no || ''));
+  });
+
+  return mapRows(combined.slice(0, 200));
 }
 
 /**
@@ -158,6 +218,7 @@ export async function collectCustomerDebt(
   const periodNr = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0').slice(0, 10);
   const cashLinesTable = `rex_${firmNr}_${periodNr}_cash_lines`;
   const salesTable = `rex_${firmNr}_${periodNr}_sales`;
+  const beautySalesTable = `beauty.rex_${firmNr}_${periodNr}_beauty_sales`;
   const cashRegistersTable = `rex_${firmNr}_cash_registers`;
   const customersTable = `rex_${firmNr}_customers`;
 
@@ -173,6 +234,18 @@ export async function collectCustomerDebt(
     if (amt <= 0) continue;
     const ficheNo = `TAH-${line.id}`;
 
+    // Hangi tabloda bu fatura? invoiceSources ile UI tarafı bildirir;
+    // verilmemişse (geriye dönük uyumluluk) `sales` varsayılır.
+    const source: 'sales' | 'beauty_sales' =
+      input.invoiceSources?.[line.id] === 'beauty_sales' ? 'beauty_sales' : 'sales';
+    const invoiceSchema = source === 'beauty_sales' ? 'beauty' : 'public';
+    const invoiceTableSql =
+      source === 'beauty_sales' ? beautySalesTable : salesTable;
+    const invoicePath =
+      source === 'beauty_sales'
+        ? `/rex_${firmNr}_${periodNr}_beauty_sales`
+        : `/rex_${firmNr}_${periodNr}_sales`;
+
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       await writeCashLineAndUpdateRest({
         firmNr,
@@ -180,7 +253,8 @@ export async function collectCustomerDebt(
         cashLinesTable: `/rex_${firmNr}_${periodNr}_cash_lines`,
         cashRegistersPath: `/rex_${firmNr}_cash_registers`,
         customersTable: `/rex_${firmNr}_customers`,
-        salesPath: `/rex_${firmNr}_${periodNr}_sales`,
+        salesPath: invoicePath,
+        invoiceSchema,
         cashRegisterId: input.cashRegisterId,
         customerId: input.customerId,
         invoiceId: line.id,
@@ -194,7 +268,8 @@ export async function collectCustomerDebt(
         cashLinesTable,
         cashRegistersTable,
         customersTable,
-        salesTable,
+        salesTable: invoiceTableSql,
+        salesTableIsBeauty: source === 'beauty_sales',
         cashRegisterId: input.cashRegisterId,
         customerId: input.customerId,
         invoiceId: line.id,
@@ -224,6 +299,9 @@ async function writeCashLineAndUpdateSql(input: {
   cashRegistersTable: string;
   customersTable: string;
   salesTable: string;
+  /** true ise `salesTable` beauty şemasındadır; kalan = total − paid_amount clamp,
+   *  beauty_sales kolonları kullanılır (total, remaining_amount). */
+  salesTableIsBeauty?: boolean;
   cashRegisterId: string;
   customerId: string;
   invoiceId: string;
@@ -288,21 +366,46 @@ async function writeCashLineAndUpdateSql(input: {
     );
   }
 
-  // 4) sales.paid_amount += amount (UPDATE her zaman; idempotent değil ama
+  // 4) Fatura paid_amount += amount (UPDATE her zaman; idempotent değil ama
   //    cash_lines INSERT'i yalnızca ilk seferde balance değiştiriyor; ek UPDATE
   //    yine de çalışsın — fatura "tamamen ödendi" rozetini güncel tutar).
-  //    Ancak tahsilat tutarı fatura tutarından büyükse clamp et.
-  await postgres.query(
-    `UPDATE ${input.salesTable}
-        SET paid_amount = LEAST(
-              COALESCE(net_amount, total_amount, 0),
-              COALESCE(paid_amount, 0) + $1::numeric
-            ),
-            updated_at = NOW()
-      WHERE id = $2::text::uuid`,
-    [String(input.amount), input.invoiceId],
-    { firmNr: input.firmNr, periodNr: input.periodNr },
-  );
+  //    Tahsilat tutarı fatura tutarından büyükse clamp et.
+  //    beauty_sales: total + paid_amount clamp + remaining_amount türetilir.
+  if (input.salesTableIsBeauty) {
+    // beauty_sales: total sabit, paid_amount artar, remaining_amount = total − paid.
+    await postgres.query(
+      `UPDATE ${input.salesTable}
+          SET paid_amount = LEAST(
+                COALESCE(total, 0),
+                COALESCE(paid_amount, 0) + $1::numeric
+              ),
+              remaining_amount = GREATEST(
+                0,
+                COALESCE(total, 0) - (COALESCE(paid_amount, 0) + $1::numeric)
+              ),
+              payment_status = CASE
+                WHEN COALESCE(total, 0) - (COALESCE(paid_amount, 0) + $1::numeric) <= 0.005
+                  THEN 'paid'
+                ELSE 'partial'
+              END,
+              updated_at = NOW()
+        WHERE id = $2::text::uuid`,
+      [String(input.amount), input.invoiceId],
+      { firmNr: input.firmNr, periodNr: input.periodNr },
+    );
+  } else {
+    await postgres.query(
+      `UPDATE ${input.salesTable}
+          SET paid_amount = LEAST(
+                COALESCE(net_amount, total_amount, 0),
+                COALESCE(paid_amount, 0) + $1::numeric
+              ),
+              updated_at = NOW()
+        WHERE id = $2::text::uuid`,
+      [String(input.amount), input.invoiceId],
+      { firmNr: input.firmNr, periodNr: input.periodNr },
+    );
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -316,6 +419,8 @@ async function writeCashLineAndUpdateRest(input: {
   cashRegistersPath: string;
   customersTable: string;
   salesPath: string;
+  /** beauty_sales için 'beauty'; default 'public'. */
+  invoiceSchema?: 'public' | 'beauty';
   cashRegisterId: string;
   customerId: string;
   invoiceId: string;
@@ -435,26 +540,46 @@ async function writeCashLineAndUpdateRest(input: {
     }
   }
 
-  // 4) sales.paid_amount — RPC yok; PATCH ile clamp
+  // 4) sales.paid_amount — RPC yok; PATCH ile clamp.
+  //    beauty_sales için paid_amount + remaining_amount + payment_status güncellenir.
+  const invoiceSchema = input.invoiceSchema ?? 'public';
   try {
     const cur = await postgrest.get<any[]>(
       input.salesPath,
       {
         id: `eq.${input.invoiceId}`,
-        select: 'paid_amount,net_amount,total_amount',
+        select: invoiceSchema === 'beauty'
+          ? 'paid_amount,total'
+          : 'paid_amount,net_amount,total_amount',
         limit: 1,
       },
-      { schema: 'public' },
+      { schema: invoiceSchema },
     );
     const row = cur?.[0];
     if (row) {
-      const cap = Number(row.net_amount ?? row.total_amount ?? 0);
-      const next = Math.min(cap, Number(row.paid_amount ?? 0) + input.amount);
-      await postgrest.patch(
-        `${input.salesPath}?id=eq.${encodeURIComponent(input.invoiceId)}`,
-        { paid_amount: next, updated_at: new Date().toISOString() },
-        { schema: 'public' },
-      );
+      const paidNow = Number(row.paid_amount ?? 0) + input.amount;
+      if (invoiceSchema === 'beauty') {
+        const total = Number(row.total ?? 0);
+        const remaining = Math.max(0, total - paidNow);
+        await postgrest.patch(
+          `${input.salesPath}?id=eq.${encodeURIComponent(input.invoiceId)}`,
+          {
+            paid_amount: Math.min(total, paidNow),
+            remaining_amount: remaining,
+            payment_status: remaining <= 0.005 ? 'paid' : 'partial',
+            updated_at: new Date().toISOString(),
+          },
+          { schema: invoiceSchema },
+        );
+      } else {
+        const cap = Number(row.net_amount ?? row.total_amount ?? 0);
+        const next = Math.min(cap, paidNow);
+        await postgrest.patch(
+          `${input.salesPath}?id=eq.${encodeURIComponent(input.invoiceId)}`,
+          { paid_amount: next, updated_at: new Date().toISOString() },
+          { schema: invoiceSchema },
+        );
+      }
     }
   } catch (err) {
     console.warn('[CustomerDebtCollection] rest sales.paid_amount PATCH failed:', err);

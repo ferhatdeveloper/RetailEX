@@ -34,41 +34,84 @@ describe('customerDebtCollection (SQL)', () => {
   });
 
   describe('getCustomerOutstandingInvoices', () => {
-    it('müşterinin bekleyen satış faturalarını listeler', async () => {
-      mockQuery.mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'inv-1',
-            invoice_no: 'F-2026-001',
-            invoice_date: '2026-09-01T10:00:00Z',
-            total_amount: '5000',
-            paid_amount: '2000',
-            remaining: '3000',
-            currency: 'IQD',
-          },
-          {
-            id: 'inv-2',
-            invoice_no: 'F-2026-002',
-            invoice_date: '2026-09-15T12:00:00Z',
-            total_amount: '1000',
-            paid_amount: '0',
-            remaining: '1000',
-            currency: 'IQD',
-          },
-        ],
-      });
+    it('müşterinin bekleyen faturalarını listeler (sales + beauty_sales paralel sorgular)', async () => {
+      // İki paralel sorgu: önce sales, sonra beauty_sales (Promise.allSettled sırası)
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'inv-1',
+              invoice_no: 'SAT-2026-0001',
+              invoice_date: '2026-09-01T10:00:00Z',
+              total_amount: '5000',
+              paid_amount: '2000',
+              remaining: '3000',
+              currency: 'IQD',
+              source: 'sales',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'inv-beauty-1',
+              invoice_no: 'BEA-MUM3R9M',
+              invoice_date: '2026-09-15T12:00:00Z',
+              total_amount: '36000',
+              paid_amount: '0',
+              remaining: '36000',
+              currency: 'IQD',
+              source: 'beauty_sales',
+            },
+          ],
+        });
 
       const result = await getCustomerOutstandingInvoices('cust-1');
 
       expect(result).toHaveLength(2);
-      expect(result[0].invoice_no).toBe('F-2026-001');
-      expect(result[0].remaining).toBe(3000);
-      expect(result[1].remaining).toBe(1000);
-      // SQL filtre: customer_id + remaining > 0 + is_cancelled=false
-      const sqlArg = String(mockQuery.mock.calls[0][0]);
-      expect(sqlArg).toMatch(/customer_id\s*=\s*\$1/);
-      expect(sqlArg).toMatch(/is_cancelled/);
-      expect(sqlArg).toMatch(/ORDER BY date ASC/);
+      // Tarihe göre sıralı (sales 09-01, beauty 09-15)
+      expect(result[0].source).toBe('sales');
+      expect(result[0].invoice_no).toBe('SAT-2026-0001');
+      expect(result[1].source).toBe('beauty_sales');
+      expect(result[1].invoice_no).toBe('BEA-MUM3R9M');
+      expect(result[1].remaining).toBe(36000);
+      // 1. sorgu sales tablosuna
+      const salesSql = String(mockQuery.mock.calls[0][0]);
+      expect(salesSql).toMatch(/rex_001_01_sales/);
+      expect(salesSql).toMatch(/is_cancelled/);
+      // 2. sorgu beauty_sales tablosuna
+      const beautySql = String(mockQuery.mock.calls[1][0]);
+      expect(beautySql).toMatch(/beauty\.rex_001_01_beauty_sales/);
+      expect(beautySql).toMatch(/invoice_number/);
+      expect(beautySql).toMatch(/payment_status/);
+    });
+
+    it('bir sorgu hata verirse diğeri yine de döner (graceful degradation)', async () => {
+      // sales hata verir, beauty_sales başarılı — BEA-MUM3R9M yine de gelmeli
+      mockQuery
+        .mockRejectedValueOnce(new Error('column paid_amount does not exist'))
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'inv-beauty-1',
+              invoice_no: 'BEA-MUM3R9M',
+              invoice_date: '2026-09-15T12:00:00Z',
+              total_amount: '36000',
+              paid_amount: '0',
+              remaining: '36000',
+              currency: 'IQD',
+              source: 'beauty_sales',
+            },
+          ],
+        });
+
+      const result = await getCustomerOutstandingInvoices('cust-1');
+
+      // Sales hatası göz ardı edilir, beauty_sales listelenir
+      expect(result).toHaveLength(1);
+      expect(result[0].source).toBe('beauty_sales');
+      expect(result[0].invoice_no).toBe('BEA-MUM3R9M');
+      expect(result[0].remaining).toBe(36000);
     });
 
     it('müşteri yoksa boş döner (DB çağrısı yapmaz)', async () => {
@@ -78,6 +121,8 @@ describe('customerDebtCollection (SQL)', () => {
     });
 
     it('DB hatasında boş döner (alarm vermez)', async () => {
+      // İki paralel sorgu (sales + beauty_sales) — her ikisi de reddedilir
+      mockQuery.mockRejectedValueOnce(new Error('db down'));
       mockQuery.mockRejectedValueOnce(new Error('db down'));
       const result = await getCustomerOutstandingInvoices('cust-1');
       expect(result).toEqual([]);
@@ -152,6 +197,35 @@ describe('customerDebtCollection (SQL)', () => {
 
       expect(res.cashLinesWritten).toBe(1);
       expect(mockQuery).toHaveBeenCalledTimes(2); // upsert + sales only
+    });
+
+    it('beauty_sales: invoiceSources ile paid_amount + remaining_amount günceller', async () => {
+      // Güzellik satışından gelen fatura için salesTableIsBeauty=true → SQL'de
+      // beauty_sales tablosuna paid_amount, remaining_amount ve payment_status yazılır.
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ id: 'cl-beauty-1', inserted: true }] })
+        .mockResolvedValueOnce({ rowCount: 1 }) // kasa bakiye +amount
+        .mockResolvedValueOnce({ rowCount: 1 }) // cari bakiye -amount
+        .mockResolvedValueOnce({ rowCount: 1 }); // beauty_sales.paid_amount + remaining_amount
+
+      const res = await collectCustomerDebt({
+        customerId: 'cust-1',
+        invoiceIds: ['inv-beauty-1'],
+        amount: 10000,
+        cashRegisterId: 'cash-1',
+        invoiceSources: { 'inv-beauty-1': 'beauty_sales' },
+      });
+
+      expect(res.cashLinesWritten).toBe(1);
+      expect(res.totalAmount).toBe(10000);
+
+      // 4. sorgu beauty_sales tablosuna, remaining_amount + payment_status içerir
+      const updateBeauty = String(mockQuery.mock.calls[3][0]);
+      expect(updateBeauty).toMatch(/beauty\.rex_001_01_beauty_sales/);
+      expect(updateBeauty).toMatch(/remaining_amount/);
+      expect(updateBeauty).toMatch(/payment_status/);
+      // sales (market) tablosuna DEĞİL
+      expect(updateBeauty).not.toMatch(/UPDATE rex_001_01_sales/);
     });
 
     it('input validasyon: customerId yoksa hata', async () => {
