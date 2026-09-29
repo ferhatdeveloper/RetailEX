@@ -27,12 +27,6 @@ import { useResponsive } from '../../../hooks/useResponsive';
 import { logger } from '../../../services/loggingService';
 import { POSPaymentModal, type POSPaymentModalDraftContext } from '../../pos/POSPaymentModal';
 import { resolvePosCheckoutSettlement } from '../../../utils/saleCollectedAmounts';
-import { appointmentPaymentService } from '../../../services/appointmentPaymentService';
-import type {
-    AppointmentPaymentProvider,
-    AppointmentPaymentSummary,
-} from '../../../services/appointmentPaymentService';
-import { AppointmentPrePaymentPanel } from './AppointmentPrePaymentPanel';
 import { Receipt80mm } from '../../pos/Receipt80mm';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useProductStore } from '../../../store/useProductStore';
@@ -519,23 +513,6 @@ export function AppointmentPOS({
     const [cancelAptConfirmOpen, setCancelAptConfirmOpen] = useState(false);
     const [cancelAptBusy, setCancelAptBusy] = useState(false);
 
-    // ── Deposit (ön ödeme) + Remainder (kalan ödeme) state'leri ────────
-    const [paymentSummary, setPaymentSummary] = useState<AppointmentPaymentSummary | null>(null);
-    const [depositAmount, setDepositAmount] = useState<string>('');
-    const [depositProvider, setDepositProvider] = useState<AppointmentPaymentProvider>('cash');
-    /**
-     * Booking anında "şimdi ön ödeme alınacak mı?" toggle'ı.
-     * false → randevu yalnızca kayıt amaçlı, ön ödeme paneli gizlenir
-     *         (hizmet verildiğinde kalan tutarı almak yeterli olur).
-     * true  → randevu oluşturulurken kısmi ön ödeme alınacak; panel görünür.
-     */
-    const [takeDepositAtBooking, setTakeDepositAtBooking] = useState<boolean>(false);
-    const [depositSubmitting, setDepositSubmitting] = useState(false);
-    const [showRemainderModal, setShowRemainderModal] = useState(false);
-    const [remainderAmount, setRemainderAmount] = useState<string>('');
-    const [remainderProvider, setRemainderProvider] = useState<AppointmentPaymentProvider>('cash');
-    const [remainderSubmitting, setRemainderSubmitting] = useState(false);
-
     // ── Payment modal ─────────────────────────────────────────────────────
     const [showPay, setShowPay] = useState(false);
     const [receiptNumber, setReceiptNumber] = useState(() =>
@@ -990,30 +967,6 @@ export function AppointmentPOS({
 
     useEffect(() => {
         setExistingEditBaselineFlush(0);
-    }, [existingAppointment?.id]);
-
-    /**
-     * Mevcut randevunun deposit + remainder özetini DB'den çek.
-     */
-    useEffect(() => {
-        const aptId = existingAppointment?.id;
-        if (!aptId) {
-            setPaymentSummary(null);
-            return;
-        }
-        let cancelled = false;
-        (async () => {
-            try {
-                const summary = await appointmentPaymentService.getSummary(aptId);
-                if (!cancelled) setPaymentSummary(summary);
-            } catch (e) {
-                logger.error('AppointmentPOS', 'getSummary failed', e);
-                if (!cancelled) setPaymentSummary(null);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
     }, [existingAppointment?.id]);
 
     const handleSaveNewCustomer = async () => {
@@ -1888,128 +1841,6 @@ export function AppointmentPOS({
 
     const resolveBeautyCashierName = () => currentLoginCashierName() || '—';
 
-    /**
-     * Ön ödeme (deposit) kaydet. Muhasebe: cari avans ekstresi (−) + kasa/banka (+);
-     * stok etkilenmez.
-     */
-    const handleCreateDeposit = useCallback(async (
-        appointmentId: string,
-        opts?: { cashRegisterId?: string; cashRegisterCode?: string },
-    ) => {
-        const amount = parseFloat(String(depositAmount).replace(',', '.'));
-        if (!Number.isFinite(amount) || amount <= 0) {
-            toast.error('Geçerli bir tutar girin');
-            return;
-        }
-        setDepositSubmitting(true);
-        try {
-            await appointmentPaymentService.createAppointmentDeposit({
-                appointmentId,
-                customerId: customer?.id,
-                amount,
-                provider: depositProvider,
-                cashRegisterId: opts?.cashRegisterId,
-                cashRegisterCode: opts?.cashRegisterCode,
-                currency: ((selectedFirm as any)?.ana_para_birimi?.trim() || 'IQD'),
-                notes: 'Randevu ön ödeme (deposit)',
-            });
-            const summary = await appointmentPaymentService.getSummary(appointmentId);
-            setPaymentSummary(summary);
-            setDepositAmount('');
-            toast.success('Ön ödeme kaydedildi');
-        } catch (e) {
-            logger.error('AppointmentPOS', 'handleCreateDeposit failed', e);
-            toast.error(extractTechnicalError(e) || 'Ön ödeme kaydedilemedi');
-        } finally {
-            setDepositSubmitting(false);
-        }
-    }, [depositAmount, depositProvider, customer, selectedFirm, tm]);
-
-    const takePrePayment = useCallback(async () => {
-        if (!existingAppointment?.id) return;
-        const cash = (typeof window !== 'undefined'
-            ? (window as any).__retailex_last_cash_register
-            : null) as { id?: string; code?: string } | null;
-        await handleCreateDeposit(existingAppointment.id, {
-            cashRegisterId: cash?.id,
-            cashRegisterCode: cash?.code,
-        });
-    }, [existingAppointment, handleCreateDeposit]);
-
-    /**
-     * Hizmet tamamlandığında kalan ödeme al.
-     * Muhasebe: cari (hizmet) − + kasa +. Stok etkilenmez (zaten complete'te düşecek).
-     */
-    const handleCollectRemainder = useCallback(async () => {
-        if (!existingAppointment?.id) return;
-        const amount = parseFloat(String(remainderAmount).replace(',', '.'));
-        if (!Number.isFinite(amount) || amount <= 0) {
-            toast.error('Geçerli bir tutar girin');
-            return;
-        }
-        const remaining = paymentSummary?.outstandingAmount ?? 0;
-        if (remaining > 0 && amount > remaining + 0.01) {
-            toast.error(`Kalan tutar ${remaining.toFixed(2)} — fazlası kabul edilmez`);
-            return;
-        }
-        setRemainderSubmitting(true);
-        try {
-            // 1. Randevuyu tamamla → status='completed' (sarf/stok düşümü tetiklenir)
-            await beautyService.updateAppointment(existingAppointment.id, {
-                status: AppointmentStatus.COMPLETED,
-            } as any);
-            // 2. Kalan ödeme kaydı
-            await appointmentPaymentService.createAppointmentRemainderPayment({
-                appointmentId: existingAppointment.id,
-                customerId: customer?.id,
-                amount,
-                provider: remainderProvider,
-                currency: ((selectedFirm as any)?.ana_para_birimi?.trim() || 'IQD'),
-                notes: 'Hizmet tamamlandığında kalan ödeme',
-            });
-            const summary = await appointmentPaymentService.getSummary(existingAppointment.id);
-            setPaymentSummary(summary);
-            setShowRemainderModal(false);
-            setRemainderAmount('');
-            toast.success('Kalan ödeme alındı');
-        } catch (e) {
-            logger.error('AppointmentPOS', 'handleCollectRemainder failed', e);
-            toast.error(extractTechnicalError(e) || 'Kalan ödeme alınamadı');
-        } finally {
-            setRemainderSubmitting(false);
-        }
-    }, [existingAppointment, remainderAmount, remainderProvider, paymentSummary, customer, selectedFirm]);
-
-    /**
-     * Randevuyu tamamla — remainder alınmadan.
-     * Kıdemli muhasebeci: hizmet verildiğinde stok düşümü tetiklenir.
-     * Bu yüzden kalan ödeme alınmadan complete'i engelliyoruz — cari bakiyesi
-     * alacak kalır, kasa/banka + tamamlanır ancak cari simetrisi (borç) ancak
-     * hizmet verildiğinde yazılmalı.
-     */
-    const handleCompleteOnly = useCallback(async () => {
-        if (!existingAppointment?.id) return;
-        const outstanding = paymentSummary?.outstandingAmount ?? 0;
-        if (outstanding > 0.01) {
-            toast.error(
-                tm('remainderPendingHint')
-                || 'Önce kalan ödeme alınmalı — hizmet verildiğinde tahsil edilecek.',
-            );
-            return;
-        }
-        try {
-            await beautyService.updateAppointment(existingAppointment.id, {
-                status: AppointmentStatus.COMPLETED,
-            } as any);
-            const summary = await appointmentPaymentService.getSummary(existingAppointment.id);
-            setPaymentSummary(summary);
-            toast.success('Randevu tamamlandı');
-        } catch (e) {
-            logger.error('AppointmentPOS', 'handleCompleteOnly failed', e);
-            toast.error(extractTechnicalError(e) || 'Randevu tamamlanamadı');
-        }
-    }, [existingAppointment, paymentSummary, tm]);
-
     const handleBookOnly = async () => {
         if (isExistingPaidComplete) {
             toast.info(tm('bPaymentAlreadyReceived'));
@@ -2024,34 +1855,6 @@ export function AppointmentPOS({
             const createdIds: string[] = [];
             for (const p of planned) {
                 createdIds.push(await createAppointment(p));
-            }
-            // ── Booking anında deposit (ön ödeme) opsiyonel kayıt
-            // Kullanıcı "şimdi ödeme almayacağım" toggle'ını kapattıysa deposit atlanır;
-            // aksi halde girilen tutar > 0 ve total'i aşmıyorsa kaydedilir.
-            const depRaw = parseFloat(String(depositAmount).replace(',', '.'));
-            if (
-                takeDepositAtBooking
-                && createdIds[0]
-                && Number.isFinite(depRaw)
-                && depRaw > 0
-                && depRaw <= total + 0.01
-            ) {
-                try {
-                    await appointmentPaymentService.createAppointmentDeposit({
-                        appointmentId: createdIds[0],
-                        customerId: customer?.id,
-                        amount: depRaw,
-                        provider: depositProvider,
-                        currency: ((selectedFirm as any)?.ana_para_birimi?.trim() || 'IQD'),
-                        notes: 'Booking anında ön ödeme',
-                    });
-                    const summary = await appointmentPaymentService.getSummary(createdIds[0]);
-                    setPaymentSummary(summary);
-                    setDepositAmount('');
-                } catch (depErr) {
-                    logger.error('AppointmentPOS', 'auto-deposit after booking failed', depErr);
-                    toast.warning('Randevu oluşturuldu ancak ön ödeme kaydedilemedi.');
-                }
             }
             const productLines = cart.filter((l) => l.type === 'product');
             if (productLines.length > 0 && createdIds[0]) {
@@ -4362,55 +4165,6 @@ export function AppointmentPOS({
                                 </button>
                             </div>
                             )}
-
-                            {/* ── Ön Ödeme + Kalan Ödeme paneli ─────── */}
-                            {!isStandaloneProductSales && (
-                                <AppointmentPrePaymentPanel
-                                    mode={existingAppointment ? 'existing' : 'booking'}
-                                    paymentSummary={paymentSummary}
-                                    takeDepositAtBooking={takeDepositAtBooking}
-                                    onToggleTakeDepositAtBooking={setTakeDepositAtBooking}
-                                    labels={{
-                                        prePaymentAmount: tm('prePaymentAmount'),
-                                        prePaymentProvider: tm('prePaymentProvider'),
-                                        cashLabel: tm('cashLabel') || 'Nakit',
-                                        cardLabel: tm('cardLabel') || 'Kart',
-                                        gatewayLabel: tm('gatewayLabel') || 'Ön Ödeme',
-                                        bankTransferLabel: 'Banka Havalesi',
-                                        prePaymentHint:
-                                            tm('prePaymentHint')
-                                            || 'İleri tarihli randevu için şimdi kısmi ödeme alabilirsiniz. Hizmet verildiğinde kalan tahsil edilir; stok düşümü tamamlandığında olur.',
-                                        noPaymentAtBookingHint:
-                                            tm('noPaymentAtBookingHint')
-                                            || 'Şimdi ödeme alınmayacak — yalnızca randevu kaydı oluşturulacak.',
-                                        remainderPendingHint:
-                                            tm('remainderPendingHint')
-                                            || 'Kalan ödeme bekleniyor — hizmet verildiğinde tahsil edilir ve randevu o zaman tamamlanabilir.',
-                                        appointmentDeposit: tm('appointmentDeposit'),
-                                        appointmentRemainder: tm('appointmentRemainder'),
-                                        total: tm('total'),
-                                        remainderAmount: tm('remainderAmount'),
-                                        appointmentTakeDeposit: tm('appointmentTakeDeposit'),
-                                        appointmentCollectRemainder: tm('appointmentCollectRemainder'),
-                                        appointmentComplete: tm('appointmentComplete'),
-                                        paidPanelTitle: tm('bBeautyPaidPanelTitle'),
-                                    }}
-                                    depositAmount={depositAmount}
-                                    depositProvider={depositProvider}
-                                    onDepositAmountChange={setDepositAmount}
-                                    onDepositProviderChange={setDepositProvider}
-                                    onTakeDeposit={() => void takePrePayment()}
-                                    onCollectRemainder={() => {
-                                        if (!paymentSummary) return;
-                                        setRemainderAmount(paymentSummary.outstandingAmount.toString());
-                                        setShowRemainderModal(true);
-                                    }}
-                                    onComplete={() => void handleCompleteOnly()}
-                                    depositSubmitting={depositSubmitting}
-                                    outstandingAmount={paymentSummary?.outstandingAmount ?? 0}
-                                    bookingTotal={total}
-                                />
-                            )}
                             </div>
                         </div>
                     </div>{/* end scrollable bottom section */}
@@ -4740,60 +4494,6 @@ export function AppointmentPOS({
                     onClose={() => setShowPay(false)}
                     onComplete={handlePayComplete}
                 />
-            )}
-
-            {/* ── KALAN ÖDEME MODAL'ı (hizmet tamamlandığında) ─────────── */}
-            {showRemainderModal && paymentSummary && (
-                <RetailExFlatModal
-                    open={showRemainderModal}
-                    onClose={() => !remainderSubmitting && setShowRemainderModal(false)}
-                    title={tm('appointmentCollectRemainder') || 'Kalan Ödeme Al'}
-                    subtitle={`${customer?.name ?? ''} · ${tm('remainderAmount')}: ${fmt(paymentSummary.outstandingAmount)}`}
-                    headerIcon={<Receipt size={22} />}
-                    maxWidthClass="max-w-md"
-                    cancelLabel={tm('cancel')}
-                    confirmLabel={tm('save')}
-                    confirmDisabled={remainderSubmitting || !remainderAmount}
-                    onConfirm={() => void handleCollectRemainder()}
-                >
-                    <div className="space-y-3">
-                        <div className="rounded-xl bg-violet-50 p-3 text-xs font-semibold text-violet-900">
-                            <div className="flex justify-between"><span>{tm('total')}:</span><span>{fmt(paymentSummary.totalPrice)}</span></div>
-                            <div className="flex justify-between"><span>{tm('appointmentDeposit')}:</span><span>{fmt(paymentSummary.depositAmount)}</span></div>
-                            <div className="flex justify-between border-t border-violet-200 pt-1 mt-1">
-                                <span>{tm('remainderAmount')}:</span>
-                                <span className="font-bold">{fmt(paymentSummary.outstandingAmount)}</span>
-                            </div>
-                        </div>
-                        <Field label={tm('remainderAmount') || 'Kalan Tutar'}>
-                            <input
-                                type="text"
-                                inputMode="decimal"
-                                value={remainderAmount}
-                                onChange={(e) => setRemainderAmount(e.target.value)}
-                                placeholder="0"
-                                style={iStyle}
-                            />
-                        </Field>
-                        <Field label={tm('prePaymentProvider') || 'Ödeme Yöntemi'}>
-                            <select
-                                value={remainderProvider}
-                                onChange={(e) => setRemainderProvider(e.target.value as AppointmentPaymentProvider)}
-                                style={selStyle}
-                            >
-                                <option value="cash">{tm('cashLabel') || 'Nakit'}</option>
-                                <option value="card">{tm('cardLabel') || 'Kart'}</option>
-                                <option value="gateway">{tm('gatewayLabel') || 'Ön Ödeme'}</option>
-                                <option value="bank_transfer">Banka Havalesi</option>
-                                <option value="veresiye">{tm('veresiyeLabel') || 'Veresiye (Cari)'}</option>
-                            </select>
-                        </Field>
-                        <p style={{ margin: 0, fontSize: 10, color: '#6b7280', lineHeight: 1.4 }}>
-                            {tm('remainderVeresiyeHint')
-                                || 'Veresiye seçilirse kalan tutar müşterinin cari hesabına borç olarak yazılır; tahsilat ileride yapılır.'}
-                        </p>
-                    </div>
-                </RetailExFlatModal>
             )}
 
             {showReceiptModal && completedSale && completedPaymentData && (
