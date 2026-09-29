@@ -19,6 +19,22 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================================================
+-- 0a. POSTGREST ROLÜ (anon) — kurulumun EN BAŞINDA oluşturulmalı
+-- ============================================================================
+-- create_firm_tables() içindeki GRANT ... TO anon çağrıları, rol yoksa 42704
+-- ("role ... does not exist") ile tüm master şema kurulumunu cascade başarısız
+-- yapıyor; bunun sonucunda firms/periods tabloları oluşmuyor ve SetupWizard'taki
+-- INSERT INTO firms 42P01 ("relation does not exist") ile patlıyordu.
+-- Bu blok master'ın başına taşındı; eski sıra (anon CREATE → 4274) Postgres
+-- transaction'ında fatal kabul edilip rollback tetikliyordu.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    CREATE ROLE anon NOLOGIN;
+  END IF;
+END $$;
+
+-- ============================================================================
 -- 0. SCHEMAS
 -- ============================================================================
 -- UUID varsayılanları: PostgreSQL 13+ yerleşik gen_random_uuid() (uuid-ossp dosyası
@@ -3367,7 +3383,7 @@ BEGIN
       description      TEXT,
       status           VARCHAR(20) DEFAULT ''completed'',
       -- 179: slip_kind (''quantity'' = eski davranış; ''invoice'' = alış faturası
-      -- benzeri açılış/devir; miktar + birim fiyat + KDV % + toplam)
+      -- benzeri açılış/devir; miktar + birim fiyat + KDV oranı + toplam)
       slip_kind        VARCHAR(20) NOT NULL DEFAULT ''quantity'',
       logo_sync_status VARCHAR(20),
       logo_sync_error  TEXT,
@@ -3406,7 +3422,7 @@ BEGIN
       quantity         DECIMAL(15,4) DEFAULT 0,
       unit_price       DECIMAL(15,2) DEFAULT 0,
       cost_price       DECIMAL(15,2) DEFAULT 0,
-      -- 179: KDV hariç birim maliyet, KDV %, satır toplam (alış faturası
+      -- 179: KDV hariç birim maliyet, KDV oranı, satır toplam (alış faturası
       -- benzeri açılış/devir için slip_kind=''invoice'' satırlarında dolar)
       unit_cost_excl_vat NUMERIC(15,4) NOT NULL DEFAULT 0,
       vat_rate           NUMERIC(5,2)  NOT NULL DEFAULT 0,

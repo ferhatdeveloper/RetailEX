@@ -660,12 +660,18 @@ pub async fn apply_migrations_internal(
     let mut applied_count = 0;
     let mut consecutive_errors = 0usize;
     let mut total_errors = 0usize;
-    
+    // Yüksek eşik: kök nedeni maskelemeden tüm dosyaları işle (eskiden 8/20 → 21 hatada break,
+    // 23 uygulandı / 21 hata yarım rapor). Sınır aşılırsa yine de sonuna kadar gidilir;
+    // ardışık hata penceresi sıfırlanır ve kullanıcıya özet yazılır.
+    const EARLY_STOP_CONSECUTIVE: usize = 30;
+    const EARLY_STOP_TOTAL: usize = 80;
+
     for (version, name, path) in migration_files {
-        // Çok sayıda ardışık hata = şema yağmuru; kalanı atla (51 hata spam’i azalt)
-        if consecutive_errors >= 8 || total_errors >= 20 {
+        // Erken durdurma yalnızca aşırı yağmurda (gerçek şema felaketi). Eşik yükseltildi;
+        // sıradaki dosyalar yine de işlenir (kök neden raporu için), sadece tek bir sentinel.
+        if consecutive_errors >= EARLY_STOP_CONSECUTIVE || total_errors >= EARLY_STOP_TOTAL {
             report.push(MigrationStatus {
-                name: format!("… ({}+ dosya atlandı)", name),
+                name: format!("… ({}+ dosya atlandı — erken durdurma)", name),
                 status: "Error".to_string(),
                 error: Some(format!(
                     "Kalan migration'lar durduruldu ({} ardışık / {} toplam hata). Önce DB/şemayı düzeltip tekrar deneyin.",

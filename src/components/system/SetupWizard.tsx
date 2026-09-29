@@ -58,7 +58,52 @@ type LocalDbStatus =
     | 'DB_MISSING'
     | 'ERROR';
 
-const MIGRATION_TOAST_ERROR_PREVIEW = 5;
+const MIGRATION_TOAST_ERROR_PREVIEW = 10;
+
+/** Hata yığınından en sık PG hata kodunu çıkar — kök neden tespiti için ipucu. */
+function detectMigrationRootCause(
+    errors: { error?: string | null }[],
+): { code?: string; hint?: string; missingRelations?: string[] } {
+    const codes = new Map<string, number>();
+    const missing = new Map<string, number>();
+    const reCode = /\b(\d{5})\b/;
+    const reRel = /relation\s+(?:"([^"]+)"|([\w.]+))\s+does\s+not\s+exist/i;
+    const reTbl = /table\s+(?:"([^"]+)"|([\w.]+))/i;
+    for (const e of errors) {
+        const msg = String(e.error || '');
+        const m = reCode.exec(msg);
+        if (m) codes.set(m[1], (codes.get(m[1]) || 0) + 1);
+        const rel = reRel.exec(msg);
+        if (rel) {
+            const name = (rel[1] || rel[2] || '').toLowerCase();
+            missing.set(name, (missing.get(name) || 0) + 1);
+        } else {
+            const tbl = reTbl.exec(msg);
+            if (tbl) {
+                const name = (tbl[1] || tbl[2] || '').toLowerCase();
+                missing.set(name, (missing.get(name) || 0) + 1);
+            }
+        }
+    }
+    const sortedCodes = [...codes.entries()].sort((a, b) => b[1] - a[1]);
+    const topCode = sortedCodes[0]?.[0];
+    const sortedMissing = [...missing.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const hints: Record<string, string> = {
+        '42P01': 'Eksik tablo/şema (42P01). Master şema veya önceki migration uygulanmamış olabilir.',
+        '22023': 'Parametre/extension eksik (22023). uuid-ossp / pgcrypto gerekli olabilir.',
+        '23505': 'Unique constraint ihlali (23505). Aynı veri daha önce eklenmiş olabilir.',
+        '23503': 'Foreign key ihlali (23503). Bağımlı tablo/veri eksik.',
+        '23502': 'NOT NULL ihlali (23502). NULL olamayan kolon NULL gelmiş.',
+        '42703': 'Kolon bulunamadı (42703). Tablo/kolon eşleşmiyor olabilir.',
+        '42883': 'Fonksiyon bulunamadı (42883). CREATE FUNCTION eksik olabilir.',
+        '3D000': 'Veritabanı yok (3D000). CREATE DATABASE çalıştırın.',
+    };
+    return {
+        code: topCode,
+        hint: topCode ? hints[topCode] : undefined,
+        missingRelations: sortedMissing.map(([n]) => n),
+    };
+}
 
 /** Migration hatalarını sınıflandır; toast’ta ilk N satır özeti (51 hata spam’i engelle). */
 function summarizeMigrationErrorsForToast(
@@ -86,9 +131,19 @@ function summarizeMigrationErrorsForToast(
     });
     const more =
         errors.length > maxPreview ? `\n… +${errors.length - maxPreview} hata daha (loglar)` : '';
+    const root = detectMigrationRootCause(errors);
+    const rootLines: string[] = [];
+    if (root.code) rootLines.push(`🩺 Baskın PG kodu: ${root.code}`);
+    if (root.hint) rootLines.push(`💡 ${root.hint}`);
+    if (root.missingRelations && root.missingRelations.length > 0) {
+        rootLines.push(
+            `🔎 Eksik olabilecek: ${root.missingRelations.map((r) => '`' + r + '`').join(', ')}`,
+        );
+    }
+    const rootBlock = rootLines.length > 0 ? `\n\n${rootLines.join('\n')}` : '';
     return {
         kind: 'partial',
-        description: preview.join('\n') + more,
+        description: preview.join('\n') + more + rootBlock,
     };
 }
 
@@ -1094,6 +1149,13 @@ const SetupWizard: React.FC = () => {
 
                 const errors = report.filter(r => r.status === 'Error');
                 const applied = report.filter(r => r.status === 'Applied').length;
+                if (errors.length > 0) {
+                    // DEBUG: başarısız dosya adları kök neden için konsola
+                    console.error(`[SetupWizard] ${errors.length} migration hatası:`);
+                    errors.slice(0, 30).forEach((er) => {
+                        console.error(`  ❌ ${er.name} → ${(er.error || '').slice(0, 240)}`);
+                    });
+                }
 
                 if (errors.length > 0) {
                     const summary = summarizeMigrationErrorsForToast(errors);
@@ -1371,15 +1433,29 @@ const SetupWizard: React.FC = () => {
                             const rep = JSON.parse(String(migrationResult)) as MigrationStatus[];
                             if (Array.isArray(rep)) {
                                 setMigrationReport(rep);
-                                const errN = rep.filter((r) => r.status === 'Error').length;
+                                const errRows = rep.filter((r) => r.status === 'Error');
+                                const errN = errRows.length;
                                 const okN = rep.filter((r) => r.status === 'Applied').length;
                                 migSummary = errN > 0
                                     ? `${okN} uygulandı, ${errN} hata`
                                     : `${okN} güncelleme uygulandı`;
+                                // DEBUG: başarısız dosya adlarını konsola yaz — kök neden tespiti için
                                 if (errN > 0) {
-                                    const summary = summarizeMigrationErrorsForToast(
-                                        rep.filter((r) => r.status === 'Error'),
+                                    console.error('[SetupWizard] Migration hataları (ilk 30):');
+                                    errRows.slice(0, 30).forEach((r) => {
+                                        console.error(`  ❌ ${r.name} → ${r.error || '(no error text)'}`);
+                                    });
+                                    if (errRows.length > 30) {
+                                        console.error(`  … +${errRows.length - 30} hata daha`);
+                                    }
+                                    // Tüm hata listesini sync log'a da ekle
+                                    const errLines = errRows.slice(0, 20).map(
+                                        (r) => `❌ ${r.name}: ${(r.error || '').slice(0, 200)}`,
                                     );
+                                    setSyncLogs((prev) => [...prev, ...errLines]);
+                                }
+                                if (errN > 0) {
+                                    const summary = summarizeMigrationErrorsForToast(errRows);
                                     toast.warning(
                                         tm('setupMigrationsPartial')
                                             .replace('{applied}', String(okN))
