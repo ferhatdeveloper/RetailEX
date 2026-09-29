@@ -39,6 +39,10 @@ const STATIC_MENU_SECTION_IDS = [
   'system-management',
 ] as const;
 
+const STATIC_MENU_SECTION_ID_SET: ReadonlySet<string> = new Set<string>(STATIC_MENU_SECTION_IDS);
+
+export { STATIC_MENU_SECTION_IDS, STATIC_MENU_SECTION_ID_SET };
+
 const STATIC_MENU_SECTION_ID_BASE = 10000;
 
 export function remapLegacyStaticHiddenModules(hidden: string[]): string[] {

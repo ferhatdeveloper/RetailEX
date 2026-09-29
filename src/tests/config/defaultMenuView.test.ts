@@ -18,14 +18,15 @@ describe('defaultMenuView', () => {
     expect(prefs.hidden_modules).toContain('finance-definitions');
     expect(prefs.hidden_modules).toContain('payment-plans');
     expect(prefs.hidden_modules).toContain('cost-centers');
-    expect(prefs.hidden_modules).toContain('material-management');
-    expect(prefs.hidden_modules).toContain('products');
-    expect(prefs.hidden_modules).toContain('stockmovements');
-    expect(prefs.hidden_modules).toContain('inventory');
+    // v4: ana Malzeme Yönetimi bölümü ve ürün listesi tekrar görünür.
+    expect(prefs.hidden_modules).not.toContain('material-management');
+    expect(prefs.hidden_modules).not.toContain('products');
+    expect(prefs.hidden_modules).not.toContain('stockmovements');
+    expect(prefs.hidden_modules).not.toContain('inventory');
   });
 
   it('upgrade v1–v3: finans tanımları + malzeme/stok gizlemeleri', () => {
-    expect(MENU_HIDDEN_UPGRADE_VERSION).toBe(3);
+    expect(MENU_HIDDEN_UPGRADE_VERSION).toBe(4);
     expect(hiddenModulesForUpgradeVersion(0, 1)).toEqual(['payment-plans', 'cost-centers']);
     expect(hiddenModulesForUpgradeVersion(1, 2)).toEqual(['finance-definitions']);
     expect(hiddenModulesForUpgradeVersion(2, 3)).toEqual([
@@ -54,9 +55,25 @@ describe('defaultMenuView', () => {
       'excel',
     ]);
     expect(hiddenModulesForUpgradeVersion(3, 3)).toEqual([]);
+    // v4 eklemesi yok
+    expect(hiddenModulesForUpgradeVersion(3, 4)).toEqual([]);
+    expect(hiddenModulesForUpgradeVersion(0, 4)).toEqual([
+      'payment-plans',
+      'cost-centers',
+      'finance-definitions',
+      'material-management',
+      'products',
+      'material-definitions',
+      'material-movements',
+      'stockmovements',
+      'stock-price-change-slips',
+      'material-reports',
+      'inventory',
+      'excel',
+    ]);
   });
 
-  it('applyMenuHiddenUpgrades eski custom preset’e bir kerelik ekler', () => {
+  it('applyMenuHiddenUpgrades eski custom preset\'e bir kerelik ekler ve v4 kaldırma listesi uygular', () => {
     const { store, changed } = applyMenuHiddenUpgrades({
       version: 2,
       hidden_upgrade_version: 0,
@@ -76,13 +93,15 @@ describe('defaultMenuView', () => {
     expect(store.presets[0].hidden_modules).toContain('payment-plans');
     expect(store.presets[0].hidden_modules).toContain('cost-centers');
     expect(store.presets[0].hidden_modules).toContain('finance-definitions');
-    expect(store.presets[0].hidden_modules).toContain('material-management');
-    expect(store.presets[0].hidden_modules).toContain('products');
-    expect(store.presets[0].hidden_modules).toContain('stockmovements');
     expect(store.presets[0].hidden_modules).toContain('logaudit');
+    // v4 kaldırma listesi: ana Malzeme Yönetimi bölümü ve ürün listesi geri açık.
+    expect(store.presets[0].hidden_modules).not.toContain('material-management');
+    expect(store.presets[0].hidden_modules).not.toContain('products');
+    expect(store.presets[0].hidden_modules).not.toContain('stockmovements');
+    expect(store.presets[0].hidden_modules).not.toContain('inventory');
   });
 
-  it('applyMenuHiddenUpgrades v2→v3 malzeme/stok gizlemelerini ekler', () => {
+  it('applyMenuHiddenUpgrades v2→v4 malzeme/stok ekleyip v4 kaldırmasını uygular', () => {
     const { store, changed } = applyMenuHiddenUpgrades({
       version: 2,
       hidden_upgrade_version: 2,
@@ -98,24 +117,26 @@ describe('defaultMenuView', () => {
       ],
     });
     expect(changed).toBe(true);
-    expect(store.hidden_upgrade_version).toBe(3);
-    expect(store.presets[0].hidden_modules).toContain('material-management');
-    expect(store.presets[0].hidden_modules).toContain('products');
+    expect(store.hidden_upgrade_version).toBe(4);
+    // v3 eklemeleri uygulandıktan sonra v4 kaldırma listesi tekrar çıkarır:
+    // ana Malzeme Yönetimi + ürün listesi tekrar görünür.
+    expect(store.presets[0].hidden_modules).not.toContain('material-management');
+    expect(store.presets[0].hidden_modules).not.toContain('products');
+    expect(store.presets[0].hidden_modules).toContain('logaudit');
+    expect(store.presets[0].hidden_modules).toContain('payment-plans');
+    expect(store.presets[0].hidden_modules).toContain('cost-centers');
+    expect(store.presets[0].hidden_modules).toContain('finance-definitions');
     expect(store.presets[0].hidden_modules).toEqual(
       expect.arrayContaining([
         'logaudit',
         'payment-plans',
         'cost-centers',
         'finance-definitions',
-        'material-management',
-        'products',
-        'stockmovements',
-        'inventory',
       ]),
     );
   });
 
-  it('applyMenuHiddenUpgrades v1→v2 yalnızca finance-definitions ekler', () => {
+  it('applyMenuHiddenUpgrades v1→v4 yalnızca finance-definitions ekler, malzeme bölümü tekrar açık', () => {
     const { store, changed } = applyMenuHiddenUpgrades({
       version: 2,
       hidden_upgrade_version: 1,
@@ -131,22 +152,22 @@ describe('defaultMenuView', () => {
       ],
     });
     expect(changed).toBe(true);
-    expect(store.hidden_upgrade_version).toBe(3);
+    expect(store.hidden_upgrade_version).toBe(4);
     expect(store.presets[0].hidden_modules).toContain('finance-definitions');
-    expect(store.presets[0].hidden_modules).toContain('material-management');
+    // v3 ile eklenen ana malzeme bölümü v4 kaldırma listesi ile tekrar görünür.
+    expect(store.presets[0].hidden_modules).not.toContain('material-management');
+    expect(store.presets[0].hidden_modules).not.toContain('products');
     expect(store.presets[0].hidden_modules).toEqual(
       expect.arrayContaining([
         'logaudit',
         'payment-plans',
         'cost-centers',
         'finance-definitions',
-        'material-management',
-        'products',
       ]),
     );
   });
 
-  it('applyMenuHiddenUpgrades fabrika preset’i güncel DEFAULT ile değiştirir', () => {
+  it('applyMenuHiddenUpgrades fabrika preset\'i güncel DEFAULT ile değiştirir', () => {
     const { store, changed } = applyMenuHiddenUpgrades({
       version: 2,
       hidden_upgrade_version: 0,
@@ -163,6 +184,9 @@ describe('defaultMenuView', () => {
     });
     expect(changed).toBe(true);
     expect(store.presets[0].hidden_modules).toEqual([...DEFAULT_MENU_HIDDEN_MODULES]);
+    // Fabrika preset güncel DEFAULT ile hizalanır — ana Malzeme bölümü açık.
+    expect(store.presets[0].hidden_modules).not.toContain('material-management');
+    expect(store.presets[0].hidden_modules).not.toContain('products');
   });
 
   it('upgrade sürümü güncelken custom listesine tekrar eklemez', () => {
@@ -184,7 +208,7 @@ describe('defaultMenuView', () => {
     expect(store.presets[0].hidden_modules).toEqual(['logaudit']);
   });
 
-  it('mergePendingHiddenUpgrades sync öncesi localStorage yolunda gizler', () => {
+  it('mergePendingHiddenUpgrades sync öncesi localStorage yolunda v3 eklemeleri uygular, v4 kaldırması ile geri alır', () => {
     const merged = mergePendingHiddenUpgrades(['logaudit'], {
       version: 2,
       presets: [],
@@ -193,8 +217,11 @@ describe('defaultMenuView', () => {
     expect(merged).toContain('payment-plans');
     expect(merged).toContain('cost-centers');
     expect(merged).toContain('finance-definitions');
-    expect(merged).toContain('material-management');
-    expect(merged).toContain('products');
-    expect(merged).toContain('stockmovements');
+    expect(merged).toContain('logaudit');
+    // v4 kaldırma listesi uygulanır: ana Malzeme bölümü ve ürün listesi tekrar görünür.
+    expect(merged).not.toContain('material-management');
+    expect(merged).not.toContain('products');
+    expect(merged).not.toContain('stockmovements');
+    expect(merged).not.toContain('inventory');
   });
 });

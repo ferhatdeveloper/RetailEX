@@ -188,7 +188,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useResponsive } from '../../hooks/useResponsive';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { getStaticMenuSections } from '../../config/staticMenuConfig';
-import { remapLegacyStaticHiddenModules, subscribeRuntimeHiddenModules } from '../../services/menuPreferencesRuntime';
+import { remapLegacyStaticHiddenModules, STATIC_MENU_SECTION_ID_SET, subscribeRuntimeHiddenModules } from '../../services/menuPreferencesRuntime';
 import { syncMenuPreferences } from '../../services/menuPreferencesService';
 import {
   getRuntimeReportMenuParams,
@@ -966,6 +966,14 @@ export function ManagementModule({
           }
 
           const isIntegrationsItem = item.id === 'integrations';
+
+          // 0. Bölüm kökleri (section id) gizli modüller tarafından kapatılamaz
+          // — bir bölümün ana başlığı tüm alt öğelerle birlikte görünür kalmalı.
+          // Eski bir preset bölüm kökünü yanlışlıkla eklediyse bile ana menü
+          // (Malzeme Yönetimi, Finans, Faturalar …) kaybolmasın.
+          if (item.id != null && STATIC_MENU_SECTION_ID_SET.has(String(item.id))) {
+            return true;
+          }
 
           // 1. Check hidden_modules from config (DeskApp: Entegrasyonlar menüde kalsın)
           if (effectiveHiddenModules.includes(item.id)) {

@@ -94,7 +94,9 @@ export const getStaticMenuSections = (t: Translations) => [
             { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet },
             { label: t.menu.smartMaterialAdd, screen: 'smart-material-add', icon: Sparkles },
             { label: 'Üretim Reçeteleri', screen: 'production-recipe', icon: PackagePlus },
-            { label: 'Kasap Üretim', screen: 'butcher-production', icon: Beef }
+            { label: 'Kasap Üretim', screen: 'butcher-production', icon: Beef },
+            // Malzeme Toplama — kamera / OCR / taslak / onay (MaterialsIntakeModule)
+            { label: t.menu.materialsIntake, screen: 'materials-intake', icon: PackageSearch }
         ]
     },
     {
@@ -407,6 +409,7 @@ export const staticMenuSections = getStaticMenuSections({
         integrations: 'Entegrasyonlar',
         excelOperations: 'Excel İşlemleri',
         smartMaterialAdd: 'Akıllı malzeme ekleme',
+        materialsIntake: 'Malzemeler (Malzeme Toplama)',
         salesInvoice: 'Toptan Satış Faturası',
         retailSales: 'Perakende Satış',
         wholesaleSales: 'Toptan Satış',
