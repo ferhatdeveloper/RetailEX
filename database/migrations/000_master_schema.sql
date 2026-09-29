@@ -457,10 +457,14 @@ CREATE TABLE IF NOT EXISTS pos_terminal_registrations (
   metadata        JSONB DEFAULT '{}'::jsonb,
   registered_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_seen_at    TIMESTAMPTZ,
+  last_check_at   TIMESTAMPTZ,
   approved_at     TIMESTAMPTZ,
   approved_by     UUID REFERENCES public.users(id),
   rejected_reason TEXT
 );
+
+COMMENT ON COLUMN public.pos_terminal_registrations.last_check_at IS
+  'Cihazın merkezle son periyodik kontrol (re-check) zamanı. Aylık kontrol için kullanılır; register_pos_terminal tarafından NOW() atanır.';
 
 CREATE INDEX IF NOT EXISTS idx_pos_terminal_reg_firm_status
   ON public.pos_terminal_registrations (firm_nr, status, registered_at DESC);
@@ -495,7 +499,7 @@ BEGIN
 
   INSERT INTO public.pos_terminal_registrations (
     device_id, terminal_name, store_id, firm_nr, status, role,
-    hostname, os_user, app_version, metadata, last_seen_at,
+    hostname, os_user, app_version, metadata, last_seen_at, last_check_at,
     computer_name, os_platform, os_arch, os_version, local_ip, timezone, locale
   )
   VALUES (
@@ -505,6 +509,7 @@ BEGIN
     COALESCE(p_os_user, v_meta->>'os_user'),
     COALESCE(p_app_version, v_meta->>'app_version'),
     v_meta,
+    NOW(),
     NOW(),
     COALESCE(v_meta->>'computer_name', p_hostname),
     v_meta->>'os_platform',
@@ -531,6 +536,7 @@ BEGIN
     timezone = COALESCE(EXCLUDED.timezone, pos_terminal_registrations.timezone),
     locale = COALESCE(EXCLUDED.locale, pos_terminal_registrations.locale),
     last_seen_at = NOW(),
+    last_check_at = NOW(),
     status = CASE
       WHEN pos_terminal_registrations.status = 'approved' THEN 'approved'
       WHEN pos_terminal_registrations.status = 'blocked' THEN 'blocked'
@@ -559,7 +565,9 @@ RETURNS TABLE (
   out_status TEXT,
   out_terminal_name TEXT,
   out_store_id UUID,
-  out_message TEXT
+  out_message TEXT,
+  out_last_check_at TIMESTAMPTZ,
+  out_firm_nr TEXT
 )
 LANGUAGE plpgsql
 STABLE
@@ -570,18 +578,20 @@ DECLARE
   v_store UUID;
   v_firm TEXT;
   v_reason TEXT;
+  v_last_chk TIMESTAMPTZ;
   v_allowed INTEGER;
   v_approved INTEGER;
   v_msg TEXT;
 BEGIN
-  SELECT r.status::text, r.terminal_name::text, r.store_id, r.firm_nr, r.rejected_reason
-    INTO v_status, v_name, v_store, v_firm, v_reason
+  SELECT r.status::text, r.terminal_name::text, r.store_id, r.firm_nr, r.rejected_reason, r.last_check_at
+    INTO v_status, v_name, v_store, v_firm, v_reason, v_last_chk
   FROM public.pos_terminal_registrations r
   WHERE r.device_id = trim(p_device_id)
   LIMIT 1;
 
   IF NOT FOUND THEN
-    RETURN QUERY SELECT 'not_registered'::TEXT, NULL::TEXT, NULL::UUID, 'Cihaz kaydı yok'::TEXT;
+    RETURN QUERY SELECT 'not_registered'::TEXT, NULL::TEXT, NULL::UUID,
+                         'Cihaz kaydı yok'::TEXT, NULL::TIMESTAMPTZ, NULL::TEXT;
     RETURN;
   END IF;
 
@@ -607,7 +617,7 @@ BEGIN
     v_msg := 'Kayıt bulunamadı.';
   END IF;
 
-  RETURN QUERY SELECT v_status, v_name, v_store, v_msg;
+  RETURN QUERY SELECT v_status, v_name, v_store, v_msg, v_last_chk, v_firm;
 END;
 $$;
 

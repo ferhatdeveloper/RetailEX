@@ -69,6 +69,7 @@ export type PosTerminalRegistration = {
   metadata?: Record<string, unknown>;
   registeredAt: number;
   lastSeenAt?: number;
+  lastCheckAt?: number;
   rejectedReason?: string;
 };
 
@@ -270,6 +271,7 @@ function mapRegistrationRow(row: Record<string, unknown>): PosTerminalRegistrati
     metadata: meta,
     registeredAt: row.registered_at ? new Date(String(row.registered_at)).getTime() : Date.now(),
     lastSeenAt: row.last_seen_at ? new Date(String(row.last_seen_at)).getTime() : undefined,
+    lastCheckAt: row.last_check_at ? new Date(String(row.last_check_at)).getTime() : undefined,
     rejectedReason: row.rejected_reason ? String(row.rejected_reason) : undefined,
   };
 }
@@ -532,6 +534,8 @@ export async function getDesktopTerminalStatus(
   message: string;
   terminalName?: string;
   storeId?: string;
+  lastCheckAt?: string;
+  firmNr?: string;
 }> {
   if (!deviceId?.trim()) {
     return { status: 'not_registered', message: 'Cihaz kimliği yok.' };
@@ -547,6 +551,8 @@ export async function getDesktopTerminalStatus(
       out_terminal_name?: string;
       out_store_id?: string;
       out_message?: string;
+      out_last_check_at?: string;
+      out_firm_nr?: string;
     }>('get_pos_terminal_status', { p_device_id: deviceId.trim() });
 
     return {
@@ -554,10 +560,27 @@ export async function getDesktopTerminalStatus(
       message: row.out_message || '',
       terminalName: row.out_terminal_name || undefined,
       storeId: row.out_store_id ? String(row.out_store_id) : undefined,
+      lastCheckAt: row.out_last_check_at || undefined,
+      firmNr: row.out_firm_nr || undefined,
     };
   } catch {
     return { status: 'not_registered', message: 'Durum sorgulanamadı.' };
   }
+}
+
+/**
+ * Periyodik re-check aralığı (gün).
+ * Günlük kontrol yerine ayda bir merkezle konuşulur; yeni cihaz / kayıt
+ * yoksa `assertDesktopTerminalApproved` zaten ilk açılışta kayıt yapar.
+ */
+export const DEVICE_CHECK_INTERVAL_DAYS = 30;
+
+function isPeriodicCheckDue(lastCheckAt?: string, now: number = Date.now()): boolean {
+  if (!lastCheckAt) return true;
+  const t = Date.parse(lastCheckAt);
+  if (!Number.isFinite(t)) return true;
+  const ageDays = (now - t) / (1000 * 60 * 60 * 24);
+  return ageDays >= DEVICE_CHECK_INTERVAL_DAYS;
 }
 
 /** Masaüstü giriş öncesi — hibrit terminal (client) için merkez onayı zorunlu */
@@ -626,9 +649,18 @@ export async function assertDesktopTerminalApproved(): Promise<{
   };
 
   if (check.status === 'not_registered') {
+    // İlk açılış / yeni cihaz — kayıt zorunlu.
     check = await registerOrRefresh();
   } else if (check.status === 'pending') {
+    // Onay bekliyor — meta tazele, merkeze bildir.
     check = await registerOrRefresh();
+  } else if (check.status === 'approved') {
+    // Onaylı cihazda periyodik re-check: aylık (DEVICE_CHECK_INTERVAL_DAYS) dolduysa
+    // registerDesktopTerminal ile last_check_at NOW() yapılır ve metadata tazelenir.
+    // Aradaki login'lerde merkeze yazma yok — yalnızca durum sorgulanır.
+    if (isPeriodicCheckDue(check.lastCheckAt)) {
+      check = await registerOrRefresh();
+    }
   }
 
   if (check.status === 'approved') {
@@ -756,7 +788,7 @@ export async function listPosTerminalRegistrations(opts?: {
            r.firm_nr, r.status, r.role, r.hostname, r.os_user, r.app_version,
            r.computer_name, r.os_platform, r.os_arch, r.os_version,
            r.local_ip, r.timezone, r.locale, r.metadata,
-           r.registered_at, r.last_seen_at, r.rejected_reason
+           r.registered_at, r.last_seen_at, r.last_check_at, r.rejected_reason
     FROM pos_terminal_registrations r
     LEFT JOIN stores s ON s.id = r.store_id
     LEFT JOIN firms f ON lpad(ltrim(f.firm_nr, '0'), 3, '0') = lpad(ltrim(r.firm_nr, '0'), 3, '0')
@@ -771,7 +803,7 @@ export async function listPosTerminalRegistrations(opts?: {
     if (useCentralPostgrest()) {
       const q: Record<string, string> = {
         select:
-          'id,device_id,terminal_name,store_id,firm_nr,status,role,hostname,os_user,app_version,computer_name,os_platform,os_arch,os_version,local_ip,timezone,locale,metadata,registered_at,last_seen_at,rejected_reason',
+          'id,device_id,terminal_name,store_id,firm_nr,status,role,hostname,os_user,app_version,computer_name,os_platform,os_arch,os_version,local_ip,timezone,locale,metadata,registered_at,last_seen_at,last_check_at,rejected_reason',
         order: 'registered_at.desc',
         limit: String(limit),
       };
