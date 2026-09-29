@@ -95,6 +95,9 @@ END $$;
 DO $$
 DECLARE v_firm TEXT;
 DECLARE v_pn   TEXT;
+DECLARE v_pn_norm TEXT;
+DECLARE v_payments_tbl TEXT;
+DECLARE v_appointments_tbl TEXT;
 BEGIN
     FOR v_firm IN
         SELECT lpad(trim(firm_nr::text), 3, '0')
@@ -107,6 +110,23 @@ BEGIN
              WHERE firm_id = (SELECT id FROM public.firms
                                WHERE lpad(trim(firm_nr::text), 3, '0') = v_firm)
         LOOP
+            -- Dönem numarasını 2 hane olarak normalle.
+            -- periods.nr INTEGER (örn. 1), tablolar rex_*_01_ formatında →
+            -- başına sıfır eklemeden FK başarısız olur.
+            v_pn_norm := lpad(v_pn, 2, '0');
+            v_payments_tbl := 'rex_' || v_firm || '_' || v_pn_norm || '_beauty_appointment_payments';
+            v_appointments_tbl := 'rex_' || v_firm || '_' || v_pn_norm || '_beauty_appointments';
+
+            -- FK referansı olmayan payments tablosu oluşturma — FK hata verir.
+            -- aqua_beauty gibi kiracılarda dönem 1 ise rex_*_01_* tablosu yoksa
+            -- tablo oluşturmayı atla (CREATE TABLE IF NOT EXISTS yine de FK'yi
+            -- kontrol eder ve başarısız olur; bu yüzden varlık kontrolü şart).
+            IF to_regclass('beauty.' || v_appointments_tbl) IS NULL THEN
+                RAISE NOTICE '[181] beauty.% mevcut değil, payments tablosu atlandı',
+                    v_appointments_tbl;
+                CONTINUE;
+            END IF;
+
             EXECUTE format(
                 'CREATE TABLE IF NOT EXISTS beauty.%I (
                     id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -129,17 +149,17 @@ BEGIN
                     CONSTRAINT %I FOREIGN KEY (appointment_id)
                         REFERENCES beauty.%I (id) ON DELETE CASCADE
                 )',
-                'rex_' || v_firm || '_' || v_pn || '_beauty_appointment_payments',
-                'rex_' || v_firm || '_' || v_pn || '_beauty_appointment_payments_apt_fk',
-                'rex_' || v_firm || '_' || v_pn || '_beauty_appointments'
+                v_payments_tbl,
+                v_payments_tbl || '_apt_fk',
+                v_appointments_tbl
             );
 
             -- Sık sorgu için index: randevuya göre
             EXECUTE format(
                 'CREATE INDEX IF NOT EXISTS %I
                    ON beauty.%I (appointment_id, paid_at DESC)',
-                'rex_' || v_firm || '_' || v_pn || '_beauty_appointment_payments_apt_idx',
-                'rex_' || v_firm || '_' || v_pn || '_beauty_appointment_payments'
+                v_payments_tbl || '_apt_idx',
+                v_payments_tbl
             );
 
             -- Cari/müşteri bazlı ekstre için index
@@ -147,16 +167,16 @@ BEGIN
                 'CREATE INDEX IF NOT EXISTS %I
                    ON beauty.%I (customer_id, paid_at DESC)
                   WHERE customer_id IS NOT NULL',
-                'rex_' || v_firm || '_' || v_pn || '_beauty_appointment_payments_cust_idx',
-                'rex_' || v_firm || '_' || v_pn || '_beauty_appointment_payments'
+                v_payments_tbl || '_cust_idx',
+                v_payments_tbl
             );
 
             -- Tür (deposit / remainder) bazlı raporlama için index
             EXECUTE format(
                 'CREATE INDEX IF NOT EXISTS %I
                    ON beauty.%I (payment_kind, paid_at DESC)',
-                'rex_' || v_firm || '_' || v_pn || '_beauty_appointment_payments_kind_idx',
-                'rex_' || v_firm || '_' || v_pn || '_beauty_appointment_payments'
+                v_payments_tbl || '_kind_idx',
+                v_payments_tbl
             );
         END LOOP;
     END LOOP;
