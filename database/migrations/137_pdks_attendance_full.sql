@@ -17,6 +17,14 @@
 -- ile idempotent; birden fazla kez çalıştırılabilir.
 -- =========================================================================
 
+-- schema_migrations henüz yoksa idempotent oluştur (PDKS henüz hiç
+-- migrate edilmemiş DB'lerde tablo oluşmamış olabilir).
+CREATE TABLE IF NOT EXISTS public.schema_migrations (
+  id          SERIAL PRIMARY KEY,
+  filename    TEXT NOT NULL UNIQUE,
+  applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 SET search_path = public, rex;
 
 -- 1) DEPARTMANLAR ==========================================================

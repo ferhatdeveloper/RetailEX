@@ -14,6 +14,8 @@ export interface PostgrestClientOptions {
   headers?: Record<string, string>;
   /** JWT Bearer token (kimlik doğrulama kullanılıyorsa) */
   jwt?: string;
+  /** Abort sinyali — fetch'i kullanıcı/timeout ile iptal etmek için */
+  signal?: AbortSignal;
 }
 
 export interface PostgrestQueryParams {
@@ -180,6 +182,7 @@ export async function postgrestPatch<T = unknown>(
     method: 'PATCH',
     headers,
     body: JSON.stringify(body),
+    signal: options?.signal,
   });
   if (!res.ok) {
     const text = await res.text();

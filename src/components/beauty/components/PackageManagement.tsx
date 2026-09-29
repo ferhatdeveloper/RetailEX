@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     Package, Plus, X, Save, Edit2, Trash2,
     CheckCircle2, AlertCircle, Calendar, Percent, User,
@@ -55,6 +55,9 @@ export function PackageManagement() {
 
     // ----- Silme onayı -----
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+    const [deleteBusy, setDeleteBusy] = useState(false);
+    /** Aynı anda iki kez Sil'e basılmasını / iptal + sil yarış durumunu önler. */
+    const deleteAbortRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
         loadPackages();
@@ -148,10 +151,53 @@ let suggested = pct;
         }
     };
 
-    const handleDelete = async (id: string) => {
-        await deletePackage(id);
+    /** Silme onayı kapatıldığında (iptal/ESC/overlay) yarış durumunu temizle. */
+    const closeDeleteConfirm = () => {
+        if (deleteAbortRef.current) {
+            deleteAbortRef.current.abort();
+            deleteAbortRef.current = null;
+        }
         setDeleteConfirm(null);
+        setDeleteBusy(false);
     };
+
+    const handleDelete = async (id: string) => {
+        if (deleteBusy) return;
+        const ctrl = new AbortController();
+        deleteAbortRef.current = ctrl;
+        // UI tarafı 8 sn zırh: bridge / PostgREST / Tauri donarsa modal asılı kalmasın.
+        const uiTimer = window.setTimeout(() => ctrl.abort(), 8_000);
+        setDeleteBusy(true);
+        try {
+            await deletePackage(id, { signal: ctrl.signal });
+            if (!ctrl.signal.aborted) {
+                setDeleteConfirm(null);
+                toast.success(tm('bPackageDeleted') || 'Paket silindi');
+            }
+        } catch (e: any) {
+            const aborted = e?.name === 'AbortError' || ctrl.signal.aborted;
+            const msg = aborted
+                ? (tm('bPackageDeleteTimeout') || 'Paket silme zaman aşımına uğradı, lütfen tekrar deneyin')
+                : (e?.message || tm('saveError'));
+            toast.error(`[beauty] ${msg}`);
+            // Hata/iptal durumunda da modalı kapat — "takılı" hissi olmasın.
+            setDeleteConfirm(null);
+        } finally {
+            window.clearTimeout(uiTimer);
+            deleteAbortRef.current = null;
+            setDeleteBusy(false);
+        }
+    };
+
+    // Silme modalı açıkken ESC ile kapatma + unmount'ta iptal.
+    useEffect(() => {
+        if (!deleteConfirm) return;
+        const onKey = (ev: KeyboardEvent) => {
+            if (ev.key === 'Escape' && !deleteBusy) closeDeleteConfirm();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [deleteConfirm, deleteBusy]);
 
     const finalPrice = (pkg: Partial<BeautyPackage>) =>
         (pkg.price ?? 0) * (1 - (pkg.discount_pct ?? 0) / 100);
@@ -686,7 +732,7 @@ let suggested = pct;
 
             {/* Silme onay modalı */}
             <PercentBodyModal
-                onClose={() => setDeleteConfirm(null)}
+                onClose={closeDeleteConfirm}
                 size="compact"
                 ariaLabel={tm('bDeletePackage')}
             >
@@ -701,16 +747,18 @@ let suggested = pct;
                     <div className="flex gap-3">
                         <Button
                             variant="outline"
-                            onClick={() => setDeleteConfirm(null)}
+                            onClick={closeDeleteConfirm}
+                            disabled={deleteBusy}
                             className="flex-1 rounded-xl"
                         >
                             {tm('cancel')}
                         </Button>
                         <Button
                             onClick={() => deleteConfirm && handleDelete(deleteConfirm)}
+                            disabled={deleteBusy}
                             className="flex-1 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold"
                         >
-                            {tm('delete')}
+                            {deleteBusy ? (tm('bDeleting') || 'Siliniyor…') : tm('delete')}
                         </Button>
                     </div>
                 </div>

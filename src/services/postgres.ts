@@ -292,7 +292,8 @@ export function shouldPreferBridgeInternalPgDump(): boolean {
 async function executePgQueryRows(
   resolvedSql: string,
   normalizedParams: any[],
-  config: PgEndpointConfig
+  config: PgEndpointConfig,
+  externalSignal?: AbortSignal,
 ): Promise<any[]> {
   await acquirePgQuerySlot();
   try {
@@ -306,11 +307,15 @@ async function executePgQueryRows(
 
   let lastError: unknown;
   for (let attempt = 1; attempt <= PG_WEB_QUERY_MAX_ATTEMPTS; attempt++) {
+    if (externalSignal?.aborted) {
+      throw Object.assign(new Error('Aborted'), { name: 'AbortError' });
+    }
     try {
       const response = await fetch(`${getBridgeUrl()}/api/pg_query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connStr, sql: resolvedSql, params: normalizedParams }),
+        signal: externalSignal,
       });
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -1645,7 +1650,7 @@ export class PostgresConnection {
     return schema === 'public' ? prefixed : `${schema}.${prefixed}`;
   }
 
-  async query<T = any>(sql: string, params: any[] = [], options?: { firmNr?: string, periodNr?: string, sqlTarget?: SqlTargetOverride }): Promise<{ rows: T[]; rowCount: number }> {
+  async query<T = any>(sql: string, params: any[] = [], options?: { firmNr?: string, periodNr?: string, sqlTarget?: SqlTargetOverride, signal?: AbortSignal }): Promise<{ rows: T[]; rowCount: number }> {
     // Production webte tenant_registry çözülmeden tablo/sorgu trafiğini başlatma.
     if (!IS_TAURI && IS_PRODUCTION && !isTenantResolvedForWeb()) {
       throw new Error('Server bağlantısı yapılmadan sorgu çalıştırılamaz. Önce "Merkezden bağlan" ile tenant_registry kaydını uygulayın.');
@@ -1725,7 +1730,7 @@ export class PostgresConnection {
       for (let i = 0; i < chain.length; i++) {
         const cfg = chain[i];
         try {
-          rows = await executePgQueryRows(resolvedSql, normalizedParams, cfg);
+          rows = await executePgQueryRows(resolvedSql, normalizedParams, cfg, options?.signal);
           lastError = undefined;
           break;
         } catch (err: unknown) {

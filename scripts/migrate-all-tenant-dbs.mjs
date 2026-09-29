@@ -132,12 +132,47 @@ async function isRetailExTenantDb(dbName) {
   const c = client(dbName);
   await c.connect();
   try {
-    const mig = await c.query(
-      `SELECT count(*)::int AS n FROM public.schema_migrations`,
+    // 1) public.schema_migrations sayısı > 0 → kesin RetailEX kiracı
+    let migRows = [{ n: 0 }];
+    let migTableMissing = false;
+    try {
+      const mig = await c.query(
+        `SELECT count(*)::int AS n FROM public.schema_migrations`,
+      );
+      migRows = mig.rows;
+    } catch (err) {
+      const code = err?.code || '';
+      const msg = String(err?.message || '');
+      if (code === '42P01' || /schema_migrations.*does not exist/i.test(msg)) {
+        migTableMissing = true;
+      } else {
+        throw err;
+      }
+    }
+    if (migTableMissing) {
+      // Tablo yok → RetailEX olabilir ama migration hiç uygulanmamış.
+      // Kabul et; run-pending-migrations.mjs başta CREATE TABLE yapar.
+      console.log(`[db:migrate:tenants] ${dbName}: schema_migrations yok — ilk migration denenecek`);
+      return true;
+    }
+    if ((migRows[0]?.n ?? 0) > 0) return true;
+    // 2) sync_queue varsa → RetailEX kiracı
+    const sq = await c.query(
+      `SELECT to_regclass('public.sync_queue') AS reg`,
+    ).catch(() => ({ rows: [{ reg: null }] }));
+    if (sq.rows[0]?.reg) return true;
+    // 3) Tablo var ama boş + sync_queue yok → RetailEX temel tabloları
+    // (firms / menu_items / users / system_settings) var mı? Varsa ilk
+    // migration denenecek; yoksa DB RetailEX değil.
+    const retailTables = await c.query(
+      `SELECT count(*)::int AS n FROM information_schema.tables
+       WHERE table_schema='public' AND table_name IN ('firms','menu_items','users','system_settings')`,
     ).catch(() => ({ rows: [{ n: 0 }] }));
-    if ((mig.rows[0]?.n ?? 0) > 0) return true;
-    const sq = await c.query(`SELECT to_regclass('public.sync_queue') AS reg`);
-    return Boolean(sq.rows[0]?.reg);
+    if ((retailTables.rows[0]?.n ?? 0) > 0) {
+      console.log(`[db:migrate:tenants] ${dbName}: RetailEX tabloları var ama schema_migrations boş — migration denenecek`);
+      return true;
+    }
+    return false;
   } finally {
     await c.end().catch(() => {});
   }
@@ -196,7 +231,7 @@ async function main() {
     }
     const retail = await isRetailExTenantDb(db);
     if (!retail) {
-      console.log(`[db:migrate:tenants] ATLANDI: ${db} (RetailEX şeması / schema_migrations yok)`);
+      console.log(`[db:migrate:tenants] ATLANDI: ${db} (RetailEX kiracı şeması tespit edilmedi — public.firms/menu_items/users/system_settings veya sync_queue/schema_migrations kayıtları yok)`);
       skipped.push(db);
       continue;
     }

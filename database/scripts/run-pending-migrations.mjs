@@ -230,6 +230,16 @@ async function runSqlWithPgClient(pg, filePath) {
   });
   await client.connect();
   try {
+    // Migration dosyalarının bazıları INSERT INTO public.schema_migrations
+    // ile kendi kaydını atıyor; henüz tablo yoksa hata alıyorduk. Her
+    // dosya öncesi idempotent guard (ensureMigrationsTable ile aynı DDL).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS public.schema_migrations (
+        id SERIAL PRIMARY KEY,
+        filename TEXT NOT NULL UNIQUE,
+        applied_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
     // DO $$ ... $$, CREATE FUNCTION ... AS $$ ... $$ vb. içindeki ';' basit
     // split ile bölünemez; tek seferde gönder.
     if (sql.includes('$$')) {
@@ -316,7 +326,10 @@ async function main() {
     const fullPath = join(MIGRATIONS_DIR, file);
     console.log('[db:migrate] Çalıştırılıyor:', file);
     let ok = false;
+    let usedPsql = false;
+    let psqlError = '';
     if (psql) {
+      usedPsql = true;
       const args = buildPsqlArgs(pg, fullPath);
       const r = spawnSync(psql, args, {
         stdio: 'inherit',
@@ -324,21 +337,35 @@ async function main() {
         env: { ...process.env, PGPASSWORD: pg.password },
       });
       ok = r.status === 0;
+      if (!ok) {
+        psqlError = (r.stderr || r.stdout || '').toString();
+      }
     }
-    if (!ok && !psql) {
-      console.log('[db:migrate] psql bulunamadı, node-pg ile deneniyor (basit SQL için)...');
+    if (!ok) {
+      // psql yoksa ya da psql başarısız olduysa (ör. dosya başındaki
+      // CREATE TABLE IF NOT EXISTS yokluğu → 42P01 "schema_migrations yok",
+      // BOM/encoding, ON_ERROR_STOP) her durumda node-pg fallback dene.
+      // runSqlWithPgClient her dosya öncesi idempotent guard ekler.
+      const reason = !psql
+        ? 'psql bulunamadı'
+        : `psql başarısız (${psqlError.split('\n')[0].slice(0, 200)})`;
+      console.log(`[db:migrate] ${reason}; node-pg fallback deneniyor...`);
       try {
         await runSqlWithPgClient(pg, fullPath);
         ok = true;
       } catch (e) {
         console.error('[db:migrate] Hata:', e.message);
-        console.error(
-          'PostgreSQL istemcisini PATH\'e ekleyin veya psql ile tekrar deneyin.'
-        );
+        if (usedPsql) {
+          console.error(
+            '[db:migrate] Hem psql hem node-pg başarısız. Migration SQL\'ini kontrol edin (CREATE TABLE IF NOT EXISTS public.schema_migrations vb.).'
+          );
+        } else {
+          console.error(
+            'PostgreSQL istemcisini PATH\'e ekleyin veya psql ile tekrar deneyin.'
+          );
+        }
         process.exit(1);
       }
-    } else if (!ok) {
-      process.exit(1);
     }
     await recordMigration(pg, file);
     console.log('[db:migrate] Tamamlandı:', file);

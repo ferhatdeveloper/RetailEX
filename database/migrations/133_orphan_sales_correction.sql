@@ -37,6 +37,13 @@
 --
 -- ============================================================================
 
+-- schema_migrations henüz yoksa idempotent oluştur
+CREATE TABLE IF NOT EXISTS public.schema_migrations (
+  id          SERIAL PRIMARY KEY,
+  filename    TEXT NOT NULL UNIQUE,
+  applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 BEGIN;
 
 -- ============================================================

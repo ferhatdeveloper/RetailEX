@@ -26,6 +26,13 @@
 --   - Idempotent: WHERE balance = 7409913.75 koşulu ile sadece eski halindeyken ekle
 -- =====================================================================
 
+-- schema_migrations henüz yoksa idempotent oluştur
+CREATE TABLE IF NOT EXISTS public.schema_migrations (
+  id          SERIAL PRIMARY KEY,
+  filename    TEXT NOT NULL UNIQUE,
+  applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 BEGIN;
 
 -- Tetikleyici güvenli bypass (sync queue / updated_at trigger)

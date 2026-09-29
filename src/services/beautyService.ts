@@ -4180,19 +4180,20 @@ export const beautyService = {
         );
     },
 
-    async deletePackage(id: string): Promise<void> {
+    async deletePackage(id: string, opts?: { signal?: AbortSignal }): Promise<void> {
         if (shouldUseTenantPostgrestApi()) {
             const { postgrest } = await import('./api/postgrestClient');
             const fn = erpFirmNrForRow();
             await postgrest.patch(
                 `/rex_${fn}_beauty_packages?id=eq.${encodeURIComponent(id)}`,
                 { is_active: false, updated_at: new Date().toISOString() },
-                { schema: 'beauty', prefer: 'return=minimal' }
+                { schema: 'beauty', prefer: 'return=minimal', signal: opts?.signal }
             );
             return;
         }
         await postgres.query(
-            'UPDATE beauty_packages SET is_active=false, updated_at=NOW() WHERE id=$1', [id]
+            'UPDATE beauty_packages SET is_active=false, updated_at=NOW() WHERE id=$1', [id],
+            { signal: opts?.signal }
         );
     },
 

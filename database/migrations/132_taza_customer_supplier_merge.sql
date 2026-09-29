@@ -29,6 +29,13 @@
 --   - Duplicate: SIFIR
 --   - Veri kaybı: YOK (16 satışın tamamı korunur)
 
+-- schema_migrations henüz yoksa idempotent olarak oluştur (kasap DB ilk kez migrate ediliyor olabilir)
+CREATE TABLE IF NOT EXISTS public.schema_migrations (
+  id          SERIAL PRIMARY KEY,
+  filename    TEXT NOT NULL UNIQUE,
+  applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 BEGIN;
 
 -- ============================================================

@@ -59,11 +59,20 @@ export function PercentBodyModal({
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const arm = window.setTimeout(() => setOverlayCloseArmed(true), 80);
+    /** ESC ile kapatma — global dinleyici; onClose tanımlıysa çağırır. */
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape' && typeof onClose === 'function') {
+        ev.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = prev;
       window.clearTimeout(arm);
+      window.removeEventListener('keydown', onKey);
     };
-  }, []);
+  }, [onClose]);
 
   return (
     <FullscreenBodyPortal

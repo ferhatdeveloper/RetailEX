@@ -62,7 +62,7 @@ interface BeautyState {
     loadPackages:       () => Promise<void>;
     createPackage:      (data: Partial<BeautyPackage>) => Promise<string>;
     updatePackage:      (id: string, data: Partial<BeautyPackage>) => Promise<void>;
-    deletePackage:      (id: string) => Promise<void>;
+    deletePackage:      (id: string, opts?: { signal?: AbortSignal }) => Promise<void>;
     /**
      * Bir pakete (veya taslak pakete) hizmet × personel × yüzde satırı ekler.
      * 177 migration global `service_staff_commissions` tablosunu yazar; liste
@@ -318,9 +318,17 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
         }
     },
 
-    deletePackage: async (id) => {
+    deletePackage: async (id, opts) => {
         try {
-            await beautyService.deletePackage(id);
+            // UI zaten 8sn zırh uyguluyor; burada da ek bir güvenlik katmanı olarak
+            // verilmemişse 6 sn içinde iptal et — modalın "takılı" hissi olmasın.
+            const ac = opts?.signal ? null : new AbortController();
+            const timer = ac ? setTimeout(() => ac.abort(), 6_000) : null;
+            try {
+                await beautyService.deletePackage(id, ac ? { signal: ac.signal } : opts);
+            } finally {
+                if (timer) clearTimeout(timer);
+            }
             set((state) => ({
                 packages: state.packages.filter(p => p.id !== id),
                 packageCommissions: Object.fromEntries(

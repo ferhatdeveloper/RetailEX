@@ -574,10 +574,32 @@ const SetupWizard: React.FC = () => {
                         if (status === 'RUNNING') {
                             toast.success('Yerel PostgreSQL bağlantısı başarılı');
                         } else if (status === 'DB_MISSING') {
+                            // 3D000: hedef DB yok. TEST'te sadece kontrol ederiz;
+                            // CREATE DATABASE OLUŞTUR butonu ile tetiklenir (DB_MISSING'te aktif).
+                            // Tek tıklama deneyimi: OLUŞTUR'a otomatik odaklan ki kullanıcı
+                            // İLERİ ile son adımdaki «DB oluşturuyor» akışına düşmesin.
                             toast.warning(tm('setupDbMissingTitle'), {
                                 description: tm('setupDbMissingDesc'),
                                 duration: 12000,
                             });
+                            // DB oluşturma akışını OTOMATİK tetikle: TEST → OLUŞTUR zincirini
+                            // tek adıma indir (İLERİ son sekmesinde tekrar CREATE yapmasın).
+                            try {
+                                setLoading(true);
+                                await safeInvoke('create_database', {
+                                    config,
+                                    target: 'local',
+                                });
+                                // DB oluştu → durumu RUNNING'e çek; kullanıcı TABLOLARI GÜNCELLE'ye basabilir.
+                                setDbStatus('RUNNING');
+                                toast.success('Veritabanı oluşturuldu. TABLOLARI GÜNCELLE ile devam edebilirsiniz.');
+                            } catch (createErr: any) {
+                                const msg = String(createErr?.message || createErr || '');
+                                console.warn('[checkDbStatus] otomatik CREATE DATABASE başarısız:', msg);
+                                toast.error('Veritabanı otomatik oluşturulamadı: ' + msg);
+                            } finally {
+                                setLoading(false);
+                            }
                         } else if (status === 'AUTH_FAILED') {
                             toast.error('PostgreSQL çalışıyor; kullanıcı/şifre hatalı');
                         } else if (status === 'INSTALLED_RUNNING') {

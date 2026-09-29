@@ -908,19 +908,65 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       return;
     }
 
-    try {
-      const { error } = await supabase
-        .from('menu_items')
-        .delete()
-        .eq('id', id);
+    // RPC / uzun sorgu için 8 sn zaman aşımı (postgrest + ağ yavaşlaması
+    // veya arka planda çalışan migration nedeniyle "Failed to fetch" hatasını
+    // anlamlı hale getirmek için).
+    const DELETE_TIMEOUT_MS = 8000;
+    const attempt = async (): Promise<{ ok: boolean; aborted: boolean; error?: unknown }> => {
+      const controller = new AbortController();
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, DELETE_TIMEOUT_MS);
+      try {
+        const query = supabase
+          .from('menu_items')
+          .delete()
+          .eq('id', id)
+          .abortSignal(controller.signal);
+        const { error } = await query;
+        clearTimeout(timer);
+        if (error) {
+          // AbortError ise zaman aşımı olarak işle
+          const msg = String((error as any)?.message || error);
+          if (/abort/i.test(msg) || timedOut) {
+            return { ok: false, aborted: true, error };
+          }
+          throw error;
+        }
+        return { ok: true, aborted: false };
+      } catch (err) {
+        clearTimeout(timer);
+        const msg = String((err as any)?.message || err);
+        if (/abort/i.test(msg) || timedOut) {
+          return { ok: false, aborted: true, error: err };
+        }
+        throw err;
+      }
+    };
 
-      if (error) {
-        throw error;
+    try {
+      let result = await attempt();
+      // İlk deneme zaman aşımına uğradıysa tek bir kez daha dene
+      // (arka plan migration senkronizasyonu ile çakışma olasılığı).
+      if (!result.ok && result.aborted) {
+        await new Promise((r) => setTimeout(r, 400));
+        result = await attempt();
+      }
+
+      if (!result.ok) {
+        logger.crudError('MenuManagement', 'deleteMenuItem (timeout)', result.error);
+        alert(
+          (tm('menuPanelDeleteItemTimeout') as string) ||
+            'Silme işlemi zaman aşımına uğradı. Lütfen tekrar deneyin (arka planda migration çalışıyor olabilir).',
+        );
+        return;
       }
 
       await loadMenuItems();
       // Kısa bir gecikme ekle (Supabase'in güncellemeyi işlemesi için)
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 300));
       // Menü güncellendiğini bildir - force reload ile
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
     } catch (error) {

@@ -571,9 +571,24 @@ pub async fn apply_migrations_internal(
             name VARCHAR(255) NOT NULL UNIQUE,
             applied_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
             app_version VARCHAR(50)
-        )", 
+        )",
         &[]
     ).await.map_err(|e| format!("sys_migrations tablosu oluşturulamadı: {}", format_pg_error(e)))?;
+
+    // 2a'. Public schema_migrations tablosu — node-pg migrate betiği
+    // (database/scripts/run-pending-migrations.mjs) ve eski kurulum migration
+    // dosyaları (örn. 132-139 INSERT INTO public.schema_migrations ...) bu
+    // tabloya yazıyor. İlk migration'dan önce yoksa 42P01 "relation does
+    // not exist" hatası veriyor; idempotent guard kritik.
+    let _ = client.execute(
+        "CREATE TABLE IF NOT EXISTS public.schema_migrations (
+            id SERIAL PRIMARY KEY,
+            filename TEXT NOT NULL UNIQUE,
+            applied_at TIMESTAMPTZ DEFAULT NOW()
+        )",
+        &[],
+    )
+    .await;
 
     // 2a. Ensure 'name' is unique and drop unique constraint on 'version' if it exists
     // This allows multiple files with same prefix (e.g. 027_...)
