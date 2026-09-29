@@ -12768,6 +12768,7 @@ export const excelModuleTranslations = {
   rprColOutgoing: { tr: 'Giden', en: 'Outgoing', ar: 'صادر', ku: 'Çûn' },
   rprColNet: { tr: 'Net', en: 'Net', ar: 'الصافي', ku: 'Net' },
   rprColCumulative: { tr: 'Kümülatif', en: 'Cumulative', ar: 'تراكمي', ku: 'Kûmûlatîf' },
+  rprColCashRegister: { tr: 'Kasa', en: 'Cash Register', ar: 'الصندوق', ku: 'سندوق' },
   rprColFinalBalance: { tr: 'Son Bakiye', en: 'Final Balance', ar: 'الرصيد النهائي', ku: 'Balansa Dawî' },
   rprColGroup: { tr: 'Grup', en: 'Group', ar: 'المجموعة', ku: 'Kom' },
   rprColSubGroup: { tr: 'Alt Grup', en: 'Sub Group', ar: 'المجموعة الفرعية', ku: 'Binkom' },

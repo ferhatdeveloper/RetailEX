@@ -2421,7 +2421,9 @@ export const erpReportsAPI = {
           cl.amount AS amount,
           COALESCE(cl.sign, 1) AS sign,
           COALESCE(cl.transaction_type, '') AS tx_type,
-          COALESCE(cl.definition, '') AS description
+          COALESCE(cl.definition, '') AS description,
+          cl.register_id AS register_id,
+          'cash'::text AS register_kind
         FROM cash_lines cl
         UNION ALL
         SELECT
@@ -2432,7 +2434,9 @@ export const erpReportsAPI = {
           bl.amount AS amount,
           COALESCE(bl.sign, 1) AS sign,
           COALESCE(bl.transaction_type, '') AS tx_type,
-          COALESCE(bl.definition, '') AS description
+          COALESCE(bl.definition, '') AS description,
+          bl.register_id AS register_id,
+          'bank'::text AS register_kind
         FROM bank_lines bl
       )
       SELECT
@@ -2446,10 +2450,20 @@ export const erpReportsAPI = {
         CASE WHEN x.sign > 0 THEN ABS(x.amount) ELSE 0 END AS incoming,
         CASE WHEN x.sign < 0 THEN ABS(x.amount) ELSE 0 END AS outgoing,
         x.customer_id::text AS cari_id,
-        COALESCE(cust.name, sup.name, '') AS cari_name
+        COALESCE(cust.name, sup.name, '') AS cari_name,
+        x.register_id::text AS cash_register_id,
+        COALESCE(
+          CASE WHEN x.register_kind = 'cash' THEN cr.name ELSE NULL END,
+          CASE WHEN x.register_kind = 'bank' THEN br.name ELSE NULL END,
+          ''
+        ) AS cash_register_name
       FROM x
       LEFT JOIN customers cust ON cust.id = x.customer_id
       LEFT JOIN suppliers sup ON sup.id = x.customer_id
+      LEFT JOIN cash_registers cr
+        ON x.register_kind = 'cash' AND cr.id = x.register_id
+      LEFT JOIN bank_registers br
+        ON x.register_kind = 'bank' AND br.id = x.register_id
       ${cariClause}
       ORDER BY x.trx_date ASC, x.fiche_no ASC, sequence ASC
       LIMIT ${ROW_LIMIT}
@@ -2468,6 +2482,8 @@ export const erpReportsAPI = {
       outgoing: number;
       cari_id: string;
       cari_name: string;
+      cash_register_id: string;
+      cash_register_name: string;
     };
     let cumulative = 0;
     return ((rows || []) as Raw[]).map((r) => {
@@ -2487,6 +2503,8 @@ export const erpReportsAPI = {
         cumulative,
         cariId: String(r.cari_id ?? ''),
         cariName: String(r.cari_name ?? ''),
+        cashRegisterId: String(r.cash_register_id ?? ''),
+        cashRegisterName: String(r.cash_register_name ?? ''),
       };
     });
   },
@@ -2925,6 +2943,8 @@ export interface CashLedgerRow {
   cumulative: number;
   cariId?: string;
   cariName?: string;
+  cashRegisterId?: string;
+  cashRegisterName?: string;
 }
 
 export type CashLedgerGroup =

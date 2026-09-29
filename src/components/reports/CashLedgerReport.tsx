@@ -240,6 +240,21 @@ export function CashLedgerReport() {
         { id: 'ficheNo', header: tm('rprColFicheNo') || 'Fiş No', size: 120 },
         { id: 'sequence', header: tm('rprColSequence') || 'Sıra', align: 'right', size: 70 },
         { id: 'group', header: tm('rprColGroup') || 'Grup', size: 110 },
+        {
+          id: 'cashRegisterName',
+          header: tm('rprColCashRegister') || tm('cashRegister') || 'Kasa',
+          size: 140,
+          cell: (r) => (
+            <div>
+              <div className="truncate" title={r.cashRegisterName || ''}>
+                {r.cashRegisterName || '—'}
+              </div>
+              {r.cashRegisterId ? (
+                <div className="text-xs opacity-60 font-mono">{r.cashRegisterId.slice(0, 8)}</div>
+              ) : null}
+            </div>
+          ),
+        },
         { id: 'subGroup', header: tm('rprColSubGroup') || 'Alt Grup', size: 120 },
         {
           id: 'description',
@@ -298,12 +313,13 @@ export function CashLedgerReport() {
       onExport={() =>
         exportCsv(
           'kasa_defteri',
-          ['Tarih', 'Fiş No', 'Sıra', 'Grup', 'Alt Grup', 'Açıklama', 'Cari', 'Gelen', 'Giden', 'Kümülatif'],
+          ['Tarih', 'Fiş No', 'Sıra', 'Grup', 'Kasa', 'Alt Grup', 'Açıklama', 'Cari', 'Gelen', 'Giden', 'Kümülatif'],
           recalculated.map((r) => [
             r.date,
             r.ficheNo,
             String(r.sequence),
             r.group,
+            r.cashRegisterName ?? '',
             r.subGroup,
             r.description,
             r.cariName ?? '',
