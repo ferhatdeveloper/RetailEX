@@ -660,6 +660,10 @@ export interface Translations {
   appointmentComplete: string;
   appointmentCollectRemainder: string;
   appointmentTakeDeposit: string;
+  /** Booking anında ödeme alınmayacağına dair kullanıcı bilgilendirmesi */
+  noPaymentAtBookingHint: string;
+  /** Kalan ödeme bekliyor — hizmet verildiğinde tahsil edilecek */
+  remainderPendingHint: string;
   customerAdvanceBalance: string;
   gatewayPageOpened: string;
   generalLedger: string;
@@ -1796,6 +1800,8 @@ export const translations: any = {
     appointmentComplete: 'Randevuyu Tamamla',
     appointmentCollectRemainder: 'Kalan Ödeme Al',
     appointmentTakeDeposit: 'Ön Ödeme Al',
+    noPaymentAtBookingHint: 'Şimdi ödeme alınmayacak — yalnızca randevu kaydı oluşturulacak.',
+    remainderPendingHint: 'Kalan ödeme bekleniyor — hizmet verildiğinde tahsil edilir ve randevu o zaman tamamlanabilir.',
     customerAdvanceBalance: 'Müşteri Avans Bakiyesi',
     gatewayPageOpened: 'ödeme sayfası yeni sekmede açıldı.',
     generalLedger: 'Genel Defter',
@@ -3586,6 +3592,8 @@ export const translations: any = {
     appointmentComplete: 'Complete Appointment',
     appointmentCollectRemainder: 'Collect Remainder',
     appointmentTakeDeposit: 'Take Pre-Payment',
+    noPaymentAtBookingHint: 'No payment will be collected now — only the appointment will be saved.',
+    remainderPendingHint: 'Remainder payment pending — will be collected when service is delivered; appointment can be completed afterwards.',
     customerAdvanceBalance: 'Customer Advance Balance',
     gatewayPageOpened: 'payment page opened in new tab.',
     generalLedger: 'General Ledger',
@@ -5261,6 +5269,8 @@ export const translations: any = {
     appointmentComplete: 'إكمال الموعد',
     appointmentCollectRemainder: 'تحصيل المتبقي',
     appointmentTakeDeposit: 'أخذ الدفع المسبق',
+    noPaymentAtBookingHint: 'لن يتم تحصيل أي مبلغ الآن — سيتم تسجيل الموعد فقط.',
+    remainderPendingHint: 'في انتظار تحصيل المتبقي — يُحصَّل عند تقديم الخدمة ويمكن إكمال الموعد بعدها.',
     customerAdvanceBalance: 'رصيد العربون',
     gatewayPageOpened: 'فتحت صفحة الدفع في تبويب جديد.',
     generalLedger: 'دفتر الأستاذ العام',
@@ -6919,6 +6929,8 @@ export const translations: any = {
     appointmentComplete: 'تەواوکردنی مەوعید',
     appointmentCollectRemainder: 'وەرگرتنی ماوە',
     appointmentTakeDeposit: 'وەرگرتنی پارەدانی پێشوەختە',
+    noPaymentAtBookingHint: 'ئێستا پارە وەرناگیرێت — تەنها مەوعید تۆمار دەکرێت.',
+    remainderPendingHint: 'چاوەڕوانی پارەدانی ماوە — لە کاتی پێشکەشکردنی خزمەتگوزاریدا وەرگیرێت و دواتر دەتوانرێت مەوعید تەواو بکرێت.',
     customerAdvanceBalance: 'باڵانسی پێشەکی',
     gatewayPageOpened: 'ödeme sayfası yeni sekmede açıldı.',
     generalLedger: 'دەفتەری گشتی',

@@ -500,7 +500,13 @@ export function AppointmentPOS({
     const [receiptTreatmentDegree, setReceiptTreatmentDegree] = useState('');
     const [receiptTreatmentShots, setReceiptTreatmentShots] = useState('');
     const [aptStatus, setAptStatus] = useState<AppointmentStatus>(AppointmentStatus.SCHEDULED);
-    const [aptOpen, setAptOpen] = useState(true);  // section collapse
+    const [aptOpen, setAptOpen] = useState(false);  // section collapse — varsayılan KAPALI (kullanıcı isteği)
+
+    // Emniyet kemeri: HMR / parent prop seti / eski build cache için ilk mount'ta
+    // mutlaka kapalı zorla. useState(false) yetmezse bu useEffect kesin çözüm.
+    useEffect(() => {
+        setAptOpen(false);
+    }, []);
     const [hydratedAppointmentId, setHydratedAppointmentId] = useState<string | null>(null);
     const [existingEditBaselineFlush, setExistingEditBaselineFlush] = useState(0);
     const [updateExistingBusy, setUpdateExistingBusy] = useState(false);
@@ -517,6 +523,13 @@ export function AppointmentPOS({
     const [paymentSummary, setPaymentSummary] = useState<AppointmentPaymentSummary | null>(null);
     const [depositAmount, setDepositAmount] = useState<string>('');
     const [depositProvider, setDepositProvider] = useState<AppointmentPaymentProvider>('cash');
+    /**
+     * Booking anında "şimdi ön ödeme alınacak mı?" toggle'ı.
+     * false → randevu yalnızca kayıt amaçlı, ön ödeme paneli gizlenir
+     *         (hizmet verildiğinde kalan tutarı almak yeterli olur).
+     * true  → randevu oluşturulurken kısmi ön ödeme alınacak; panel görünür.
+     */
+    const [takeDepositAtBooking, setTakeDepositAtBooking] = useState<boolean>(false);
     const [depositSubmitting, setDepositSubmitting] = useState(false);
     const [showRemainderModal, setShowRemainderModal] = useState(false);
     const [remainderAmount, setRemainderAmount] = useState<string>('');
@@ -1969,9 +1982,21 @@ export function AppointmentPOS({
 
     /**
      * Randevuyu tamamla — remainder alınmadan.
+     * Kıdemli muhasebeci: hizmet verildiğinde stok düşümü tetiklenir.
+     * Bu yüzden kalan ödeme alınmadan complete'i engelliyoruz — cari bakiyesi
+     * alacak kalır, kasa/banka + tamamlanır ancak cari simetrisi (borç) ancak
+     * hizmet verildiğinde yazılmalı.
      */
     const handleCompleteOnly = useCallback(async () => {
         if (!existingAppointment?.id) return;
+        const outstanding = paymentSummary?.outstandingAmount ?? 0;
+        if (outstanding > 0.01) {
+            toast.error(
+                tm('remainderPendingHint')
+                || 'Önce kalan ödeme alınmalı — hizmet verildiğinde tahsil edilecek.',
+            );
+            return;
+        }
         try {
             await beautyService.updateAppointment(existingAppointment.id, {
                 status: AppointmentStatus.COMPLETED,
@@ -1983,7 +2008,7 @@ export function AppointmentPOS({
             logger.error('AppointmentPOS', 'handleCompleteOnly failed', e);
             toast.error(extractTechnicalError(e) || 'Randevu tamamlanamadı');
         }
-    }, [existingAppointment]);
+    }, [existingAppointment, paymentSummary, tm]);
 
     const handleBookOnly = async () => {
         if (isExistingPaidComplete) {
@@ -2001,9 +2026,12 @@ export function AppointmentPOS({
                 createdIds.push(await createAppointment(p));
             }
             // ── Booking anında deposit (ön ödeme) opsiyonel kayıt
+            // Kullanıcı "şimdi ödeme almayacağım" toggle'ını kapattıysa deposit atlanır;
+            // aksi halde girilen tutar > 0 ve total'i aşmıyorsa kaydedilir.
             const depRaw = parseFloat(String(depositAmount).replace(',', '.'));
             if (
-                createdIds[0]
+                takeDepositAtBooking
+                && createdIds[0]
                 && Number.isFinite(depRaw)
                 && depRaw > 0
                 && depRaw <= total + 0.01
@@ -3241,7 +3269,12 @@ export function AppointmentPOS({
                                     </p>
                                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
                                         <span style={{ fontSize: 13, fontWeight: 800, color: pkg.color ?? '#7c3aed' }}>{fmt(fp)}</span>
-                                        {(pkg.discount_pct ?? 0) > 0 && <span style={{ fontSize: 10, color: '#9ca3af', textDecoration: 'line-through' }}>{fmt(pkg.price)}</span>}
+                                        {(pkg.discount_pct ?? 0) > 0 && (
+                                            <>
+                                                <span style={{ fontSize: 10, color: '#9ca3af', textDecoration: 'line-through' }}>{fmt(pkg.price)}</span>
+                                                <span style={{ fontSize: 9, fontWeight: 800, color: '#dc2626', background: '#fef2f2', padding: '1px 5px', borderRadius: 3, border: '1px solid #fecaca' }}>-%{pkg.discount_pct}%</span>
+                                            </>
+                                        )}
                                     </div>
                                 </button>
                             );
@@ -4335,6 +4368,8 @@ export function AppointmentPOS({
                                 <AppointmentPrePaymentPanel
                                     mode={existingAppointment ? 'existing' : 'booking'}
                                     paymentSummary={paymentSummary}
+                                    takeDepositAtBooking={takeDepositAtBooking}
+                                    onToggleTakeDepositAtBooking={setTakeDepositAtBooking}
                                     labels={{
                                         prePaymentAmount: tm('prePaymentAmount'),
                                         prePaymentProvider: tm('prePaymentProvider'),
@@ -4345,6 +4380,12 @@ export function AppointmentPOS({
                                         prePaymentHint:
                                             tm('prePaymentHint')
                                             || 'İleri tarihli randevu için şimdi kısmi ödeme alabilirsiniz. Hizmet verildiğinde kalan tahsil edilir; stok düşümü tamamlandığında olur.',
+                                        noPaymentAtBookingHint:
+                                            tm('noPaymentAtBookingHint')
+                                            || 'Şimdi ödeme alınmayacak — yalnızca randevu kaydı oluşturulacak.',
+                                        remainderPendingHint:
+                                            tm('remainderPendingHint')
+                                            || 'Kalan ödeme bekleniyor — hizmet verildiğinde tahsil edilir ve randevu o zaman tamamlanabilir.',
                                         appointmentDeposit: tm('appointmentDeposit'),
                                         appointmentRemainder: tm('appointmentRemainder'),
                                         total: tm('total'),
@@ -4367,6 +4408,7 @@ export function AppointmentPOS({
                                     onComplete={() => void handleCompleteOnly()}
                                     depositSubmitting={depositSubmitting}
                                     outstandingAmount={paymentSummary?.outstandingAmount ?? 0}
+                                    bookingTotal={total}
                                 />
                             )}
                             </div>
@@ -4743,8 +4785,13 @@ export function AppointmentPOS({
                                 <option value="card">{tm('cardLabel') || 'Kart'}</option>
                                 <option value="gateway">{tm('gatewayLabel') || 'Ön Ödeme'}</option>
                                 <option value="bank_transfer">Banka Havalesi</option>
+                                <option value="veresiye">{tm('veresiyeLabel') || 'Veresiye (Cari)'}</option>
                             </select>
                         </Field>
+                        <p style={{ margin: 0, fontSize: 10, color: '#6b7280', lineHeight: 1.4 }}>
+                            {tm('remainderVeresiyeHint')
+                                || 'Veresiye seçilirse kalan tutar müşterinin cari hesabına borç olarak yazılır; tahsilat ileride yapılır.'}
+                        </p>
                     </div>
                 </RetailExFlatModal>
             )}

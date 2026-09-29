@@ -51,6 +51,13 @@ function formatMoneyAmount(value: number, opts: { minFrac: number; maxFrac: numb
 export interface AppointmentPrePaymentPanelProps {
     mode: 'booking' | 'existing';
     paymentSummary?: AppointmentPaymentSummary | null;
+    /**
+     * Booking modunda kullanıcının "şimdi ön ödeme alayım mı?" tercihi.
+     * true → ön ödeme tutarı + provider + hint görünür.
+     * false → "şimdi ödeme alınmayacak" kısa notu görünür, panel gizli kalır.
+     */
+    takeDepositAtBooking?: boolean;
+    onToggleTakeDepositAtBooking?: (next: boolean) => void;
     labels: {
         prePaymentAmount: string;
         prePaymentProvider: string;
@@ -71,6 +78,8 @@ export interface AppointmentPrePaymentPanelProps {
         partialHint?: string;
         unpaidHint?: string;
         noAmountHint?: string;
+        noPaymentAtBookingHint?: string;
+        remainderPendingHint?: string;
     };
     depositAmount: string;
     depositProvider: AppointmentPaymentProvider;
@@ -81,20 +90,66 @@ export interface AppointmentPrePaymentPanelProps {
     onComplete: () => void;
     depositSubmitting: boolean;
     outstandingAmount: number;
+    /** Booking modunda "kalan ödenecek" hesabı için kullanılır (parent'tan total). */
+    bookingTotal?: number;
 }
 
 export function AppointmentPrePaymentPanel(props: AppointmentPrePaymentPanelProps) {
     const {
         mode, paymentSummary, labels,
+        takeDepositAtBooking, onToggleTakeDepositAtBooking,
         depositAmount, depositProvider,
         onDepositAmountChange, onDepositProviderChange,
         onTakeDeposit, onCollectRemainder, onComplete,
         depositSubmitting,
         outstandingAmount,
+        bookingTotal,
     } = props;
     const [localErr] = useState<string | null>(null);
 
     if (mode === 'booking') {
+        // Kullanıcı "şimdi ödeme almayacağım" dediyse: panelin tamamı gizlenir,
+        // yalnızca bilgilendirme + toggle görünür (randevu sadece kayıt amaçlı).
+        if (!takeDepositAtBooking) {
+            return (
+                <div
+                    style={{
+                        padding: 10,
+                        borderRadius: 8,
+                        border: '1px dashed #e5e7eb',
+                        background: '#f9fafb',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                    }}
+                >
+                    <label
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: '#374151',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={!!takeDepositAtBooking}
+                            onChange={(e) => onToggleTakeDepositAtBooking?.(e.target.checked)}
+                            style={{ width: 14, height: 14, accentColor: '#7c3aed' }}
+                        />
+                        {labels.prePaymentAmount}
+                    </label>
+                    {labels.noPaymentAtBookingHint && (
+                        <p style={{ margin: 0, fontSize: 10, color: '#6b7280', lineHeight: 1.4 }}>
+                            {labels.noPaymentAtBookingHint}
+                        </p>
+                    )}
+                </div>
+            );
+        }
         return (
             <div
                 style={{
@@ -107,7 +162,31 @@ export function AppointmentPrePaymentPanel(props: AppointmentPrePaymentPanelProp
                     gap: 6,
                 }}
             >
-                <Label>{labels.prePaymentAmount}</Label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                    <Label>{labels.prePaymentAmount}</Label>
+                    <label
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: '#7c3aed',
+                            cursor: 'pointer',
+                            textTransform: 'none',
+                            letterSpacing: 0,
+                        }}
+                        title={labels.noPaymentAtBookingHint || 'Ödemeyi kapat'}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={!!takeDepositAtBooking}
+                            onChange={(e) => onToggleTakeDepositAtBooking?.(e.target.checked)}
+                            style={{ width: 12, height: 12, accentColor: '#7c3aed' }}
+                        />
+                        ×
+                    </label>
+                </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                     <input
                         type="text"
@@ -133,12 +212,49 @@ export function AppointmentPrePaymentPanel(props: AppointmentPrePaymentPanelProp
                         {labels.prePaymentHint}
                     </p>
                 )}
+                {(() => {
+                    // Booking modunda outstandingAmount parent'tan 0 gelir; total-deposit'i
+                    // canlı hesaplayıp göster.
+                    const dep = parseFloat(String(depositAmount).replace(',', '.'));
+                    const bookingRemainder = Math.max(
+                        0,
+                        (bookingTotal ?? 0) - (Number.isFinite(dep) && dep > 0 ? dep : 0),
+                    );
+                    const showRemainder = bookingRemainder > 0 || outstandingAmount > 0;
+                    if (!showRemainder) return null;
+                    const displayRemainder = outstandingAmount > 0 ? outstandingAmount : bookingRemainder;
+                    return (
+                        <div
+                            style={{
+                                background: '#fffbeb',
+                                border: '1px solid #fde68a',
+                                borderRadius: 6,
+                                padding: '6px 8px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                            }}
+                        >
+                            <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>
+                                {labels.remainderAmount || 'Kalan Ödenecek'}
+                            </span>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: '#b45309' }}>
+                                {fmt(displayRemainder)}
+                            </span>
+                        </div>
+                    );
+                })()}
             </div>
         );
     }
 
     // existing mode
     if (!paymentSummary) return null;
+    const outstandingBlocking = paymentSummary.outstandingAmount > 0;
+    const completeDisabled = outstandingBlocking;
+    const completeTitle = outstandingBlocking
+        ? (labels.remainderPendingHint || 'Önce kalan ödeme alınmalı')
+            : undefined;
     return (
         <div
             style={{
@@ -170,6 +286,23 @@ export function AppointmentPrePaymentPanel(props: AppointmentPrePaymentPanelProp
                 <span>{labels.remainderAmount}:</span>
                 <span style={{ fontWeight: 800 }}>{fmt(paymentSummary.outstandingAmount)}</span>
             </div>
+            {outstandingBlocking && (
+                <div
+                    role="status"
+                    style={{
+                        background: '#fffbeb',
+                        border: '1px solid #fcd34d',
+                        color: '#92400e',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: '6px 8px',
+                        borderRadius: 6,
+                        lineHeight: 1.4,
+                    }}
+                >
+                    {labels.remainderPendingHint || 'Kalan ödeme bekleniyor — hizmet verildiğinde tahsil edilecek ve randevu o zaman tamamlanabilir.'}
+                </div>
+            )}
             <div style={{ fontSize: 10, color: '#6b7280' }}>
                 {paymentSummary.paymentState === 'paid' && labels.paidPanelTitle}
                 {paymentSummary.paymentState === 'deposit_only' && (labels.depositOnlyHint || 'Ön ödeme alındı; kalan bekleniyor.')}
@@ -239,15 +372,17 @@ export function AppointmentPrePaymentPanel(props: AppointmentPrePaymentPanelProp
             <button
                 type="button"
                 onClick={onComplete}
+                disabled={completeDisabled}
+                title={completeTitle}
                 style={{
                     height: 32,
                     borderRadius: 6,
                     border: 'none',
-                    background: '#059669',
-                    color: '#fff',
+                    background: completeDisabled ? '#e5e7eb' : '#059669',
+                    color: completeDisabled ? '#9ca3af' : '#fff',
                     fontSize: 11,
                     fontWeight: 800,
-                    cursor: 'pointer',
+                    cursor: completeDisabled ? 'not-allowed' : 'pointer',
                 }}
             >
                 {labels.appointmentComplete || 'Randevuyu Tamamla'}
