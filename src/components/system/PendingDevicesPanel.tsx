@@ -12,12 +12,16 @@ import { useAuth } from '../../contexts/AuthContext';
 import { DeviceRegistrationInfoCard } from './DeviceRegistrationInfoCard';
 import {
   approvePosTerminal,
+  getFirmDeviceQuota,
   listCentralStoresForPlacement,
   listPosTerminalRegistrations,
   rejectPosTerminal,
+  revokePosTerminal,
+  setFirmAllowedDeviceCount,
   updatePosTerminalPlacement,
   describeRegistrationTarget,
   type DevicePlacementOption,
+  type FirmDeviceQuota,
   type PosTerminalRegistration,
 } from '../../services/deviceRegistrationService';
 
@@ -146,6 +150,8 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
   const [approvedItems, setApprovedItems] = useState<PosTerminalRegistration[]>([]);
   const [storesByFirm, setStoresByFirm] = useState<Record<string, DevicePlacementOption[]>>({});
   const [placements, setPlacements] = useState<Record<string, PlacementDraft>>({});
+  const [quotasByFirm, setQuotasByFirm] = useState<Record<string, FirmDeviceQuota>>({});
+  const [quotaDrafts, setQuotaDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'pending' | 'approved'>('pending');
@@ -161,6 +167,28 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
     setStoresByFirm((prev) => {
       const next = { ...prev };
       for (const [firmNr, list] of entries) next[firmNr] = list;
+      return next;
+    });
+  }, []);
+
+  const loadQuotasForFirms = useCallback(async (firmNrs: string[]) => {
+    const unique = [...new Set(firmNrs.filter(Boolean))];
+    const entries = await Promise.all(
+      unique.map(async (firmNr) => {
+        const q = await getFirmDeviceQuota(firmNr);
+        return [firmNr, q] as const;
+      }),
+    );
+    setQuotasByFirm((prev) => {
+      const next = { ...prev };
+      for (const [firmNr, q] of entries) next[firmNr] = q;
+      return next;
+    });
+    setQuotaDrafts((prev) => {
+      const next = { ...prev };
+      for (const [firmNr, q] of entries) {
+        if (next[firmNr] == null) next[firmNr] = String(q.allowed);
+      }
       return next;
     });
   }, []);
@@ -186,11 +214,11 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
       setApprovedItems(approved);
       syncPlacements([...pending, ...approved]);
       const firmNrs = [...new Set([...pending, ...approved].map((r) => r.firmNr))];
-      await loadStoresForFirms(firmNrs);
+      await Promise.all([loadStoresForFirms(firmNrs), loadQuotasForFirms(firmNrs)]);
     } finally {
       setLoading(false);
     }
-  }, [loadStoresForFirms, syncPlacements]);
+  }, [loadStoresForFirms, loadQuotasForFirms, syncPlacements]);
 
   useEffect(() => {
     if (IS_TAURI) return;
@@ -233,6 +261,14 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
     const draft = placements[d.id] ?? defaultPlacement(d);
     if (!validateDraft(draft)) return;
 
+    const quota = quotasByFirm[d.firmNr];
+    if (quota && quota.remaining <= 0) {
+      toast.error(
+        `Bu firma için izin verilen cihaz sayısına ulaşıldı (${quota.approvedCount}/${quota.allowed}). Önce bir cihazı kotadan çıkarın veya limiti artırın.`,
+      );
+      return;
+    }
+
     setBusyId(d.id);
     try {
       const r = await approvePosTerminal(d.id, user?.id || null, {
@@ -240,6 +276,24 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
         terminalName: draft.terminalName.trim(),
         firmNr: d.firmNr,
       });
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      await refresh();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleSaveQuota = async (firmNr: string) => {
+    const raw = quotaDrafts[firmNr];
+    const n = Math.floor(Number(raw));
+    if (!Number.isFinite(n) || n < 1) {
+      toast.error('İzin verilen cihaz sayısı en az 1 olmalıdır.');
+      return;
+    }
+    setBusyId(`quota-${firmNr}`);
+    try {
+      const r = await setFirmAllowedDeviceCount(firmNr, n);
       if (r.ok) toast.success(r.message);
       else toast.error(r.message);
       await refresh();
@@ -272,6 +326,25 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
     setBusyId(id);
     try {
       const r = await rejectPosTerminal(id, user?.id || null, reason);
+      if (r.ok) toast.success(r.message);
+      else toast.error(r.message);
+      await refresh();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleRevoke = async (d: PosTerminalRegistration) => {
+    if (
+      !window.confirm(
+        `«${d.terminalName}» cihazını kotadan çıkarıp engellemek istiyor musunuz? Bu kasa giriş yapamaz.`,
+      )
+    ) {
+      return;
+    }
+    setBusyId(d.id);
+    try {
+      const r = await revokePosTerminal(d.id, user?.id || null);
       if (r.ok) toast.success(r.message);
       else toast.error(r.message);
       await refresh();
@@ -317,6 +390,51 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
         </Button>
       </div>
 
+      {Object.keys(quotasByFirm).length > 0 && (
+        <div
+          className={`mb-4 rounded-lg border p-3 space-y-2 ${
+            darkMode ? 'border-gray-700 bg-gray-900/40' : 'border-gray-200 bg-gray-50'
+          }`}
+        >
+          <p className="text-xs font-medium text-gray-600 dark:text-gray-300">
+            İzin verilen cihaz sayısı (firma kotası)
+          </p>
+          {Object.values(quotasByFirm).map((q) => (
+            <div key={q.firmNr} className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-mono text-gray-500">Firma {q.firmNr}</span>
+              <Badge
+                variant="secondary"
+                className={`h-5 px-1.5 text-[10px] ${
+                  q.remaining <= 0 ? 'bg-red-500 text-white' : ''
+                }`}
+              >
+                Onaylı {q.approvedCount}/{q.allowed}
+              </Badge>
+              <Input
+                type="number"
+                min={1}
+                max={500}
+                value={quotaDrafts[q.firmNr] ?? String(q.allowed)}
+                onChange={(e) =>
+                  setQuotaDrafts((prev) => ({ ...prev, [q.firmNr]: e.target.value }))
+                }
+                className={`h-8 w-20 text-sm ${fieldClass}`}
+                disabled={busyId === `quota-${q.firmNr}`}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8"
+                disabled={busyId === `quota-${q.firmNr}`}
+                onClick={() => void handleSaveQuota(q.firmNr)}
+              >
+                Kaydet
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'pending' | 'approved')}>
         <TabsList className="mb-4">
           <TabsTrigger value="pending" className="gap-1.5">
@@ -355,6 +473,8 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
             <div className="space-y-3">
               {pendingItems.map((d) => {
                 const draft = placements[d.id] ?? defaultPlacement(d);
+                const quota = quotasByFirm[d.firmNr];
+                const atLimit = Boolean(quota && quota.remaining <= 0);
                 return (
                   <DevicePlacementRow
                     key={d.id}
@@ -366,14 +486,23 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
                     fieldClass={fieldClass}
                     onStoreChange={(storeId) => updatePlacement(d.id, { storeId })}
                     onTerminalNameChange={(terminalName) => updatePlacement(d.id, { terminalName })}
-                    statusBadge={<Badge className="text-xs bg-amber-500">Onay bekliyor</Badge>}
+                    statusBadge={
+                      <Badge className="text-xs bg-amber-500">
+                        {atLimit ? 'Kota dolu — onay bekliyor' : 'Onay bekliyor'}
+                      </Badge>
+                    }
                     actions={
                       <>
                         <Button
                           size="sm"
-                          disabled={busyId === d.id}
+                          disabled={busyId === d.id || atLimit}
                           onClick={() => void handleApprove(d)}
                           className="gap-1 bg-green-600 hover:bg-green-700"
+                          title={
+                            atLimit
+                              ? `İzin verilen cihaz kotası dolu (${quota?.approvedCount}/${quota?.allowed})`
+                              : undefined
+                          }
                         >
                           <CheckCircle className="w-3.5 h-3.5" />
                           Onayla
@@ -433,15 +562,28 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
                       </>
                     }
                     actions={
-                      <Button
-                        size="sm"
-                        disabled={busyId === d.id}
-                        onClick={() => void handleSaveApproved(d)}
-                        className="gap-1"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        Kaydet
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          disabled={busyId === d.id}
+                          onClick={() => void handleSaveApproved(d)}
+                          className="gap-1"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Kaydet
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={busyId === d.id}
+                          onClick={() => void handleRevoke(d)}
+                          className="gap-1"
+                          title="Kotadan çıkar — giriş engellenir"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          Kotadan çıkar
+                        </Button>
+                      </div>
                     }
                   />
                 );

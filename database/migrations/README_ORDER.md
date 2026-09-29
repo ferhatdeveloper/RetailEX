@@ -173,3 +173,4 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `172_ramadan_eid_whatsapp_draft.sql` — Ramazan Bayramı 9/3 taslak (gönderim 1/3, −8g, KU+AR).
 - `173_kurban_eid_whatsapp_draft.sql` — Kurban Bayramı 16/5 taslak (gönderim 1/5, −15g, KU+AR).
 - `174_customers_call_plan_time_postal.sql` — `rex_*_customers.call_plan_time` + `postal_code`; `rex_*_suppliers.postal_code`; haftalık arşive `call_plan_time`.
+- `175_pos_terminal_allowed_device_count.sql` — `firms.allowed_device_count` (varsayılan 10); `get_firm_device_quota` / `set_firm_allowed_device_count` / `revoke_pos_terminal`; `approve_pos_terminal` kota kontrolü (ilsasupport maxSessions eşleniği). `ilsasupport` DB migrate edilmez.

@@ -1,6 +1,12 @@
 /**
  * Masaüstü kasa cihaz kaydı ve merkez onay akışı.
  * Yalnızca hibrit mod + terminal (client) rolünde: merkeze kayıt → web onayı → giriş.
+ *
+ * Kota: firms.allowed_device_count (ilsasupport maxSessions). Onaylı cihaz sayısı
+ * limite ulaşınca yeni onay reddedilir; giriş yalnızca approved cihazlarda açılır.
+ *
+ * Soft davranış: hibrit değil / merkez yok / center|server rolü → cihaz zorunlu değil
+ * (yerel-only kurulumlar bozulmaz). Web SaaS oturumu cihaz onayı atlar.
  */
 
 import { APP_SEMVER } from '../core/version';
@@ -70,6 +76,14 @@ export type ApprovePosTerminalPlacement = {
   storeId?: string | null;
   terminalName?: string | null;
   firmNr?: string | null;
+};
+
+/** Firma başına onaylı cihaz kotası (ilsasupport maxSessions eşleniği) */
+export type FirmDeviceQuota = {
+  firmNr: string;
+  allowed: number;
+  approvedCount: number;
+  remaining: number;
 };
 
 function firmPadded(nr?: string): string {
@@ -629,9 +643,25 @@ export async function assertDesktopTerminalApproved(): Promise<{
     return { allowed: true, status: 'approved', message: check.message, deviceInfo };
   }
 
+  let pendingMessage =
+    'Bu kasa henüz onaylanmadı. Merkez yöneticisi web panelinde Sistem Yönetimi → Kasa Cihazları bölümünden işyeri ve kasa tanımını yaparak onaylamalı.';
+  if (check.status === 'pending') {
+    try {
+      const quota = await getFirmDeviceQuota(deviceInfo.firmNr);
+      if (quota.remaining <= 0) {
+        pendingMessage =
+          check.message ||
+          `Bu firma için izin verilen cihaz kotası dolu (${quota.approvedCount}/${quota.allowed}). Yönetici bir onaylı cihazı serbest bırakmalı veya limiti artırmalı.`;
+      } else if (check.message?.includes('kotası dolu')) {
+        pendingMessage = check.message;
+      }
+    } catch {
+      if (check.message?.includes('kotası dolu')) pendingMessage = check.message;
+    }
+  }
+
   const messages: Record<string, string> = {
-    pending:
-      'Bu kasa henüz onaylanmadı. Merkez yöneticisi web panelinde Sistem Yönetimi → Kasa Cihazları bölümünden işyeri ve kasa tanımını yaparak onaylamalı.',
+    pending: pendingMessage,
     rejected: check.message || 'Cihaz kaydı reddedildi. Merkez ile iletişime geçin.',
     blocked: 'Bu cihaz engellenmiş. Merkez ile iletişime geçin.',
     not_registered: `Cihaz kaydı merkeze iletilemedi (${describeCentralTarget()}). ${check.message || 'PostgREST URL ve remote_db aynı serverı göstermeli (ör. /lovan → lovan DB).'}`,
@@ -643,6 +673,53 @@ export async function assertDesktopTerminalApproved(): Promise<{
     message: messages[check.status] || check.message,
     deviceInfo,
   };
+}
+
+/** Firma cihaz kotası — merkez RPC get_firm_device_quota */
+export async function getFirmDeviceQuota(firmNr?: string): Promise<FirmDeviceQuota> {
+  const firm = firmPadded(firmNr);
+  try {
+    const row = await rpcCall<{
+      out_allowed?: number;
+      out_approved_count?: number;
+      out_remaining?: number;
+      out_firm_nr?: string;
+    }>('get_firm_device_quota', { p_firm_nr: firm });
+    const allowed = Math.max(1, Number(row.out_allowed ?? 10) || 10);
+    const approvedCount = Math.max(0, Number(row.out_approved_count ?? 0) || 0);
+    return {
+      firmNr: String(row.out_firm_nr || firm),
+      allowed,
+      approvedCount,
+      remaining: Math.max(0, Number(row.out_remaining ?? allowed - approvedCount) || 0),
+    };
+  } catch {
+    return { firmNr: firm, allowed: 10, approvedCount: 0, remaining: 10 };
+  }
+}
+
+/** Merkez yönetici: firma izin verilen cihaz sayısını güncelle */
+export async function setFirmAllowedDeviceCount(
+  firmNr: string,
+  count: number,
+): Promise<{ ok: boolean; message: string; allowed?: number }> {
+  try {
+    const row = await rpcCall<{
+      ok?: boolean;
+      message?: string;
+      out_allowed?: number;
+    }>('set_firm_allowed_device_count', {
+      p_firm_nr: firmPadded(firmNr),
+      p_count: Math.max(1, Math.min(500, Math.floor(Number(count) || 10))),
+    });
+    return {
+      ok: !!row.ok,
+      message: row.message || (row.ok ? 'Limit güncellendi.' : 'İşlem başarısız.'),
+      allowed: row.out_allowed != null ? Number(row.out_allowed) : undefined,
+    };
+  } catch (e: unknown) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 export async function listPosTerminalRegistrations(opts?: {
@@ -783,6 +860,27 @@ export async function rejectPosTerminal(
       p_reason: reason || null,
     });
     return { ok: !!row.ok, message: row.message || (row.ok ? 'Reddedildi.' : 'İşlem başarısız.') };
+  } catch (e: unknown) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Onaylı cihazı kotadan çıkar (blocked) — yer açmak için */
+export async function revokePosTerminal(
+  id: string,
+  userId?: string | null,
+  reason?: string,
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const row = await rpcCall<{ ok?: boolean; message?: string }>('revoke_pos_terminal', {
+      p_id: id,
+      p_user_id: userId || null,
+      p_reason: reason || null,
+    });
+    return {
+      ok: !!row.ok,
+      message: row.message || (row.ok ? 'Kotadan çıkarıldı.' : 'İşlem başarısız.'),
+    };
   } catch (e: unknown) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
