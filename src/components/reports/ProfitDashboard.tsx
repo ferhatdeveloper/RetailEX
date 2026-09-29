@@ -26,11 +26,10 @@ import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { ProductProfitabilityReport } from './ProductProfitabilityReport';
 import { CustomerProfitabilityReport } from '../trading/contacts/CustomerProfitabilityReport';
-import { getCostProfitAnalysis } from '../../services/layeredInventoryCost';
+import { erpReportsAPI } from '../../services/api/erpReports';
 import { postgres } from '../../services/postgres';
 import { SQL_COUNTABLE_SALE_STATUS_PLAIN } from '../../utils/saleInvoiceStatus';
 import { toSqlDateInputString, localTodayDateKey } from '../../utils/localCalendarDate';
-import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 
 type TabType = 'overview' | 'products' | 'customers';
 
@@ -78,25 +77,21 @@ export function ProfitDashboard() {
     setLoading(true);
     try {
       const { start, end } = periodOrMonthRange(period);
-      const profitRows = await getCostProfitAnalysis({
+      // Ürün Brüt Kârı raporuyla aynı formül: Ciro = Σ satış − Σ iade; Maliyet = Σ (WAC × miktar)
+      const totals = await erpReportsAPI.getProductGrossProfitTotals({
         startDate: start,
         endDate: end,
-        firmNr: firm.firm_nr,
-        periodNr: period.nr,
+        lineKind: 'all',
       });
-
-      const totalRevenue = profitRows.reduce((s, r) => s + (Number(r.revenue) || 0), 0);
-      const totalCost = profitRows.reduce((s, r) => s + (Number(r.cogs) || 0), 0);
-      const grossProfit = profitRows.reduce((s, r) => s + (Number(r.profit) || 0), 0);
-      const profitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
-      const profitableProducts = profitRows.filter((r) => (Number(r.profit) || 0) > 0).length;
-      const lossProducts = profitRows.filter((r) => (Number(r.profit) || 0) < 0).length;
-      const topByProfit = [...profitRows].sort(
-        (a, b) => (Number(b.profit) || 0) - (Number(a.profit) || 0),
-      )[0];
-      const topProduct = topByProfit
-        ? `${displayItemCode(topByProfit.productCode)} - ${topByProfit.productName}`
-        : '-';
+      // products / customers sekmeleri kendi bileşenleriyle (ProductProfitabilityReport,
+      // CustomerProfitabilityReport) ayrıca veri çeker; burada ek çağrıya gerek yok.
+      const totalRevenue = totals.ciro;
+      const totalCost = totals.maliyet;
+      const grossProfit = totals.brutKar;
+      const profitMargin = totals.marjPct;
+      const profitableProducts = totals.profitableProducts;
+      const lossProducts = totals.lossProducts;
+      const topProduct = totals.topProduct || '-';
 
       let transactionCount = 0;
       let customerCount = 0;
@@ -144,7 +139,7 @@ export function ProfitDashboard() {
         grossProfit,
         profitMargin,
         transactionCount,
-        productCount: profitRows.length,
+        productCount: totals.productCount,
         customerCount,
         avgTransactionValue: transactionCount > 0 ? totalRevenue / transactionCount : 0,
         topProduct,

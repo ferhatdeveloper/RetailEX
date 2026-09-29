@@ -306,6 +306,60 @@ function mergeProductGrossProfitRows(rows: ProductGrossProfitRow[]): ProductGros
   }));
 }
 
+/**
+ * Ürün Brüt Kârı satırlarını dashboard KPI özetine topla — WAC formülü:
+ *   Ciro    = Σ revenue (işaretli; satış +, iade −)
+ *   Maliyet = Σ cost     (işaretli; WAC × qty)
+ *   Brüt Kâr = Ciro − Maliyet
+ *   Marj %   = Ciro ≠ 0 ise (Brüt Kâr / Ciro) × 100, yoksa 0
+ *
+ * Dashboard ve Ürün Brüt Kârı raporu **aynı** satırları topladığı için
+ * toplam Ciro/Maliyet/Brüt Kâr/Marj % birebir eşleşir.
+ */
+export function aggregateProductGrossProfitTotals(rows: ProductGrossProfitRow[]): {
+  ciro: number;
+  maliyet: number;
+  brutKar: number;
+  marjPct: number;
+  productCount: number;
+  profitableProducts: number;
+  lossProducts: number;
+  topProduct: string | null;
+} {
+  let ciro = 0;
+  let maliyet = 0;
+  let brutKar = 0;
+  let profitableProducts = 0;
+  let lossProducts = 0;
+  let topProduct: string | null = null;
+  let topProfit = -Infinity;
+  for (const r of rows) {
+    ciro += Number(r.revenue) || 0;
+    maliyet += Number(r.cost) || 0;
+    brutKar += Number(r.grossProfit) || 0;
+    if (Number(r.grossProfit) > 0) profitableProducts += 1;
+    else if (Number(r.grossProfit) < 0) lossProducts += 1;
+    const p = Number(r.grossProfit) || 0;
+    if (p > topProfit) {
+      topProfit = p;
+      const code = String(r.productCode ?? '').trim();
+      const name = String(r.productName ?? '').trim();
+      topProduct = code && code !== '—' ? `${code} - ${name}` : name || null;
+    }
+  }
+  const marjPct = Math.abs(ciro) > 0.009 ? (brutKar / ciro) * 100 : 0;
+  return {
+    ciro,
+    maliyet,
+    brutKar,
+    marjPct,
+    productCount: rows.length,
+    profitableProducts,
+    lossProducts,
+    topProduct,
+  };
+}
+
 export interface CariExtractRow {
   id: string;
   date: string;
@@ -1857,6 +1911,38 @@ export const erpReportsAPI = {
       firmNr,
       end,
     );
+  },
+
+  /**
+   * Dashboard KPI özet toplamları — Ürün Brüt Kârı raporuyla **aynı formül**:
+   *   Ciro    = Σ (satış tutarı) − Σ (iade tutarı)  (işaretli)
+   *   Maliyet = Σ (WAC × satılan miktar)            (işaretli; WAC = Σ alış tutarı / Σ alış miktarı)
+   *   Brüt Kâr = Ciro − Maliyet
+   *   Marj %   = (Brüt Kâr / Ciro) × 100
+   *
+   * Ürün Brüt Kârı raporundaki `getProductGrossProfit` zaten WAC overlay uyguluyor;
+   * bu yardımcı onun satırlarını toplayıp özet döner — tek formül, tek SQL zinciri.
+   */
+  async getProductGrossProfitTotals(opts: {
+    startDate: string;
+    endDate: string;
+    lineKind?: 'all' | 'product' | 'service';
+  }): Promise<{
+    ciro: number;
+    maliyet: number;
+    brutKar: number;
+    marjPct: number;
+    productCount: number;
+    profitableProducts: number;
+    lossProducts: number;
+    topProduct: string | null;
+  }> {
+    const rows = await this.getProductGrossProfit({
+      startDate: opts.startDate,
+      endDate: opts.endDate,
+      lineKind: opts.lineKind ?? 'all',
+    });
+    return aggregateProductGrossProfitTotals(rows);
   },
 
   async getCariExtract(opts: {

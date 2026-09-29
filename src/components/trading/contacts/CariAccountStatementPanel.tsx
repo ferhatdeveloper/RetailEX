@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FileText, Loader2, Printer, X } from 'lucide-react';
+import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { formatNumber } from '../../../utils/formatNumber';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
@@ -12,6 +13,7 @@ import {
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
+import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import {
   buildEkstreRows,
   defaultEkstreDateRange,
@@ -121,6 +123,169 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
     () => buildEkstreRows(ekstresiData, account.cardType),
     [ekstresiData, account.cardType],
   );
+
+  // DevExDataGrid kolonları — sıra, responsive görünürlük ve minWidth ile kolon
+  // başlıklarının kesilmesini engeller. Mobil için description/wrap esnek olur,
+  // tutar kolonları sağa hizalı kalır.
+  const ekstreColumns = useMemo<ColumnDef<EkstreRow, unknown>[]>(() => {
+    return [
+      {
+        id: 'date',
+        accessorKey: 'date',
+        header: tm('dateLabel'),
+        size: 110,
+        minSize: 90,
+        cell: ({ row }) => (
+          <span className="font-mono text-gray-600">
+            {row.original.date ? formatExtractDate(String(row.original.date)) : '-'}
+          </span>
+        ),
+      },
+      {
+        id: 'fiche_no',
+        accessorKey: 'fiche_no',
+        header: tm('ficheNo'),
+        size: 120,
+        minSize: 90,
+        cell: ({ row }) => {
+          const ficheNo = String(row.original.fiche_no ?? '').trim();
+          if (!ficheNo) {
+            return <span className="font-mono text-slate-400">-</span>;
+          }
+          return (
+            <button
+              type="button"
+              onClick={() => openInvoiceFromStatement(row.original)}
+              className="font-mono font-bold text-blue-600 underline underline-offset-2 hover:text-blue-800"
+            >
+              {ficheNo}
+            </button>
+          );
+        },
+      },
+      {
+        id: 'fiche_type',
+        accessorKey: 'fiche_type',
+        header: tm('type'),
+        size: 150,
+        minSize: 100,
+        cell: ({ row }) => {
+          const { label, color } = ficheTypeToInfo(
+            String(row.original.fiche_type ?? ''),
+            Number(row.original.trcode),
+            row.original.is_cancelled === true,
+            tm,
+          );
+          return (
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${color}`}>
+              {label}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'description',
+        accessorKey: 'notes',
+        header: tm('description'),
+        size: 240,
+        minSize: 140,
+        cell: ({ row }) => (
+          <span className="break-words text-gray-700">
+            {resolveEkstreDescription(
+              row.original.notes,
+              row.original.fiche_type,
+              Number(row.original.trcode) || 0,
+              row.original.is_cancelled === true,
+              tm,
+            )}
+          </span>
+        ),
+      },
+      {
+        id: 'borc',
+        accessorKey: 'borcAmount',
+        header: tm('debtor'),
+        size: 130,
+        minSize: 100,
+        meta: { align: 'right' },
+        cell: ({ row }) => {
+          const amt = row.original.borcAmount;
+          if (!(amt > 0)) return null;
+          const d = fmtEkstreAmount(amt);
+          return (
+            <div className="flex flex-col items-end whitespace-nowrap font-bold text-red-600">
+              <span>
+                {d.primary} {d.code}
+              </span>
+              {d.secondary ? (
+                <span className="text-[10px] font-normal opacity-50">{d.secondary}</span>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
+        id: 'alacak',
+        accessorKey: 'alacakAmount',
+        header: tm('creditor'),
+        size: 130,
+        minSize: 100,
+        meta: { align: 'right' },
+        cell: ({ row }) => {
+          const amt = row.original.alacakAmount;
+          if (!(amt > 0)) return null;
+          const d = fmtEkstreAmount(amt);
+          return (
+            <div className="flex flex-col items-end whitespace-nowrap font-bold text-green-600">
+              <span>
+                {d.primary} {d.code}
+              </span>
+              {d.secondary ? (
+                <span className="text-[10px] font-normal opacity-50">{d.secondary}</span>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
+        id: 'balance',
+        accessorKey: 'balance',
+        header: tm('balance'),
+        size: 140,
+        minSize: 110,
+        meta: { align: 'right' },
+        cell: ({ row }) => {
+          const bal = row.original.balance;
+          const dir = getCariBalanceDirection(account.cardType, bal, tm);
+          const d = bal !== 0 ? fmtEkstreAmount(Math.abs(bal)) : null;
+          const color = bal > 0 ? 'text-red-600' : bal < 0 ? 'text-green-600' : 'text-gray-400';
+          return (
+            <div className={`flex flex-col items-end whitespace-nowrap font-black ${color}`}>
+              {d ? (
+                <>
+                  <span>
+                    {d.primary} {d.code}
+                    {dir.sideLabel ? (
+                      <span className="ml-1 text-[9px] font-black" title={dir.hint}>
+                        {dir.sideLabel}
+                      </span>
+                    ) : null}
+                  </span>
+                  {d.secondary ? (
+                    <span className="text-[10px] font-normal opacity-50">{d.secondary}</span>
+                  ) : null}
+                </>
+              ) : (
+                <span className="text-gray-400">
+                  {formatNumber(0, mainDec, mainShowDec)} {mainCurrency}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+    ];
+  }, [tm, mainDec, mainShowDec, mainCurrency, account.cardType]);
 
   const totalBorc = ekstresiRows.reduce((s, r) => s + r.borcAmount, 0);
   const totalAlacak = ekstresiRows.reduce((s, r) => s + r.alacakAmount, 0);
@@ -310,94 +475,22 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
             </button>
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-[1] border-b border-gray-200 bg-gray-100">
-              <tr>
-                {[tm('dateLabel'), tm('ficheNo'), tm('type'), tm('description'), tm('debtor'), tm('creditor'), tm('balance')].map(h => (
-                  <th
-                    key={h}
-                    className={`px-4 py-3 text-[11px] font-black uppercase tracking-wider text-gray-600 ${
-                      [tm('debtor'), tm('creditor'), tm('balance')].includes(h) ? 'text-right' : 'text-left'
-                    }`}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {ekstresiRows.map((row, idx) => {
-                const { label, color } = ficheTypeToInfo(String(row.fiche_type ?? ''), Number(row.trcode), row.is_cancelled === true, tm);
-                const borcD = row.borcAmount > 0 ? fmtEkstreAmount(row.borcAmount) : null;
-                const alacD = row.alacakAmount > 0 ? fmtEkstreAmount(row.alacakAmount) : null;
-                const balD = row.balance !== 0 ? fmtEkstreAmount(Math.abs(row.balance)) : null;
-                const rowBalDir = getCariBalanceDirection(account.cardType, row.balance, tm);
-                return (
-                  <tr key={idx} className={`border-b border-gray-100 hover:bg-blue-50/40 ${idx % 2 ? 'bg-gray-50/50' : ''}`}>
-                    <td className="px-4 py-2 font-mono text-gray-600">{row.date ? formatExtractDate(String(row.date)) : '-'}</td>
-                    <td className="px-4 py-2">
-                      {row.fiche_no ? (
-                        <button
-                          type="button"
-                          onClick={() => openInvoiceFromStatement(row)}
-                          className="font-mono font-bold text-blue-600 underline underline-offset-2 hover:text-blue-800"
-                        >
-                          {row.fiche_no}
-                        </button>
-                      ) : (
-                        <span className="font-mono text-slate-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${color}`}>{label}</span>
-                    </td>
-                    <td className="max-w-md break-words px-4 py-2 align-top text-gray-700">
-                      {resolveEkstreDescription(
-                        row.notes,
-                        row.fiche_type,
-                        Number(row.trcode) || 0,
-                        row.is_cancelled === true,
-                        tm,
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right font-bold text-red-600">
-                      {borcD ? (
-                        <div className="flex flex-col items-end">
-                          <span>{borcD.primary} {borcD.code}</span>
-                          {borcD.secondary ? <span className="text-[10px] font-normal opacity-50">{borcD.secondary}</span> : null}
-                        </div>
-                      ) : ''}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right font-bold text-green-600">
-                      {alacD ? (
-                        <div className="flex flex-col items-end">
-                          <span>{alacD.primary} {alacD.code}</span>
-                          {alacD.secondary ? <span className="text-[10px] font-normal opacity-50">{alacD.secondary}</span> : null}
-                        </div>
-                      ) : ''}
-                    </td>
-                    <td className={`whitespace-nowrap px-4 py-2 text-right font-black ${row.balance > 0 ? 'text-red-600' : row.balance < 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                      <div className="flex flex-col items-end">
-                        {balD ? (
-                          <>
-                            <span>
-                              {balD.primary} {balD.code}
-                              {rowBalDir.sideLabel ? (
-                                <span className="ml-1 whitespace-nowrap text-[9px] font-black" title={rowBalDir.hint}>{rowBalDir.sideLabel}</span>
-                              ) : null}
-                            </span>
-                            {balD.secondary ? <span className="text-[10px] font-normal opacity-50">{balD.secondary}</span> : null}
-                          </>
-                        ) : (
-                          <span className="text-gray-400">{formatNumber(0, mainDec, mainShowDec)} {mainCurrency}</span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="p-2 sm:p-3">
+            <DevExDataGrid<EkstreRow>
+              data={ekstresiRows}
+              columns={ekstreColumns}
+              storageNamespace="cari-account-statement"
+              enableColumnResizing
+              enableFiltering
+              enablePagination
+              pageSize={15}
+              pageSizeOptions={[10, 15, 20, 50, 100]}
+              height="100%"
+              getRowId={(row, idx) =>
+                `${String(row.fiche_no ?? '-')}-${String(row.date ?? '')}-${idx}`
+              }
+            />
+          </div>
         )}
       </div>
 

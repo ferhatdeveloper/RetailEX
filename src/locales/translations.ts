@@ -648,6 +648,19 @@ export interface Translations {
   fullAmount: string;
   gatewayFinishInstructions: string;
   gatewayLabel: string;
+  /** Yeni Ön Ödeme etiketi (qrOdeme'nin yerini alır) */
+  prePaymentLabel: string;
+  prePaymentAmount: string;
+  prePaymentProvider: string;
+  prePaymentDate: string;
+  remainderPayment: string;
+  remainderAmount: string;
+  appointmentDeposit: string;
+  appointmentRemainder: string;
+  appointmentComplete: string;
+  appointmentCollectRemainder: string;
+  appointmentTakeDeposit: string;
+  customerAdvanceBalance: string;
   gatewayPageOpened: string;
   generalLedger: string;
   generalSale: string;
@@ -1771,7 +1784,19 @@ export const translations: any = {
     focusBarcodeInput: 'Barkod Alanına Odaklan',
     fullAmount: 'Tam Tutar',
     gatewayFinishInstructions: 'Ödeme işlemini tamamladıktan sonra "Tamam" butonuna tıklayın. Ödeme başarısız olduysa "İptal" diyerek geri dönün.',
-    gatewayLabel: 'QR Ödeme Sağlayıcı',
+    gatewayLabel: 'Ön Ödeme',
+    prePaymentLabel: 'Ön Ödeme',
+    prePaymentAmount: 'Ön Ödeme Tutarı',
+    prePaymentProvider: 'Ön Ödeme Yöntemi',
+    prePaymentDate: 'Ön Ödeme Tarihi',
+    remainderPayment: 'Kalan Ödeme',
+    remainderAmount: 'Kalan Tutar',
+    appointmentDeposit: 'Ön Ödeme (Avans)',
+    appointmentRemainder: 'Kalan Ödeme',
+    appointmentComplete: 'Randevuyu Tamamla',
+    appointmentCollectRemainder: 'Kalan Ödeme Al',
+    appointmentTakeDeposit: 'Ön Ödeme Al',
+    customerAdvanceBalance: 'Müşteri Avans Bakiyesi',
     gatewayPageOpened: 'ödeme sayfası yeni sekmede açıldı.',
     generalLedger: 'Genel Defter',
     generalReport: 'Genel Rapor',
@@ -3549,7 +3574,19 @@ export const translations: any = {
     focusBarcodeInput: 'Focus Barcode Field',
     fullAmount: 'Full Amount',
     gatewayFinishInstructions: 'Click "OK" after completing the payment. Click "Cancel" if the payment failed.',
-    gatewayLabel: 'QR Payment Provider',
+    gatewayLabel: 'Pre-Payment',
+    prePaymentLabel: 'Pre-Payment',
+    prePaymentAmount: 'Pre-Payment Amount',
+    prePaymentProvider: 'Pre-Payment Method',
+    prePaymentDate: 'Pre-Payment Date',
+    remainderPayment: 'Remainder Payment',
+    remainderAmount: 'Remainder Amount',
+    appointmentDeposit: 'Pre-Payment (Deposit)',
+    appointmentRemainder: 'Remainder Payment',
+    appointmentComplete: 'Complete Appointment',
+    appointmentCollectRemainder: 'Collect Remainder',
+    appointmentTakeDeposit: 'Take Pre-Payment',
+    customerAdvanceBalance: 'Customer Advance Balance',
     gatewayPageOpened: 'payment page opened in new tab.',
     generalLedger: 'General Ledger',
     generalReport: 'General Report',
@@ -5212,7 +5249,19 @@ export const translations: any = {
     focusBarcodeInput: 'التركيز على حقل الباركود',
     fullAmount: 'المبلغ الكامل',
     gatewayFinishInstructions: 'انقر على "موافق" بعد إتمام الدفع. انقر على "إلغاء" إذا فشل الدفع.',
-    gatewayLabel: 'دفع عبر QR',
+    gatewayLabel: 'دفع مسبق',
+    prePaymentLabel: 'دفع مسبق',
+    prePaymentAmount: 'مبلغ الدفع المسبق',
+    prePaymentProvider: 'طريقة الدفع المسبق',
+    prePaymentDate: 'تاريخ الدفع المسبق',
+    remainderPayment: 'الدفع المتبقي',
+    remainderAmount: 'المبلغ المتبقي',
+    appointmentDeposit: 'دفع مسبق (عربون)',
+    appointmentRemainder: 'الدفع المتبقي',
+    appointmentComplete: 'إكمال الموعد',
+    appointmentCollectRemainder: 'تحصيل المتبقي',
+    appointmentTakeDeposit: 'أخذ الدفع المسبق',
+    customerAdvanceBalance: 'رصيد العربون',
     gatewayPageOpened: 'فتحت صفحة الدفع في تبويب جديد.',
     generalLedger: 'دفتر الأستاذ العام',
     generalReport: 'التقرير العام',
@@ -6858,7 +6907,19 @@ export const translations: any = {
     focusBarcodeInput: 'Barkod Alanına Odaklan',
     fullAmount: 'بڕی تەواو',
     gatewayFinishInstructions: 'Ödeme işlemini tamamladıktan sonra "Tamam" butonuna tıklayın. Ödeme başarısız olduysa "İptal" diyerek geri dönün.',
-    gatewayLabel: 'دابینکەری پارەدانی QR',
+    gatewayLabel: 'پارەدانی پێشوەختە',
+    prePaymentLabel: 'پارەدانی پێشوەختە',
+    prePaymentAmount: 'بڕی پارەدانی پێشوەختە',
+    prePaymentProvider: 'شێوازی پارەدانی پێشوەختە',
+    prePaymentDate: 'بەرواری پارەدانی پێشوەختە',
+    remainderPayment: 'پارەدانی ماوە',
+    remainderAmount: 'بڕی ماوە',
+    appointmentDeposit: 'پارەدانی پێشوەختە (پێشەکی)',
+    appointmentRemainder: 'پارەدانی ماوە',
+    appointmentComplete: 'تەواوکردنی مەوعید',
+    appointmentCollectRemainder: 'وەرگرتنی ماوە',
+    appointmentTakeDeposit: 'وەرگرتنی پارەدانی پێشوەختە',
+    customerAdvanceBalance: 'باڵانسی پێشەکی',
     gatewayPageOpened: 'ödeme sayfası yeni sekmede açıldı.',
     generalLedger: 'دەفتەری گشتی',
     generalReport: 'ڕاپۆرتە گشتییەکان',
