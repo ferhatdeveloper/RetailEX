@@ -146,12 +146,16 @@ function App() {
           const config = results[0].status === 'fulfilled' ? results[0].value : null;
           const ver = results[1].status === 'fulfilled' ? results[1].value : null;
           if (ver) setVersion(String(ver));
-          if (config) {
-            localStorage.setItem('retailex_web_config', JSON.stringify(mergeRustIntoStoredWebConfig(config)));
-          }
 
-          await initializeFromSQLite(config).catch(() => { });
-          if (config) {
+          // DeskApp: yalnızca config.db is_configured — legacy localStorage tek başına wizard atlamasın
+          const forceWizard = consumeForceSetupWizard();
+          if (forceWizard) setWizardForced(true);
+          const configured = !forceWizard && config?.is_configured === true;
+
+          // is_configured:false → SetupWizard; PG/hibrit/Auth spam yok (initialize + connect atlanır)
+          if (configured && config) {
+            localStorage.setItem('retailex_web_config', JSON.stringify(mergeRustIntoStoredWebConfig(config)));
+            await initializeFromSQLite(config).catch(() => { });
             import('./services/postgres').then(({ postgres }) =>
               postgres.connect().catch(() => { })
             ).catch(() => { });
@@ -159,28 +163,26 @@ function App() {
 
           setIsPgReady(true);
 
-          // DeskApp: yalnızca config.db is_configured — legacy localStorage tek başına wizard atlamasın
-          const forceWizard = consumeForceSetupWizard();
-          if (forceWizard) setWizardForced(true);
-          const configured = !forceWizard && config?.is_configured === true;
           if (config) {
             applyConfig(configured ? config : { ...config, is_configured: false });
           } else {
             applyConfig({ is_configured: false });
           }
 
-          // PG yoksa dene: önce mevcut 15+ algıla/başlat; yoksa NSIS ile aynı PG 15 kur
-          safeInvoke('check_pg16').then(async (exists: any) => {
-            if (exists) return;
-            setInstallingPg(true);
-            try {
-              await safeInvoke('install_pg16');
-            } catch {
-              /* kurulum başarısız — SetupWizard'da manuel TEST ET */
-            } finally {
-              setInstallingPg(false);
-            }
-          }).catch(() => { });
+          // PG kurulum denemesi yalnızca wizard/kurulu değilken (yapılandırılmış oturumu kilitlemesin)
+          if (!configured) {
+            safeInvoke('check_pg16').then(async (exists: any) => {
+              if (exists) return;
+              setInstallingPg(true);
+              try {
+                await safeInvoke('install_pg16');
+              } catch {
+                /* kurulum başarısız — SetupWizard'da manuel TEST ET */
+              } finally {
+                setInstallingPg(false);
+              }
+            }).catch(() => { });
+          }
 
           startupCompleteRef.current = true;
           setIsInitialized(true);
@@ -415,55 +417,50 @@ function App() {
   }
 
   return (
-    <FirmaDonemProvider>
-      <VersionProvider>
-        <ErrorBoundary>
-          {/* Global Loading / Setup Wizard Check */}
-          {isConfigured === null && !wizardForced && !showSetupWizard ? (
-            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-              <div className="text-center flex flex-col items-center gap-6">
-                <NeonLogo size="lg" className="animate-pulse justify-center" productLine={readNeonProductLineFromStorage()} />
-                <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
-                <p className="text-slate-400 text-sm">Yükleniyor...</p>
-              </div>
+    <VersionProvider>
+      <ErrorBoundary>
+        {/* Global Loading / Setup Wizard Check */}
+        {isConfigured === null && !wizardForced && !showSetupWizard ? (
+          <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+            <div className="text-center flex flex-col items-center gap-6">
+              <NeonLogo size="lg" className="animate-pulse justify-center" productLine={readNeonProductLineFromStorage()} />
+              <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
+              <p className="text-slate-400 text-sm">Yükleniyor...</p>
             </div>
-          ) : authLoading && !showSetupWizard ? (
-            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-              <div className="text-center flex flex-col items-center gap-6">
-                <NeonLogo size="lg" className="animate-pulse justify-center" productLine={readNeonProductLineFromStorage()} />
-                <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
-                <p className="text-slate-400 text-sm">Yükleniyor...</p>
-              </div>
+          </div>
+        ) : authLoading && !showSetupWizard ? (
+          <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+            <div className="text-center flex flex-col items-center gap-6">
+              <NeonLogo size="lg" className="animate-pulse justify-center" productLine={readNeonProductLineFromStorage()} />
+              <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
+              <p className="text-slate-400 text-sm">Yükleniyor...</p>
             </div>
-          ) : showSetupWizard ? (
-            <SetupWizard />
-          ) : (
-            <>
-              {/* Login Screen */}
-              {!isAuthenticated ? (
-                <Login onLogin={(userData) => {
-                  logger.info(`User logged in: ${userData.username} (${userData.role})`);
-                }} />
-              ) : (
-                /* Main Application */
-                <MainLayout
-                  currentUser={user as any}
-                  products={products}
-                  setProducts={setProducts}
-                  customers={customers}
-                  setCustomers={setCustomers}
-                  sales={sales}
-                  campaigns={campaigns}
-                  setCampaigns={setCampaigns}
-                  onSaleComplete={handleSaleComplete}
-                  onLogout={handleLogout}
-                />
-              )}
-            </>
-          )}
-        </ErrorBoundary>
-      </VersionProvider>
-    </FirmaDonemProvider>
+          </div>
+        ) : showSetupWizard ? (
+          /* FirmaDonemProvider yok — firms/sync_queue spam engeli */
+          <SetupWizard />
+        ) : !isAuthenticated ? (
+          <Login onLogin={(userData) => {
+            logger.info(`User logged in: ${userData.username} (${userData.role})`);
+          }} />
+        ) : (
+          <FirmaDonemProvider>
+            <MainLayout
+              currentUser={user as any}
+              products={products}
+              setProducts={setProducts}
+              customers={customers}
+              setCustomers={setCustomers}
+              sales={sales}
+              campaigns={campaigns}
+              setCampaigns={setCampaigns}
+              onSaleComplete={handleSaleComplete}
+              onLogout={handleLogout}
+            />
+          </FirmaDonemProvider>
+        )}
+      </ErrorBoundary>
+    </VersionProvider>
   );
 }
 

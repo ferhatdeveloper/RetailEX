@@ -1,5 +1,16 @@
 use tokio_postgres::Error;
 
+/// PostgreSQL 3D000 — hedef veritabanı yok.
+pub fn is_database_does_not_exist(e: &Error) -> bool {
+    if let Some(code) = e.code() {
+        if code.code() == "3D000" {
+            return true;
+        }
+    }
+    let s = e.to_string().to_lowercase();
+    s.contains("3d000") || (s.contains("database") && s.contains("does not exist"))
+}
+
 pub fn format_pg_error(e: Error) -> String {
     let mut details = Vec::new();
 

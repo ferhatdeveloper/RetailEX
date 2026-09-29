@@ -11,6 +11,8 @@ import {
   resolveAccessibleFirmNrs,
   type LoginVerifyRow,
 } from '../services/loginVerify';
+import { isTauriApp, safeInvoke } from '../utils/env';
+import { peekForceSetupWizard } from '../utils/setupWizardGate';
 
 // ===== TYPES =====
 
@@ -187,6 +189,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Check if user has active session
   const checkSession = async () => {
     try {
+      // DeskApp kurulum tamamlanmadan session restore / beauty / firm spam yok
+      if (isTauriApp()) {
+        let deskConfigured = false;
+        try {
+          const cfg = await safeInvoke<{ is_configured?: boolean }>('get_app_config');
+          deskConfigured = cfg?.is_configured === true;
+        } catch {
+          deskConfigured = false;
+        }
+        if (peekForceSetupWizard() || !deskConfigured) {
+          setUser(null);
+          try {
+            useAuthStore.getState().logout();
+          } catch {
+            /* store yoksa yoksay */
+          }
+          return;
+        }
+      }
+
       const sessionData = localStorage.getItem('exretail_session');
       if (sessionData) {
         const session = JSON.parse(sessionData);

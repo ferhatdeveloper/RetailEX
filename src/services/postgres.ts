@@ -652,6 +652,18 @@ function applyWebLocalStorageConfig(config: any): void {
   applyTerminalRuntimeFromConfig(config);
 }
 
+/** Konsol dump — parola / secret alanlarını maskele (asla düz yazma). */
+function redactSecretsForLog(config: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (!config || typeof config !== 'object') return {};
+  const out: Record<string, unknown> = { ...config };
+  for (const key of Object.keys(out)) {
+    if (/pass|password|secret|token|pat/i.test(key) && typeof out[key] === 'string' && String(out[key]).length > 0) {
+      out[key] = '***';
+    }
+  }
+  return out;
+}
+
 /**
  * Initialize all configurations from SQLite backend.
  * @param preloadedConfig - Optional config from App startup (Tauri); avoids duplicate get_app_config call.
@@ -761,7 +773,7 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       ERP_SETTINGS.periodNr = !dP ? '01' : (dP.length <= 2 ? dP.padStart(2, '0') : dP);
       ERP_SETTINGS.selected_cash_registers = config.selected_cash_registers || [];
 
-      console.log('📦 SQLite Config Loaded:', JSON.stringify(config, null, 2));
+      console.log('📦 SQLite Config Loaded:', JSON.stringify(redactSecretsForLog(config), null, 2));
       console.log('🏢 Applied ERP Settings:', ERP_SETTINGS);
 
       // Load Local DB Settings
@@ -1019,6 +1031,10 @@ export async function testDbConfig(config: typeof LOCAL_CONFIG | typeof REMOTE_C
         mode: DB_SETTINGS.activeMode,
         version: 'PostgreSQL 16.x',
       };
+    } else if (status === 'DB_MISSING') {
+      throw new Error(
+        `DB_MISSING: Veritabanı "${config.database}" yok. SetupWizard’da OLUŞTUR veya CREATE DATABASE.`
+      );
     } else {
       throw new Error(status);
     }

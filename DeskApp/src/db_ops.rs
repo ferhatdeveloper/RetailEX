@@ -3,7 +3,7 @@ use tauri::{command, Manager};
 use tauri::path::BaseDirectory;
 use tokio_postgres::NoTls;
 
-pub use crate::db_utils::format_pg_error;
+pub use crate::db_utils::{format_pg_error, is_database_does_not_exist};
 
 /// Windows/OS güncellemesi sonrası template1 collation uyumsuzluğunda CREATE DATABASE başarısız olur.
 async fn refresh_template_collation_versions(client: &tokio_postgres::Client) {
@@ -530,9 +530,32 @@ pub async fn apply_migrations_internal(
              .dbname(db_name)
              .connect_timeout(std::time::Duration::from_secs(10));
 
-    let (client, connection) = pg_config.connect(NoTls)
-        .await
-        .map_err(|e| format!("Migration DB ({}) Bağlantı Hatası [{}]: {}", if is_remote { "Uzak" } else { "Yerel" }, db_name, format_pg_error(e)))?;
+    let (client, connection) = match pg_config.connect(NoTls).await {
+        Ok(pair) => pair,
+        Err(e) if is_database_does_not_exist(&e) => {
+            println!(
+                "⚠️ Hedef DB yok (3D000): {} — CREATE DATABASE deneniyor...",
+                db_name
+            );
+            create_database(config.clone(), target.clone()).await?;
+            pg_config.connect(NoTls).await.map_err(|e2| {
+                format!(
+                    "Migration DB ({}) oluşturuldu ama bağlanılamadı [{}]: {}",
+                    if is_remote { "Uzak" } else { "Yerel" },
+                    db_name,
+                    format_pg_error(e2)
+                )
+            })?
+        }
+        Err(e) => {
+            return Err(format!(
+                "Migration DB ({}) Bağlantı Hatası [{}]: {}",
+                if is_remote { "Uzak" } else { "Yerel" },
+                db_name,
+                format_pg_error(e)
+            ));
+        }
+    };
 
     tokio::spawn(async move {
         if let Err(e) = connection.await {
@@ -620,8 +643,23 @@ pub async fn apply_migrations_internal(
 
     let mut report: Vec<MigrationStatus> = Vec::new();
     let mut applied_count = 0;
+    let mut consecutive_errors = 0usize;
+    let mut total_errors = 0usize;
     
     for (version, name, path) in migration_files {
+        // Çok sayıda ardışık hata = şema yağmuru; kalanı atla (51 hata spam’i azalt)
+        if consecutive_errors >= 8 || total_errors >= 20 {
+            report.push(MigrationStatus {
+                name: format!("… ({}+ dosya atlandı)", name),
+                status: "Error".to_string(),
+                error: Some(format!(
+                    "Kalan migration'lar durduruldu ({} ardışık / {} toplam hata). Önce DB/şemayı düzeltip tekrar deneyin.",
+                    consecutive_errors, total_errors
+                )),
+            });
+            break;
+        }
+
         // Check if applied by NAME (filename)
         let rows = client.query("SELECT 1 FROM sys_migrations WHERE name = $1", &[&name])
             .await
@@ -646,6 +684,8 @@ pub async fn apply_migrations_internal(
                     status: "Error".to_string(),
                     error: Some("Dosya sistemde bulunamadı".to_string()),
                 });
+                consecutive_errors += 1;
+                total_errors += 1;
                 continue;
             }
 
@@ -658,6 +698,8 @@ pub async fn apply_migrations_internal(
                         status: "Error".to_string(),
                         error: Some(format!("Dosya okunamadı: {}", e)),
                     });
+                    consecutive_errors += 1;
+                    total_errors += 1;
                     continue;
                 }
             };
@@ -715,6 +757,8 @@ pub async fn apply_migrations_internal(
                     status: "Error".to_string(),
                     error: Some(err_msg),
                 });
+                consecutive_errors += 1;
+                total_errors += 1;
                 continue;
             }
             
@@ -727,6 +771,7 @@ pub async fn apply_migrations_internal(
             }
             
             applied_count += 1;
+            consecutive_errors = 0;
             report.push(MigrationStatus {
                 name: name.clone(),
                 status: "Applied".to_string(),
@@ -1156,11 +1201,41 @@ pub async fn check_db_status(config: AppConfig) -> Result<String, String> {
 
     match pg_config.connect(NoTls).await {
         Ok((client, connection)) => {
+            let db_name = local
+                .split('/')
+                .last()
+                .unwrap_or("retailex_local")
+                .trim();
+            let db_name = if db_name.is_empty() {
+                "retailex_local"
+            } else {
+                db_name
+            };
+
+            let missing = match client
+                .query("SELECT 1 FROM pg_database WHERE datname = $1", &[&db_name])
+                .await
+            {
+                Ok(rows) => rows.is_empty(),
+                Err(e) => {
+                    eprintln!(
+                        "RetailEX check_db_status pg_database sorgusu: {}",
+                        format_pg_error(e)
+                    );
+                    false
+                }
+            };
+
             drop(client);
             tokio::spawn(async move {
                 let _ = connection.await;
             });
-            Ok("RUNNING".to_string())
+
+            if missing {
+                Ok("DB_MISSING".to_string())
+            } else {
+                Ok("RUNNING".to_string())
+            }
         }
         Err(e) => {
             let err_str = e.to_string().to_lowercase();
@@ -1173,6 +1248,9 @@ pub async fn check_db_status(config: AppConfig) -> Result<String, String> {
 
             if auth_fail {
                 Ok("AUTH_FAILED".to_string())
+            } else if is_database_does_not_exist(&e) {
+                // postgres sistem DB'sine bağlanırken 3D000 beklenmez; yine de sınıflandır
+                Ok("DB_MISSING".to_string())
             } else if service_running || had_tcp {
                 // Port/servis ayakta; başka bağlantı hatası → algılandı (şifre dışı)
                 eprintln!(

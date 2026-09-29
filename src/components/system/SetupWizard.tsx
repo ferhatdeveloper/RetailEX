@@ -46,6 +46,51 @@ import {
     DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
 } from '../../services/merkezTenantRegistry';
 
+type LocalDbStatus =
+    | 'IDLE'
+    | 'CHECKING'
+    | 'RUNNING'
+    | 'INSTALLED_RUNNING'
+    | 'NOT_FOUND'
+    | 'INSTALLED_NOT_RUNNING'
+    | 'AUTH_FAILED'
+    | 'DB_MISSING'
+    | 'ERROR';
+
+const MIGRATION_TOAST_ERROR_PREVIEW = 5;
+
+/** Migration hatalarını sınıflandır; toast’ta ilk N satır özeti (51 hata spam’i engelle). */
+function summarizeMigrationErrorsForToast(
+    errors: { name: string; error?: string | null }[],
+    maxPreview = MIGRATION_TOAST_ERROR_PREVIEW,
+): { kind: 'db_missing' | 'partial'; titleHint?: string; description: string } {
+    const msgs = errors.map((e) => `${e.name}: ${e.error || ''}`.toLowerCase());
+    const dbMissing = msgs.some(
+        (m) =>
+            m.includes('3d000') ||
+            m.includes('db_missing') ||
+            (m.includes('database') && m.includes('does not exist')) ||
+            m.includes('veritabanı') && (m.includes('yok') || m.includes('bulunamadı')),
+    );
+    if (dbMissing) {
+        return {
+            kind: 'db_missing',
+            description:
+                'Hedef veritabanı yok (3D000). Önce «OLUŞTUR» ile CREATE DATABASE çalıştırın, sonra tabloları güncelleyin.',
+        };
+    }
+    const preview = errors.slice(0, maxPreview).map((e) => {
+        const err = String(e.error || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+        return `• ${e.name}${err ? `: ${err}` : ''}`;
+    });
+    const more =
+        errors.length > maxPreview ? `\n… +${errors.length - maxPreview} hata daha (loglar)` : '';
+    return {
+        kind: 'partial',
+        description: preview.join('\n') + more,
+    };
+}
+
 const SetupWizard: React.FC = () => {
     const { tm } = useLanguage();
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -213,7 +258,7 @@ const SetupWizard: React.FC = () => {
     const [backupType, setBackupType] = useState<'tables' | 'full'>('full');
     const [backupFormat, setBackupFormat] = useState<'postgresql' | 'supabase'>('supabase');
 
-    const [dbStatus, setDbStatus] = useState<'IDLE' | 'CHECKING' | 'RUNNING' | 'INSTALLED_RUNNING' | 'NOT_FOUND' | 'INSTALLED_NOT_RUNNING' | 'AUTH_FAILED' | 'ERROR'>('IDLE');
+    const [dbStatus, setDbStatus] = useState<LocalDbStatus>('IDLE');
     const [dbErrorMessage, setDbErrorMessage] = useState('');
     const [activeTab, setActiveTab] = useState<'standard' | 'supabase'>('standard');
     const [logoActiveTab, setLogoActiveTab] = useState<'config' | 'preview'>('config');
@@ -481,9 +526,14 @@ const SetupWizard: React.FC = () => {
                         setDbErrorMessage(status);
                         toast.error(tm('setupDbError') + status);
                     } else {
-                        setDbStatus(status as any);
+                        setDbStatus(status as LocalDbStatus);
                         if (status === 'RUNNING') {
                             toast.success('Yerel PostgreSQL bağlantısı başarılı');
+                        } else if (status === 'DB_MISSING') {
+                            toast.warning(tm('setupDbMissingTitle'), {
+                                description: tm('setupDbMissingDesc'),
+                                duration: 12000,
+                            });
                         } else if (status === 'AUTH_FAILED') {
                             toast.error('PostgreSQL çalışıyor; kullanıcı/şifre hatalı');
                         } else if (status === 'INSTALLED_RUNNING') {
@@ -895,6 +945,24 @@ const SetupWizard: React.FC = () => {
             const primaryTarget = resolvePrimaryMigrationTarget(normalized.db_mode as 'online' | 'offline' | 'hybrid');
 
             if (isTauri) {
+                // DB yoksa önce CREATE (idempotent); migration 3D000 yağmurunu kes
+                try {
+                    await safeInvoke('create_database', {
+                        config: normalized,
+                        target: primaryTarget === 'remote' ? 'remote' : 'local',
+                    });
+                } catch (createErr: any) {
+                    const msg = String(createErr?.message || createErr || '');
+                    if (/3d000|does not exist|oluşturulamadı|bağlanılamadı/i.test(msg)) {
+                        toast.error(tm('setupDbMissingTitle'), {
+                            description: msg.slice(0, 240) || tm('setupDbMissingDesc'),
+                            duration: 14000,
+                        });
+                        return;
+                    }
+                    console.warn('[runMigrations] create_database:', msg);
+                }
+
                 if (sqlSourceMode === 'github') {
                     toast.info(`GitHub SQL indiriliyor (${sqlGitRef || 'main'})…`);
                     const result = (await safeInvoke('fetch_migrations_from_github', {
@@ -943,10 +1011,23 @@ const SetupWizard: React.FC = () => {
                 const applied = report.filter(r => r.status === 'Applied').length;
 
                 if (errors.length > 0) {
-                    toast.warning(tm('setupMigrationsPartial').replace('{applied}', String(applied)).replace('{errors}', String(errors.length)), {
-                        description: 'Detaylar için logları kontrol edin.',
-                        duration: 10000,
-                    });
+                    const summary = summarizeMigrationErrorsForToast(errors);
+                    if (summary.kind === 'db_missing') {
+                        toast.error(tm('setupDbMissingTitle'), {
+                            description: summary.description,
+                            duration: 14000,
+                        });
+                    } else {
+                        toast.warning(
+                            tm('setupMigrationsPartial')
+                                .replace('{applied}', String(applied))
+                                .replace('{errors}', String(errors.length)),
+                            {
+                                description: summary.description,
+                                duration: 14000,
+                            },
+                        );
+                    }
                 } else {
                     toast.success(tm('setupMigrationsApplied').replace('{applied}', String(applied)));
                 }
@@ -1200,7 +1281,32 @@ const SetupWizard: React.FC = () => {
                             target: primaryTarget,
                             loadDemoData: migrationLoadDemo
                         });
-                        await emit('sync-event', `✅ Tablo yapıları kuruldu: ${migrationResult}`);
+                        let migSummary = String(migrationResult ?? '');
+                        try {
+                            const rep = JSON.parse(String(migrationResult)) as MigrationStatus[];
+                            if (Array.isArray(rep)) {
+                                setMigrationReport(rep);
+                                const errN = rep.filter((r) => r.status === 'Error').length;
+                                const okN = rep.filter((r) => r.status === 'Applied').length;
+                                migSummary = errN > 0
+                                    ? `${okN} uygulandı, ${errN} hata`
+                                    : `${okN} güncelleme uygulandı`;
+                                if (errN > 0) {
+                                    const summary = summarizeMigrationErrorsForToast(
+                                        rep.filter((r) => r.status === 'Error'),
+                                    );
+                                    toast.warning(
+                                        tm('setupMigrationsPartial')
+                                            .replace('{applied}', String(okN))
+                                            .replace('{errors}', String(errN)),
+                                        { description: summary.description, duration: 14000 },
+                                    );
+                                }
+                            }
+                        } catch {
+                            /* düz metin */
+                        }
+                        await emit('sync-event', `✅ Tablo yapıları: ${migSummary}`);
                         setDbInitialized(true);
                     }
                 }
@@ -2477,16 +2583,46 @@ const SetupWizard: React.FC = () => {
                                                         <Lock className="w-7 h-7 text-white" />
                                                     </div>
                                                     <div className="space-y-2">
-                                                        <h4 className="text-xl font-black text-white">Kimlik Doğrulama Hatası</h4>
-                                                        <p className="text-amber-200/70 text-sm font-medium leading-relaxed">
-                                                            PostgreSQL servisine bağlanıldı ancak girdiğiniz kullanıcı adı veya şifre hatalı. Lütfen "postgres" şifrenizi kontrol edin.
+                                                        <h4 className="text-xl font-black text-white">Kimlik doğrulama başarısız</h4>
+                                                        <p className="text-amber-100/80 text-sm font-medium leading-relaxed">
+                                                            PostgreSQL portu açık; kullanıcı veya şifre hatalı. Aşağıdaki yerel kullanıcı/şifreyi düzeltip tekrar test edin.
                                                         </p>
-                                                        <button
-                                                            onClick={checkDbStatus}
-                                                            className="mt-4 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
-                                                        >
-                                                            BİLGİLERİ GÜNCELLE VE DENE
-                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {dbStatus === 'DB_MISSING' && (
+                                            <div className="p-8 rounded-[32px] bg-orange-600/10 border-2 border-orange-500/30 shadow-[0_20px_60px_-15px_rgba(249,115,22,0.2)] animate-in zoom-in-95">
+                                                <div className="flex items-start gap-6">
+                                                    <div className="w-14 h-14 rounded-2xl bg-orange-500 flex items-center justify-center shrink-0 shadow-lg shadow-orange-500/20">
+                                                        <Database className="w-7 h-7 text-white" />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <h4 className="text-xl font-black text-white">{tm('setupDbMissingTitle')}</h4>
+                                                        <p className="text-orange-100/80 text-sm font-medium leading-relaxed">
+                                                            {tm('setupDbMissingDesc')}
+                                                        </p>
+                                                        <p className="text-[11px] text-orange-200/70 font-mono">
+                                                            {config.local_db || '127.0.0.1:5432/retailex_local'}
+                                                        </p>
+                                                        <div className="pt-4 flex flex-wrap gap-4">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => void initializeDatabase('local')}
+                                                                disabled={loading || dbInitialized}
+                                                                className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md disabled:opacity-50"
+                                                            >
+                                                                {loading ? tm('setupCreatingTables') : tm('setupDbCreateNow')}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={checkDbStatus}
+                                                                className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                                            >
+                                                                Tekrar kontrol
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -2524,7 +2660,7 @@ const SetupWizard: React.FC = () => {
 
                                         {/* Local Server Section — online terminal / merkez-only modda gizli */}
                                         {showLocalDbSection && (
-                                        <div className={`relative p-8 rounded-2xl transition-all duration-300 border ${dbStatus === 'RUNNING' || dbStatus === 'INSTALLED_RUNNING' ? 'bg-blue-600/5 border-blue-500/30' :
+                                        <div className={`relative p-8 rounded-2xl transition-all duration-300 border ${dbStatus === 'RUNNING' || dbStatus === 'INSTALLED_RUNNING' || dbStatus === 'DB_MISSING' ? 'bg-blue-600/5 border-blue-500/30' :
                                             dbStatus === 'AUTH_FAILED' ? 'bg-amber-600/5 border-amber-500/30' :
                                                 'bg-white/[0.03] border-white/5'
                                             } overflow-hidden group`}>
@@ -2537,6 +2673,7 @@ const SetupWizard: React.FC = () => {
                                                 <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Yerel Sunucu (Localhost)</span>
                                                 {dbStatus === 'RUNNING' && <div className="ml-auto flex items-center gap-2 text-[10px] font-bold text-blue-400 uppercase tracking-widest"><CheckCircle className="w-3 h-3" />Bağlı</div>}
                                                 {dbStatus === 'INSTALLED_RUNNING' && <div className="ml-auto flex items-center gap-2 text-[10px] font-bold text-emerald-400 uppercase tracking-widest"><CheckCircle className="w-3 h-3" />Algılandı</div>}
+                                                {dbStatus === 'DB_MISSING' && <div className="ml-auto flex items-center gap-2 text-[10px] font-bold text-orange-400 uppercase tracking-widest"><Database className="w-3 h-3" />DB yok</div>}
                                             </div>
 
                                             <div className="space-y-6 relative z-10">
@@ -2729,10 +2866,10 @@ const SetupWizard: React.FC = () => {
                                                         </button>
                                                         <button
                                                             onClick={() => initializeDatabase('local')}
-                                                            disabled={loading || dbInitialized || dbStatus !== 'RUNNING'}
+                                                            disabled={loading || dbInitialized || (dbStatus !== 'RUNNING' && dbStatus !== 'DB_MISSING')}
                                                             className={`flex-1 py-3 rounded-xl font-bold text-[11px] tracking-wide transition-all flex items-center justify-center gap-2 border ${dbInitialized
                                                                 ? 'bg-blue-600/20 text-blue-400 border-blue-500/30'
-                                                                : dbStatus === 'RUNNING'
+                                                                : dbStatus === 'RUNNING' || dbStatus === 'DB_MISSING'
                                                                     ? 'bg-blue-600 text-white border-blue-500'
                                                                     : 'bg-white/5 text-slate-600 border-white/5 cursor-not-allowed'
                                                                 }`}
