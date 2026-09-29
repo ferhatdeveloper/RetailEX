@@ -3007,11 +3007,27 @@ export function ReportsModule({
     () => dailyExpenseRowsForReport.reduce((sum, row) => sum + (row.isCash ? row.amount : 0), 0),
     [dailyExpenseRowsForReport],
   );
-  /** Gider kartı kapalıysa net'ten gider düşülmez */
-  const dailyNetAfterExpense = useMemo(
+  /**
+   * Gider kartı kapalıysa net'ten gider düşülmez.
+   * Muhasebe çift yönü: veresiye satış → cari alacak (+) / gelir (+); tahsil edilene kadar
+   * kasa/banka akışı 0. Bu nedenle Net iki yorumlu gösterilir:
+   * - Net (Brüt) = brüt ciro − gider (gelir tablosu; veresiye dahil)
+   * - Net (Nakit) = tahsilat − gider (kasa/banka; veresiye hariç)
+   */
+  const dailyNetAfterExpenseBrut = useMemo(
     () =>
       reportNetAfterOptionalExpense(dailyTotal, totalExpensesForReport, showDailyCardTotalExpense),
     [dailyTotal, totalExpensesForReport, showDailyCardTotalExpense],
+  );
+  /** Kasa/banka akışı: nakit+kart+havale toplamından gider düşülür (veresiye hariç). */
+  const dailyNetAfterExpenseNakit = useMemo(
+    () =>
+      reportNetAfterOptionalExpense(
+        dailyCollected,
+        totalExpensesForReport,
+        showDailyCardTotalExpense,
+      ),
+    [dailyCollected, totalExpensesForReport, showDailyCardTotalExpense],
   );
 
   const dailyExpenseGridRows = useMemo(() => {
@@ -4308,10 +4324,13 @@ export function ReportsModule({
     let printCash = dailyCash;
     let printCard = dailyCard;
     let printVeresiye = dailyRemaining;
+    /** Tahsil edilen (nakit+kart+havale) — print brüt/nakit Net ayrımı için */
+    let printCollected = printCash + printCard;
     if (dailyKindFilter !== 'all') {
       printCash = 0;
       printCard = 0;
       printVeresiye = 0;
+      printCollected = 0;
       for (const row of dailyKindActiveRows) {
         const share = dailyKindAmountShare(row, dailyKindFilter);
         const split = row.erpSale
@@ -4319,6 +4338,7 @@ export function ReportsModule({
           : saleCollectedSplit({ total: Number(row.total) || 0, paymentMethod: row.paymentMethod });
         printCash += (Number(split.cash) || 0) * share;
         printCard += (Number(split.card) || 0) * share;
+        printCollected += (Number(split.collected) || 0) * share;
         if (row.erpSale ? !isReturnSale(row.erpSale) : String(row.status || '').toLowerCase() !== 'return') {
           printVeresiye += (Number(split.remaining) || 0) * share;
         }
@@ -4530,12 +4550,13 @@ export function ReportsModule({
     ${showDailyCardTotalSales ? `<div class="card"><div>${escHtml(L('reportsPrintSummaryTxnCount'))}</div><strong>${dailyKindActiveRows.length}</strong></div>` : ''}
     <div class="card"><div>${escHtml(`${L('reportsDetStatusCancelled')} / ${L('reportsDetStatusRefunded')}`)}</div><strong>${removedRows.length}</strong></div>
     ${showDailyCardTotalRevenue ? `<div class="card"><div>${escHtml(L('reportsPrintSummaryTotalRev'))}</div><strong>${formatNumber(printNet, 2, false)}</strong></div>` : ''}
+    ${showDailyCardAmountCollected ? `<div class="card"><div>${escHtml(L('tahsilEdilen'))}</div><strong>${formatNumber(printCollected, 2, false)}</strong></div>` : ''}
     ${showDailyCardTotalDiscount ? `<div class="card"><div>${escHtml(L('reportsPrintSummaryTotalDisc'))}</div><strong>${formatNumber(printDisc, 2, false)}</strong></div>` : ''}
     ${showDailyCardCash ? `<div class="card"><div>${escHtml(L('cashLabel'))}</div><strong>${formatNumber(printCash, 2, false)}</strong></div>` : ''}
     ${showDailyCardCard ? `<div class="card"><div>${escHtml(L('cardLabel'))}</div><strong>${formatNumber(printCard, 2, false)}</strong></div>` : ''}
     ${showDailyCardRemainingAccount ? `<div class="card"><div>${escHtml(L('veresiyeVerilen'))}</div><strong>${formatNumber(printVeresiye, 2, false)}</strong></div>` : ''}
     ${showDailyCardTotalExpense ? `<div class="card"><div>${escHtml(L('totalExpense'))}</div><strong>${formatNumber(totalExpensesForReport, 2, false)}</strong></div>` : ''}
-    ${showDailyCardNet ? `<div class="card"><div>${escHtml(L('dailyNetAfterExpense'))}</div><strong>${formatNumber(reportNetAfterOptionalExpense(printNet, totalExpensesForReport, showDailyCardTotalExpense), 2, false)}</strong></div>` : ''}
+    ${showDailyCardNet ? `<div class="card"><div>${escHtml(L('dailyNetAfterExpenseBrut'))}</div><strong>${formatNumber(reportNetAfterOptionalExpense(printNet, totalExpensesForReport, showDailyCardTotalExpense), 2, false)}</strong><div style="font-size:10px;color:#64748b;margin-top:4px">${escHtml(L('dailyNetAfterExpenseNakit'))}: <strong>${formatNumber(reportNetAfterOptionalExpense(printCollected, totalExpensesForReport, showDailyCardTotalExpense), 2, false)}</strong></div></div>` : ''}
   </div>
   <h3 style="font-size:14px;margin:0 0 8px">${escHtml(L('reportsPrintPosLinesTitle'))}</h3>
   <table class="t">
@@ -4618,7 +4639,7 @@ export function ReportsModule({
   ${showDailyCardCard ? `<div class="row"><span>${escHtml(L('cardLabel'))}</span><span>${formatNumber(printCard, 2, false)}</span></div>` : ''}
   ${showDailyCardRemainingAccount ? `<div class="row"><span>${escHtml(L('veresiyeVerilen'))}</span><span>${formatNumber(printVeresiye, 2, false)}</span></div>` : ''}
   ${showDailyCardTotalExpense ? `<div class="row"><span>${escHtml(L('totalExpense'))}</span><span class="bold">${formatNumber(totalExpensesForReport, 2, false)}</span></div>` : ''}
-  ${showDailyCardNet ? `<div class="row"><span>${escHtml(L('dailyNetAfterExpense'))}</span><span class="bold">${formatNumber(reportNetAfterOptionalExpense(printNet, totalExpensesForReport, showDailyCardTotalExpense), 2, false)}</span></div>` : ''}
+  ${showDailyCardNet ? `<div class="row"><span>${escHtml(L('dailyNetAfterExpenseBrut'))}</span><span class="bold">${formatNumber(reportNetAfterOptionalExpense(printNet, totalExpensesForReport, showDailyCardTotalExpense), 2, false)}</span></div><div class="row"><span>${escHtml(L('dailyNetAfterExpenseNakit'))}</span><span class="bold">${formatNumber(reportNetAfterOptionalExpense(printCollected, totalExpensesForReport, showDailyCardTotalExpense), 2, false)}</span></div>` : ''}
   <div class="divider"></div>
   <div class="section-title">${escHtml(L('reportsPrintPosDetail80'))}</div>
   ${emptySales80}
@@ -5988,13 +6009,20 @@ export function ReportsModule({
                   {showDailyCardNet ? (
                   <div className="bg-white rounded-lg p-4 border-2 border-emerald-100">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('dailyNetAfterExpense')}</p>
-                        <p className={`text-2xl font-bold mt-1 ${dailyNetAfterExpense >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                          {formatNumber(dailyNetAfterExpense, 2, false)}
+                      <div className="w-full">
+                        <p className="text-sm text-gray-600">{tm('dailyNetAfterExpenseBrut')}</p>
+                        <p className={`text-2xl font-bold mt-1 ${dailyNetAfterExpenseBrut >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          {formatNumber(dailyNetAfterExpenseBrut, 2, false)}
                         </p>
+                        <div className="mt-3 pt-3 border-t border-slate-100">
+                          <p className="text-xs text-slate-500">{tm('dailyNetAfterExpenseNakit')}</p>
+                          <p className={`text-lg font-bold mt-0.5 ${dailyNetAfterExpenseNakit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                            {formatNumber(dailyNetAfterExpenseNakit, 2, false)}
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-1 leading-snug">{tm('dailyNetAfterExpenseHint')}</p>
+                        </div>
                       </div>
-                      <TrendingUp className="w-12 h-12 text-emerald-400 opacity-30" />
+                      <TrendingUp className="w-12 h-12 text-emerald-400 opacity-30 shrink-0" />
                     </div>
                   </div>
                   ) : null}

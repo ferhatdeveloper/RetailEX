@@ -127,7 +127,7 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
   // DevExDataGrid kolonları — sıra, responsive görünürlük ve minWidth ile kolon
   // başlıklarının kesilmesini engeller. Mobil için description/wrap esnek olur,
   // tutar kolonları sağa hizalı kalır.
-  const ekstreColumns = useMemo<ColumnDef<EkstreRow, unknown>[]>(() => {
+  const ekstreColumns = useMemo<ColumnDef<EkstreRow, any>[]>(() => {
     return [
       {
         id: 'date',
@@ -476,7 +476,7 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
           </div>
         ) : (
           <div className="p-2 sm:p-3">
-            <DevExDataGrid<EkstreRow>
+            <DevExDataGrid
               data={ekstresiRows}
               columns={ekstreColumns}
               storageNamespace="cari-account-statement"
@@ -486,9 +486,6 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
               pageSize={15}
               pageSizeOptions={[10, 15, 20, 50, 100]}
               height="100%"
-              getRowId={(row, idx) =>
-                `${String(row.fiche_no ?? '-')}-${String(row.date ?? '')}-${idx}`
-              }
             />
           </div>
         )}

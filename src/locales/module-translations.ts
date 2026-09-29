@@ -7482,6 +7482,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   bAppointmentCompleted: { tr: 'Tamamlandı', en: 'Completed', ar: 'مكتمل', ku: 'تەواو بووە' },
   bAppointmentCancelled: { tr: 'İptal Edildi', en: 'Cancelled', ar: 'ملغي', ku: 'هەڵوەشاوەتەوە' },
   bAppointmentNoShow: { tr: 'Gelmedi', en: 'No Show', ar: 'لم يحضر', ku: 'نەهات' },
+  bAppointmentCancelledCartHint: { tr: 'İptal edilen randevunun hizmetleri POS’a yüklenmez', en: 'Cancelled appointment services are not loaded into POS', ar: 'لا يتم تحميل خدمات الموعد الملغي إلى نقطة البيع', ku: 'خزمەتگوزارییەکانی ژمارەی هەڵوەشاوە نادرێنە ناوەوە بۆ POS' },
   bSpecialist: { tr: 'Uzman', en: 'Specialist', ar: 'متخصص', ku: 'پسپۆڕ' },
   bDuration: { tr: 'Süre', en: 'Duration', ar: 'المدة', ku: 'ماوە' },
   bDay: { tr: 'Gün', en: 'Day', ar: 'يوم', ku: 'ڕۆژ' },
@@ -10966,6 +10967,30 @@ export const excelModuleTranslations = {
     ku: 'سەر ڕیز یان ئایکۆنی سڕینەوە کلیک بکە — دوای پشتڕاستکردنەوە تۆمار دەسڕدرێتەوە (باڵانسی سندووق دەگەڕێتەوە).',
   },
   dailyNetAfterExpense: { tr: 'Net (ciro - gider)', en: 'Net (revenue - expense)', ar: 'صافي (الإيراد - المصروف)', ku: 'خاوێن (داهات - خەرجی)' },
+  /**
+   * Muhasebe çift yönü: veresiye satış → cari alacak (+) / gelir (+); tahsil edilene kadar
+   * kasa/banka akışı 0. Net iki yorumlu gösterilir:
+   * - Net (Brüt): brüt ciro − gider (gelir tablosu; veresiye dahil).
+   * - Net (Nakit): tahsilat − gider (kasa/banka; veresiye hariç).
+   */
+  dailyNetAfterExpenseBrut: {
+    tr: 'Net (Brüt)',
+    en: 'Net (Gross)',
+    ar: 'صافي (إجمالي)',
+    ku: 'خاوێن (گشتی)',
+  },
+  dailyNetAfterExpenseNakit: {
+    tr: 'Net (Nakit)',
+    en: 'Net (Cash)',
+    ar: 'صافي (نقد)',
+    ku: 'خاوێن (نەقد)',
+  },
+  dailyNetAfterExpenseHint: {
+    tr: 'Tahsilat − gider (veresiye hariç, kasa/banka akışı).',
+    en: 'Collected − expense (excludes credit, cash/bank flow).',
+    ar: 'المحصّل − المصروف (بدون الآجل، تدفق الصندوق/البنك).',
+    ku: 'وەرگیراو − خەرجی (بێ قەرز، جوڵەی سندووق/بانک).',
+  },
   dailyExpenseTypeVoucher: { tr: 'Gider pusulası', en: 'Expense voucher', ar: 'سند مصروف', ku: 'پسوڵەی خەرجی' },
   dailyExpenseTypeSalary: { tr: 'Maaş ödemesi', en: 'Salary payment', ar: 'دفع راتب', ku: 'پارەدانی مووچە' },
   dailyExpenseTypeAdvance: { tr: 'Avans', en: 'Advance', ar: 'سلفة', ku: 'پێشەکی' },

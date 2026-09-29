@@ -857,8 +857,23 @@ export function AppointmentPOS({
             if (cancelled) return;
 
             const siblings = findBeautyAppointmentsSameQueueGroup(primary, pool.length > 0 ? pool : [primary]);
+            // İptal / gelmedi randevuların hizmetleri POS'a (sepet / posta) yüklenmez.
+            const activeSiblings = siblings.filter(
+                (s) => !(
+                    appointmentStatusMatches(s.status, AppointmentStatus.CANCELLED) ||
+                    appointmentStatusMatches(s.status, AppointmentStatus.NO_SHOW)
+                ),
+            );
+            if (appointmentStatusMatches(primary.status, AppointmentStatus.CANCELLED) ||
+                appointmentStatusMatches(primary.status, AppointmentStatus.NO_SHOW)) {
+                if (!cancelled) {
+                    toast.error(tm('bAppointmentCancelledCartHint'));
+                }
+                setHydratedAppointmentId(primary.id);
+                return;
+            }
             const lines: CartLine[] = [];
-            for (const apt of siblings) {
+            for (const apt of activeSiblings) {
                 const sid = String(apt.staff_id ?? apt.specialist_id ?? '').trim() || undefined;
                 const svcId = String(apt.service_id ?? '').trim();
                 const mapped = svcId ? services.find(s => String(s.id) === svcId) : undefined;
@@ -937,17 +952,17 @@ export function AppointmentPOS({
                 }
             }
 
-            const firstStaff = String(siblings[0]?.staff_id ?? siblings[0]?.specialist_id ?? '').trim() || undefined;
+            const firstStaff = String(activeSiblings[0]?.staff_id ?? activeSiblings[0]?.specialist_id ?? '').trim() || undefined;
             setDefaultSpecialistId(firstStaff ?? '');
             setAptDate(safeDateYmd(rawDate, safeDateYmd(prefillDate ?? new Date().toISOString().slice(0, 10))));
             setAptTime(safeTimeHHmm(rawTime || prefillTime || '09:00'));
             setAptDevice(String(primary.device_id ?? '').trim());
             setAptNotes(String(primary.notes ?? ''));
-            const trSrc = siblings[0] ?? primary;
+            const trSrc = activeSiblings[0] ?? primary;
             setReceiptTreatmentDegree(String(trSrc.treatment_degree ?? '').trim());
             setReceiptTreatmentShots(String(trSrc.treatment_shots ?? '').trim());
             setAptStatus(primary.status ?? AppointmentStatus.CONFIRMED);
-            const sumDur = siblings.reduce(
+            const sumDur = activeSiblings.reduce(
                 (s, a) => s + Math.max(1, Math.round(Number(a.duration) || 30)),
                 0
             );
