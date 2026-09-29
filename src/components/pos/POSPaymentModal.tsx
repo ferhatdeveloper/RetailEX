@@ -819,6 +819,31 @@ export function POSPaymentModal({
                       )}
                     </>
                   )}
+
+                  {canPostRemainderToCari && (
+                    <div className="mt-3 pt-3 border-t-2 border-orange-200">
+                      <button
+                        type="button"
+                        data-testid="pos-write-remaining-to-cari"
+                        onClick={handleWriteRemainingToCari}
+                        title={
+                          selectedCustomer
+                            ? `${writeRemainingToCariLabel} — ${formatCurrency(remaining)}`
+                            : selectCustomerForCariMessage
+                        }
+                        className={`w-full py-3 px-4 text-sm font-semibold transition-colors flex items-center justify-center gap-2 border-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${
+                          darkMode
+                            ? 'bg-orange-900/40 hover:bg-orange-900/60 text-orange-300 border-orange-700'
+                            : 'bg-orange-50 hover:bg-orange-100 text-orange-800 border-orange-300'
+                        }`}
+                      >
+                        <Wallet className="w-4 h-4" aria-hidden />
+                        {remaining > 0
+                          ? `${writeRemainingToCariLabel} (${formatCurrency(remaining)})`
+                          : writeRemainingToCariLabel}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1022,32 +1047,6 @@ export function POSPaymentModal({
                   {t.addPaymentLabel || 'Ödeme Ekle'}
                 </button>
               </div>
-
-              {canPostRemainderToCari && (
-                <button
-                  type="button"
-                  data-testid="pos-write-remaining-to-cari"
-                  onClick={handleWriteRemainingToCari}
-                  title={
-                    selectedCustomer
-                      ? `${writeRemainingToCariLabel} — ${formatCurrency(remaining)}`
-                      : selectCustomerForCariMessage
-                  }
-                  className={`w-full py-3 text-sm font-semibold transition-colors flex items-center justify-center gap-2 border-2 ${
-                    darkMode
-                      ? 'bg-orange-900/40 hover:bg-orange-900/60 text-orange-300 border-orange-700'
-                      : 'bg-orange-50 hover:bg-orange-100 text-orange-800 border-orange-300'
-                  }`}
-                >
-                  <Wallet className="w-4 h-4" aria-hidden />
-                  {writeRemainingToCariLabel} ({formatCurrency(remaining)})
-                </button>
-              )}
-              {hasCariRemainder && !selectedCustomer && (
-                <p className={`text-xs ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
-                  {selectCustomerForCariMessage}
-                </p>
-              )}
             </div>
 
             {/* Right - Numpad (conditional) */}
