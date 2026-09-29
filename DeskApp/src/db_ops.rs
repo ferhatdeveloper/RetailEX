@@ -1068,6 +1068,20 @@ pub async fn init_period_schema(
 }
 #[command]
 pub async fn check_db_status(config: AppConfig) -> Result<String, String> {
+    // Dış zırh — servis başlatma + TCP probe + PG bağlantısı bütün olarak 6 sn'yi aşmasın.
+    // UI'da 8 sn'lik ek bir sarmalayıcı var; bu iç limit daha erken hata döndürür.
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(6),
+        check_db_status_inner(config),
+    )
+    .await
+    {
+        Ok(res) => res,
+        Err(_) => Ok("ERROR [timeout]: PG kontrolü 6 sn içinde tamamlanamadı".to_string()),
+    }
+}
+
+async fn check_db_status_inner(config: AppConfig) -> Result<String, String> {
     use tokio_postgres::NoTls;
     use std::net::TcpStream;
     use std::time::Duration;
@@ -1151,7 +1165,9 @@ pub async fn check_db_status(config: AppConfig) -> Result<String, String> {
         {
             let start_log = crate::try_start_windows_postgres_services();
             eprintln!("RetailEX: postgres service start attempt: {}", start_log);
-            tokio::time::sleep(Duration::from_millis(1500)).await;
+            // 1500 ms → 800 ms: PG zaten yüklüyse bu bekleme gereksiz; UI 8 sn toplam süre
+            // içinde kalmalı. Servis hazır değilse sonraki port probe'da zaten başarısız olur.
+            tokio::time::sleep(Duration::from_millis(800)).await;
             service_running = windows_postgres_service_running();
             for h in &host_candidates {
                 for &p in &ports {
@@ -1190,14 +1206,23 @@ pub async fn check_db_status(config: AppConfig) -> Result<String, String> {
         )
     });
 
+    let password_trimmed = config.pg_local_pass.trim().to_string();
+    if password_trimmed.is_empty() {
+        // Boş şifre → PG'ye boş parola ile bağlanmaya çalışmak çoğu zaman sessiz timeout
+        // ya da yanlış "INSTALLED_RUNNING" döndürüyor. UI'da zaten engellenecek; burada da
+        // erken AUTH_FAILED ile net sonuç ver.
+        return Ok("AUTH_FAILED".to_string());
+    }
+
     let mut pg_config = tokio_postgres::Config::new();
     pg_config
         .host(&host_part)
         .port(port)
         .user(&config.pg_local_user)
-        .password(&config.pg_local_pass)
+        .password(&password_trimmed)
         .dbname("postgres")
-        .connect_timeout(std::time::Duration::from_secs(5));
+        // 5 sn → 4 sn: TcpStream probe (2s) + handshake için 4 sn yeterli; dış 6 sn sınırı koruyor.
+        .connect_timeout(std::time::Duration::from_secs(4));
 
     match pg_config.connect(NoTls).await {
         Ok((client, connection)) => {

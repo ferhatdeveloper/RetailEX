@@ -1346,10 +1346,14 @@ export async function testPostgrestUrl(baseUrl: string): Promise<PostgrestStatus
     Accept: 'application/json',
     'Accept-Profile': 'public',
   };
+  // SetupWizard PG kontrolünün takılmasını engelle: 4 sn sonra timeout ile {connected:false} dön.
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 4000);
   try {
     const res = await fetchRetailexAware(`${url}/firms?select=firm_nr&limit=1`, {
       method: 'GET',
       headers: probeHeaders,
+      signal: ac.signal,
     });
     if (res.ok) {
       return { connected: true, baseUrl: url, httpStatus: res.status };
@@ -1383,11 +1387,20 @@ export async function testPostgrestUrl(baseUrl: string): Promise<PostgrestStatus
     };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (ac.signal.aborted) {
+      return {
+        connected: false,
+        baseUrl: url,
+        error: 'timeout',
+      };
+    }
     return {
       connected: false,
       baseUrl: url,
       error: explainPostgrestConnectionError(url, { error: msg }),
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

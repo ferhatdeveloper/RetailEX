@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Database, Server, Shield, Cpu, ArrowRight, ArrowLeft,
     CheckCircle, Globe, WifiOff, Zap, Layout, Settings2,
@@ -260,6 +260,15 @@ const SetupWizard: React.FC = () => {
 
     const [dbStatus, setDbStatus] = useState<LocalDbStatus>('IDLE');
     const [dbErrorMessage, setDbErrorMessage] = useState('');
+    /** PG kontrolü için AbortController ref — invoke sıkışırsa UI 8 sn sonra düzeltme mesajı gösterir. */
+    const dbCheckAbortRef = useRef<AbortController | null>(null);
+    /** Bileşen unmount olduğunda bekleyen invoke'lar için temizlik. */
+    useEffect(() => {
+        return () => {
+            dbCheckAbortRef.current?.abort();
+            dbCheckAbortRef.current = null;
+        };
+    }, []);
     const [activeTab, setActiveTab] = useState<'standard' | 'supabase'>('standard');
     const [logoActiveTab, setLogoActiveTab] = useState<'config' | 'preview'>('config');
     const [logoPreviewData, setLogoPreviewData] = useState<any[] | null>(null);
@@ -512,10 +521,36 @@ const SetupWizard: React.FC = () => {
     };
 
     const checkDbStatus = async () => {
+        // Önceki bekleyen çağrı varsa iptal et; yeni bir kontrol başlat.
+        dbCheckAbortRef.current?.abort();
+        const abort = new AbortController();
+        dbCheckAbortRef.current = abort;
+
         setDbStatus('CHECKING');
         setDbErrorMessage('');
         try {
-            if (isTauri) {
+            // Boş şifre → sunucuya hiç gitmeden uyarı ver (PG kontrolü takılmasın).
+            if (isTauri && showLocalDbSection && !String(config.pg_local_pass || '').trim()) {
+                setDbStatus('AUTH_FAILED');
+                setDbErrorMessage('Şifre girin');
+                toast.error('PostgreSQL şifresi boş bırakılamaz. Lütfen parolayı girip tekrar deneyin.');
+                return;
+            }
+
+            // 8 sn UI tavanı: invoke bu süreyi aşarsa "Kontrol zaman aşımına uğradı" göster.
+            const TIMEOUT_MS = 8000;
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                const timer = setTimeout(() => {
+                    reject(new Error('timeout'));
+                }, TIMEOUT_MS);
+                abort.signal.addEventListener('abort', () => {
+                    clearTimeout(timer);
+                    reject(new Error('aborted'));
+                });
+            });
+
+            const runCheck = async (): Promise<string> => {
+                if (isTauri) {
                 // Yerel PG bölümü görünürken her zaman yerel TCP/auth kontrolü yap.
                 // Hibrit + rest_api varsayılanında PostgREST testine düşmek false negative üretiyordu
                 // (pgAdmin’de PG açıkken «5432 yanıt vermiyor»).
@@ -566,11 +601,30 @@ const SetupWizard: React.FC = () => {
                 } else {
                     setDbStatus(status as any);
                 }
+                }
+                return '';
+            };
+
+            try {
+                await Promise.race([runCheck(), timeoutPromise]);
+            } catch (err: any) {
+                const msg = String(err?.message || err || '');
+                if (msg === 'aborted') {
+                    // Bileşen unmount veya yeni kontrol başlatıldı — sessizce çık.
+                    return;
+                }
+                // 8 sn aşıldı: invoke'u en iyi ihtimalle arka planda bırak, UI'ı serbest bırak.
+                setDbStatus('ERROR');
+                const turkishTimeout = 'Kontrol zaman aşımına uğradı (8 sn). PostgreSQL servisi yanıt vermiyor; bağlantı bilgilerini kontrol edin.';
+                setDbErrorMessage(turkishTimeout);
+                toast.error(turkishTimeout, { duration: 8000 });
             }
         } catch (err: any) {
             setDbStatus('ERROR');
             setDbErrorMessage(err?.message || String(err));
             toast.error(tm('setupCriticalError') + (err?.message || String(err)));
+        } finally {
+            if (dbCheckAbortRef.current === abort) dbCheckAbortRef.current = null;
         }
     };
 
@@ -2858,8 +2912,9 @@ const SetupWizard: React.FC = () => {
                                                     <div className="flex gap-3">
                                                         <button
                                                             onClick={checkDbStatus}
-                                                            disabled={dbStatus === 'CHECKING'}
-                                                            className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl font-bold text-[11px] tracking-wide transition-all flex items-center justify-center gap-2"
+                                                            disabled={dbStatus === 'CHECKING' || (showLocalDbSection && !String(config.pg_local_pass || '').trim())}
+                                                            title={showLocalDbSection && !String(config.pg_local_pass || '').trim() ? 'Şifre girin' : undefined}
+                                                            className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl font-bold text-[11px] tracking-wide transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white/5"
                                                         >
                                                             {dbStatus === 'CHECKING' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
                                                             <span>TEST ET</span>
