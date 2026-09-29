@@ -3,9 +3,11 @@ import {
   PESINATLI_INSTALLMENT_OPTIONS,
   appendPesinatliVeresiyeForRemaining,
   buildPesinatliPayment,
+  buildPesinatliPayments,
   buildPesinatliVeresiye,
   calculatePesinatliInstallmentAmount,
   isValidPesinatliInstallments,
+  suggestPesinatliPayNow,
 } from '../../utils/posPesinatli';
 
 describe('posPesinatli - installment calculation', () => {
@@ -181,5 +183,110 @@ describe('posPesinatli - appendPesinatliVeresiyeForRemaining', () => {
 describe('posPesinatli - PESINATLI_INSTALLMENT_OPTIONS', () => {
   it('3, 6, 9, 12 sırasıyla', () => {
     expect(PESINATLI_INSTALLMENT_OPTIONS).toEqual([3, 6, 9, 12]);
+  });
+});
+
+describe('posPesinatli - buildPesinatliPayments (yeni UX: bugün + kalan)', () => {
+  it('1000 IQD toplam, 250 peşinat → 2 satır (peşinat 250 + veresiye 750)', () => {
+    // IQD 250 kademesi yuvarlaması nedeniyle peşinat 300 → 250'e yuvarlanır.
+    const rows = buildPesinatliPayments({
+      totalAmount: 1000,
+      payNow: 300,
+      currency: 'IQD',
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.method).toBe('pesinatli');
+    // buildPesinatliPayment içinde roundPosMoneyAmount uygulanır → 250
+    expect(rows[0]!.amount).toBe(250);
+    expect(rows[1]!.method).toBe('veresiye');
+    // kalan = 1000 - 250 = 750 (IQD 250 kademesine zaten tam)
+    expect((rows[1] as any).amount).toBe(750);
+  });
+
+  it('1000/1000: tam ödeme → yalnız peşinat satırı (kalan yok)', () => {
+    const rows = buildPesinatliPayments({
+      totalAmount: 1000,
+      payNow: 1000,
+      currency: 'IQD',
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.method).toBe('pesinatli');
+    expect(rows[0]!.amount).toBe(1000);
+  });
+
+  it('payNow <= 0 → throw', () => {
+    expect(() =>
+      buildPesinatliPayments({ totalAmount: 1000, payNow: 0, currency: 'IQD' }),
+    ).toThrow();
+    expect(() =>
+      buildPesinatliPayments({ totalAmount: 1000, payNow: -50, currency: 'IQD' }),
+    ).toThrow();
+  });
+
+  it('payNow > totalAmount → throw', () => {
+    expect(() =>
+      buildPesinatliPayments({ totalAmount: 1000, payNow: 1500, currency: 'IQD' }),
+    ).toThrow();
+  });
+
+  it('totalAmount <= 0 → throw', () => {
+    expect(() =>
+      buildPesinatliPayments({ totalAmount: 0, payNow: 100, currency: 'IQD' }),
+    ).toThrow();
+  });
+
+  it('installments verildiğinde veresiye satırına installment_amount eklenir', () => {
+    const rows = buildPesinatliPayments({
+      totalAmount: 9000,
+      payNow: 3000,
+      currency: 'IQD',
+      installments: 3,
+    });
+    expect(rows).toHaveLength(2);
+    const veresiye = rows[1] as any;
+    expect(veresiye.installments).toBe(3);
+    expect(veresiye.installment_amount).toBe(2000);
+  });
+
+  it('installments null/0 olunca veresiye satırında installment metadata yok', () => {
+    const rows = buildPesinatliPayments({
+      totalAmount: 1000,
+      payNow: 300,
+      currency: 'IQD',
+      installments: null,
+    });
+    const veresiye = rows[1] as any;
+    expect(veresiye.method).toBe('veresiye');
+    expect(veresiye.installments).toBeUndefined();
+  });
+
+  it('cashRegister verildiğinde peşinat satırına kasa alanları yazılır', () => {
+    const rows = buildPesinatliPayments({
+      totalAmount: 1000,
+      payNow: 300,
+      currency: 'IQD',
+      cashRegister: { id: 'k1', kasa_adi: 'Ana Kasa', kasa_kodu: 'K01' },
+    });
+    expect((rows[0] as any).cash_register_id).toBe('k1');
+    expect((rows[0] as any).cash_register_name).toBe('Ana Kasa');
+    expect((rows[0] as any).cash_register_code).toBe('K01');
+    // veresiye satırında kasa alanı yazılmaz
+    expect((rows[1] as any).cash_register_id).toBeUndefined();
+  });
+});
+
+describe('posPesinatli - suggestPesinatliPayNow', () => {
+  it('5000 → 5000 (default = tüm kalan)', () => {
+    expect(suggestPesinatliPayNow(5000)).toBe(5000);
+  });
+
+  it('0 / negatif → 0', () => {
+    expect(suggestPesinatliPayNow(0)).toBe(0);
+    expect(suggestPesinatliPayNow(-100)).toBe(0);
+  });
+
+  it('NaN / undefined → 0', () => {
+    expect(suggestPesinatliPayNow(Number.NaN)).toBe(0);
+    expect(suggestPesinatliPayNow(undefined as unknown as number)).toBe(0);
   });
 });

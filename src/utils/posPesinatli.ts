@@ -16,7 +16,7 @@
  * veresiye satırı + metadata yazılır. Gelecekte ayrı plan tablosu
  * eklenebilir; o zaman `installments` alanı zaten hazır.
  */
-import { roundPosMoneyAmount } from './discountRounding';
+import { roundPosMoneyAmount, posMoneyEpsilon } from './discountRounding';
 
 export type PosPesinatliCurrency = 'IQD' | 'USD' | 'EUR';
 
@@ -162,4 +162,90 @@ export function appendPesinatliVeresiyeForRemaining<
     remaining: 0,
     appended: true,
   };
+}
+
+/**
+ * Yeni UX (sade): "bugün bir kısım + sonraki geldiğinde kalan" modeli.
+ *
+ * Kullanıcı bugün ödeyeceği tutarı serbest girer. Bu helper:
+ *   1) İlk satır: peşinat (`method: 'pesinatli'`, kasaya yansır).
+ *   2) Kalan satır: veresiye (`method: 'veresiye'`, cari borç).
+ *
+ * Taksit sayısı (3/6/9/12) bu yeni akışta bilgi amaçlı; opsiyonel
+ * `installments` alanı veresiye satırına iliştirilir (geriye dönük uyum).
+ * Taksit sayısı verilmezse sadece iki satır (peşinat + veresiye) üretilir.
+ *
+ * Hata koşulları (muhasebeci gözüyle):
+ *   - `totalAmount <= 0` → işlem anlamsız; throw.
+ *   - `payNow <= 0` → müşteri hiçbir şey ödemedi → "peşinatlı" değil,
+ *     düz veresiye akışına düşmesi gerekir; burada throw.
+ *   - `payNow > totalAmount` → ödeme tutarı sepeti aşamaz; throw.
+ */
+export function buildPesinatliPayments(args: {
+  totalAmount: number;
+  payNow: number;
+  currency?: PosPesinatliCurrency;
+  installments?: PesinatliInstallments | null;
+  cashRegister?: {
+    id?: string | null;
+    kasa_adi?: string | null;
+    kasa_kodu?: string | null;
+  } | null;
+}): Array<PosPesinatliPaymentRow | PosPesinatliVeresiyeRow> {
+  const total = Number(args.totalAmount);
+  const pay = Number(args.payNow);
+  const currency: PosPesinatliCurrency = args.currency ?? 'IQD';
+
+  if (!Number.isFinite(total) || total <= 0) {
+    throw new Error('Peşinatlı satış: sepet toplamı pozitif olmalı.');
+  }
+  if (!Number.isFinite(pay) || pay <= 0) {
+    throw new Error('Peşinatlı satış: bugün ödenecek tutar pozitif olmalı.');
+  }
+  if (pay > total + posMoneyEpsilon()) {
+    throw new Error('Peşinatlı satış: bugün ödenen tutar sepet toplamından büyük olamaz.');
+  }
+
+  const pesinat = buildPesinatliPayment({
+    amount: pay,
+    installments: (args.installments ?? 3) as PesinatliInstallments,
+    currency,
+    cashRegister: args.cashRegister ?? null,
+  });
+
+  const kalanRaw = total - pay;
+  const payments: Array<PosPesinatliPaymentRow | PosPesinatliVeresiyeRow> = [pesinat];
+
+  // Eşik altındaki kalan (yuvarlama farkı) yazılmaz — 0.01 IQD bakiye oluşturmaz.
+  if (kalanRaw > 0.01) {
+    const kalan = roundPosMoneyAmount(kalanRaw, currency);
+    const installments = args.installments ?? null;
+    if (installments != null && isValidPesinatliInstallments(installments)) {
+      payments.push(buildPesinatliVeresiye({
+        amount: kalan,
+        installments,
+        currency,
+      }));
+    } else {
+      payments.push({
+        method: 'veresiye',
+        amount: kalan,
+        currency,
+        installments: undefined,
+        installment_amount: undefined,
+      });
+    }
+  }
+
+  return payments;
+}
+
+/**
+ * Otomatik öneri: serbest tutar alanı için default değer.
+ * Yeni UX'te "bugün ödenecek" default = kalan sepet tutarı. Kullanıcı
+ * isterse küçültebilir (kalan cariye yazılır).
+ */
+export function suggestPesinatliPayNow(remaining: number): number {
+  if (!Number.isFinite(remaining) || remaining <= 0) return 0;
+  return remaining;
 }

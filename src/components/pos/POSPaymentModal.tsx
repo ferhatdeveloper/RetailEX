@@ -31,9 +31,10 @@ import {
   buildVeresiyeForRemaining as buildVeresiyeForRemainingHelper,
 } from '../../utils/posCariRemainder';
 import {
+  buildPesinatliPayments,
   buildPesinatliVeresiye,
-  calculatePesinatliInstallmentAmount,
   isValidPesinatliInstallments,
+  suggestPesinatliPayNow,
 } from '../../utils/posPesinatli';
 import {
   loadReportMenuParams,
@@ -263,6 +264,20 @@ export function POSPaymentModal({
     setCurrentCurrency(baseCurrency);
   }, [baseCurrency]);
 
+  // Peşinatlı satış: input boşsa "bugün ödenecek" alanını kalan sepet
+  // tutarı ile doldur (serbest — kullanıcı küçültebilir). currentAmount
+  // üzerinde yazılı bir değer varsa müdahale etme (kullanıcı override'ı).
+  useEffect(() => {
+    if (currentMethod !== 'pesinatli') return;
+    if (currentAmount && parseFormattedNumber(currentAmount) > 0) return;
+    const suggested = suggestPesinatliPayNow(remaining);
+    if (suggested > 0) {
+      setCurrentAmount(formatNumberInput(suggested.toString()));
+    }
+    // remaining değiştiğinde de yeniden öner (sepet değişti / ödeme eklendi).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentMethod]);
+
   // Müşteri değişince bekleyen borçları çek
   useEffect(() => {
     const custId = selectedCustomer?.id;
@@ -405,7 +420,9 @@ export function POSPaymentModal({
       return;
     }
     if (!hasCariRemainder) return;
-    // Peşinatlı satışta kalan tutar taksit planı metadata'sı ile cariye yazılır.
+    // Peşinatlı: yeni akışta kalan zaten handleAddPayment'ta veresiye satırı
+    // olarak eklendi. Burada yalnızca kullanıcı henüz eklemediyse fallback
+    // olarak yazıyoruz (geriye dönük uyum / eski akıştan kalan ödeme yok).
     if (
       currentMethod === 'pesinatli' &&
       isValidPesinatliInstallments(pesinatInstallments)
@@ -443,9 +460,49 @@ export function POSPaymentModal({
     const normalizedAmount = Number.isFinite(amount) ? amount : 0;
     if (normalizedAmount <= 0) return;
 
-    // Peşinatlı satışta taksit planı seçilmeden ödeme eklenemez
-    if (currentMethod === 'pesinatli' && !isValidPesinatliInstallments(pesinatInstallments)) {
-      toast.error(tm('pesinatPickPlan') || t.pesinatPickPlan || 'Lütfen taksit planı seçin (3/6/9/12 ay).');
+    // Peşinatlı: serbest tutar — kalan cariye yazılır.
+    if (currentMethod === 'pesinatli') {
+      try {
+        const totalForPesinat = remaining + totalPaid;
+        const rows = buildPesinatliPayments({
+          totalAmount: totalForPesinat,
+          payNow: normalizedAmount,
+          currency: currentCurrency,
+          installments: isValidPesinatliInstallments(pesinatInstallments)
+            ? (pesinatInstallments as 3 | 6 | 9 | 12)
+            : null,
+          cashRegister: selectedCashRegister
+            ? {
+                id: selectedCashRegister.id,
+                kasa_adi: selectedCashRegister.kasa_adi,
+                kasa_kodu: selectedCashRegister.kasa_kodu,
+              }
+            : null,
+        });
+        // Veresiye satırına cari türü kasa alanı yazılmaz.
+        const sanitized = rows.map((row) => {
+          if (row.method === 'veresiye') {
+            const { cash_register_id, cash_register_name, cash_register_code, ...rest } = row as any;
+            return rest as Payment;
+          }
+          return row as Payment;
+        });
+        setPayments((prev) => [...prev, ...sanitized]);
+        setCurrentAmount('');
+        const kalanRow = sanitized.find((r) => r.method === 'veresiye') as Payment | undefined;
+        if (kalanRow && Number(kalanRow.amount) > 0) {
+          toast.success(
+            `${tm('pesinatAddButton') || 'Peşinat Ekle'}: ${formatMoneyWithCode(normalizedAmount, currentCurrency)} · ${tm('pesinatRemainderToCari') || 'Kalan cariye yazıldı'}: ${formatMoneyWithCode(Number(kalanRow.amount), currentCurrency)}`,
+          );
+        } else {
+          toast.success(
+            `${tm('pesinatTodayPaid') || 'Bugün ödenen'}: ${formatMoneyWithCode(normalizedAmount, currentCurrency)}`,
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(msg || 'Geçersiz tutar.');
+      }
       return;
     }
 
@@ -454,16 +511,6 @@ export function POSPaymentModal({
       amount: normalizedAmount,
       currency: currentCurrency,
       ...cashRegisterFieldsForMethod(currentMethod),
-      ...(currentMethod === 'pesinatli'
-        ? {
-            installments: pesinatInstallments as 3 | 6 | 9 | 12,
-            installment_amount: calculatePesinatliInstallmentAmount(
-              normalizedAmount,
-              pesinatInstallments as 3 | 6 | 9 | 12,
-              currentCurrency,
-            ),
-          }
-        : {}),
     };
 
     setPayments((prev) => [...prev, newPayment]);
@@ -514,6 +561,15 @@ export function POSPaymentModal({
           : currentMethod === 'card'
             ? 'Kart'
             : 'Tahsilat';
+      // invoiceSources: id → tablo. customerInvoices içindeki `source` alanı
+      // (sales / beauty_sales) hangi tabloya paid_amount yazılacağını belirler.
+      // Tahsilat fonksiyonu verilmezse geriye dönük uyumluluk için `sales` varsayılır.
+      const invoiceSources: Record<string, 'sales' | 'beauty_sales'> = {};
+      for (const inv of customerInvoices) {
+        if (ids.includes(inv.id) && inv.source) {
+          invoiceSources[inv.id] = inv.source;
+        }
+      }
       const res = await collectCustomerDebt({
         customerId: selectedCustomer.id,
         invoiceIds: ids,
@@ -522,6 +578,7 @@ export function POSPaymentModal({
         cashRegisterName: selectedCashRegister?.kasa_adi,
         cashRegisterCode: selectedCashRegister?.kasa_kodu,
         paymentMethodLabel: methodLabel,
+        invoiceSources,
       });
       // Tahsilat tutarını "Toplam Ödenen"e ekle — yeni bir payment satırı
       // olarak listeye yaz (parent onComplete'e iletecek).
@@ -616,6 +673,10 @@ export function POSPaymentModal({
       }
       // Peşinatlı seçili ve taksit planı belirli ise kalan tutar
       // taksit metadata'sı ile cariye yazılır; değilse düz veresiye.
+      // Yeni akışta: handleAddPayment zaten iki satır üretir (peşinat +
+      // veresiye) → remainingAfter = 0 olur ve bu blok atlanır. Buradaki
+      // yalnızca fallback — kullanıcı eski usul "peşinat ekle + Kalanı
+      // cariye yaz" akışını kullandıysa devreye girer.
       const veresiyeRow =
         currentMethod === 'pesinatli' &&
         isValidPesinatliInstallments(pesinatInstallments)
@@ -1157,7 +1218,7 @@ export function POSPaymentModal({
                   ))}
                 </div>
 
-                {/* Peşinatlı Satış: Taksit planı seçimi */}
+                {/* Peşinatlı Satış: bilgilendirme + serbest tutar (Seçenek A) */}
                 {currentMethod === 'pesinatli' && (
                   <div
                     data-testid="pesinat-installment-picker"
@@ -1168,69 +1229,33 @@ export function POSPaymentModal({
                     }`}
                   >
                     <h5
-                      className={`text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5 ${
-                        darkMode ? 'text-purple-300' : 'text-purple-900'
+                      className={`text-sm font-semibold mb-2 flex items-center gap-1.5 ${
+                        darkMode ? 'text-purple-200' : 'text-purple-900'
                       }`}
                     >
-                      <Calendar className="w-3.5 h-3.5" />
-                      {tm('pesinatPlanLabel') || t.pesinatPlanLabel || 'Taksit Planı'}
+                      <Calendar className="w-4 h-4" />
+                      {tm('paymentMethodPesinatli') || t.pesinatliLabel || 'Peşinatlı Satış'}
                     </h5>
-                    <div className="grid grid-cols-4 gap-2 mb-2">
-                      {[3, 6, 9, 12].map((m) => {
-                        const selected = pesinatInstallments === m;
-                        return (
-                          <button
-                            key={m}
-                            type="button"
-                            data-testid={`pesinat-installment-${m}`}
-                            onClick={() => setPesinatInstallments(m as 3 | 6 | 9 | 12)}
-                            className={`py-2 text-sm rounded-lg border-2 transition-colors ${
-                              selected
-                                ? 'bg-purple-600 text-white border-purple-600'
-                                : darkMode
-                                  ? 'bg-gray-800 text-purple-300 border-purple-700 hover:bg-purple-900/30'
-                                  : 'bg-white text-purple-700 border-purple-300 hover:bg-purple-100'
-                            }`}
-                          >
-                            {m} Ay
-                          </button>
-                        );
-                      })}
+                    <p
+                      className={`text-xs mb-2 ${
+                        darkMode ? 'text-purple-200' : 'text-purple-700'
+                      }`}
+                    >
+                      {tm('pesinatSubtitle') ||
+                        t.pesinatSubtitle ||
+                        'Bugün ödenecek tutarı serbest girin; kalan sonraki gelişinizde tahsil edilir.'}
+                    </p>
+                    <div
+                      data-testid="pesinat-installment-summary"
+                      className={`text-xs ${
+                        darkMode ? 'text-purple-300' : 'text-purple-700'
+                      }`}
+                    >
+                      {tm('posRemainingTotal') || 'Sepet toplamı'}:{' '}
+                      <span className="font-bold font-mono">
+                        {formatMoneyWithCode(remaining, baseCurrency)}
+                      </span>
                     </div>
-                    {isValidPesinatliInstallments(pesinatInstallments) && remaining > 0 ? (
-                      <div
-                        data-testid="pesinat-installment-summary"
-                        className={`text-xs ${
-                          darkMode ? 'text-purple-200' : 'text-purple-700'
-                        }`}
-                      >
-                        {tm('pesinatInstallmentPer') || t.pesinatInstallmentPer || 'Taksit başına'}:{' '}
-                        <span className="font-bold font-mono">
-                          {formatMoneyWithCode(
-                            calculatePesinatliInstallmentAmount(
-                              remaining,
-                              pesinatInstallments,
-                              baseCurrency,
-                            ),
-                            baseCurrency,
-                          )}
-                        </span>
-                        {' — '}
-                        {tm('pesinatFirstInstallment') ||
-                          t.pesinatFirstInstallment ||
-                          'İlk taksit şimdi tahsil edilir; kalan cariye yazılır.'}
-                      </div>
-                    ) : (
-                      <div
-                        className={`text-xs ${
-                          darkMode ? 'text-purple-300' : 'text-purple-700'
-                        }`}
-                      >
-                        {tm('pesinatPickPlanHint') ||
-                          t.pesinatPickPlanHint ||
-                          '3 / 6 / 9 / 12 aylık planlardan birini seçin.'}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -1300,35 +1325,22 @@ export function POSPaymentModal({
                     );
                     if (!Number.isFinite(amountToAdd) || amountToAdd <= 0) return;
 
-                    // Peşinatlı satışta "Tam Tutar" ilk taksit demektir:
-                    // kalan tutarı taksit sayısına bölerek tek seferde peşinat al.
-                    let finalAmount = amountToAdd;
-                    let finalMethod: Payment['method'] = currentMethod;
-                    let installments: 3 | 6 | 9 | 12 | undefined;
-                    let installmentAmount: number | undefined;
+                    // Peşinatlı: serbest tutar modu. "Tam Tutar" / default
+                    // öneri olarak `suggestPesinatliPayNow` kullanılır — input
+                    // boşsa kalan sepetle dolar, kullanıcı küçültebilir.
                     if (currentMethod === 'pesinatli') {
-                      if (!isValidPesinatliInstallments(pesinatInstallments)) {
-                        toast.error(tm('pesinatPickPlan') || t.pesinatPickPlan || 'Lütfen taksit planı seçin (3/6/9/12 ay).');
-                        return;
-                      }
-                      finalAmount = calculatePesinatliInstallmentAmount(
-                        remaining,
-                        pesinatInstallments,
-                        baseCurrency,
-                      );
-                      installments = pesinatInstallments as 3 | 6 | 9 | 12;
-                      installmentAmount = finalAmount;
+                      const suggested = suggestPesinatliPayNow(remaining);
+                      const amount = suggested > 0 ? suggested : amountToAdd;
+                      setCurrentAmount(formatNumberInput(amount.toString()));
+                      return;
                     }
 
-                    setCurrentAmount(formatNumberInput(finalAmount.toString()));
+                    setCurrentAmount(formatNumberInput(amountToAdd.toString()));
                     const newPayment: Payment = {
-                      method: finalMethod,
-                      amount: finalAmount,
+                      method: currentMethod,
+                      amount: amountToAdd,
                       currency: currentCurrency,
-                      ...cashRegisterFieldsForMethod(finalMethod),
-                      ...(installments != null
-                        ? { installments, installment_amount: installmentAmount }
-                        : {}),
+                      ...cashRegisterFieldsForMethod(currentMethod),
                     };
                     setPayments((prev) => [...prev, newPayment]);
                     setCurrentAmount('');
@@ -1339,7 +1351,7 @@ export function POSPaymentModal({
                     }`}
                 >
                   {currentMethod === 'pesinatli'
-                    ? (tm('pesinatFirstInstallmentLabel') || t.pesinatFirstInstallmentLabel || 'İlk Taksit')
+                    ? (tm('pesinatAddButton') || t.pesinatAddButton || 'Peşinat Ekle')
                     : (t.fullAmount || 'Tam Tutar')}
                 </button>
 

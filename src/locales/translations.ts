@@ -855,6 +855,10 @@ customerAdvanceBalance: string;
   pesinatFirstInstallmentLabel: string;
   pesinatPickPlan: string;
   pesinatPickPlanHint: string;
+  pesinatSubtitle: string;
+  pesinatAddButton: string;
+  pesinatTodayPaid: string;
+  pesinatRemainderToCari: string;
   pesinatliLabel: string;
   installmentShort: string;
   paymentFailed: string;
@@ -2258,6 +2262,10 @@ export const translations: any = {
     pesinatFirstInstallmentLabel: 'İlk Taksit',
     pesinatPickPlan: 'Lütfen taksit planı seçin (3/6/9/12 ay).',
     pesinatPickPlanHint: '3 / 6 / 9 / 12 aylık planlardan birini seçin.',
+    pesinatSubtitle: 'Bugün ödenecek tutarı serbest girin; kalan sonraki gelişinizde tahsil edilir.',
+    pesinatAddButton: 'Peşinat Ekle',
+    pesinatTodayPaid: 'Bugün ödenen',
+    pesinatRemainderToCari: 'Kalan cariye yazıldı',
     pesinatliLabel: 'Peşinatlı Satış',
     installmentShort: 'ay',
     paymentFailed: 'Ödeme başlatılamadı:',
@@ -4055,6 +4063,10 @@ export const translations: any = {
     pesinatFirstInstallmentLabel: 'First Installment',
     pesinatPickPlan: 'Please select an installment plan (3/6/9/12 months).',
     pesinatPickPlanHint: 'Choose one of the 3 / 6 / 9 / 12 month plans.',
+    pesinatSubtitle: 'Enter the amount to be paid today freely; the remainder will be collected on your next visit.',
+    pesinatAddButton: 'Add Down Payment',
+    pesinatTodayPaid: 'Paid today',
+    pesinatRemainderToCari: 'Remainder posted to customer account',
     pesinatliLabel: 'Installment Sale',
     installmentShort: 'mo',
     paymentFailed: 'Payment could not be initiated:',
@@ -5714,6 +5726,10 @@ export const translations: any = {
     pesinatFirstInstallmentLabel: 'القسط الأول',
     pesinatPickPlan: 'يرجى اختيار خطة الأقساط (3/6/9/12 شهرًا).',
     pesinatPickPlanHint: 'اختر إحدى خطط 3 / 6 / 9 / 12 شهرًا.',
+    pesinatSubtitle: 'أدخل المبلغ الذي سيتم دفعه اليوم بحرية؛ سيتم تحصيل الباقي في زيارتك القادمة.',
+    pesinatAddButton: 'إضافة الدفعة الأولى',
+    pesinatTodayPaid: 'تم الدفع اليوم',
+    pesinatRemainderToCari: 'تم تسجيل الباقي في حساب العميل',
     pesinatliLabel: 'بيع بالأقساط',
     installmentShort: 'شهر',
     paymentFailed: 'تعذر بدء الدفع:',
@@ -7373,6 +7389,10 @@ export const translations: any = {
     pesinatFirstInstallmentLabel: 'یەکەم قیست',
     pesinatPickPlan: 'تکایە پلانێکی قیست هەڵبژێرە (3/6/9/12 مانگ).',
     pesinatPickPlanHint: 'یەکێک لە پلانەکانی 3 / 6 / 9 / 12 مانگ هەڵبژێرە.',
+    pesinatSubtitle: 'بڕی پارەی ئەمڕۆ بە ئازادانە بنووسە؛ ماوەکەی لە سەردانی داهاتوودا وەردەگیرێت.',
+    pesinatAddButton: 'پێشەکی زیادبکە',
+    pesinatTodayPaid: 'ئەمڕۆ دراوە',
+    pesinatRemainderToCari: 'ماوەکە لە هەژماری کڕیار تۆمارکرا',
     pesinatliLabel: 'فرۆشتن بە قیست',
     installmentShort: 'مانگ',
     paymentFailed: 'پارەدان دەستی پێ نەکرا:',
