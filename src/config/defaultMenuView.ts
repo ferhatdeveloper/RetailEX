@@ -56,7 +56,8 @@ export const DEFAULT_MENU_HIDDEN_MODULES: readonly string[] = [
   'payment-plans',
   'cost-centers',
   // Malzeme alt tanımları / fiyat fişi: varsayılan gizli; ana Malzemeler + stok açık
-  'material-definitions',
+  // Ana Kayıtlar üst grubu (`material-definitions`) artık varsayılan görünür —
+  // v6 upgrade ile birlikte zorla görünür; STATIC_MENU_SECTION_IDS koruma katmanında.
   'stock-price-change-slips',
 ] as const;
 
@@ -65,7 +66,7 @@ export const DEFAULT_MENU_HIDDEN_MODULES: readonly string[] = [
  * `MENU_HIDDEN_UPGRADE_VERSION` artınca sync tüm preset’lere yeni maddeleri ekler;
  * sonra Menü Yönetimi’nden tekrar açılabilir (sürekli zorlama yok).
  */
-export const MENU_HIDDEN_UPGRADE_VERSION = 4;
+export const MENU_HIDDEN_UPGRADE_VERSION = 6;
 
 export const MENU_HIDDEN_UPGRADE_ADDITIONS: Readonly<Record<number, readonly string[]>> = {
   1: ['payment-plans', 'cost-centers'],
@@ -83,6 +84,12 @@ export const MENU_HIDDEN_UPGRADE_ADDITIONS: Readonly<Record<number, readonly str
   ],
   // v4: ana Malzemeler / stok menüsünü tekrar görünür yap (v3 ile yanlışlıkla kapanmıştı)
   4: [],
+  // v5: yeni ekranlar (Malzeme Toplama + Stok Devir / Açılış Fişi) hiçbir preset’te
+  // gizli kalmamalı — eski custom preset’lerde yanlışlıkla gizli olabilirler
+  5: [],
+  // v6: Ana Kayıtlar üst grubu (`material-definitions`) artık varsayılan
+  // görünür — sadece REMOVALS ile mevcut gizli listelerden çıkarılır.
+  6: [],
 };
 
 /** Upgrade sürümünde gizlilikten çıkarılacak ekranlar */
@@ -96,6 +103,13 @@ export const MENU_HIDDEN_UPGRADE_REMOVALS: Readonly<Record<number, readonly stri
     'inventory',
     'excel',
   ],
+  // v5: ana Malzeme Yönetimi altındaki kritik ekranlar her zaman görünür olmalı
+  // (Malzeme Toplama + Stok Devir / Açılış fişleri). Bu ekranlar yeni eklendiği
+  // için eski preset’lerde hiç olmamalı; ama yanlışlıkla eklenmişse temizlenir.
+  5: ['materials-intake', 'stock-devir-slip', 'stock-opening-invoice-slip'],
+  // v6: Ana Kayıtlar üst grubu (`material-definitions`) artık varsayılan görünür;
+  // v3 upgrade ile eski custom preset’lerde gizli kalmış olabilir — zorla görünür.
+  6: ['material-definitions'],
 };
 
 /** `fromVersion` (hariç) → `toVersion` (dahil) arası eklenen screen_id’ler */

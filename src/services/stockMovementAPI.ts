@@ -325,6 +325,15 @@ export const MATERIAL_SLIP_ADD_MENU = [
         movement_type: 'in' as const,
         labelKey: 'slipProductionEntry',
     },
+    {
+        // 179/180 — slip_kind='invoice' (alış faturası benzeri) açılış fişi
+        // Absolute replace: ürün.stock = qty, ürün.cost = unitCostExclVat.
+        // Tedarikçi/cari/ledger YOK — yalnız stok devir.
+        key: 'opening_invoice',
+        trcode: STOCK_SLIP_TRCODES.OPENING,
+        movement_type: 'in' as const,
+        labelKey: 'stockOpeningInvoiceTitle',
+    },
 ] as const;
 
 export type MaterialSlipAddMenuItem = (typeof MATERIAL_SLIP_ADD_MENU)[number];

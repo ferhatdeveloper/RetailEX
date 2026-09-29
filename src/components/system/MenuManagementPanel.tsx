@@ -1,10 +1,11 @@
-﻿import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
   GripVertical, Plus, Edit2, Trash2, Save, X,
   ChevronDown, ChevronRight, Menu as MenuIcon, Settings,
   RefreshCw, Eye, EyeOff, CloudDownload, Download, Upload
 } from 'lucide-react';
 import { supabase } from '../../utils/supabase/client';
+import { postgrest } from '../../services/api/postgrestClient';
 import { logger } from '../../services/loggingService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -214,28 +215,27 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
         return;
       }
 
-      // Supabase'den tüm menü öğelerini çek
-      const { data, error } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('is_active', true)
-        .order('display_order', { ascending: true });
+      // Tenant DB'den (PostgREST) tüm menü öğelerini çek
+      const data = (await postgrest.get<MenuItem[] | null>(
+        `/menu_items`,
+        {
+          select: '*',
+          is_active: 'eq.true',
+          order: 'display_order.asc',
+        },
+        { schema: 'public' },
+      )) as MenuItem[] | null;
 
-      if (error) {
-        console.error('Supabase menü yükleme hatası:', error);
+      const rows = Array.isArray(data) ? data : [];
+      if (rows.length === 0) {
         setMenuItems([]);
         return;
       }
 
-      if (!data || data.length === 0) {
-        setMenuItems([]);
-        return;
-      }
-
-      const tree = buildMenuTree(data);
+      const tree = buildMenuTree(rows);
       setMenuItems(tree);
 
-      const sectionIds = data
+      const sectionIds = rows
         .filter((item: MenuItem) => item.menu_type === 'section')
         .map((item: MenuItem) => item.id);
       setExpandedSections(new Set(sectionIds));
@@ -902,76 +902,132 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
     }
   };
 
-  // Menü öğesini sil - Supabase'den direkt
+  // Menü öğesini sil - PostgREST üzerinden (tenant DB)
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const deleteAbortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      // Unmount sırasında bekleyen silme isteğini iptal et
+      deleteAbortRef.current?.abort();
+      deleteAbortRef.current = null;
+    };
+  }, []);
+
   const deleteMenuItem = async (id: number) => {
     if (!confirm(tm('menuPanelDeleteItemConfirm'))) {
       return;
     }
+    // Eşzamanlı çift tıklamayı engelle
+    if (deletingIds.has(id)) return;
 
-    // RPC / uzun sorgu için 8 sn zaman aşımı (postgrest + ağ yavaşlaması
+    setDeletingIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+
+    // RPC / uzun sorgu için 8 sn zaman aşımı (PostgREST + ağ yavaşlaması
     // veya arka planda çalışan migration nedeniyle "Failed to fetch" hatasını
     // anlamlı hale getirmek için).
     const DELETE_TIMEOUT_MS = 8000;
-    const attempt = async (): Promise<{ ok: boolean; aborted: boolean; error?: unknown }> => {
+    const table = `public.menu_items`;
+
+    const attempt = async (): Promise<
+      { ok: boolean; aborted: boolean; transient: boolean; error?: unknown }
+    > => {
       const controller = new AbortController();
+      deleteAbortRef.current?.abort();
+      deleteAbortRef.current = controller;
       let timedOut = false;
       const timer = setTimeout(() => {
         timedOut = true;
         controller.abort();
       }, DELETE_TIMEOUT_MS);
       try {
-        const query = supabase
-          .from('menu_items')
-          .delete()
-          .eq('id', id)
-          .abortSignal(controller.signal);
-        const { error } = await query;
+        await postgrest.delete(
+          `/${table}?id=eq.${encodeURIComponent(String(id))}`,
+          { schema: 'public', prefer: 'return=representation', signal: controller.signal },
+        );
         clearTimeout(timer);
-        if (error) {
-          // AbortError ise zaman aşımı olarak işle
-          const msg = String((error as any)?.message || error);
-          if (/abort/i.test(msg) || timedOut) {
-            return { ok: false, aborted: true, error };
-          }
-          throw error;
+        return { ok: true, aborted: false, transient: false };
+      } catch (err: any) {
+        clearTimeout(timer);
+        const msg = String(err?.message || err);
+        const isAbort = /abort/i.test(msg) || timedOut || controller.signal.aborted;
+        // 5xx ve timeout/abort transient kabul edilir
+        const status = Number(err?.status || 0);
+        const transient =
+          isAbort ||
+          status === 0 ||
+          (status >= 500 && status < 600) ||
+          /failed to fetch|network|timeout/i.test(msg);
+        if (isAbort) {
+          return { ok: false, aborted: true, transient, error: err };
         }
-        return { ok: true, aborted: false };
-      } catch (err) {
-        clearTimeout(timer);
-        const msg = String((err as any)?.message || err);
-        if (/abort/i.test(msg) || timedOut) {
-          return { ok: false, aborted: true, error: err };
+        if (transient) {
+          return { ok: false, aborted: false, transient: true, error: err };
         }
         throw err;
+      } finally {
+        if (deleteAbortRef.current === controller) {
+          deleteAbortRef.current = null;
+        }
       }
     };
 
     try {
       let result = await attempt();
-      // İlk deneme zaman aşımına uğradıysa tek bir kez daha dene
+      // İlk deneme transient (timeout/abort/5xx) olduysa tek bir kez daha dene
       // (arka plan migration senkronizasyonu ile çakışma olasılığı).
-      if (!result.ok && result.aborted) {
+      if (!result.ok && result.transient) {
         await new Promise((r) => setTimeout(r, 400));
         result = await attempt();
       }
 
       if (!result.ok) {
         logger.crudError('MenuManagement', 'deleteMenuItem (timeout)', result.error);
-        alert(
-          (tm('menuPanelDeleteItemTimeout') as string) ||
-            'Silme işlemi zaman aşımına uğradı. Lütfen tekrar deneyin (arka planda migration çalışıyor olabilir).',
-        );
+        if (isMountedRef.current) {
+          alert(
+            (tm('menuPanelDeleteItemTimeout') as string) ||
+              'Silme işlemi zaman aşımına uğradı. Lütfen tekrar deneyin (arka planda migration çalışıyor olabilir).',
+          );
+        }
         return;
       }
 
       await loadMenuItems();
-      // Kısa bir gecikme ekle (Supabase'in güncellemeyi işlemesi için)
+      // Kısa bir gecikme ekle (PostgREST'in güncellemeyi işlemesi için)
       await new Promise((resolve) => setTimeout(resolve, 300));
       // Menü güncellendiğini bildir - force reload ile
-      window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
-    } catch (error) {
+      if (isMountedRef.current) {
+        window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
+      }
+    } catch (error: any) {
       logger.crudError('MenuManagement', 'deleteMenuItem', error);
-      alert(tm('menuPanelDeleteItemError'));
+      if (isMountedRef.current) {
+        // 23503 FK ihlali gibi kalıcı hatalar için kullanıcıya açık mesaj
+        const msg = String(error?.message || error);
+        if (/23503|foreign key|violates/i.test(msg)) {
+          alert(
+            tm('menuPanelDeleteItemFkError') ||
+              'Bu menü öğesi başka kayıtlara bağlı olduğu için silinemedi. Önce alt öğeleri veya bağlı kayıtları silin.',
+          );
+        } else {
+          alert(tm('menuPanelDeleteItemError'));
+        }
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setDeletingIds((prev) => {
+          if (!prev.has(id)) return prev;
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
     }
   };
 
@@ -1176,10 +1232,18 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
           {/* Delete Button */}
           <button
             onClick={() => deleteMenuItem(item.id)}
-            className="p-1 hover:bg-red-100 rounded text-red-600"
+            disabled={deletingIds.has(item.id)}
+            className="p-1 hover:bg-red-100 rounded text-red-600 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1"
             title={tm('delete')}
           >
-            <Trash2 className="w-4 h-4" />
+            {deletingIds.has(item.id) ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span className="text-[11px]">Siliniyor…</span>
+              </>
+            ) : (
+              <Trash2 className="w-4 h-4" />
+            )}
           </button>
         </div>
 

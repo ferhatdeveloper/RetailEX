@@ -1727,6 +1727,46 @@ const SetupWizard: React.FC = () => {
                     }
                 }
 
+                // Sadece admin: varsayılan cari kartlarını garanti et (Peşin Müşteri + Genel Tedarikçi)
+                // create_firm_complete fonksiyonu PESIN/GENEL seed'i tanımlı olsa da canlı akışta
+                // çağrılmıyor; admin-only kurulumda boş cari listesi POS / fatura ekranlarını kilitler.
+                // Idempotent: ON CONFLICT (code) DO NOTHING — firm-prefixed tablolar (rex_{nr}_customers/_suppliers).
+                if (adminOnlyUsers) {
+                    try {
+                        const firmPadded = String(currentFirmId || '001').padStart(3, '0');
+                        const customersTbl = `rex_${firmPadded}_customers`;
+                        const suppliersTbl = `rex_${firmPadded}_suppliers`;
+
+                        // Peşin Müşteri (cash) — bakiye 0, alacak (+) yönünde; master schema
+                        // create_firm_complete ile birebir aynı INSERT.
+                        await postgres.query(
+                            `INSERT INTO ${customersTbl} (firm_nr, code, name, is_active)
+                             VALUES ($1, $2, $3, true)
+                             ON CONFLICT (code) DO NOTHING`,
+                            [firmPadded, 'PESIN', 'Peşin Müşteri']
+                        );
+
+                        // Genel Tedarikçi — borç (-) yönünde; bakiye sütunu suppliers'ta var
+                        // (customers tablosunda yok; DEFAULT 0 gelir).
+                        await postgres.query(
+                            `INSERT INTO ${suppliersTbl} (firm_nr, code, name, balance, is_active)
+                             VALUES ($1, $2, $3, 0, true)
+                             ON CONFLICT (code) DO NOTHING`,
+                            [firmPadded, 'GENEL', 'Genel Tedarikçi']
+                        );
+
+                        if (isTauri) {
+                            const { emit } = await import('@tauri-apps/api/event');
+                            await emit('sync-event', `✅ Cari: Peşin Müşteri + Genel Tedarikçi eklendi (firma ${firmPadded}).`);
+                        }
+                        console.log(`[SetupWizard] Default cari seed OK — firm ${firmPadded}: PESIN/GENEL`);
+                    } catch (cariErr: any) {
+                        const errDetail = cariErr?.message || String(cariErr);
+                        console.warn('[SetupWizard] default cari seed (non-fatal):', errDetail);
+                        // Non-fatal: tablolar henüz yoksa (çok erken init) sonraki adımlar denemez
+                    }
+                }
+
                 // Update local service settings for subsequent calls (like device registration)
                 const { updateConfigs } = await import('../../services/postgres');
                 await updateConfigs({

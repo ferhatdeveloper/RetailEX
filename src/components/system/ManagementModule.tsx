@@ -138,7 +138,6 @@ const ServiceCardsModule = lazyWithChunkRecovery(() => import('../modules/Servic
 const StockMovementsModule = lazyWithChunkRecovery(() => import('../inventory/stock/StockMovementsModule').then(m => ({ default: m.StockMovementsModule })));
 const StockPriceChangeSlipsModule = lazyWithChunkRecovery(() => import('../inventory/stock/StockPriceChangeSlipsModule').then(m => ({ default: m.StockPriceChangeSlipsModule })));
 const StokDevirFisiModule = lazyWithChunkRecovery(() => import('../inventory/stock/StokDevirFisiModule').then(m => ({ default: m.StokDevirFisiModule })));
-const MalzemeAcilisFisiModule = lazyWithChunkRecovery(() => import('../inventory/stock/MalzemeAcilisFisiModule').then(m => ({ default: m.MalzemeAcilisFisiModule })));
 const WarehouseTransferModule = lazyWithChunkRecovery(() => import('../inventory/warehouse/WarehouseTransferModule').then(m => ({ default: m.WarehouseTransferModule })));
 const WMSStockCountModule = lazyWithChunkRecovery(() => import('../wms/components/StockCountModule').then(m => ({ default: m.StockCountModule })));
 const MaterialReportsModule = lazyWithChunkRecovery(() => import('../inventory/products/MaterialReportsModule').then(m => ({ default: m.MaterialReportsModule })));
@@ -1335,9 +1334,11 @@ export function ManagementModule({
         case 'stock-devir-slip':
           return <StokDevirFisiModule />;
 
-        // 179: Alış faturası benzeri açılış/devir fişi (slip_kind='invoice')
+        // Malzeme Açılış Faturası (180) — ayrı menü öğesi yok; sadece
+        // StockMovementsModule → "Ekle → Belge Türü" modalından erişilir.
+        // Eski route kalırsa eski gizli/preset kayıtları için fallback.
         case 'stock-opening-invoice-slip':
-          return <MalzemeAcilisFisiModule />;
+          return <StockMovementsModule defaultFilter="all" />;
 
         // Material Management - Counting (WMS sayım ekranları; Malzeme menü Sayım İşlemleri değil)
         case 'stockcount':

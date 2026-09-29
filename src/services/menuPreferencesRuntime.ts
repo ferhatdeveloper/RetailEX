@@ -31,6 +31,11 @@ const MENU_PREFS_STORE_KEY = 'retailex_menu_preferences_store';
 const STATIC_MENU_SECTION_IDS = [
   'main-menu',
   'material-management',
+  // Ana Kayıtlar üst grubu — `material-definitions` (10 çocuk içeren
+  // Malzeme Sınıfları / Malzemeler / Birim Setleri / …) koruma kapsamında.
+  // v6 upgrade ile birlikte DEFAULT_MENU_HIDDEN_MODULES'tan da çıkarıldı;
+  // buradaki set eski `static_<n>` kimliklerinin geri eşlenebilmesi için.
+  'material-definitions',
   'invoices',
   'finance-management',
   'retail',

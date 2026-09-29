@@ -23,10 +23,12 @@ describe('defaultMenuView', () => {
     expect(prefs.hidden_modules).not.toContain('products');
     expect(prefs.hidden_modules).not.toContain('stockmovements');
     expect(prefs.hidden_modules).not.toContain('inventory');
+    // v6: Ana Kayıtlar üst grubu (`material-definitions`) varsayılan görünür.
+    expect(prefs.hidden_modules).not.toContain('material-definitions');
   });
 
   it('upgrade v1–v3: finans tanımları + malzeme/stok gizlemeleri', () => {
-    expect(MENU_HIDDEN_UPGRADE_VERSION).toBe(4);
+    expect(MENU_HIDDEN_UPGRADE_VERSION).toBe(6);
     expect(hiddenModulesForUpgradeVersion(0, 1)).toEqual(['payment-plans', 'cost-centers']);
     expect(hiddenModulesForUpgradeVersion(1, 2)).toEqual(['finance-definitions']);
     expect(hiddenModulesForUpgradeVersion(2, 3)).toEqual([
@@ -71,6 +73,39 @@ describe('defaultMenuView', () => {
       'inventory',
       'excel',
     ]);
+    // v5 eklemesi yok
+    expect(hiddenModulesForUpgradeVersion(4, 5)).toEqual([]);
+    expect(hiddenModulesForUpgradeVersion(0, 5)).toEqual([
+      'payment-plans',
+      'cost-centers',
+      'finance-definitions',
+      'material-management',
+      'products',
+      'material-definitions',
+      'material-movements',
+      'stockmovements',
+      'stock-price-change-slips',
+      'material-reports',
+      'inventory',
+      'excel',
+    ]);
+    // v5/v6 eklemeleri yok — Ana Kayıtlar üst grubu REMOVALS ile geri alınır,
+    // ama ADDITIONS'a yeni ekran girmiyor.
+    expect(hiddenModulesForUpgradeVersion(5, 6)).toEqual([]);
+    expect(hiddenModulesForUpgradeVersion(0, 6)).toEqual([
+      'payment-plans',
+      'cost-centers',
+      'finance-definitions',
+      'material-management',
+      'products',
+      'material-definitions',
+      'material-movements',
+      'stockmovements',
+      'stock-price-change-slips',
+      'material-reports',
+      'inventory',
+      'excel',
+    ]);
   });
 
   it('applyMenuHiddenUpgrades eski custom preset\'e bir kerelik ekler ve v4 kaldırma listesi uygular', () => {
@@ -101,7 +136,7 @@ describe('defaultMenuView', () => {
     expect(store.presets[0].hidden_modules).not.toContain('inventory');
   });
 
-  it('applyMenuHiddenUpgrades v2→v4 malzeme/stok ekleyip v4 kaldırmasını uygular', () => {
+  it('applyMenuHiddenUpgrades v2→v5 malzeme/stok ekleyip v4/v5 kaldırmalarını uygular', () => {
     const { store, changed } = applyMenuHiddenUpgrades({
       version: 2,
       hidden_upgrade_version: 2,
@@ -117,7 +152,7 @@ describe('defaultMenuView', () => {
       ],
     });
     expect(changed).toBe(true);
-    expect(store.hidden_upgrade_version).toBe(4);
+    expect(store.hidden_upgrade_version).toBe(6);
     // v3 eklemeleri uygulandıktan sonra v4 kaldırma listesi tekrar çıkarır:
     // ana Malzeme Yönetimi + ürün listesi tekrar görünür.
     expect(store.presets[0].hidden_modules).not.toContain('material-management');
@@ -152,7 +187,7 @@ describe('defaultMenuView', () => {
       ],
     });
     expect(changed).toBe(true);
-    expect(store.hidden_upgrade_version).toBe(4);
+    expect(store.hidden_upgrade_version).toBe(6);
     expect(store.presets[0].hidden_modules).toContain('finance-definitions');
     // v3 ile eklenen ana malzeme bölümü v4 kaldırma listesi ile tekrar görünür.
     expect(store.presets[0].hidden_modules).not.toContain('material-management');
@@ -223,5 +258,28 @@ describe('defaultMenuView', () => {
     expect(merged).not.toContain('products');
     expect(merged).not.toContain('stockmovements');
     expect(merged).not.toContain('inventory');
+  });
+
+  it('v6: Ana Kayıtlar üst grubu (material-definitions) eski custom preset\'ten gizlilikten çıkar', () => {
+    const { store, changed } = applyMenuHiddenUpgrades({
+      version: 2,
+      hidden_upgrade_version: 5,
+      active_preset_id: 'custom-1',
+      presets: [
+        {
+          id: 'custom-1',
+          name: 'Özel',
+          saved_by: 'admin',
+          saved_at: '2026-01-01T00:00:00.000Z',
+          hidden_modules: ['logaudit', 'material-definitions'],
+        },
+      ],
+    });
+    expect(changed).toBe(true);
+    expect(store.hidden_upgrade_version).toBe(MENU_HIDDEN_UPGRADE_VERSION);
+    // v6 kaldırma listesi: Ana Kayıtlar tekrar görünür.
+    expect(store.presets[0].hidden_modules).not.toContain('material-definitions');
+    // kullanıcının manuel seçimi korunur.
+    expect(store.presets[0].hidden_modules).toContain('logaudit');
   });
 });

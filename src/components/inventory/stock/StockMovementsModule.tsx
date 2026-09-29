@@ -17,6 +17,7 @@ import {
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
+import { MalzemeAcilisFisiModule } from './MalzemeAcilisFisiModule';
 import { DevExDataGrid, DEVEX_GRID_ROW_ID } from '../../shared/DevExDataGrid';
 import {
     STOCK_MOVEMENTS_COLUMN_ORDER_KEY,
@@ -574,6 +575,16 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                     size="form"
                     ariaLabel={`${tm('add')} - ${selectedSlipLabel || tm('materialTransactionSlips')}`}
                 >
+                    {/* Açılış Faturası (slip_kind='invoice') — kendi modülünü render et.
+                       PurchaseInvoiceModule seviyesinde UX, absolute replace + UNIQUE kısıt. */}
+                    {selectedSlipLabel === (tm('stockOpeningInvoiceTitle') || 'Malzeme Açılış Faturası') ? (
+                        <MalzemeAcilisFisiModule
+                            onClose={closeCreateModal}
+                            warehouses={warehouses}
+                            headerLabel={`${tm('add')} — ${selectedSlipLabel}`}
+                        />
+                    ) : (
+                    <>
                     <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between shrink-0 text-white">
                         <div className="flex items-center gap-3 min-w-0">
                             <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm shrink-0">
@@ -744,6 +755,8 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                             {tm('save')}
                         </Button>
                     </div>
+                    </>
+                    )}
                 </PercentBodyModal>
             )}
         </div>
