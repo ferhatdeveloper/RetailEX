@@ -1425,7 +1425,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             const methodTotals: Record<string, number> = { cash: 0, card: 0, veresiye: 0 };
             paymentData.payments.forEach((payment: any) => {
                 const amountInIQD = payment.amount * (exchangeRates[payment.currency] || 1);
-                let method = payment.method;
+                let method: string = String(payment.method);
                 if (method === 'gateway') method = 'card';
                 methodTotals[method] = (methodTotals[method] || 0) + amountInIQD;
             });
@@ -1575,7 +1575,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             const methodTotals: Record<string, number> = { cash: 0, card: 0, veresiye: 0 };
             ctx.payments.forEach(payment => {
                 const amountInIQD = payment.amount * (exchangeRates[payment.currency] || 1);
-                let method = payment.method;
+                let method: string = String(payment.method);
                 if (method === 'gateway') method = 'card';
                 methodTotals[method] = (methodTotals[method] || 0) + amountInIQD;
             });

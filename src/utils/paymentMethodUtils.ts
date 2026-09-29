@@ -115,10 +115,22 @@ export function paymentFormCodeTranslationKey(code: string): string {
 }
 
 /** POS / rapor listelerinde kullanılan ödeme grubu */
-export type PaymentMethodBucket = 'cash' | 'card' | 'credit' | 'transfer' | 'other';
+export type PaymentMethodBucket =
+  | 'cash'
+  | 'card'
+  | 'credit'
+  | 'transfer'
+  | 'pesinatli'
+  | 'other';
 
 /** DB / form ham değerini rapor ve POS listelerinde kullanılan gruba çevirir */
 export function normalizePaymentMethodBucket(raw: unknown): PaymentMethodBucket {
+  const pm = String(raw ?? '').toLowerCase().trim();
+  // Peşinatlı satış: kapora/taksitli. İlk taksit peşin, kalan cariye
+  // yazılır; raporlarda ayrı bucket olarak gösterilir.
+  if (pm === 'pesinatli' || pm === 'peşinatlı' || pm.includes('peşinat')) {
+    return 'pesinatli';
+  }
   const formCode = dbPaymentMethodToFormCode(raw);
   if (!formCode || formCode === 'ACIK_CARI') return 'credit';
   if (formCode === 'NAKIT') return 'cash';
@@ -126,7 +138,6 @@ export function normalizePaymentMethodBucket(raw: unknown): PaymentMethodBucket 
   if (formCode === 'HAVAL') return 'transfer';
   if (formCode === 'CEK' || formCode === 'SENET') return 'other';
 
-  const pm = String(raw ?? '').toLowerCase().trim();
   if (!pm) return 'credit';
   if (pm === 'cash' || pm === 'nakit') return 'cash';
   if (pm === 'card' || pm === 'kart' || pm === 'gateway' || pm.includes('kredi')) return 'card';
@@ -148,6 +159,8 @@ export function paymentMethodBucketTranslationKey(bucket: PaymentMethodBucket): 
       return 'paymentCredit';
     case 'transfer':
       return 'reportsPaymentPieTransfer';
+    case 'pesinatli':
+      return 'paymentMethodPesinatli';
     default:
       return 'reportsPaymentOther';
   }
@@ -177,9 +190,13 @@ export function isPosRetailPaymentContext(ctx: {
 /** Nakit/kart tahsilat yapıldı mı (açık cari / veresiye değil) */
 export function paymentMethodImpliesPaidNow(raw: unknown): boolean {
   const code = dbPaymentMethodToFormCode(raw);
-  if (!code || code === 'ACIK_CARI') return false;
+  if (code === 'ACIK_CARI') return false;
   if (code === 'NAKIT' || code === 'KREDIKARTI') return true;
   const pm = String(raw ?? '').toLowerCase().trim();
+  // Peşinatlı satış ilk taksidi peşin tahsil edilir; bu satır için
+  // kasaya yansır, peşin sayılır.
+  if (pm === 'pesinatli' || pm === 'peşinatlı') return true;
+  if (!pm) return false;
   return pm === 'cash' || pm === 'nakit' || pm === 'card' || pm === 'kart' || pm === 'credit_card' || pm === 'pos';
 }
 

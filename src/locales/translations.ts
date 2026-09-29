@@ -848,6 +848,15 @@ customerAdvanceBalance: string;
   paymentCardPOS: string;
   paymentCash: string;
   paymentCredit: string;
+  paymentMethodPesinatli: string;
+  pesinatPlanLabel: string;
+  pesinatInstallmentPer: string;
+  pesinatFirstInstallment: string;
+  pesinatFirstInstallmentLabel: string;
+  pesinatPickPlan: string;
+  pesinatPickPlanHint: string;
+  pesinatliLabel: string;
+  installmentShort: string;
   paymentFailed: string;
   paymentInfo: string;
   paymentLabel: string;
@@ -2242,6 +2251,15 @@ export const translations: any = {
     paymentCardPOS: 'Kart (POS)',
     paymentCash: 'Nakit',
     paymentCredit: 'Veresiye (Cari)',
+    paymentMethodPesinatli: 'Peşinatlı Satış',
+    pesinatPlanLabel: 'Taksit Planı',
+    pesinatInstallmentPer: 'Taksit başına',
+    pesinatFirstInstallment: 'İlk taksit şimdi tahsil edilir; kalan cariye yazılır.',
+    pesinatFirstInstallmentLabel: 'İlk Taksit',
+    pesinatPickPlan: 'Lütfen taksit planı seçin (3/6/9/12 ay).',
+    pesinatPickPlanHint: '3 / 6 / 9 / 12 aylık planlardan birini seçin.',
+    pesinatliLabel: 'Peşinatlı Satış',
+    installmentShort: 'ay',
     paymentFailed: 'Ödeme başlatılamadı:',
     paymentInfo: 'Ödeme Bilgileri',
     paymentLabel: 'Ödeme',
@@ -4030,6 +4048,15 @@ export const translations: any = {
     paymentCardPOS: 'Card (POS)',
     paymentCash: 'Cash',
     paymentCredit: 'On Credit (Current)',
+    paymentMethodPesinatli: 'Installment Sale',
+    pesinatPlanLabel: 'Installment Plan',
+    pesinatInstallmentPer: 'Per installment',
+    pesinatFirstInstallment: 'First installment is collected now; the rest is posted to the customer account.',
+    pesinatFirstInstallmentLabel: 'First Installment',
+    pesinatPickPlan: 'Please select an installment plan (3/6/9/12 months).',
+    pesinatPickPlanHint: 'Choose one of the 3 / 6 / 9 / 12 month plans.',
+    pesinatliLabel: 'Installment Sale',
+    installmentShort: 'mo',
     paymentFailed: 'Payment could not be initiated:',
     paymentInfo: 'Payment Information',
     paymentLabel: 'Payment',
@@ -5680,6 +5707,15 @@ export const translations: any = {
     paymentCardPOS: 'بطاقة (POS)',
     paymentCash: 'نقدي',
     paymentCredit: 'على الحساب (آجل)',
+    paymentMethodPesinatli: 'بيع بالأقساط',
+    pesinatPlanLabel: 'خطة الأقساط',
+    pesinatInstallmentPer: 'لكل قسط',
+    pesinatFirstInstallment: 'يتم تحصيل القسط الأول الآن؛ يتم تسجيل الباقي في حساب العميل.',
+    pesinatFirstInstallmentLabel: 'القسط الأول',
+    pesinatPickPlan: 'يرجى اختيار خطة الأقساط (3/6/9/12 شهرًا).',
+    pesinatPickPlanHint: 'اختر إحدى خطط 3 / 6 / 9 / 12 شهرًا.',
+    pesinatliLabel: 'بيع بالأقساط',
+    installmentShort: 'شهر',
     paymentFailed: 'تعذر بدء الدفع:',
     paymentInfo: 'معلومات الدفع',
     paymentLabel: 'الدفع',
@@ -7330,6 +7366,15 @@ export const translations: any = {
     paymentCardPOS: 'Kart (POS)',
     paymentCash: 'Nakit',
     paymentCredit: 'Veresiye (Cari)',
+    paymentMethodPesinatli: 'فرۆشتن بە قیست',
+    pesinatPlanLabel: 'پلانی قیست',
+    pesinatInstallmentPer: 'بۆ هەر قیست',
+    pesinatFirstInstallment: 'یەکەم قیست ئێستا وەردەگیرێت؛ ماوەکەی لە هەژماری کڕیار تۆماردەکرێت.',
+    pesinatFirstInstallmentLabel: 'یەکەم قیست',
+    pesinatPickPlan: 'تکایە پلانێکی قیست هەڵبژێرە (3/6/9/12 مانگ).',
+    pesinatPickPlanHint: 'یەکێک لە پلانەکانی 3 / 6 / 9 / 12 مانگ هەڵبژێرە.',
+    pesinatliLabel: 'فرۆشتن بە قیست',
+    installmentShort: 'مانگ',
     paymentFailed: 'پارەدان دەستی پێ نەکرا:',
     paymentInfo: 'Ödeme Bilgileri',
     paymentLabel: 'Ödeme',
