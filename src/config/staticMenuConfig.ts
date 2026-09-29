@@ -68,7 +68,8 @@ export const getStaticMenuSections = (t: Translations) => [
                 children: [
 
                     { label: t.menu.materialManagementSlips, screen: 'stockmovements', icon: TrendingDown },
-                    // stok-devir (Stok Devir Fişi) — menüden kaldırıldı; bileşen kodu duruyor
+                    { label: t.menu.stockDevirSlip, screen: 'stock-devir-slip', icon: ArrowRightLeft },
+                    { label: t.menu.stockOpeningInvoiceSlip, screen: 'stock-opening-invoice-slip', icon: ArrowRightLeft },
                     { label: t.menu.stockPriceChangeSlips, screen: 'stock-price-change-slips', icon: Percent }
                 ]
             },
@@ -390,6 +391,8 @@ export const staticMenuSections = getStaticMenuSections({
         productCategories: 'Ürün Kategorileri',
         stockManagementPanel: 'Stok Yönetim Paneli',
         materialManagementSlips: 'Malzeme Yönetim Fişleri',
+        stockDevirSlip: 'Stok Devir Fişi',
+        stockOpeningInvoiceSlip: 'Malzeme Açılış Fişi (Alış Faturası Benzeri)',
         materialExtract: 'Malzeme Ekstresi',
         materialValue: 'Malzeme Değer',
         inventory: 'Envanter',

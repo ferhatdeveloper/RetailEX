@@ -144,6 +144,10 @@ export interface MenuTranslations {
   specialCodes: string;
   stockInventory: string;
   stockManagementPanel: string;
+  /** Malzeme → Hareketler: Stok devir fişi (miktar bazlı, eski davranış) */
+  stockDevirSlip: string;
+  /** Malzeme → Hareketler: Alış faturası benzeri açılış/devir fişi (slip_kind=invoice) */
+  stockOpeningInvoiceSlip: string;
   /** Malzeme → Hareketler: Excel/stok fiyat değişim fişleri listesi */
   stockPriceChangeSlips: string;
   stockReports: string;
@@ -1968,6 +1972,8 @@ export const translations: any = {
       materialExtract: 'Malzeme Ekstresi',
       materialManagement: 'Malzeme Yönetimi',
       materialManagementSlips: 'Malzeme Yönetim Fişleri',
+      stockDevirSlip: 'Stok Devir Fişi',
+      stockOpeningInvoiceSlip: 'Malzeme Açılış Fişi (Alış Faturası Benzeri)',
       stockPriceChangeSlips: 'Fiyat değişim fişleri (stok)',
       materialValue: 'Malzeme Değer',
       materialWarehouseStatus: 'Malzeme Ambar Durum',
@@ -3754,6 +3760,8 @@ export const translations: any = {
       materialExtract: 'Material Extract',
       materialManagement: 'Material Management',
       materialManagementSlips: 'Material Management Slips',
+      stockDevirSlip: 'Stock Opening Slip',
+      stockOpeningInvoiceSlip: 'Material Opening Slip (Purchase Invoice Style)',
       stockPriceChangeSlips: 'Price change slips (stock)',
       materialValue: 'Material Value',
       materialWarehouseStatus: 'Material Warehouse Status',
@@ -5411,6 +5419,8 @@ export const translations: any = {
       materialExtract: 'كشف المواد',
       materialManagement: 'إدارة المواد',
       materialManagementSlips: 'سندات إدارة المواد',
+      stockDevirSlip: 'سند افتتاح المخزون',
+      stockOpeningInvoiceSlip: 'سند افتتاح (نمط فاتورة شراء)',
       stockPriceChangeSlips: 'سندات تغيير الأسعار (المخزون)',
       materialValue: 'قيمة المواد',
       materialWarehouseStatus: 'حالة مخزن المواد',
@@ -7057,6 +7067,8 @@ export const translations: any = {
       materialExtract: 'کورتەی ماددە',
       materialManagement: 'بەڕێوەبردنی ماددەکان',
       materialManagementSlips: 'پسوڵەکانی بەڕێوەبردنی ماددە',
+      stockDevirSlip: 'پسوولەی گواستنەوەی کۆگا',
+      stockOpeningInvoiceSlip: 'پسوولەی گواستنەوە (شێوازی وەسڵی کڕین)',
       stockPriceChangeSlips: 'پسوڵەکانی گۆڕینی نرخ (کۆگا)',
       materialValue: 'قيمة المواد',
       materialWarehouseStatus: 'باری کۆگای ماددەکان',

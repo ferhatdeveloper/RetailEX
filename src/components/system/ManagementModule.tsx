@@ -137,6 +137,8 @@ const WarehouseDefinitionsModule = lazyWithChunkRecovery(() => import('../invent
 const ServiceCardsModule = lazyWithChunkRecovery(() => import('../modules/ServiceCardsModule').then(m => ({ default: m.ServiceCardsModule })));
 const StockMovementsModule = lazyWithChunkRecovery(() => import('../inventory/stock/StockMovementsModule').then(m => ({ default: m.StockMovementsModule })));
 const StockPriceChangeSlipsModule = lazyWithChunkRecovery(() => import('../inventory/stock/StockPriceChangeSlipsModule').then(m => ({ default: m.StockPriceChangeSlipsModule })));
+const StokDevirFisiModule = lazyWithChunkRecovery(() => import('../inventory/stock/StokDevirFisiModule').then(m => ({ default: m.StokDevirFisiModule })));
+const MalzemeAcilisFisiModule = lazyWithChunkRecovery(() => import('../inventory/stock/MalzemeAcilisFisiModule').then(m => ({ default: m.MalzemeAcilisFisiModule })));
 const WarehouseTransferModule = lazyWithChunkRecovery(() => import('../inventory/warehouse/WarehouseTransferModule').then(m => ({ default: m.WarehouseTransferModule })));
 const WMSStockCountModule = lazyWithChunkRecovery(() => import('../wms/components/StockCountModule').then(m => ({ default: m.StockCountModule })));
 const MaterialReportsModule = lazyWithChunkRecovery(() => import('../inventory/products/MaterialReportsModule').then(m => ({ default: m.MaterialReportsModule })));
@@ -254,6 +256,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'cari-devir' | 'cari-devir-excel' | 'stockcounting' | 'stockcounting-mobile' |
   'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'reports' | 'customreports' | 'grafana-report-builder' | 'category-group-profit-report' | 'materials' | 'MYFisleri' |
   'stockmovements-deficit' | 'stockmovements-surplus' | 'stock-price-change-slips' |
+  'stock-devir-slip' | 'stock-opening-invoice-slip' |
   'inventory-count-ops' |
   'analytics-group' | 'sales-stock-group' | 'finance-reps-group' | 'advanced-reps-group' |
   'report-designer' | 'label-designer' | 'invoice-label-designer' | 'print-options' |
@@ -1327,6 +1330,14 @@ export function ManagementModule({
 
         case 'stock-price-change-slips':
           return <StockPriceChangeSlipsModule />;
+
+        // 179: Stok devir (miktar bazlı, eski davranış)
+        case 'stock-devir-slip':
+          return <StokDevirFisiModule />;
+
+        // 179: Alış faturası benzeri açılış/devir fişi (slip_kind='invoice')
+        case 'stock-opening-invoice-slip':
+          return <MalzemeAcilisFisiModule />;
 
         // Material Management - Counting (WMS sayım ekranları; Malzeme menü Sayım İşlemleri değil)
         case 'stockcount':

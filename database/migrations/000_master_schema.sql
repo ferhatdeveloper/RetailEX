@@ -3362,6 +3362,9 @@ BEGIN
       exchange_rate    NUMERIC DEFAULT 1,
       description      TEXT,
       status           VARCHAR(20) DEFAULT ''completed'',
+      -- 179: slip_kind (''quantity'' = eski davranış; ''invoice'' = alış faturası
+      -- benzeri açılış/devir; miktar + birim fiyat + KDV % + toplam)
+      slip_kind        VARCHAR(20) NOT NULL DEFAULT ''quantity'',
       logo_sync_status VARCHAR(20),
       logo_sync_error  TEXT,
       logo_sync_date   TIMESTAMPTZ,
@@ -3370,6 +3373,19 @@ BEGIN
       updated_at       TIMESTAMPTZ DEFAULT NOW()
     );
   ', v_prefix || '_stock_movements');
+  -- 179: slip_kind CHECK (idempotent)
+  EXECUTE format(
+    'ALTER TABLE %I DROP CONSTRAINT IF EXISTS %I',
+    v_prefix || '_stock_movements',
+    v_prefix || '_stock_movements_slip_kind_check'
+  );
+  EXECUTE format(
+    'ALTER TABLE %I ADD CONSTRAINT %I CHECK (slip_kind IN (%L, %L))',
+    v_prefix || '_stock_movements',
+    v_prefix || '_stock_movements_slip_kind_check',
+    'quantity',
+    'invoice'
+  );
   EXECUTE format(
     'CREATE UNIQUE INDEX IF NOT EXISTS %I ON %I (ref_id) WHERE ref_id IS NOT NULL',
     v_prefix || '_stock_movements_logo_ref_id_uidx',
@@ -3386,6 +3402,11 @@ BEGIN
       quantity         DECIMAL(15,4) DEFAULT 0,
       unit_price       DECIMAL(15,2) DEFAULT 0,
       cost_price       DECIMAL(15,2) DEFAULT 0,
+      -- 179: KDV hariç birim maliyet, KDV %, satır toplam (alış faturası
+      -- benzeri açılış/devir için slip_kind=''invoice'' satırlarında dolar)
+      unit_cost_excl_vat NUMERIC(15,4) NOT NULL DEFAULT 0,
+      vat_rate           NUMERIC(5,2)  NOT NULL DEFAULT 0,
+      line_total         NUMERIC(15,2) NOT NULL DEFAULT 0,
       exchange_rate    NUMERIC DEFAULT 1,
       unit_name        VARCHAR(100),
       convert_factor   NUMERIC DEFAULT 1,

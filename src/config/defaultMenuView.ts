@@ -245,6 +245,8 @@ export const DEFAULT_MENU_ITEM_ORDERS: Readonly<Record<string, number>> = {
   'sales-invoice-wholesale': 56,
   'serviceinvoice-received': 61,
   'stock-price-change-slips': 32,
+  'stock-devir-slip': 31.1,
+  'stock-opening-invoice-slip': 31.2,
   'analytics-dashboard-group': 109,
   'purchase-invoice-standard': 49,
   'sales-invoice-consignment': 57,
