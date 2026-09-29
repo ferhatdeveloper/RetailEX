@@ -1,5 +1,6 @@
-import { X, CreditCard, Banknote, Wallet, Plus, Trash2, CheckCircle, Calculator, Smartphone, ShoppingCart, QrCode, Minus, Globe, Tag, TrendingDown, Loader2, Check, Percent, Printer, ChevronDown } from 'lucide-react';
+import { X, CreditCard, Banknote, Wallet, Plus, Trash2, CheckCircle, Calculator, ShoppingCart, Minus, Globe, Tag, TrendingDown, Loader2, Printer, ChevronDown, FileText, Receipt } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
+import { toast } from 'sonner';
 import type { CartItem } from './types';
 import type { Campaign, Customer } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -12,9 +13,13 @@ import {
   type PosReceiptPrintFormat
 } from '../../services/receiptSettingsService';
 import { useTheme } from '../../contexts/ThemeContext';
-import { paymentGateway, type PaymentProvider } from '../../services/paymentGateway';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
+import {
+  collectCustomerDebt,
+  getCustomerOutstandingInvoices,
+  type CustomerOutstandingInvoice,
+} from '../../services/api/customerDebtCollection';
 import { formatCurrency, formatNumber, formatMoneyWithCode, getGlobalCurrency } from '../../utils/currency';
 import { formatNumber as formatNumberTR } from '../../utils/formatNumber';
 import { posPaymentAdditionalDiscount, roundPosMoneyAmount, posMoneyEpsilon, getPosQuickDiscountAmountPresets } from '../../utils/discountRounding';
@@ -80,11 +85,9 @@ const parseFormattedNumber = (value: string): number => {
 };
 
 export interface POSPaymentModalPaymentRow {
-  method: 'cash' | 'card' | 'gateway' | 'veresiye';
+  method: 'cash' | 'card' | 'veresiye';
   amount: number;
   currency: 'IQD' | 'USD' | 'EUR';
-  gatewayProvider?: string;
-  transactionId?: string;
   /** Seçilen kasa bilgisi — kasada ödeme türü gösterimi için */
   cash_register_id?: string;
   cash_register_name?: string;
@@ -160,7 +163,7 @@ export function POSPaymentModal({
   );
 
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [currentMethod, setCurrentMethod] = useState<'cash' | 'card' | 'gateway' | 'veresiye'>('cash');
+  const [currentMethod, setCurrentMethod] = useState<'cash' | 'card' | 'veresiye'>('cash');
   const [currentAmount, setCurrentAmount] = useState('');
   const [currentCurrency, setCurrentCurrency] = useState<'IQD' | 'USD' | 'EUR'>(baseCurrency);
   const [discountType, setDiscountType] = useState<'percentage' | 'amount'>('percentage');
@@ -171,12 +174,13 @@ export function POSPaymentModal({
   const [showCashRegisterModal, setShowCashRegisterModal] = useState(false);
   const [discountValue, setDiscountValue] = useState('');
   const [showNumpad, setShowNumpad] = useState(false);
-  const [selectedGateway, setSelectedGateway] = useState<string>('');
-  const [activeProviders, setActiveProviders] = useState<PaymentProvider[]>([]);
-  const [showQRCode, setShowQRCode] = useState(false);
-  const [qrGatewayName, setQrGatewayName] = useState('');
   const [processing, setProcessing] = useState(false);
   const [showCancelReasonModal, setShowCancelReasonModal] = useState(false);
+  // Müşteri cari borç tahsilatı — müşteri seçildiğinde listelenir
+  const [customerInvoices, setCustomerInvoices] = useState<CustomerOutstandingInvoice[]>([]);
+  const [customerInvoicesLoading, setCustomerInvoicesLoading] = useState(false);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
+  const [collectingDebt, setCollectingDebt] = useState(false);
   const [allowPaymentBackToSale, setAllowPaymentBackToSale] = useState(() =>
     isPosPaymentBackToSaleAllowed(),
   );
@@ -243,6 +247,36 @@ export function POSPaymentModal({
     setCurrentCurrency(baseCurrency);
   }, [baseCurrency]);
 
+  // Müşteri değişince bekleyen borçları çek
+  useEffect(() => {
+    const custId = selectedCustomer?.id;
+    if (!custId) {
+      setCustomerInvoices([]);
+      setSelectedInvoiceIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    setCustomerInvoicesLoading(true);
+    void getCustomerOutstandingInvoices(custId)
+      .then((rows) => {
+        if (cancelled) return;
+        setCustomerInvoices(rows);
+        // Önceki seçimleri temizle (yeni müşteri → farklı fatura seti)
+        setSelectedInvoiceIds(new Set());
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn('[POSPaymentModal] customerDebt load failed:', err);
+        setCustomerInvoices([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCustomerInvoicesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCustomer?.id]);
+
   const handlePrintFormatChange = async (nextFormat: PosReceiptPrintFormat) => {
     setPrintFormat(nextFormat);
     try {
@@ -261,15 +295,6 @@ export function POSPaymentModal({
   );
   const formatSummaryMoney = (value: number) => formatMoneyWithCode(value, baseCurrency);
   const { darkMode } = useTheme();
-
-  // Load active payment providers
-  useEffect(() => {
-    const providers = paymentGateway.getActiveProviders();
-    setActiveProviders(providers);
-    if (providers.length > 0) {
-      setSelectedGateway(providers[0].id);
-    }
-  }, []);
 
   // Kasa listesini yükle (aktif kasalar)
   useEffect(() => {
@@ -393,33 +418,8 @@ export function POSPaymentModal({
       method: currentMethod,
       amount: normalizedAmount,
       currency: currentCurrency,
-      ...(currentMethod === 'gateway' && { gatewayProvider: selectedGateway }),
       ...cashRegisterFieldsForMethod(currentMethod),
     };
-
-    // If gateway payment, show QR code
-    if (currentMethod === 'gateway' && selectedGateway) {
-      const result = await paymentGateway.initiatePayment(
-        selectedGateway,
-        {
-          amount: amount,
-          currency: currentCurrency,
-          orderId: `ORDER-${Date.now()}`,
-          description: 'POS Satış Ödemesi'
-        }
-      );
-
-      if (result.success) {
-        newPayment.transactionId = result.transactionId;
-        setShowQRCode(true);
-        setQrGatewayName(result.providerName || '');
-        // Auto close QR after 3 seconds for demo
-        setTimeout(() => setShowQRCode(false), 3000);
-      } else {
-        alert(`Ödeme başlatılamadı: ${result.error}`);
-        return;
-      }
-    }
 
     setPayments((prev) => [...prev, newPayment]);
     setCurrentAmount('');
@@ -427,6 +427,84 @@ export function POSPaymentModal({
 
   const handleRemovePayment = (index: number) => {
     setPayments(payments.filter((_, i) => i !== index));
+  };
+
+  // ----- Müşteri cari borç tahsilatı -----
+  const customerDebtTotal = useMemo(
+    () => customerInvoices.reduce((s, i) => s + (Number(i.remaining) || 0), 0),
+    [customerInvoices],
+  );
+  const selectedDebtTotal = useMemo(
+    () =>
+      customerInvoices
+        .filter((i) => selectedInvoiceIds.has(i.id))
+        .reduce((s, i) => s + (Number(i.remaining) || 0), 0),
+    [customerInvoices, selectedInvoiceIds],
+  );
+
+  const handleCollectCustomerDebt = async () => {
+    if (!selectedCustomer) {
+      toast.error('Müşteri seçilmedi.');
+      return;
+    }
+    if (!selectedCashRegisterId) {
+      toast.error(tm('selectCashRegister') || 'Aktif kasa seçilmedi.');
+      return;
+    }
+    const ids = Array.from(selectedInvoiceIds);
+    if (ids.length === 0) return;
+
+    // Toplam tutar (IQD tabanlı, çünkü POS baseCurrency ile çalışıyor).
+    // Müşteri Borcu listesi IQD cinsinden; currentCurrency karışıklığı yok.
+    if (!(selectedDebtTotal > 0)) {
+      toast.error('Tahsilat tutarı sıfır.');
+      return;
+    }
+
+    setCollectingDebt(true);
+    try {
+      const methodLabel =
+        currentMethod === 'cash'
+          ? 'Nakit'
+          : currentMethod === 'card'
+            ? 'Kart'
+            : 'Tahsilat';
+      const res = await collectCustomerDebt({
+        customerId: selectedCustomer.id,
+        invoiceIds: ids,
+        amount: selectedDebtTotal,
+        cashRegisterId: selectedCashRegisterId,
+        cashRegisterName: selectedCashRegister?.kasa_adi,
+        cashRegisterCode: selectedCashRegister?.kasa_kodu,
+        paymentMethodLabel: methodLabel,
+      });
+      // Tahsilat tutarını "Toplam Ödenen"e ekle — yeni bir payment satırı
+      // olarak listeye yaz (parent onComplete'e iletecek).
+      setPayments((prev) => [
+        ...prev,
+        {
+          method: currentMethod === 'veresiye' ? 'cash' : currentMethod,
+          amount: res.totalAmount,
+          currency: baseCurrency,
+          cash_register_id: selectedCashRegisterId,
+          cash_register_name: selectedCashRegister?.kasa_adi,
+          cash_register_code: selectedCashRegister?.kasa_kodu,
+        },
+      ]);
+      // Listeyi yenile (kalan bakiye sıfırlanan faturalar kaybolur).
+      const refreshed = await getCustomerOutstandingInvoices(selectedCustomer.id);
+      setCustomerInvoices(refreshed);
+      setSelectedInvoiceIds(new Set());
+      toast.success(
+        `${res.cashLinesWritten} ${tm('invoiceCount') || 'fatura'} ${tm('collected') || 'tahsil edildi'}: ${formatSummaryMoney(res.totalAmount)}`,
+      );
+    } catch (err) {
+      console.error('[POSPaymentModal] collectCustomerDebt failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg || (tm('collectionFailed') || 'Tahsilat başarısız'));
+    } finally {
+      setCollectingDebt(false);
+    }
   };
 
   const handlePrintDraftReceipt = async () => {
@@ -576,7 +654,6 @@ export function POSPaymentModal({
     { id: 'cash', name: t.cashLabel || 'Nakit', icon: Wallet },
     { id: 'card', name: t.cardLabel || 'Kart (POS)', icon: CreditCard },
     { id: 'veresiye', name: t.veresiyeLabel || 'Veresiye (Cari)', icon: Wallet, disabled: !selectedCustomer },
-    { id: 'gateway', name: t.gatewayLabel || 'QR Ödeme Sağlayıcı', icon: QrCode }
   ];
 
   return (
@@ -603,33 +680,6 @@ export function POSPaymentModal({
               <Calculator className="w-4 h-4" />
               {t.numpad || 'Numpad'}
             </button>
-            {activeProviders.map(provider => (
-              <button
-                key={provider.id}
-                onClick={async () => {
-                  const amount = finalTotal;
-                  const result = await paymentGateway.initiatePayment(
-                    provider.id,
-                    {
-                      amount: amount,
-                      currency: baseCurrency,
-                      orderId: `ORDER-${Date.now()}`,
-                      description: 'POS Satış Ödemesi'
-                    }
-                  );
-                  if (result.success) {
-                    setQrGatewayName(result.providerName || provider.name);
-                    setCurrentAmount(amount.toString());
-                    setShowQRCode(true);
-                  } else {
-                    alert(`${provider.name} ${t.paymentFailed || 'ödemesi başlatılamadı:'} ${result.error}`);
-                  }
-                }}
-                className="px-3 py-1.5 rounded text-sm bg-purple-600 hover:bg-purple-700 text-white transition-colors font-medium"
-              >
-                {provider.name}
-              </button>
-            ))}
             <button
               onClick={handleRequestClose}
               title={
@@ -860,21 +910,14 @@ export function POSPaymentModal({
                             <Banknote className="w-4 h-4 text-green-600" />
                           ) : payment.method === 'card' ? (
                             <CreditCard className="w-4 h-4 text-blue-600" />
-                          ) : payment.method === 'veresiye' ? (
-                            <Wallet className="w-4 h-4 text-orange-600" />
                           ) : (
-                            <Smartphone className="w-4 h-4 text-purple-600" />
+                            <Wallet className="w-4 h-4 text-orange-600" />
                           )}
                           <span className="text-sm font-medium font-mono">
                             {payment.currency === baseCurrency
                               ? formatCurrency(payment.amount)
                               : formatMoneyWithCode(payment.amount, payment.currency)}
                           </span>
-                          {payment.gatewayProvider && (
-                            <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">
-                              {payment.gatewayProvider.toUpperCase()}
-                            </span>
-                          )}
                           {payment.method === 'veresiye' ? (
                             <span className={`text-[10px] px-1.5 py-0.5 rounded ${darkMode ? 'bg-orange-900/40 text-orange-300' : 'bg-orange-100 text-orange-800'}`}>
                               {t.veresiyeLabel || 'Veresiye (Cari)'}
@@ -894,6 +937,114 @@ export function POSPaymentModal({
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Müşteri Borcu (tahsilat) — müşteri seçildiğinde aktif */}
+              {selectedCustomer && (
+                <div
+                  data-testid="pos-customer-debt-section"
+                  className={`border-2 rounded-xl p-3 ${
+                    darkMode
+                      ? 'bg-purple-900/20 border-purple-700/60'
+                      : 'bg-purple-50 border-purple-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <h4
+                      className={`text-sm font-semibold flex items-center gap-2 ${
+                        darkMode ? 'text-purple-300' : 'text-purple-900'
+                      }`}
+                    >
+                      <Receipt className="w-4 h-4" />
+                      {tm('customerDebt') || 'Müşteri Borcu'} ({selectedCustomer.name})
+                    </h4>
+                    <span
+                      className={`text-sm font-bold font-mono ${
+                        darkMode ? 'text-purple-200' : 'text-purple-700'
+                      }`}
+                    >
+                      {formatSummaryMoney(customerDebtTotal)} {baseCurrency}
+                    </span>
+                  </div>
+
+                  {customerInvoicesLoading ? (
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      {tm('loading') || 'Yükleniyor...'}
+                    </div>
+                  ) : customerInvoices.length === 0 ? (
+                    <div className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                      {tm('customerDebtEmpty') || 'Bekleyen borç yok.'}
+                    </div>
+                  ) : (
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {customerInvoices.map((inv) => {
+                        const checked = selectedInvoiceIds.has(inv.id);
+                        return (
+                          <label
+                            key={inv.id}
+                            className={`flex items-center justify-between gap-2 text-xs cursor-pointer rounded px-1 py-1 ${
+                              darkMode
+                                ? checked
+                                  ? 'bg-purple-900/40'
+                                  : 'hover:bg-purple-900/30'
+                                : checked
+                                  ? 'bg-purple-100'
+                                  : 'hover:bg-purple-50'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2 min-w-0 flex-1">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() =>
+                                  setSelectedInvoiceIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(inv.id)) next.delete(inv.id);
+                                    else next.add(inv.id);
+                                    return next;
+                                  })
+                                }
+                                className="rounded text-purple-600 focus:ring-purple-500"
+                                aria-label={`Fatura ${inv.invoice_no} seç`}
+                              />
+                              <FileText className="w-3 h-3 opacity-70 shrink-0" />
+                              <span className="font-mono truncate">
+                                {inv.invoice_no} · {inv.invoice_date.slice(0, 10)}
+                              </span>
+                            </span>
+                            <span
+                              className={`font-semibold font-mono shrink-0 ${
+                                darkMode ? 'text-red-300' : 'text-red-600'
+                              }`}
+                            >
+                              {formatSummaryMoney(inv.remaining)}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {selectedInvoiceIds.size > 0 && selectedCashRegisterId && (
+                    <button
+                      type="button"
+                      data-testid="pos-collect-customer-debt"
+                      onClick={handleCollectCustomerDebt}
+                      disabled={collectingDebt}
+                      className={`w-full mt-2 py-2 px-3 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-60 bg-purple-600 hover:bg-purple-700 text-white`}
+                    >
+                      {collectingDebt ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <CreditCard className="w-4 h-4" />
+                      )}
+                      {collectingDebt
+                        ? (tm('processingText') || 'İŞLENİYOR...')
+                        : `${tm('collectSelectedDebts') || 'Seçili Borçları Öde'} (${formatSummaryMoney(selectedDebtTotal)})`}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1001,29 +1152,8 @@ export function POSPaymentModal({
                       method: currentMethod,
                       amount: amountToAdd,
                       currency: currentCurrency,
-                      ...(currentMethod === 'gateway' && { gatewayProvider: selectedGateway }),
                       ...cashRegisterFieldsForMethod(currentMethod),
                     };
-                    if (currentMethod === 'gateway' && selectedGateway) {
-                      const result = await paymentGateway.initiatePayment(
-                        selectedGateway,
-                        {
-                          amount: amountToAdd,
-                          currency: currentCurrency,
-                          orderId: `ORDER-${Date.now()}`,
-                          description: 'POS Satış Ödemesi'
-                        }
-                      );
-                      if (result.success) {
-                        newPayment.transactionId = result.transactionId;
-                        setShowQRCode(true);
-                        setQrGatewayName(result.providerName || '');
-                        setTimeout(() => setShowQRCode(false), 3000);
-                      } else {
-                        alert(`Ödeme başlatılamadı: ${result.error}`);
-                        return;
-                      }
-                    }
                     setPayments((prev) => [...prev, newPayment]);
                     setCurrentAmount('');
                   }}
@@ -1362,75 +1492,6 @@ export function POSPaymentModal({
           </button>
         </div>
       </div>
-
-      {/* QR Code Modal */}
-      {showQRCode && (
-        <ModalLayer nested className="bg-black/95 backdrop-blur-sm flex flex-col items-center justify-center">
-          <button
-            onClick={() => setShowQRCode(false)}
-            className="absolute top-6 right-6 text-white/80 hover:text-white p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-          >
-            <X className="w-8 h-8" />
-          </button>
-
-          <div className="text-center max-w-2xl px-8">
-            {/* QR Code Container */}
-            <div className={`mb-8 p-12 rounded-2xl inline-block ${darkMode ? 'bg-white' : 'bg-white'
-              }`}>
-              <QrCode className="w-80 h-80 text-gray-800" />
-            </div>
-
-            {/* Payment Info */}
-            <div className="space-y-4">
-              <div className="inline-block px-6 py-2 bg-purple-600 rounded-full">
-                <h3 className="text-2xl font-bold text-white">
-                  {qrGatewayName.toUpperCase()}
-                </h3>
-              </div>
-
-              <h4 className="text-3xl font-bold text-white">
-                {t.qrScanCode || 'QR Kodu Okutun'}
-              </h4>
-
-              <p className="text-xl text-gray-300">
-                {t.qrCustomerInstruction || 'Müşteri telefonu ile QR kodu okutarak ödemeyi tamamlayabilir'}
-              </p>
-
-              {/* Amount Display */}
-              <div className="mt-8 p-6 bg-white/10 rounded-xl border-2 border-white/20">
-                <p className="text-sm text-gray-400 mb-2">{t.paymentAmount || 'Ödeme Tutarı'}</p>
-                <p className="text-5xl font-bold text-white font-mono">
-                  {formatNumberTR(parseFloat(currentAmount), 2, true)} <span className="text-3xl text-gray-300">{currentCurrency}</span>
-                </p>
-                {currentCurrency !== baseCurrency && (
-                  <p className="text-lg text-gray-400 mt-2">
-                    ≈ {formatCurrency(parseFormattedNumber(currentAmount) * (exchangeRates[currentCurrency] ?? 1))}
-                  </p>
-                )}
-              </div>
-
-              {/* Instructions */}
-              <div className="mt-6 flex items-center justify-center gap-3 text-gray-400">
-                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center">
-                  <Smartphone className="w-6 h-6" />
-                </div>
-                <p className="text-left">
-                  <span className="block text-sm">{t.step1 || 'Adım 1'}</span>
-                  <span className="block text-white">{t.holdPhoneToQr || 'Telefonu QR koda tutun'}</span>
-                </p>
-                <div className="text-2xl text-white/30">→</div>
-                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center">
-                  <Check className="w-6 h-6 text-green-400" />
-                </div>
-                <p className="text-left">
-                  <span className="block text-sm">{t.step2 || 'Adım 2'}</span>
-                  <span className="block text-white">{t.confirmPaymentText || 'Ödemeyi onaylayın'}</span>
-                </p>
-              </div>
-            </div>
-          </div>
-        </ModalLayer>
-      )}
 
       {showCashRegisterModal && (
         <PercentBodyModal
