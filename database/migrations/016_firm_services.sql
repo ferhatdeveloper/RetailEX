@@ -3,6 +3,9 @@
 -- Excel / Hizmet Yönetimi — PostgreSQL modunda Supabase yerine bu tablo kullanılır.
 -- ============================================================================
 
+-- uuid_generate_v4() güvenliği (uuid-ossp yoksa 22023 önlenir)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 DO $$
 DECLARE
   r RECORD;

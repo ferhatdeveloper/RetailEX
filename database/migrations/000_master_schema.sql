@@ -14,6 +14,10 @@ SET client_encoding = 'UTF8';
 -- yalnızca "database engine" kopyası olan minimal kurulumlarda 58P01 verebilir — o zaman contrib kurun.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- uuid_generate_v4() için uuid-ossp (175'ten itibaren 002/016/017/018 gibi
+-- dosyalar bu fonksiyonu kullanıyor; başka türlü 22023 fırlatır).
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- ============================================================================
 -- 0. SCHEMAS
 -- ============================================================================

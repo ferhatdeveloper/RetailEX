@@ -6,6 +6,9 @@
 -- beauty.rex_{firma}_{dönem}_beauty_customer_feedback: survey_id, survey_answers
 -- ============================================================================
 
+-- uuid_generate_v4() güvenliği (uuid-ossp yoksa 22023 önlenir)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 DO $$
 DECLARE
   r RECORD;

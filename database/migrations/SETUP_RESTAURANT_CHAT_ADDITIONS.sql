@@ -11,6 +11,9 @@
 -- rest şeması yoksa oluştur (000'da zaten var; güvenlik için)
 CREATE SCHEMA IF NOT EXISTS rest;
 
+-- uuid_generate_v4() güvenliği (uuid-ossp yoksa 22023 önlenir)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- -----------------------------------------------------------------------------
 -- İade / iptal raporu için log tablosu (VoidReturnReport, iade sebebi zorunlu)
 -- -----------------------------------------------------------------------------

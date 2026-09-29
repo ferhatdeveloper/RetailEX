@@ -4,6 +4,9 @@
 --       kurumsal, entegrasyon, denetim, sarf kullanım logu)
 -- ============================================================================
 
+-- uuid_generate_v4() güvenliği (uuid-ossp yoksa 22023 önlenir)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Randevu kolonları (dönem tabloları)
 DO $$
 DECLARE r RECORD;

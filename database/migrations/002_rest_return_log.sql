@@ -2,6 +2,9 @@
 -- rest şeması restoran özelliği kullanmayan tenant'larda yok; idempotent oluştur.
 CREATE SCHEMA IF NOT EXISTS rest;
 
+-- uuid_generate_v4() güvenliği (uuid-ossp yoksa 22023 önlenir)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 CREATE TABLE IF NOT EXISTS rest.return_log (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     return_number   VARCHAR(50) NOT NULL,
