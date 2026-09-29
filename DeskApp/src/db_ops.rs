@@ -1028,56 +1028,101 @@ pub async fn check_db_status(config: AppConfig) -> Result<String, String> {
     use std::time::Duration;
     use std::net::ToSocketAddrs;
 
-    let raw_host = config.local_db.split(':').next().unwrap_or("localhost");
-    let host_port_str = config.local_db.split('/').next().unwrap_or("localhost:5432");
-    let port = if let Some(p) = host_port_str.split(':').nth(1) {
-        p.parse::<u16>().unwrap_or(5432)
+    let local = config.local_db.trim();
+    let host_port_str = local.split('/').next().unwrap_or("127.0.0.1:5432").trim();
+    let mut raw_host = host_port_str.split(':').next().unwrap_or("127.0.0.1").trim();
+    if raw_host.is_empty() {
+        raw_host = "127.0.0.1";
+    }
+    let configured_port: u16 = host_port_str
+        .rsplit_once(':')
+        .and_then(|(_, p)| p.parse().ok())
+        .unwrap_or(5432);
+
+    // localhost / boş → IPv4 + IPv6 adayları (Windows ::1 dinleme uyumsuzluğu)
+    let is_loopback = raw_host.eq_ignore_ascii_case("localhost")
+        || raw_host == "127.0.0.1"
+        || raw_host == "::1"
+        || raw_host == "[::1]";
+    let host_candidates: Vec<String> = if is_loopback {
+        vec![
+            "127.0.0.1".to_string(),
+            "::1".to_string(),
+            "localhost".to_string(),
+        ]
     } else {
-        5432
+        vec![raw_host.to_string()]
     };
 
-    // localhost → önce 127.0.0.1 (Windows IPv6 ::1 / dinleme uyumsuzluğu)
-    let host_candidates: Vec<&str> = if raw_host.eq_ignore_ascii_case("localhost") {
-        vec!["127.0.0.1", "localhost"]
-    } else {
-        vec![raw_host]
+    // Yapılandırılan port + yerel için yaygın yedek 5433
+    let mut ports: Vec<u16> = vec![configured_port];
+    if is_loopback && configured_port == 5432 {
+        ports.push(5433);
+    }
+
+    let tcp_timeout = Duration::from_millis(2000);
+
+    let port_open = |host: &str, port: u16| -> bool {
+        // IPv6 için [host]:port biçimi zorunlu; "::1:5432" belirsiz
+        let addr = if host.contains(':') && !host.starts_with('[') {
+            format!("[{}]:{}", host, port)
+        } else {
+            format!("{}:{}", host, port)
+        };
+        match addr.to_socket_addrs() {
+            Ok(mut addrs) => addrs.any(|a| TcpStream::connect_timeout(&a, tcp_timeout).is_ok()),
+            Err(_) => {
+                if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+                    let sa = std::net::SocketAddr::new(ip, port);
+                    TcpStream::connect_timeout(&sa, tcp_timeout).is_ok()
+                } else {
+                    false
+                }
+            }
+        }
     };
 
-    let port_open = |host: &str| -> bool {
-        let addr = format!("{}:{}", host, port);
-        addr.to_socket_addrs()
-            .map(|mut addrs| {
-                addrs.any(|a| TcpStream::connect_timeout(&a, Duration::from_millis(600)).is_ok())
-            })
-            .unwrap_or(false)
-    };
-
-    let mut reachable_host: Option<&str> = None;
+    let mut reachable: Option<(String, u16)> = None;
     for h in &host_candidates {
-        if port_open(h) {
-            reachable_host = Some(*h);
+        for &p in &ports {
+            if port_open(h, p) {
+                reachable = Some((h.clone(), p));
+                break;
+            }
+        }
+        if reachable.is_some() {
             break;
         }
     }
 
-    // Port kapalıysa Windows'ta PG 15/16 servisini başlatmayı dene
-    if reachable_host.is_none() {
+    #[cfg(windows)]
+    let mut service_running = windows_postgres_service_running();
+    #[cfg(not(windows))]
+    let service_running = false;
+
+    // Port kapalıysa Windows'ta PG servisini başlatmayı dene
+    if reachable.is_none() {
         #[cfg(windows)]
         {
             let start_log = crate::try_start_windows_postgres_services();
             eprintln!("RetailEX: postgres service start attempt: {}", start_log);
-            // Servis start sonrası kısa bekle
-            tokio::time::sleep(Duration::from_millis(1200)).await;
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+            service_running = windows_postgres_service_running();
             for h in &host_candidates {
-                if port_open(h) {
-                    reachable_host = Some(*h);
+                for &p in &ports {
+                    if port_open(h, p) {
+                        reachable = Some((h.clone(), p));
+                        break;
+                    }
+                }
+                if reachable.is_some() {
                     break;
                 }
             }
         }
     }
 
-    if reachable_host.is_none() {
+    if reachable.is_none() && !service_running {
         #[cfg(windows)]
         {
             if crate::windows_postgres_bin_present() {
@@ -1087,27 +1132,78 @@ pub async fn check_db_status(config: AppConfig) -> Result<String, String> {
         return Ok("NOT_FOUND".to_string());
     }
 
-    let host_part = reachable_host.unwrap_or(raw_host);
+    let had_tcp = reachable.is_some();
+    // TCP yok ama servis Running → yine auth dene (127.0.0.1:yapılandırılan port)
+    let (host_part, port) = reachable.unwrap_or_else(|| {
+        (
+            if is_loopback {
+                "127.0.0.1".to_string()
+            } else {
+                raw_host.to_string()
+            },
+            configured_port,
+        )
+    });
 
-    // 2. Try to connect with credentials
     let mut pg_config = tokio_postgres::Config::new();
-    pg_config.host(host_part)
-             .port(port)
-             .user(&config.pg_local_user)
-             .password(&config.pg_local_pass)
-             .dbname("postgres")
-             .connect_timeout(std::time::Duration::from_millis(2000));
+    pg_config
+        .host(&host_part)
+        .port(port)
+        .user(&config.pg_local_user)
+        .password(&config.pg_local_pass)
+        .dbname("postgres")
+        .connect_timeout(std::time::Duration::from_secs(5));
 
     match pg_config.connect(NoTls).await {
-        Ok(_) => Ok("RUNNING".to_string()),
+        Ok((client, connection)) => {
+            drop(client);
+            tokio::spawn(async move {
+                let _ = connection.await;
+            });
+            Ok("RUNNING".to_string())
+        }
         Err(e) => {
-            let err_str = e.to_string();
-            if err_str.contains("password authentication failed") {
+            let err_str = e.to_string().to_lowercase();
+            let auth_fail = err_str.contains("password authentication failed")
+                || err_str.contains("authentication failed")
+                || err_str.contains("28p01")
+                || err_str.contains("invalid authorization")
+                || err_str.contains("no password supplied")
+                || err_str.contains("sasl authentication");
+
+            if auth_fail {
                 Ok("AUTH_FAILED".to_string())
+            } else if service_running || had_tcp {
+                // Port/servis ayakta; başka bağlantı hatası → algılandı (şifre dışı)
+                eprintln!(
+                    "RetailEX check_db_status INSTALLED_RUNNING host={} port={} err={}",
+                    host_part, port, e
+                );
+                Ok("INSTALLED_RUNNING".to_string())
             } else {
-                Ok(format!("ERROR [{}]: {}", host_part, err_str))
+                Ok(format!("ERROR [{}]: {}", host_part, e))
             }
         }
+    }
+}
+
+#[cfg(windows)]
+fn windows_postgres_service_running() -> bool {
+    use std::process::Command;
+    use crate::platform::PlatformCommandExt;
+    let script = r#"
+$svcs = Get-Service -ErrorAction SilentlyContinue | Where-Object {
+  ($_.Name -like 'postgresql*' -or $_.DisplayName -like '*PostgreSQL*') -and $_.Status -eq 'Running'
+}
+if ($svcs) { Write-Output '1' } else { Write-Output '0' }
+"#;
+    match Command::new("powershell")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script])
+        .platform_no_window()
+        .output()
+    {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim() == "1",
+        Err(_) => false,
     }
 }
 #[command]

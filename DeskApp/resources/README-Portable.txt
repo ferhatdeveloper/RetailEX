@@ -1,7 +1,7 @@
 RetailEX Portable
 ================
 
-Kurulum: RetailEX-Portable-{version}.exe (Yonetici / UAC: Evet)
+Kurulum: RetailEX-{version}.exe (Yonetici / UAC: Evet)
 Varsayilan dizin: C:\RetailEx\App
 
 Hizmetler: Sync, SQL Bridge, Printer, PostgREST

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * GitHub Release'ten RetailEX-Portable-{version}.exe indirir (Masaüstü).
+ * GitHub Release'ten RetailEX-{version}.exe indirir (Masaüstü).
+ * Eski ad fallback: RetailEX-Portable-{version}.exe
  *
  *   npm run desktop:portable:ci:fetch
  *   npm run desktop:portable:ci:fetch -- --tag portable-v0.1.272
@@ -25,9 +26,18 @@ function parseArgs() {
   return { tag };
 }
 
+function downloadPattern(tag, pattern, destDir) {
+  return spawnSync(
+    'gh',
+    ['release', 'download', tag, '--repo', repo, '--pattern', pattern, '--dir', destDir, '--clobber'],
+    { stdio: 'inherit' },
+  );
+}
+
 const { tag } = parseArgs();
 const version = tag.replace(/^portable-v/, '');
-const exeName = `RetailEX-Portable-${version}.exe`;
+const exeName = `RetailEX-${version}.exe`;
+const legacyName = `RetailEX-Portable-${version}.exe`;
 const destDir = path.join(os.homedir(), 'Desktop');
 
 const remote = execSync('git remote get-url origin', { encoding: 'utf8' }).trim();
@@ -38,9 +48,9 @@ if (!/RetailEX/i.test(remote)) {
 
 fs.mkdirSync(destDir, { recursive: true });
 console.log(`[portable:fetch] ${tag} / ${exeName} → ${destDir}`);
-const r = spawnSync(
-  'gh',
-  ['release', 'download', tag, '--repo', repo, '--pattern', exeName, '--dir', destDir, '--clobber'],
-  { stdio: 'inherit' },
-);
+let r = downloadPattern(tag, exeName, destDir);
+if ((r.status ?? 1) !== 0) {
+  console.log(`[portable:fetch] Yeni ad yok; eski ad deneniyor: ${legacyName}`);
+  r = downloadPattern(tag, legacyName, destDir);
+}
 process.exit(r.status ?? 1);

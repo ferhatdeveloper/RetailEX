@@ -1,14 +1,19 @@
 #!/usr/bin/env node
 /**
- * RetailEX DeskApp portable — yönetici NSIS EXE (ZIP değil).
- * Kaynak: DeskApp/target/release (+ resources).
- * Çıktı: dist/RetailEX-Portable-{version}.exe
+ * RetailEX DeskApp portable pack.
  *
+ * Full (varsayılan): yönetici NSIS EXE
  *   node scripts/pack-retailex-portable-zip.mjs
- *   node scripts/pack-retailex-portable-zip.mjs --out /path/to.exe
- *   node scripts/pack-retailex-portable-zip.mjs --zip   # isteğe bağlı zip de üret
+ *   → dist/RetailEX-{version}.exe
  *
- * Windows'ta makensis gerekir (CI: choco install nsis).
+ * Soft (--soft | --zip): hizmetsiz ZIP (NSIS yok; hızlı deneme)
+ *   node scripts/pack-retailex-portable-zip.mjs --soft
+ *   node scripts/pack-retailex-portable-zip.mjs --zip
+ *   → dist/RetailEX-Soft-{version}.zip
+ *
+ *   node scripts/pack-retailex-portable-zip.mjs --out /path/to.exe
+ *
+ * Full için Windows'ta makensis gerekir (CI: choco install nsis).
  */
 import { execSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -24,16 +29,21 @@ const version = String(pkg.version || '0.0.0');
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  let out = path.join(root, 'dist', `RetailEX-Portable-${version}.exe`);
-  let alsoZip = false;
+  let out = null;
+  let soft = false;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--out' && args[i + 1]) {
       out = path.resolve(args[++i]);
-    } else if (args[i] === '--zip') {
-      alsoZip = true;
+    } else if (args[i] === '--soft' || args[i] === '--zip') {
+      soft = true;
     }
   }
-  return { out, alsoZip };
+  if (!out) {
+    out = soft
+      ? path.join(root, 'dist', `RetailEX-Soft-${version}.zip`)
+      : path.join(root, 'dist', `RetailEX-${version}.exe`);
+  }
+  return { out, soft };
 }
 
 function mustExist(p, label) {
@@ -77,11 +87,11 @@ function copyIfExists(src, dest) {
   return true;
 }
 
-const README = `RetailEX Portable ${version}
+const README_FULL = `RetailEX Portable ${version}
 ========================
 
 Kurulum (EXE — Yönetici)
-1. RetailEX-Portable-${version}.exe dosyasını çalıştırın (UAC: Evet).
+1. RetailEX-${version}.exe dosyasını çalıştırın (UAC: Evet).
 2. Varsayılan dizin: C:\\RetailEx\\App
 3. Kurulum Windows hizmetlerini otomatik kurar:
    RetailEX_Service, RetailEX_SQL_Bridge, RetailEX_Printer, PostgREST
@@ -110,7 +120,28 @@ Sürüm: ${version}
 Repo: https://github.com/ferhatdeveloper/RetailEX
 `;
 
-function stagePortable(stageRoot) {
+const README_SOFT = `RetailEX Portable Soft ${version}
+=================================
+
+Hızlı deneme paketi (ZIP) — Windows hizmeti KURULMAZ, NSIS yok.
+
+Kurulum
+1. ZIP'i bir klasöre açın (ör. C:\\RetailEx\\Soft).
+2. RetailEX_Config.exe ile config.db ayarlayın (veya mevcut C:\\RetailEx\\config.db).
+3. retailex.exe çalıştırın.
+
+Notlar
+- Müşteri / üretim için Full kullanın: RetailEX-{version}.exe
+  (Sync, SQL Bridge, Printer, PostgREST hizmetleri).
+- Soft paket güncelleme kanalı değildir; RetailEX_Tools update yalnızca Full EXE alır.
+- WebView2 Runtime gerekir.
+- Mark of the Web: sağ tık → Özellikler → Engellemeyi kaldır.
+
+Sürüm: ${version}
+Repo: https://github.com/ferhatdeveloper/RetailEX
+`;
+
+function stagePortable(stageRoot, { soft }) {
   if (fs.existsSync(stageRoot)) {
     fs.rmSync(stageRoot, { recursive: true, force: true });
   }
@@ -118,14 +149,20 @@ function stagePortable(stageRoot) {
 
   mustExist(releaseDir, 'release dir (önce tauri build --no-bundle)');
 
-  const bins = [
-    'retailex.exe',
-    'RetailEX_Service.exe',
-    'RetailEX_Config.exe',
-    'RetailEX_SQL_Bridge.exe',
-    'RetailEX_Printer.exe',
-    'RetailEX_Tools.exe',
-  ];
+  const bins = soft
+    ? [
+        'retailex.exe',
+        'RetailEX_Config.exe',
+        'RetailEX_Tools.exe',
+      ]
+    : [
+        'retailex.exe',
+        'RetailEX_Service.exe',
+        'RetailEX_Config.exe',
+        'RetailEX_SQL_Bridge.exe',
+        'RetailEX_Printer.exe',
+        'RetailEX_Tools.exe',
+      ];
   for (const b of bins) {
     mustExist(path.join(releaseDir, b), b);
     copyFile(path.join(releaseDir, b), path.join(stageRoot, b));
@@ -140,38 +177,49 @@ function stagePortable(stageRoot) {
   );
 
   const res = path.join(deskApp, 'resources');
-  const flatResources = [
-    'bridge.cjs',
-    'kitchen-print-service.mjs',
-    'package.json',
-    'install-bridge.ps1',
-    'install-bridge.cmd',
-    'install-bridge-npm.ps1',
-    'install-bridge-npm.cmd',
-    'install-services-manual.ps1',
-    'install-services-manual.cmd',
-    'install-services-setup.ps1',
-    'install-services-common.ps1',
-    'retailex-admin.ps1',
-    'retailex-admin.cmd',
-    'README_PRINTER_SERVICE.md',
-    'install-postgrest.ps1',
-    'pg-windows-expose-remote.ps1',
-    'pg-windows-expose-remote.cmd',
-    'postgrest-windows-expose-lan.ps1',
-    'postgrest-windows-expose-lan.cmd',
-    'start-postgrest-lan.ps1',
-    'start-postgrest-lan.cmd',
-    'install-postgrest-service.ps1',
-    'install-postgrest-service.cmd',
-    'unblock-and-install-services.ps1',
-    'unblock-and-install-services.cmd',
-  ];
+  const flatResources = soft
+    ? [
+        'bridge.cjs',
+        'kitchen-print-service.mjs',
+        'package.json',
+        'retailex-admin.ps1',
+        'retailex-admin.cmd',
+        'README_PRINTER_SERVICE.md',
+      ]
+    : [
+        'bridge.cjs',
+        'kitchen-print-service.mjs',
+        'package.json',
+        'install-bridge.ps1',
+        'install-bridge.cmd',
+        'install-bridge-npm.ps1',
+        'install-bridge-npm.cmd',
+        'install-services-manual.ps1',
+        'install-services-manual.cmd',
+        'install-services-setup.ps1',
+        'install-services-common.ps1',
+        'retailex-admin.ps1',
+        'retailex-admin.cmd',
+        'README_PRINTER_SERVICE.md',
+        'install-postgrest.ps1',
+        'pg-windows-expose-remote.ps1',
+        'pg-windows-expose-remote.cmd',
+        'postgrest-windows-expose-lan.ps1',
+        'postgrest-windows-expose-lan.cmd',
+        'start-postgrest-lan.ps1',
+        'start-postgrest-lan.cmd',
+        'install-postgrest-service.ps1',
+        'install-postgrest-service.cmd',
+        'unblock-and-install-services.ps1',
+        'unblock-and-install-services.cmd',
+      ];
   for (const f of flatResources) {
     copyIfExists(path.join(res, f), path.join(stageRoot, f));
   }
 
-  copyIfExists(path.join(res, 'postgrest', 'postgrest.exe'), path.join(stageRoot, 'postgrest.exe'));
+  if (!soft) {
+    copyIfExists(path.join(res, 'postgrest', 'postgrest.exe'), path.join(stageRoot, 'postgrest.exe'));
+  }
   copyIfExists(path.join(res, 'sumatra'), path.join(stageRoot, '_up_', 'sumatra'));
 
   copyIfExists(path.join(res, 'nodejs-runtime', 'node.exe'), path.join(stageRoot, 'runtime', 'node', 'node.exe'));
@@ -180,21 +228,29 @@ function stagePortable(stageRoot) {
   copyIfExists(path.join(root, 'database', 'migrations'), path.join(stageRoot, '_up_', 'database', 'migrations'));
   copyIfExists(path.join(root, 'database', 'init'), path.join(stageRoot, '_up_', 'database', 'init'));
   copyIfExists(path.join(root, 'database', 'sys'), path.join(stageRoot, '_up_', 'database', 'sys'));
-  copyIfExists(path.join(root, 'config', 'postgrest.conf'), path.join(stageRoot, '_up_', 'config', 'postgrest.conf'));
+  if (!soft) {
+    copyIfExists(path.join(root, 'config', 'postgrest.conf'), path.join(stageRoot, '_up_', 'config', 'postgrest.conf'));
+  }
   copyIfExists(path.join(root, 'database', 'scripts'), path.join(stageRoot, '_up_', 'database', 'scripts'));
 
-  const pgRemote = path.join(root, 'tools', 'postgresql-remote-enable', 'RetailEX_PostgreSQLRemote.exe');
-  const pgRemoteAlt = path.join(deskApp, 'target', 'release', 'RetailEX_PostgreSQLRemote.exe');
-  if (fs.existsSync(pgRemote)) {
-    copyFile(pgRemote, path.join(stageRoot, 'RetailEX_PostgreSQLRemote.exe'));
-  } else if (fs.existsSync(pgRemoteAlt)) {
-    copyFile(pgRemoteAlt, path.join(stageRoot, 'RetailEX_PostgreSQLRemote.exe'));
-  } else {
-    console.warn('[portable-pack] RetailEX_PostgreSQLRemote.exe yok — atlandı.');
+  if (!soft) {
+    const pgRemote = path.join(root, 'tools', 'postgresql-remote-enable', 'RetailEX_PostgreSQLRemote.exe');
+    const pgRemoteAlt = path.join(deskApp, 'target', 'release', 'RetailEX_PostgreSQLRemote.exe');
+    if (fs.existsSync(pgRemote)) {
+      copyFile(pgRemote, path.join(stageRoot, 'RetailEX_PostgreSQLRemote.exe'));
+    } else if (fs.existsSync(pgRemoteAlt)) {
+      copyFile(pgRemoteAlt, path.join(stageRoot, 'RetailEX_PostgreSQLRemote.exe'));
+    } else {
+      console.warn('[portable-pack] RetailEX_PostgreSQLRemote.exe yok — atlandı.');
+    }
   }
 
   fs.writeFileSync(path.join(stageRoot, 'VERSION.txt'), `${version}\n`, 'utf8');
-  fs.writeFileSync(path.join(stageRoot, 'README-Portable.txt'), README, 'utf8');
+  fs.writeFileSync(
+    path.join(stageRoot, soft ? 'README-Portable-Soft.txt' : 'README-Portable.txt'),
+    soft ? README_SOFT : README_FULL,
+    'utf8',
+  );
 }
 
 function zipStage(stageRoot, outZip) {
@@ -280,24 +336,32 @@ function buildExe(stageRoot, outExe) {
 }
 
 function main() {
-  const { out, alsoZip } = parseArgs();
-  const stageRoot = path.join(root, 'dist', 'portable-stage');
-  console.log(`[portable-pack] Sürüm ${version}`);
+  const { out, soft } = parseArgs();
+  const stageRoot = path.join(root, 'dist', soft ? 'portable-stage-soft' : 'portable-stage');
+  console.log(`[portable-pack] Sürüm ${version} — profil: ${soft ? 'soft (ZIP)' : 'full (EXE)'}`);
   console.log(`[portable-pack] Stage: ${stageRoot}`);
-  stagePortable(stageRoot);
+  stagePortable(stageRoot, { soft });
+
+  if (soft) {
+    const zipOut = out.toLowerCase().endsWith('.zip')
+      ? out
+      : path.join(path.dirname(out), `RetailEX-Soft-${version}.zip`);
+    zipStage(stageRoot, zipOut);
+    const size = fs.statSync(zipOut).size;
+    console.log(`[portable-pack] OK Soft ZIP: ${zipOut} (${Math.round(size / 1024 / 1024)} MB)`);
+    if (process.env.GITHUB_ENV) {
+      fs.appendFileSync(process.env.GITHUB_ENV, `PORTABLE_SOFT_ZIP=${path.basename(zipOut)}\n`);
+      fs.appendFileSync(process.env.GITHUB_ENV, `PORTABLE_SOFT_ZIP_PATH=${zipOut}\n`);
+    }
+    return;
+  }
 
   const exeOut = out.toLowerCase().endsWith('.exe')
     ? out
-    : path.join(path.dirname(out), `RetailEX-Portable-${version}.exe`);
+    : path.join(path.dirname(out), `RetailEX-${version}.exe`);
   buildExe(stageRoot, exeOut);
   const size = fs.statSync(exeOut).size;
   console.log(`[portable-pack] OK EXE: ${exeOut} (${Math.round(size / 1024 / 1024)} MB)`);
-
-  if (alsoZip) {
-    const zipOut = path.join(path.dirname(exeOut), `RetailEX-Portable-${version}.zip`);
-    zipStage(stageRoot, zipOut);
-    console.log(`[portable-pack] OK ZIP (opsiyonel): ${zipOut}`);
-  }
 
   if (process.env.GITHUB_ENV) {
     fs.appendFileSync(process.env.GITHUB_ENV, `PORTABLE_EXE=${path.basename(exeOut)}\n`);

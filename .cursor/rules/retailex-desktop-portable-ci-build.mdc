@@ -1,60 +1,72 @@
 ---
-description: RetailEX Portable EXE — yalnızca GitHub Actions; tag portable-v*; CI teklif seçeneği 3
+description: RetailEX Portable Full EXE + Soft ZIP — GitHub Actions; tag portable-v* / portable-soft-v*
 alwaysApply: true
 ---
 
 # Masaüstü portable derleme — GitHub Actions
 
-RetailEX **portable EXE** (`RetailEX-Portable-{version}.exe`) **yerelde `tauri:build:portable` ile müşteriye yayınlanmaz**. Yayın kaynağı **GitHub Actions**.
+RetailEX portable **yerelde müşteriye yayınlanmaz**. Yayın kaynağı **GitHub Actions**.
 
-Yönetici NSIS: Sync / SQL Bridge / Printer / PostgREST hizmetlerini kurar (ZIP değil).
+İki profil:
+
+| Profil | Asset | Tag | İçerik |
+|--------|--------|-----|--------|
+| **Full** (müşteri / hizmet) | `RetailEX-{version}.exe` | `portable-v{version}` | NSIS + Sync / SQL Bridge / Printer / PostgREST |
+| **Soft** (hızlı deneme) | `RetailEX-Soft-{version}.zip` | `portable-soft-v{version}` | Hizmetsiz ZIP; NSIS yok |
+
+`RetailEX_Tools update` yalnızca **Full EXE** indirir; Soft ZIP güncelleme kanalı değildir.
 
 Marka / Asin ayrımı: `retailex-desktop-portable-release-guard.mdc` (önce `git remote` → `origin` = RetailEX).
 
-## Zorunlu akış
+## Zorunlu akış (Full)
 
 1. **Sürüm:** kök `package.json` → `version` (`app-version-single-source.mdc`).
 2. **Commit + push:** `main`.
-3. **Tag:** `portable-v{version}` oluştur ve push et → `.github/workflows/desktop-portable-release.yml`.
+3. **Tag:** `portable-v{version}` oluştur ve push et → `.github/workflows/desktop-portable-release.yml` (profile=full).
 4. **İlerleme:** run sayfasını aç ve link ver (DeskApp ile aynı pratik).
-5. **İndirme:** Release asset — `RetailEX-Portable-{version}.exe`.
+5. **İndirme:** Release asset — `RetailEX-{version}.exe`.
 
 ```bash
-# Örnek (0.1.272) — önce remote kontrol
+# Örnek Full (0.1.272) — önce remote kontrol
 git remote -v   # origin …/RetailEX.git olmalı
-git tag -a portable-v0.1.272 -m "RetailEX Portable 0.1.272"
+git tag -a portable-v0.1.272 -m "RetailEX 0.1.272"
 git push origin portable-v0.1.272
+
+# Soft deneme
+git tag -a portable-soft-v0.1.272 -m "RetailEX Soft 0.1.272"
+git push origin portable-soft-v0.1.272
 ```
 
-Alternatif: `npm run desktop:portable:ci:build` (`scripts/trigger-desktop-portable-release.mjs`) — Actions tetikler, bitince Masaüstü’ne indirir.
-
-Manuel: GitHub → Actions → **Desktop Portable Release** → Run workflow.
+Alternatif: `npm run desktop:portable:ci:build` (full) / `npm run desktop:portable:ci:build:soft`  
+Manuel: Actions → **Desktop Portable Release** → profile `full` | `soft` | `both` (varsayılan **both**).
 
 ## Yerel komutlar
 
 | Komut | Amaç |
 |-------|------|
-| `npm run desktop:portable:ci:build` | Actions tetikle + bekle + indir (`gh`) |
-| `npm run desktop:portable:ci:fetch` | Yayınlanmış EXE’yi indir |
-| `npm run desktop:portable:pack` | Yalnızca pack (CI çıktısı değil; Windows + makensis) |
+| `npm run desktop:portable:ci:build` | Full EXE Actions + indir |
+| `npm run desktop:portable:ci:build:soft` | Soft ZIP Actions + indir |
+| `npm run desktop:portable:ci:fetch` | Yayınlanmış Full EXE indir |
+| `npm run desktop:portable:pack` | Yerel Full pack (Windows + makensis) |
+| `npm run desktop:portable:pack:soft` | Yerel Soft ZIP pack |
 
 ## Asla yapma
 
 - Müşteriye gidecek paket için yalnızca yerel `tauri:build:portable` dağıtımı.
-- Asset adı `AsinERP-Portable-*` veya sürümsüz `RetailEX-Portable.exe` / `.zip`.
-- Portable’ı ZIP olarak yayınlama (EXE zorunlu).
-- `origin` Asin iken `portable-v*` push / RetailEX workflow tetikleme.
+- Asset adı `AsinERP-Portable-*` veya sürümsüz `RetailEX.exe`.
+- Soft ZIP’i müşteri hizmet kurulumu sanmak — hizmet için **Full EXE**.
+- `origin` Asin iken `portable-v*` / `portable-soft-v*` push.
 - Feature branch / PR.
 
 ## CI / release
 
-| Öğe | Değer |
-|-----|--------|
-| Workflow | `.github/workflows/desktop-portable-release.yml` |
-| Tag | `portable-v{version}` |
-| Asset | `RetailEX-Portable-{version}.exe` |
-| Release title | `RetailEX Portable {version}` |
-| Runner | `windows-latest`, NSIS (`choco install nsis`), `WINDOWS_CODESIGN_DISABLE=1` |
+| Öğe | Full | Soft |
+|-----|------|------|
+| Workflow | `.github/workflows/desktop-portable-release.yml` | aynı |
+| Tag | `portable-v{version}` | `portable-soft-v{version}` |
+| Asset | `RetailEX-{version}.exe` | `RetailEX-Soft-{version}.zip` |
+| Release title | `RetailEX {version}` | `RetailEX Soft {version}` |
+| Pack | `pack-retailex-portable-zip.mjs` | aynı + `--soft` / `--zip` |
 
 ## İlerleme URL
 
@@ -62,15 +74,15 @@ Manuel: GitHub → Actions → **Desktop Portable Release** → Run workflow.
 |------|-----|
 | Workflow | `https://github.com/ferhatdeveloper/RetailEX/actions/workflows/desktop-portable-release.yml` |
 | Tek run | `https://github.com/ferhatdeveloper/RetailEX/actions/runs/{run_id}` |
-| Release | `https://github.com/ferhatdeveloper/RetailEX/releases/tag/portable-v{version}` |
-| İndirme | `https://github.com/ferhatdeveloper/RetailEX/releases/download/portable-v{version}/RetailEX-Portable-{version}.exe` |
-
-EXE adı workflow’daki asset ile aynı olmalı (`RetailEX-Portable-{version}.exe`).
+| Full release | `https://github.com/ferhatdeveloper/RetailEX/releases/tag/portable-v{version}` |
+| Soft release | `https://github.com/ferhatdeveloper/RetailEX/releases/tag/portable-soft-v{version}` |
+| Full indirme | `…/portable-v{version}/RetailEX-{version}.exe` |
+| Soft indirme | `…/portable-soft-v{version}/RetailEX-Soft-{version}.zip` |
 
 ## Ajan checklist
 
 - [ ] `origin` = RetailEX mi?
 - [ ] `package.json` version güncel mi?
-- [ ] `portable-v{version}` tag push veya `desktop:portable:ci:build`?
+- [ ] Full: `portable-v{version}` / Soft: `portable-soft-v{version}` veya CI script?
 - [ ] Run sayfası açıldı / link verildi mi?
-- [ ] Asset `RetailEX-Portable-{version}.exe` (AsinERP / zip yok)?
+- [ ] Asset adı RetailEX (AsinERP yok); müşteri hizmet = Full EXE?

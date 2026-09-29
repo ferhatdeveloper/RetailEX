@@ -243,7 +243,7 @@ fn dispatch_cli(install_dir: &Path, args: &[String]) -> i32 {
                 "Kullanım: RetailEX_Tools.exe [komut]\n\
                  Komutlar: services | bridge-npm | bridge | admin | pg | pg-remote\n\
                            update | migrate | setup-db | fetch-sql | sync-migrate | config\n\
-                 update: GitHub RetailEX-Portable-*.exe indirip kurulum dizinine yazar\n\
+                 update: GitHub RetailEX-*.exe indirip kurulum dizinine yazar\n\
                  migrate: yerel SQL → PostgreSQL bekleyen migration\n\
                  setup-db: CREATE DATABASE (yoksa) + migration\n\
                  fetch-sql: GitHub main database/migrations → _up_\\database\\migrations\n\

@@ -116,13 +116,24 @@ async fn acquire_pg_client(state: &DbState, conn_str: &str) -> Result<Arc<Client
 
 #[tauri::command]
 async fn check_pg16() -> Result<bool, String> {
-    use std::net::TcpStream;
+    use std::net::{TcpStream, ToSocketAddrs};
     use std::time::Duration;
-    // Port açıksa kurulu/çalışıyor say
-    for host in ["127.0.0.1:5432", "localhost:5432"] {
-        if let Ok(addr) = host.parse() {
-            if TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok() {
-                return Ok(true);
+
+    let timeout = Duration::from_millis(2000);
+    // SocketAddr::parse localhost'u çözmez; to_socket_addrs kullan
+    for host in ["127.0.0.1", "::1", "localhost"] {
+        for port in [5432u16, 5433] {
+            let addr = if host.contains(':') && !host.starts_with('[') {
+                format!("[{}]:{}", host, port)
+            } else {
+                format!("{}:{}", host, port)
+            };
+            if let Ok(addrs) = addr.to_socket_addrs() {
+                for a in addrs {
+                    if TcpStream::connect_timeout(&a, timeout).is_ok() {
+                        return Ok(true);
+                    }
+                }
             }
         }
     }

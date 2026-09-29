@@ -213,7 +213,7 @@ const SetupWizard: React.FC = () => {
     const [backupType, setBackupType] = useState<'tables' | 'full'>('full');
     const [backupFormat, setBackupFormat] = useState<'postgresql' | 'supabase'>('supabase');
 
-    const [dbStatus, setDbStatus] = useState<'IDLE' | 'CHECKING' | 'RUNNING' | 'NOT_FOUND' | 'INSTALLED_NOT_RUNNING' | 'AUTH_FAILED' | 'ERROR'>('IDLE');
+    const [dbStatus, setDbStatus] = useState<'IDLE' | 'CHECKING' | 'RUNNING' | 'INSTALLED_RUNNING' | 'NOT_FOUND' | 'INSTALLED_NOT_RUNNING' | 'AUTH_FAILED' | 'ERROR'>('IDLE');
     const [dbErrorMessage, setDbErrorMessage] = useState('');
     const [activeTab, setActiveTab] = useState<'standard' | 'supabase'>('standard');
     const [logoActiveTab, setLogoActiveTab] = useState<'config' | 'preview'>('config');
@@ -468,9 +468,32 @@ const SetupWizard: React.FC = () => {
 
     const checkDbStatus = async () => {
         setDbStatus('CHECKING');
+        setDbErrorMessage('');
         try {
             if (isTauri) {
-                // Rest API modunda PostgreSQL port/kimlik doğrulama yerine PostgREST erişilebilirliğini test et.
+                // Yerel PG bölümü görünürken her zaman yerel TCP/auth kontrolü yap.
+                // Hibrit + rest_api varsayılanında PostgREST testine düşmek false negative üretiyordu
+                // (pgAdmin’de PG açıkken «5432 yanıt vermiyor»).
+                if (showLocalDbSection) {
+                    const status = await safeInvoke<string>('check_db_status', { config });
+                    if (status.startsWith('ERROR')) {
+                        setDbStatus('ERROR');
+                        setDbErrorMessage(status);
+                        toast.error(tm('setupDbError') + status);
+                    } else {
+                        setDbStatus(status as any);
+                        if (status === 'RUNNING') {
+                            toast.success('Yerel PostgreSQL bağlantısı başarılı');
+                        } else if (status === 'AUTH_FAILED') {
+                            toast.error('PostgreSQL çalışıyor; kullanıcı/şifre hatalı');
+                        } else if (status === 'INSTALLED_RUNNING') {
+                            toast.message('PostgreSQL algılandı; kimlik bilgilerini doğrulayın');
+                        }
+                    }
+                    return;
+                }
+
+                // Yalnızca uzak/API (yerel PG yok): PostgREST erişilebilirliği
                 if (config.connection_provider === 'rest_api') {
                     const { testPostgrestUrl } = await import('../../services/postgres');
                     const pr = await testPostgrestUrl(config.remote_rest_url || '');
@@ -478,12 +501,13 @@ const SetupWizard: React.FC = () => {
                         setDbStatus('RUNNING');
                         setDbErrorMessage('');
                     } else {
-                        setDbStatus('NOT_FOUND');
+                        setDbStatus('ERROR');
                         setDbErrorMessage(pr.error || 'PostgREST erişilemedi');
+                        toast.error(pr.error || 'PostgREST erişilemedi');
                     }
                     return;
                 }
-                
+
                 const status = await safeInvoke<string>('check_db_status', { config });
                 if (status.startsWith('ERROR')) {
                     setDbStatus('ERROR');
@@ -495,8 +519,8 @@ const SetupWizard: React.FC = () => {
             }
         } catch (err: any) {
             setDbStatus('ERROR');
-            setDbErrorMessage(err.toString());
-            toast.error(tm('setupCriticalError') + err);
+            setDbErrorMessage(err?.message || String(err));
+            toast.error(tm('setupCriticalError') + (err?.message || String(err)));
         }
     };
 
@@ -2384,6 +2408,33 @@ const SetupWizard: React.FC = () => {
                                             </div>
                                         )}
 
+                                        {dbStatus === 'INSTALLED_RUNNING' && (
+                                            <div className="p-8 rounded-[32px] bg-emerald-600/10 border-2 border-emerald-500/30 shadow-[0_20px_60px_-15px_rgba(16,185,129,0.2)] animate-in zoom-in-95">
+                                                <div className="flex items-start gap-6">
+                                                    <div className="w-14 h-14 rounded-2xl bg-emerald-500 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/20">
+                                                        <Server className="w-7 h-7 text-white" />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <h4 className="text-xl font-black text-white">PostgreSQL çalışıyor</h4>
+                                                        <p className="text-emerald-100/80 text-sm font-medium leading-relaxed">
+                                                            5432 (veya yapılandırılan) portunda / Windows hizmetinde PostgreSQL 15+ algılandı.
+                                                            Tam bağlantı için aşağıdaki kullanıcı ve şifreyi doğrulayıp tekrar test edin.
+                                                            Şifre hatalıysa «Kimlik Doğrulama Hatası» görürsünüz — bu, sunucunun kapalı olduğu anlamına gelmez.
+                                                        </p>
+                                                        <div className="pt-4 flex flex-wrap gap-4">
+                                                            <button
+                                                                type="button"
+                                                                onClick={checkDbStatus}
+                                                                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md"
+                                                            >
+                                                                Kimlik ile tekrar test et
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {dbStatus === 'NOT_FOUND' && (
                                             <div className="p-8 rounded-[32px] bg-red-600/10 border-2 border-red-500/30 shadow-[0_20px_60px_-15px_rgba(239,68,68,0.2)] animate-in zoom-in-95">
                                                 <div className="flex items-start gap-6">
@@ -2473,7 +2524,7 @@ const SetupWizard: React.FC = () => {
 
                                         {/* Local Server Section — online terminal / merkez-only modda gizli */}
                                         {showLocalDbSection && (
-                                        <div className={`relative p-8 rounded-2xl transition-all duration-300 border ${dbStatus === 'RUNNING' ? 'bg-blue-600/5 border-blue-500/30' :
+                                        <div className={`relative p-8 rounded-2xl transition-all duration-300 border ${dbStatus === 'RUNNING' || dbStatus === 'INSTALLED_RUNNING' ? 'bg-blue-600/5 border-blue-500/30' :
                                             dbStatus === 'AUTH_FAILED' ? 'bg-amber-600/5 border-amber-500/30' :
                                                 'bg-white/[0.03] border-white/5'
                                             } overflow-hidden group`}>
@@ -2485,6 +2536,7 @@ const SetupWizard: React.FC = () => {
                                                 </div>
                                                 <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Yerel Sunucu (Localhost)</span>
                                                 {dbStatus === 'RUNNING' && <div className="ml-auto flex items-center gap-2 text-[10px] font-bold text-blue-400 uppercase tracking-widest"><CheckCircle className="w-3 h-3" />Bağlı</div>}
+                                                {dbStatus === 'INSTALLED_RUNNING' && <div className="ml-auto flex items-center gap-2 text-[10px] font-bold text-emerald-400 uppercase tracking-widest"><CheckCircle className="w-3 h-3" />Algılandı</div>}
                                             </div>
 
                                             <div className="space-y-6 relative z-10">

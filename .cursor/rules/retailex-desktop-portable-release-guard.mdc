@@ -9,7 +9,7 @@ AsinERP Portable yanlışlıkla RetailEX releases’a düşmesin. Ürün ayrım�
 
 ## Remote kontrol (zorunlu — her tag / release öncesi)
 
-`app-v*`, `portable-v*`, `android-v*` push veya `gh release` / `gh workflow run` **öncesi**:
+`app-v*`, `portable-v*`, `portable-soft-v*`, `android-v*` push veya `gh release` / `gh workflow run` **öncesi**:
 
 1. `git remote -v` → **`origin`** URL’sinde **`RetailEX`** olmalı.
 2. `origin` **`asin`** ise: **dur** — AsinERP işi yalnızca `ferhatdeveloper/asin` kökünde (`C:\Users\FERHAT\Desktop\asin`).
@@ -28,15 +28,16 @@ AsinERP Portable yanlışlıkla RetailEX releases’a düşmesin. Ürün ayrım�
 
 Yalnızca **bu** repoda ve **RetailEX** markasıyla:
 
-| Öğe | Kalıp |
-|-----|--------|
-| EXE | `RetailEX-Portable-{version}.exe` (yönetici NSIS; ZIP değil) |
-| Tag | `portable-v{version}` (yalnızca `origin` = RetailEX) |
-| Release adı | `RetailEX Portable {version}` |
-| Workflow | `.github/workflows/desktop-portable-release.yml` (RetailEX) |
-| Pack | `scripts/pack-retailex-portable-zip.mjs` + `DeskApp/portable-installer.nsi` |
-| Tetikleme | `npm run desktop:portable:ci:build` |
-| Güncelleme | `RetailEX_Tools.exe update` / menü 7 (config.db + GitHub EXE) |
+| Öğe | Full (müşteri / hizmet) | Soft (deneme) |
+|-----|-------------------------|---------------|
+| Asset | `RetailEX-{version}.exe` | `RetailEX-Soft-{version}.zip` |
+| Tag | `portable-v{version}` | `portable-soft-v{version}` |
+| Release adı | `RetailEX {version}` | `RetailEX Soft {version}` |
+| Pack | `pack-retailex-portable-zip.mjs` + NSIS | aynı + `--soft` / `--zip` |
+| Tetikleme | `npm run desktop:portable:ci:build` | `npm run desktop:portable:ci:build:soft` |
+| Güncelleme | `RetailEX_Tools.exe update` (yalnızca Full EXE) | Soft ZIP güncelleme kanalı değil |
+
+Workflow: `.github/workflows/desktop-portable-release.yml` — input `profile`: `full` \| `soft` \| `both`.
 
 DeskApp NSIS kurulum: `RetailEX-Desktop-Setup-{version}.exe` + tag `app-v{version}` (`retailex-desktop-release-filename.mdc`).
 
@@ -53,5 +54,5 @@ Terazi yardımcı portable: `RetailEX.TeraziManager-Portable-{version}.zip` — 
 
 - [ ] `origin` = RetailEX mi doğrulandı?
 - [ ] Release asset / title’da `AsinERP` yok mu?
-- [ ] Portable gerekiyorsa ad `RetailEX-Portable-….exe` mi (Asin script / zip değil)?
+- [ ] Full `RetailEX-….exe` / Soft `RetailEX-Soft-….zip` mi (AsinERP yok)?
 - [ ] CI yalnızca doküman/kural değişikliğinde tetiklenmedi mi?

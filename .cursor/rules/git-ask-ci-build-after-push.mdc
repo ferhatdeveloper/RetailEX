@@ -8,7 +8,7 @@ alwaysApply: true
 `git-ask-upload-after-task.mdc` ile uyumlu **2. adım**. Yalnızca **commit + `push origin main` başarıyla bittikten sonra** sor.
 
 > Mobil Android = **React Native / Expo (`mobile/`)** — Capacitor değil. Ayrıntı: `retailex-mobile-react-native.mdc`.  
-> Portable = **RetailEX-Portable EXE** (yönetici NSIS; ZIP değil). Ayrıntı: `retailex-desktop-portable-ci-build.mdc`, `retailex-desktop-portable-release-guard.mdc`.
+> Portable Full = **RetailEX-{version}.exe** (yönetici NSIS + hizmetler). Soft = **RetailEX-Soft ZIP** (hizmetsiz deneme). Ayrıntı: `retailex-desktop-portable-ci-build.mdc`.
 
 ## Ne zaman
 
@@ -38,7 +38,7 @@ Soru örneği:
 |---------|--------|
 | **1** | Android App Release — **React Native / Expo (`mobile/`)** |
 | **2** | Desktop App Release — NSIS `RetailEX-Desktop-Setup-{version}.exe` |
-| **3** | Desktop Portable Release — `RetailEX-Portable-{version}.exe` |
+| **3** | Desktop Portable Release — Full EXE (`RetailEX-{version}.exe`); Soft ZIP ayrı: `desktop:portable:ci:build:soft` |
 | **4** | Android RN + DeskApp NSIS + Portable (paralel veya sırayla tetik) |
 | **5** | CI yok; kısa onay yeterli |
 
@@ -64,13 +64,14 @@ Her tetiklemede önce `git remote -v` → `origin` URL’de **RetailEX** olmalı
 2. Kurallar: `retailex-desktop-build-github-actions.mdc`, `retailex-desktop-build-show-progress.mdc`, `retailex-desktop-release-filename.mdc`
 3. Run sayfasını **mutlaka aç** ve link ver; bitince release + `RetailEX-Desktop-Setup-{version}.exe` indirme linki
 
-### 3 — Portable derle
+### 3 — Portable derle (Full)
 
 1. Tag: `portable-v{version}` oluştur + `git push origin portable-v{version}`  
    **veya** `npm run desktop:portable:ci:build`
-2. Kurallar: `retailex-desktop-portable-ci-build.mdc`, `retailex-desktop-portable-release-guard.mdc`
-3. Workflow: `.github/workflows/desktop-portable-release.yml`
-4. Run sayfasını **aç** ve link ver; bitince release + `RetailEX-Portable-{version}.exe`
+2. Soft deneme istenirse: `portable-soft-v{version}` veya `npm run desktop:portable:ci:build:soft`
+3. Kurallar: `retailex-desktop-portable-ci-build.mdc`, `retailex-desktop-portable-release-guard.mdc`
+4. Workflow: `.github/workflows/desktop-portable-release.yml` (`profile`: full / soft / both)
+5. Run sayfasını **aç** ve link ver; Full → `RetailEX-{version}.exe`
 
 ### 4 — Hepsi
 

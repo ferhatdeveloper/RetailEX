@@ -126,6 +126,23 @@ fn http_get_json(url: &str) -> Result<String, String> {
     res.text().map_err(|e| e.to_string())
 }
 
+/// Full portable EXE: `RetailEX-{semver}.exe` (yeni) veya `RetailEX-Portable-*.exe` (eski).
+/// Soft ZIP ve DeskApp Setup hariç.
+fn is_new_full_exe(name: &str) -> bool {
+    name.starts_with("RetailEX-")
+        && name.ends_with(".exe")
+        && !name.starts_with("RetailEX-Portable-")
+        && !name.contains("-Soft-")
+        && !name.contains("Desktop")
+        && !name.contains("Terazi")
+}
+
+fn is_legacy_full_exe(name: &str) -> bool {
+    name.starts_with("RetailEX-Portable-")
+        && name.ends_with(".exe")
+        && !name.contains("-Soft-")
+}
+
 fn find_latest_portable_release() -> Result<(String, GhAsset), String> {
     let url = format!(
         "https://api.github.com/repos/{}/releases?per_page=40",
@@ -135,20 +152,29 @@ fn find_latest_portable_release() -> Result<(String, GhAsset), String> {
     let releases: Vec<GhRelease> = serde_json::from_str(&body).map_err(|e| e.to_string())?;
     let mut best: Option<(String, GhAsset)> = None;
     for r in releases {
-        if !r.tag_name.starts_with("portable-v") {
+        // Soft ZIP ayrı tag (portable-soft-v*); güncelleme yalnızca Full EXE
+        if !r.tag_name.starts_with("portable-v") || r.tag_name.starts_with("portable-soft-v") {
             continue;
         }
-        // Önce yönetici EXE, yoksa eski zip
+        // Yalnızca yönetici Full EXE — Soft ZIP (RetailEX-Soft-*.zip) asla
         let asset = r
             .assets
             .iter()
-            .find(|a| a.name.starts_with("RetailEX-Portable-") && a.name.ends_with(".exe"))
+            .find(|a| is_new_full_exe(&a.name))
             .cloned()
             .or_else(|| {
                 r.assets
                     .iter()
-                    .find(|a| a.name.starts_with("RetailEX-Portable-") && a.name.ends_with(".zip"))
+                    .find(|a| is_legacy_full_exe(&a.name))
                     .cloned()
+            })
+            .or_else(|| {
+                // Eski Full zip (Soft değil)
+                r.assets.iter().find(|a| {
+                    a.name.starts_with("RetailEX-Portable-")
+                        && a.name.ends_with(".zip")
+                        && !a.name.contains("-Soft-")
+                }).cloned()
             });
         let Some(asset) = asset else { continue };
         let tag = r.tag_name.clone();
@@ -162,7 +188,7 @@ fn find_latest_portable_release() -> Result<(String, GhAsset), String> {
         }
     }
     best.ok_or_else(|| {
-        "GitHub'da portable-v* release / RetailEX-Portable-*.exe bulunamadı.".to_string()
+        "GitHub'da portable-v* release / RetailEX-*.exe bulunamadı.".to_string()
     })
 }
 
