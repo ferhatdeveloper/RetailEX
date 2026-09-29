@@ -2087,6 +2087,21 @@ export function AppointmentPOS({
         checkoutSubmitRef.current = true;
         try {
             if (!canSave) return;
+            /**
+             * Peşinatlı ön ödeme modu: mode === 'prePayment' ve ödeme satırları
+             * arasında `pesinatli` var. Randevu hizmet verilmedi olarak işaretlenir
+             * (`IN_PROGRESS` = "başladı"); stok/sarf düşümü YOK. Hizmet verildiğinde
+             * ayrıca "Hizmet Tamamlandı" akışı çalıştırılır.
+             *
+             * Standart ödeme (cash/card/veresiye) → randevu `COMPLETED` olur,
+             * mevcut davranış korunur.
+             */
+            const isPesinatliPrePayment = Boolean(
+                paymentData && paymentData.mode === 'prePayment' && paymentData.hasPesinatli === true,
+            );
+            const finalAptStatus: AppointmentStatus = isPesinatliPrePayment
+                ? AppointmentStatus.IN_PROGRESS
+                : AppointmentStatus.COMPLETED;
             if (isBlockNegativeStockSaleEnabled()) {
                 const productLines = cart.filter((l) => l.type === 'product');
                 if (productLines.length > 0) {
@@ -2133,7 +2148,7 @@ export function AppointmentPOS({
                         ? Number(firstBook.unit_price ?? 0) * Math.max(1, Number(firstBook.qty ?? 1))
                         : finalTotalSale;
                 if (appointmentBookLines.length > 0) {
-                    const plannedPay = buildServiceAppointmentPayloads(AppointmentStatus.COMPLETED);
+                    const plannedPay = buildServiceAppointmentPayloads(finalAptStatus);
                 }
                 await updateAppointment(existingAppointment.id, {
                     appointment_date: safeDateYmd(aptDate),
@@ -2142,39 +2157,44 @@ export function AppointmentPOS({
                     time: safeTimeHHmm(aptTime),
                     device_id: aptDevice || undefined,
                     notes: aptNotes || undefined,
-                    status: AppointmentStatus.COMPLETED,
+                    status: finalAptStatus,
                     total_price: firstBookTotal,
                     duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
                     treatment_degree: receiptTreatmentDegree.trim() || null,
                     treatment_shots: receiptTreatmentShots.trim() || null,
                 });
 
-                // Ayrı satış fişi açık olsa da ödeme tek işlemde alındığında
-                // aynı kuyruk grubundaki tüm hizmet randevularını kapat.
-                try {
-                    const dayYmd = beautyAppointmentDateKey(existingAppointment)
-                        || safeDateYmd(aptDate);
-                    const pool = await beautyService.getAppointmentsInRange(dayYmd, dayYmd);
-                    const siblings = findBeautyAppointmentsSameQueueGroup(
-                        existingAppointment,
-                        pool.length > 0 ? pool : [existingAppointment],
-                    );
-                    const siblingUpdates = siblings
-                        .filter((sib) =>
-                            !!sib?.id
-                            && sib.id !== existingAppointment.id
-                            && !appointmentStatusMatches(sib.status, AppointmentStatus.COMPLETED),
-                        )
-                        .map((sib) => updateAppointment(sib.id, { status: AppointmentStatus.COMPLETED }));
-                    if (siblingUpdates.length > 0) {
-                        await Promise.allSettled(siblingUpdates);
+                // Standart ödeme: aynı kuyruk grubundaki diğer randevuları da
+                // tamamla. Peşinatlı ön ödemede kardeş randevular otomatik
+                // tamamlanmaz — sadece bu randevu "başladı" olur; her biri
+                // hizmet verildiğinde ayrıca tamamlanır.
+                if (!isPesinatliPrePayment) {
+                    try {
+                        const dayYmd = beautyAppointmentDateKey(existingAppointment)
+                            || safeDateYmd(aptDate);
+                        const pool = await beautyService.getAppointmentsInRange(dayYmd, dayYmd);
+                        const siblings = findBeautyAppointmentsSameQueueGroup(
+                            existingAppointment,
+                            pool.length > 0 ? pool : [existingAppointment],
+                        );
+                        const siblingUpdates = siblings
+                            .filter((sib) =>
+                                !!sib?.id
+                                && sib.id !== existingAppointment.id
+                                && !appointmentStatusMatches(sib.status, AppointmentStatus.COMPLETED),
+                            )
+                            .map((sib) => updateAppointment(sib.id, { status: AppointmentStatus.COMPLETED }));
+                        if (siblingUpdates.length > 0) {
+                            await Promise.allSettled(siblingUpdates);
+                        }
+                    } catch (syncErr) {
+                        logger.error('AppointmentPOS', 'payComplete: sibling completion sync failed', syncErr);
                     }
-                } catch (syncErr) {
-                    logger.error('AppointmentPOS', 'payComplete: sibling completion sync failed', syncErr);
                 }
             } else if (!isStandaloneProductSales && canBookApt) {
-                // Direkt ödeme ile açılan işlemde randevu da kapalı (completed) oluşturulmalı.
-                const planned = buildServiceAppointmentPayloads(AppointmentStatus.COMPLETED);
+                // Direkt ödeme ile açılan işlemde randevu kapatılır (completed veya
+                // peşinatlı ise "başladı").
+                const planned = buildServiceAppointmentPayloads(finalAptStatus);
                 if (planned.length > 0) {
                     const ids = await Promise.all(planned.map((p) => createAppointment(p)));
                     for (const id of ids) {
@@ -2390,6 +2410,13 @@ export function AppointmentPOS({
             setShowPay(false);
             if (splitInvoiceCount > 1) {
                 toast.success(tm('bBeautySplitInvoicesDone').replace('{n}', String(splitInvoiceCount)));
+            } else if (isPesinatliPrePayment) {
+                // Peşinatlı ön ödeme: randevu "başladı" durumuna alındı, hizmet
+                // verildiğinde ayrıca tamamlanacak.
+                toast.success(
+                    tm('bPrePaymentReceived') ||
+                        'Ön ödeme alındı — randevu başladı. Hizmet verildiğinde tamamlayın.',
+                );
             } else {
                 toast.success(tm('bPaymentCompleted'));
             }
@@ -4493,6 +4520,10 @@ export function AppointmentPOS({
                     onCloseForSilentPrint={() => setShowPay(false)}
                     onClose={() => setShowPay(false)}
                     onComplete={handlePayComplete}
+                    // Beauty POS: Peşinatlı seçildiğinde randevu hizmet
+                    // verilmeden "başladı" durumuna alınır; hizmet verildiğinde
+                    // ayrıca "Hizmet Tamamlandı" akışı çalışır.
+                    mode="prePayment"
                 />
             )}
 

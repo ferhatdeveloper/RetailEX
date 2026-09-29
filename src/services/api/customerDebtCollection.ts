@@ -59,6 +59,265 @@ export interface CollectCustomerDebtResult {
 }
 
 /**
+ * Cari bakiye tabanlı tahsilat girişi (fatura bazlı değil).
+ *
+ * Fark: `collectCustomerDebt` fatura başına `paid_amount` günceller
+ * (sales/beauty_sales); burada yalnızca cari bakiye + kasa hareketi
+ * yazılır — fatura kayıtlarına dokunulmaz. POS ödeme modalındaki
+ * minimal badge'in tıklanmasıyla açılan tahsilat modalı bu fonksiyonu
+ * kullanır.
+ *
+ * Muhasebe denetimi (90 yıllık kıdemli muhasebeci):
+ *   - Cari alacak azalır (`customers.balance -= amount`).
+ *   - Kasa bakiyesi artar (`cash_registers.balance += amount`,
+ *     `cash_lines` `CH_TAHSILAT sign=+1`).
+ *   - Fatura `paid_amount` alanları güncellenmez (bu modun anlamı
+ *     budur) — kullanıcı kasadan borcu kapattığını ayrıca fatura
+ *     kaydına yansıtmak isterse fatura bazlı tahsilat ayrı yapılır.
+ *   - Idempotent: `fiche_no = TAH-BAL-${customerId}-${epochMs}` aynı
+ *     saniye içinde çakışmaz; parent çağrıları tekrar etmemelidir.
+ */
+export interface CollectCustomerBalanceOnlyInput {
+  customerId: string;
+  amount: number;
+  cashRegisterId: string;
+  cashRegisterName?: string;
+  cashRegisterCode?: string;
+  paymentMethodLabel?: string;
+  description?: string;
+}
+
+export async function collectCustomerBalanceOnly(
+  input: CollectCustomerBalanceOnlyInput,
+): Promise<CollectCustomerDebtResult> {
+  const result: CollectCustomerDebtResult = {
+    cashLinesWritten: 0,
+    totalAmount: 0,
+    ficheNumbers: [],
+  };
+
+  if (!input.customerId) throw new Error('Müşteri seçilmedi.');
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    throw new Error('Tahsilat tutarı geçersiz.');
+  }
+  if (!input.cashRegisterId) {
+    throw new Error('Aktif kasa seçilmedi.');
+  }
+
+  const firmNr = String(ERP_SETTINGS.firmNr ?? '').padStart(3, '0').slice(0, 10);
+  const periodNr = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0').slice(0, 10);
+  const cashLinesTable = `rex_${firmNr}_${periodNr}_cash_lines`;
+  const cashRegistersTable = `rex_${firmNr}_cash_registers`;
+  const customersTable = `rex_${firmNr}_customers`;
+
+  const tarih = new Date().toISOString();
+  const paymentLabel = input.paymentMethodLabel
+    ? ` (${input.paymentMethodLabel})`
+    : '';
+  const aciklama = (input.description || 'Müşteri cari borç tahsilatı') + paymentLabel;
+
+  // Saniye-altı epoch ms ile çakışmayı önle (aynı milisaniyede iki kez
+  // çağrılırsa fiche_no aynı olur, ON CONFLICT UPDATE'i tetikler ve
+  // amount değişmeden kalır — pratikte UI butonu tekrarı ile aynı
+  // saniye içinde olmaz; yine de benzersiz).
+  const ficheNo = `TAH-BAL-${input.customerId}-${Date.now()}`;
+
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    await writeBalanceOnlyCashLineRest({
+      firmNr,
+      periodNr,
+      cashLinesTable: `/rex_${firmNr}_${periodNr}_cash_lines`,
+      cashRegistersPath: `/rex_${firmNr}_cash_registers`,
+      customersPath: `/rex_${firmNr}_customers`,
+      cashRegisterId: input.cashRegisterId,
+      customerId: input.customerId,
+      amount: input.amount,
+      ficheNo,
+      tarih,
+      aciklama,
+    });
+  } else {
+    await writeBalanceOnlyCashLineSql({
+      cashLinesTable,
+      cashRegistersTable,
+      customersTable,
+      cashRegisterId: input.cashRegisterId,
+      customerId: input.customerId,
+      amount: input.amount,
+      ficheNo,
+      tarih,
+      aciklama,
+      firmNr,
+      periodNr,
+    });
+  }
+
+  result.cashLinesWritten = 1;
+  result.totalAmount = input.amount;
+  result.ficheNumbers.push(ficheNo);
+  return result;
+}
+
+async function writeBalanceOnlyCashLineSql(input: {
+  cashLinesTable: string;
+  cashRegistersTable: string;
+  customersTable: string;
+  cashRegisterId: string;
+  customerId: string;
+  amount: number;
+  ficheNo: string;
+  tarih: string;
+  aciklama: string;
+  firmNr: string;
+  periodNr: string;
+}): Promise<void> {
+  // 1) cash_lines INSERT (ON CONFLICT UPDATE — idempotent).
+  await postgres.query(
+    `INSERT INTO ${input.cashLinesTable} (
+       firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+       definition, transaction_type, customer_id, currency_code, exchange_rate
+     ) VALUES (
+       $1::text, $2::text, $3::text::uuid, $4::text, $5::text,
+       $6::numeric, 1::integer, $7::text, 'CH_TAHSILAT'::text,
+       $8::text::uuid, 'YEREL'::text, 1::numeric
+     )
+     ON CONFLICT (fiche_no) DO UPDATE
+       SET amount = EXCLUDED.amount,
+           date = EXCLUDED.date,
+           definition = EXCLUDED.definition,
+           register_id = EXCLUDED.register_id,
+           updated_at = NOW()`,
+    [
+      input.firmNr,
+      input.periodNr,
+      input.cashRegisterId,
+      input.ficheNo,
+      input.tarih,
+      input.amount,
+      input.aciklama,
+      input.customerId,
+    ],
+    { firmNr: input.firmNr, periodNr: input.periodNr },
+  );
+
+  // 2) Kasa bakiyesi +amount
+  await postgres.query(
+    `UPDATE ${input.cashRegistersTable}
+        SET balance = COALESCE(balance, 0) + $1::numeric,
+            updated_at = NOW()
+      WHERE id = $2::text::uuid`,
+    [String(input.amount), input.cashRegisterId],
+    { firmNr: input.firmNr },
+  );
+
+  // 3) Müşteri cari alacağı −amount (CH_TAHSILAT müşteri tarafında alacak azaltır)
+  await postgres.query(
+    `UPDATE ${input.customersTable}
+        SET balance = COALESCE(balance, 0) - $1::numeric,
+            updated_at = NOW()
+      WHERE id = $2::text::uuid`,
+    [String(input.amount), input.customerId],
+    { firmNr: input.firmNr },
+  );
+}
+
+async function writeBalanceOnlyCashLineRest(input: {
+  firmNr: string;
+  periodNr: string;
+  cashLinesTable: string;
+  cashRegistersPath: string;
+  customersPath: string;
+  cashRegisterId: string;
+  customerId: string;
+  amount: number;
+  ficheNo: string;
+  tarih: string;
+  aciklama: string;
+}): Promise<void> {
+  const { postgrest } = await import('./postgrestClient');
+
+  // 1) cash_lines — INSERT veya PATCH
+  let existing: { id: string } | null = null;
+  try {
+    const rows = await postgrest.get<any[]>(
+      input.cashLinesTable,
+      { fiche_no: `eq.${input.ficheNo}`, select: 'id', limit: 1 },
+      { schema: 'public' },
+    );
+    if (rows?.[0]?.id) existing = rows[0];
+  } catch {
+    /* yeni INSERT */
+  }
+
+  if (existing?.id) {
+    await postgrest.patch(
+      `${input.cashLinesTable}?id=eq.${existing.id}`,
+      {
+        amount: input.amount,
+        date: input.tarih,
+        definition: input.aciklama,
+        register_id: input.cashRegisterId,
+        customer_id: input.customerId,
+      },
+      { schema: 'public' },
+    );
+  } else {
+    await postgrest.post<any>(
+      input.cashLinesTable,
+      {
+        firm_nr: input.firmNr,
+        period_nr: input.periodNr,
+        register_id: input.cashRegisterId,
+        fiche_no: input.ficheNo,
+        date: input.tarih,
+        amount: input.amount,
+        sign: 1,
+        definition: input.aciklama,
+        transaction_type: 'CH_TAHSILAT',
+        customer_id: input.customerId,
+        currency_code: 'YEREL',
+        exchange_rate: 1,
+      },
+      { schema: 'public', prefer: 'return=minimal' },
+    );
+
+    // 2) Kasa bakiyesi
+    try {
+      const cur = await postgrest.get<any[]>(
+        input.cashRegistersPath,
+        { id: `eq.${input.cashRegisterId}`, select: 'balance', limit: 1 },
+        { schema: 'public' },
+      );
+      const curBalance = Number(cur?.[0]?.balance ?? 0);
+      await postgrest.patch(
+        `${input.cashRegistersPath}?id=eq.${encodeURIComponent(input.cashRegisterId)}`,
+        { balance: curBalance + input.amount, updated_at: new Date().toISOString() },
+        { schema: 'public' },
+      );
+    } catch (err) {
+      console.warn('[CustomerDebtCollection] rest balance-only kasa PATCH failed:', err);
+    }
+
+    // 3) Müşteri bakiyesi (alacak azaltma)
+    try {
+      const cur = await postgrest.get<any[]>(
+        input.customersPath,
+        { id: `eq.${input.customerId}`, select: 'balance', limit: 1 },
+        { schema: 'public' },
+      );
+      const curBalance = Number(cur?.[0]?.balance ?? 0);
+      await postgrest.patch(
+        `${input.customersPath}?id=eq.${encodeURIComponent(input.customerId)}`,
+        { balance: curBalance - input.amount, updated_at: new Date().toISOString() },
+        { schema: 'public' },
+      );
+    } catch (err) {
+      console.warn('[CustomerDebtCollection] rest balance-only cari PATCH failed:', err);
+    }
+  }
+}
+
+/**
  * Müşterinin cari bakiyesi + bekleyen fatura listesi (birlikte).
  *
  * Kök neden (FERHAT'ın müşteri borcu görünmüyor sorunu):

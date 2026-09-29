@@ -29,6 +29,7 @@ const {
   getCustomerOutstandingBalance,
   getCustomerBalance,
   collectCustomerDebt,
+  collectCustomerBalanceOnly,
 } = await import('../../services/api/customerDebtCollection');
 
 describe('customerDebtCollection (SQL)', () => {
@@ -471,6 +472,123 @@ describe('customerDebtCollection (SQL)', () => {
       expect(Math.abs(sum - 1000)).toBeLessThan(0.001);
       // Toplam: yuvarlama farkı son satıra yansımış
       expect(res.totalAmount).toBeCloseTo(1000, 3);
+    });
+  });
+
+  describe('collectCustomerBalanceOnly (cari bakiye tabanlı tahsilat)', () => {
+    /**
+     * Fatura bazlı tahsilat YAPMAZ; yalnızca:
+     *   1) cash_lines INSERT (CH_TAHSILAT, sign=+1)
+     *   2) cash_registers.balance += amount
+     *   3) customers.balance -= amount
+     * POS ödeme modalındaki minimal badge → tıkla → tahsilat modalı
+     * bu fonksiyonu çağırır; sales/beauty_sales.paid_amount'a dokunmaz.
+     */
+    it('3 sorgu çağırır: cash_lines upsert + kasa + cari', async () => {
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ id: 'cl-1', inserted: true }] }) // cash_lines INSERT
+        .mockResolvedValueOnce({ rowCount: 1 }) // cash_registers +amount
+        .mockResolvedValueOnce({ rowCount: 1 }); // customers -amount
+
+      const res = await collectCustomerBalanceOnly({
+        customerId: 'cust-1',
+        amount: 36000,
+        cashRegisterId: 'cash-1',
+        paymentMethodLabel: 'Nakit',
+      });
+
+      expect(res.cashLinesWritten).toBe(1);
+      expect(res.totalAmount).toBe(36000);
+      expect(res.ficheNumbers).toHaveLength(1);
+      expect(res.ficheNumbers[0]).toMatch(/^TAH-BAL-cust-1-\d+$/);
+      expect(mockQuery).toHaveBeenCalledTimes(3);
+
+      // 1) cash_lines — CH_TAHSILAT, sign=+1
+      const upsert = String(mockQuery.mock.calls[0][0]);
+      expect(upsert).toMatch(/INSERT INTO rex_001_01_cash_lines/);
+      expect(upsert).toMatch(/CH_TAHSILAT/);
+      expect(upsert).toMatch(/ON CONFLICT \(fiche_no\) DO UPDATE/);
+
+      // 2) cash_registers +amount
+      const kasaUpdate = String(mockQuery.mock.calls[1][0]);
+      expect(kasaUpdate).toMatch(/UPDATE rex_001_cash_registers/);
+      expect(kasaUpdate).toMatch(/balance\s*=\s*COALESCE\(balance,\s*0\)\s*\+\s*\$1/);
+
+      // 3) customers -amount (cari alacak azaltma)
+      const cariUpdate = String(mockQuery.mock.calls[2][0]);
+      expect(cariUpdate).toMatch(/UPDATE rex_001_customers/);
+      expect(cariUpdate).toMatch(/balance\s*=\s*COALESCE\(balance,\s*0\)\s*-\s*\$1/);
+    });
+
+    it('sales veya beauty_sales tablosuna paid_amount YAZMAZ', async () => {
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ id: 'cl-1', inserted: true }] })
+        .mockResolvedValueOnce({ rowCount: 1 })
+        .mockResolvedValueOnce({ rowCount: 1 });
+
+      await collectCustomerBalanceOnly({
+        customerId: 'cust-1',
+        amount: 5000,
+        cashRegisterId: 'cash-1',
+      });
+
+      // Tüm sorguların içinde rex_001_01_sales veya beauty_sales geçMEMELİ
+      for (const call of mockQuery.mock.calls) {
+        const sql = String(call[0]);
+        expect(sql).not.toMatch(/rex_001_01_sales/);
+        expect(sql).not.toMatch(/beauty_sales/);
+      }
+    });
+
+    it('input validasyon: customerId yoksa hata', async () => {
+      await expect(
+        collectCustomerBalanceOnly({
+          customerId: '',
+          amount: 100,
+          cashRegisterId: 'cash-1',
+        }),
+      ).rejects.toThrow(/Müşteri/);
+    });
+
+    it('input validasyon: amount <= 0 ise hata', async () => {
+      await expect(
+        collectCustomerBalanceOnly({
+          customerId: 'cust-1',
+          amount: 0,
+          cashRegisterId: 'cash-1',
+        }),
+      ).rejects.toThrow(/tutar/);
+    });
+
+    it('input validasyon: cashRegisterId yoksa hata', async () => {
+      await expect(
+        collectCustomerBalanceOnly({
+          customerId: 'cust-1',
+          amount: 100,
+          cashRegisterId: '',
+        }),
+      ).rejects.toThrow(/kasa/);
+    });
+
+    it('paymentMethodLabel description\'a eklenir', async () => {
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ id: 'cl-1', inserted: true }] })
+        .mockResolvedValueOnce({ rowCount: 1 })
+        .mockResolvedValueOnce({ rowCount: 1 });
+
+      await collectCustomerBalanceOnly({
+        customerId: 'cust-1',
+        amount: 1000,
+        cashRegisterId: 'cash-1',
+        paymentMethodLabel: 'Nakit',
+        description: 'Özel tahsilat',
+      });
+
+      // INSERT parametreleri: firmNr, periodNr, cashRegisterId, ficheNo,
+      // tarih, amount, aciklama, customerId — aciklama 6. indekste
+      const aciklama = String(mockQuery.mock.calls[0][1][6]);
+      expect(aciklama).toContain('Özel tahsilat');
+      expect(aciklama).toContain('Nakit');
     });
   });
 });

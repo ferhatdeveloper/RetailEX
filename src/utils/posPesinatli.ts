@@ -83,7 +83,12 @@ export function isValidPesinatliInstallments(value: unknown): value is Pesinatli
  */
 export function buildPesinatliPayment(args: {
   amount: number;
-  installments: PesinatliInstallments;
+  /**
+   * Taksit planı (3/6/9/12). Yeni "serbest tutar" UX'inde kullanıcı taksit
+   * sayısı seçmiyor; burada opsiyonel. Verilirse peşinat satırına da
+   * metadata olarak yazılır (ileride `installment_plans` tablosu için).
+   */
+  installments?: PesinatliInstallments;
   currency: PosPesinatliCurrency;
   cashRegister?: {
     id?: string | null;
@@ -208,7 +213,11 @@ export function buildPesinatliPayments(args: {
 
   const pesinat = buildPesinatliPayment({
     amount: pay,
-    installments: (args.installments ?? 3) as PesinatliInstallments,
+    // Peşinat satırında `installments` metadata'sı artık set edilmiyor —
+    // önceki turda taksit seçim UI'sı kaldırıldı; rozet/badget yanlış
+    // şekilde "· 3 ay" gösteriyordu. İleride `installment_plans` tablosu
+    // eklenirse burada geri set edilebilir.
+    installments: undefined,
     currency,
     cashRegister: args.cashRegister ?? null,
   });

@@ -260,6 +260,21 @@ describe('posPesinatli - buildPesinatliPayments (yeni UX: bugün + kalan)', () =
     expect(veresiye.installments).toBeUndefined();
   });
 
+  it('peşinat satırında `installments` metadata\'sı set edilmiyor (eski "· 3 ay" badge sorunu)', () => {
+    // Yeni UX'te kullanıcı taksit sayısı seçmiyor; "3 ay" rozeti yanlışlıkla
+    // çıkıyordu. Bu test peşinat satırında `installments` undefined olmasını
+    // garanti eder — POSPaymentModal badge koşulu (`> 0`) yanlışlıkla
+    // tetiklenmesin.
+    const rows = buildPesinatliPayments({
+      totalAmount: 1000,
+      payNow: 300,
+      currency: 'IQD',
+      installments: 3,
+    });
+    expect((rows[0] as any).method).toBe('pesinatli');
+    expect((rows[0] as any).installments).toBeUndefined();
+  });
+
   it('cashRegister verildiğinde peşinat satırına kasa alanları yazılır', () => {
     const rows = buildPesinatliPayments({
       totalAmount: 1000,

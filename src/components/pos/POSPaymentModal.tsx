@@ -17,6 +17,7 @@ import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import {
   collectCustomerDebt,
+  collectCustomerBalanceOnly,
   getCustomerOutstandingInvoices,
   getCustomerOutstandingBalance,
   type CustomerOutstandingInvoice,
@@ -154,6 +155,20 @@ interface POSPaymentModalProps {
   onCloseForSilentPrint?: () => void;
   onClose: () => void;
   onComplete: (paymentData: any, options?: { autoPrint?: boolean; language?: string }) => Promise<void> | void;
+  /**
+   * Tamamla butonunun etiketi. Genelde "Ödemeyi Tamamla"; ancak Peşinatlı
+   * satışta parent ("Ön Ödeme Alındı") gönderebilir. Verilmezse standart
+   * `t.completePayment` kullanılır.
+   */
+  completeButtonLabel?: string;
+  /**
+   * Mode = 'prePayment' → Tamamla butonunun etiketi `payments` içinde
+   * peşinat varsa otomatik "Ön Ödeme Alındı" olur; randevu/sipariş henüz
+   * tamamlanmadı, sadece ön ödeme alındı. Beauty POS randevu için kullanır
+   * — hizmet verildiğinde ayrıca "Hizmet Tamamlandı" akışı tetiklenir.
+   * Standart POS'larda kullanılmaz (mode yok / undefined).
+   */
+  mode?: 'standard' | 'prePayment';
 }
 
 export function POSPaymentModal({
@@ -169,7 +184,9 @@ export function POSPaymentModal({
   onPrintDraftReceipt,
   onCloseForSilentPrint,
   onClose,
-  onComplete
+  onComplete,
+  completeButtonLabel,
+  mode = 'standard',
 }: POSPaymentModalProps) {
   const { t, tm, language: uiLanguage } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
@@ -201,6 +218,10 @@ export function POSPaymentModal({
   const [customerBalance, setCustomerBalance] = useState<number>(0);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
   const [collectingDebt, setCollectingDebt] = useState(false);
+  /** Cari bakiye tabanlı tahsilat modalı (kompakt badge → tıklanınca açılır) */
+  const [showBalanceCollectModal, setShowBalanceCollectModal] = useState(false);
+  const [collectAmount, setCollectAmount] = useState<number>(0);
+  const collectMethod = currentMethod === 'card' ? 'card' : 'cash';
   const [allowPaymentBackToSale, setAllowPaymentBackToSale] = useState(() =>
     isPosPaymentBackToSaleAllowed(),
   );
@@ -541,7 +562,81 @@ export function POSPaymentModal({
     [customerInvoices, selectedInvoiceIds],
   );
 
-  const handleCollectCustomerDebt = async () => {
+  /** Kompakt müşteri borcu badge'i tıklanınca — bakiye tahsilat modalı aç. */
+  const handleOpenCollectModal = () => {
+    if (!selectedCustomer) return;
+    if (customerBalance >= 0) {
+      // Alacaklı/hesap sıfır — tahsil edilecek bir şey yok. Modal açma,
+      // bilgilendirme ver (müşteri zaten borçlu değil).
+      toast.info(
+        tm('customerDebtEmpty') ||
+          'Müşterinin tahsil edilecek borcu yok.',
+      );
+      return;
+    }
+    if (!selectedCashRegisterId) {
+      toast.error(tm('selectCashRegister') || 'Aktif kasa seçilmedi.');
+      return;
+    }
+    setCollectAmount(Math.abs(customerBalance));
+    setShowBalanceCollectModal(true);
+  };
+
+  /** Bakiye tahsilat modalı onay — `collectCustomerBalanceOnly` çağırır. */
+  const handleConfirmBalanceCollection = async () => {
+    if (!selectedCustomer) {
+      toast.error('Müşteri seçilmedi.');
+      return;
+    }
+    if (!selectedCashRegisterId) {
+      toast.error(tm('selectCashRegister') || 'Aktif kasa seçilmedi.');
+      return;
+    }
+    const debtAmount = Math.abs(customerBalance);
+    if (!(collectAmount > 0) || collectAmount > debtAmount + 0.005) {
+      toast.error(
+        tm('collectInvalidAmount') ||
+          'Tahsilat tutarı 0 ile borç arasında olmalı.',
+      );
+      return;
+    }
+    setCollectingDebt(true);
+    try {
+      const methodLabel =
+        collectMethod === 'cash' ? 'Nakit' : 'Kart (POS)';
+      const res = await collectCustomerBalanceOnly({
+        customerId: selectedCustomer.id,
+        amount: collectAmount,
+        cashRegisterId: selectedCashRegisterId,
+        cashRegisterName: selectedCashRegister?.kasa_adi,
+        cashRegisterCode: selectedCashRegister?.kasa_kodu,
+        paymentMethodLabel: methodLabel,
+        description:
+          tm('collectCustomerDebtDescription') ||
+          'Müşteri cari borç tahsilatı',
+      });
+      // Bakiyeyi yenile (customers.balance güncellendi)
+      const refreshed = await getCustomerOutstandingBalance(
+        selectedCustomer.id,
+      );
+      setCustomerBalance(refreshed.customerBalance);
+      setCustomerInvoices(refreshed.outstandingInvoices);
+      setSelectedInvoiceIds(new Set());
+      setShowBalanceCollectModal(false);
+      setCollectAmount(0);
+      toast.success(
+        `${tm('collected') || 'Tahsil edildi'}: ${formatSummaryMoney(res.totalAmount)}`,
+      );
+    } catch (err) {
+      console.error('[POSPaymentModal] collectCustomerBalanceOnly failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg || (tm('collectionFailed') || 'Tahsilat başarısız'));
+    } finally {
+      setCollectingDebt(false);
+    }
+  };
+
+const handleCollectCustomerDebt = async () => {
     if (!selectedCustomer) {
       toast.error('Müşteri seçilmedi.');
       return;
@@ -733,6 +828,10 @@ export function POSPaymentModal({
       cash_register_id: selectedCashRegister?.id,
       cash_register_name: selectedCashRegister?.kasa_adi,
       cash_register_code: selectedCashRegister?.kasa_kodu,
+      // Mode bilgisi: parent (AppointmentPOS) Peşinatlı modda randevuyu
+      // hizmet verilmeden "başladı" durumuna çekebilsin.
+      mode,
+      hasPesinatli: paymentsToSubmit.some((p) => p.method === 'pesinatli'),
     };
     const PAYMENT_TIMEOUT_MS = 45_000;
     try {
@@ -1051,7 +1150,7 @@ export function POSPaymentModal({
                               ? formatCurrency(payment.amount)
                               : formatMoneyWithCode(payment.amount, payment.currency)}
                           </span>
-                          {payment.method === 'pesinatli' && payment.installments ? (
+                          {payment.method === 'pesinatli' ? (
                             <span
                               data-testid="pesinat-payment-badge"
                               className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
@@ -1059,12 +1158,13 @@ export function POSPaymentModal({
                               }`}
                             >
                               {(tm('paymentMethodPesinatli') || t.pesinatliLabel || 'Peşinatlı')}
-                              {` · ${payment.installments} `}
-                              {(tm('installmentShort') || 'ay')}
+                              {payment.installments && payment.installments > 0
+                                ? ` · ${payment.installments} ${tm('installmentShort') || 'ay'}`
+                                : ''}
                             </span>
                           ) : payment.method === 'veresiye' ? (
                             <span className={`text-[10px] px-1.5 py-0.5 rounded ${darkMode ? 'bg-orange-900/40 text-orange-300' : 'bg-orange-100 text-orange-800'}`}>
-                              {payment.installments
+                              {payment.installments && payment.installments > 0
                                 ? `${t.veresiyeLabel || 'Veresiye (Cari)'} · ${payment.installments} ${tm('installmentShort') || 'ay'}`
                                 : (t.veresiyeLabel || 'Veresiye (Cari)')}
                             </span>
@@ -1086,138 +1186,52 @@ export function POSPaymentModal({
                 </div>
               )}
 
-              {/* Müşteri Borcu (tahsilat) — müşteri seçildiğinde aktif */}
+              {/* Müşteri Borcu — minimal badge (tıklanınca tahsilat modalı açılır) */}
               {selectedCustomer && (
-                <div
-                  data-testid="pos-customer-debt-section"
-                  className={`border-2 rounded-xl p-3 ${
-                    darkMode
-                      ? 'bg-purple-900/20 border-purple-700/60'
-                      : 'bg-purple-50 border-purple-200'
+                <button
+                  type="button"
+                  data-testid="pos-customer-debt-badge"
+                  onClick={handleOpenCollectModal}
+                  title={
+                    customerBalance < 0
+                      ? tm('collectBadgeTitle') || 'Tahsilat için tıklayın'
+                      : tm('customerDetailTitle') || 'Müşteri detayı'
+                  }
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border transition ${
+                    customerBalance < 0
+                      ? darkMode
+                        ? 'bg-red-900/20 border-red-800/60 hover:bg-red-900/30 text-red-200'
+                        : 'bg-red-50 border-red-300 hover:bg-red-100 text-red-900'
+                      : darkMode
+                        ? 'bg-gray-800 border-gray-700 hover:bg-gray-700 text-gray-300'
+                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100 text-gray-700'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <h4
-                      className={`text-sm font-semibold flex items-center gap-2 ${
-                        darkMode ? 'text-purple-300' : 'text-purple-900'
-                      }`}
-                    >
-                      <Receipt className="w-4 h-4" />
-                      {tm('customerDebt') || 'Müşteri Borcu'} ({selectedCustomer.name})
-                    </h4>
-                    <div className="flex flex-col items-end gap-0.5">
-                      {/* Cari bakiye (customers.balance) — negatif = borçlu */}
-                      <span
-                        data-testid="pos-customer-balance"
-                        className={`text-sm font-bold font-mono ${
-                          customerBalance < 0
-                            ? darkMode
-                              ? 'text-red-300'
-                              : 'text-red-700'
-                            : darkMode
-                              ? 'text-gray-400'
-                              : 'text-gray-500'
-                        }`}
-                        title={tm('customerDebt') || 'Cari bakiye (customers.balance)'}
-                      >
-                        {customerBalance < 0
-                          ? `${tm('customerDebt') || 'Borç'}: ${formatSummaryMoney(Math.abs(customerBalance))} ${baseCurrency}`
-                          : customerBalance > 0
-                            ? `${tm('customerCredit') || 'Alacak'}: ${formatSummaryMoney(customerBalance)} ${baseCurrency}`
-                            : `${formatSummaryMoney(0)} ${baseCurrency}`}
-                      </span>
-                      {/* Bekleyen fatura toplamı — fatura listesi senkronu */}
-                      {customerInvoices.length > 0 && (
-                        <span
-                          className={`text-[10px] font-mono ${
-                            darkMode ? 'text-slate-400' : 'text-slate-500'
-                          }`}
-                        >
-                          ({customerInvoices.length} {tm('invoiceCount') || 'fatura'} ·{' '}
-                          {formatSummaryMoney(customerDebtTotal)} {baseCurrency})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {customerInvoicesLoading ? (
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      {tm('loading') || 'Yükleniyor...'}
-                    </div>
-                  ) : customerInvoices.length === 0 ? (
-                    <div className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                      {tm('customerDebtEmpty') || 'Bekleyen borç yok.'}
-                    </div>
-                  ) : (
-                    <div className="space-y-1 max-h-32 overflow-y-auto">
-                      {customerInvoices.map((inv) => {
-                        const checked = selectedInvoiceIds.has(inv.id);
-                        return (
-                          <label
-                            key={inv.id}
-                            className={`flex items-center justify-between gap-2 text-xs cursor-pointer rounded px-1 py-1 ${
-                              darkMode
-                                ? checked
-                                  ? 'bg-purple-900/40'
-                                  : 'hover:bg-purple-900/30'
-                                : checked
-                                  ? 'bg-purple-100'
-                                  : 'hover:bg-purple-50'
-                            }`}
-                          >
-                            <span className="flex items-center gap-2 min-w-0 flex-1">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() =>
-                                  setSelectedInvoiceIds((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(inv.id)) next.delete(inv.id);
-                                    else next.add(inv.id);
-                                    return next;
-                                  })
-                                }
-                                className="rounded text-purple-600 focus:ring-purple-500"
-                                aria-label={`Fatura ${inv.invoice_no} seç`}
-                              />
-                              <FileText className="w-3 h-3 opacity-70 shrink-0" />
-                              <span className="font-mono truncate">
-                                {inv.invoice_no} · {inv.invoice_date.slice(0, 10)}
-                              </span>
-                            </span>
-                            <span
-                              className={`font-semibold font-mono shrink-0 ${
-                                darkMode ? 'text-red-300' : 'text-red-600'
-                              }`}
-                            >
-                              {formatSummaryMoney(inv.remaining)}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {selectedInvoiceIds.size > 0 && selectedCashRegisterId && (
-                    <button
-                      type="button"
-                      data-testid="pos-collect-customer-debt"
-                      onClick={handleCollectCustomerDebt}
-                      disabled={collectingDebt}
-                      className={`w-full mt-2 py-2 px-3 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-60 bg-purple-600 hover:bg-purple-700 text-white`}
-                    >
-                      {collectingDebt ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <CreditCard className="w-4 h-4" />
-                      )}
-                      {collectingDebt
-                        ? (tm('processingText') || 'İŞLENİYOR...')
-                        : `${tm('collectSelectedDebts') || 'Seçili Borçları Öde'} (${formatSummaryMoney(selectedDebtTotal)})`}
-                    </button>
-                  )}
-                </div>
+                  <span className="flex items-center gap-2 text-xs min-w-0">
+                    <Wallet className="w-3.5 h-3.5 shrink-0" />
+                    <span className="font-medium truncate">
+                      {selectedCustomer.name}
+                    </span>
+                  </span>
+                  <span
+                    data-testid="pos-customer-balance"
+                    className={`text-sm font-bold font-mono shrink-0 ${
+                      customerBalance < 0
+                        ? darkMode
+                          ? 'text-red-300'
+                          : 'text-red-700'
+                        : darkMode
+                          ? 'text-gray-400'
+                          : 'text-gray-600'
+                    }`}
+                  >
+                    {customerBalance < 0
+                      ? `${tm('customerDebt') || 'Borç'}: ${formatSummaryMoney(Math.abs(customerBalance))} ${baseCurrency}`
+                      : customerBalance > 0
+                        ? `${tm('customerCredit') || 'Alacak'}: ${formatSummaryMoney(customerBalance)} ${baseCurrency}`
+                        : `${formatSummaryMoney(0)} ${baseCurrency}`}
+                  </span>
+                </button>
               )}
             </div>
 
@@ -1712,7 +1726,13 @@ export function POSPaymentModal({
             ) : (
               <>
                 <CheckCircle className="w-5 h-5" />
-                <span>{t.completePayment || 'Ödemeyi Tamamla'}</span>
+                <span data-testid="pos-complete-payment-label">{(() => {
+                  if (completeButtonLabel) return completeButtonLabel;
+                  if (mode === 'prePayment' && payments.some((p) => p.method === 'pesinatli')) {
+                    return tm('prePaymentReceived') || 'Ön Ödeme Alındı';
+                  }
+                  return t.completePayment || 'Ödemeyi Tamamla';
+                })()}</span>
               </>
             )}
           </button>
@@ -1781,6 +1801,206 @@ export function POSPaymentModal({
               className="w-full py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100"
             >
               {t.cancel || 'İptal'}
+            </button>
+          </div>
+        </PercentBodyModal>
+      )}
+
+      {/* Bakiye bazlı tahsilat modalı — badge tıklanınca açılır */}
+      {showBalanceCollectModal && selectedCustomer && (
+        <PercentBodyModal
+          nested
+          size="list"
+          ariaLabel={tm('collectCustomerDebt') || 'Tahsilat'}
+          onClose={() => {
+            if (collectingDebt) return;
+            setShowBalanceCollectModal(false);
+            setCollectAmount(0);
+          }}
+        >
+          <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 text-white shrink-0 flex items-center justify-between">
+            <h3 className="text-base font-bold flex items-center gap-2">
+              <Receipt className="w-5 h-5" />
+              {tm('collectCustomerDebt') || 'Tahsilat'} — {selectedCustomer.name}
+            </h3>
+            <button
+              type="button"
+              onClick={() => {
+                setShowBalanceCollectModal(false);
+                setCollectAmount(0);
+              }}
+              className="p-1 rounded-lg hover:bg-white/20 transition-colors"
+              aria-label={t.cancel || 'Kapat'}
+              disabled={collectingDebt}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className={`px-6 py-3 border-b shrink-0 ${darkMode ? 'bg-red-900/20 border-red-800/60' : 'bg-red-50 border-red-200'}`}>
+            <div className={`text-xs ${darkMode ? 'text-red-200' : 'text-red-800'}`}>
+              {tm('collectCurrentBalance') || 'Cari bakiye'}
+            </div>
+            <div className={`text-lg font-bold font-mono ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
+              {customerBalance < 0
+                ? `${formatSummaryMoney(Math.abs(customerBalance))} ${baseCurrency} ${tm('customerDebt') || 'borç'}`
+                : `${formatSummaryMoney(0)} ${baseCurrency}`}
+            </div>
+          </div>
+          <PercentBodyModalScrollBody className="p-6 space-y-4">
+            <div>
+              <label
+                className={`block text-[11px] font-bold uppercase tracking-wider mb-1.5 ${
+                  darkMode ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
+                {tm('collectAmountLabel') || 'Tahsilat Tutarı'} ({baseCurrency})
+              </label>
+              <input
+                type="number"
+                value={collectAmount || ''}
+                min={0}
+                max={Math.abs(customerBalance)}
+                step={getCurrencyDecimalPlaces(baseCurrency) > 0 ? '0.01' : '1'}
+                onChange={(e) =>
+                  setCollectAmount(Number(e.target.value) || 0)
+                }
+                data-testid="pos-collect-amount-input"
+                className={`w-full px-4 py-3 text-lg font-bold font-mono border rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-purple-400 outline-none ${
+                  darkMode
+                    ? 'bg-gray-800 border-gray-600 text-white'
+                    : 'bg-white border-slate-200 text-slate-800'
+                }`}
+              />
+              <div className="flex gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setCollectAmount(Math.abs(customerBalance))}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition ${
+                    darkMode
+                      ? 'bg-purple-900/30 hover:bg-purple-900/50 text-purple-200'
+                      : 'bg-purple-100 hover:bg-purple-200 text-purple-800'
+                  }`}
+                  data-testid="pos-collect-full"
+                >
+                  {tm('collectFullAmount') || 'Tamamı'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCollectAmount(Math.abs(customerBalance) / 2)
+                  }
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition ${
+                    darkMode
+                      ? 'bg-purple-900/30 hover:bg-purple-900/50 text-purple-200'
+                      : 'bg-purple-100 hover:bg-purple-200 text-purple-800'
+                  }`}
+                  data-testid="pos-collect-half"
+                >
+                  {tm('collectHalfAmount') || 'Yarısı'}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label
+                className={`block text-[11px] font-bold uppercase tracking-wider mb-1.5 ${
+                  darkMode ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
+                {tm('paymentMethodLabel') || 'Ödeme Yöntemi'}
+              </label>
+              <div className="relative">
+                <select
+                  value={collectMethod}
+                  onChange={(e) =>
+                    setCurrentMethod(e.target.value as typeof currentMethod)
+                  }
+                  className={`w-full px-4 py-3 border rounded-2xl appearance-none pr-11 outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-400 ${
+                    darkMode
+                      ? 'bg-gray-800 border-gray-600 text-white'
+                      : 'bg-white border-slate-200 text-slate-800'
+                  }`}
+                >
+                  <option value="cash">
+                    {tm('cashOption') || 'Nakit'}
+                  </option>
+                  <option value="card">
+                    {tm('cardOption') || 'Kart (POS)'}
+                  </option>
+                </select>
+                <ChevronDown
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}
+                  aria-hidden
+                />
+              </div>
+            </div>
+            {customerInvoices.length > 0 && (
+              <details
+                className={`rounded-2xl border p-3 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-slate-50 border-slate-200'}`}
+              >
+                <summary
+                  className={`text-xs cursor-pointer font-medium ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}
+                >
+                  {customerInvoices.length}{' '}
+                  {tm('collectOutstandingInvoicesHint') ||
+                    'bekleyen fatura (bilgi)'}
+                </summary>
+                <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                  {customerInvoices.map((inv) => (
+                    <div
+                      key={inv.id}
+                      className={`text-xs flex justify-between font-mono ${
+                        darkMode ? 'text-slate-300' : 'text-slate-700'
+                      }`}
+                    >
+                      <span className="truncate">
+                        {inv.invoice_no} · {inv.invoice_date.slice(0, 10)}
+                      </span>
+                      <span
+                        className={`shrink-0 font-semibold ${darkMode ? 'text-red-300' : 'text-red-600'}`}
+                      >
+                        {formatSummaryMoney(inv.remaining)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </PercentBodyModalScrollBody>
+          <div className={`p-6 border-t flex gap-3 shrink-0 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-slate-100 bg-slate-50/50'}`}>
+            <button
+              type="button"
+              onClick={() => {
+                setShowBalanceCollectModal(false);
+                setCollectAmount(0);
+              }}
+              disabled={collectingDebt}
+              className={`flex-1 py-3 rounded-2xl border-2 font-bold uppercase text-sm tracking-wider transition active:scale-[0.98] disabled:opacity-50 ${
+                darkMode
+                  ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {t.cancel || 'İptal'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleConfirmBalanceCollection()}
+              disabled={
+                collectingDebt ||
+                !(collectAmount > 0) ||
+                collectAmount > Math.abs(customerBalance) + 0.005
+              }
+              data-testid="pos-collect-confirm"
+              className="flex-1 py-3 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-purple-200/50 active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {collectingDebt ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Receipt className="w-4 h-4" />
+              )}
+              {collectingDebt
+                ? (tm('processingText') || 'İŞLENİYOR...')
+                : `${tm('confirmCollect') || 'Tahsil Et'} (${formatSummaryMoney(collectAmount)} ${baseCurrency})`}
             </button>
           </div>
         </PercentBodyModal>
