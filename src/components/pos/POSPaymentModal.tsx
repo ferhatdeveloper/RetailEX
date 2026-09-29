@@ -18,6 +18,7 @@ import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentB
 import {
   collectCustomerDebt,
   getCustomerOutstandingInvoices,
+  getCustomerOutstandingBalance,
   type CustomerOutstandingInvoice,
 } from '../../services/api/customerDebtCollection';
 import { formatCurrency, formatNumber, formatMoneyWithCode, getGlobalCurrency } from '../../utils/currency';
@@ -196,6 +197,8 @@ export function POSPaymentModal({
   // Müşteri cari borç tahsilatı — müşteri seçildiğinde listelenir
   const [customerInvoices, setCustomerInvoices] = useState<CustomerOutstandingInvoice[]>([]);
   const [customerInvoicesLoading, setCustomerInvoicesLoading] = useState(false);
+  /** Müşteri cari bakiyesi (customers.balance) — negatif = borçlu */
+  const [customerBalance, setCustomerBalance] = useState<number>(0);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
   const [collectingDebt, setCollectingDebt] = useState(false);
   const [allowPaymentBackToSale, setAllowPaymentBackToSale] = useState(() =>
@@ -278,20 +281,23 @@ export function POSPaymentModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentMethod]);
 
-  // Müşteri değişince bekleyen borçları çek
+  // Müşteri değişince cari bakiye + bekleyen faturaları çek
+  // (tek sorgu bloğu: customers.balance + sales + beauty_sales)
   useEffect(() => {
     const custId = selectedCustomer?.id;
     if (!custId) {
       setCustomerInvoices([]);
+      setCustomerBalance(0);
       setSelectedInvoiceIds(new Set());
       return;
     }
     let cancelled = false;
     setCustomerInvoicesLoading(true);
-    void getCustomerOutstandingInvoices(custId)
-      .then((rows) => {
+    void getCustomerOutstandingBalance(custId)
+      .then((info) => {
         if (cancelled) return;
-        setCustomerInvoices(rows);
+        setCustomerBalance(info.customerBalance);
+        setCustomerInvoices(info.outstandingInvoices);
         // Önceki seçimleri temizle (yeni müşteri → farklı fatura seti)
         setSelectedInvoiceIds(new Set());
       })
@@ -299,6 +305,7 @@ export function POSPaymentModal({
         if (cancelled) return;
         console.warn('[POSPaymentModal] customerDebt load failed:', err);
         setCustomerInvoices([]);
+        setCustomerBalance(0);
       })
       .finally(() => {
         if (!cancelled) setCustomerInvoicesLoading(false);
@@ -593,9 +600,12 @@ export function POSPaymentModal({
           cash_register_code: selectedCashRegister?.kasa_kodu,
         },
       ]);
-      // Listeyi yenile (kalan bakiye sıfırlanan faturalar kaybolur).
-      const refreshed = await getCustomerOutstandingInvoices(selectedCustomer.id);
-      setCustomerInvoices(refreshed);
+      // Listeyi yenile (kalan bakiye sıfırlanan faturalar kaybolur; cari
+      // bakiye de güncellenir çünkü tahsilat `customers.balance -= amount`
+      // yazdı — bakiye daha az negatif olur).
+      const refreshed = await getCustomerOutstandingBalance(selectedCustomer.id);
+      setCustomerInvoices(refreshed.outstandingInvoices);
+      setCustomerBalance(refreshed.customerBalance);
       setSelectedInvoiceIds(new Set());
       toast.success(
         `${res.cashLinesWritten} ${tm('invoiceCount') || 'fatura'} ${tm('collected') || 'tahsil edildi'}: ${formatSummaryMoney(res.totalAmount)}`,
@@ -1095,13 +1105,39 @@ export function POSPaymentModal({
                       <Receipt className="w-4 h-4" />
                       {tm('customerDebt') || 'Müşteri Borcu'} ({selectedCustomer.name})
                     </h4>
-                    <span
-                      className={`text-sm font-bold font-mono ${
-                        darkMode ? 'text-purple-200' : 'text-purple-700'
-                      }`}
-                    >
-                      {formatSummaryMoney(customerDebtTotal)} {baseCurrency}
-                    </span>
+                    <div className="flex flex-col items-end gap-0.5">
+                      {/* Cari bakiye (customers.balance) — negatif = borçlu */}
+                      <span
+                        data-testid="pos-customer-balance"
+                        className={`text-sm font-bold font-mono ${
+                          customerBalance < 0
+                            ? darkMode
+                              ? 'text-red-300'
+                              : 'text-red-700'
+                            : darkMode
+                              ? 'text-gray-400'
+                              : 'text-gray-500'
+                        }`}
+                        title={tm('customerDebt') || 'Cari bakiye (customers.balance)'}
+                      >
+                        {customerBalance < 0
+                          ? `${tm('customerDebt') || 'Borç'}: ${formatSummaryMoney(Math.abs(customerBalance))} ${baseCurrency}`
+                          : customerBalance > 0
+                            ? `${tm('customerCredit') || 'Alacak'}: ${formatSummaryMoney(customerBalance)} ${baseCurrency}`
+                            : `${formatSummaryMoney(0)} ${baseCurrency}`}
+                      </span>
+                      {/* Bekleyen fatura toplamı — fatura listesi senkronu */}
+                      {customerInvoices.length > 0 && (
+                        <span
+                          className={`text-[10px] font-mono ${
+                            darkMode ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
+                          ({customerInvoices.length} {tm('invoiceCount') || 'fatura'} ·{' '}
+                          {formatSummaryMoney(customerDebtTotal)} {baseCurrency})
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {customerInvoicesLoading ? (

@@ -58,6 +58,149 @@ export interface CollectCustomerDebtResult {
   ficheNumbers: string[];
 }
 
+/**
+ * Müşterinin cari bakiyesi + bekleyen fatura listesi (birlikte).
+ *
+ * Kök neden (FERHAT'ın müşteri borcu görünmüyor sorunu):
+ *   - Müşteri Borcu yalnızca fatura listesi (`getCustomerOutstandingInvoices`)
+ *     üzerinden okunuyordu → cari bakiye (customers.balance) göz ardı
+ *     ediliyordu. Müşteri daha önce veresiye yazılmış ama henüz
+ *     `sales`/`beauty_sales` tablosuna yansımamış bir borç varsa (örn. elle
+ *     açılış/devir veya kısmi tahsilat sonrası küsur), cari bakiye görünür
+ *     fatura olmadan da borçlu olabilir.
+ *   - Cari ekstre zaten `customers.balance` üzerinden bakiye hesaplıyor;
+ *     POSPaymentModal'da aynı kaynaktan beslenmeli.
+ *
+ * Davranış:
+ *   - `customers.balance` doğrudan okunur (negatif = müşteri borçlu,
+ *     pozitif = müşteri alacaklı). Borçlu ise mutlak değer "Borç" olarak
+ *     gösterilir.
+ *   - `getCustomerOutstandingInvoices` aynı yapıda korunur (geriye dönük
+ *     uyumluluk — POSPaymentModal hâlâ onu kullanıyor) ve ek olarak burada
+ *     da çağrılarak UI'a tek tip fatura listesi verilir.
+ *
+ * Muhasebe denetimi (90 yıllık kıdemli muhasebeci):
+ *   - Borç yönü: `customers.balance < 0` ⇒ müşteri borçlu (alacaklı değil).
+ *   - Tahsilat: cari alacak azalır (`customers.balance -= amount`, daha az
+ *     negatif), kasa bakiyesi artar (`cash_registers.balance += amount`,
+ *     `CH_TAHSILAT sign=+1`).
+ *   - Fatura listesi ile bakiye senkronu: bakiye 0'a ulaştığında tüm
+ *     faturaların `paid_amount` alanı da `total_amount` olur (sales +
+ *     beauty_sales için).
+ */
+export interface CustomerOutstandingBalance {
+  customerId: string;
+  customerCode: string | null;
+  customerName: string | null;
+  /** customers.balance (negatif = borçlu, pozitif = alacaklı) */
+  customerBalance: number;
+  /** Bekleyen fatura listesi (sales + beauty_sales) — fatura seçimi için */
+  outstandingInvoices: CustomerOutstandingInvoice[];
+}
+
+/**
+ * Müşterinin cari bakiyesini `customers` tablosundan okur.
+ * Negatif = müşteri borçlu (alacaklı değil).
+ *
+ * DB hatasında 0 döner (graceful) — `getCustomerOutstandingBalance`
+ * zaten try/catch ile sarmalıyor; bu tek başına çağrılan yer için de
+ * tutarlı davranış: UI'da "yüklenemedi" → bakiye 0 + log.
+ */
+export async function getCustomerBalance(customerId: string): Promise<number> {
+  if (!customerId) return 0;
+  const firmNr = String(ERP_SETTINGS.firmNr ?? '').padStart(3, '0').slice(0, 10);
+  const customersTable = `rex_${firmNr}_customers`;
+  try {
+    const res = await postgres.query<{ balance: string | number | null }>(
+      `SELECT COALESCE(balance, 0)::numeric AS balance
+         FROM ${customersTable}
+        WHERE id = $1::text::uuid
+        LIMIT 1`,
+      [customerId],
+      { firmNr },
+    );
+    const raw = res.rows?.[0]?.balance;
+    return Number(raw) || 0;
+  } catch (err) {
+    console.warn('[CustomerDebtCollection] customers.balance query failed:', err);
+    return 0;
+  }
+}
+
+/**
+ * Müşterinin cari bakiyesini + bekleyen fatura listesini birlikte döner.
+ * `getCustomerOutstandingInvoices` UI'da hâlâ doğrudan çağrılıyor (özel
+ * durumlar için); buradaki amaç POSPaymentModal'ın "Müşteri Borcu" bölümünü
+ * tek seferde beslemek (iki ayrı useEffect / iki ayrı yüklemeye gerek yok).
+ *
+ * - customers.balance sorgusu başarısız olursa `0` döner (graceful), UI'da
+ *   "0 IQD · borç yok" gösterilir; hata loglanır.
+ * - Fatura listesi sorgusu başarısız olursa boş döner (mevcut
+ *   `getCustomerOutstandingInvoices` zaten graceful).
+ */
+export async function getCustomerOutstandingBalance(
+  customerId: string,
+): Promise<CustomerOutstandingBalance> {
+  if (!customerId) {
+    return {
+      customerId: '',
+      customerCode: null,
+      customerName: null,
+      customerBalance: 0,
+      outstandingInvoices: [],
+    };
+  }
+  const firmNr = String(ERP_SETTINGS.firmNr ?? '').padStart(3, '0').slice(0, 10);
+  const customersTable = `rex_${firmNr}_customers`;
+
+  // 1) Cari bakiye + isim/kod (customers tablosu)
+  let customerCode: string | null = null;
+  let customerName: string | null = null;
+  let customerBalance = 0;
+  try {
+    const customerRow = await postgres.query<{
+      id: string;
+      code: string | null;
+      name: string | null;
+      balance: string | number | null;
+    }>(
+      `SELECT id::text AS id,
+              code,
+              name,
+              COALESCE(balance, 0)::numeric AS balance
+         FROM ${customersTable}
+        WHERE id = $1::text::uuid
+        LIMIT 1`,
+      [customerId],
+      { firmNr },
+    );
+    const row = customerRow.rows?.[0];
+    if (row) {
+      customerCode = row.code ?? null;
+      customerName = row.name ?? null;
+      customerBalance = Number(row.balance) || 0;
+    }
+  } catch (err) {
+    console.warn('[CustomerDebtCollection] customers.balance query failed:', err);
+  }
+
+  // 2) Bekleyen faturalar (sales + beauty_sales) — mevcut fonksiyon kullanılır
+  const outstandingInvoices = await getCustomerOutstandingInvoices(customerId).catch(
+    (err) => {
+      console.warn('[CustomerDebtCollection] outstanding invoices load failed:', err);
+      return [] as CustomerOutstandingInvoice[];
+    },
+  );
+
+  return {
+    customerId,
+    customerCode,
+    customerName,
+    customerBalance,
+    outstandingInvoices,
+  };
+}
+
 /** Müşterinin bekleyen (kalan > 0) satış faturalarını listeler. */
 export async function getCustomerOutstandingInvoices(
   customerId: string,

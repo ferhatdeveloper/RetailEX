@@ -24,9 +24,12 @@ vi.mock('../../services/postgres', () => ({
 }));
 
 // Mock sonrası import
-const { getCustomerOutstandingInvoices, collectCustomerDebt } = await import(
-  '../../services/api/customerDebtCollection'
-);
+const {
+  getCustomerOutstandingInvoices,
+  getCustomerOutstandingBalance,
+  getCustomerBalance,
+  collectCustomerDebt,
+} = await import('../../services/api/customerDebtCollection');
 
 describe('customerDebtCollection (SQL)', () => {
   beforeEach(() => {
@@ -126,6 +129,166 @@ describe('customerDebtCollection (SQL)', () => {
       mockQuery.mockRejectedValueOnce(new Error('db down'));
       const result = await getCustomerOutstandingInvoices('cust-1');
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('getCustomerBalance (customers.balance)', () => {
+    it('müşterinin cari bakiyesini döner (negatif = borçlu)', async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ balance: '-36000' }],
+      });
+
+      const balance = await getCustomerBalance('cust-1');
+
+      expect(balance).toBe(-36000);
+      // customers tablosuna sorgu
+      const sql = String(mockQuery.mock.calls[0][0]);
+      expect(sql).toMatch(/rex_001_customers/);
+      expect(sql).toMatch(/balance/);
+    });
+
+    it('pozitif bakiye = müşteri alacaklı (0 yerine pozitif döner)', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ balance: '5000' }] });
+      const balance = await getCustomerBalance('cust-1');
+      expect(balance).toBe(5000);
+    });
+
+    it('müşteri yoksa 0 döner (DB çağrısı yok)', async () => {
+      const balance = await getCustomerBalance('');
+      expect(balance).toBe(0);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('DB hatasında 0 döner (graceful)', async () => {
+      mockQuery.mockRejectedValueOnce(new Error('db down'));
+      const balance = await getCustomerBalance('cust-1');
+      expect(balance).toBe(0);
+    });
+  });
+
+  describe('getCustomerOutstandingBalance (cari bakiye + fatura listesi)', () => {
+    it('müşteri bilgisi + cari bakiye + bekleyen faturaları tek seferde döner', async () => {
+      // Sorgu sırası:
+      //   1) customers tablosundan cari bakiye + isim/kod
+      //   2-3) sales + beauty_sales (getCustomerOutstandingInvoices içinden)
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'cust-1',
+              code: 'BCust-002',
+              name: 'FERHAT',
+              balance: '-36000',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          // sales sorgusu (1. paralel)
+          rows: [
+            {
+              id: 'inv-1',
+              invoice_no: 'SAT-2026-0001',
+              invoice_date: '2026-09-01T10:00:00Z',
+              total_amount: '5000',
+              paid_amount: '2000',
+              remaining: '3000',
+              currency: 'IQD',
+              source: 'sales',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          // beauty_sales sorgusu (2. paralel)
+          rows: [
+            {
+              id: 'inv-beauty-1',
+              invoice_no: 'BEA-MUM3R9M',
+              invoice_date: '2026-09-15T12:00:00Z',
+              total_amount: '36000',
+              paid_amount: '0',
+              remaining: '36000',
+              currency: 'IQD',
+              source: 'beauty_sales',
+            },
+          ],
+        });
+
+      const info = await getCustomerOutstandingBalance('cust-1');
+
+      // Müşteri bilgisi
+      expect(info.customerId).toBe('cust-1');
+      expect(info.customerCode).toBe('BCust-002');
+      expect(info.customerName).toBe('FERHAT');
+      // Cari bakiye — negatif = borçlu
+      expect(info.customerBalance).toBe(-36000);
+      // Fatura listesi (sales + beauty_sales birleşik)
+      expect(info.outstandingInvoices).toHaveLength(2);
+      // İlk sorgu customers tablosuna (cari bakiye + isim)
+      const firstSql = String(mockQuery.mock.calls[0][0]);
+      expect(firstSql).toMatch(/rex_001_customers/);
+      expect(firstSql).toMatch(/balance/);
+      expect(firstSql).toMatch(/code/);
+      expect(firstSql).toMatch(/name/);
+    });
+
+    it('cari bakiye sorgusu başarısız olursa 0 döner; fatura listesi yine de gelir', async () => {
+      // 1) customers sorgusu hata verir → customerBalance = 0
+      // 2-3) sales + beauty_sales başarılı
+      mockQuery
+        .mockRejectedValueOnce(new Error('relation does not exist'))
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'inv-1',
+              invoice_no: 'SAT-2026-0001',
+              invoice_date: '2026-09-01T10:00:00Z',
+              total_amount: '5000',
+              paid_amount: '0',
+              remaining: '5000',
+              currency: 'IQD',
+              source: 'sales',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({ rows: [] });
+
+      const info = await getCustomerOutstandingBalance('cust-1');
+
+      expect(info.customerBalance).toBe(0); // graceful
+      expect(info.customerCode).toBeNull();
+      expect(info.customerName).toBeNull();
+      expect(info.outstandingInvoices).toHaveLength(1);
+      expect(info.outstandingInvoices[0].invoice_no).toBe('SAT-2026-0001');
+    });
+
+    it('müşteri yoksa boş döner (DB çağrısı yok)', async () => {
+      const info = await getCustomerOutstandingBalance('');
+      expect(info.customerId).toBe('');
+      expect(info.customerBalance).toBe(0);
+      expect(info.outstandingInvoices).toEqual([]);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('müşteri var ama fatura listesi sorgusu başarısız: bakiye döner, fatura listesi boş', async () => {
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'cust-1',
+              code: 'BCust-002',
+              name: 'FERHAT',
+              balance: '-10000',
+            },
+          ],
+        })
+        .mockRejectedValueOnce(new Error('db down')) // sales
+        .mockRejectedValueOnce(new Error('db down')); // beauty_sales
+
+      const info = await getCustomerOutstandingBalance('cust-1');
+
+      expect(info.customerBalance).toBe(-10000);
+      expect(info.customerName).toBe('FERHAT');
+      expect(info.outstandingInvoices).toEqual([]);
     });
   });
 
