@@ -41,8 +41,8 @@ import {
   markForceSetupWizard,
   requestOpenSetupWizard,
 } from '../../utils/setupWizardGate';
+import { isTauriApp } from '../../utils/env';
 
-const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 const isProduction = import.meta.env.PROD;
 
 /** firms.firm_nr ile aynı biçim (örn. 2 → 002) — tenant ön seçimi için */
@@ -74,8 +74,8 @@ export function Login({ onLogin }: LoginProps) {
   const [deviceGateStatus, setDeviceGateStatus] = useState<string | null>(null);
   const [loginStep, setLoginStep] = useState<'tenant' | 'credentials' | 'organization'>(() => {
     if (typeof window === 'undefined') return 'tenant';
-    // DeskApp: kurulum SetupWizard’da; Login’de server adımı zorunlu değil
-    if (!!(window as any).__TAURI_INTERNALS__) return 'credentials';
+    // DeskApp/portable: kurulum SetupWizard’da; Login’de bulut tenant adımı zorunlu değil
+    if (isTauriApp()) return 'credentials';
     try {
       const rawCfg = localStorage.getItem('retailex_web_config');
       if (!rawCfg) return 'tenant';
@@ -205,8 +205,13 @@ export function Login({ onLogin }: LoginProps) {
   };
 
   useEffect(() => {
+    // DeskApp: modül yüklenirken tenant adımında kalmışsa kimlik adımına al
+    if (isTauriApp()) {
+      setLoginStep((step) => (step === 'tenant' ? 'credentials' : step));
+    }
+
     // Web production akışında tenant_registry uygulanmadan firma/kullanıcı sorgusu başlatma.
-    if (!isTauri && isProduction && !isTenantResolvedForWeb()) {
+    if (!isTauriApp() && isProduction && !isTenantResolvedForWeb()) {
       return;
     }
     loadFirms();
@@ -215,7 +220,7 @@ export function Login({ onLogin }: LoginProps) {
     // Load existing configuration to persist license display
     const loadCurrentConfig = async () => {
       let config: any = null;
-      if (isTauri) {
+      if (isTauriApp()) {
         try {
           const { invoke } = await import('@tauri-apps/api/core');
           config = await invoke('get_app_config');
@@ -253,10 +258,10 @@ export function Login({ onLogin }: LoginProps) {
     // Auto-prompt Setup on Web / Mobile if not configured
     const isConfiguredFromStorage = localStorage.getItem('exretail_firma_donem_configured') === 'true';
     const hasWebConfig = !!localStorage.getItem('retailex_web_config');
-    const isMobileNative = !isTauri && isCapacitorNative();
+    const isMobileNative = !isTauriApp() && isCapacitorNative();
 
     // DeskApp: App.tsx yanlışlıkla Login’e düştüyse siyah SetupWizard’a geç (mavi UUID modal değil)
-    if (isTauri && !isConfiguredFromStorage) {
+    if (isTauriApp() && !isConfiguredFromStorage) {
       void (async () => {
         try {
           const { invoke } = await import('@tauri-apps/api/core');
@@ -305,7 +310,7 @@ export function Login({ onLogin }: LoginProps) {
       setHybridSyncIntervalSec(DB_SETTINGS.hybridSyncIntervalSec ?? 8);
       setHybridSyncTransport(DB_SETTINGS.hybridSyncTransport ?? 'both');
     });
-  }, [isTauri]);
+  }, []);
 
   // Modal açılınca güncel modu tekrar oku (Yönetim’den değişmiş olabilir)
   useEffect(() => {
@@ -339,7 +344,7 @@ export function Login({ onLogin }: LoginProps) {
       setDbTestFeedback(null);
       const postgrestStepIdx = dbSettingsWizardSteps.findIndex((s) => s.id === 'postgrest');
       const openOnRest =
-        !isTauri &&
+        !isTauriApp() &&
         isCapacitorNative() &&
         !restLoaded.trim() &&
         postgrestStepIdx >= 0;
@@ -360,7 +365,7 @@ export function Login({ onLogin }: LoginProps) {
 
   const loadFirms = async () => {
     try {
-      if (!isTauri && isProduction && !isTenantResolvedForWeb()) {
+      if (!isTauriApp() && isProduction && !isTenantResolvedForWeb()) {
         setFirms([]);
         return;
       }
@@ -428,7 +433,7 @@ export function Login({ onLogin }: LoginProps) {
   const [dbUsers, setDbUsers] = useState<any[]>([]);
   const loadUsers = async () => {
     try {
-      if (!isTauri && isProduction && !isTenantResolvedForWeb()) {
+      if (!isTauriApp() && isProduction && !isTenantResolvedForWeb()) {
         setDbUsers([]);
         return;
       }
@@ -497,7 +502,7 @@ export function Login({ onLogin }: LoginProps) {
     if (isEnteringFullSetup) return;
     setIsEnteringFullSetup(true);
     try {
-      if (isTauri) {
+      if (isTauriApp()) {
         toast.success(tm('loginWizardOpening'));
         try {
           const { invoke } = await import('@tauri-apps/api/core');
@@ -567,7 +572,7 @@ export function Login({ onLogin }: LoginProps) {
       // 2. Fetch current config to preserve other fields
       let currentConfig: any = {};
 
-      if (isTauri) {
+      if (isTauriApp()) {
         const { invoke } = await import('@tauri-apps/api/core');
         currentConfig = await invoke('get_app_config');
       } else {
@@ -596,7 +601,7 @@ export function Login({ onLogin }: LoginProps) {
       };
 
       // 4. Save to Local Backend (Tauri) or LocalStorage (Web)
-      if (isTauri) {
+      if (isTauriApp()) {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('save_app_config', { config: updatedConfig });
       } else {
@@ -615,7 +620,7 @@ export function Login({ onLogin }: LoginProps) {
       // setShowSetupWizard(false); // Hide the input modal but keep the success view
 
       // 6. Force reload to apply new settings in some contexts, or just let state handle it
-      if (isTauri) {
+      if (isTauriApp()) {
         setTimeout(() => window.location.reload(), 1500);
       } else {
         // In web, we might not need a full reload if Postgres service is re-initialized
@@ -633,7 +638,7 @@ export function Login({ onLogin }: LoginProps) {
 
   const executeFactoryReset = async (deleteCRetailexFolder: boolean) => {
     try {
-      if (isTauri) {
+      if (isTauriApp()) {
         const { removeRetailexWindowsServicesIfTauri, deleteCRetailexFolderIfTauri } = await import('../../utils/env');
         const svc = await removeRetailexWindowsServicesIfTauri();
         if (!svc.ok) {
@@ -683,7 +688,7 @@ export function Login({ onLogin }: LoginProps) {
         }
       };
 
-      if (isTauri) {
+      if (isTauriApp()) {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('save_app_config', { config: defaultConfig });
       } else {
@@ -759,7 +764,7 @@ export function Login({ onLogin }: LoginProps) {
     if (res.connected) {
       const ver = (res.version || '').slice(0, 200);
       const onlineHint =
-        isTauri && dbConnectionMode === 'online'
+        isTauriApp() && dbConnectionMode === 'online'
           ? ' Online modda oturum açıkken sorgular kayıtlı uzak sunucuya gidebilir; bu formu merkez adresiyle doldurup Kaydedin veya Hybrid/Offline kullanın.'
           : '';
       setDbTestFeedback({
@@ -774,7 +779,7 @@ export function Login({ onLogin }: LoginProps) {
         phase: 'err',
         title: res.error || tm('loginConnFailed'),
         detail:
-          isTauri && dbConnectionMode === 'online'
+          isTauriApp() && dbConnectionMode === 'online'
             ? tm('loginOnlineHybridHint')
             : undefined,
         target: targetStr,
@@ -984,7 +989,7 @@ export function Login({ onLogin }: LoginProps) {
       });
 
       const tenantResult = await persistTenantFieldsFromRestUrl(restUrlToSave, {
-        forTauri: isTauri,
+        forTauri: isTauriApp(),
         preserveDbMode: dbConnectionMode,
       });
       await initializeFromSQLite();
@@ -1089,6 +1094,10 @@ export function Login({ onLogin }: LoginProps) {
     setDeviceGateStatus(null);
 
     if (loginStep === 'tenant') {
+      if (isTauriApp()) {
+        setLoginStep('credentials');
+        return;
+      }
       const slug = tenantPostgrestSlug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
       if (!slug) {
         setError(tm('loginTenantCodeRequired'));
@@ -1113,7 +1122,7 @@ export function Login({ onLogin }: LoginProps) {
           },
         });
         const tenantResult = await persistTenantFieldsFromRestUrl(restUrl, {
-          forTauri: isTauri,
+          forTauri: isTauriApp(),
           preserveDbMode: 'online',
         });
         if (tenantResult?.tag) {
@@ -1149,7 +1158,7 @@ export function Login({ onLogin }: LoginProps) {
       return;
     }
 
-    if (!isTauri && !isTenantResolvedForWeb() && !tenantPostgrestSlug.trim()) {
+    if (!isTauriApp() && !isTenantResolvedForWeb() && !tenantPostgrestSlug.trim()) {
       setError(tm('loginEnterTenantFirst'));
       setLoginStep('tenant');
       return;
@@ -1167,7 +1176,7 @@ export function Login({ onLogin }: LoginProps) {
     } else {
       setIsLoading(true);
       try {
-        if (isTauri) {
+        if (isTauriApp()) {
           const { assertDesktopTerminalApproved } = await import('../../services/deviceRegistrationService');
           const gate = await assertDesktopTerminalApproved();
           if (!gate.allowed) {
@@ -1359,7 +1368,7 @@ export function Login({ onLogin }: LoginProps) {
                 disabled={isEnteringFullSetup}
                 onClick={() => {
                   // DeskApp/portable: ara modal stacking altında kalabiliyor → doğrudan SetupWizard
-                  if (isTauri) {
+                  if (isTauriApp()) {
                     void enterDesktopSetupWizard();
                     return;
                   }
@@ -1426,7 +1435,7 @@ export function Login({ onLogin }: LoginProps) {
           {/* Form Area */}
           <form onSubmit={handleSubmit} className="p-8 md:p-10 space-y-6">
 
-            {loginStep === 'tenant' ? (
+            {loginStep === 'tenant' && !isTauriApp() ? (
               <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
                 <div className="space-y-2">
                   <div className="flex justify-between items-end px-1">
@@ -1467,9 +1476,9 @@ export function Login({ onLogin }: LoginProps) {
                   </p>
                 </div>
               </div>
-            ) : loginStep === 'credentials' ? (
+            ) : loginStep === 'credentials' || (loginStep === 'tenant' && isTauriApp()) ? (
               <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
-                {!isTauri && (
+                {!isTauriApp() && (
                   <div className="flex items-center justify-between gap-2 px-1">
                     <p className={`text-[10px] font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                       Server:{' '}
@@ -1727,7 +1736,7 @@ export function Login({ onLogin }: LoginProps) {
               </div>
             )}
 
-            {isTauri && deviceGateStatus && deviceGateStatus !== 'approved' && (
+            {isTauriApp() && deviceGateStatus && deviceGateStatus !== 'approved' && (
               <DeviceRegistrationForm
                 darkMode={darkMode}
                 onRegistered={(status) => {
@@ -2253,7 +2262,7 @@ export function Login({ onLogin }: LoginProps) {
                 <div className="space-y-4">
                   {currentDbSettingsStepId === 'mode' && (
                     <>
-                  {isTauri && (
+                  {isTauriApp() && (
                     <div className="space-y-1">
                       <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">
                         Bağlantı modu

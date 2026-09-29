@@ -118,33 +118,34 @@ async fn acquire_pg_client(state: &DbState, conn_str: &str) -> Result<Arc<Client
 async fn check_pg16() -> Result<bool, String> {
     use std::net::TcpStream;
     use std::time::Duration;
-    if let Ok(addr) = "127.0.0.1:5432".parse() {
-        if TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_ok() {
-            return Ok(true);
+    // Port açıksa kurulu/çalışıyor say
+    for host in ["127.0.0.1:5432", "localhost:5432"] {
+        if let Ok(addr) = host.parse() {
+            if TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok() {
+                return Ok(true);
+            }
         }
     }
 
     #[cfg(windows)]
     {
-        let pg_paths = [
-            "C:\\Program Files\\PostgreSQL\\17\\bin\\pg_ctl.exe",
-            "C:\\Program Files\\PostgreSQL\\16\\bin\\pg_ctl.exe",
-            "C:\\Program Files\\PostgreSQL\\15\\bin\\pg_ctl.exe",
-            "C:\\Program Files\\PostgreSQL\\14\\bin\\pg_ctl.exe",
-        ];
-        for path in &pg_paths {
-            if std::path::Path::new(path).exists() {
-                return Ok(true);
-            }
+        if windows_postgres_bin_present() {
+            return Ok(true);
         }
 
         let output = Command::new("powershell")
-            .args(["-Command", "Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue"])
+            .args([
+                "-NoProfile",
+                "-Command",
+                "@(Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'postgresql*' -or $_.DisplayName -like '*PostgreSQL*' }).Count",
+            ])
             .platform_no_window()
             .output()
             .map_err(|e| e.to_string())?;
 
-        return Ok(output.status.success() && !output.stdout.is_empty());
+        let count_txt = String::from_utf8_lossy(&output.stdout);
+        let count: i32 = count_txt.trim().parse().unwrap_or(0);
+        return Ok(output.status.success() && count > 0);
     }
 
     #[cfg(not(windows))]
@@ -153,18 +154,142 @@ async fn check_pg16() -> Result<bool, String> {
     }
 }
 
+#[cfg(windows)]
+pub(crate) fn windows_postgres_bin_present() -> bool {
+    use std::fs;
+    use std::path::PathBuf;
+
+    // NSIS ile aynı: HKLM\SOFTWARE\PostgreSQL\Installations
+    let reg_script = r#"
+$paths = @(
+  'HKLM:\SOFTWARE\PostgreSQL\Installations',
+  'HKLM:\SOFTWARE\WOW6432Node\PostgreSQL\Installations'
+)
+foreach ($root in $paths) {
+  if (-not (Test-Path $root)) { continue }
+  Get-ChildItem $root -ErrorAction SilentlyContinue | ForEach-Object {
+    $bin = (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).'Base Directory'
+    if (-not $bin) { $bin = (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).BaseDirectory }
+    if ($bin) {
+      $ctl = Join-Path $bin 'bin\pg_ctl.exe'
+      if (Test-Path -LiteralPath $ctl) { Write-Output $ctl; exit 0 }
+      $ctl2 = Join-Path $bin 'pg_ctl.exe'
+      if (Test-Path -LiteralPath $ctl2) { Write-Output $ctl2; exit 0 }
+    }
+  }
+}
+"#;
+    if let Ok(o) = Command::new("powershell")
+        .args(["-NoProfile", "-Command", reg_script])
+        .platform_no_window()
+        .output()
+    {
+        if o.status.success() && !String::from_utf8_lossy(&o.stdout).trim().is_empty() {
+            return true;
+        }
+    }
+
+    let mut roots = vec![
+        PathBuf::from(r"C:\Program Files\PostgreSQL"),
+        PathBuf::from(r"C:\Program Files (x86)\PostgreSQL"),
+    ];
+    if let Ok(pf) = std::env::var("ProgramFiles") {
+        roots.push(PathBuf::from(pf).join("PostgreSQL"));
+    }
+    if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+        roots.push(PathBuf::from(pf86).join("PostgreSQL"));
+    }
+
+    for root in roots {
+        if !root.is_dir() {
+            continue;
+        }
+        // Proje politikası: PostgreSQL 15+
+        for ver in ["18", "17", "16", "15", "15.17", "15.6"] {
+            let p = root.join(ver).join("bin").join("pg_ctl.exe");
+            if p.exists() {
+                return true;
+            }
+        }
+        if let Ok(entries) = fs::read_dir(&root) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let major: u32 = name
+                    .split(|c: char| !c.is_ascii_digit())
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+                if major >= 15 {
+                    let p = entry.path().join("bin").join("pg_ctl.exe");
+                    if p.exists() {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Yerel PostgreSQL Windows hizmetlerini başlatmayı dene (postgresql-x64-15 vb.).
+#[cfg(windows)]
+pub(crate) fn try_start_windows_postgres_services() -> String {
+    let script = r#"
+$svcs = Get-Service -ErrorAction SilentlyContinue | Where-Object {
+  $_.Name -like 'postgresql*' -or $_.DisplayName -like '*PostgreSQL*'
+}
+if (-not $svcs) { Write-Output 'NO_SERVICE'; exit 0 }
+foreach ($s in @($svcs)) {
+  if ($s.Status -ne 'Running') {
+    try {
+      Start-Service -Name $s.Name -ErrorAction Stop
+      Write-Output ("STARTED:" + $s.Name)
+    } catch {
+      Write-Output ("FAIL:" + $s.Name + ":" + $_.Exception.Message)
+    }
+  } else {
+    Write-Output ("ALREADY:" + $s.Name)
+  }
+}
+"#;
+    match Command::new("powershell")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script])
+        .platform_no_window()
+        .output()
+    {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        Err(e) => format!("START_ERR:{}", e),
+    }
+}
+
+#[cfg(not(windows))]
+fn try_start_windows_postgres_services() -> String {
+    String::new()
+}
+
 #[tauri::command]
 async fn install_pg16(app: tauri::AppHandle) -> Result<String, String> {
     #[cfg(windows)]
     {
+    // Zaten PG 15+ kuruluysa yeniden 16 indirme — servisi başlat
+    if windows_postgres_bin_present() {
+        let log = try_start_windows_postgres_services();
+        return Ok(format!(
+            "PostgreSQL 15+ zaten kurulu; servis baslatma denendi. {}",
+            log
+        ));
+    }
+
+    // NSIS / download_dependencies ile aynı: PostgreSQL 15.6 (proje 15+)
     let script = r#"
-        $url = "https://get.enterprisedb.com/postgresql/postgresql-16.1-1-windows-x64.exe"
-        $installer = "$env:TEMP\postgresql-setup.exe"
+        $url = "https://get.enterprisedb.com/postgresql/postgresql-15.6-1-windows-x64.exe"
+        $installer = "$env:TEMP\postgresql-15-setup.exe"
         if (!(Test-Path $installer)) {
-            Write-Host "Downloading PostgreSQL 16..."
+            Write-Host "Downloading PostgreSQL 15..."
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
             Invoke-WebRequest -Uri $url -OutFile $installer
         }
-        Write-Host "Installing PostgreSQL 16 Silently..."
+        Write-Host "Installing PostgreSQL 15 Silently..."
         Start-Process -FilePath $installer -ArgumentList "--mode unattended --unattendedmodeui none --superpassword Yq7xwQpt6c --serverport 5432" -Wait
     "#;
 

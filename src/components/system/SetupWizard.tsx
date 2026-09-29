@@ -213,7 +213,7 @@ const SetupWizard: React.FC = () => {
     const [backupType, setBackupType] = useState<'tables' | 'full'>('full');
     const [backupFormat, setBackupFormat] = useState<'postgresql' | 'supabase'>('supabase');
 
-    const [dbStatus, setDbStatus] = useState<'IDLE' | 'CHECKING' | 'RUNNING' | 'NOT_FOUND' | 'AUTH_FAILED' | 'ERROR'>('IDLE');
+    const [dbStatus, setDbStatus] = useState<'IDLE' | 'CHECKING' | 'RUNNING' | 'NOT_FOUND' | 'INSTALLED_NOT_RUNNING' | 'AUTH_FAILED' | 'ERROR'>('IDLE');
     const [dbErrorMessage, setDbErrorMessage] = useState('');
     const [activeTab, setActiveTab] = useState<'standard' | 'supabase'>('standard');
     const [logoActiveTab, setLogoActiveTab] = useState<'config' | 'preview'>('config');
@@ -2356,6 +2356,34 @@ const SetupWizard: React.FC = () => {
                                             </div>
                                         )}
 
+                                        {dbStatus === 'INSTALLED_NOT_RUNNING' && (
+                                            <div className="p-8 rounded-[32px] bg-amber-600/10 border-2 border-amber-500/30 shadow-[0_20px_60px_-15px_rgba(245,158,11,0.2)] animate-in zoom-in-95">
+                                                <div className="flex items-start gap-6">
+                                                    <div className="w-14 h-14 rounded-2xl bg-amber-500 flex items-center justify-center shrink-0 shadow-lg shadow-amber-500/20">
+                                                        <Server className="w-7 h-7 text-white" />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <h4 className="text-xl font-black text-white">PostgreSQL kurulu ama çalışmıyor</h4>
+                                                        <p className="text-amber-100/80 text-sm font-medium leading-relaxed">
+                                                            PostgreSQL 15+ dosyaları bulundu; ancak 5432 portu yanıt vermiyor. Windows Hizmetleri’nden
+                                                            <span className="font-mono text-amber-200"> postgresql-x64-15</span> (veya benzeri) servisini
+                                                            Başlatın, ardından tekrar kontrol edin. Şifre olarak kurulumda verdiğiniz postgres şifresini yazın
+                                                            (RetailEX varsayılanı: Yq7xwQpt6c — elle kurduysanız kendi şifreniz).
+                                                        </p>
+                                                        <div className="pt-4 flex flex-wrap gap-4">
+                                                            <button
+                                                                type="button"
+                                                                onClick={checkDbStatus}
+                                                                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md"
+                                                            >
+                                                                Servisi dene / tekrar kontrol
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {dbStatus === 'NOT_FOUND' && (
                                             <div className="p-8 rounded-[32px] bg-red-600/10 border-2 border-red-500/30 shadow-[0_20px_60px_-15px_rgba(239,68,68,0.2)] animate-in zoom-in-95">
                                                 <div className="flex items-start gap-6">
@@ -2363,19 +2391,23 @@ const SetupWizard: React.FC = () => {
                                                         <Database className="w-7 h-7 text-white" />
                                                     </div>
                                                     <div className="space-y-2">
-                                                        <h4 className="text-xl font-black text-white">PostgreSQL Bulunamadı!</h4>
+                                                        <h4 className="text-xl font-black text-white">PostgreSQL yanıt vermiyor</h4>
                                                         <p className="text-red-200/70 text-sm font-medium leading-relaxed">
-                                                            Bilgisayarınızda çalışan bir PostgreSQL servisi tespit edilemedi. RetailEx'in çalışabilmesi için yerel bir veritabanı gereklidir.
+                                                            5432 portunda çalışan PostgreSQL bulunamadı. PostgreSQL 15+ kuruluysa: (1) Windows Hizmetleri’nde servisi Başlatın,
+                                                            (2) host olarak <span className="font-mono">127.0.0.1:5432</span> deneyin, (3) postgres şifresini doğru girin.
+                                                            RetailEX PG 15, 16 ve 17 ile uyumludur — yalnızca 16 şart değildir.
                                                         </p>
                                                         <div className="pt-4 flex flex-wrap gap-4">
                                                             <a
                                                                 href="https://www.postgresql.org/download/windows/"
                                                                 target="_blank"
+                                                                rel="noreferrer"
                                                                 className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/10"
                                                             >
                                                                 POSTGRESQL İNDİR
                                                             </a>
                                                             <button
+                                                                type="button"
                                                                 onClick={checkDbStatus}
                                                                 className="px-4 py-2 bg-red-500 hover:bg-red-400 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md"
                                                             >

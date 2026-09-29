@@ -121,7 +121,14 @@ function App() {
 
     const startupFlow = async () => {
       try {
-        if (isTauriApp() || IS_TAURI) {
+        // Tauri enjekte gecikirse web tenant kapısına düşmeyelim (tek tick bekle)
+        let deskStartup = isTauriApp() || IS_TAURI;
+        if (!deskStartup) {
+          await new Promise((r) => setTimeout(r, 0));
+          deskStartup = isTauriApp() || IS_TAURI;
+        }
+
+        if (deskStartup) {
           // ── SLOW PATH (Source of Truth) ──────────────────────────────────────────
           const results = await Promise.race([
             Promise.allSettled([
@@ -162,10 +169,16 @@ function App() {
             applyConfig({ is_configured: false });
           }
 
-          safeInvoke('check_pg16').then((exists: any) => {
-            if (!exists) {
-              setInstallingPg(true);
-              safeInvoke('install_pg16').catch(() => { }).finally(() => setInstallingPg(false));
+          // PG yoksa dene: önce mevcut 15+ algıla/başlat; yoksa NSIS ile aynı PG 15 kur
+          safeInvoke('check_pg16').then(async (exists: any) => {
+            if (exists) return;
+            setInstallingPg(true);
+            try {
+              await safeInvoke('install_pg16');
+            } catch {
+              /* kurulum başarısız — SetupWizard'da manuel TEST ET */
+            } finally {
+              setInstallingPg(false);
             }
           }).catch(() => { });
 
@@ -193,7 +206,7 @@ function App() {
       } catch (err) {
         console.error('[Startup] Flow failed:', err);
         setIsPgReady(true);
-        if (IS_TAURI) {
+        if (isTauriApp() || IS_TAURI) {
           // DeskApp: hata / timeout → SetupWizard (Login UUID modalına sıkışma)
           consumeForceSetupWizard();
           setIsConfigured(false);
@@ -223,7 +236,7 @@ function App() {
           }
         }
 
-        if (IS_TAURI) {
+        if (isTauriApp() || IS_TAURI) {
           // Yalnızca cache’te açık is_configured:true → Login; aksi / force → SetupWizard
           // Legacy exretail_firma_donem_configured tek başına atlama yapmaz
           setIsConfigured(!forceWizard && cacheIsConfigured);

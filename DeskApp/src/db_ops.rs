@@ -1026,8 +1026,9 @@ pub async fn check_db_status(config: AppConfig) -> Result<String, String> {
     use tokio_postgres::NoTls;
     use std::net::TcpStream;
     use std::time::Duration;
+    use std::net::ToSocketAddrs;
 
-    let host_part = config.local_db.split(':').next().unwrap_or("localhost");
+    let raw_host = config.local_db.split(':').next().unwrap_or("localhost");
     let host_port_str = config.local_db.split('/').next().unwrap_or("localhost:5432");
     let port = if let Some(p) = host_port_str.split(':').nth(1) {
         p.parse::<u16>().unwrap_or(5432)
@@ -1035,16 +1036,58 @@ pub async fn check_db_status(config: AppConfig) -> Result<String, String> {
         5432
     };
 
-    // 1. Check if port is open at all - Support hostnames like 'localhost'
-    use std::net::ToSocketAddrs;
-    let addr = format!("{}:{}", host_part, port);
-    let is_reachable = addr.to_socket_addrs()
-        .map(|mut addrs| addrs.any(|a| TcpStream::connect_timeout(&a, Duration::from_millis(500)).is_ok()))
-        .unwrap_or(false);
+    // localhost → önce 127.0.0.1 (Windows IPv6 ::1 / dinleme uyumsuzluğu)
+    let host_candidates: Vec<&str> = if raw_host.eq_ignore_ascii_case("localhost") {
+        vec!["127.0.0.1", "localhost"]
+    } else {
+        vec![raw_host]
+    };
 
-    if !is_reachable {
+    let port_open = |host: &str| -> bool {
+        let addr = format!("{}:{}", host, port);
+        addr.to_socket_addrs()
+            .map(|mut addrs| {
+                addrs.any(|a| TcpStream::connect_timeout(&a, Duration::from_millis(600)).is_ok())
+            })
+            .unwrap_or(false)
+    };
+
+    let mut reachable_host: Option<&str> = None;
+    for h in &host_candidates {
+        if port_open(h) {
+            reachable_host = Some(*h);
+            break;
+        }
+    }
+
+    // Port kapalıysa Windows'ta PG 15/16 servisini başlatmayı dene
+    if reachable_host.is_none() {
+        #[cfg(windows)]
+        {
+            let start_log = crate::try_start_windows_postgres_services();
+            eprintln!("RetailEX: postgres service start attempt: {}", start_log);
+            // Servis start sonrası kısa bekle
+            tokio::time::sleep(Duration::from_millis(1200)).await;
+            for h in &host_candidates {
+                if port_open(h) {
+                    reachable_host = Some(*h);
+                    break;
+                }
+            }
+        }
+    }
+
+    if reachable_host.is_none() {
+        #[cfg(windows)]
+        {
+            if crate::windows_postgres_bin_present() {
+                return Ok("INSTALLED_NOT_RUNNING".to_string());
+            }
+        }
         return Ok("NOT_FOUND".to_string());
     }
+
+    let host_part = reachable_host.unwrap_or(raw_host);
 
     // 2. Try to connect with credentials
     let mut pg_config = tokio_postgres::Config::new();
@@ -1053,7 +1096,7 @@ pub async fn check_db_status(config: AppConfig) -> Result<String, String> {
              .user(&config.pg_local_user)
              .password(&config.pg_local_pass)
              .dbname("postgres")
-             .connect_timeout(std::time::Duration::from_millis(1500));
+             .connect_timeout(std::time::Duration::from_millis(2000));
 
     match pg_config.connect(NoTls).await {
         Ok(_) => Ok("RUNNING".to_string()),

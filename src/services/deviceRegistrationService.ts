@@ -4,7 +4,7 @@
  */
 
 import { APP_SEMVER } from '../core/version';
-import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
+import { IS_TAURI, isTauriApp, safeInvoke, getBridgeUrl } from '../utils/env';
 import { postgrest } from './api/postgrestClient';
 import { getPostgrestBaseUrl } from '../config/postgrest.config';
 import { DB_SETTINGS, ERP_SETTINGS, REMOTE_CONFIG, getCentralRemotePgConfig, postgres, shouldUseCentralApi } from './postgres';
@@ -553,7 +553,7 @@ export async function assertDesktopTerminalApproved(): Promise<{
   message: string;
   deviceInfo?: DesktopDeviceInfo;
 }> {
-  if (!IS_TAURI) {
+  if (!isTauriApp() && !IS_TAURI) {
     return { allowed: true, status: 'approved', message: 'Web oturumu — cihaz onayı gerekmez.' };
   }
 
@@ -580,10 +580,10 @@ export async function assertDesktopTerminalApproved(): Promise<{
 
   if (!centralPgConfigured()) {
     return {
-      allowed: false,
-      status: 'not_registered',
+      allowed: true,
+      status: 'approved',
       message:
-        'Hibrit kasa için merkez veritabanı (remote_db) yapılandırılmamış. Kurulum ayarlarını kontrol edin.',
+        'Merkez bağlantısı yok — yerel kurulum / çevrimdışı giriş (cihaz onayı atlandı).',
       deviceInfo,
     };
   }
