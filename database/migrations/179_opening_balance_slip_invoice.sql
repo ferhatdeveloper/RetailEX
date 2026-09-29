@@ -33,20 +33,27 @@ SET search_path TO public;
 
 -- ----------------------------------------------------------------------------
 -- 1) public.stock_movements.slip_kind (yoksa ekle + CHECK)
+--    Not: RetailEX mimarisinde stok tabloları firma/dönem başına
+--    `rex_{firm}_{period}_*` olarak tutulur; tek bir DB'de birden fazla
+--    firma/dönem olabilir. Eski sürümlerde global `public.stock_movements`
+--    tablosu bazı DB'lerde bulunmayabilir — bu adımda varsa günceller,
+--    yoksa sessizce atlanır (rex_*_*_* döngüsü firma/dönem tablolarını
+--    her halükârda işler).
 -- ----------------------------------------------------------------------------
-ALTER TABLE public.stock_movements
-  ADD COLUMN IF NOT EXISTS slip_kind VARCHAR(20) NOT NULL DEFAULT 'quantity';
-
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-     WHERE conname = 'stock_movements_slip_kind_check'
-       AND conrelid = 'public.stock_movements'::regclass
-  ) THEN
-    ALTER TABLE public.stock_movements
-      ADD CONSTRAINT stock_movements_slip_kind_check
-      CHECK (slip_kind IN ('quantity','invoice'));
+  IF to_regclass('public.stock_movements') IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE public.stock_movements
+               ADD COLUMN IF NOT EXISTS slip_kind VARCHAR(20) NOT NULL DEFAULT ''quantity''';
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+       WHERE conname = 'stock_movements_slip_kind_check'
+         AND conrelid = 'public.stock_movements'::regclass
+    ) THEN
+      EXECUTE 'ALTER TABLE public.stock_movements
+                 ADD CONSTRAINT stock_movements_slip_kind_check
+                 CHECK (slip_kind IN (''quantity'',''invoice''))';
+    END IF;
   END IF;
 END $$;
 
@@ -54,11 +61,17 @@ END $$;
 -- 2) public.stock_movement_items — KDV hariç birim maliyet, KDV %, satır
 --    toplam (line_total = qty * unit_cost_excl_vat * (1 + vat_rate/100)).
 --    Eski fişlerde varsayılan 0; slip_kind='invoice' olunca UI/service dolar.
+--    Tablo yoksa sessizce atla.
 -- ----------------------------------------------------------------------------
-ALTER TABLE public.stock_movement_items
-  ADD COLUMN IF NOT EXISTS unit_cost_excl_vat NUMERIC(15,4) NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS vat_rate          NUMERIC(5,2)  NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS line_total        NUMERIC(15,2) NOT NULL DEFAULT 0;
+DO $$
+BEGIN
+  IF to_regclass('public.stock_movement_items') IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE public.stock_movement_items
+               ADD COLUMN IF NOT EXISTS unit_cost_excl_vat NUMERIC(15,4) NOT NULL DEFAULT 0,
+               ADD COLUMN IF NOT EXISTS vat_rate          NUMERIC(5,2)  NOT NULL DEFAULT 0,
+               ADD COLUMN IF NOT EXISTS line_total        NUMERIC(15,2) NOT NULL DEFAULT 0';
+  END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 3) Tüm `rex_{firm}_{period}_stock_movements` / `_stock_movement_items`
