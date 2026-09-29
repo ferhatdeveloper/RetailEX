@@ -306,3 +306,227 @@ describe('AppointmentPrePaymentPanel — Muhasebe simetrisi (kıdemli muhasebeci
         expect(screen.getByRole('button', { name: /Randevuyu Tamamla/ })).toBeDisabled();
     });
 });
+
+/**
+ * POSPaymentModal — "Kalanı cariye yaz" tek buton regresyonu.
+ *
+ * Kullanıcı isteği (Parça 4): ekran görüntüsünde iki buton görünüyordu
+ * (Ödeme Özeti altı + Tam Tutar satırı altı). Düzeltme sonrası DOM'da
+ * yalnızca TEK `data-testid="pos-write-remaining-to-cari"` butonu olmalı.
+ *
+ * Kıdemli muhasebeci notu:
+ *  • Buton yalnızca `selectedCustomer && remaining > eşik` koşulunda render edilir.
+ *  • Tıklayınca `veresiye` provider ile yeni bir payment satırı eklenir →
+ *    POSPaymentModal.handleConfirmPayment içinde `payments` listesine yazılır.
+ *  • Randevu POS bağlamında: handlePayComplete bu veresiye satırını da
+ *    POSPaymentModalDraftContext'e yansıtır → appointmentPaymentService
+ *    üzerinden cash_lines CH_TAHSILAT + account_movements debit yazılır.
+ *  • Aynı işlem iki kez yapılamaz: buton yalnızca `remaining > 0` iken render
+ *    edilir; veresiye satırı eklendiğinde remaining = 0 olur → buton kaybolur.
+ */
+import { POSPaymentModal } from '../../components/pos/POSPaymentModal';
+
+vi.mock('../../contexts/LanguageContext', () => ({
+    useLanguage: () => ({
+        t: {
+            writeRemainingToCari: 'Kalanı cariye yaz',
+            selectCustomerForCari: 'Kalanı cariye yazmak için müşteri seçin.',
+        },
+        tm: (k: string) =>
+            k === 'posWriteRemainingToCari'
+                ? 'Kalanı cariye yaz'
+                : k === 'posSelectCustomerForCari'
+                    ? 'Kalanı cariye yazmak için müşteri seçin.'
+                    : '',
+        language: 'tr',
+    }),
+}));
+
+vi.mock('../../contexts/FirmaDonemContext', () => ({
+    useFirmaDonem: () => ({
+        selectedFirm: { firm_nr: '001', ana_para_birimi: 'IQD' },
+        firms: [],
+    }),
+}));
+
+vi.mock('../../contexts/ThemeContext', () => ({
+    useTheme: () => ({ darkMode: false }),
+}));
+
+vi.mock('../../services/receiptSettingsService', () => ({
+    getReceiptSettings: vi.fn().mockResolvedValue({}),
+    resolveDefaultPosReceiptPrintFormat: () => '80mm',
+    resolveDefaultReceiptLang: () => 'tr',
+    saveReceiptSettings: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../services/paymentGateway', () => ({
+    paymentGateway: {
+        getActiveProviders: () => [],
+    },
+}));
+
+vi.mock('../../services/api/kasa', () => ({
+    fetchKasalar: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../../services/reportMenuParamsService', () => ({
+    loadReportMenuParams: vi.fn().mockResolvedValue({}),
+    subscribeReportMenuParams: () => () => {},
+}));
+
+vi.mock('../../utils/posPaymentBackGuard', () => ({
+    isPosPaymentBackToSaleAllowed: () => true,
+}));
+
+vi.mock('../../services/unifiedPrintQueueService', () => ({
+    isWindowsPrinterServiceEnabled: () => Promise.resolve(false),
+}));
+
+describe('POSPaymentModal — Kalanı cariye yaz tek buton (regresyon: çift buton kaldırıldı)', () => {
+    afterEach(() => cleanup());
+
+    const baseCustomer = {
+        id: 'cust-1',
+        name: 'Ahmet Yılmaz',
+        code: 'C001',
+    };
+
+    it('remaining > 0 + müşteri seçili → DOM\'da TEK "Kalanı cariye yaz" butonu var', () => {
+        // Kullanıcı 20.000 ödedi, kalan 9.000 → buton görünür.
+        render(
+            <POSPaymentModal
+                total={29000}
+                subtotal={29000}
+                itemDiscount={0}
+                campaignDiscount={0}
+                selectedCustomer={baseCustomer as any}
+                showAutoPrintOption={false}
+                defaultShowReceiptPreview={false}
+                onClose={() => {}}
+                onComplete={vi.fn()}
+            />,
+        );
+
+        // Önce bir ödeme ekleyelim (FIB / Merkez Kasa — 20.000)
+        const amountInput = screen.getByPlaceholderText('0') as HTMLInputElement;
+        fireEvent.change(amountInput, { target: { value: '20000' } });
+        const addBtn = screen.getByRole('button', { name: /Ödeme Ekle/i });
+        fireEvent.click(addBtn);
+
+        // Şimdi "Kalanı cariye yaz" butonu (tutar bilgili versiyon) görünmeli.
+        const writeButtons = screen.queryAllByTestId('pos-write-remaining-to-cari');
+        expect(writeButtons.length).toBe(1);
+        expect(writeButtons[0]).toHaveTextContent(/Kalanı cariye yaz/i);
+        // Tutar bilgisi (9000) buton metninde görünmeli (tek buton Seçenek A).
+        expect(writeButtons[0]).toHaveTextContent(/9\.000|9000/);
+    });
+
+    it('müşteri seçili değil → "Kalanı cariye yaz" butonu YOK (engellenmiş durum)', () => {
+        render(
+            <POSPaymentModal
+                total={29000}
+                subtotal={29000}
+                itemDiscount={0}
+                campaignDiscount={0}
+                selectedCustomer={null}
+                showAutoPrintOption={false}
+                defaultShowReceiptPreview={false}
+                onClose={() => {}}
+                onComplete={vi.fn()}
+            />,
+        );
+
+        // 9.000 ödeme ekle (kalan 20.000)
+        const amountInput = screen.getByPlaceholderText('0') as HTMLInputElement;
+        fireEvent.change(amountInput, { target: { value: '9000' } });
+        const addBtn = screen.getByRole('button', { name: /Ödeme Ekle/i });
+        fireEvent.click(addBtn);
+
+        const writeButtons = screen.queryAllByTestId('pos-write-remaining-to-cari');
+        expect(writeButtons.length).toBe(0);
+    });
+
+    it('tek butona tıklayınca payments\'a veresiye satırı eklenir (ön ödeme mantığı)', () => {
+        render(
+            <POSPaymentModal
+                total={29000}
+                subtotal={29000}
+                itemDiscount={0}
+                campaignDiscount={0}
+                selectedCustomer={baseCustomer as any}
+                showAutoPrintOption={false}
+                defaultShowReceiptPreview={false}
+                onClose={() => {}}
+                onComplete={vi.fn()}
+            />,
+        );
+
+        // 20.000 cash ödeme ekle
+        const amountInput = screen.getByPlaceholderText('0') as HTMLInputElement;
+        fireEvent.change(amountInput, { target: { value: '20000' } });
+        fireEvent.click(screen.getByRole('button', { name: /Ödeme Ekle/i }));
+
+        // "Kalanı cariye yaz" butonuna tıkla → veresiye satırı eklenir
+        const writeBtn = screen.getByTestId('pos-write-remaining-to-cari');
+        fireEvent.click(writeBtn);
+
+        // Eklenen ödemeler listesinde 2 satır görünmeli (cash 20.000 + veresiye 9.000)
+        const veresiyeBadges = screen.getAllByText(/Veresiye \(Cari\)/);
+        expect(veresiyeBadges.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('outstanding = 0 → "Kalanı cariye yaz" butonu YOK (idempotent: tekrar tetiklenemez)', () => {
+        render(
+            <POSPaymentModal
+                total={10000}
+                subtotal={10000}
+                itemDiscount={0}
+                campaignDiscount={0}
+                selectedCustomer={baseCustomer as any}
+                showAutoPrintOption={false}
+                defaultShowReceiptPreview={false}
+                onClose={() => {}}
+                onComplete={vi.fn()}
+            />,
+        );
+
+        // Tam 10.000 öde → remaining = 0
+        const amountInput = screen.getByPlaceholderText('0') as HTMLInputElement;
+        fireEvent.change(amountInput, { target: { value: '10000' } });
+        fireEvent.click(screen.getByRole('button', { name: /Ödeme Ekle/i }));
+
+        // remaining = 0 → buton render edilmemeli
+        const writeButtons = screen.queryAllByTestId('pos-write-remaining-to-cari');
+        expect(writeButtons.length).toBe(0);
+    });
+
+    it('iki buton DOM\'da YOK (regresyon: duplicate engellenmiş)', () => {
+        // Bu test eskiden başarısız olurdu: hem Ödeme Özeti altında, hem
+        // Tam Tutar satırı altında iki buton vardı. Düzeltme sonrası yalnızca
+        // sağdaki (tutar bilgili) buton kaldı.
+        render(
+            <POSPaymentModal
+                total={29000}
+                subtotal={29000}
+                itemDiscount={0}
+                campaignDiscount={0}
+                selectedCustomer={baseCustomer as any}
+                showAutoPrintOption={false}
+                defaultShowReceiptPreview={false}
+                onClose={() => {}}
+                onComplete={vi.fn()}
+            />,
+        );
+
+        const amountInput = screen.getByPlaceholderText('0') as HTMLInputElement;
+        fireEvent.change(amountInput, { target: { value: '20000' } });
+        fireEvent.click(screen.getByRole('button', { name: /Ödeme Ekle/i }));
+
+        // Tüm "Kalanı cariye yaz" yazılı butonları say (test-id olsun olmasın).
+        const allWriteBtns = screen.getAllByRole('button').filter((b) =>
+            /Kalanı cariye yaz/.test(b.textContent || ''),
+        );
+        expect(allWriteBtns.length).toBe(1);
+    });
+});
