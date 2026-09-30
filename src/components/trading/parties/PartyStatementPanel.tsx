@@ -350,10 +350,17 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
                 const amt = row.debit || row.credit;
                 const rowKey = String(row.id || idx);
                 const busy = deletingKey === rowKey;
+                // Zarar dağıtımı veya negatif tutar → satırı turuncu vurgula
+                const txType = String(row.transaction_type || '').toUpperCase();
+                const isLossRow =
+                  txType === 'ZARAR_DAGITIMI' ||
+                  txType.includes('ZARAR') ||
+                  (Number(row.debit) < 0) ||
+                  (Number(row.credit) < 0);
                 return (
                   <tr
                     key={rowKey}
-                    className={`border-b border-gray-100 hover:bg-emerald-50/40 cursor-context-menu ${idx % 2 ? 'bg-gray-50/50' : ''} ${isCancelled ? 'opacity-60' : ''} ${busy ? 'opacity-50' : ''} ${canDelete ? 'cursor-pointer' : ''}`}
+                    className={`border-b border-gray-100 hover:bg-emerald-50/40 cursor-context-menu ${idx % 2 ? 'bg-gray-50/50' : ''} ${isCancelled ? 'opacity-60' : ''} ${busy ? 'opacity-50' : ''} ${canDelete ? 'cursor-pointer' : ''} ${isLossRow ? 'bg-orange-50/70 dark:bg-orange-900/20 hover:bg-orange-100/70 dark:hover:bg-orange-900/30' : ''}`}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({ x: e.clientX, y: e.clientY, row });
@@ -393,10 +400,22 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
                       </span>
                     </td>
                     <td className="max-w-md break-words px-4 py-2 text-gray-700">{row.definition || ''}</td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right font-bold text-red-600">
+                    <td
+                      className={`whitespace-nowrap px-4 py-2 text-right font-bold ${
+                        Number(row.debit) < 0
+                          ? 'text-orange-600 dark:text-orange-400'
+                          : 'text-red-600'
+                      }`}
+                    >
                       {row.debit ? formatMoney(row.debit) : ''}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right font-bold text-green-600">
+                    <td
+                      className={`whitespace-nowrap px-4 py-2 text-right font-bold ${
+                        Number(row.credit) < 0
+                          ? 'text-orange-600 dark:text-orange-400'
+                          : 'text-green-600'
+                      }`}
+                    >
                       {row.credit ? formatMoney(row.credit) : ''}
                     </td>
                     <td className={`whitespace-nowrap px-4 py-2 text-right font-black ${row.balance_after > 0 ? 'text-red-600' : row.balance_after < 0 ? 'text-green-600' : 'text-gray-400'}`}>
