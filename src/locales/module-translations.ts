@@ -4107,6 +4107,49 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'قەرزە هەڵبژێردراوەکان بدە',
   },
   invoiceCount: { tr: 'fatura', en: 'invoice', ar: 'فاتورة', ku: 'پسوولە' },
+  // Peşinatlı / ön ödeme (Beauty POS AppointmentPOS akışı)
+  prePaymentReceived: {
+    tr: 'Ön Ödeme Alındı',
+    en: 'Pre-payment received',
+    ar: 'تم استلام الدفعة المقدمة',
+    ku: 'پێشەکی وەرگیراوە',
+  },
+  appointmentStarted: {
+    tr: 'Randevu başladı',
+    en: 'Appointment started',
+    ar: 'بدأ الموعد',
+    ku: 'مەوعید دەستی پێکرد',
+  },
+  serviceCompleteSeparately: {
+    tr: 'Hizmet verildiğinde ayrıca tamamlayın',
+    en: 'Complete separately when service is provided',
+    ar: 'أكمل بشكل منفصل عند تقديم الخدمة',
+    ku: 'کاتێک خزمەتگوزاری دابین دەکرێت بە جیا تەواو بکە',
+  },
+  paidNow: {
+    tr: 'Şimdi Ödenen',
+    en: 'Paid now',
+    ar: 'المدفوع الآن',
+    ku: 'ئێستا دراوە',
+  },
+  pesinatLabel: {
+    tr: 'Peşinat',
+    en: 'Down payment',
+    ar: 'الدفعة الأولى',
+    ku: 'پێشەکی',
+  },
+  veresiyeRemainderLabel: {
+    tr: 'Kalan Veresiye',
+    en: 'Remaining credit',
+    ar: 'الدين المتبقي',
+    ku: 'قەرزی ماووە',
+  },
+  noCashRegisters: {
+    tr: 'Aktif kasa bulunamadı',
+    en: 'No active cash register',
+    ar: 'لا يوجد صندوق نشط',
+    ku: 'هیچ سندوقێکی چالاک نییە',
+  },
   paymentFullAmountAutoHint: {
     tr: 'Nakit / kart seçildiğinde tutar fatura netinden otomatik alınır; kısmi tahsilat için çoklu ödeme kullanın.',
     en: 'For cash/card the amount is taken from the invoice net automatically; use multiple payments for partial collection.',

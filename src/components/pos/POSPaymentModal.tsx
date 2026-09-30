@@ -878,12 +878,12 @@ const handleCollectCustomerDebt = async () => {
   const paymentMethods = [
     { id: 'cash', name: t.cashLabel || 'Nakit', icon: Wallet },
     { id: 'card', name: t.cardLabel || 'Kart (POS)', icon: CreditCard },
+    { id: 'veresiye', name: t.veresiyeLabel || 'Veresiye (Cari)', icon: Wallet, disabled: !selectedCustomer },
     {
       id: 'pesinatli',
       name: tm('paymentMethodPesinatli') || t.pesinatliLabel || 'Peşinatlı Satış',
       icon: Calendar,
     },
-    { id: 'veresiye', name: t.veresiyeLabel || 'Veresiye (Cari)', icon: Wallet, disabled: !selectedCustomer },
   ];
 
   return (
