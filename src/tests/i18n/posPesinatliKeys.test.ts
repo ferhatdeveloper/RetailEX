@@ -9,6 +9,7 @@ const LANGUAGES = ['tr', 'en', 'ar', 'ku'] as const;
 // görünür. Tüm diller için tanımlı olmalılar.
 const REQUIRED_KEYS: readonly string[] = [
   'prePaymentReceived',
+  'prePaymentAmount',
   'noCashRegisters',
   'paidNow',
   'pesinatLabel',

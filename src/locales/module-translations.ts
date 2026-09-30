@@ -4114,6 +4114,14 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'تم استلام الدفعة المقدمة',
     ku: 'پێشەکی وەرگیراوە',
   },
+  // Randevu Detayları panelinde Toplam altında readonly bilgi satırı.
+  // "Randevuya daha önce alınmış ön ödeme" alanının etiketi.
+  prePaymentAmount: {
+    tr: 'Ön Ödenen Tutar',
+    en: 'Pre-paid amount',
+    ar: 'المبلغ المدفوع مقدمًا',
+    ku: 'بڕی پێشەکی دراو',
+  },
   appointmentStarted: {
     tr: 'Randevu başladı',
     en: 'Appointment started',
