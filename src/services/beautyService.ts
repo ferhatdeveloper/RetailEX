@@ -3829,6 +3829,13 @@ export const beautyService = {
                 a.treatment_degree,
                 a.treatment_shots,
                 a.clinical_data,
+                a.deposit_amount,
+                a.deposit_date,
+                a.deposit_provider,
+                a.deposit_sale_id,
+                a.deposit_sale_fiche_no,
+                a.sale_group_id,
+                a.remainder_paid_amount,
                 COALESCE(
                     s.name,
                     rs.name,
