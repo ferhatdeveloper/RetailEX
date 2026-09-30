@@ -4,15 +4,16 @@
  * Sekmeler:
  *   1) Personel Listesi → public.staff (migration 137)
  *   2) PDKS / Puantaj → StaffAttendanceReport
- *   3) Maaş & Bordro → özet (ileride)
- *   4) Performans → özet (ileride)
+ *   3) Tarih Aralığı → StaffAttendanceRangeReport (migration 185)
+ *   4) Maaş & Bordro → özet (ileride)
+ *   5) Performans → özet (ileride)
  *
  * VIVA SOLAR `personel` + EXFIN/PDKS uyumlu.
  */
 import { useEffect, useMemo, useState } from 'react';
 import {
   UserCog, Users, Banknote, Briefcase, Plus, Pencil, Power, Search,
-  RefreshCw, Calendar, ClipboardList, Award, Loader2, X,
+  RefreshCw, Calendar, ClipboardList, Award, Loader2, X, CalendarRange,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select } from 'antd';
@@ -21,9 +22,10 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { staffDbApi, type StaffRow, type StaffUpsertInput } from '../../services/staffManagementService';
 import { StaffAttendanceReport } from '../reports/StaffAttendanceReport';
+import { StaffAttendanceRangeReport } from '../reports/StaffAttendanceRangeReport';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 
-type TabKey = 'list' | 'attendance' | 'payroll' | 'performance';
+type TabKey = 'list' | 'attendance' | 'range' | 'payroll' | 'performance';
 
 interface TabDef {
   key: TabKey;
@@ -34,6 +36,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { key: 'list',       labelTr: 'Personel Listesi', icon: Users },
   { key: 'attendance', labelTr: 'PDKS / Puantaj',   icon: ClipboardList },
+  { key: 'range',      labelTr: 'Tarih Aralığı',    icon: CalendarRange },
   { key: 'payroll',    labelTr: 'Maaş & Bordro',    icon: Banknote },
   { key: 'performance', labelTr: 'Performans',      icon: Award },
 ];
@@ -98,6 +101,13 @@ export function HRModule() {
           <div className="p-3">
             <div className={`rounded-lg border p-1 ${panel}`}>
               <StaffAttendanceReport />
+            </div>
+          </div>
+        )}
+        {tab === 'range' && (
+          <div className="p-3">
+            <div className={`rounded-lg border p-1 ${panel}`}>
+              <StaffAttendanceRangeReport />
             </div>
           </div>
         )}

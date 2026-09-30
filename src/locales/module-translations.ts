@@ -14569,8 +14569,120 @@ export const excelModuleTranslations = {
   pohMovNet: { tr: 'Net', en: 'Net', ar: 'صافي', ku: 'خالص' },
 };
 
+// =========================================================================
+// PDKS — Personel Tarih Aralığı Raporu (migration 185 / StaffAttendanceRangeReport.tsx)
+// =========================================================================
+export const pdksRangeTranslations = {
+  pdksRangeTitle: {
+    tr: 'PDKS — Tarih Aralığı Raporu',
+    en: 'PDKS — Date Range Attendance Report',
+    ar: 'دوام الموظفين — تقرير النطاق الزمني',
+    ku: 'PDKS — ڕاپۆرتی مەودای بەروار',
+  },
+  pdksRangeSubtitle: {
+    tr: 'Personel yoklama özeti (gün / hafta / ay / personel)',
+    en: 'Staff attendance summary (day / week / month / staff)',
+    ar: 'ملخص حضور الموظفين (يوم / أسبوع / شهر / موظف)',
+    ku: 'کورتەی ئامادەبوونی ستاف (ڕۆژ / هەفتە / مانگ / ستاف)',
+  },
+  pdksRangeFrom: {
+    tr: 'Başlangıç',
+    en: 'From',
+    ar: 'من',
+    ku: 'لە',
+  },
+  pdksRangeTo: {
+    tr: 'Bitiş',
+    en: 'To',
+    ar: 'إلى',
+    ku: 'بۆ',
+  },
+  pdksRangeDepartment: {
+    tr: 'Departman',
+    en: 'Department',
+    ar: 'القسم',
+    ku: 'بەش',
+  },
+  pdksRangeShift: {
+    tr: 'Vardiya',
+    en: 'Shift',
+    ar: 'الوردية',
+    ku: 'شیفت',
+  },
+  pdksRangeGroupBy: {
+    tr: 'Gruplama',
+    en: 'Group By',
+    ar: 'تجميع حسب',
+    ku: 'دابەشکردن بەپێی',
+  },
+  pdksRangeGroupDay:   { tr: 'Gün',      en: 'Day',      ar: 'يوم',    ku: 'ڕۆژ' },
+  pdksRangeGroupWeek:  { tr: 'Hafta',    en: 'Week',     ar: 'أسبوع',  ku: 'هەفتە' },
+  pdksRangeGroupMonth: { tr: 'Ay',       en: 'Month',    ar: 'شهر',    ku: 'مانگ' },
+  pdksRangeGroupStaff: { tr: 'Personel', en: 'Staff',    ar: 'موظف',   ku: 'ستاف' },
+  pdksRangeExportCsv: {
+    tr: 'CSV Dışa Aktar',
+    en: 'Export CSV',
+    ar: 'تصدير CSV',
+    ku: 'هەناردەی CSV',
+  },
+  pdksRangeTotals: {
+    tr: 'Aralık Toplamları',
+    en: 'Range Totals',
+    ar: 'إجماليات النطاق',
+    ku: 'کۆی گشتی مەودا',
+  },
+  pdksRangeWorked: {
+    tr: 'Çalışılan (sa:dak)',
+    en: 'Worked (h:m)',
+    ar: 'العمل (س:د)',
+    ku: 'کارکراو (ک:خ)',
+  },
+  pdksRangeOvertime: {
+    tr: 'Fazla Mesai (sa:dak)',
+    en: 'Overtime (h:m)',
+    ar: 'العمل الإضافي (س:د)',
+    ku: 'کاتی زیاتر (ک:خ)',
+  },
+  pdksRangeLateMinutes: {
+    tr: 'Geç Kalma (dk)',
+    en: 'Late (min)',
+    ar: 'تأخر (د)',
+    ku: 'درەنگ (خ)',
+  },
+  pdksRangeEarlyMinutes: {
+    tr: 'Erken Çıkış (dk)',
+    en: 'Early Leave (min)',
+    ar: 'خروج مبكر (د)',
+    ku: 'زوو چوونەدەرەوە (خ)',
+  },
+  pdksRangeClockIn:  { tr: 'Giriş',  en: 'Clock In',  ar: 'الدخول',  ku: 'هاتن' },
+  pdksRangeClockOut: { tr: 'Çıkış',  en: 'Clock Out', ar: 'الخروج',  ku: 'چوون' },
+  pdksRangeDate:     { tr: 'Tarih',  en: 'Date',      ar: 'التاريخ', ku: 'بەروار' },
+  pdksRangeStaff:    { tr: 'Personel', en: 'Staff',    ar: 'الموظف',  ku: 'ستاف' },
+  pdksRangeStatus:   { tr: 'Durum',  en: 'Status',    ar: 'الحالة',  ku: 'دۆخ' },
+  pdksRangePresent:  { tr: 'Var',      en: 'Present', ar: 'حاضر',    ku: 'ئامادە' },
+  pdksRangeAbsent:   { tr: 'Yok',      en: 'Absent',  ar: 'غائب',    ku: 'ئامادە نییە' },
+  pdksRangeHalfDay:  { tr: 'Yarım Gün', en: 'Half Day', ar: 'نصف يوم', ku: 'نیوە ڕۆژ' },
+  pdksRangeLeave:    { tr: 'İzin',     en: 'Leave',    ar: 'إجازة',   ku: 'مۆڵەت' },
+  pdksRangeHoliday:  { tr: 'Bayram',   en: 'Holiday',  ar: 'عطلة',    ku: 'بەرەکەت' },
+  pdksRangeOff:      { tr: 'Off',      en: 'Off',      ar: 'إجازة',   ku: 'مۆڵەت' },
+  pdksRangeActiveFilters: {
+    tr: 'Aktif filtreler',
+    en: 'Active filters',
+    ar: 'عوامل التصفية النشطة',
+    ku: 'فلتەرە چالاکەکان',
+  },
+  hrTabRange: {
+    tr: 'Tarih Aralığı',
+    en: 'Date Range',
+    ar: 'النطاق الزمني',
+    ku: 'مەودای بەروار',
+  },
+};
+
 Object.assign(moduleTranslations, rbacUiTranslations);
 Object.assign(moduleTranslations, restPrinterUiTranslations);
 Object.assign(moduleTranslations, restCallerUiTranslations);
 Object.assign(moduleTranslations, excelModuleTranslations);
 Object.assign(moduleTranslations, wmsModuleTranslations);
+Object.assign(moduleTranslations, pdksRangeTranslations);

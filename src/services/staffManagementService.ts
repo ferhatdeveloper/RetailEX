@@ -975,5 +975,164 @@ export const staffDbApi = {
       return { ok: false, error: msg };
     }
   },
+
+  /**
+   * PDKS — tarih aralığı yoklama raporu (migration 185).
+   *  groupBy: 'day' (her satır = bir gün/personel),
+   *           'week' (Yıl-ISO haftası + personel),
+   *           'month' (YYYY-MM + personel),
+   *           'staff' (personel bazlı tüm aralık özeti).
+   *  Dönen: { rows: [...], totals: { present, absent, late, halfDay, leave, holiday, off, workedMinutes, overtimeMinutes } }
+   */
+  async getStaffAttendanceRange(opts: {
+    from: string;          // YYYY-MM-DD
+    to: string;            // YYYY-MM-DD
+    groupBy?: 'day' | 'week' | 'month' | 'staff';
+    department?: string | null;
+    shiftCode?: string | null;
+  }): Promise<{
+    rows: Array<Record<string, unknown>>;
+    totals: {
+      present: number; absent: number; late: number; halfDay: number;
+      leave: number; holiday: number; off: number;
+      workedMinutes: number; overtimeMinutes: number;
+    };
+  }> {
+    const firmNr = padFirmNr();
+    const periodNr = padPeriodNr();
+    const from = String(opts?.from || '').slice(0, 10);
+    const to   = String(opts?.to   || '').slice(0, 10);
+    const groupBy = opts?.groupBy ?? 'day';
+    if (!from || !to) {
+      return { rows: [], totals: { present: 0, absent: 0, late: 0, halfDay: 0, leave: 0, holiday: 0, off: 0, workedMinutes: 0, overtimeMinutes: 0 } };
+    }
+
+    const params: unknown[] = [firmNr, periodNr, from, to];
+    let filterSql = '';
+    if (opts?.department) {
+      params.push(String(opts.department));
+      filterSql += ` AND COALESCE(a.department, '') = $${params.length} `;
+    }
+    if (opts?.shiftCode) {
+      params.push(String(opts.shiftCode));
+      filterSql += ` AND sh.code = $${params.length} `;
+    }
+
+    let groupSelect = `a.attendance_date::text AS group_date, a.staff_id::text AS staff_id,
+                       a.staff_name AS staff_name, COALESCE(a.department, '') AS department,
+                       a.status::text AS status, a.worked_minutes, a.overtime_minutes,
+                       a.late_minutes, a.early_minutes, a.clock_in::text AS clock_in, a.clock_out::text AS clock_out`;
+    let groupKey = `GROUP BY a.attendance_date, a.staff_id, a.staff_name, a.department,
+                           a.status, a.worked_minutes, a.overtime_minutes,
+                           a.late_minutes, a.early_minutes, a.clock_in, a.clock_out`;
+
+    if (groupBy === 'week') {
+      groupSelect = `to_char(a.attendance_date, 'IYYY-"W"IW') AS group_date,
+                     a.staff_id::text AS staff_id, a.staff_name AS staff_name,
+                     COALESCE(a.department, '') AS department,
+                     SUM(a.worked_minutes)::int AS worked_minutes,
+                     SUM(a.overtime_minutes)::int AS overtime_minutes,
+                     SUM(a.late_minutes)::int AS late_minutes,
+                     SUM(a.early_minutes)::int AS early_minutes,
+                     COUNT(*) FILTER (WHERE a.status = 'PRESENT')::int  AS present_days,
+                     COUNT(*) FILTER (WHERE a.status = 'ABSENT')::int   AS absent_days,
+                     COUNT(*) FILTER (WHERE a.status = 'LATE')::int     AS late_days,
+                     COUNT(*) FILTER (WHERE a.status = 'HALF_DAY')::int AS half_days,
+                     COUNT(*) FILTER (WHERE a.status = 'LEAVE')::int    AS leave_days,
+                     COUNT(*) FILTER (WHERE a.status = 'HOLIDAY')::int  AS holiday_days,
+                     COUNT(*) FILTER (WHERE a.status = 'OFF')::int      AS off_days`;
+      groupKey = `GROUP BY to_char(a.attendance_date, 'IYYY-"W"IW'), a.staff_id, a.staff_name, a.department`;
+    } else if (groupBy === 'month') {
+      groupSelect = `to_char(a.attendance_date, 'YYYY-MM') AS group_date,
+                     a.staff_id::text AS staff_id, a.staff_name AS staff_name,
+                     COALESCE(a.department, '') AS department,
+                     SUM(a.worked_minutes)::int AS worked_minutes,
+                     SUM(a.overtime_minutes)::int AS overtime_minutes,
+                     SUM(a.late_minutes)::int AS late_minutes,
+                     SUM(a.early_minutes)::int AS early_minutes,
+                     COUNT(*) FILTER (WHERE a.status = 'PRESENT')::int  AS present_days,
+                     COUNT(*) FILTER (WHERE a.status = 'ABSENT')::int   AS absent_days,
+                     COUNT(*) FILTER (WHERE a.status = 'LATE')::int     AS late_days,
+                     COUNT(*) FILTER (WHERE a.status = 'HALF_DAY')::int AS half_days,
+                     COUNT(*) FILTER (WHERE a.status = 'LEAVE')::int    AS leave_days,
+                     COUNT(*) FILTER (WHERE a.status = 'HOLIDAY')::int  AS holiday_days,
+                     COUNT(*) FILTER (WHERE a.status = 'OFF')::int      AS off_days`;
+      groupKey = `GROUP BY to_char(a.attendance_date, 'YYYY-MM'), a.staff_id, a.staff_name, a.department`;
+    } else if (groupBy === 'staff') {
+      groupSelect = `a.staff_id::text AS staff_id, a.staff_name AS staff_name,
+                     COALESCE(a.department, '') AS department,
+                     MIN(a.attendance_date)::text AS first_day,
+                     MAX(a.attendance_date)::text AS last_day,
+                     SUM(a.worked_minutes)::int AS worked_minutes,
+                     SUM(a.overtime_minutes)::int AS overtime_minutes,
+                     SUM(a.late_minutes)::int AS late_minutes,
+                     SUM(a.early_minutes)::int AS early_minutes,
+                     COUNT(*) FILTER (WHERE a.status = 'PRESENT')::int  AS present_days,
+                     COUNT(*) FILTER (WHERE a.status = 'ABSENT')::int   AS absent_days,
+                     COUNT(*) FILTER (WHERE a.status = 'LATE')::int     AS late_days,
+                     COUNT(*) FILTER (WHERE a.status = 'HALF_DAY')::int AS half_days,
+                     COUNT(*) FILTER (WHERE a.status = 'LEAVE')::int    AS leave_days,
+                     COUNT(*) FILTER (WHERE a.status = 'HOLIDAY')::int  AS holiday_days,
+                     COUNT(*) FILTER (WHERE a.status = 'OFF')::int      AS off_days`;
+      groupKey = `GROUP BY a.staff_id, a.staff_name, a.department`;
+    }
+
+    const sql = `
+      SELECT ${groupSelect}
+        FROM public.staff_attendance a
+        LEFT JOIN public.staff st  ON st.id = a.staff_id
+        LEFT JOIN public.staff_shifts sh ON sh.id = a.shift_id
+       WHERE a.firm_nr = $1 AND a.period_nr = $2
+         AND a.attendance_date BETWEEN $3::date AND $4::date
+         ${filterSql}
+       ${groupKey}
+       ORDER BY ${groupBy === 'staff' ? 'a.staff_name' : 'group_date, a.staff_name'}
+       LIMIT 5000`;
+
+    const totalsSql = `
+      SELECT
+        COUNT(*) FILTER (WHERE a.status = 'PRESENT')::int  AS present,
+        COUNT(*) FILTER (WHERE a.status = 'ABSENT')::int   AS absent,
+        COUNT(*) FILTER (WHERE a.status = 'LATE')::int     AS late,
+        COUNT(*) FILTER (WHERE a.status = 'HALF_DAY')::int AS half_day,
+        COUNT(*) FILTER (WHERE a.status = 'LEAVE')::int    AS leave,
+        COUNT(*) FILTER (WHERE a.status = 'HOLIDAY')::int  AS holiday,
+        COUNT(*) FILTER (WHERE a.status = 'OFF')::int      AS off,
+        COALESCE(SUM(a.worked_minutes), 0)::int            AS worked_minutes,
+        COALESCE(SUM(a.overtime_minutes), 0)::int         AS overtime_minutes
+      FROM public.staff_attendance a
+      LEFT JOIN public.staff_shifts sh ON sh.id = a.shift_id
+      WHERE a.firm_nr = $1 AND a.period_nr = $2
+        AND a.attendance_date BETWEEN $3::date AND $4::date
+        ${filterSql}`;
+
+    try {
+      const [rowsRes, totalsRes] = await Promise.all([
+        postgres.query(sql, params),
+        postgres.query(totalsSql, params),
+      ]);
+      const tRow = (totalsRes.rows as Array<Record<string, unknown>>)?.[0] ?? {};
+      return {
+        rows: (rowsRes.rows as Array<Record<string, unknown>>) ?? [],
+        totals: {
+          present: Number(tRow.present ?? 0),
+          absent: Number(tRow.absent ?? 0),
+          late: Number(tRow.late ?? 0),
+          halfDay: Number(tRow.half_day ?? 0),
+          leave: Number(tRow.leave ?? 0),
+          holiday: Number(tRow.holiday ?? 0),
+          off: Number(tRow.off ?? 0),
+          workedMinutes: Number(tRow.worked_minutes ?? 0),
+          overtimeMinutes: Number(tRow.overtime_minutes ?? 0),
+        },
+      };
+    } catch (err) {
+      console.warn('[staffDbApi.getStaffAttendanceRange]', err);
+      return {
+        rows: [],
+        totals: { present: 0, absent: 0, late: 0, halfDay: 0, leave: 0, holiday: 0, off: 0, workedMinutes: 0, overtimeMinutes: 0 },
+      };
+    }
+  },
 };
 
