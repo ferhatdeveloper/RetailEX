@@ -319,6 +319,7 @@ describe('posPesinatli - buildAppointmentPesinatliContext (IN_PROGRESS randevuda
       appointmentId: 'apt-1',
       totalAmount: 100_000,
       prePaymentAmount: 30_000,
+      prePaymentFicheNo: null,
       remainingAmount: 70_000,
     });
   });

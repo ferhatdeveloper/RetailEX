@@ -28,6 +28,12 @@ export interface CustomerOutstandingInvoice {
   currency?: string;
   /** Kaynak tablo — debug / audit için; UI'da gizli. */
   source?: 'sales' | 'beauty_sales';
+  /**
+   * Plan §6 Adım 6 — bu fatura bir ön ödeme (peşinat) mi?
+   * Migration 182 ile `sales.is_deposit` kolonundan okunur. `beauty_sales`
+   * için null kalır. UI tarafı rozet gösterimi için kullanılır.
+   */
+  is_deposit?: boolean | null;
 }
 
 export interface CollectCustomerDebtInput {
@@ -460,11 +466,20 @@ export async function getCustomerOutstandingBalance(
   };
 }
 
-/** Müşterinin bekleyen (kalan > 0) satış faturalarını listeler. */
+/** Müşterinin bekleyen (kalan > 0) satış faturalarını listeler.
+ *
+ * Plan §6 Adım 6 — `includeDeposits` parametresi (default true):
+ *   - `true` (default): tüm faturaları döndür; `CustomerOutstandingInvoice.is_deposit`
+ *     alanı `sales.is_deposit` kolonundan (Migration 182) okunur. UI tarafı rozet
+ *     ile gösterir.
+ *   - `false`: yalnız `is_deposit = false` (veya NULL) olanları döndür.
+ */
 export async function getCustomerOutstandingInvoices(
   customerId: string,
+  options?: { includeDeposits?: boolean },
 ): Promise<CustomerOutstandingInvoice[]> {
   if (!customerId) return [];
+  const includeDeposits = options?.includeDeposits !== false;
   const firmNr = String(ERP_SETTINGS.firmNr ?? '').padStart(3, '0').slice(0, 10);
   const periodNr = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0').slice(0, 10);
   const salesTable = `rex_${firmNr}_${periodNr}_sales`;
@@ -497,6 +512,7 @@ export async function getCustomerOutstandingInvoices(
       remaining: Number(r.remaining) || 0,
       currency: String(r.currency || 'IQD'),
       source: r.source,
+      is_deposit: r.source === 'sales' ? Boolean((r as Row & { is_deposit?: boolean | null }).is_deposit) : null,
     }));
 
   const salesSql = `
@@ -507,11 +523,13 @@ export async function getCustomerOutstandingInvoices(
            COALESCE(paid_amount, 0)::numeric AS paid_amount,
            (COALESCE(net_amount, total_net, total_gross, 0) - COALESCE(paid_amount, 0))::numeric AS remaining,
            COALESCE(currency, 'IQD') AS currency,
+           COALESCE(is_deposit, false) AS is_deposit,
            'sales'::text AS source
       FROM ${salesTable}
      WHERE customer_id = $1::text::uuid
        AND COALESCE(is_cancelled, false) = false
        AND (COALESCE(net_amount, total_net, total_gross, 0) - COALESCE(paid_amount, 0)) > 0.005
+       ${includeDeposits ? '' : 'AND COALESCE(is_deposit, false) = false'}
      ORDER BY date ASC, fiche_no ASC
      LIMIT 200
   `;

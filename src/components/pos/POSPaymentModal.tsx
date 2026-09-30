@@ -193,6 +193,12 @@ export interface POSPaymentModalAppointmentContext {
   prePaymentAmount: number;
   /** Kalan veresiye tutarı (totalAmount − prePaymentAmount) */
   remainingAmount: number;
+  /**
+   * Plan §6 Adım 8 — daha önce alınmış peşinatın sales fiş no'su
+   * (örn. `BEAUTY-PESINAT-{aptId}-{ts}`). Verildiğinde peşinat tamamlanma
+   * toast'ında görünür. Opsiyonel (geriye dönük uyumlu).
+   */
+  prePaymentFicheNo?: string | null;
 }
 
 export function POSPaymentModal({
@@ -557,13 +563,17 @@ export function POSPaymentModal({
         setPayments((prev) => [...prev, ...sanitized]);
         setCurrentAmount('');
         const kalanRow = sanitized.find((r) => r.method === 'veresiye') as Payment | undefined;
+        // Plan §6 Adım 8 — toast'a peşinat fiş no ekle (parent appointmentContext'ten)
+        const ficheTag = appointmentContext?.prePaymentFicheNo
+          ? ` · ${appointmentContext.prePaymentFicheNo}`
+          : '';
         if (kalanRow && Number(kalanRow.amount) > 0) {
           toast.success(
-            `${tm('pesinatAddButton') || 'Peşinat Ekle'}: ${formatMoneyWithCode(normalizedAmount, currentCurrency)} · ${tm('pesinatRemainderToCari') || 'Kalan cariye yazıldı'}: ${formatMoneyWithCode(Number(kalanRow.amount), currentCurrency)}`,
+            `${tm('pesinatAddButton') || 'Peşinat Ekle'}: ${formatMoneyWithCode(normalizedAmount, currentCurrency)} · ${tm('pesinatRemainderToCari') || 'Kalan cariye yazıldı'}: ${formatMoneyWithCode(Number(kalanRow.amount), currentCurrency)}${ficheTag}`,
           );
         } else {
           toast.success(
-            `${tm('pesinatTodayPaid') || 'Bugün ödenen'}: ${formatMoneyWithCode(normalizedAmount, currentCurrency)}`,
+            `${tm('pesinatTodayPaid') || 'Bugün ödenen'}: ${formatMoneyWithCode(normalizedAmount, currentCurrency)}${ficheTag}`,
           );
         }
       } catch (err) {

@@ -273,13 +273,16 @@ export function buildAppointmentPesinatliContext(args: {
   status?: string | null;
   totalPrice?: number | null;
   depositAmount?: number | null;
+  /** Plan §6 Adım 8 — daha önce alınmış peşinatın sales fiş no'su (örn. `BEAUTY-PESINAT-…`). */
+  prePaymentFicheNo?: string | null;
 }): {
   appointmentId: string;
   totalAmount: number;
   prePaymentAmount: number;
   remainingAmount: number;
+  prePaymentFicheNo?: string | null;
 } | null {
-  const { appointmentId, status, totalPrice, depositAmount } = args;
+  const { appointmentId, status, totalPrice, depositAmount, prePaymentFicheNo } = args;
   if (!appointmentId) return null;
   const statusNorm = String(status ?? '').toLowerCase();
   if (statusNorm !== 'in_progress' && statusNorm !== 'started') return null;
@@ -291,5 +294,6 @@ export function buildAppointmentPesinatliContext(args: {
     totalAmount: tot,
     prePaymentAmount: dep,
     remainingAmount: Math.max(0, tot - dep),
+    prePaymentFicheNo: prePaymentFicheNo ?? null,
   };
 }

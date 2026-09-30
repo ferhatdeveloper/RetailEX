@@ -1267,7 +1267,42 @@ type BeautyErpSyncContext = {
     invoiceNumber: string;
     /** Varsa fiş notunda kaynak beauty_sales kaydı */
     beautySaleId?: string;
+    /**
+     * Plan §6 Adım 5 — opsiyonel peşinat ↔ satış bağlantı metadata'sı.
+     * `notes` içine `rex_appt:{id}|parent_sale:{id}|sale_group:{id}|deposit:1` formunda
+     * yazılır; `salesAPI.create` bunu `notes` alanında korur ve customerDebtCollection
+     * `notes::text LIKE '%rex_appt:...%'` ile parse eder.
+     */
+    linkedAppointmentId?: string | null;
+    parentSaleId?: string | null;
+    saleGroupId?: string | null;
+    isDeposit?: boolean | null;
 };
+
+/**
+ * Peşinat bağlantı metadata'sını `notes` string'ine ekler/çıkarır.
+ * Tek doğruluk kaynağı: `rex_appt:<uuid>|parent_sale:<uuid>|...`
+ * UI/rapor tarafı parse için bu fonksiyon kullanılır.
+ */
+function encodeSaleLinkTags(notes: string | null | undefined, ctx: BeautyErpSyncContext): string {
+    const parts: string[] = [];
+    if (ctx.linkedAppointmentId) parts.push(`rex_appt:${ctx.linkedAppointmentId}`);
+    if (ctx.parentSaleId) parts.push(`parent_sale:${ctx.parentSaleId}`);
+    if (ctx.saleGroupId) parts.push(`sale_group:${ctx.saleGroupId}`);
+    if (ctx.isDeposit === true) parts.push('deposit:1');
+    const tag = parts.length > 0 ? parts.join('|') : '';
+    const base = String(notes ?? '').trim();
+    // Mevcut tag bloğunu temizle
+    const cleanedBase = base
+        .replace(/rex_appt:[0-9a-f-]{36}\|?/gi, '')
+        .replace(/parent_sale:[0-9a-f-]{36}\|?/gi, '')
+        .replace(/sale_group:[^|]+\|?/gi, '')
+        .replace(/deposit:1\|?/gi, '')
+        .replace(/\|\s*$/, '')
+        .trim();
+    if (!tag) return cleanedBase;
+    return cleanedBase ? `${cleanedBase} | ${tag}` : tag;
+}
 
 async function runBeautySaleErpAndLoyalty(
     sale: Partial<BeautySale>,
@@ -1308,9 +1343,11 @@ async function runBeautySaleErpAndLoyalty(
 
     try {
         const noteTail = sale.notes?.trim() ? String(sale.notes).trim() : 'Güzellik satışı';
+        // Plan §6 Adım 5 — peşinat/parent/sale_group tag'lerini notes'a ekle
+        const taggedNotes = encodeSaleLinkTags(noteTail, ctx);
         const erpNotes = ctx.beautySaleId
-            ? `GüzellikPOS|beauty_sale_id:${ctx.beautySaleId}|${noteTail}`
-            : `GüzellikPOS|checkout_tek_tahsilat|${noteTail}`;
+            ? `GüzellikPOS|beauty_sale_id:${ctx.beautySaleId}|${taggedNotes}`
+            : `GüzellikPOS|checkout_tek_tahsilat|${taggedNotes}`;
 
         const settlement = resolvePosCheckoutSettlement(Number(sale.total ?? 0), paymentRows ?? null);
         const erpPaymentMethod = settlement.paymentMethod;
@@ -5578,11 +5615,24 @@ export const beautyService = {
     /**
      * Güzellik satışı + kalemler. `skipErpAndLoyalty`: yalnızca beauty şeması (kalem ayrı fiş);
      * sonra `syncBeautyCheckoutToErp` ile tek tahsilat.
+     *
+     * Plan §6 Adım 5 — opsiyonel peşinat/parent bağlantı parametreleri:
+     *   - `linkedAppointmentId`: bu satışın bağlı olduğu randevu.
+     *   - `parentSaleId`: peşinat sales id (bu fiş ana satış ise).
+     *   - `saleGroupId`: peşinat + ana satışı gruplar.
+     *   - `isDeposit`: bu fiş bir ön ödeme mi?
+     * Tüm alanlar opsiyoneldir (default null/false).
      */
     async createSale(
         sale: Partial<BeautySale> & { payments?: Array<{ method?: string; amount?: number; currency?: string }> },
         items: Partial<BeautySaleItem>[],
-        opts?: { skipErpAndLoyalty?: boolean },
+        opts?: {
+            skipErpAndLoyalty?: boolean;
+            linkedAppointmentId?: string | null;
+            parentSaleId?: string | null;
+            saleGroupId?: string | null;
+            isDeposit?: boolean;
+        },
     ): Promise<string> {
         const id = uuidv4();
         const invoiceNumber = `BEA-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
@@ -5608,6 +5658,16 @@ export const beautyService = {
             const { postgrest } = await import('./api/postgrestClient');
             const fn = erpFirmNrForRow();
             const pn = erpPeriodNrForRow();
+            // Plan §6 Adım 5 — peşinat/parent/sale_group tag'lerini notes'a ekle
+            const linkCtx: BeautyErpSyncContext = {
+                invoiceNumber,
+                beautySaleId: id,
+                linkedAppointmentId: opts?.linkedAppointmentId ?? null,
+                parentSaleId: opts?.parentSaleId ?? null,
+                saleGroupId: opts?.saleGroupId ?? null,
+                isDeposit: opts?.isDeposit ?? false,
+            };
+            const taggedNotes = encodeSaleLinkTags(sale.notes ?? null, linkCtx);
             await postgrest.post(
                 `/rex_${fn}_${pn}_beauty_sales`,
                 [
@@ -5623,7 +5683,7 @@ export const beautyService = {
                         payment_status: sale.payment_status ?? 'paid',
                         paid_amount: paidAmount,
                         remaining_amount: remainingAmount,
-                        notes: sale.notes ?? null,
+                        notes: taggedNotes || null,
                     },
                 ],
                 { schema: 'beauty', prefer: 'return=minimal' }
@@ -5651,6 +5711,17 @@ export const beautyService = {
         } else {
             const st = postgres.getMovementTableName('beauty_sales', 'beauty');
             const it = postgres.getMovementTableName('beauty_sale_items', 'beauty');
+            // Plan §6 Adım 5 — peşinat/parent/sale_group tag'lerini notes'a ekle
+            // (customerDebtCollection `notes::text LIKE '%rex_appt:...%'` parse edebilsin)
+            const linkCtx: BeautyErpSyncContext = {
+                invoiceNumber,
+                beautySaleId: id,
+                linkedAppointmentId: opts?.linkedAppointmentId ?? null,
+                parentSaleId: opts?.parentSaleId ?? null,
+                saleGroupId: opts?.saleGroupId ?? null,
+                isDeposit: opts?.isDeposit ?? false,
+            };
+            const taggedNotes = encodeSaleLinkTags(sale.notes ?? null, linkCtx);
             await postgres.query(`
                 INSERT INTO ${st}
                     (id, invoice_number, customer_id, subtotal, discount, tax, total,
@@ -5660,7 +5731,7 @@ export const beautyService = {
                 sale.subtotal ?? 0, sale.discount ?? 0, sale.tax ?? 0, sale.total ?? 0,
                 pm, sale.payment_status ?? 'paid',
                 paidAmount,
-                remainingAmount, sale.notes ?? null]);
+                remainingAmount, taggedNotes || null]);
 
             if (items.length > 0) {
                 const values: unknown[] = [];
@@ -5704,7 +5775,14 @@ export const beautyService = {
                     payments: hasPayRows ? settlement.payments : sale.payments,
                 },
                 items,
-                { invoiceNumber, beautySaleId: id },
+                {
+                    invoiceNumber,
+                    beautySaleId: id,
+                    linkedAppointmentId: opts.linkedAppointmentId ?? null,
+                    parentSaleId: opts.parentSaleId ?? null,
+                    saleGroupId: opts.saleGroupId ?? null,
+                    isDeposit: opts.isDeposit ?? false,
+                },
             );
         }
 
@@ -9379,6 +9457,10 @@ export const beautyService = {
      *     • cash_lines (CH_TAHSILAT, sign=+1) → kasa bakiyesi ↑, cari borç ↓
      *     • beauty_appointments.remainder_paid_amount ↑, remainder_payment_date set
      *     • beauty_appointment_payments (payment_kind='remainder') → audit trail
+     *     • **Plan §6 Adım 4** — ayrıca `sales` tablosuna ana hizmet fişi
+     *       INSERT edilir (BEAUTY-MAIN-{aptId}-{ts}). Bu fiş, daha önce
+     *       `createAppointmentDeposit` ile yazılan peşinat fişine
+     *       `deposit_sale_id` ile bağlanır (`sale_group_id` aynı).
      *
      * Idempotent değildir; her çağrı yeni bir kasa satırı yazar. UI tarafı yalnızca
      * 1 kez tetiklemeli. Önceki turda Peşinatlı satışta deposit_amount + veresiye
@@ -9393,7 +9475,7 @@ export const beautyService = {
         cashRegisterId?: string | null;
         cashier?: string | null;
         notes?: string | null;
-    }): Promise<{ ok: boolean; paymentId?: string; error?: string }> {
+    }): Promise<{ ok: boolean; paymentId?: string; saleId?: string; ficheNo?: string; error?: string }> {
         const aptId = String(input.appointmentId ?? '').trim();
         const amount = Math.abs(Number(input.amount ?? 0));
         if (!aptId) return { ok: false, error: 'appointmentId zorunlu' };
@@ -9408,18 +9490,38 @@ export const beautyService = {
         const cashRegistersTable = `rex_${firmNr}_cash_registers`;
 
         try {
-            // 1) Randevuyu oku — customer_id, deposit_amount, total_price
+            // 1) Randevuyu oku — customer_id, deposit_amount, total_price,
+            //    deposit_sale_id (varsa — peşinat fişi bağlantısı), service_name
             const { rows: aptRows } = await postgres.query(
-                `SELECT id, client_id AS customer_id, total_price, deposit_amount, remainder_paid_amount
-                 FROM ${appointmentTable} WHERE id = $1::text::uuid`,
+                `SELECT a.id, a.client_id AS customer_id, a.total_price, a.deposit_amount,
+                        a.remainder_paid_amount, a.deposit_sale_id, a.sale_group_id,
+                        a.service_name, c.name AS customer_name
+                   FROM ${appointmentTable} a
+                   LEFT JOIN rex_${firmNr}_customers c
+                          ON c.id::text = a.client_id::text
+                  WHERE a.id = $1::text::uuid`,
                 [aptId],
             );
             const apt = aptRows[0] as
-                | { id: string; customer_id?: string | null; total_price?: number | null; deposit_amount?: number | null; remainder_paid_amount?: number | null }
+                | {
+                    id: string;
+                    customer_id?: string | null;
+                    total_price?: number | null;
+                    deposit_amount?: number | null;
+                    remainder_paid_amount?: number | null;
+                    deposit_sale_id?: string | null;
+                    sale_group_id?: string | null;
+                    service_name?: string | null;
+                    customer_name?: string | null;
+                }
                 | undefined;
             if (!apt) return { ok: false, error: 'Randevu bulunamadı' };
             const customerId = apt.customer_id ? String(apt.customer_id) : null;
             if (!customerId) return { ok: false, error: 'Randevuya bağlı müşteri yok' };
+            const depositSaleId = apt.deposit_sale_id ? String(apt.deposit_sale_id) : null;
+            const saleGroupId = apt.sale_group_id ? String(apt.sale_group_id) : `apt-${aptId}`;
+            const serviceName = apt.service_name ? String(apt.service_name) : 'Güzellik Hizmeti';
+            const customerName = apt.customer_name ? String(apt.customer_name) : '';
 
             // 2) Hedef kasa: verilen cashRegisterId, yoksa aktif MERKEZ/PATRON kasa
             let targetRegisterId: string | null = input.cashRegisterId ? String(input.cashRegisterId) : null;
@@ -9502,6 +9604,85 @@ export const beautyService = {
                 );
             }
 
+            // 3.5) Plan §6 Adım 4 — ana hizmet sales fişi INSERT.
+            //      Peşinat fişi ile aynı `sale_group_id`, `deposit_sale_id` bağı.
+            //      Tauri uyumu: ham SQL, `DO $$` YOK.
+            //      Hata durumunda ana akışı bozmaz; sadece loglanır.
+            const salesTable = `rex_${firmNr}_${periodNr}_sales`;
+            const saleItemsTable = `rex_${firmNr}_${periodNr}_sale_items`;
+            const mainFicheNo = `BEAUTY-MAIN-${aptId}-${new Date().toISOString()
+                .replace(/[-:]/g, '')
+                .replace(/\..+/, '')
+                .replace('T', '')
+                .slice(0, 14)}`;
+            const trcode = 7;
+            const ficheType = 'sales_invoice';
+            const paymentMethodLabel = paymentMethod === 'card' ? 'card' : 'cash';
+            const mainNotes = `Güzellik hizmet — kalan ödeme — ${aptId}${notes ? ` (${notes})` : ''}`;
+            let mainSaleId: string | null = null;
+            try {
+                const salesInsert = await postgres.query<{ id: string; fiche_no: string }>(
+                    `INSERT INTO ${salesTable}
+                        (id, firm_nr, period_nr, fiche_no, document_no, trcode, fiche_type,
+                         customer_id, customer_name, total_net, total_vat, total_gross,
+                         total_discount, net_amount, currency, currency_rate,
+                         status, payment_method, notes, header_fields,
+                         linked_appointment_id, deposit_sale_id, parent_sale_id, sale_group_id,
+                         is_deposit, created_at, updated_at)
+                     VALUES
+                        (gen_random_uuid(), $1::text, $2::text,
+                         $3::text, $3::text, $4::int, $5::text,
+                         $6::text::uuid, $7::text, $8::numeric, 0::numeric, $8::numeric,
+                         0::numeric, $8::numeric, 'IQD'::text, 1::numeric,
+                         'completed'::text, $9::text, $10::text, '{}'::jsonb,
+                         $11::text::uuid, $12::text::uuid, NULL, $13::text,
+                         false::boolean, NOW(), NOW())
+                     ON CONFLICT (fiche_no) DO NOTHING
+                     RETURNING id, fiche_no`,
+                    [
+                        firmNr,
+                        periodNr,
+                        mainFicheNo,
+                        trcode,
+                        ficheType,
+                        customerId,
+                        customerName,
+                        amount,
+                        paymentMethodLabel,
+                        mainNotes,
+                        aptId,
+                        depositSaleId,
+                        saleGroupId,
+                    ],
+                );
+                const insertedRows = (salesInsert.rows ?? []) as Array<{ id: string; fiche_no: string }>;
+                if (insertedRows[0]?.id) {
+                    mainSaleId = insertedRows[0].id;
+                    await postgres.query(
+                        `INSERT INTO ${saleItemsTable}
+                            (id, invoice_id, product_id, quantity, unit_price, vat_rate,
+                             discount_rate, discount_amount, total_amount, unit_cost, item_type, name)
+                         VALUES
+                            (gen_random_uuid(), $1::text::uuid, NULL, 1, $2::numeric, 0,
+                             0, 0, $2::numeric, 0, 'service'::text, $3::text)`,
+                        [mainSaleId, amount, serviceName],
+                    );
+                    // randevuya remainder_sale_id + fiche_no geri yaz
+                    await postgres.query(
+                        `UPDATE ${appointmentTable}
+                            SET remainder_sale_id = $2::text::uuid,
+                                remainder_sale_fiche_no = $3::text,
+                                sale_group_id = $4::text,
+                                updated_at = NOW()
+                          WHERE id = $1::text::uuid`,
+                        [aptId, mainSaleId, mainFicheNo, saleGroupId],
+                    );
+                }
+            } catch (salesErr) {
+                const detail = salesErr instanceof Error ? salesErr.message : String(salesErr);
+                console.warn('[collectAppointmentRemainder] main sale INSERT failed:', detail);
+            }
+
             // 4) appointment_payments INSERT — payment_kind='remainder' audit trail
             const paymentId = uuidv4();
             await postgres.query(
@@ -9533,7 +9714,15 @@ export const beautyService = {
                 [amount, aptId],
             );
 
-            return { ok: true, paymentId };
+            const result: { ok: boolean; paymentId?: string; saleId?: string; ficheNo?: string; error?: string } = {
+                ok: true,
+                paymentId,
+            };
+            if (mainSaleId) {
+                result.saleId = mainSaleId;
+                result.ficheNo = mainFicheNo;
+            }
+            return result;
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             console.warn('[collectAppointmentRemainder] failed:', msg);

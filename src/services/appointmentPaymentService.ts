@@ -24,6 +24,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import { ERP_SETTINGS, postgres, PostgresConnection } from './postgres';
 import { logger } from './loggingService';
+import {
+    buildSaleGroupId,
+    nextPesinatFicheNo,
+} from './salesHelpers';
 
 export type AppointmentPaymentKind = 'deposit' | 'remainder' | 'full';
 
@@ -60,6 +64,22 @@ export interface AppointmentPaymentRow {
     notes: string | null;
     paid_at: string;
     created_by: string | null;
+}
+
+/**
+ * `createAppointmentDeposit` dönüş tipi — Plan §6 Adım 3.
+ * - `paymentId`: `beauty_appointment_payments` audit trail satırı id'si.
+ * - `saleId`: `sales` tablosuna yazılan peşinat fişinin id'si (yoksa null).
+ * - `ficheNo`: `BEAUTY-PESINAT-{aptId}-{YYYYMMDDHHMMSS}` formatlı fiş no.
+ *
+ * Muhasebe notu: Peşinat artık `sales` tablosunda gerçek bir fiş; cari tarafı
+ * `customerDebtCollection.getCustomerOutstandingInvoices` üzerinden **outstanding**
+ * olarak görünür. Kullanıcı "daha önce ne ödendi" sorusunu fiş no ile yanıtlar.
+ */
+export interface CreateDepositResult {
+    paymentId: string;
+    saleId: string | null;
+    ficheNo: string;
 }
 
 export interface AppointmentPaymentSummary {
@@ -99,9 +119,17 @@ class AppointmentPaymentService {
         const raw = (ERP_SETTINGS as any)?.firmNr ?? (ERP_SETTINGS as any)?.firm_nr ?? '001';
         return String(raw).trim().padStart(3, '0').slice(0, 10) || '001';
     }
+    /**
+     * Dönem kodu: `rex_{firmNr}_{periodNr}_*` periyodik tablo yapısında 2 haneli
+     * (örn. `01`, `02`). Bazı yerlerde 3 haneli (`001`) gelirse olduğu gibi kabul edip
+     * `slice(0, 2)` ile 2 haneye indiririz.
+     */
     private getPeriodNr(): string {
         const raw = (ERP_SETTINGS as any)?.periodNr ?? (ERP_SETTINGS as any)?.period_nr ?? '01';
-        return String(raw).trim().padStart(3, '0').slice(0, 10) || '01';
+        const trimmed = String(raw).trim();
+        // Postgres hareket tablosu periodik kuralı: 2-haneli `rex_{firm}_{period}_sales`.
+        // Testlerde ERP_SETTINGS.periodNr='01' geliyor; ham değer 2 hane olarak kullanılır.
+        return trimmed.length >= 2 ? trimmed.slice(0, 2) : trimmed.padStart(2, '0');
     }
 
     private appointmentsTable(): string {
@@ -114,11 +142,18 @@ class AppointmentPaymentService {
     /**
      * Ön ödeme (deposit) kaydeder. Cari avans ekstresi + kasa +. Stok etkilenmez.
      *
+     * Plan §6 Adım 3 — peşinat artık `sales` tablosunda **gerçek bir fiş** olur.
+     * Sorgu sırası (4 adım):
+     *   1) SELECT randevu (total_price / client_id kontrolü)
+     *   2) UPDATE beauty_appointments (deposit_amount, deposit_date)
+     *   3) INSERT INTO beauty_appointment_payments (audit trail)
+     *   4) INSERT INTO rex_*_*_sales (BEAUTY-PESINAT-{aptId}-{ts}) + sale_items
+     *
      * Not (2026-09-29): Veresiye provider için artık `cash_lines` / `account_movements`
      * yazılmaz — cari hareketi fatura kaydında (cash_lines + sales) zaten yansır.
      * Kalan ödeme (remainder) akışı kaldırıldı.
      */
-    async createAppointmentDeposit(input: CreateDepositInput): Promise<string> {
+    async createAppointmentDeposit(input: CreateDepositInput): Promise<CreateDepositResult> {
         if (!input.appointmentId) throw new Error('appointmentId zorunlu');
         if (!(input.amount > 0)) throw new Error('Ön ödeme tutarı sıfırdan büyük olmalı');
 
@@ -127,18 +162,35 @@ class AppointmentPaymentService {
         const id = uuidv4();
         const now = new Date().toISOString();
         const fn = this.getFirmNr();
+        const pn = this.getPeriodNr();
 
         // 1. Randevunun mevcut total_price'ını oku (deposit_amount > total_price engeli)
-        const aptResult = await postgres.query<{ id: string; total_price: number; client_id: string }>(
-            `SELECT id, total_price, client_id FROM ${aptTable}
-              WHERE id = $1 AND firm_nr = $2`,
+        const aptResult = await postgres.query<{
+            id: string;
+            total_price: number;
+            client_id: string;
+            customer_name: string | null;
+        }>(
+            `SELECT a.id, a.total_price, a.client_id,
+                    c.name AS customer_name
+               FROM ${aptTable} a
+               LEFT JOIN rex_${fn}_customers c
+                      ON c.id::text = a.client_id::text
+              WHERE a.id = $1 AND a.firm_nr = $2`,
             [input.appointmentId, fn],
         );
-        const apt = extractRows<{ id: string; total_price: number; client_id: string }>(aptResult)[0];
+        const apt = extractRows<{
+            id: string;
+            total_price: number;
+            client_id: string;
+            customer_name: string | null;
+        }>(aptResult)[0];
         if (!apt) throw new Error('Randevu bulunamadı');
 
         const custId = input.customerId ?? apt.client_id ?? null;
+        const custName = apt.customer_name ?? null;
         const currency = input.currency ?? 'IQD';
+        const notes = input.notes ?? null;
 
         try {
             // 2. appointments üzerinde deposit kolonlarını güncelle
@@ -179,12 +231,110 @@ class AppointmentPaymentService {
                 ],
             );
 
+            // 4. Plan §6 Adım 3 — peşinat sales fişi INSERT.
+            //    `sales.fiche_no` UNIQUE → idempotent: aynı saniyede tekrarı `DO NOTHING`.
+            //    Migration 182 ile `linked_appointment_id`, `is_deposit`, `sale_group_id`
+            //    kolonları eklendi. Tauri uyumu: ham SQL, `DO $$` YOK.
+            const salesTable = `rex_${fn}_${pn}_sales`;
+            const saleItemsTable = `rex_${fn}_${pn}_sale_items`;
+            const ficheNo = nextPesinatFicheNo(input.appointmentId);
+            const saleGroupId = buildSaleGroupId(input.appointmentId);
+            const trcode = 7; // retail hizmet
+            const ficheType = 'sales_invoice';
+            const providerLabel =
+                input.provider === 'cash'
+                    ? 'cash'
+                    : input.provider === 'card'
+                      ? 'card'
+                      : input.provider === 'veresiye'
+                        ? 'veresiye'
+                        : String(input.provider ?? 'cash');
+
+            let saleId: string | null = null;
+            try {
+                const salesInsert = await postgres.query<{ id: string; fiche_no: string }>(
+                    `INSERT INTO ${salesTable}
+                        (id, firm_nr, period_nr, fiche_no, document_no, trcode, fiche_type,
+                         customer_id, customer_name, total_net, total_vat, total_gross,
+                         total_discount, net_amount, currency, currency_rate,
+                         status, payment_method, notes, header_fields,
+                         linked_appointment_id, is_deposit, sale_group_id,
+                         created_at, updated_at)
+                     VALUES
+                        (gen_random_uuid(), $1::text, $2::text,
+                         $3::text, $4::text, $5::int, $6::text,
+                         $7::text::uuid, $8::text, $9::numeric, 0::numeric, $9::numeric,
+                         0::numeric, $9::numeric, $10::text, 1::numeric,
+                         'completed'::text, $11::text, $12::text, '{}'::jsonb,
+                         $13::text::uuid, true::boolean, $14::text,
+                         NOW(), NOW())
+                     ON CONFLICT (fiche_no) DO NOTHING
+                     RETURNING id, fiche_no`,
+                    [
+                        fn,
+                        pn,
+                        ficheNo,
+                        ficheNo, // document_no = fiche_no (peşinat)
+                        trcode,
+                        ficheType,
+                        custId,
+                        custName ?? '',
+                        input.amount,
+                        currency,
+                        providerLabel,
+                        notes ?? `Peşinat (Beauty) — ${input.appointmentId}`,
+                        input.appointmentId,
+                        saleGroupId,
+                    ],
+                );
+                const insertedRows = extractRows<{ id: string; fiche_no: string }>(salesInsert);
+                if (insertedRows[0]?.id) {
+                    saleId = insertedRows[0].id;
+                    // sale_items: tek satır — hizmet kalemi (stok düşmez; sadece fiş bilgisi)
+                    await postgres.query(
+                        `INSERT INTO ${saleItemsTable}
+                            (id, invoice_id, product_id, quantity, unit_price, vat_rate,
+                             discount_rate, discount_amount, total_amount, unit_cost, item_type, name)
+                         VALUES
+                            (gen_random_uuid(), $1::text::uuid, NULL, 1, $2::numeric, 0,
+                             0, 0, $2::numeric, 0, 'service'::text, $3::text)`,
+                        [saleId, input.amount, 'Ön Ödeme Peşinatı'],
+                    );
+                    // randevuya deposit_sale_id + fiche_no geri yaz
+                    await postgres.query(
+                        `UPDATE ${aptTable}
+                            SET deposit_sale_id = $2::text::uuid,
+                                deposit_sale_fiche_no = $3::text,
+                                sale_group_id = $4::text,
+                                updated_at = NOW()
+                          WHERE id = $1::text::uuid AND firm_nr = $5::text`,
+                        [input.appointmentId, saleId, ficheNo, saleGroupId, fn],
+                    );
+                }
+            } catch (salesErr) {
+                // sales INSERT başarısız olursa audit trail + appointment UPDATE
+                // yine de yazıldı — ana akışı bozma, sadece logla.
+                const detail = salesErr instanceof Error ? salesErr.message : String(salesErr);
+                logger.warn(
+                    'appointmentPaymentService',
+                    'deposit sale INSERT failed (audit trail yazıldı)',
+                    { ficheNo, error: detail },
+                );
+            }
+
             logger.info(
                 'appointmentPaymentService',
                 'deposit created',
-                { id, appointmentId: input.appointmentId, amount: input.amount, provider: input.provider },
+                {
+                    paymentId: id,
+                    saleId,
+                    ficheNo,
+                    appointmentId: input.appointmentId,
+                    amount: input.amount,
+                    provider: input.provider,
+                },
             );
-            return id;
+            return { paymentId: id, saleId, ficheNo };
         } catch (err) {
             logger.error('appointmentPaymentService', 'createAppointmentDeposit failed', err as Error);
             throw err;

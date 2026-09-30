@@ -4122,6 +4122,41 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'المبلغ المدفوع مقدمًا',
     ku: 'بڕی پێشەکی دراو',
   },
+  // Plan §6 Adım 7/8 — Peşinat fiş no etiketi (BEAUTY-PESINAT-…)
+  prePaymentInvoiceNo: {
+    tr: 'Peşinat Fişi',
+    en: 'Deposit Invoice',
+    ar: 'فاتورة مقدم',
+    ku: 'فیشەی پێشەکی',
+  },
+  // Plan §6 Adım 8 — Peşinat tutar + fiş no birleşik metin (örn. "Peşinat: BEAUTY-PESINAT-… · 30 IQD")
+  prePaymentAmountWithInvoice: {
+    tr: 'Peşinat: {fiche} · {amount}',
+    en: 'Deposit: {fiche} · {amount}',
+    ar: 'مقدم: {fiche} · {amount}',
+    ku: 'پێشەکی: {fiche} · {amount}',
+  },
+  // Plan §6 Adım 8 — Kalan ödeme ana fiş no etiketi
+  remainingInvoiceNo: {
+    tr: 'Kalan Ödeme Fişi',
+    en: 'Remainder Invoice',
+    ar: 'فاتورة الباقي',
+    ku: 'فیشەی ماوە',
+  },
+  // Plan §6 Adım 9 — Bağlı faturalar (genel)
+  linkedInvoices: {
+    tr: 'Bağlı Faturalar',
+    en: 'Linked Invoices',
+    ar: 'فواتير مرتبطة',
+    ku: 'فیشە پەیوەندیدار',
+  },
+  // Plan §6 Adım 9 — Fatura oluşturuldu (genel toast)
+  invoiceCreated: {
+    tr: 'Fatura oluşturuldu',
+    en: 'Invoice created',
+    ar: 'تم إنشاء الفاتورة',
+    ku: 'فیشە دروستکرا',
+  },
   appointmentStarted: {
     tr: 'Randevu başladı',
     en: 'Appointment started',

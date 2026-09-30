@@ -293,6 +293,16 @@ export interface BeautyAppointment {
     remainder_payment_date?: string | null;
     /** Peşinatlı ön ödeme tarihi. */
     deposit_date?: string | null;
+    /** Peşinat sales fişinin UUID'si (`BEAUTY-PESINAT-{aptId}-{ts}`). */
+    deposit_sale_id?: string | null;
+    /** Peşinat sales fişinin numarası (örn. `BEAUTY-PESINAT-…`). */
+    deposit_sale_fiche_no?: string | null;
+    /** Kalan ödeme ana sales fişinin UUID'si (`BEAUTY-MAIN-{aptId}-{ts}`). */
+    remainder_sale_id?: string | null;
+    /** Kalan ödeme ana sales fişinin numarası. */
+    remainder_sale_fiche_no?: string | null;
+    /** Peşinat + ana satışı gruplar (`apt-{aptId}`). */
+    sale_group_id?: string | null;
 }
 
 export interface BeautyBranch {
@@ -730,6 +740,17 @@ export interface BeautySale {
     linked_staff_name?: string;
     linked_treatment_shots?: string | null;
     linked_treatment_degree?: string | null;
+    /**
+     * Peşinat sales → ana sales bağlantısı (opsiyonel).
+     * Yalnızca ana satış fişinde set edilir; peşinat fişinde null.
+     */
+    deposit_sale_id?: string | null;
+    /** Ana satış fişi kendisinin parent'ı (iade / iptal senaryolarında kullanılır). */
+    parent_sale_id?: string | null;
+    /** Peşinat + ana satışı gruplar (`apt-{aptId}` veya `grp-{uuid}`). */
+    sale_group_id?: string | null;
+    /** Bu fiş bir ön ödeme (deposit) mi? */
+    is_deposit?: boolean | null;
 }
 
 /** Personel bazında günlük shot / derece özeti */

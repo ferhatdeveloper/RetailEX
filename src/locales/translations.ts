@@ -851,6 +851,16 @@ customerAdvanceBalance: string;
   paymentMethodPesinatli: string;
   /** Peşinatlı — daha önce alınmış ön ödeme tutarı (bilgi amaçlı) */
   prePaymentAmount: string;
+  /** Plan §6 Adım 7/8 — Peşinat fiş no etiketi (BEAUTY-PESINAT-…) */
+  prePaymentInvoiceNo: string;
+  /** Plan §6 Adım 8 — Peşinat tutar + fiş no birleşik metin */
+  prePaymentAmountWithInvoice: string;
+  /** Plan §6 Adım 8 — Kalan ödeme ana fiş no etiketi */
+  remainingInvoiceNo: string;
+  /** Plan §6 Adım 9 — Bağlı faturalar (genel) */
+  linkedInvoices: string;
+  /** Plan §6 Adım 9 — Fatura oluşturuldu (genel toast) */
+  invoiceCreated: string;
   /** Peşinatlı — kalan tutar (bilgi amaçlı) */
   collectRemainingPayment: string;
   pesinatPlanLabel: string;
@@ -2261,6 +2271,11 @@ export const translations: any = {
     paymentCredit: 'Veresiye (Cari)',
     paymentMethodPesinatli: 'Peşinatlı Satış',
     prePaymentAmount: 'Ön Ödeme',
+    prePaymentInvoiceNo: 'Peşinat Fişi',
+    prePaymentAmountWithInvoice: 'Peşinat: {fiche} · {amount}',
+    remainingInvoiceNo: 'Kalan Ödeme Fişi',
+    linkedInvoices: 'Bağlı Faturalar',
+    invoiceCreated: 'Fatura oluşturuldu',
     collectRemainingPayment: 'Kalan Ödemeyi Al',
     pesinatPlanLabel: 'Taksit Planı',
     pesinatInstallmentPer: 'Taksit başına',
@@ -4064,6 +4079,11 @@ export const translations: any = {
     paymentCredit: 'On Credit (Current)',
     paymentMethodPesinatli: 'Installment Sale',
     prePaymentAmount: 'Pre-payment',
+    prePaymentInvoiceNo: 'Deposit Invoice',
+    prePaymentAmountWithInvoice: 'Deposit: {fiche} · {amount}',
+    remainingInvoiceNo: 'Remainder Invoice',
+    linkedInvoices: 'Linked Invoices',
+    invoiceCreated: 'Invoice created',
     collectRemainingPayment: 'Collect Remaining Payment',
     pesinatPlanLabel: 'Installment Plan',
     pesinatInstallmentPer: 'Per installment',
@@ -5729,6 +5749,11 @@ export const translations: any = {
     paymentCredit: 'على الحساب (آجل)',
     paymentMethodPesinatli: 'بيع بالأقساط',
     prePaymentAmount: 'الدفعة المقدمة',
+    prePaymentInvoiceNo: 'فاتورة مقدم',
+    prePaymentAmountWithInvoice: 'مقدم: {fiche} · {amount}',
+    remainingInvoiceNo: 'فاتورة الباقي',
+    linkedInvoices: 'فواتير مرتبطة',
+    invoiceCreated: 'تم إنشاء الفاتورة',
     collectRemainingPayment: 'تحصيل المتبقي',
     pesinatPlanLabel: 'خطة الأقساط',
     pesinatInstallmentPer: 'لكل قسط',
@@ -7394,6 +7419,11 @@ export const translations: any = {
     paymentCredit: 'Veresiye (Cari)',
     paymentMethodPesinatli: 'فرۆشتن بە قیست',
     prePaymentAmount: 'پێشەکی',
+    prePaymentInvoiceNo: 'فیشەی پێشەکی',
+    prePaymentAmountWithInvoice: 'پێشەکی: {fiche} · {amount}',
+    remainingInvoiceNo: 'فیشەی ماوە',
+    linkedInvoices: 'فیشە پەیوەندیدار',
+    invoiceCreated: 'فیشە دروستکرا',
     collectRemainingPayment: 'وەرگرتنی ماوەی پارە',
     pesinatPlanLabel: 'پلانی قیست',
     pesinatInstallmentPer: 'بۆ هەر قیست',

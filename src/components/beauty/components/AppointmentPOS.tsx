@@ -4355,23 +4355,44 @@ export function AppointmentPOS({
                             {/* "Ön Ödenen Tutar" bilgi satırı — mevcut randevuya ait
                                 daha önce alınmış ön ödeme varsa toplam satırının hemen
                                 altında readonly bilgi amaçlı gösterim. Toplam ile butonlar
-                                arasında kompakt yeşil yatay bilgi satırı. Input değil. */}
+                                arasında kompakt yeşil yatay bilgi satırı. Input değil.
+                                Plan §6 Adım 7: fiş no (`deposit_sale_fiche_no`) ikinci
+                                satırda monospace olarak gösterilir. */}
                             {existingAppointment?.id && Number((existingAppointment as { deposit_amount?: number }).deposit_amount ?? 0) > 0 && (
                                 <div
                                     data-testid="appointment-prepaid-amount-row"
                                     style={{
-                                        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-                                        padding: '6px 8px', marginBottom: 8,
-                                        background: '#f0fdf4', borderRadius: 6,
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: 2,
+                                        padding: '6px 8px',
+                                        marginBottom: 8,
+                                        background: '#f0fdf4',
+                                        borderRadius: 6,
                                         border: '1px solid #bbf7d0',
                                     }}
                                 >
-                                    <span style={{ fontSize: 10, color: '#15803d', fontWeight: 700 }}>
-                                        {tm('prePaymentAmount') || 'Ön Ödenen Tutar'}
-                                    </span>
-                                    <span style={{ fontSize: 12, fontWeight: 800, color: '#15803d' }}>
-                                        {fmt(Number((existingAppointment as { deposit_amount?: number }).deposit_amount))} IQD
-                                    </span>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                        <span style={{ fontSize: 10, color: '#15803d', fontWeight: 700 }}>
+                                            {tm('prePaymentAmount') || 'Ön Ödenen Tutar'}
+                                        </span>
+                                        <span style={{ fontSize: 12, fontWeight: 800, color: '#15803d' }}>
+                                            {fmt(Number((existingAppointment as { deposit_amount?: number }).deposit_amount))} IQD
+                                        </span>
+                                    </div>
+                                    {(existingAppointment as { deposit_sale_fiche_no?: string | null }).deposit_sale_fiche_no && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 10, opacity: 0.85 }}>
+                                            <span style={{ color: '#15803d' }}>
+                                                {tm('prePaymentInvoiceNo') || 'Peşinat Fişi'}
+                                            </span>
+                                            <span
+                                                data-testid="appointment-deposit-fiche-no"
+                                                style={{ fontFamily: 'monospace', color: '#15803d' }}
+                                            >
+                                                {(existingAppointment as { deposit_sale_fiche_no?: string | null }).deposit_sale_fiche_no}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -4820,6 +4841,7 @@ export function AppointmentPOS({
                     status: existingAppointment?.status,
                     totalPrice: existingAppointment?.total_price,
                     depositAmount: existingAppointment?.deposit_amount,
+                    prePaymentFicheNo: (existingAppointment as { deposit_sale_fiche_no?: string | null } | undefined)?.deposit_sale_fiche_no ?? null,
                 }) ?? undefined;
                 return (
                 <POSPaymentModal

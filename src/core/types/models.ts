@@ -441,6 +441,19 @@ export interface Sale {
   beautyTreatmentDegree?: string;
   /** Güzellik / lazer fişi: atış sayısı */
   beautyTreatmentShots?: string;
+  /**
+   * Güzellik peşinat akışı — bu satış fişinin bağlı olduğu randevu.
+   * Migration 182 ile `sales.linked_appointment_id` kolonuna yazılır.
+   */
+  linkedAppointmentId?: string | null;
+  /** Peşinat sales → ana sales bağlantısı (ana fişte set edilir). */
+  depositSaleId?: string | null;
+  /** Ana satış fişi kendisinin parent'ı (iade / iptal senaryolarında kullanılır). */
+  parentSaleId?: string | null;
+  /** Peşinat + ana satışı gruplar (`apt-{aptId}` veya `grp-{uuid}`). */
+  saleGroupId?: string | null;
+  /** Bu fiş bir ön ödeme (deposit) mi? */
+  isDeposit?: boolean | null;
 }
 
 export interface SaleItem {
