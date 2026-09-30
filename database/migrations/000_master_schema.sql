@@ -3145,10 +3145,47 @@ BEGIN
       credit_amount  DECIMAL(15,2) DEFAULT 0,
       notes          TEXT,
       header_fields  JSONB NOT NULL DEFAULT ''{}''::jsonb,
+      -- Peşinat → Ayrı satış faturası bağlantı kolonları (beauty-pesinat-sales-fatura-plani.md §2.1)
+      linked_appointment_id UUID,
+      deposit_sale_id      UUID,
+      parent_sale_id       UUID,
+      sale_group_id        UUID,
+      is_deposit           BOOLEAN NOT NULL DEFAULT false,
       created_at     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_tbl_sales);
+
+  -- Sıfır kurulumdan gelen yeni tablolar zaten yeni kolonları içerir; eski
+  -- tablolarda (CREATE TABLE IF NOT EXISTS şemayı güncellemez) idempotent
+  -- ADD COLUMN IF NOT EXISTS ile aynı kolonlar garanti edilir.
+  EXECUTE format(
+    'ALTER TABLE %I
+       ADD COLUMN IF NOT EXISTS linked_appointment_id UUID,
+       ADD COLUMN IF NOT EXISTS deposit_sale_id      UUID,
+       ADD COLUMN IF NOT EXISTS parent_sale_id       UUID,
+       ADD COLUMN IF NOT EXISTS sale_group_id        UUID,
+       ADD COLUMN IF NOT EXISTS is_deposit           BOOLEAN NOT NULL DEFAULT false',
+    v_tbl_sales
+  );
+
+  -- Peşinat/ana satış raporları için indeksler (idempotent)
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (linked_appointment_id)',
+    v_tbl_sales || '_appointment_idx', v_tbl_sales
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (sale_group_id)',
+    v_tbl_sales || '_group_idx', v_tbl_sales
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (parent_sale_id)',
+    v_tbl_sales || '_parent_idx', v_tbl_sales
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (is_deposit)',
+    v_tbl_sales || '_isdeposit_idx', v_tbl_sales
+  );
 
   -- 2. Sale Items (kur desteği + birim çarpan dahil)
   EXECUTE format('
