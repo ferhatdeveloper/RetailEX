@@ -1,4 +1,4 @@
-import { X, CreditCard, Banknote, Wallet, Plus, Trash2, CheckCircle, Calculator, ShoppingCart, Minus, Globe, Tag, TrendingDown, Loader2, Printer, ChevronDown, FileText, Receipt, Calendar } from 'lucide-react';
+import { X, CreditCard, Banknote, Wallet, Plus, Trash2, CheckCircle, Calculator, ShoppingCart, Minus, Globe, Tag, TrendingDown, Loader2, Printer, ChevronDown, FileText, Receipt, Calendar, Info } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import type { CartItem } from './types';
@@ -1268,44 +1268,22 @@ const handleCollectCustomerDebt = async () => {
                   ))}
                 </div>
 
-                {/* Peşinatlı Satış: bilgilendirme + serbest tutar (Seçenek A) */}
+                {/* Peşinatlı Satış: minimal bilgilendirme strip'i */}
                 {currentMethod === 'pesinatli' && (
                   <div
-                    data-testid="pesinat-installment-picker"
-                    className={`mt-3 p-3 border-2 rounded-xl ${
+                    data-testid="pesinat-info-strip"
+                    className={`mt-1.5 px-2 py-1 text-[11px] rounded border flex items-center gap-1.5 ${
                       darkMode
-                        ? 'bg-purple-900/20 border-purple-700/60'
-                        : 'bg-purple-50 border-purple-200'
+                        ? 'bg-purple-900/20 border-purple-700/60 text-purple-200'
+                        : 'bg-purple-50/60 border-purple-200/70 text-purple-700'
                     }`}
                   >
-                    <h5
-                      className={`text-sm font-semibold mb-2 flex items-center gap-1.5 ${
-                        darkMode ? 'text-purple-200' : 'text-purple-900'
-                      }`}
-                    >
-                      <Calendar className="w-4 h-4" />
-                      {tm('paymentMethodPesinatli') || t.pesinatliLabel || 'Peşinatlı Satış'}
-                    </h5>
-                    <p
-                      className={`text-xs mb-2 ${
-                        darkMode ? 'text-purple-200' : 'text-purple-700'
-                      }`}
-                    >
+                    <Info className="w-3 h-3 flex-shrink-0" />
+                    <span>
                       {tm('pesinatSubtitle') ||
                         t.pesinatSubtitle ||
-                        'Bugün ödenecek tutarı serbest girin; kalan sonraki gelişinizde tahsil edilir.'}
-                    </p>
-                    <div
-                      data-testid="pesinat-installment-summary"
-                      className={`text-xs ${
-                        darkMode ? 'text-purple-300' : 'text-purple-700'
-                      }`}
-                    >
-                      {tm('posRemainingTotal') || 'Sepet toplamı'}:{' '}
-                      <span className="font-bold font-mono">
-                        {formatMoneyWithCode(remaining, baseCurrency)}
-                      </span>
-                    </div>
+                        'Bugünkü tutar peşin, kalan sonraki gelişinizde veresiye yazılır.'}
+                    </span>
                   </div>
                 )}
               </div>
