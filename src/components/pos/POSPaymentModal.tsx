@@ -448,7 +448,22 @@ export function POSPaymentModal({
       ? posPaymentAdditionalDiscount(total, parsedDiscountValue, discountType, baseCurrency)
       : 0;
 
-  const finalTotal = roundPosMoneyAmount(total - calculatedDiscount, baseCurrency);
+  // Randevu bağlamında daha önce peşinat alındıysa modal Toplam/Kalan/Veresiye
+  // hesaplarını TÜM bu bağlam üzerinden yürütür: deposit düşülmüş kalan üzerinden.
+  // Bu sayede:
+  //  - "Kalanı cariye yaz" butonu doğru tutarı gösterir
+  //  - Nakit/Kart default tutarı kalan olarak başlar
+  //  - Final ekstrede Toplam = hizmet bedeli − peşinat
+  const appointmentRemainingTotal =
+    appointmentContext &&
+    Number.isFinite(appointmentContext.remainingAmount) &&
+    appointmentContext.remainingAmount >= 0
+      ? appointmentContext.remainingAmount
+      : null;
+  const finalTotal =
+    appointmentRemainingTotal !== null
+      ? roundPosMoneyAmount(appointmentRemainingTotal - calculatedDiscount, baseCurrency)
+      : roundPosMoneyAmount(total - calculatedDiscount, baseCurrency);
 
   // Calculate total paid (convert all to base currency)
   const totalPaidRaw = payments.reduce((sum, payment) => {
@@ -1104,15 +1119,51 @@ const handleCollectCustomerDebt = async () => {
 
                   <div className={`border-t-2 my-2 ${darkMode ? 'border-gray-600' : 'border-gray-400'}`}></div>
 
-                  <div className="flex justify-between text-xl pt-1">
-                    <span className={`font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
-                      {t.total || 'TOPLAM'}:
-                    </span>
-                    <span className={`font-bold font-mono px-3 py-1 rounded ${darkMode ? 'text-blue-400 bg-blue-900/30' : 'text-blue-700 bg-blue-50'
-                      }`}>
-                      {formatCurrency(finalTotal)}
-                    </span>
-                  </div>
+                  {/* Randevu bağlamı: daha önce peşinat alındıysa Toplam satırını
+                      "Ön Ödenen + Kalan Tutar" olarak 2 satırda göster. */}
+                  {appointmentContext &&
+                  Number.isFinite(appointmentContext.prePaymentAmount) &&
+                  appointmentContext.prePaymentAmount > 0 ? (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className={darkMode ? 'text-emerald-300' : 'text-emerald-700'}>
+                          {t.prePayment || 'Ön Ödenen'}:
+                        </span>
+                        <span
+                          className={`font-medium font-mono ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}
+                          data-testid="payment-modal-prepayment"
+                        >
+                          {formatCurrency(appointmentContext.prePaymentAmount)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xl pt-1">
+                        <span className={`font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+                          {t.remainingAmount || 'KALAN TUTAR'}:
+                        </span>
+                        <span
+                          className={`font-bold font-mono px-3 py-1 rounded ${darkMode ? 'text-blue-400 bg-blue-900/30' : 'text-blue-700 bg-blue-50'}`}
+                          data-testid="payment-modal-remaining-total"
+                        >
+                          {formatCurrency(
+                            Number.isFinite(appointmentContext.remainingAmount) &&
+                              appointmentContext.remainingAmount >= 0
+                              ? appointmentContext.remainingAmount
+                              : finalTotal,
+                          )}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between text-xl pt-1">
+                      <span className={`font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+                        {t.total || 'TOPLAM'}:
+                      </span>
+                      <span className={`font-bold font-mono px-3 py-1 rounded ${darkMode ? 'text-blue-400 bg-blue-900/30' : 'text-blue-700 bg-blue-50'
+                        }`}>
+                        {formatCurrency(finalTotal)}
+                      </span>
+                    </div>
+                  )}
 
                   {totalPaid > 0 && (
                     <>
