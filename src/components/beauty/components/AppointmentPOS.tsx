@@ -5061,9 +5061,6 @@ export function AppointmentPOS({
                                     {existingAppointment.appointment_time ? ` · ${String(existingAppointment.appointment_time).slice(0, 5)}` : ''}
                                 </span>
                             </div>
-                            <p style={{ fontSize: 10, color: '#7c2d12', margin: '6px 0 0', lineHeight: 1.45 }}>
-                                {tm('bAppointmentInProgressHint') || 'Randevu başladı — hizmet verildiğinde kalan ödemeyi alıp tamamlayın.'}
-                            </p>
                         </div>
                     </div>
                 );
