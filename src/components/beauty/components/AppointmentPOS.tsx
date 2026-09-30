@@ -63,6 +63,7 @@ import { buildAppointmentPesinatliContext } from '../../../utils/posPesinatli';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
 import { buildAppointmentProductNotesTag } from '../../../utils/beautyAppointmentProducts';
+import { parseBookingApiError, type BookingApiReasonKey, type BookingFailedStep } from '../../../utils/bookingError';
 import { DentalChartScreen } from '../specialty/DentalChartScreen';
 import '../ClinicStyles.css';
 
@@ -173,7 +174,7 @@ interface BookingBlockModalState {
     intro: string;
     steps: string[];
     technical?: string;
-    diagnostics: { label: string; ok: boolean }[];
+    diagnostics: { label: string; ok: boolean; kind?: 'check' | 'fail' }[];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -1713,11 +1714,82 @@ export function AppointmentPOS({
                             .map(l => `→ ${l.name}: ${tm('bBookingModalStepStaffPerLine')}`),
                     ];
                     break;
-                case 'api_error':
+                case 'api_error': {
                     title = tm('bBookingModalTitleApi');
                     intro = tm('bBookingModalIntroApi');
-                    steps = [tm('bBookingModalStepApi1'), tm('bBookingModalStepApi2')];
-                    break;
+                    const parsed = parseBookingApiError(apiTechnical);
+                    let userReason = '';
+                    if (parsed.reasonKey === 'migration_required') {
+                        userReason = tm('bBookingModalApiReasonMigration');
+                        steps = [
+                            tm('bBookingModalApiReasonMigrationCmd'),
+                            tm('bBookingModalStepApi2'),
+                        ];
+                    } else if (parsed.reasonKey === 'unique_violation') {
+                        userReason = tm('bBookingModalApiReasonUnique');
+                        steps = [tm('bBookingModalStepApi1'), tm('bBookingModalStepApi2')];
+                    } else if (parsed.reasonKey === 'null_constraint') {
+                        userReason = tm('bBookingModalApiReasonNull');
+                        steps = [tm('bBookingModalStepApi1'), tm('bBookingModalStepApi2')];
+                    } else if (parsed.reasonKey === 'fk_violation') {
+                        userReason = tm('bBookingModalApiReasonFk');
+                        steps = [tm('bBookingModalStepApi1'), tm('bBookingModalStepApi2')];
+                    } else if (parsed.reasonKey === 'connection') {
+                        userReason = tm('bBookingModalApiReasonConnection');
+                        steps = [tm('bBookingModalStepApi1'), tm('bBookingModalStepApi2')];
+                    } else {
+                        userReason = tm('bBookingModalApiReasonUnknown');
+                        steps = [tm('bBookingModalStepApi1'), tm('bBookingModalStepApi2')];
+                    }
+                    // failedStep mesajı
+                    const lowerDetail = (parsed.detail || '').toLowerCase();
+                    let failedStepLabel: string;
+                    if (
+                        lowerDetail.includes('beauty_appointment_payments') ||
+                        lowerDetail.includes('appointment_payments') ||
+                        lowerDetail.includes('deposit_sale') ||
+                        lowerDetail.includes('deposit_amount')
+                    ) {
+                        failedStepLabel = tm('bBookingModalApiFailedStepPayment');
+                    } else if (
+                        lowerDetail.includes('sale_items') ||
+                        lowerDetail.includes('_sales') ||
+                        lowerDetail.includes('fiche_no')
+                    ) {
+                        failedStepLabel = tm('bBookingModalApiFailedStepSale');
+                    } else if (
+                        lowerDetail.includes('beauty_appointments') ||
+                        lowerDetail.includes('clinical_data') ||
+                        lowerDetail.includes('appointment_date') ||
+                        lowerDetail.includes('appointment_time')
+                    ) {
+                        failedStepLabel = tm('bBookingModalApiFailedStepApt');
+                    } else {
+                        failedStepLabel = tm('bBookingModalApiFailedStepUnknown');
+                    }
+                    // intro: önce kısa neden, sonra genel öneri
+                    intro = userReason;
+                    // diagnostics: son adım ✗ (kırmızı — gerçek hata)
+                    const diagWithFail = [
+                        ...diag,
+                        { label: failedStepLabel, ok: false, kind: 'fail' as const },
+                    ];
+                    // technical: kullanıcı dostu kısa başlık + Postgres kodu + ham mesaj
+                    const techParts: string[] = [];
+                    techParts.push(`Sebep: ${userReason}`);
+                    if (parsed.pgCode) techParts.push(`Postgres SQLSTATE: ${parsed.pgCode}`);
+                    if (parsed.detail) techParts.push(`Mesaj: ${parsed.detail}`);
+                    const apiTechnicalRich = techParts.join('\n');
+                    setBookingBlockModal({
+                        open: true,
+                        title,
+                        intro,
+                        steps,
+                        technical: apiTechnicalRich,
+                        diagnostics: diagWithFail,
+                    });
+                    return;
+                }
                 default:
                     title = '';
                     intro = '';
@@ -4766,26 +4838,34 @@ export function AppointmentPOS({
                                 {tm('bBookingModalStatus')}
                             </p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                {bookingBlockModal.diagnostics.map((d, i) => (
-                                    <div
-                                        key={i}
-                                        style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 8,
-                                            fontSize: 12,
-                                            fontWeight: 600,
-                                            color: d.ok ? '#059669' : '#b45309',
-                                            background: d.ok ? '#ecfdf5' : '#fffbeb',
-                                            border: `1px solid ${d.ok ? '#a7f3d0' : '#fcd34d'}`,
-                                            borderRadius: 8,
-                                            padding: '8px 10px',
-                                        }}
-                                    >
-                                        <span style={{ fontWeight: 800 }}>{d.ok ? '✓' : '!'}</span>
-                                        <span>{d.label}</span>
-                                    </div>
-                                ))}
+                                {bookingBlockModal.diagnostics.map((d, i) => {
+                                    // kind === 'fail' → kırmızı ✗, geri kalan başarısızlar turuncu uyarı.
+                                    const palette = d.ok
+                                        ? { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', glyph: '✓' }
+                                        : d.kind === 'fail'
+                                          ? { color: '#991b1b', bg: '#fef2f2', border: '#fecaca', glyph: '✗' }
+                                          : { color: '#b45309', bg: '#fffbeb', border: '#fcd34d', glyph: '!' };
+                                    return (
+                                        <div
+                                            key={i}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 8,
+                                                fontSize: 12,
+                                                fontWeight: 600,
+                                                color: palette.color,
+                                                background: palette.bg,
+                                                border: `1px solid ${palette.border}`,
+                                                borderRadius: 8,
+                                                padding: '8px 10px',
+                                            }}
+                                        >
+                                            <span style={{ fontWeight: 800 }}>{palette.glyph}</span>
+                                            <span>{d.label}</span>
+                                        </div>
+                                    );
+                                })}
                             </div>
                             {bookingBlockModal.technical && (
                                 <details style={{ marginTop: 14 }}>
