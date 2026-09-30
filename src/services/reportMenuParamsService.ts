@@ -6,10 +6,12 @@
  * + backoffice fatura kaydı sonrası yazdır (`invoice-auto-print-after-save`, varsayılan açık)
  * + negatif stok satış engeli (`block-negative-stock-sale`, varsayılan kapalı = satılabilir)
  * + POS ödeme→satış geri dönüş (`allow-pos-payment-back-to-sale`, varsayılan açık).
+ * + POS ödeme ekranı kapatma sorusunu atla (`pos-payment-cancel-without-reason`, varsayılan açık).
  * Kaynak: PostgreSQL `system_settings.report_menu_params` ↔ localStorage önbellek.
  * Varsayılan: çoğu menü/özellik kapalı; rapor kartları ve `daily-report-supplier-payments`
  * varsayılan açık; `block-negative-stock-sale` varsayılan kapalı (eski davranış);
  * `allow-pos-payment-back-to-sale` varsayılan açık (eski davranış);
+ * `pos-payment-cancel-without-reason` varsayılan açık (soru sormadan kapat);
  * `invoice-auto-print-after-save` varsayılan açık (eski UniversalInvoiceForm davranışı).
  */
 import { postgres, DB_SETTINGS } from './postgres';
@@ -59,6 +61,13 @@ export const REPORT_MENU_PARAM_KEYS = [
    * Kapalı: geri dönüş engellenir; fiş iptal modalı açılmaz.
    */
   'allow-pos-payment-back-to-sale',
+  /**
+   * POS ödeme ekranı kapatılırken "iptal nedeni" sorusunu atla — varsayılan açık.
+   * Açık (varsayılan): İptal/X'e basınca soru modalı AÇILMAZ, doğrudan kapat.
+   * Kapalı: İptal/X → fiş iptal neden modalı açılır (eski davranış).
+   * Yöneticiler `system_settings.report_menu_params` üzerinden kapatabilir.
+   */
+  'pos-payment-cancel-without-reason',
   /** Günlük rapor KPI kartları (varsayılan açık) */
   'daily-report-card-total-sales',
   'daily-report-card-total-revenue',
@@ -106,6 +115,7 @@ const DEFAULT_PARAMS: ReportMenuParams = {
   'invoice-auto-print-after-save': true,
   'block-negative-stock-sale': false,
   'allow-pos-payment-back-to-sale': true,
+  'pos-payment-cancel-without-reason': true,
   'daily-report-card-total-sales': true,
   'daily-report-card-total-revenue': true,
   'daily-report-card-total-discount': true,

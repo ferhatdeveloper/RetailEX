@@ -174,11 +174,18 @@ export function appendPesinatliVeresiyeForRemaining<
  *
  * Kullanıcı bugün ödeyeceği tutarı serbest girer. Bu helper:
  *   1) İlk satır: peşinat (`method: 'pesinatli'`, kasaya yansır).
- *   2) Kalan satır: veresiye (`method: 'veresiye'`, cari borç).
+ *   2) Kalan satır (opsiyonel): veresiye (`method: 'veresiye'`, cari borç).
  *
  * Taksit sayısı (3/6/9/12) bu yeni akışta bilgi amaçlı; opsiyonel
  * `installments` alanı veresiye satırına iliştirilir (geriye dönük uyum).
- * Taksit sayısı verilmezse sadece iki satır (peşinat + veresiye) üretilir.
+ * Taksit sayısı verilmezse sadece peşinat + veresiye satırları üretilir.
+ *
+ * **ÖNEMLİ — `writeRemainderToCari` (varsayılan `false`):**
+ * - `false` (varsayılan): kalan cariye **YAZILMAZ**. Yalnızca peşinat satırı
+ *   döner. Kalan, randevu tamamlanırken ayrı bir ödeme adımında tahsil edilir.
+ *   Bu UX kullanıcının istediği davranıştır: "peşinatlıya bastım, 25.000 aldım,
+ *   kalanı randevuyu tamamlamadan önce yapacağım."
+ * - `true`: eski davranış — kalan otomatik veresiye satırı olarak eklenir.
  *
  * Hata koşulları (muhasebeci gözüyle):
  *   - `totalAmount <= 0` → işlem anlamsız; throw.
@@ -196,10 +203,17 @@ export function buildPesinatliPayments(args: {
     kasa_adi?: string | null;
     kasa_kodu?: string | null;
   } | null;
+  /**
+   * Kalan tutar cariye yazılsın mı? Varsayılan `false` — yalnızca peşinat
+   * alınır, kalan sonra tahsil edilir. Eski "toptan + veresiye" davranışı
+   * için `true` verin.
+   */
+  writeRemainderToCari?: boolean;
 }): Array<PosPesinatliPaymentRow | PosPesinatliVeresiyeRow> {
   const total = Number(args.totalAmount);
   const pay = Number(args.payNow);
   const currency: PosPesinatliCurrency = args.currency ?? 'IQD';
+  const writeRemainder = args.writeRemainderToCari === true; // varsayılan: false
 
   if (!Number.isFinite(total) || total <= 0) {
     throw new Error('Peşinatlı satış: sepet toplamı pozitif olmalı.');
@@ -225,8 +239,11 @@ export function buildPesinatliPayments(args: {
   const kalanRaw = total - pay;
   const payments: Array<PosPesinatliPaymentRow | PosPesinatliVeresiyeRow> = [pesinat];
 
+  // Yalnızca `writeRemainderToCari === true` ise kalan veresiye satırına yazılır.
+  // Varsayılan (`false`): sadece peşinat döner; kalan randevu tamamlanırken
+  // ayrı bir ödeme adımında tahsil edilir.
   // Eşik altındaki kalan (yuvarlama farkı) yazılmaz — 0.01 IQD bakiye oluşturmaz.
-  if (kalanRaw > 0.01) {
+  if (writeRemainder && kalanRaw > 0.01) {
     const kalan = roundPosMoneyAmount(kalanRaw, currency);
     const installments = args.installments ?? null;
     if (installments != null && isValidPesinatliInstallments(installments)) {

@@ -119,33 +119,35 @@ export default defineConfig({
     port: 6173,
     open: false,
     proxy: {
-      /** pg_bridge — tarayıcı aynı origin (Vite) üzerinden; köprü yine :3001'de çalışmalı */
+      /** pg_bridge — Vite proxy üzerinden köprüye yönlendir.
+       *  Port: BRIDGE_PORT env (varsayılan 3001). 3001 Colima/ssh tarafından
+       *  tutuluyorsa BRIDGE_PORT=3002 ile çalıştırın. */
       '/api/status': {
-        target: 'http://localhost:3001',
+        target: `http://localhost:${process.env.BRIDGE_PORT || '3001'}`,
         changeOrigin: true,
       },
       '/api/pg_query': {
-        target: 'http://localhost:3001',
+        target: `http://localhost:${process.env.BRIDGE_PORT || '3001'}`,
         changeOrigin: true,
       },
       '/api/logo': {
-        target: 'http://localhost:3001',
+        target: `http://localhost:${process.env.BRIDGE_PORT || '3001'}`,
         changeOrigin: true,
       },
       '/api/erp-logo-proxy': {
-        target: 'http://localhost:3001',
+        target: `http://localhost:${process.env.BRIDGE_PORT || '3001'}`,
         changeOrigin: true,
       },
       '/api/caller_id': {
-        target: 'http://localhost:3001',
+        target: `http://localhost:${process.env.BRIDGE_PORT || '3001'}`,
         changeOrigin: true,
       },
       '/api/delivery_order': {
-        target: 'http://localhost:3001',
+        target: `http://localhost:${process.env.BRIDGE_PORT || '3001'}`,
         changeOrigin: true,
       },
       '/api/grafana': {
-        target: 'http://localhost:3001',
+        target: `http://localhost:${process.env.BRIDGE_PORT || '3001'}`,
         changeOrigin: true,
       },
       /** whatshapp Next (varsayılan :3000) — tarayıcıda CORS / mixed content olmadan köprü */

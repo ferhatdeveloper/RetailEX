@@ -315,64 +315,133 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     return yearRangeFromPicker(selectedYear);
   }, [mode, selectedMonth, selectedYear]);
 
-  const loadData = useCallback(async () => {
-    if (!periodRange) {
-      setSales([]);
-      setExpenses([]);
-      setPurchases([]);
-      setProfitDistribution(null);
-      return;
-    }
-    setLoading(true);
-    try {
-      const targetYear =
-        mode === 'monthly-days'
-          ? parseInt(selectedMonth.slice(0, 4), 10)
-          : selectedYear;
-      const targetMonth =
-        mode === 'monthly-days'
-          ? parseInt(selectedMonth.slice(5, 7), 10)
-          : 0;
-      const [saleRows, expenseRows, cashLines, purchaseRows, supplierRows, profitDist] = await Promise.all([
-        salesAPI.getByDateRange(periodRange.start, periodRange.end),
-        expenseAPI.getAll({ startDate: periodRange.start, endDate: periodRange.end }),
-        fetchKasaIslemleri({
-          baslangic_tarihi: periodRange.start,
-          bitis_tarihi: `${periodRange.end}T23:59:59`,
-        }).catch(() => []),
-        fetchPeriodPurchases(periodRange.start, periodRange.end),
-        supplierAPI.getAll({ cardType: 'supplier' }),
-        mode === 'monthly-days' && targetYear && targetMonth
-          ? getMonthlyProfitDistribution(targetYear, targetMonth).catch((err) => {
-              console.warn('[PeriodSummaryReport] kâr dağıtımı özeti alınamadı:', err);
-              return null;
-            })
-          : Promise.resolve(null),
-      ]);
-      setSales(Array.isArray(saleRows) ? saleRows : []);
-      setExpenses(
-        mergeExpensesWithCashOuts(
-          Array.isArray(expenseRows) ? expenseRows : [],
-          Array.isArray(cashLines) ? cashLines : [],
-        ),
-      );
-      setPurchases(Array.isArray(purchaseRows) ? purchaseRows : []);
-      setSuppliers(Array.isArray(supplierRows) ? supplierRows : []);
-      setProfitDistribution(profitDist);
-    } catch (err) {
-      console.error('[PeriodSummaryReport] yükleme hatası:', err);
-      setSales([]);
-      setExpenses([]);
-      setPurchases([]);
-      setProfitDistribution(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [periodRange, mode, selectedMonth, selectedYear]);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData, selectedFirm?.firm_nr]);
+  // Ortak sorgu parametreleri — ledger snapshot değişmez, sorgu tazelenir.
+  const queryCommon = useMemo(
+    () => ({
+      staleTime: 0,
+      refetchInterval: 60_000,
+      refetchOnWindowFocus: true,
+      retry: 1,
+    }),
+    [],
+  );
+
+  const firmKey = selectedFirm?.firm_nr ?? null;
+  const targetYear = mode === 'monthly-days' ? parseInt(selectedMonth.slice(0, 4), 10) : selectedYear;
+  const targetMonth = mode === 'monthly-days' ? parseInt(selectedMonth.slice(5, 7), 10) : 0;
+  const isMonthlyProfitEligible =
+    mode === 'monthly-days' && Number.isFinite(targetYear) && Number.isFinite(targetMonth) && targetMonth >= 1 && targetMonth <= 12;
+
+  // sales referansı useQuery.data üzerinden geliyor (aşağıdaki salesQuery) — refactor 7a34520d sonrası
+  // Satışlar — tarih aralığı
+  const salesQuery = useQuery({
+    queryKey: ['periodSummary', 'sales', firmKey, periodRange?.start, periodRange?.end],
+    queryFn: async () => {
+      const rows = await salesAPI.getByDateRange(periodRange!.start, periodRange!.end);
+      return Array.isArray(rows) ? (rows as Sale[]) : [];
+    },
+    enabled: !!periodRange,
+    ...queryCommon,
+  });
+
+  // Gider kartı — tarih aralığı
+  const expensesBaseQuery = useQuery({
+    queryKey: ['periodSummary', 'expenses', firmKey, periodRange?.start, periodRange?.end],
+    queryFn: async () => {
+      const rows = await expenseAPI.getAll({
+        startDate: periodRange!.start,
+        endDate: periodRange!.end,
+      });
+      return Array.isArray(rows) ? (rows as Expense[]) : [];
+    },
+    enabled: !!periodRange,
+    ...queryCommon,
+  });
+
+  // Kasa çıkışları — bağlanmamış cash-out merge için
+  const cashLinesQuery = useQuery({
+    queryKey: ['periodSummary', 'cashLines', firmKey, periodRange?.start, periodRange?.end],
+    queryFn: async () => {
+      const rows = await fetchKasaIslemleri({
+        baslangic_tarihi: periodRange!.start,
+        bitis_tarihi: `${periodRange!.end}T23:59:59`,
+      }).catch(() => []);
+      return Array.isArray(rows) ? rows : [];
+    },
+    enabled: !!periodRange,
+    ...queryCommon,
+  });
+
+  const expenses = useMemo(
+    () =>
+      mergeExpensesWithCashOuts(
+        expensesBaseQuery.data ?? [],
+        cashLinesQuery.data ?? [],
+      ),
+    [expensesBaseQuery.data, cashLinesQuery.data],
+  );
+
+  // Alış faturaları — sayfalı, hepsi birleştirilir
+  const purchasesQuery = useQuery({
+    queryKey: ['periodSummary', 'purchases', firmKey, periodRange?.start, periodRange?.end],
+    queryFn: () => fetchPeriodPurchases(periodRange!.start, periodRange!.end),
+    enabled: !!periodRange,
+    ...queryCommon,
+  });
+
+  // Tedarikçiler — bakiye listesi
+  const suppliersQuery = useQuery({
+    queryKey: ['periodSummary', 'suppliers', firmKey],
+    queryFn: async () => {
+      const rows = await supplierAPI.getAll({ cardType: 'supplier' });
+      return Array.isArray(rows) ? (rows as Supplier[]) : [];
+    },
+    enabled: !!firmKey,
+    ...queryCommon,
+  });
+
+  // Kâr dağıtımı — "anlık hesap (cache yok)" kartı; refetchInterval ile her dakika tazelenir.
+  const monthlyProfitQuery = useQuery({
+    queryKey: [
+      'periodSummary',
+      'monthlyProfit',
+      firmKey,
+      mode,
+      isMonthlyProfitEligible ? targetYear : null,
+      isMonthlyProfitEligible ? targetMonth : null,
+    ],
+    queryFn: async () => {
+      try {
+        const summary = await getMonthlyProfitDistribution(targetYear, targetMonth);
+        return summary;
+      } catch (err) {
+        console.warn('[PeriodSummaryReport] kâr dağıtımı özeti alınamadı:', err);
+        return null;
+      }
+    },
+    enabled: !!firmKey && isMonthlyProfitEligible,
+    ...queryCommon,
+  });
+
+  const sales = salesQuery.data ?? [];
+  const purchases = purchasesQuery.data ?? [];
+  const suppliers = suppliersQuery.data ?? [];
+  const profitDistribution = monthlyProfitQuery.data ?? null;
+
+  const isAnyFetching =
+    salesQuery.isFetching ||
+    expensesBaseQuery.isFetching ||
+    cashLinesQuery.isFetching ||
+    purchasesQuery.isFetching ||
+    suppliersQuery.isFetching ||
+    (isMonthlyProfitEligible ? monthlyProfitQuery.isFetching : false);
+
+  // Yenile — tüm periodSummary sorgularını invalidate et.
+  const refreshAll = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['periodSummary'] });
+  }, [queryClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -963,7 +1032,20 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     <div className="space-y-3">
       <div className="rounded-lg border bg-white px-3 py-2">
         <div className="flex flex-wrap items-end justify-between gap-2">
-          <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+            <button
+              type="button"
+              onClick={refreshAll}
+              title={tm('rptPeriodRefresh') || 'Yenile'}
+              aria-label={tm('rptPeriodRefresh') || 'Yenile'}
+              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              disabled={isAnyFetching}
+            >
+              <RefreshCw className={`h-3 w-3 ${isAnyFetching ? 'animate-spin' : ''}`} aria-hidden />
+              {tm('rptPeriodRefresh') || 'Yenile'}
+            </button>
+          </div>
           <label className="flex flex-col gap-0.5 min-w-[9rem]">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               {mode === 'monthly-days' ? tm('rptPeriodSelectMonth') : tm('rptPeriodSelectYear')}
@@ -1026,7 +1108,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       ) : null}
 
       <div className="relative rounded-lg border bg-white p-2">
-        {loading ? (
+        {isAnyFetching ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/70">
             <Loader2 className="h-6 w-6 animate-spin text-blue-600" aria-hidden />
           </div>

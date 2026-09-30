@@ -2712,6 +2712,97 @@ export function SmartScheduler() {
                                     </div>
                                 ))}
                             </div>
+                            {/* Peşinat / Kalan bilgi kartı — peşinat alınmışsa göster */}
+                            {(() => {
+                                const totalPrice = Number(selectedApt.total_price ?? 0);
+                                const depositAmount = Number(selectedApt.deposit_amount ?? 0);
+                                const remainderPaidAmount = Number(selectedApt.remainder_paid_amount ?? 0);
+                                const hasDeposit = Number.isFinite(depositAmount) && depositAmount > 0;
+                                if (!hasDeposit) return null;
+                                const remaining = Math.max(0, totalPrice - depositAmount - remainderPaidAmount);
+                                const depositLabel = tm('prePaymentAmount') || 'Ön Ödeme (Peşinat)';
+                                const remainingLabel = tm('remainingAmount') || 'Kalan Tutar';
+                                const depositFicheNo = selectedApt.deposit_sale_fiche_no || selectedApt.deposit_sale_id || '—';
+                                return (
+                                    <div
+                                        data-testid="appointment-detail-deposit-strip"
+                                        style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '1fr 1fr',
+                                            gap: 8,
+                                            marginBottom: 14,
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                background: '#ecfdf5',
+                                                border: '1px solid #a7f3d0',
+                                                borderRadius: 8,
+                                                padding: '10px 12px',
+                                            }}
+                                        >
+                                            <p
+                                                style={{
+                                                    fontSize: 10,
+                                                    fontWeight: 700,
+                                                    color: '#065f46',
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.08em',
+                                                    marginBottom: 4,
+                                                }}
+                                            >
+                                                {depositLabel}
+                                            </p>
+                                            <p
+                                                data-testid="appointment-detail-deposit-amount"
+                                                style={{ fontSize: 14, fontWeight: 700, color: '#047857', fontFamily: 'monospace' }}
+                                            >
+                                                {formatMoneyAmount(depositAmount, { minFrac: 0, maxFrac: 0 })}
+                                            </p>
+                                            <p style={{ fontSize: 10, color: '#047857', marginTop: 2 }}>
+                                                Fiş: <span style={{ fontFamily: 'monospace' }}>{depositFicheNo}</span>
+                                            </p>
+                                        </div>
+                                        <div
+                                            style={{
+                                                background: remaining > 0 ? '#fef2f2' : '#f0fdf4',
+                                                border: `1px solid ${remaining > 0 ? '#fecaca' : '#bbf7d0'}`,
+                                                borderRadius: 8,
+                                                padding: '10px 12px',
+                                            }}
+                                        >
+                                            <p
+                                                style={{
+                                                    fontSize: 10,
+                                                    fontWeight: 700,
+                                                    color: remaining > 0 ? '#991b1b' : '#166534',
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.08em',
+                                                    marginBottom: 4,
+                                                }}
+                                            >
+                                                {remainingLabel}
+                                            </p>
+                                            <p
+                                                data-testid="appointment-detail-remaining-amount"
+                                                style={{
+                                                    fontSize: 14,
+                                                    fontWeight: 700,
+                                                    color: remaining > 0 ? '#b91c1c' : '#15803d',
+                                                    fontFamily: 'monospace',
+                                                }}
+                                            >
+                                                {formatMoneyAmount(remaining, { minFrac: 0, maxFrac: 0 })}
+                                            </p>
+                                            <p style={{ fontSize: 10, color: remaining > 0 ? '#b91c1c' : '#15803d', marginTop: 2 }}>
+                                                {remaining > 0
+                                                    ? tm('pesinatPartialNotCari') || 'Cariye yazılmaz, randevu tamamlanırken tahsil edilir.'
+                                                    : tm('appointmentFullyPaid') || 'Tamamı ödendi'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                             <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
                                 <label
                                     htmlFor="beauty-panel-apt-time"

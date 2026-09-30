@@ -42,7 +42,10 @@ import {
   loadReportMenuParams,
   subscribeReportMenuParams,
 } from '../../services/reportMenuParamsService';
-import { isPosPaymentBackToSaleAllowed } from '../../utils/posPaymentBackGuard';
+import {
+  isPosPaymentBackToSaleAllowed,
+  isPosPaymentCancelWithoutReasonAllowed,
+} from '../../utils/posPaymentBackGuard';
 
 // Helper function to format number with Turkish formatting (nokta binlik, virgül ondalık)
 const formatNumberInput = (value: string): string => {
@@ -256,6 +259,15 @@ export function POSPaymentModal({
   const [allowPaymentBackToSale, setAllowPaymentBackToSale] = useState(() =>
     isPosPaymentBackToSaleAllowed(),
   );
+  /**
+   * POS ödeme ekranı kapatılırken "iptal nedeni" soru modalı gösterilsin mi?
+   * Varsayılan: true (parametre açık) → soru sormadan doğrudan kapat.
+   * Yönetici `pos-payment-cancel-without-reason` parametresini kapatırsa
+   * eski davranışa (soru modalı) geri dönülür.
+   */
+  const [cancelWithoutReason, setCancelWithoutReason] = useState(() =>
+    isPosPaymentCancelWithoutReasonAllowed(),
+  );
   
   // Receipt Settings (restoran: Tauri sessiz yazdır; Market POS’ta kapalı)
   const [autoPrint, setAutoPrint] = useState(false);
@@ -273,10 +285,14 @@ export function POSPaymentModal({
   useEffect(() => {
     let cancelled = false;
     void loadReportMenuParams().then((p) => {
-      if (!cancelled) setAllowPaymentBackToSale(isPosPaymentBackToSaleAllowed(p));
+      if (!cancelled) {
+        setAllowPaymentBackToSale(isPosPaymentBackToSaleAllowed(p));
+        setCancelWithoutReason(isPosPaymentCancelWithoutReasonAllowed(p));
+      }
     });
     const unsub = subscribeReportMenuParams((p) => {
       setAllowPaymentBackToSale(isPosPaymentBackToSaleAllowed(p));
+      setCancelWithoutReason(isPosPaymentCancelWithoutReasonAllowed(p));
     });
     return () => {
       cancelled = true;
@@ -836,30 +852,39 @@ const handleCollectCustomerDebt = async () => {
     let changeAfter = change;
 
     if (remainingAfter > CARI_REMAINING_THRESHOLD) {
-      if (!selectedCustomer) {
-        alert(selectCustomerForCariMessage);
-        return;
+      // Peşinatlı modda kalan cariye yazılmaz — kullanıcı randevu
+      // tamamlanırken ayrıca tahsil edecek. Bu blok yalnızca Peşinatlı
+      // dışı akışlarda (nakit + veresiye, kart + veresiye vb.) devreye girer.
+      if (currentMethod === 'pesinatli') {
+        // Peşinatlı: kalan alanı boş bırakılır, hata yok.
+        // remainingAfter > 0 olabilir; kullanıcı randevu tamamlanırken
+        // veya sonraki gelişinde ayrıca ödeme alacak.
+      } else {
+        if (!selectedCustomer) {
+          alert(selectCustomerForCariMessage);
+          return;
+        }
+        // Peşinatlı seçili ve taksit planı belirli ise kalan tutar
+        // taksit metadata'sı ile cariye yazılır; değilse düz veresiye.
+        // Yeni akışta: handleAddPayment zaten iki satır üretir (peşinat +
+        // veresiye) → remainingAfter = 0 olur ve bu blok atlanır. Buradaki
+        // yalnızca fallback — kullanıcı eski usul "peşinat ekle + Kalanı
+        // cariye yaz" akışını kullandıysa devreye girer.
+        const veresiyeRow =
+          currentMethod === 'pesinatli' &&
+          isValidPesinatliInstallments(pesinatInstallments)
+            ? buildPesinatliVeresiye({
+                amount: remainingAfter,
+                installments: pesinatInstallments as 3 | 6 | 9 | 12,
+                currency: baseCurrency,
+              })
+            : buildVeresiyeForRemaining(remainingAfter);
+        paymentsToSubmit = [...paymentsToSubmit, veresiyeRow as Payment];
+        const amountInBase = (veresiyeRow as any).amount * (exchangeRates[(veresiyeRow as any).currency] ?? 1);
+        totalPaidAfter = roundPosMoneyAmount(totalPaidAfter + amountInBase, baseCurrency);
+        remainingAfter = 0;
+        changeAfter = 0;
       }
-      // Peşinatlı seçili ve taksit planı belirli ise kalan tutar
-      // taksit metadata'sı ile cariye yazılır; değilse düz veresiye.
-      // Yeni akışta: handleAddPayment zaten iki satır üretir (peşinat +
-      // veresiye) → remainingAfter = 0 olur ve bu blok atlanır. Buradaki
-      // yalnızca fallback — kullanıcı eski usul "peşinat ekle + Kalanı
-      // cariye yaz" akışını kullandıysa devreye girer.
-      const veresiyeRow =
-        currentMethod === 'pesinatli' &&
-        isValidPesinatliInstallments(pesinatInstallments)
-          ? buildPesinatliVeresiye({
-              amount: remainingAfter,
-              installments: pesinatInstallments as 3 | 6 | 9 | 12,
-              currency: baseCurrency,
-            })
-          : buildVeresiyeForRemaining(remainingAfter);
-      paymentsToSubmit = [...paymentsToSubmit, veresiyeRow as Payment];
-      const amountInBase = (veresiyeRow as any).amount * (exchangeRates[(veresiyeRow as any).currency] ?? 1);
-      totalPaidAfter = roundPosMoneyAmount(totalPaidAfter + amountInBase, baseCurrency);
-      remainingAfter = 0;
-      changeAfter = 0;
     }
 
     setIsLoading(true);
@@ -929,6 +954,13 @@ const handleCollectCustomerDebt = async () => {
         tm('posPaymentBackBlocked') ||
           'Bu işlem parametre ile kapatıldı. Ödeme ekranından satışa geri dönüşe izin verilmiyor.',
       );
+      return;
+    }
+    // Varsayılan: soru modalı sormadan doğrudan kapat
+    // (parametre `pos-payment-cancel-without-reason` açık = true).
+    // Yönetici parametreyi kapatırsa eski davranışa (iptal nedeni modalı) döner.
+    if (cancelWithoutReason) {
+      onClose();
       return;
     }
     setShowCancelReasonModal(true);
@@ -1382,12 +1414,12 @@ const handleCollectCustomerDebt = async () => {
                     <span>
                       {tm('pesinatSubtitle') ||
                         t.pesinatSubtitle ||
-                        'Bugünkü tutar peşin, kalan sonraki gelişinizde veresiye yazılır.'}
+                        'Peşin alınır. Kalan tutar cariye yazılmaz, randevu tamamlanırken ayrıca tahsil edilir.'}
                     </span>
                   </div>
                 )}
 
-                {/* Randevu bağlamı: Ön Ödeme + Kalan Tutar bilgi kartı.
+                {/* Peşinatlı + appointmentContext: Ön Ödeme + Kalan Tutar bilgi kartı.
                     Yalnızca Peşinatlı + appointmentContext birlikteyken görünür.
                     Kullanıcı "Peşinat Ekle" akışında kalan üzerinden ödeme
                     alacağını buradan okuyabilir. */}
@@ -1448,6 +1480,62 @@ const handleCollectCustomerDebt = async () => {
                     </div>
                   </div>
                 )}
+
+                {/* Peşinatlı + peşinat eklendikten sonra: Sepet / Alınan / Kalan
+                    bilgi kartı. Kalan cariye yazılmaz — randevu tamamlanırken
+                    ayrıca tahsil edilecek. appointmentContext olsa bile
+                    "şu an sepete girilen tutar" bilgisini gösterir. */}
+                {currentMethod === 'pesinatli' &&
+                  totalPaid > 0 &&
+                  remaining > posMoneyEpsilon(baseCurrency) && (
+                    <div
+                      data-testid="pesinat-partial-paid-strip"
+                      className={`mt-1.5 px-2 py-1.5 text-[11px] rounded border ${
+                        darkMode
+                          ? 'bg-amber-900/20 border-amber-700/60 text-amber-200'
+                          : 'bg-amber-50 border-amber-200 text-amber-800'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">
+                          {tm('pesinatPartialPaidLabel') ||
+                            t.pesinatPartialPaidLabel ||
+                            'Peşinat alındı'}
+                          :
+                        </span>
+                        <span
+                          data-testid="pesinat-partial-paid-amount"
+                          className="font-mono font-bold"
+                        >
+                          {formatMoneyWithCode(totalPaid, baseCurrency)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 mt-0.5">
+                        <span className="font-medium">
+                          {tm('remainingAmount') ||
+                            t.remainingAmount ||
+                            'Kalan Tutar'}
+                          :
+                        </span>
+                        <span
+                          data-testid="pesinat-partial-remaining-amount"
+                          className="font-mono font-bold text-rose-700 dark:text-rose-300"
+                        >
+                          {formatMoneyWithCode(remaining, baseCurrency)}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[10px] opacity-90 font-medium">
+                        {tm('pesinatPartialNotCari') ||
+                          t.pesinatPartialNotCari ||
+                          'Kalan tutar cariye yazılmaz.'}
+                      </div>
+                      <div className="mt-0.5 text-[10px] opacity-80">
+                        {tm('pesinatPartialFooter') ||
+                          t.pesinatPartialFooter ||
+                          'Randevu tamamlanırken ayrıca tahsil edilir.'}
+                      </div>
+                    </div>
+                  )}
               </div>
 
               {/* Amount Input */}
