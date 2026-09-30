@@ -11466,6 +11466,8 @@ export const excelModuleTranslations = {
   bBeautyCustomer: { tr: 'Müşteri', en: 'Customer', ar: 'العميل', ku: 'کڕیار' },
   bBeautyService: { tr: 'Hizmet', en: 'Service', ar: 'الخدمة', ku: 'خزمەتگوزاری' },
   bBeautyDeposit: { tr: 'Peşinat', en: 'Deposit', ar: 'المقدم', ku: 'پێشەکی' },
+  /** Peşinat bilgi satırında "Peşinat (düşüldü)" gibi kısa etiket için kullanılır. */
+  bDepositDeducted: { tr: 'düşüldü', en: 'deducted', ar: 'مخصوم', ku: 'دابەزێندراوە' },
   bBeautyPaidPanelTitle: { tr: 'Ödeme alındı', en: 'Payment received', ar: 'تم استلام الدفع', ku: 'پارە وەرگیرا' },
   bBeautyPaidPanelSubtitle: { tr: 'Randevu özeti (salt okunur)', en: 'Appointment summary (read-only)', ar: 'ملخص الموعد (للقراءة فقط)', ku: 'پوختەی ئامادەبوون (تەنها خوێندنەوە)' },
   bBeautyPaidNoNewSale: { tr: 'Bu kayıt için yeni satış veya ödeme işlemi oluşturulmaz.', en: 'No new sale or payment transaction is created for this record.', ar: 'لا يتم إنشاء عملية بيع أو دفع جديدة لهذا السجل.', ku: 'هیچ فرۆشتن یان پارەدانی نوێ دروست ناکرێت بۆ ئەم تۆمارە.' },

@@ -313,28 +313,31 @@ export function POSPaymentModal({
     setCurrentCurrency(baseCurrency);
   }, [baseCurrency]);
 
-  // Peşinatlı satış: input boşsa "bugün ödenecek" alanını kalan sepet
-  // tutarı ile doldur (serbest — kullanıcı küçültebilir). currentAmount
-  // üzerinde yazılı bir değer varsa müdahale etme (kullanıcı override'ı).
-  //
-  // Randevu bağlamı (appointmentContext) verildiğinde: default değer
-  // `remainingAmount` olur — toplam hizmet tutarının daha önce alınmış
-  // peşinat düşülmüş kalan kısmı. Bu, IN_PROGRESS randevuya gelen kullanıcı
-  // için "kalan tutar üzerinden ödeme al" UX'idir.
+  // Ödeme yöntemi değiştiğinde "Miktar" inputu için default değer öner:
+  //   • Peşinatlı + appointmentContext → kalan tutar (toplam − ön ödeme)
+  //   • Peşinatlı (bağlam yok)         → kalan sepet tutarı
+  //   • Nakit / Kart / Veresiye        → finalTotal (toplam)
+  // Kullanıcı input'a yazdıysa müdahale etme (override korunur).
   useEffect(() => {
-    if (currentMethod !== 'pesinatli') return;
     if (currentAmount && parseFormattedNumber(currentAmount) > 0) return;
-    const remainingFromContext =
-      appointmentContext &&
-      Number.isFinite(appointmentContext.remainingAmount) &&
-      appointmentContext.remainingAmount > 0
-        ? appointmentContext.remainingAmount
-        : null;
-    const suggested = remainingFromContext ?? suggestPesinatliPayNow(remaining);
+    let suggested = 0;
+    if (currentMethod === 'pesinatli') {
+      const remainingFromContext =
+        appointmentContext &&
+        Number.isFinite(appointmentContext.remainingAmount) &&
+        appointmentContext.remainingAmount > 0
+          ? appointmentContext.remainingAmount
+          : null;
+      suggested = remainingFromContext ?? suggestPesinatliPayNow(remaining);
+    } else {
+      // Nakit / Kart / Veresiye — sepet toplamı (finalTotal) default.
+      suggested = Number.isFinite(finalTotal) && finalTotal > 0 ? finalTotal : 0;
+    }
     if (suggested > 0) {
       setCurrentAmount(formatNumberInput(suggested.toString()));
     }
-    // remaining değiştiğinde de yeniden öner (sepet değişti / ödeme eklendi).
+    // remaining/finalTotal değiştiğinde de yeniden öner (sepet değişti /
+    // ödeme eklendi). Kullanıcı override'ı yukarıdaki guard ile korunur.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentMethod]);
 

@@ -4351,6 +4351,46 @@ export function AppointmentPOS({
                                     <span style={{ fontSize: 12, fontWeight: 800, color: '#111827' }}>{tm('total')}</span>
                                     <span style={{ fontSize: 15, fontWeight: 800, color: '#7c3aed' }}>{fmt(total)}</span>
                                 </div>
+                                {/* Peşinat (depozito) bilgi satırı — mevcut randevuya ait
+                                    daha önce alınmış ön ödeme varsa toplam satırının hemen
+                                    altında ince bilgi amaçlı gösterim. Ek alan DEĞİL; mevcut
+                                    form yapısı bozulmadan kalan tutar görünür. */}
+                                {existingAppointment?.id && Number((existingAppointment as { deposit_amount?: number }).deposit_amount ?? 0) > 0 && (() => {
+                                    const apt = existingAppointment;
+                                    const aptTotal = Number(apt.total_price ?? 0);
+                                    const aptDeposit = Number((apt as { deposit_amount?: number }).deposit_amount ?? 0);
+                                    const aptPaidRem = Number((apt as { remainder_paid_amount?: number }).remainder_paid_amount ?? 0);
+                                    const aptRemaining = Math.max(0, aptTotal - aptDeposit - aptPaidRem);
+                                    return (
+                                        <div
+                                            data-testid="appointment-deposit-info"
+                                            style={{
+                                                marginTop: 6, paddingTop: 6, borderTop: '1px dashed #e8e4f0',
+                                                display: 'flex', flexDirection: 'column', gap: 2,
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                                <span style={{ fontSize: 10, color: '#15803d', fontWeight: 700 }}>
+                                                    {tm('bBeautyDeposit') || 'Peşinat'}
+                                                    <span style={{ fontSize: 9, color: '#6b7280', fontWeight: 600, marginLeft: 4 }}>
+                                                        ({tm('bDepositDeducted') || 'düşüldü'})
+                                                    </span>
+                                                </span>
+                                                <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d' }}>
+                                                    -{fmt(aptDeposit)}
+                                                </span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                                <span style={{ fontSize: 10, color: '#b91c1c', fontWeight: 700 }}>
+                                                    {tm('bRemainingAmount') || 'Kalan'}
+                                                </span>
+                                                <span style={{ fontSize: 11, fontWeight: 800, color: '#b91c1c' }}>
+                                                    {fmt(aptRemaining)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -5019,18 +5059,36 @@ export function AppointmentPOS({
                                     {existingAppointment.appointment_time ? ` · ${String(existingAppointment.appointment_time).slice(0, 5)}` : ''}
                                 </span>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, marginBottom: 8 }}>
-                                <div>
-                                    <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700 }}>{tm('bTotal') || 'Toplam'}</div>
-                                    <div style={{ fontSize: 13, fontWeight: 800, color: '#111827' }}>{total.toLocaleString('tr-TR')}</div>
+                            {/* Toplam + Peşinat + Kalan — ince 2 satırlık özet (3-kolon grid değil).
+                                Ana checkout paneliyle aynı minimal desen; "Hizmet Ver ve Kapat"
+                                butonunun üstünde kompakt bilgi. */}
+                            <div
+                                data-testid="in-progress-totals-strip"
+                                style={{
+                                    display: 'flex', flexDirection: 'column', gap: 3,
+                                    marginBottom: 8, padding: '6px 8px',
+                                    background: '#faf5ff', borderRadius: 6,
+                                    border: '1px solid #ede9fe',
+                                }}
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                    <span style={{ fontSize: 10, color: '#6b7280', fontWeight: 700 }}>{tm('bTotal') || 'Toplam'}</span>
+                                    <span style={{ fontSize: 13, fontWeight: 800, color: '#111827' }}>{total.toLocaleString('tr-TR')}</span>
                                 </div>
-                                <div>
-                                    <div style={{ fontSize: 10, color: '#15803d', fontWeight: 700 }}>{tm('bDeposit') || 'Peşinat'}</div>
-                                    <div style={{ fontSize: 13, fontWeight: 800, color: '#15803d' }}>{deposit.toLocaleString('tr-TR')}</div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: 10, color: '#b91c1c', fontWeight: 700 }}>{tm('bRemainingAmount') || 'Kalan'}</div>
-                                    <div style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c' }}>{remaining.toLocaleString('tr-TR')}</div>
+                                {deposit > 0 && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                        <span style={{ fontSize: 10, color: '#15803d', fontWeight: 700 }}>
+                                            {tm('bDeposit') || 'Peşinat'}
+                                            <span style={{ fontSize: 9, color: '#6b7280', fontWeight: 600, marginLeft: 4 }}>
+                                                ({tm('bDepositDeducted') || 'düşüldü'})
+                                            </span>
+                                        </span>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d' }}>-{deposit.toLocaleString('tr-TR')}</span>
+                                    </div>
+                                )}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: '1px dashed #e8e4f0', paddingTop: 4, marginTop: 2 }}>
+                                    <span style={{ fontSize: 10, color: '#b91c1c', fontWeight: 700 }}>{tm('bRemainingAmount') || 'Kalan'}</span>
+                                    <span style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c' }}>{remaining.toLocaleString('tr-TR')}</span>
                                 </div>
                             </div>
                             <button
@@ -5156,7 +5214,7 @@ export function AppointmentPOS({
 
                                 <div>
                                     <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
-                                        {tm('bReceivedAmount') || 'Alınan Tutar'}
+                                        {tm('bBeautyReceivedAmount') || 'Alınan Tutar'}
                                     </div>
                                     <input
                                         type="number"

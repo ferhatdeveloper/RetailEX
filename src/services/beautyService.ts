@@ -9360,11 +9360,13 @@ export const beautyService = {
                 package_purchase_id: r.package_purchase_id ? String(r.package_purchase_id) : undefined,
                 session_series_id: r.session_series_id ? String(r.session_series_id) : undefined,
                 commission_amount: Number(r.commission_amount ?? 0),
+                deposit_amount: deposit,
+                remainder_paid_amount: paidRemainder,
             } as BeautyAppointment;
         }).map((apt) => {
             const total = Number(apt.total_price ?? 0);
-            const deposit = Number((apt as { deposit_amount?: number }).deposit_amount ?? 0);
-            const paidRemainder = Number((apt as { remainder_paid_amount?: number }).remainder_paid_amount ?? 0);
+            const deposit = Number(apt.deposit_amount ?? 0);
+            const paidRemainder = Number(apt.remainder_paid_amount ?? 0);
             const remaining = Math.max(0, total - deposit - paidRemainder);
             return Object.assign(apt, { remaining_amount: remaining });
         });
