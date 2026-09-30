@@ -5794,10 +5794,10 @@ export const beautyService = {
                 {
                     invoiceNumber,
                     beautySaleId: id,
-                    linkedAppointmentId: opts.linkedAppointmentId ?? null,
-                    parentSaleId: opts.parentSaleId ?? null,
-                    saleGroupId: opts.saleGroupId ?? null,
-                    isDeposit: opts.isDeposit ?? false,
+                    linkedAppointmentId: opts?.linkedAppointmentId ?? null,
+                    parentSaleId: opts?.parentSaleId ?? null,
+                    saleGroupId: opts?.saleGroupId ?? null,
+                    isDeposit: opts?.isDeposit ?? false,
                 },
             );
         }
