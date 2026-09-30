@@ -2530,11 +2530,19 @@ export const beautyService = {
         if (shouldUseTenantPostgrestApi()) {
             const { postgrest } = await import('./api/postgrestClient');
             const fn = erpFirmNrForRow();
-            const rows = await postgrest.get<any[]>(
-                `/rex_${fn}_service_staff_commissions`,
-                { select: 'service_id,staff_id,percent,is_active', filter: `service_id=eq.${encodeURIComponent(id)}`, limit: 500 },
-                { schema: 'beauty' }
-            );
+            let rows: any[] = [];
+            try {
+                rows = await postgrest.get<any[]>(
+                    `/rex_${fn}_service_staff_commissions`,
+                    { select: 'service_id,staff_id,percent,is_active', filter: `service_id=eq.${encodeURIComponent(id)}`, limit: 500 },
+                    { schema: 'beauty' }
+                );
+            } catch (err) {
+                // Tablo tenant'ta yoksa (Migration 183 öncesi) sessizce boş dön —
+                // UI düşmesin, "komisyon tanımı yok" varsayılsın.
+                console.warn('[beautyService] service_staff_commissions PostgREST unavailable, fallback empty:', err);
+                rows = [];
+            }
             return (rows || []).map((r) => ({
                 service_id: String(r.service_id ?? id),
                 staff_id: String(r.staff_id ?? ''),
@@ -2543,12 +2551,20 @@ export const beautyService = {
             }));
         }
         const t = postgres.getCardTableName('service_staff_commissions', 'beauty');
-        const { rows } = await postgres.query(
-            `SELECT service_id, staff_id, percent, is_active
-               FROM ${t}
-              WHERE service_id = $1`,
-            [id]
-        );
+        let rows: any[] = [];
+        try {
+            const res = await postgres.query(
+                `SELECT service_id, staff_id, percent, is_active
+                   FROM ${t}
+                  WHERE service_id = $1`,
+                [id]
+            );
+            rows = (res.rows as any[]) || [];
+        } catch (err) {
+            // Tablo tenant'ta yoksa (Migration 183 öncesi) sessizce boş dön
+            console.warn('[beautyService] service_staff_commissions SQL unavailable, fallback empty:', err);
+            rows = [];
+        }
         return (rows as any[]).map((r) => ({
             service_id: String(r.service_id ?? id),
             staff_id: String(r.staff_id ?? ''),
@@ -9394,7 +9410,9 @@ export const beautyService = {
                 a.session_series_id, a.appointment_date, a.appointment_time,
                 c.name AS customer_name, c.phone AS customer_phone,
                 COALESCE(bs.name, rs.name, pr.name) AS service_name,
-                COALESCE(bs.color, rs.color) AS service_color,
+                -- bs.color: beauty_services (güzellik); rs.color/products.color
+                -- bu tablolarda yok (master 2631-2670) — bs NULL ise fallback #6366f1
+                bs.color AS service_color,
                 sp.name AS staff_name,
                 d.name AS device_name
              FROM ${table} a
