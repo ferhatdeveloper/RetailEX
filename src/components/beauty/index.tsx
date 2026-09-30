@@ -757,6 +757,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                         <AppointmentPOS
                             initialTab="products"
                             salesMode="products_only"
+                            onSelectAppointment={() => { /* product_sales modunda in-progress paneli yok */ }}
                             onBack={() => setActiveTab('dashboard')}
                         />
                     </div>

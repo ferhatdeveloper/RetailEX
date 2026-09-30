@@ -169,6 +169,30 @@ interface POSPaymentModalProps {
    * Standart POS'larda kullanılmaz (mode yok / undefined).
    */
   mode?: 'standard' | 'prePayment';
+  /**
+   * Randevu bağlamı — Peşinatlı akışta ön ödeme ve kalan tutar bilgisi için.
+   * Verildiğinde ve `currentMethod === 'pesinatli'` seçildiğinde:
+   * - Bilgi kartında "Ön Ödeme" + "Kalan Tutar" gösterilir
+   * - `currentAmount` input default değeri = `remainingAmount` olur
+   * - "Peşinat Ekle" butonu "Kalan Ödemeyi Al" etiketine geçer
+   * Verilmezse mevcut davranış korunur (geriye dönük uyumlu).
+   */
+  appointmentContext?: POSPaymentModalAppointmentContext;
+}
+
+/**
+ * Beauty POS randevu bağlamı: hizmet toplamı + alınmış peşinat + kalan veresiye.
+ * `totalAmount === prePaymentAmount + remainingAmount` matematiksel tutarlılık.
+ */
+export interface POSPaymentModalAppointmentContext {
+  /** Randevu/appointment UUID */
+  appointmentId: string;
+  /** Hizmet toplam tutarı (IQD) — ön ödeme + kalan toplamı */
+  totalAmount: number;
+  /** Daha önce alınmış peşinat (deposit_amount) — bilgi amaçlı */
+  prePaymentAmount: number;
+  /** Kalan veresiye tutarı (totalAmount − prePaymentAmount) */
+  remainingAmount: number;
 }
 
 export function POSPaymentModal({
@@ -187,6 +211,7 @@ export function POSPaymentModal({
   onComplete,
   completeButtonLabel,
   mode = 'standard',
+  appointmentContext,
 }: POSPaymentModalProps) {
   const { t, tm, language: uiLanguage } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
@@ -291,10 +316,21 @@ export function POSPaymentModal({
   // Peşinatlı satış: input boşsa "bugün ödenecek" alanını kalan sepet
   // tutarı ile doldur (serbest — kullanıcı küçültebilir). currentAmount
   // üzerinde yazılı bir değer varsa müdahale etme (kullanıcı override'ı).
+  //
+  // Randevu bağlamı (appointmentContext) verildiğinde: default değer
+  // `remainingAmount` olur — toplam hizmet tutarının daha önce alınmış
+  // peşinat düşülmüş kalan kısmı. Bu, IN_PROGRESS randevuya gelen kullanıcı
+  // için "kalan tutar üzerinden ödeme al" UX'idir.
   useEffect(() => {
     if (currentMethod !== 'pesinatli') return;
     if (currentAmount && parseFormattedNumber(currentAmount) > 0) return;
-    const suggested = suggestPesinatliPayNow(remaining);
+    const remainingFromContext =
+      appointmentContext &&
+      Number.isFinite(appointmentContext.remainingAmount) &&
+      appointmentContext.remainingAmount > 0
+        ? appointmentContext.remainingAmount
+        : null;
+    const suggested = remainingFromContext ?? suggestPesinatliPayNow(remaining);
     if (suggested > 0) {
       setCurrentAmount(formatNumberInput(suggested.toString()));
     }
@@ -1286,6 +1322,68 @@ const handleCollectCustomerDebt = async () => {
                     </span>
                   </div>
                 )}
+
+                {/* Randevu bağlamı: Ön Ödeme + Kalan Tutar bilgi kartı.
+                    Yalnızca Peşinatlı + appointmentContext birlikteyken görünür.
+                    Kullanıcı "Peşinat Ekle" akışında kalan üzerinden ödeme
+                    alacağını buradan okuyabilir. */}
+                {currentMethod === 'pesinatli' && appointmentContext && (
+                  <div
+                    data-testid="pesinat-appointment-context"
+                    className="mt-1.5 grid grid-cols-2 gap-2 text-xs"
+                  >
+                    <div
+                      className={`px-2 py-1.5 rounded border ${
+                        darkMode
+                          ? 'bg-emerald-900/20 border-emerald-700/60'
+                          : 'bg-emerald-50 border-emerald-200'
+                      }`}
+                    >
+                      <div
+                        className={`font-medium ${
+                          darkMode ? 'text-emerald-300' : 'text-emerald-700'
+                        }`}
+                      >
+                        {tm('prePaymentAmount') ||
+                          t.prePaymentAmount ||
+                          'Ön Ödeme'}
+                      </div>
+                      <div
+                        data-testid="pesinat-pre-payment-amount"
+                        className={`font-bold font-mono ${
+                          darkMode ? 'text-emerald-200' : 'text-emerald-900'
+                        }`}
+                      >
+                        {formatMoneyWithCode(appointmentContext.prePaymentAmount, baseCurrency)}
+                      </div>
+                    </div>
+                    <div
+                      className={`px-2 py-1.5 rounded border ${
+                        darkMode
+                          ? 'bg-rose-900/20 border-rose-700/60'
+                          : 'bg-rose-50 border-rose-200'
+                      }`}
+                    >
+                      <div
+                        className={`font-medium ${
+                          darkMode ? 'text-rose-300' : 'text-rose-700'
+                        }`}
+                      >
+                        {tm('remainingAmount') ||
+                          t.remainingAmount ||
+                          'Kalan Tutar'}
+                      </div>
+                      <div
+                        data-testid="pesinat-remaining-amount"
+                        className={`font-bold font-mono ${
+                          darkMode ? 'text-rose-200' : 'text-rose-900'
+                        }`}
+                      >
+                        {formatMoneyWithCode(appointmentContext.remainingAmount, baseCurrency)}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Amount Input */}
@@ -1356,8 +1454,18 @@ const handleCollectCustomerDebt = async () => {
                     // Peşinatlı: serbest tutar modu. "Tam Tutar" / default
                     // öneri olarak `suggestPesinatliPayNow` kullanılır — input
                     // boşsa kalan sepetle dolar, kullanıcı küçültebilir.
+                    //
+                    // Randevu bağlamı verildiğinde: default değer
+                    // `appointmentContext.remainingAmount` olur — daha önce
+                    // alınmış peşinat düşülmüş kalan kısmı.
                     if (currentMethod === 'pesinatli') {
-                      const suggested = suggestPesinatliPayNow(remaining);
+                      const remainingFromContext =
+                        appointmentContext &&
+                        Number.isFinite(appointmentContext.remainingAmount) &&
+                        appointmentContext.remainingAmount > 0
+                          ? appointmentContext.remainingAmount
+                          : null;
+                      const suggested = remainingFromContext ?? suggestPesinatliPayNow(remaining);
                       const amount = suggested > 0 ? suggested : amountToAdd;
                       setCurrentAmount(formatNumberInput(amount.toString()));
                       return;
@@ -1377,9 +1485,18 @@ const handleCollectCustomerDebt = async () => {
                     ? 'bg-orange-900/30 hover:bg-orange-900/50 text-orange-400 border border-orange-700'
                     : 'bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200'
                     }`}
+                  data-testid={
+                    currentMethod === 'pesinatli' && appointmentContext
+                      ? 'pos-collect-remaining-payment'
+                      : undefined
+                  }
                 >
                   {currentMethod === 'pesinatli'
-                    ? (tm('pesinatAddButton') || t.pesinatAddButton || 'Peşinat Ekle')
+                    ? appointmentContext
+                      ? (tm('collectRemainingPayment') ||
+                          t.collectRemainingPayment ||
+                          'Kalan Ödemeyi Al')
+                      : (tm('pesinatAddButton') || t.pesinatAddButton || 'Peşinat Ekle')
                     : (t.fullAmount || 'Tam Tutar')}
                 </button>
 

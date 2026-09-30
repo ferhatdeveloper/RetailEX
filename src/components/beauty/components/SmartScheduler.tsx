@@ -1388,6 +1388,20 @@ export function SmartScheduler() {
                         prefillServiceId={prefillServiceId}
                         prefillCustomerId={prefillCustomerId}
                         existingAppointment={editingApt}
+                        onSelectAppointment={(apt) => {
+                            // POS'taki "Aktif Randevular" panelinden seçim.
+                            // null → randevu tamamlandı/iptal edildi, paneli kapat.
+                            setEditingApt(apt ?? null);
+                            if (apt?.id) {
+                                setActivePage('pos');
+                                setShowNewPage(true);
+                                setNewPrefillDate(null);
+                                setPrefillStaffId(undefined);
+                                setPrefillDeviceId(undefined);
+                                setPrefillServiceId(undefined);
+                                setPrefillCustomerId(undefined);
+                            }
+                        }}
                         onBack={() => {
                             setShowNewPage(false);
                             setNewPrefillDate(null);

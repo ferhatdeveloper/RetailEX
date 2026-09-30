@@ -285,6 +285,14 @@ export interface BeautyAppointment {
     treatment_shots?: string | null;
     /** Klinik şema ve paneller (PostgreSQL JSONB) */
     clinical_data?: BeautyAppointmentClinicalData | null;
+    /** Peşinatlı ön ödeme — bu randevu için daha önce tahsil edilen tutar (IQD). */
+    deposit_amount?: number | null;
+    /** Peşinatlı kalan ödeme — hizmet tamamlandığında tahsil edilen tutar (IQD). */
+    remainder_paid_amount?: number | null;
+    /** Peşinatlı kalan ödeme tarihi. */
+    remainder_payment_date?: string | null;
+    /** Peşinatlı ön ödeme tarihi. */
+    deposit_date?: string | null;
 }
 
 export interface BeautyBranch {

@@ -77,6 +77,7 @@ import {
 import { mergeFollowUpRemindersWithActions } from '../utils/beautyFollowUpReminderUtils';
 import { normalizePaymentMethodBucket } from '../utils/paymentMethodUtils';
 import { resolvePosCheckoutSettlement } from '../utils/saleCollectedAmounts';
+import { formatLocalYmd } from '../utils/dateLocal';
 /** Müşteri profili: randevu / satış / paket sorgularında aynı kişiye ait yinelenen kartları bulmak için */
 export type BeautyCustomerProfileQueryOpts = {
     phone?: string | null;
@@ -9283,5 +9284,299 @@ export const beautyService = {
             },
             rows: commentRows,
         };
+    },
+
+    /**
+     * Beauty POS — bugün (veya verilen tarihte) durumu `in_progress` olan
+     * randevuları listeler. POS açıldığında "Devam Eden Randevular" bölümünde
+     * göstermek için kullanılır; kullanıcı randevuyu seçince `existingAppointment`
+     * olarak açar.
+     *
+     * Müşteri adı / hizmet adı için `beauty_services` ve `customers` JOIN edilir.
+     * Dönen randevuya ek olarak `remaining_amount` (total_price − deposit −
+     * remainder_paid_amount) hesaplanır — UI bu alanı okuyabilir.
+     */
+    async listInProgressAppointments(
+        dayYmd?: string,
+    ): Promise<BeautyAppointment[]> {
+        const day = (dayYmd ?? formatLocalYmd(new Date())).slice(0, 10);
+        const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const svcBeauty = postgres.getCardTableName('beauty_services', 'beauty');
+        const svcFirm = postgres.getCardTableName('services');
+        const ct = postgres.getCardTableName('customers');
+        const fn = erpFirmNrForRow();
+        const { rows } = await postgres.query(
+            `SELECT
+                a.id, a.client_id AS customer_id, a.service_id,
+                a.specialist_id AS staff_id, a.device_id,
+                a.appointment_date AS date, a.appointment_time AS time, a.appointment_time,
+                a.duration, a.status, a.notes, a.total_price,
+                a.deposit_amount, a.remainder_paid_amount, a.deposit_date, a.remainder_payment_date,
+                a.commission_amount, a.is_package_session, a.package_purchase_id,
+                a.session_series_id, a.appointment_date, a.appointment_time,
+                c.name AS customer_name, c.phone AS customer_phone,
+                COALESCE(bs.name, rs.name, pr.name) AS service_name,
+                COALESCE(bs.color, rs.color) AS service_color,
+                sp.name AS staff_name,
+                d.name AS device_name
+             FROM ${table} a
+             LEFT JOIN ${ct} c ON a.client_id = c.id
+             LEFT JOIN ${svcBeauty} bs ON a.service_id = bs.id
+             LEFT JOIN ${svcFirm} rs ON a.service_id = rs.id AND rs.firm_nr = $2
+             LEFT JOIN products pr ON pr.id = a.service_id AND pr.firm_nr = $2
+             LEFT JOIN ${postgres.getCardTableName('beauty_specialists', 'beauty')} sp ON a.specialist_id = sp.id
+             LEFT JOIN ${postgres.getCardTableName('beauty_devices', 'beauty')} d ON a.device_id = d.id
+             WHERE a.status = 'in_progress'
+               AND a.appointment_date <= $1::date
+               AND COALESCE(a.remainder_paid_amount, 0) < a.total_price
+             ORDER BY a.appointment_time ASC, a.created_at ASC`,
+            [day, fn],
+        );
+        return (rows as Array<Record<string, unknown>>).map((r) => {
+            const total = Number(r.total_price ?? 0);
+            const deposit = Number(r.deposit_amount ?? 0);
+            const paidRemainder = Number(r.remainder_paid_amount ?? 0);
+            return {
+                id: String(r.id),
+                customer_id: r.customer_id ? String(r.customer_id) : undefined,
+                customer_name: String(r.customer_name ?? '').trim() || undefined,
+                customer_phone: r.customer_phone ? String(r.customer_phone) : undefined,
+                service_id: r.service_id ? String(r.service_id) : undefined,
+                service_name: String(r.service_name ?? '').trim() || undefined,
+                service_color: r.service_color ? String(r.service_color) : undefined,
+                staff_id: r.staff_id ? String(r.staff_id) : undefined,
+                staff_name: r.staff_name ? String(r.staff_name) : undefined,
+                device_id: r.device_id ? String(r.device_id) : undefined,
+                device_name: r.device_name ? String(r.device_name) : undefined,
+                date: r.date ? String(r.date).slice(0, 10) : undefined,
+                appointment_date: r.appointment_date ? String(r.appointment_date).slice(0, 10) : undefined,
+                appointment_time: r.appointment_time ? String(r.appointment_time).slice(0, 5) : undefined,
+                time: r.time ? String(r.time).slice(0, 5) : undefined,
+                duration: Number(r.duration ?? 30),
+                status: 'in_progress' as AppointmentStatus,
+                notes: r.notes ? String(r.notes) : undefined,
+                total_price: total,
+                is_package_session: Boolean(r.is_package_session),
+                package_purchase_id: r.package_purchase_id ? String(r.package_purchase_id) : undefined,
+                session_series_id: r.session_series_id ? String(r.session_series_id) : undefined,
+                commission_amount: Number(r.commission_amount ?? 0),
+            } as BeautyAppointment;
+        }).map((apt) => {
+            const total = Number(apt.total_price ?? 0);
+            const deposit = Number((apt as { deposit_amount?: number }).deposit_amount ?? 0);
+            const paidRemainder = Number((apt as { remainder_paid_amount?: number }).remainder_paid_amount ?? 0);
+            const remaining = Math.max(0, total - deposit - paidRemainder);
+            return Object.assign(apt, { remaining_amount: remaining });
+        });
+    },
+
+    /**
+     * Beauty POS — `in_progress` randevunun kalan ödemesini tahsil eder.
+     *
+     * Muhasebe etkisi (90 yıllık kıdemli gözüyle):
+     *     • cash_lines (CH_TAHSILAT, sign=+1) → kasa bakiyesi ↑, cari borç ↓
+     *     • beauty_appointments.remainder_paid_amount ↑, remainder_payment_date set
+     *     • beauty_appointment_payments (payment_kind='remainder') → audit trail
+     *
+     * Idempotent değildir; her çağrı yeni bir kasa satırı yazar. UI tarafı yalnızca
+     * 1 kez tetiklemeli. Önceki turda Peşinatlı satışta deposit_amount + veresiye
+     * yazılmıştı; bu fonksiyon **ek bir ödeme alır** (CH_TAHSILAT) ve deposit
+     * + kalan tamamlanınca cari borç sıfırlanmış olur (stok düşümü ayrıca
+     * `completeAppointmentWithRemainder` ile tetiklenir).
+     */
+    async collectAppointmentRemainder(input: {
+        appointmentId: string;
+        amount: number;
+        paymentMethod?: 'cash' | 'card';
+        cashRegisterId?: string | null;
+        cashier?: string | null;
+        notes?: string | null;
+    }): Promise<{ ok: boolean; paymentId?: string; error?: string }> {
+        const aptId = String(input.appointmentId ?? '').trim();
+        const amount = Math.abs(Number(input.amount ?? 0));
+        if (!aptId) return { ok: false, error: 'appointmentId zorunlu' };
+        if (!(amount > 0)) return { ok: false, error: 'Geçerli bir tutar girilmeli' };
+        const paymentMethod = (input.paymentMethod === 'card' ? 'card' : 'cash');
+        const cashier = String(input.cashier ?? '').trim();
+        const notes = String(input.notes ?? '').trim();
+        const firmNr = String(ERP_SETTINGS.firmNr ?? '001').padStart(3, '0');
+        const periodNr = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+        const appointmentTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const paymentsTable = postgres.getMovementTableName('beauty_appointment_payments', 'beauty');
+        const cashRegistersTable = `rex_${firmNr}_cash_registers`;
+
+        try {
+            // 1) Randevuyu oku — customer_id, deposit_amount, total_price
+            const { rows: aptRows } = await postgres.query(
+                `SELECT id, client_id AS customer_id, total_price, deposit_amount, remainder_paid_amount
+                 FROM ${appointmentTable} WHERE id = $1::text::uuid`,
+                [aptId],
+            );
+            const apt = aptRows[0] as
+                | { id: string; customer_id?: string | null; total_price?: number | null; deposit_amount?: number | null; remainder_paid_amount?: number | null }
+                | undefined;
+            if (!apt) return { ok: false, error: 'Randevu bulunamadı' };
+            const customerId = apt.customer_id ? String(apt.customer_id) : null;
+            if (!customerId) return { ok: false, error: 'Randevuya bağlı müşteri yok' };
+
+            // 2) Hedef kasa: verilen cashRegisterId, yoksa aktif MERKEZ/PATRON kasa
+            let targetRegisterId: string | null = input.cashRegisterId ? String(input.cashRegisterId) : null;
+            if (targetRegisterId) {
+                const v = await postgres.query<{ id: string }>(
+                    `SELECT id FROM ${cashRegistersTable}
+                     WHERE id = $1::text::uuid AND is_active = true LIMIT 1`,
+                    [targetRegisterId],
+                );
+                if (!v.rows?.[0]?.id) targetRegisterId = null;
+            }
+            if (!targetRegisterId) {
+                const fb = await postgres.query<{ id: string }>(
+                    `SELECT id FROM ${cashRegistersTable}
+                     WHERE is_active = true
+                     ORDER BY (name ILIKE 'MERKEZ KASA') DESC,
+                              (name ILIKE 'PATRON KASA') DESC,
+                              code ASC
+                     LIMIT 1`,
+                );
+                targetRegisterId = fb.rows?.[0]?.id ?? null;
+            }
+            if (!targetRegisterId) {
+                return { ok: false, error: 'Aktif kasa bulunamadı — kasa tanımı yapılmadan tahsilat alınamaz' };
+            }
+
+            // 3) cash_lines INSERT — CH_TAHSILAT, sign=+1
+            //    cash_lines postgres.query tarafından otomatik prefixlenir.
+            //    UNIQUE(fiche_no) → idempotent edit senkronizasyonu (invoices.ts ile uyumlu).
+            const ficheNo = `BEAUTY-REMAINDER-${aptId}`;
+            const tarih = new Date().toISOString().slice(0, 10);
+            const aciklama = `Güzellik randevu kalan ödeme — ${aptId}${cashier ? ` (${cashier})` : ''}${notes ? ` — ${notes}` : ''}`;
+            const upsert = await postgres.query<{ id: string; inserted: boolean }>(
+                `INSERT INTO cash_lines (
+                    firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+                    definition, transaction_type,
+                    customer_id, party_id, currency_code, exchange_rate, f_amount,
+                    transfer_status, special_code,
+                    target_register_id, bank_id, bank_account_id, expense_card_id,
+                    tax_rate, withholding_tax_rate
+                ) VALUES (
+                    $1::text, $2::text, $3::text::uuid, $4::text, $5::text,
+                    $6::numeric, $8::integer,
+                    $7::text, 'CH_TAHSILAT',
+                    $9::text::uuid, NULL, 'YEREL', 1, 0,
+                    0, '',
+                    NULL, NULL, NULL, NULL,
+                    0, 0
+                )
+                ON CONFLICT (fiche_no) DO UPDATE
+                  SET amount = EXCLUDED.amount,
+                      date = EXCLUDED.date,
+                      definition = EXCLUDED.definition,
+                      register_id = EXCLUDED.register_id,
+                      transaction_type = EXCLUDED.transaction_type,
+                      customer_id = EXCLUDED.customer_id,
+                      updated_at = NOW()
+                RETURNING id, (xmax = 0) AS inserted`,
+                [
+                    firmNr,
+                    periodNr,
+                    targetRegisterId,
+                    ficheNo,
+                    tarih,
+                    amount,
+                    aciklama,
+                    1, // sign = +1 (tahsilat kasaya girer)
+                    customerId,
+                ],
+            );
+            const inserted = upsert.rows?.[0]?.inserted === true;
+            if (inserted) {
+                // Kasa bakiyesi güncelle
+                await postgres.query(
+                    `UPDATE ${cashRegistersTable}
+                        SET balance = COALESCE(balance, 0) + $1::numeric,
+                            updated_at = NOW()
+                      WHERE id = $2::text::uuid`,
+                    [amount, targetRegisterId],
+                );
+            }
+
+            // 4) appointment_payments INSERT — payment_kind='remainder' audit trail
+            const paymentId = uuidv4();
+            await postgres.query(
+                `INSERT INTO ${paymentsTable} (
+                    id, appointment_id, customer_id, payment_kind, amount, currency,
+                    provider, cash_register_id, cash_register_code, notes, paid_at, created_at
+                ) VALUES (
+                    $1::text::uuid, $2::text::uuid, $3::text::uuid, 'remainder', $4::numeric, 'IQD',
+                    $5, $6::text::uuid, NULL, $7, NOW(), NOW()
+                )`,
+                [
+                    paymentId,
+                    aptId,
+                    customerId,
+                    amount,
+                    paymentMethod === 'card' ? 'card' : 'cash',
+                    targetRegisterId,
+                    notes || `Beauty remainder payment (${paymentMethod})`,
+                ],
+            );
+
+            // 5) appointment.remainder_paid_amount UPDATE
+            await postgres.query(
+                `UPDATE ${appointmentTable}
+                    SET remainder_paid_amount = COALESCE(remainder_paid_amount, 0) + $1::numeric,
+                        remainder_payment_date = NOW(),
+                        updated_at = NOW()
+                  WHERE id = $2::text::uuid`,
+                [amount, aptId],
+            );
+
+            return { ok: true, paymentId };
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            console.warn('[collectAppointmentRemainder] failed:', msg);
+            return { ok: false, error: msg };
+        }
+    },
+
+    /**
+     * Beauty POS — `in_progress` randevuyu kalan ödeme ile birlikte tek seferde
+     * tamamlar. Atomik akış:
+     *     1) collectAppointmentRemainder → cash_lines CH_TAHSILAT + remainder_paid_amount
+     *     2) updateAppointmentStatus('completed') → status=COMPLETED + stok düşümü
+     *        + paket seans tüketimi (mevcut yan etkiler)
+     *
+     * UI tarafı tek tıklama ile bu akışı tetikler; kalan tutar yetersizse UI
+     * hata gösterir, kısmi tahsilat için `collectAppointmentRemainder` doğrudan
+     * çağrılabilir (bu fonksiyon `amount >= remaining` zorunluluğu koymaz).
+     */
+    async completeAppointmentWithRemainder(input: {
+        appointmentId: string;
+        amount: number;
+        paymentMethod?: 'cash' | 'card';
+        cashRegisterId?: string | null;
+        cashier?: string | null;
+        notes?: string | null;
+    }): Promise<{ ok: boolean; paymentId?: string; appointmentId?: string; error?: string }> {
+        const aptId = String(input.appointmentId ?? '').trim();
+        if (!aptId) return { ok: false, error: 'appointmentId zorunlu' };
+
+        const collected = await beautyService.collectAppointmentRemainder(input);
+        if (!collected.ok) return { ok: false, error: collected.error };
+
+        try {
+            await beautyService.updateAppointmentStatus(aptId, AppointmentStatus.COMPLETED);
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            // Ödeme alındı ama status güncellenemedi — UI'a yansıt; operatör manuel tamamlar
+            return {
+                ok: false,
+                appointmentId: aptId,
+                paymentId: collected.paymentId,
+                error: `Ödeme alındı ama tamamlama başarısız: ${msg}`,
+            };
+        }
+
+        return { ok: true, appointmentId: aptId, paymentId: collected.paymentId };
     },
 };

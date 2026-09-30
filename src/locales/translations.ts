@@ -849,6 +849,10 @@ customerAdvanceBalance: string;
   paymentCash: string;
   paymentCredit: string;
   paymentMethodPesinatli: string;
+  /** Peşinatlı — daha önce alınmış ön ödeme tutarı (bilgi amaçlı) */
+  prePaymentAmount: string;
+  /** Peşinatlı — kalan tutar (bilgi amaçlı) */
+  collectRemainingPayment: string;
   pesinatPlanLabel: string;
   pesinatInstallmentPer: string;
   pesinatFirstInstallment: string;
@@ -2256,6 +2260,8 @@ export const translations: any = {
     paymentCash: 'Nakit',
     paymentCredit: 'Veresiye (Cari)',
     paymentMethodPesinatli: 'Peşinatlı Satış',
+    prePaymentAmount: 'Ön Ödeme',
+    collectRemainingPayment: 'Kalan Ödemeyi Al',
     pesinatPlanLabel: 'Taksit Planı',
     pesinatInstallmentPer: 'Taksit başına',
     pesinatFirstInstallment: 'İlk taksit şimdi tahsil edilir; kalan cariye yazılır.',
@@ -4057,6 +4063,8 @@ export const translations: any = {
     paymentCash: 'Cash',
     paymentCredit: 'On Credit (Current)',
     paymentMethodPesinatli: 'Installment Sale',
+    prePaymentAmount: 'Pre-payment',
+    collectRemainingPayment: 'Collect Remaining Payment',
     pesinatPlanLabel: 'Installment Plan',
     pesinatInstallmentPer: 'Per installment',
     pesinatFirstInstallment: 'First installment is collected now; the rest is posted to the customer account.',
@@ -5720,6 +5728,8 @@ export const translations: any = {
     paymentCash: 'نقدي',
     paymentCredit: 'على الحساب (آجل)',
     paymentMethodPesinatli: 'بيع بالأقساط',
+    prePaymentAmount: 'الدفعة المقدمة',
+    collectRemainingPayment: 'تحصيل المتبقي',
     pesinatPlanLabel: 'خطة الأقساط',
     pesinatInstallmentPer: 'لكل قسط',
     pesinatFirstInstallment: 'يتم تحصيل القسط الأول الآن؛ يتم تسجيل الباقي في حساب العميل.',
@@ -7383,6 +7393,8 @@ export const translations: any = {
     paymentCash: 'Nakit',
     paymentCredit: 'Veresiye (Cari)',
     paymentMethodPesinatli: 'فرۆشتن بە قیست',
+    prePaymentAmount: 'پێشەکی',
+    collectRemainingPayment: 'وەرگرتنی ماوەی پارە',
     pesinatPlanLabel: 'پلانی قیست',
     pesinatInstallmentPer: 'بۆ هەر قیست',
     pesinatFirstInstallment: 'یەکەم قیست ئێستا وەردەگیرێت؛ ماوەکەی لە هەژماری کڕیار تۆماردەکرێت.',

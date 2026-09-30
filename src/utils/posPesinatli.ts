@@ -258,3 +258,38 @@ export function suggestPesinatliPayNow(remaining: number): number {
   if (!Number.isFinite(remaining) || remaining <= 0) return 0;
   return remaining;
 }
+
+/**
+ * IN_PROGRESS randevudan POSPaymentModal bağlamı üret.
+ * - Toplam = appointment.total_price (yoksa totalCart)
+ * - Ön ödeme = deposit_amount (≥ 0)
+ * - Kalan = max(0, toplam − ön ödeme)
+ *
+ * Boş / hatalı durumlarda `null` döner; modal bağlamı olmadan mevcut
+ * davranışıyla çalışır.
+ */
+export function buildAppointmentPesinatliContext(args: {
+  appointmentId?: string | null;
+  status?: string | null;
+  totalPrice?: number | null;
+  depositAmount?: number | null;
+}): {
+  appointmentId: string;
+  totalAmount: number;
+  prePaymentAmount: number;
+  remainingAmount: number;
+} | null {
+  const { appointmentId, status, totalPrice, depositAmount } = args;
+  if (!appointmentId) return null;
+  const statusNorm = String(status ?? '').toLowerCase();
+  if (statusNorm !== 'in_progress' && statusNorm !== 'started') return null;
+  const dep = Number(depositAmount ?? 0);
+  const tot = Number(totalPrice ?? 0);
+  if (!Number.isFinite(dep) || !Number.isFinite(tot) || dep <= 0 || tot <= 0) return null;
+  return {
+    appointmentId,
+    totalAmount: tot,
+    prePaymentAmount: dep,
+    remainingAmount: Math.max(0, tot - dep),
+  };
+}

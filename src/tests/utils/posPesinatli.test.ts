@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PESINATLI_INSTALLMENT_OPTIONS,
   appendPesinatliVeresiyeForRemaining,
+  buildAppointmentPesinatliContext,
   buildPesinatliPayment,
   buildPesinatliPayments,
   buildPesinatliVeresiye,
@@ -303,5 +304,93 @@ describe('posPesinatli - suggestPesinatliPayNow', () => {
   it('NaN / undefined → 0', () => {
     expect(suggestPesinatliPayNow(Number.NaN)).toBe(0);
     expect(suggestPesinatliPayNow(undefined as unknown as number)).toBe(0);
+  });
+});
+
+describe('posPesinatli - buildAppointmentPesinatliContext (IN_PROGRESS randevudan POS bağlamı)', () => {
+  it('IN_PROGRESS + 100.000 toplam + 30.000 ön ödeme → kalan 70.000', () => {
+    const ctx = buildAppointmentPesinatliContext({
+      appointmentId: 'apt-1',
+      status: 'in_progress',
+      totalPrice: 100_000,
+      depositAmount: 30_000,
+    });
+    expect(ctx).toEqual({
+      appointmentId: 'apt-1',
+      totalAmount: 100_000,
+      prePaymentAmount: 30_000,
+      remainingAmount: 70_000,
+    });
+  });
+
+  it('status "started" da kabul edilir (alias)', () => {
+    const ctx = buildAppointmentPesinatliContext({
+      appointmentId: 'apt-1',
+      status: 'started',
+      totalPrice: 50_000,
+      depositAmount: 10_000,
+    });
+    expect(ctx?.remainingAmount).toBe(40_000);
+  });
+
+  it('SCHEDULED/COMPLETED → null (geriye dönük uyum, eski akış)', () => {
+    expect(
+      buildAppointmentPesinatliContext({
+        appointmentId: 'apt-1',
+        status: 'scheduled',
+        totalPrice: 100_000,
+        depositAmount: 30_000,
+      }),
+    ).toBeNull();
+    expect(
+      buildAppointmentPesinatliContext({
+        appointmentId: 'apt-1',
+        status: 'completed',
+        totalPrice: 100_000,
+        depositAmount: 30_000,
+      }),
+    ).toBeNull();
+  });
+
+  it('appointmentId yoksa null', () => {
+    expect(
+      buildAppointmentPesinatliContext({
+        appointmentId: undefined,
+        status: 'in_progress',
+        totalPrice: 100_000,
+        depositAmount: 30_000,
+      }),
+    ).toBeNull();
+  });
+
+  it('depositAmount 0 veya negatif → null (bağlam yok; Peşinat Ekle modu)', () => {
+    expect(
+      buildAppointmentPesinatliContext({
+        appointmentId: 'apt-1',
+        status: 'in_progress',
+        totalPrice: 100_000,
+        depositAmount: 0,
+      }),
+    ).toBeNull();
+    expect(
+      buildAppointmentPesinatliContext({
+        appointmentId: 'apt-1',
+        status: 'in_progress',
+        totalPrice: 100_000,
+        depositAmount: -5,
+      }),
+    ).toBeNull();
+  });
+
+  it('toplam < ön ödeme → remainingAmount 0\'a kırpılır (negatif kalan olmaz)', () => {
+    // Veri bozukluğu koruması: deposit toplamdan büyükse kalan 0 olur
+    // (modalda max 0 olarak input yansır, kullanıcı manuel artırabilir).
+    const ctx = buildAppointmentPesinatliContext({
+      appointmentId: 'apt-1',
+      status: 'in_progress',
+      totalPrice: 50_000,
+      depositAmount: 80_000,
+    });
+    expect(ctx?.remainingAmount).toBe(0);
   });
 });

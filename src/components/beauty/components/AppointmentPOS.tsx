@@ -15,7 +15,7 @@ import {
     ArrowLeft, Plus, Minus, X, Search, User, UserPlus, UserRound, Users, Banknote,
     CalendarDays, Clock, Cpu, Activity, AlertTriangle, CheckCircle2, Scissors, Package,
     Sparkles, Receipt, ChevronDown, ChevronUp, MoreHorizontal, ShoppingBag, RefreshCw,
-    PanelLeft, Repeat, Percent,
+    PanelLeft, Repeat, Percent, ChevronRight, CheckCircle, Wallet, CreditCard,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus, appointmentStatusMatches } from '../../../types/beauty';
@@ -59,6 +59,7 @@ import { findBeautyAppointmentsSameQueueGroup } from '../../../utils/beautyQueue
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { safeInvoke } from '../../../utils/env';
 import { splitProportionalLineDiscount } from '../../../utils/beautySaleLineDiscount';
+import { buildAppointmentPesinatliContext } from '../../../utils/posPesinatli';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
 import { buildAppointmentProductNotesTag } from '../../../utils/beautyAppointmentProducts';
@@ -305,6 +306,21 @@ interface Props {
     prefillCustomerId?: string;
     existingAppointment?: BeautyAppointment | null;
     onBack?: () => void;      // undefined = standalone POS mode
+    /**
+     * Beauty POS açıldığında `existingAppointment` yoksa, in_progress
+     * randevuları üstte kompakt listeyle gösterir. Kullanıcı bir randevuyu
+     * seçince `onSelectAppointment` çağrılır — parent `existingAppointment`
+     * prop'unu set eder ve POS yeniden render olur.
+     *
+     * Varsayılan: true (POS akışı). `false` yapılırsa liste gizlenir
+     * (örn. SmartScheduler'da zaten randevu seçili olarak açıldığında).
+     */
+    showInProgressPanel?: boolean;
+    /**
+     * In-progress listesinde kullanıcı bir randevu seçince çağrılır.
+     * Parent genelde SmartScheduler `editingApt` state'ini günceller.
+     */
+    onSelectAppointment?: (apt: BeautyAppointment) => void;
 }
 
 export function AppointmentPOS({
@@ -318,6 +334,8 @@ export function AppointmentPOS({
     prefillCustomerId,
     existingAppointment,
     onBack,
+    showInProgressPanel = true,
+    onSelectAppointment,
 }: Props) {
     const {
         services, packages, specialists, customers, devices,
@@ -513,6 +531,18 @@ export function AppointmentPOS({
     const [cancelAptConfirmOpen, setCancelAptConfirmOpen] = useState(false);
     const [cancelAptBusy, setCancelAptBusy] = useState(false);
 
+    // ── In-progress randevu paneli (Peşinatlı sonrası randevu tamamlama) ──
+    /** POS mount'unda yüklenir; kullanıcı bir randevu seçince parent'a `onSelectAppointment` ile bildirilir */
+    const [inProgressAppointments, setInProgressAppointments] = useState<BeautyAppointment[]>([]);
+    const [inProgressLoading, setInProgressLoading] = useState(false);
+    const [inProgressExpanded, setInProgressExpanded] = useState(false);
+    /** "Hizmet Ver ve Kapat" inline modal — kalan ödeme tahsilat + tamamlama */
+    const [remainerModalOpen, setRemainerModalOpen] = useState(false);
+    const [remainerAmountInput, setRemainerAmountInput] = useState('');
+    const [remainerPaymentMethod, setRemainerPaymentMethod] = useState<'cash' | 'card'>('cash');
+    const [remainerBusy, setRemainerBusy] = useState(false);
+    const [remainerError, setRemainerError] = useState<string | null>(null);
+
     // ── Payment modal ─────────────────────────────────────────────────────
     const [showPay, setShowPay] = useState(false);
     const [receiptNumber, setReceiptNumber] = useState(() =>
@@ -533,6 +563,115 @@ export function AppointmentPOS({
     useEffect(() => {
         void generateNewReceiptNumber();
     }, [generateNewReceiptNumber]);
+
+    // In-progress randevuları mount'ta yükle (Peşinatlı sonrası randevu tamamlama akışı).
+    // Yalnızca `existingAppointment.id` yoksa ve panel açıksa çalışır; aksi halde
+    // SmartScheduler zaten bir randevu yüklemiş demektir.
+    useEffect(() => {
+        if (!showInProgressPanel) return;
+        if (existingAppointment?.id) return;
+        let cancelled = false;
+        setInProgressLoading(true);
+        void beautyService.listInProgressAppointments()
+            .then((rows) => {
+                if (cancelled) return;
+                setInProgressAppointments(rows ?? []);
+            })
+            .catch((err) => {
+                if (cancelled) return;
+                logger.warn?.('AppointmentPOS', 'listInProgressAppointments failed', err);
+                setInProgressAppointments([]);
+            })
+            .finally(() => {
+                if (cancelled) return;
+                setInProgressLoading(false);
+            });
+        return () => { cancelled = true; };
+    }, [showInProgressPanel, existingAppointment?.id]);
+
+    /**
+     * In-progress randevuyu kullanıcı listede seçince parent'a bildir.
+     * Parent (SmartScheduler / BeautyModuleShell) `existingAppointment` prop'unu
+     * set eder → POS yeniden hydrate olur.
+     */
+    const handleSelectInProgressAppointment = useCallback((apt: BeautyAppointment) => {
+        if (typeof onSelectAppointment === 'function') {
+            try { onSelectAppointment(apt); } catch (e) {
+                logger.warn?.('AppointmentPOS', 'onSelectAppointment threw', e);
+            }
+        }
+    }, [onSelectAppointment]);
+
+    /**
+     * In-progress randevu için "Hizmet Ver ve Kapat" inline akışı.
+     * POSPaymentModal'a benzer mini bir UI açılır; default tutar = remaining_amount.
+     * Submit'te `beautyService.completeAppointmentWithRemainder` çağrılır:
+     *     1) cash_lines CH_TAHSILAT (sign=+1) + appointment.remainder_paid_amount
+     *     2) updateAppointmentStatus('completed') → stok düşümü + paket tüketimi
+     * Başarı: randevu COMPLETED + stok düşer + cari bakiye sıfırlanır.
+     */
+    const openRemainerModal = useCallback(() => {
+        if (!existingAppointment?.id) return;
+        if (!appointmentStatusMatches(existingAppointment.status, AppointmentStatus.IN_PROGRESS)) return;
+        const apt = existingAppointment;
+        const total = Number(apt.total_price ?? 0);
+        const deposit = Number((apt as { deposit_amount?: number }).deposit_amount ?? 0);
+        const paidRemainder = Number((apt as { remainder_paid_amount?: number }).remainder_paid_amount ?? 0);
+        const remaining = Math.max(0, total - deposit - paidRemainder);
+        setRemainerAmountInput(remaining > 0 ? String(remaining) : '0');
+        setRemainerPaymentMethod('cash');
+        setRemainerError(null);
+        setRemainerModalOpen(true);
+    }, [existingAppointment]);
+
+    const submitRemainerPayment = useCallback(async () => {
+        if (!existingAppointment?.id) return;
+        if (remainerBusy) return;
+        const apt = existingAppointment;
+        const total = Number(apt.total_price ?? 0);
+        const deposit = Number((apt as { deposit_amount?: number }).deposit_amount ?? 0);
+        const paidRemainder = Number((apt as { remainder_paid_amount?: number }).remainder_paid_amount ?? 0);
+        const remaining = Math.max(0, total - deposit - paidRemainder);
+        const amount = Math.abs(Number(remainerAmountInput || 0));
+        if (!(amount > 0)) {
+            setRemainerError('Geçerli bir tutar girilmeli');
+            return;
+        }
+        if (amount + 0.005 < remaining) {
+            setRemainerError(`En az kalan tutar (${remaining.toLocaleString('tr-TR')}) alınmalı`);
+            return;
+        }
+        setRemainerBusy(true);
+        setRemainerError(null);
+        try {
+            const res = await beautyService.completeAppointmentWithRemainder({
+                appointmentId: existingAppointment.id,
+                amount,
+                paymentMethod: remainerPaymentMethod,
+            });
+            if (!res.ok) {
+                const msg = res.error || 'Tamamlama başarısız';
+                setRemainerError(msg);
+                toast.error(msg);
+                return;
+            }
+            toast.success(tm('bPaymentCompleted') || 'Randevu tamamlandı');
+            setRemainerModalOpen(false);
+            try {
+                const rows = await beautyService.listInProgressAppointments();
+                setInProgressAppointments(rows ?? []);
+            } catch { /* sessizce geç */ }
+            if (typeof onSelectAppointment === 'function') {
+                try { onSelectAppointment(null as unknown as BeautyAppointment); } catch { /* no-op */ }
+            }
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            setRemainerError(msg);
+            toast.error(msg);
+        } finally {
+            setRemainerBusy(false);
+        }
+    }, [existingAppointment, remainerAmountInput, remainerPaymentMethod, remainerBusy, onSelectAppointment, tm]);
 
     const [showReceiptModal, setShowReceiptModal] = useState(false);
     const [completedSale, setCompletedSale] = useState<Sale | null>(null);
@@ -2607,6 +2746,128 @@ export function AppointmentPOS({
                 </div>
             </div>
 
+            {/* ── In-progress randevu paneli (Peşinatlı sonrası randevu tamamlama) ──
+                Yalnızca `existingAppointment.id` yoksa ve panel açıksa gösterilir.
+                POS'un üst çubuğunun hemen altında kompakt liste olarak durur;
+                kullanıcı bir randevuyu seçince parent `onSelectAppointment` ile
+                yüklenir ve POS normal randevu akışına girer. */}
+            {showInProgressPanel && !existingAppointment?.id && (
+                <div
+                    data-testid="beauty-in-progress-panel"
+                    style={{
+                        background: '#fff',
+                        borderBottom: '1px solid #e5e7eb',
+                        padding: isMobile ? '8px 12px' : '8px 20px',
+                        flexShrink: 0,
+                    }}
+                >
+                    <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setInProgressExpanded((v) => !v)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setInProgressExpanded((v) => !v);
+                            }
+                        }}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            padding: '4px 0',
+                        }}
+                    >
+                        <Activity size={13} color="#7c3aed" style={{ flexShrink: 0 }} />
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#111827', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                            {tm('bInProgressAppointments') || 'Devam Eden Randevular'}
+                        </span>
+                        <span style={{ background: '#7c3aed', color: '#fff', fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 10, minWidth: 18, textAlign: 'center' }}>
+                            {inProgressAppointments.length}
+                        </span>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#6b7280' }}>
+                            {inProgressExpanded
+                                ? <ChevronUp size={14} />
+                                : <ChevronDown size={14} />}
+                        </span>
+                    </div>
+                    {inProgressExpanded && (
+                        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {inProgressLoading && inProgressAppointments.length === 0 ? (
+                                <div style={{ fontSize: 11, color: '#9ca3af', padding: '6px 0' }}>
+                                    {tm('bLoading') || 'Yükleniyor…'}
+                                </div>
+                            ) : inProgressAppointments.length === 0 ? (
+                                <div style={{ fontSize: 11, color: '#9ca3af', padding: '6px 0' }}>
+                                    {tm('bNoInProgressAppointments') || 'Şu anda devam eden randevu yok.'}
+                                </div>
+                            ) : (
+                                inProgressAppointments.map((apt) => {
+                                    const total = Number(apt.total_price ?? 0);
+                                    const deposit = Number((apt as { deposit_amount?: number }).deposit_amount ?? 0);
+                                    const paidRemainder = Number((apt as { remainder_paid_amount?: number }).remainder_paid_amount ?? 0);
+                                    const remaining = Math.max(0, total - deposit - paidRemainder);
+                                    const timeLabel = String(apt.appointment_time ?? apt.time ?? '').slice(0, 5);
+                                    const customerLabel = String(apt.customer_name ?? '—').trim();
+                                    const serviceLabel = String(apt.service_name ?? '—').trim();
+                                    return (
+                                        <button
+                                            key={apt.id}
+                                            type="button"
+                                            onClick={() => handleSelectInProgressAppointment(apt)}
+                                            data-testid="beauty-in-progress-card"
+                                            style={{
+                                                textAlign: 'left',
+                                                padding: '8px 10px',
+                                                borderRadius: 8,
+                                                border: '1px solid #ede9fe',
+                                                background: '#faf5ff',
+                                                cursor: typeof onSelectAppointment === 'function' ? 'pointer' : 'default',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 10,
+                                                fontSize: 12,
+                                            }}
+                                            onMouseEnter={(e) => { e.currentTarget.style.background = '#ede9fe'; }}
+                                            onMouseLeave={(e) => { e.currentTarget.style.background = '#faf5ff'; }}
+                                        >
+                                            <span style={{
+                                                fontSize: 11, fontWeight: 800, color: '#5b21b6',
+                                                background: '#ddd6fe', padding: '3px 6px', borderRadius: 4,
+                                                minWidth: 40, textAlign: 'center',
+                                            }}>
+                                                {timeLabel || '—'}
+                                            </span>
+                                            <span style={{ flex: 1, minWidth: 0 }}>
+                                                <span style={{ fontWeight: 700, color: '#111827', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {customerLabel}
+                                                </span>
+                                                <span style={{ fontSize: 10, color: '#6b7280', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {serviceLabel}
+                                                </span>
+                                            </span>
+                                            <span style={{
+                                                fontSize: 11, fontWeight: 800,
+                                                color: remaining > 0 ? '#7c2d12' : '#15803d',
+                                                background: remaining > 0 ? '#fef3c7' : '#dcfce7',
+                                                padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap',
+                                            }}>
+                                                {remaining > 0
+                                                    ? `${(tm('bRemainingAmount') || 'Kalan')}: ${remaining.toLocaleString('tr-TR')}`
+                                                    : (tm('bPaid') || 'Ödendi')}
+                                            </span>
+                                            <ChevronRight size={14} color="#7c3aed" />
+                                        </button>
+                                    );
+                                })
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* ── BODY ────────────────────────────────────────────── */}
             <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflow: isMobile ? 'auto' : 'hidden', minHeight: 0 }}>
 
@@ -4506,7 +4767,16 @@ export function AppointmentPOS({
             )}
 
             {/* ── PAYMENT MODAL ───────────────────────────────────── */}
-            {showPay && (
+            {showPay && (() => {
+                // IN_PROGRESS randevuda: daha önce alınmış peşinat (deposit_amount)
+                // biliniyor; "Kalan Ödemeyi Al" UX'i için bağlam geçir.
+                const aptCtx = buildAppointmentPesinatliContext({
+                    appointmentId: existingAppointment?.id,
+                    status: existingAppointment?.status,
+                    totalPrice: existingAppointment?.total_price,
+                    depositAmount: existingAppointment?.deposit_amount,
+                }) ?? undefined;
+                return (
                 <POSPaymentModal
                     total={total}
                     subtotal={subtotal}
@@ -4524,8 +4794,13 @@ export function AppointmentPOS({
                     // verilmeden "başladı" durumuna alınır; hizmet verildiğinde
                     // ayrıca "Hizmet Tamamlandı" akışı çalışır.
                     mode="prePayment"
+                    // IN_PROGRESS randevuda daha önce peşinat alındıysa,
+                    // modal açıldığında default tutar = kalan + ön ödeme/kalan
+                    // bilgi kartı görünür.
+                    appointmentContext={aptCtx}
                 />
-            )}
+                );
+            })()}
 
             {showReceiptModal && completedSale && completedPaymentData && (
                 <Receipt80mm
@@ -4721,6 +4996,245 @@ export function AppointmentPOS({
                     </p>
                 </div>
             </RetailExFlatModal>
+
+            {/* ── In-progress randevu için "Hizmet Ver ve Kapat" inline kart + modal ──
+                existingAppointment.status === 'in_progress' ise sağ panelde kalan tutar
+                özeti ve buton gösterilir. Buton inline mini modal açar; default tutar
+                = remaining_amount. Submit'te completeAppointmentWithRemainder çağrılır. */}
+            {showInProgressPanel && existingAppointment?.id && appointmentStatusMatches(existingAppointment.status, AppointmentStatus.IN_PROGRESS) && (() => {
+                const total = Number(existingAppointment.total_price ?? 0);
+                const deposit = Number((existingAppointment as { deposit_amount?: number }).deposit_amount ?? 0);
+                const paidRemainder = Number((existingAppointment as { remainder_paid_amount?: number }).remainder_paid_amount ?? 0);
+                const remaining = Math.max(0, total - deposit - paidRemainder);
+                return (
+                    <div style={{ padding: '8px 16px 12px', background: '#faf5ff', borderTop: '1px solid #ede9fe', flexShrink: 0 }}>
+                        <div style={{ background: '#fff', border: '1px solid #ede9fe', borderRadius: 8, padding: '10px 12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, color: '#5b21b6', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                    <Activity size={12} color="#7c3aed" />
+                                    {tm('bInProgressBadge') || '🟣 Başladı'}
+                                </span>
+                                <span style={{ fontSize: 10, color: '#6b7280' }}>
+                                    {String(existingAppointment.date ?? existingAppointment.appointment_date ?? '').slice(0, 10)}
+                                    {existingAppointment.appointment_time ? ` · ${String(existingAppointment.appointment_time).slice(0, 5)}` : ''}
+                                </span>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, marginBottom: 8 }}>
+                                <div>
+                                    <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700 }}>{tm('bTotal') || 'Toplam'}</div>
+                                    <div style={{ fontSize: 13, fontWeight: 800, color: '#111827' }}>{total.toLocaleString('tr-TR')}</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: 10, color: '#15803d', fontWeight: 700 }}>{tm('bDeposit') || 'Peşinat'}</div>
+                                    <div style={{ fontSize: 13, fontWeight: 800, color: '#15803d' }}>{deposit.toLocaleString('tr-TR')}</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: 10, color: '#b91c1c', fontWeight: 700 }}>{tm('bRemainingAmount') || 'Kalan'}</div>
+                                    <div style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c' }}>{remaining.toLocaleString('tr-TR')}</div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={openRemainerModal}
+                                data-testid="beauty-complete-with-payment"
+                                style={{
+                                    width: '100%', height: 38, borderRadius: 6, border: 'none',
+                                    background: '#7c3aed', color: '#fff',
+                                    fontSize: 12, fontWeight: 800, cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = '#6d28d9'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = '#7c3aed'; }}
+                            >
+                                <CheckCircle size={14} />
+                                {tm('bServiceCompleteAndClose') || 'Hizmet Ver ve Kapat'}
+                            </button>
+                            <p style={{ fontSize: 10, color: '#7c2d12', margin: '6px 0 0', lineHeight: 1.45 }}>
+                                {tm('bAppointmentInProgressHint') || 'Randevu başladı — hizmet verildiğinde kalan ödemeyi alıp tamamlayın.'}
+                            </p>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* ── "Hizmet Ver ve Kapat" inline mini modal (kalan ödeme + tamamla) ── */}
+            {remainerModalOpen && existingAppointment?.id && (() => {
+                const total = Number(existingAppointment.total_price ?? 0);
+                const deposit = Number((existingAppointment as { deposit_amount?: number }).deposit_amount ?? 0);
+                const paidRemainder = Number((existingAppointment as { remainder_paid_amount?: number }).remainder_paid_amount ?? 0);
+                const remaining = Math.max(0, total - deposit - paidRemainder);
+                return createPortal(
+                    <div
+                        role="presentation"
+                        style={{
+                            position: 'fixed', inset: 0, zIndex: 2147483640,
+                            background: 'rgba(17, 24, 39, 0.5)', backdropFilter: 'blur(4px)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+                        }}
+                        onClick={() => { if (!remainerBusy) setRemainerModalOpen(false); }}
+                    >
+                        <div
+                            role="dialog"
+                            aria-modal="true"
+                            data-testid="beauty-remainer-modal"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                width: '100%', maxWidth: 440, display: 'flex', flexDirection: 'column',
+                                background: '#fff', borderRadius: 16,
+                                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)',
+                                border: '1px solid #e8e4f0', overflow: 'hidden',
+                            }}
+                        >
+                            <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(90deg, #7c3aed, #6d28d9)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff' }}>
+                                    <CheckCircle size={18} />
+                                    <span style={{ fontSize: 14, fontWeight: 800 }}>{tm('bServiceCompleteAndClose') || 'Hizmet Ver ve Kapat'}</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => { if (!remainerBusy) setRemainerModalOpen(false); }}
+                                    aria-label={tm('close') || 'Kapat'}
+                                    style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.85)', cursor: 'pointer' }}
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div style={{ background: '#faf5ff', borderRadius: 8, padding: '10px 12px', fontSize: 12 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                        <span style={{ color: '#6b7280' }}>{tm('bCustomer') || 'Müşteri'}</span>
+                                        <span style={{ fontWeight: 700 }}>{String(existingAppointment.customer_name ?? '—')}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                        <span style={{ color: '#6b7280' }}>{tm('bService') || 'Hizmet'}</span>
+                                        <span style={{ fontWeight: 700 }}>{String(existingAppointment.service_name ?? '—')}</span>
+                                    </div>
+                                    <div style={{ borderTop: '1px solid #ede9fe', marginTop: 6, paddingTop: 6, display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                        <span style={{ color: '#6b7280' }}>{tm('bTotal') || 'Toplam'}</span>
+                                        <span style={{ fontWeight: 800 }}>{total.toLocaleString('tr-TR')} IQD</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                        <span style={{ color: '#15803d', fontWeight: 700 }}>{tm('bDeposit') || 'Peşinat'}</span>
+                                        <span style={{ fontWeight: 700, color: '#15803d' }}>{deposit.toLocaleString('tr-TR')} IQD</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: '#b91c1c', fontWeight: 700 }}>{tm('bRemainingAmount') || 'Kalan'}</span>
+                                        <span style={{ fontWeight: 800, color: '#b91c1c' }}>{remaining.toLocaleString('tr-TR')} IQD</span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                                        {tm('bPaymentMethod') || 'Ödeme Yöntemi'}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                        {(['cash', 'card'] as const).map((m) => {
+                                            const active = remainerPaymentMethod === m;
+                                            const Icon = m === 'cash' ? Wallet : CreditCard;
+                                            return (
+                                                <button
+                                                    key={m}
+                                                    type="button"
+                                                    onClick={() => setRemainerPaymentMethod(m)}
+                                                    disabled={remainerBusy}
+                                                    style={{
+                                                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                                        padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
+                                                        border: active ? '2px solid #7c3aed' : '1px solid #e5e7eb',
+                                                        background: active ? '#f5f3ff' : '#f9fafb',
+                                                        color: active ? '#7c3aed' : '#6b7280',
+                                                        fontSize: 12, fontWeight: 700,
+                                                    }}
+                                                >
+                                                    <Icon size={14} />
+                                                    {m === 'cash' ? (tm('cash') || 'Nakit') : (tm('card') || 'Kart')}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                                        {tm('bReceivedAmount') || 'Alınan Tutar'}
+                                    </div>
+                                    <input
+                                        type="number"
+                                        value={remainerAmountInput}
+                                        onChange={(e) => setRemainerAmountInput(e.target.value)}
+                                        disabled={remainerBusy}
+                                        data-testid="beauty-remainer-amount-input"
+                                        style={{
+                                            width: '100%', height: 42, fontSize: 16, fontWeight: 800,
+                                            textAlign: 'right', border: '2px solid #7c3aed', borderRadius: 8,
+                                            paddingRight: 12, outline: 'none', boxSizing: 'border-box', color: '#111827',
+                                        }}
+                                    />
+                                    <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                                        {[remaining, Math.ceil(remaining / 100) * 100, Math.ceil(remaining / 500) * 500]
+                                            .filter((v, i, a) => a.indexOf(v) === i && v > 0)
+                                            .map((v) => (
+                                                <button
+                                                    key={v}
+                                                    type="button"
+                                                    onClick={() => setRemainerAmountInput(String(v))}
+                                                    disabled={remainerBusy}
+                                                    style={{
+                                                        flex: 1, height: 28, borderRadius: 4, border: '1px solid #e5e7eb',
+                                                        background: '#f9fafb', fontSize: 10, fontWeight: 700,
+                                                        color: '#374151', cursor: 'pointer',
+                                                    }}
+                                                >
+                                                    {v.toLocaleString('tr-TR')}
+                                                </button>
+                                            ))}
+                                    </div>
+                                </div>
+
+                                {remainerError && (
+                                    <div data-testid="beauty-remainer-error" style={{ padding: '8px 12px', borderRadius: 6, background: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b', fontSize: 12, fontWeight: 700 }}>
+                                        {remainerError}
+                                    </div>
+                                )}
+                            </div>
+                            <div style={{ padding: '12px 18px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#fafafa' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => { if (!remainerBusy) setRemainerModalOpen(false); }}
+                                    disabled={remainerBusy}
+                                    style={{
+                                        height: 38, borderRadius: 6, padding: '0 14px',
+                                        border: '1px solid #e5e7eb', background: '#fff', color: '#374151',
+                                        fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                                    }}
+                                >
+                                    {tm('cancel') || 'Vazgeç'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={submitRemainerPayment}
+                                    disabled={remainerBusy}
+                                    data-testid="beauty-remainer-submit"
+                                    style={{
+                                        height: 38, borderRadius: 6, padding: '0 16px', border: 'none',
+                                        background: remainerBusy ? '#a78bfa' : '#059669', color: '#fff',
+                                        fontSize: 12, fontWeight: 800, cursor: remainerBusy ? 'wait' : 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                    }}
+                                >
+                                    {remainerBusy ? (tm('bLoading') || 'İşleniyor…') : (
+                                        <>
+                                            <CheckCircle size={14} />
+                                            {tm('bPaymentCompleted') || 'Öde ve Tamamla'}
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body,
+                );
+            })()}
         </div>
     );
 }
