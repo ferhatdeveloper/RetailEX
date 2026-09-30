@@ -11459,7 +11459,7 @@ export const excelModuleTranslations = {
   bBeautyRemainingAmount: { tr: 'Kalan', en: 'Remaining', ar: 'المتبقي', ku: 'ماوە' },
   bServiceCompleteAndClose: { tr: 'Hizmet Ver ve Kapat', en: 'Complete Service & Close', ar: 'إنهاء الخدمة وإغلاق', ku: 'تەواوکردنی خزمەتگوزاری' },
   bAppointmentInProgressHint: { tr: 'Randevu başladı — hizmet verildiğinde kalan ödemeyi alıp tamamlayın.', en: 'Appointment started — collect the remaining payment and complete when service is delivered.', ar: 'بدأ الموعد — عند تقديم الخدمة استلم المبلغ المتبقي وأكمل.', ku: 'ئامادەبوون دەستیپێکرد — کاتێک خزمەتگوزاری پێشکەشکرا پارەی ماوە وەربگرە و تەواو بکە.' },
-  bReceivedAmount: { tr: 'Alınan Tutar', en: 'Amount Received', ar: 'المبلغ المستلم', ku: 'بڕی وەرگیراو' },
+  bBeautyReceivedAmount: { tr: 'Alınan Tutar', en: 'Amount Received', ar: 'المبلغ المستلم', ku: 'بڕی وەرگیراو' },
   bBeautyPaymentMethodLabel: { tr: 'Ödeme Yöntemi', en: 'Payment Method', ar: 'طريقة الدفع', ku: 'شێوازی پارەدان' },
   bPaid: { tr: 'Ödendi', en: 'Paid', ar: 'مدفوع', ku: 'پارەدرا' },
   bBeautyTotal: { tr: 'Toplam', en: 'Total', ar: 'الإجمالي', ku: 'کۆ' },
