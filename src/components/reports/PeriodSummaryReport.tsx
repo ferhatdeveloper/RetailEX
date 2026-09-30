@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Eye, Loader2 } from 'lucide-react';
+import { Eye, Loader2, RefreshCw } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatNumber } from '../../utils/formatNumber';
 import { expenseAPI, type Expense } from '../../services/api/expenses';
 import { salesAPI } from '../../services/api/sales';
@@ -17,6 +18,10 @@ import { useLanguage } from '../../contexts/LanguageContext';
 
 import { partnerAPI } from '../../services/api/partiesPartners';
 import type { PartyPartner } from '../../core/types/models';
+import {
+  getMonthlyProfitDistribution,
+  type MonthlyProfitDistributionSummary,
+} from '../../services/api/partnerDistribution';
 import {
   getRuntimeReportMenuParams,
   isReportMenuParamEnabled,
@@ -231,12 +236,6 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
 
   const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
   const [selectedYear, setSelectedYear] = useState(defaultYear);
-  const [loading, setLoading] = useState(false);
-  const [sales, setSales] = useState<Sale[]>([]);
-  /** Günlük ile aynı: gider kartı + bağlanmamış kasa/cari çıkışları */
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [purchases, setPurchases] = useState<Invoice[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
   const [partnerSplit, setPartnerSplit] = useState<PeriodSummaryPartnerSplitPrefs>(() =>
     loadPeriodSummaryPartnerSplitPrefs(),
@@ -321,11 +320,20 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       setSales([]);
       setExpenses([]);
       setPurchases([]);
+      setProfitDistribution(null);
       return;
     }
     setLoading(true);
     try {
-      const [saleRows, expenseRows, cashLines, purchaseRows, supplierRows] = await Promise.all([
+      const targetYear =
+        mode === 'monthly-days'
+          ? parseInt(selectedMonth.slice(0, 4), 10)
+          : selectedYear;
+      const targetMonth =
+        mode === 'monthly-days'
+          ? parseInt(selectedMonth.slice(5, 7), 10)
+          : 0;
+      const [saleRows, expenseRows, cashLines, purchaseRows, supplierRows, profitDist] = await Promise.all([
         salesAPI.getByDateRange(periodRange.start, periodRange.end),
         expenseAPI.getAll({ startDate: periodRange.start, endDate: periodRange.end }),
         fetchKasaIslemleri({
@@ -334,6 +342,12 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         }).catch(() => []),
         fetchPeriodPurchases(periodRange.start, periodRange.end),
         supplierAPI.getAll({ cardType: 'supplier' }),
+        mode === 'monthly-days' && targetYear && targetMonth
+          ? getMonthlyProfitDistribution(targetYear, targetMonth).catch((err) => {
+              console.warn('[PeriodSummaryReport] kâr dağıtımı özeti alınamadı:', err);
+              return null;
+            })
+          : Promise.resolve(null),
       ]);
       setSales(Array.isArray(saleRows) ? saleRows : []);
       setExpenses(
@@ -344,15 +358,17 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       );
       setPurchases(Array.isArray(purchaseRows) ? purchaseRows : []);
       setSuppliers(Array.isArray(supplierRows) ? supplierRows : []);
+      setProfitDistribution(profitDist);
     } catch (err) {
       console.error('[PeriodSummaryReport] yükleme hatası:', err);
       setSales([]);
       setExpenses([]);
       setPurchases([]);
+      setProfitDistribution(null);
     } finally {
       setLoading(false);
     }
-  }, [periodRange]);
+  }, [periodRange, mode, selectedMonth, selectedYear]);
 
   useEffect(() => {
     void loadData();
@@ -827,6 +843,50 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       });
     }
 
+    // Kâr Dağıtımı — anlık hesap (cache yok)
+    if (mode === 'monthly-days' && profitDistribution) {
+      const pd = profitDistribution;
+      const cls =
+        pd.netDistribution >= 0
+          ? 'text-violet-700 dark:text-violet-300'
+          : 'text-orange-700 dark:text-orange-400';
+      const modeLabelKey = pd.autoMode
+        ? 'rptPeriodProfitDistributionAuto'
+        : 'rptPeriodProfitDistributionManual';
+      const modeBadgeCls = pd.autoMode
+        ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200'
+        : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200';
+      items.push({
+        key: 'profit-distribution',
+        label: tm('rptPeriodProfitDistribution'),
+        value: money(pd.netDistribution),
+        valueClassName: cls,
+        className: 'border-violet-200 bg-violet-50/40 dark:border-violet-800 dark:bg-violet-950/20',
+        hint: (
+          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${modeBadgeCls}`}>
+              {tm(modeLabelKey)}
+            </span>
+            <span className="text-emerald-700 dark:text-emerald-400">
+              +{money(pd.karTotal)}
+            </span>
+            <span className="text-orange-700 dark:text-orange-400">
+              −{money(pd.zararTotal)}
+            </span>
+            {pd.lastRun ? (
+              <span className="text-slate-500 dark:text-slate-400">
+                {tm('rptPeriodProfitDistributionLastRun').replace('{date}', pd.lastRun)}
+              </span>
+            ) : (
+              <span className="text-slate-500 dark:text-slate-400">
+                {tm('rptPeriodProfitDistributionZero')}
+              </span>
+            )}
+          </span>
+        ),
+      });
+    }
+
     if (showPartnerCols) {
       partnerSlices.forEach((p, idx) => {
         const fullPartner = partners.find((x) => x.id === p.id);
@@ -893,6 +953,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     money,
     tm,
     partnerColColors,
+    mode,
+    profitDistribution,
   ]);
 
   const kpiColumns = Math.min(Math.max(kpiItems.length, 2), 6) as 2 | 3 | 4 | 5 | 6;

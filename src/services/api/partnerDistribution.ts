@@ -557,3 +557,120 @@ export async function reverseDistribution(distributionId: string, opts: { create
     throw err;
   }
 }
+
+/**
+ * Aylık Kâr/Zarar Dağıtımı özeti — Aylık Gün Özeti raporu için anlık çağrı.
+ *
+ * Muhasebe yönü:
+ *   - KAR_DAGITIMI ledger sign=+1 → dağıtılan kâr (pozitif)
+ *   - ZARAR_DAGITIMI ledger sign=-1 → dağıtılan zarar (negatif)
+ *   - Net = (Σ KAR miktarı) − (Σ ZARAR miktarı)
+ *
+ * Sayfa açılışında / Yenile'de her seferinde hesaplanır (cache yok).
+ *
+ * @param year  Yıl (örn. 2026)
+ * @param month Ay 1-12
+ */
+export interface MonthlyProfitDistributionSummary {
+  year: number;
+  month: number;
+  /** KAR_DAGITIMI toplamı (sign=+1 mutlak) */
+  karTotal: number;
+  /** ZARAR_DAGITIMI toplamı (sign=+1 mutlak) */
+  zararTotal: number;
+  /** karTotal − zararTotal (işaretli net) */
+  netDistribution: number;
+  /** Dağıtım motorunun modu: daily | period | manual */
+  autoMode: boolean;
+  /** En son dağıtım tarihi (YYYY-MM-DD) veya null */
+  lastRun: string | null;
+  /** Dağıtım motorunun raw modu (debug için) */
+  distributionMode: PartnerDistributionMode;
+  /** rowCount: okunan ledger satır sayısı */
+  rowCount: number;
+}
+
+export async function getMonthlyProfitDistribution(
+  year: number,
+  month: number,
+): Promise<MonthlyProfitDistributionSummary> {
+  const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+  const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10);
+  const ledgerTbl = `rex_${firmNr}_${period}_party_ledger_movements`;
+  const distTbl = `rex_${firmNr}_${period}_partner_distributions`;
+  const settingsTbl = `rex_${firmNr}_partner_settings`;
+
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  let karTotal = 0;
+  let zararTotal = 0;
+  let rowCount = 0;
+
+  try {
+    await ensurePartyPeriodTables(firmNr, period);
+    const ledgerRes = await postgres.query(
+      `SELECT transaction_type, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS cnt
+       FROM ${ledgerTbl}
+       WHERE source_module IN ('partner_distribution', 'period_net_share')
+         AND transaction_type IN ('KAR_DAGITIMI', 'ZARAR_DAGITIMI')
+         AND date >= $1::timestamptz
+         AND date < ($2::date + INTERVAL '1 day')::timestamptz
+       GROUP BY transaction_type`,
+      [startDate, endDate],
+    );
+    for (const r of ledgerRes.rows || []) {
+      const t = String(r.transaction_type || '');
+      const total = parseFloat(r.total || 0);
+      const cnt = parseInt(r.cnt || 0, 10);
+      rowCount += cnt;
+      if (t === 'KAR_DAGITIMI') karTotal += total;
+      else if (t === 'ZARAR_DAGITIMI') zararTotal += total;
+    }
+  } catch (err) {
+    console.warn('[getMonthlyProfitDistribution] ledger sorgusu başarısız:', err);
+  }
+
+  let distributionMode: PartnerDistributionMode = 'manual';
+  let lastRun: string | null = null;
+  try {
+    const settingsRes = await postgres.query(
+      `SELECT distribution_mode FROM ${settingsTbl} WHERE firm_nr = $1::text LIMIT 1`,
+      [firmNr],
+    );
+    const mode = String(settingsRes.rows?.[0]?.distribution_mode || 'manual');
+    if (mode === 'daily' || mode === 'period' || mode === 'manual') {
+      distributionMode = mode;
+    }
+  } catch {
+    distributionMode = 'manual';
+  }
+
+  try {
+    const lastRes = await postgres.query(
+      `SELECT MAX(distribution_date)::text AS last_run
+       FROM ${distTbl}
+       WHERE distribution_date >= $1::date AND distribution_date <= $2::date`,
+      [startDate, endDate],
+    );
+    lastRun = lastRes.rows?.[0]?.last_run || null;
+  } catch {
+    lastRun = null;
+  }
+
+  const netDistribution = karTotal - zararTotal;
+  const autoMode = distributionMode === 'daily' || distributionMode === 'period';
+
+  return {
+    year,
+    month,
+    karTotal,
+    zararTotal,
+    netDistribution,
+    autoMode,
+    lastRun,
+    distributionMode,
+    rowCount,
+  };
+}
