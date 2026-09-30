@@ -4475,6 +4475,29 @@ export function AppointmentPOS({
                                 </button>
                             </div>
                             )}
+                            {/* "Hizmet Ver ve Kapat" — yalnızca in_progress randevularda,
+                                Actions grid'inin altında 3. buton olarak. BAŞLADI kartından
+                                buraya taşındı. openRemainerModal handler'ı mevcut mini
+                                modalı açar; default tutar = remaining_amount. */}
+                            {existingAppointment?.id && appointmentStatusMatches(existingAppointment.status, AppointmentStatus.IN_PROGRESS) && (
+                                <button
+                                    type="button"
+                                    onClick={openRemainerModal}
+                                    data-testid="beauty-complete-and-close"
+                                    style={{
+                                        width: '100%', height: 38, borderRadius: 5, border: 'none',
+                                        background: '#7c3aed', color: '#fff',
+                                        fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                                        transition: 'background 0.1s',
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#6d28d9'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = '#7c3aed'; }}
+                                >
+                                    <CheckCircle size={13} />
+                                    {tm('bServiceCompleteAndClose') || 'Hizmet Ver ve Kapat'}
+                                </button>
+                            )}
                             </div>
                         </div>
                     </div>{/* end scrollable bottom section */}
@@ -5019,10 +5042,11 @@ export function AppointmentPOS({
                 </div>
             </RetailExFlatModal>
 
-            {/* ── In-progress randevu için "Hizmet Ver ve Kapat" inline kart + modal ──
-                existingAppointment.status === 'in_progress' ise sağ panelde kalan tutar
-                özeti ve buton gösterilir. Buton inline mini modal açar; default tutar
-                = remaining_amount. Submit'te completeAppointmentWithRemainder çağrılır. */}
+            {/* ── In-progress randevu bilgi kartı ──
+                existingAppointment.status === 'in_progress' ise sağ panelde bilgi
+                amaçlı rozet + tarih + ipucu gösterilir. "Hizmet Ver ve Kapat" eylem
+                butonu artık bu kartta değil; ana checkout panelinin Actions bölümünün
+                altında, yalnızca in_progress randevularda görünür. */}
             {showInProgressPanel && existingAppointment?.id && appointmentStatusMatches(existingAppointment.status, AppointmentStatus.IN_PROGRESS) && (() => {
                 return (
                     <div style={{ padding: '8px 16px 12px', background: '#faf5ff', borderTop: '1px solid #ede9fe', flexShrink: 0 }}>
@@ -5037,23 +5061,6 @@ export function AppointmentPOS({
                                     {existingAppointment.appointment_time ? ` · ${String(existingAppointment.appointment_time).slice(0, 5)}` : ''}
                                 </span>
                             </div>
-                            {/* (Tutarların bilgi özeti kaldırıldı — kart artık minimal: rozet + tarih + buton + ipucu.) */}
-                            <button
-                                type="button"
-                                onClick={openRemainerModal}
-                                data-testid="beauty-complete-with-payment"
-                                style={{
-                                    width: '100%', height: 38, borderRadius: 6, border: 'none',
-                                    background: '#7c3aed', color: '#fff',
-                                    fontSize: 12, fontWeight: 800, cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = '#6d28d9'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = '#7c3aed'; }}
-                            >
-                                <CheckCircle size={14} />
-                                {tm('bServiceCompleteAndClose') || 'Hizmet Ver ve Kapat'}
-                            </button>
                             <p style={{ fontSize: 10, color: '#7c2d12', margin: '6px 0 0', lineHeight: 1.45 }}>
                                 {tm('bAppointmentInProgressHint') || 'Randevu başladı — hizmet verildiğinde kalan ödemeyi alıp tamamlayın.'}
                             </p>
