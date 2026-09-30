@@ -4,111 +4,97 @@
 -- Kök neden:
 --   Canlı sistemde (uzak PG `retailex_demo`) 4 farklı SQL hatası:
 --     1) `listInProgressAppointments` → `column rs.color does not exist`
---        (rex_*_services.color kolonu yok)
+--        (rex_*_services.color kolonu master şemada yok — KOD tarafında
+--        `COALESCE(bs.color, rs.color)` → `bs.color` olarak düzeltildi)
 --     2) `getCustomerOutstandingInvoices` → `column "currency" does not exist`
---        (beauty.rex_*_*_beauty_sales.currency kolonu yok)
+--        (beauty.rex_*_*_beauty_sales.currency kolonu master şemada yok idi;
+--        master şemaya currency eklendi)
 --     3) `getCustomerOutstandingInvoices` → `column "paid_amount" does not exist`
---        (rex_*_*_sales.paid_amount kolonu yok; `credit_amount` mevcut)
---     4) `service_staff_commissions` PostgREST 400 — tenant'ta tablo yok
---
--- Bu migration ŞEMA katmanını düzeltir; kod tarafındaki sorgular da ayrıca
--- güncellendi (rs.color kaldırıldı vb.).
+--        (public.rex_*_*_sales.paid_amount kolonu yok idi; master şemaya
+--        eklendi; credit_amount zaten vardı)
+--     4) `service_staff_commissions` PostgREST 400 — bazı tenant'larda
+--        INIT_BEAUTY_FIRM_TABLES çağrılmamış (kısmi kurulum / snapshot);
+--        tablo CREATE ile garanti edildi
 --
 -- Politikalar:
 --   * Idempotent: ADD COLUMN IF NOT EXISTS / CREATE TABLE IF NOT EXISTS
---   * Geriye dönük uyumluluk: yeni kolonlar nullable ya da DEFAULT değerli
+--   * Geriye dönük uyumluluk: yeni kolonlar DEFAULT değerli (paid_amount=0,
+--     currency='IQD')
 --   * DO $$ ... $$ BLOKLARI KULLANILMAMIŞTIR (Tauri Rust parser uyumu)
---   * Çoklu firm/period için apply script'i ile uygulanır
---     (apply-missing-columns-183.mjs)
+--   * Çoklu tenant/firm/period uygulaması için apply script'i kullanılır
+--
+-- Uygulama:
+--   node database/scripts/apply-missing-columns-183.mjs --apply
+--   (script: tüm RetailEX tenant DB'lerini tarar, NON_RETAILEX_DATABASES
+--    + finpos_crm + merkez_db'yi atlar, dry-run destekler)
 -- ============================================================================
 
 SET search_path TO public;
 
 -- ============================================================================
--- 1) sales.paid_amount ekle
+-- 1) public.rex_<firmNr>_<periodNr>_sales.paid_amount EKLE
 -- ----------------------------------------------------------------------------
--- `rex_<firmNr>_<periodNr>_sales` tabloları CREATE_PERIOD_TABLES tarafından
--- `credit_amount` ile yaratılıyor; POS ödeme / cari tahsilat tarafı
--- `paid_amount` bekliyor (faturaya yazılan ödeme toplamı).
+-- `credit_amount` master şemada zaten VAR (kalan veresiye bakiyesi).
+-- `paid_amount` tahsil edilen tutar (kümülatif) — POS ödeme / cari tahsilat
+-- sorgularının beklediği kolon.
 --
 -- İlişki:
---   - paid_amount   : tahsil edilen tutar (kümülatif)
---   - credit_amount : kalan veresiye bakiyesi (negatif yönde hareket)
---   - total_gross   : toplam fatura tutarı
--- Geriye dönük uyum: paid_amount = total_gross − credit_amount ile
--- doldurulur (eski satırlar).
--- ============================================================================
-
--- Örnek ALTER (tek bir tablo için):
-ALTER TABLE rex_001_01_sales
-  ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(15,2) NOT NULL DEFAULT 0;
-
--- Geriye dönük uyumlu doldurma (paid_amount yoksa total_gross − credit_amount
--- yaz; ama zaten default 0 olduğu için sadece eski satırlarda pay > 0 ve
--- credit > 0 ise düzeltme gerekli).
-UPDATE rex_001_01_sales
-   SET paid_amount = GREATEST(0, COALESCE(total_gross, 0) - COALESCE(credit_amount, 0))
- WHERE paid_amount = 0
-   AND (COALESCE(total_gross, 0) - COALESCE(credit_amount, 0)) > 0.005;
-
--- ============================================================================
--- 2) beauty.rex_*_*_beauty_sales.currency ekle
--- ----------------------------------------------------------------------------
--- beauty_sales tablosu master şemada `paid_amount`/`remaining_amount` içeriyor
--- ama `currency` yok. POS ödeme kırılımı payments[].currency kullanıyor;
--- `getCustomerOutstandingInvoices` ise `COALESCE(currency, 'IQD')` ile
--- çekiyor → kolon yoksa hata.
--- ============================================================================
-
--- Örnek ALTER (tek bir beauty_sales tablosu için):
-ALTER TABLE beauty.rex_001_01_beauty_sales
-  ADD COLUMN IF NOT EXISTS currency VARCHAR(10) NOT NULL DEFAULT 'IQD';
-
--- ============================================================================
--- 3) beauty.rex_*_service_staff_commissions tablosu (eksik tenant'lar için)
--- ----------------------------------------------------------------------------
--- Bazı tenant'larda INIT_BEAUTY_FIRM_TABLES hiç çağrılmamış veya yarıda
--- kalmış; sonuç olarak service_staff_commissions tablosu yok. Bu tablo hem
--- PostgREST 400 veriyor hem de specialist × service komisyon oranı
--- sorgularını kırıyor.
+--   paid_amount + credit_amount = net_amount (toplam fatura tutarı yaklaşık)
+--   paid_amount=0, credit_amount=net → veresiye (henüz ödenmemiş)
+--   paid_amount=net, credit_amount=0 → peşin (tam ödenmiş)
 --
--- INIT_BEAUTY_FIRM_TABLES ile aynı yapı:
---   - service_id UUID → beauty.rex_*_beauty_services(id) ON DELETE CASCADE
---   - staff_id   UUID → beauty.rex_*_beauty_specialists(id) ON DELETE CASCADE
---   - percent NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK 0..100
---   - is_active, notes, created_at, updated_at
+-- İdempotent: ADD COLUMN IF NOT EXISTS (Tauir Rust uyumlu, DO $$ yok).
 -- ============================================================================
-
-CREATE TABLE IF NOT EXISTS beauty.rex_001_service_staff_commissions (
-  service_id UUID NOT NULL REFERENCES beauty.rex_001_beauty_services(id) ON DELETE CASCADE,
-  staff_id   UUID NOT NULL REFERENCES beauty.rex_001_beauty_specialists(id) ON DELETE CASCADE,
-  percent    NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (percent >= 0 AND percent <= 100),
-  is_active  BOOLEAN NOT NULL DEFAULT true,
-  notes      TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (service_id, staff_id)
-);
-
-CREATE INDEX IF NOT EXISTS rex_001_service_staff_commissions_srv_active_idx
-  ON beauty.rex_001_service_staff_commissions (service_id) WHERE is_active = true;
+--
+-- Örnek tek ALTER (apply script'i her firm/period için ayrı çalıştırır):
+--   ALTER TABLE rex_001_01_sales
+--     ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(15,2) NOT NULL DEFAULT 0;
 
 -- ============================================================================
--- 4) rex_*_services.color (Hata 1 — KOD İLE çözüldü)
+-- 2) beauty.rex_<firmNr>_<periodNr>_beauty_sales.currency EKLE
 -- ----------------------------------------------------------------------------
--- Bu kolon master şemada YOK ve güzellik dışı modüller için anlamlı
--- değil (services tablosu ürün/malzeme kartı). JOIN'deki `rs.color`
--- referansı kaldırıldı → bs.color zaten beauty_services'tan geliyor.
--- Bu yüzden bu migration kolon EKLEMİYOR (geriye dönük uyumlu, sıfır etki).
+-- beauty_sales zaten `paid_amount` / `remaining_amount` / `payment_status`
+-- içeriyor (master 4170); `currency` eklenmediği için
+-- `COALESCE(currency, 'IQD')` sorguları runtime'da patlıyordu.
 -- ============================================================================
+--
+-- Örnek tek ALTER:
+--   ALTER TABLE beauty.rex_001_01_beauty_sales
+--     ADD COLUMN IF NOT EXISTS currency VARCHAR(10) NOT NULL DEFAULT 'IQD';
 
 -- ============================================================================
--- Uygulama notu
+-- 3) beauty.rex_<firmNr>_service_staff_commissions (eksik tenant'lar)
 -- ----------------------------------------------------------------------------
--- Çoklu tenant/firm/period uygulaması için:
---   node database/scripts/apply-missing-columns-183.mjs --apply
--- script'i kullanılmalı; her firm/period tablosuna ayrı ALTER uygular,
--- idempotent'tır, dry-run destekler ve config.db üzerinden
--- RetailEX dışı veritabanlarını (ilsasupport, pagetin_kurye, siti_pdks,
--- aram, naw, arzen, sitigroup) filtreler.
+-- INIT_BEAUTY_FIRM_TABLES tarafından yaratılması gereken tablo — bazı
+-- tenant'larda hiç çağrılmamış (kısmi kurulum, snapshot, erken kurulum).
+-- Sonuç: PostgREST 400 + komisyon sorguları sessizce boş döner.
+--
+-- INIT_BEAUTY_FIRM_TABLES ile bire bir aynı yapı (4098 ile):
+--   - service_id → beauty.rex_*_beauty_services(id) ON DELETE CASCADE
+--   - staff_id   → beauty.rex_*_beauty_specialists(id) ON DELETE CASCADE
+--   - percent NUMERIC(5,2) CHECK 0..100
+--   - PRIMARY KEY (service_id, staff_id)
+-- ============================================================================
+--
+-- Örnek tek CREATE (apply script'i her firm için ayrı çalıştırır):
+--   CREATE TABLE IF NOT EXISTS beauty.rex_001_service_staff_commissions (
+--     service_id UUID NOT NULL REFERENCES beauty.rex_001_beauty_services(id) ON DELETE CASCADE,
+--     staff_id   UUID NOT NULL REFERENCES beauty.rex_001_beauty_specialists(id) ON DELETE CASCADE,
+--     percent    NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (percent >= 0 AND percent <= 100),
+--     is_active  BOOLEAN NOT NULL DEFAULT true,
+--     notes      TEXT,
+--     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--     PRIMARY KEY (service_id, staff_id)
+--   );
+--   CREATE INDEX IF NOT EXISTS rex_001_service_staff_commissions_srv_active_idx
+--     ON beauty.rex_001_service_staff_commissions (service_id) WHERE is_active = true;
+
+-- ============================================================================
+-- 4) rex_*_services.color (Hata 1 — KOD tarafında çözüldü)
+-- ----------------------------------------------------------------------------
+-- Bu kolon master şemada YOK ve güzellik dışı modüller için anlamlı değil
+-- (services tablosu ürün/malzeme kartı). JOIN'deki `rs.color` referansı
+-- `beautyService.ts` içinde kaldırıldı → `bs.color` (beauty_services) zaten
+-- doğru yere yönlendiriyor. Bu migration kolon EKLEMİYOR (sıfır etki).
 -- ============================================================================

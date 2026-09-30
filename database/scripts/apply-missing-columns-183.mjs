@@ -105,38 +105,29 @@ async function columnExists(client, schema, table, column) {
 
 async function listFirmsAndPeriods(client) {
   // rex_<firmNr>_<periodNr>_sales tablosu varsa ondan firm/period çıkar.
-  // Yoksa schema_migrations / tenant_registry'ye düşme (basit yaklaşım).
+  // (string_to_array ile 2. ve 3. parçayı al; substring sadece ilk grubu döndürür)
   const r = await client.query(
     `SELECT DISTINCT
-        substring(table_name FROM '^rex_([0-9]+)_([0-9]+)_sales$') AS fp
+        (string_to_array(regexp_replace(table_name, '^rex_([0-9]+)_([0-9]+)_sales$', '\\1_\\2'), '_'))[1] AS firm,
+        (string_to_array(regexp_replace(table_name, '^rex_([0-9]+)_([0-9]+)_sales$', '\\1_\\2'), '_'))[2] AS period
        FROM information_schema.tables
       WHERE table_schema = 'public'
         AND table_name ~ '^rex_[0-9]+_[0-9]+_sales$'
-      ORDER BY fp`
+      ORDER BY firm, period`
   );
-  const out = [];
-  for (const row of r.rows) {
-    const m = row.fp && row.fp.match(/^(\d+)_(\d+)$/);
-    if (m) out.push({ firmNr: m[1], periodNr: m[2] });
-  }
-  return out;
+  return r.rows.map((row) => ({ firmNr: String(row.firm), periodNr: String(row.period) }));
 }
 
 async function listFirms(client) {
   const r = await client.query(
     `SELECT DISTINCT
-        substring(table_name FROM '^rex_([0-9]+)_beauty_services$') AS f
+        substring(table_name FROM '^rex_([0-9]+)_beauty_services$') AS firm
        FROM information_schema.tables
       WHERE table_schema = 'beauty'
         AND table_name ~ '^rex_[0-9]+_beauty_services$'
-      ORDER BY f`
+      ORDER BY firm`
   );
-  const out = [];
-  for (const row of r.rows) {
-    const m = row.f && row.f.match(/^(\d+)$/);
-    if (m) out.push(m[1]);
-  }
-  return out;
+  return r.rows.map((row) => String(row.firm));
 }
 
 async function ensureSalesPaidAmount(client, firmNr, periodNr, dry) {
@@ -148,13 +139,24 @@ async function ensureSalesPaidAmount(client, firmNr, periodNr, dry) {
     ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(15,2) NOT NULL DEFAULT 0`;
   if (dry) return { ok: true, skipped: false, ddl };
   await client.query(ddl);
-  // Geriye dönük doldurma
+  // Geriye dönük doldurma — credit_amount bazı tenant'larda henüz yok.
+  // Varsa: paid = total_gross - credit_amount (peşinatsız veresiye).
+  // Yoksa: paid = total_gross (tutarı peşinat olarak kabul et, daha sonra düzeltilir).
+  const hasCredit = await columnExists(client, schema, table, 'credit_amount');
+  if (hasCredit) {
+    const upd = `UPDATE ${schema}.${table}
+                    SET paid_amount = GREATEST(0, COALESCE(total_gross, 0) - COALESCE(credit_amount, 0))
+                  WHERE paid_amount = 0
+                    AND (COALESCE(total_gross, 0) - COALESCE(credit_amount, 0)) > 0.005`;
+    await client.query(upd);
+    return { ok: true, skipped: false, ddl, upd, backfilled: true };
+  }
+  // credit_amount yok: paid_amount = total_gross (tüm tutar ödenmiş gibi)
   const upd = `UPDATE ${schema}.${table}
-                  SET paid_amount = GREATEST(0, COALESCE(total_gross, 0) - COALESCE(credit_amount, 0))
-                WHERE paid_amount = 0
-                  AND (COALESCE(total_gross, 0) - COALESCE(credit_amount, 0)) > 0.005`;
+                  SET paid_amount = COALESCE(total_gross, 0)
+                WHERE paid_amount = 0 AND COALESCE(total_gross, 0) > 0.005`;
   await client.query(upd);
-  return { ok: true, skipped: false, ddl, upd };
+  return { ok: true, skipped: false, ddl, upd, backfilled: 'no-credit' };
 }
 
 async function ensureBeautySalesCurrency(client, firmNr, periodNr, dry) {
