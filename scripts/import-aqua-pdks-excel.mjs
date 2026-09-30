@@ -102,22 +102,44 @@ function decodeEntities(s) {
     .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)));
 }
 
-function extractMainTable(html) {
+function extractDailyReport(html) {
   const stripped = stripScripts(html);
-  const m = stripped.match(/<table[\s\S]*?<\/table>/i);
-  if (!m) throw new Error('HTML içinde <table> bulunamadı.');
-  return m[0];
+  // Bu Excel raporunda asıl veri Daily_Report tablosunda (10 kişi × 30 gün =
+  // 300 satır). Non-greedy eşleşme nested tablo içinde en içteki </table>'a
+  // yapışıyor; bu yüzden <table class="Daily_Report"> açılışından itibaren
+  // manuel olarak kapanış sayacıyla ilerliyoruz.
+  const startMatch = stripped.match(/<table\b[^>]*class="Daily_Report"[^>]*>/i);
+  if (!startMatch) throw new Error('Daily_Report tablosu bulunamadı.');
+  const start = startMatch.index + startMatch[0].length;
+  let depth = 1;
+  let i = start;
+  while (i < stripped.length && depth > 0) {
+    const open = stripped.slice(i).match(/<table\b[^>]*>/i);
+    const close = stripped.slice(i).match(/<\/table>/i);
+    if (!close) break;
+    if (open && open.index < close.index) {
+      depth++;
+      i += open.index + open[0].length;
+    } else {
+      depth--;
+      i += close.index + close[0].length;
+    }
+  }
+  return stripped.slice(startMatch.index, i);
 }
 
 function parseTable(tableHtml) {
   const rows = [];
-  const trRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
-  let trMatch;
-  while ((trMatch = trRegex.exec(tableHtml)) !== null) {
+  // Excel "Save As Web Page" çıktısında <tr ...> etiketleri sıkça eksik, ama
+  // </tr> kapanışları tam. Bu yüzden </tr> ile split edip, aralardaki <td>'leri
+  // topluyoruz.
+  const blocks = tableHtml.split(/<\/tr>/i);
+  for (const block of blocks) {
+    if (!/<td\b/i.test(block)) continue;
     const cells = [];
     const cellRegex = /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi;
     let cMatch;
-    while ((cMatch = cellRegex.exec(trMatch[1])) !== null) {
+    while ((cMatch = cellRegex.exec(block)) !== null) {
       const raw = cMatch[1].replace(/<[^>]+>/g, '');
       cells.push(decodeEntities(raw).replace(/\s+/g, ' ').trim());
     }
@@ -157,72 +179,124 @@ function buildHeaderIndex(headers) {
   return map;
 }
 
-// Status kodu (8 değer) → DB durumu. AsinERP PDKS'ten gelen yaygın kodlar:
-//   PR → PRESENT, AB → ABSENT, L-A → HALF_DAY, L → LATE,
-//   L-P → LATE, iz → LEAVE, T → HOLIDAY (bayram), OFF → OFF
+// Status kodu (8 değer) → DB durumu. AsinERP PDKS raporunda kullanılan kodlar:
+//   P / PR / W  → PRESENT  (W = Worked)
+//   A / AB      → ABSENT
+//   L           → LATE     (Late)
+//   L-A / L-W   → HALF_DAY (yarım gün; L-A yarım-gün kodu, L-W yarım + present)
+//   LV / IZ     → LEAVE
+//   T           → HOLIDAY  (bayram)
+//   OFF         → OFF
+//   "-"         → null (atla)
+//
+// Excel'in kombinasyon kodları (örn. "L-A-#", "W-#", "L-W-#", "A-#") "-" ayrıcı
+// ile birleştirilmiş olur ve "W-#" gibi Weekend + Worked karışımı anlamına
+// gelir. Excel header notu (Daily_Report son satırı):
+//   LV = Apply for Leave/Business Trip; L = Late; E = Early Leave;
+//   W = Attended; OT1/OT2/OT3 = OT; A = Absent; # = Weekend
+// Öncelik sırası: WEEKEND > LEAVE > ABSENT > LATE > PRESENT
 const STATUS_CODE_MAP = {
-  PR: 'PRESENT',
-  P:  'PRESENT',
-  AB: 'ABSENT',
-  'L-A': 'HALF_DAY',
-  'L-A ': 'HALF_DAY',
-  L:  'LATE',
-  'L-P': 'LATE',
-  'IZ': 'LEAVE',
-  'IZ ': 'LEAVE',
-  'L-IZ': 'LEAVE',
-  T:  'HOLIDAY',
-  OFF: 'OFF',
-  'OFF ': 'OFF',
-  '-':  null,
-  '':   null,
+  // tekli
+  'PR': 'PRESENT', 'P': 'PRESENT', 'W': 'PRESENT',
+  'AB': 'ABSENT',  'A': 'ABSENT',
+  'L':  'LATE',
+  'L-A':'HALF_DAY', 'L-A ': 'HALF_DAY',
+  'L-W':'HALF_DAY', 'L-P': 'HALF_DAY',
+  'LV': 'LEAVE', 'IZ': 'LEAVE', 'L-IZ': 'LEAVE',
+  'T':  'HOLIDAY',
+  'OFF':'OFF', 'OFF ': 'OFF',
+  '-':  null, '': null,
+  // kombinasyon (öncelik sırasıyla)
+  'L-A-#': 'OFF',  // L-A + Weekend → OFF
+  'W-#':   'OFF',  // Worked + Weekend → OFF (yine de hafta sonu)
+  'A-#':   'OFF',  // Absent + Weekend → OFF
+  'L-W-#': 'OFF',  // Late + Worked + Weekend → OFF
+  'L-#':   'OFF',  // Late + Weekend → OFF
+  'W-E':   'PRESENT', // Worked + Early leave → PRESENT
+  'W-OT1': 'PRESENT', // Worked + OT1 → PRESENT
+  'W-OT2': 'PRESENT',
+  'W-OT3': 'PRESENT',
 };
+
 function mapStatusCode(rawCode) {
   if (rawCode == null) return null;
   const k = String(rawCode).trim();
-  if (!k) return null;
-  return STATUS_CODE_MAP[k] ?? null;
+  if (!k || k === '-') return null;
+  if (STATUS_CODE_MAP[k] !== undefined) return STATUS_CODE_MAP[k];
+  // Bilinmeyen kombinasyon: parçalarına ayır, parça parça eşle.
+  const parts = k.split('-').map((s) => s.trim()).filter(Boolean);
+  // Öncelik: weekend (#), leave (LV/IZ), absent (A/AB), late (L), present (W)
+  if (parts.includes('#')) return 'OFF';
+  if (parts.includes('LV') || parts.includes('IZ')) return 'LEAVE';
+  if (parts.includes('A') || parts.includes('AB')) return 'ABSENT';
+  if (parts.includes('L') && (parts.includes('A') || parts.includes('W'))) return 'HALF_DAY';
+  if (parts.includes('L')) return 'LATE';
+  if (parts.includes('W') || parts.includes('P') || parts.includes('PR')) return 'PRESENT';
+  return null; // tanımsız → skip
 }
 
 // ---------------------------------------------------------------------------
-// 20 kolonluk beklenen Excel header örneği (referans):
-//  #, Person ID, Name, Status, Timetable, Timetable2, Timetable3,
-//  Status, Work Time, Records, Early, Leave, 1, 2, …, 30
+// Daily_Report'tan gelen satırları 1-attendance-per-row olarak parse eder.
+//
+// Beklenen kolon sırası (Excel'in Daily_Report bloğu):
+//   0  #            : sıra no
+//   1  Person ID    : PDKS personId (1..8, 10, 11)
+//   2  Name         : "MuhamadSalih#001"  (HR ekimde #NNN eklenmiş)
+//   3  Department   : "AquaBeauty"
+//   4  Status       : kişinin 8-kod master durumu (skip)
+//   5  Gender       : Male/Female
+//   6  Date         : YYYY-MM-DD
+//   7  Dow          : Mon./Tue./…
+//   8  Timetable    : "Normal(13:00:00-21:00:00)"
+//   9  Records      : -
+//  10  Early        : -
+//  11  Leave        : -
+//  12  Late (min)   : 0
+//  13  Absent       : 0/1
+//  14  OT (count)   : 0/1
+//  15  Worked       : 0/1
+//  16  Work-min     : 480
+//  17  OT-min       : 0
+//  18  Status kodu  : "L-A", "PR", "AB", "T", "OFF", "-"…
+//  19  -            : (skip)
+//
+// Çıktı: { persons: [...kişi...], attendances: [{personId, day, status, date}] }
 // ---------------------------------------------------------------------------
-function parseRows(rows, headerIdx) {
-  const persons = [];
-  for (let r = 0; r < rows.length; r++) {
-    const row = rows[r];
-    const personIdRaw = row[headerIdx.personId];
-    const nameRaw = row[headerIdx.name];
-    if (!personIdRaw || !nameRaw) continue;
+function parseDailyReportRows(rows) {
+  const persons = new Map();
+  const attendances = [];
+  for (const row of rows) {
+    if (row.length < 19) continue;
+    const personIdRaw = row[1];
+    const nameRaw = row[2];
+    const dateRaw = row[6];
+    const statusCode = row[18];
+    if (!personIdRaw || !nameRaw || !dateRaw) continue;
     const pid = parseInt(String(personIdRaw).trim(), 10);
     if (!Number.isFinite(pid)) continue;
-    const statusCode = row[headerIdx.status];
-    const timetableRaw = row[headerIdx.timetable];
-    const workTimeRaw = row[headerIdx.workTime];
-
-    // 30 günlük status hücreleri
-    const days = {};
-    for (let d = 1; d <= 30; d++) {
-      const colIdx = headerIdx[`day${d}`];
-      if (colIdx === undefined) continue;
-      const cell = row[colIdx];
-      const mapped = mapStatusCode(cell);
-      if (mapped != null) days[d] = mapped;
+    // date YYYY-MM-DD
+    const m = String(dateRaw).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) continue;
+    const day = parseInt(m[3], 10);
+    const mapped = mapStatusCode(statusCode);
+    if (mapped == null) continue; // "-" → null; skip
+    if (!persons.has(pid)) {
+      persons.set(pid, {
+        personId: pid,
+        name: String(nameRaw).trim(),
+        code: `PDKS-${pid}`,
+      });
     }
-
-    persons.push({
-      rowIndex: r,
+    attendances.push({
       personId: pid,
       name: String(nameRaw).trim(),
-      excelStatusCode: statusCode ? String(statusCode).trim() : '',
-      timetable: timetableRaw ? String(timetableRaw).trim() : '',
-      workTime: workTimeRaw ? String(workTimeRaw).trim() : '',
-      days,
+      date: `${m[1]}-${m[2]}-${m[3]}`,
+      day,
+      excelStatusCode: String(statusCode).trim(),
+      status: mapped,
     });
   }
-  return persons;
+  return { persons: [...persons.values()], attendances };
 }
 
 // ---------------------------------------------------------------------------
@@ -282,13 +356,13 @@ async function lookupShiftId(client, firmNr, attendanceDate) {
   return rows[0]?.id ?? null;
 }
 
-async function upsertAttendance(client, p, period, firmNr, periodNr) {
+async function upsertAttendance(client, p, period, firmNr, periodNr, attendances) {
   const results = [];
   const code = `PDKS-${p.personId}`;
-  for (const [dayStr, status] of Object.entries(p.days)) {
-    const day = parseInt(dayStr, 10);
-    const [year, month] = period.split('-').map(Number);
-    const attendanceDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  for (const att of attendances) {
+    const day = att.day;
+    const status = att.status;
+    const attendanceDate = att.date;
     const excelPdksId = p.personId * 100 + day;
 
     // staff_id'yi bul (excel_pdks_id üzerinden)
@@ -325,7 +399,10 @@ async function upsertAttendance(client, p, period, firmNr, periodNr) {
     const noClockStatuses = new Set(['ABSENT', 'LEAVE', 'HOLIDAY', 'OFF']);
     const useClock = !noClockStatuses.has(status);
 
-    const sql = `
+    // useClock durumuna göre SQL ayrı üretilir; yoksa $10/$14 referansı psql'de
+    // "could not determine data type of parameter" hatası veriyor.
+    const sql = useClock
+      ? `
       INSERT INTO public.staff_attendance (
         firm_nr, period_nr, staff_id, staff_name, department, attendance_date,
         shift_id, scheduled_start, scheduled_end,
@@ -334,9 +411,30 @@ async function upsertAttendance(client, p, period, firmNr, periodNr) {
       ) VALUES (
         $1, $2, $3::uuid, $4, $5, $6::date,
         $7::uuid, $8::time, $9::time,
-        ${useClock ? '$10::time, $11::time' : 'NULL, NULL'},
-        ${useClock ? '$12' : '0'},
-        $13, 'excel', $14, 0
+        $10::time, $11::time, $12, $13,
+        'excel', $14, 0
+      )
+      ON CONFLICT (firm_nr, period_nr, staff_id, attendance_date) DO UPDATE SET
+        staff_name       = EXCLUDED.staff_name,
+        shift_id         = EXCLUDED.shift_id,
+        scheduled_start  = EXCLUDED.scheduled_start,
+        scheduled_end    = EXCLUDED.scheduled_end,
+        status           = EXCLUDED.status,
+        source           = 'excel',
+        excel_pdks_id    = EXCLUDED.excel_pdks_id,
+        updated_at       = CURRENT_TIMESTAMP
+      RETURNING id::text, (xmax = 0)::int AS inserted`
+      : `
+      INSERT INTO public.staff_attendance (
+        firm_nr, period_nr, staff_id, staff_name, department, attendance_date,
+        shift_id, scheduled_start, scheduled_end,
+        clock_in, clock_out, worked_minutes, status,
+        source, excel_pdks_id, early_minutes
+      ) VALUES (
+        $1, $2, $3::uuid, $4, $5, $6::date,
+        $7::uuid, $8::time, $9::time,
+        NULL, NULL, 0, $10,
+        'excel', $11, 0
       )
       ON CONFLICT (firm_nr, period_nr, staff_id, attendance_date) DO UPDATE SET
         staff_name       = EXCLUDED.staff_name,
@@ -417,45 +515,41 @@ async function main() {
 
   console.log(`[import-aqua-pdks] mod=${args.mode} dosya=${filePath} period=${args.period} firm=${args.firm}`);
   const html = await readFile(filePath, 'utf8');
-  const table = extractMainTable(html);
+  const table = extractDailyReport(html);
   const rows = parseTable(table);
   if (rows.length < 5) throw new Error('Yeterli satır bulunamadı (en az header + 1 kişi).');
 
-  // İlk ~5 satır metadata olabilir; header'ı ilk "Person ID" geçen satırdan başlat.
-  let headerRow = -1;
-  for (let i = 0; i < Math.min(10, rows.length); i++) {
-    if (rows[i].some((c) => /person\s*id/i.test(c))) { headerRow = i; break; }
-  }
-  if (headerRow < 0) throw new Error('Header satırı bulunamadı ("Person ID" kolonu yok).');
-  const headerIdx = buildHeaderIndex(rows[headerRow]);
-
-  if (headerIdx.personId === undefined || headerIdx.name === undefined) {
-    throw new Error('Zorunlu kolonlar eksik: Person ID ve Name.');
-  }
-  console.log(`[import-aqua-pdks] header index:`, headerIdx);
-
-  const dataRows = rows.slice(headerRow + 1);
-  const persons = parseRows(dataRows, headerIdx);
-  console.log(`[import-aqua-pdks] parse edilen kişi: ${persons.length}`);
+  // Daily_Report'tan direkt parse: her satır = 1 kişi 1 gün = 1 attendance.
+  const { persons, attendances } = parseDailyReportRows(rows);
+  console.log(`[import-aqua-pdks] parse edilen kişi: ${persons.length}  attendance: ${attendances.length}`);
 
   // DRY-RUN: sadece özet döndür.
   if (args.mode === 'dry-run') {
+    // Status dağılımı
+    const statusDist = {};
+    for (const a of attendances) {
+      statusDist[a.status] = (statusDist[a.status] || 0) + 1;
+    }
+    // Kişi başına kaç attendance
+    const byPerson = {};
+    for (const a of attendances) {
+      byPerson[a.personId] = (byPerson[a.personId] || 0) + 1;
+    }
     const summary = {
       mode: args.mode,
       period: args.period,
       firm: args.firm,
       personCount: persons.length,
-      attendanceCount: persons.reduce((s, p) => s + Object.keys(p.days).length, 0),
+      attendanceCount: attendances.length,
+      statusDistribution: statusDist,
       persons: persons.map((p) => ({
         personId: p.personId,
         name: p.name,
-        code: `PDKS-${p.personId}`,
-        excelStatusCode: p.excelStatusCode,
-        timetable: p.timetable,
-        workTime: p.workTime,
-        dayCount: Object.keys(p.days).length,
-        days: p.days,
+        code: p.code,
+        attendanceCount: byPerson[p.personId] || 0,
       })),
+      // ilk 5 örnek attendance
+      sampleAttendances: attendances.slice(0, 5),
     };
     console.log('[import-aqua-pdks] DRY-RUN JSON:');
     console.log(JSON.stringify(summary, null, 2));
@@ -477,7 +571,9 @@ async function main() {
       } catch (err) {
         staffUpsertError = err && err.message ? err.message : String(err);
       }
-      const attendance = await upsertAttendance(client, p, args.period, args.firm, periodNr);
+      // Bu kişiye ait attendance satırları
+      const own = attendances.filter((a) => a.personId === p.personId);
+      const attendance = await upsertAttendance(client, p, args.period, args.firm, periodNr, own);
       for (const a of attendance) {
         if (a.ok && a.inserted) attendanceInserted++;
         else if (a.ok) attendanceUpdated++;
@@ -500,7 +596,7 @@ async function main() {
     period: args.period,
     firm: args.firm,
     personCount: persons.length,
-    attendanceCount: persons.reduce((s, p) => s + Object.keys(p.days).length, 0),
+    attendanceCount: attendances.length,
     attendanceInserted,
     attendanceUpdated,
     personResults: personResults.map((pr) => ({
