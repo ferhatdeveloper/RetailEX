@@ -12124,6 +12124,92 @@ export const excelModuleTranslations = {
 
   // Raporlar — müşteri satış / trend / hedef
   rptCustTitle: { tr: 'Müşteri Satış Analizi', en: 'Customer sales analysis', ar: 'تحليل مبيعات العملاء', ku: 'شیکاری فرۆشتنی کڕیار' },
+
+  // Cari (Müşteri/Tedarikçi) bazlı tarih aralığı satış raporu
+  partyPeriodSalesCustomerTitle: {
+    tr: 'Müşteri Bazlı Satış Raporu',
+    en: 'Customer Sales Period Report',
+    ar: 'تقرير مبيعات العملاء حسب الفترة',
+    ku: 'ڕاپۆرتی فرۆشتنی کڕیار بەپێی ماوە',
+  },
+  partyPeriodSalesCustomerSubtitle: {
+    tr: 'İki tarih arası müşterilerin satış adedi, miktar, brüt/iade/net tutarı, ödeme ve kalan borç özeti',
+    en: 'Per-customer sales count, quantity, gross/return/net amount, payments and remaining debt between two dates',
+    ar: 'ملخص مبيعات العميل (العدد، الكمية، الإجمالي/المرتجع/الصافي، المدفوع، المتبقي) بين تاريخين',
+    ku: 'پوختەی فرۆشتنی کڕیار (ژمارە، بڕ، کۆ/گەڕانەوە/پاک، پارەدان، قەرزی ماوە) لە نێوان دوو بەروار',
+  },
+  partyPeriodSalesSupplierTitle: {
+    tr: 'Tedarikçi Bazlı Alış Raporu',
+    en: 'Supplier Purchase Period Report',
+    ar: 'تقرير مشتريات الموردين حسب الفترة',
+    ku: 'ڕاپۆرتی کڕینی دابینکەر بەپێی ماوە',
+  },
+  partyPeriodSalesSupplierSubtitle: {
+    tr: 'İki tarih arası tedarikçilerden alınan malların adet, miktar, brüt/iade/net tutarı, ödeme ve kalan borç özeti',
+    en: 'Per-supplier purchase count, quantity, gross/return/net amount, payments and remaining debt between two dates',
+    ar: 'ملخص مشتريات المورد (العدد، الكمية، الإجمالي/المرتجع/الصافي، المدفوع، المتبقي) بين تاريخين',
+    ku: 'پوختەی کڕینی دابینکەر (ژمارە، بڕ، کۆ/گەڕانەوە/پاک، پارەدان، قەرزی ماوە) لە نێوان دوو بەروار',
+  },
+  partyPeriodSalesFilterPlaceholder: {
+    tr: 'Cari ara (kod, unvan, telefon)',
+    en: 'Search party (code, name, phone)',
+    ar: 'بحث عن الحساب (الرمز، الاسم، الهاتف)',
+    ku: 'گەڕان بۆ ئەکاونت (کۆد، ناو، تەلەفۆن)',
+  },
+  partyPeriodSalesFrom: {
+    tr: 'Başlangıç',
+    en: 'From',
+    ar: 'من',
+    ku: 'لە',
+  },
+  partyPeriodSalesTo: {
+    tr: 'Bitiş',
+    en: 'To',
+    ar: 'إلى',
+    ku: 'بۆ',
+  },
+  partyPeriodSalesGrossCount: {
+    tr: 'Brüt Satış Adedi',
+    en: 'Gross Sales Count',
+    ar: 'عدد المبيعات الإجمالي',
+    ku: 'ژمارەی فرۆشتنی کۆ',
+  },
+  partyPeriodSalesGrossAmount: {
+    tr: 'Brüt Tutar',
+    en: 'Gross Amount',
+    ar: 'المبلغ الإجمالي',
+    ku: 'بڕی کۆ',
+  },
+  partyPeriodSalesReturnAmount: {
+    tr: 'İade Tutarı',
+    en: 'Return Amount',
+    ar: 'مبلغ المرتجع',
+    ku: 'بڕی گەڕانەوە',
+  },
+  partyPeriodSalesNetAmount: {
+    tr: 'Net Tutar',
+    en: 'Net Amount',
+    ar: 'المبلغ الصافي',
+    ku: 'بڕی پاک',
+  },
+  partyPeriodSalesTotalQty: {
+    tr: 'Miktar (kg/adet)',
+    en: 'Quantity (kg/pcs)',
+    ar: 'الكمية (كغ/قطعة)',
+    ku: 'بڕ (کگم/دانە)',
+  },
+  partyPeriodSalesPaidAmount: {
+    tr: 'Ödenen Tutar',
+    en: 'Paid Amount',
+    ar: 'المبلغ المدفوع',
+    ku: 'بڕی دراو',
+  },
+  partyPeriodSalesRemainingDebt: {
+    tr: 'Kalan Borç',
+    en: 'Remaining Debt',
+    ar: 'الدين المتبقي',
+    ku: 'قەرزی ماوە',
+  },
   rptCustSubtitle: {
     tr: 'Müşteri bazlı satış performansı ve analizi',
     en: 'Customer-based sales performance',

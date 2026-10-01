@@ -2904,11 +2904,168 @@ export const erpReportsAPI = {
       phone: String(r.phone ?? ''),
     }));
   },
+
+  /**
+   * Cari (müşteri / tedarikçi) bazlı tarih aralığı satış raporu.
+   *
+   * - `cardType = 'customer'` → `sales_invoice`, `service`, `hizmet`, `return_invoice`
+   *   (müşteriden tahsilat/avans/mahsup HARİÇ — yalnızca gerçek satış belgeleri).
+   * - `cardType = 'supplier'` → `purchase_invoice`, `return_invoice` ve ilgili trcode'lar.
+   *
+   * Brüt / İade / Net ayrı:
+   *   - **gross_amount** = sadece satış (iade olmayan) net_amount toplamı
+   *   - **return_amount** = iade net_amount toplamı (negatif)
+   *   - **net_amount** = gross + return (işaretli)
+   *
+   * Borç yönü (muhasebe denetimi):
+   *   - Müşteri: `credit_amount − paid_amount` (cari kart bakiyesiyle çapraz kontrol)
+   *   - Tedarikçi: aynı formül; supplierAPI.getAll ile uyumlu.
+   *
+   * `total_quantity` `sale_items.quantity` toplamıdır (kg / adet birim karışık).
+   *
+   * İade brüt toplamı negatiftir; net_amount her zaman `gross + return` formülüne eşittir.
+   */
+  async getPartySalesByPeriod(opts: {
+    cardType: 'customer' | 'supplier';
+    startDate: string; // YYYY-MM-DD
+    endDate: string;   // YYYY-MM-DD (dahil)
+    partyIds?: string[]; // opsiyonel filtre; yoksa tüm aktif cariler
+  }): Promise<PartySalesByPeriodRow[]> {
+    const { cardType, startDate, endDate, partyIds } = opts;
+    if (!startDate || !endDate) return [];
+
+    const partyCol = cardType === 'supplier' ? 'suppliers' : 'customers';
+    const partyAlias = cardType === 'supplier' ? 'sup' : 'c';
+    const partyIdCol = 'customer_id'; // sales tablosunda FK
+    // Sales/purchase filtreleri
+    const ficheFilter =
+      cardType === 'customer'
+        ? `s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice')`
+        : `(s.fiche_type IN ('purchase_invoice', 'return_invoice') OR s.trcode IN (1, 4, 5, 6, 13, 26, 41, 42))`;
+    // iade tanımı
+    const returnFType = `'return_invoice'`;
+    const partyFilter = partyIds && partyIds.length > 0
+      ? `AND s.${partyIdCol} = ANY($2::uuid[])`
+      : '';
+
+    const sql = `
+      WITH sale_lines AS (
+        SELECT
+          s.id,
+          s.${partyIdCol} AS party_id,
+          COALESCE(NULLIF(TRIM(s.fiche_type), ''), '') AS fiche_type,
+          COALESCE(s.net_amount, 0) AS net_amount,
+          COALESCE(s.paid_amount, 0) AS paid_amount,
+          COALESCE(s.credit_amount, 0) AS credit_amount,
+          COALESCE(s.date, s.created_at) AS doc_date,
+          COALESCE((
+            SELECT SUM(COALESCE(si.quantity, 0))
+            FROM sale_items si WHERE si.invoice_id = s.id
+          ), 0) AS total_quantity
+        FROM sales s
+        WHERE COALESCE(s.is_cancelled, false) = false
+          AND ${SQL_COUNTABLE_SALE_STATUS}
+          AND ${ficheFilter}
+          AND ${sqlUtcDate('COALESCE(s.date, s.created_at)')} BETWEEN $1 AND $2
+          ${partyFilter}
+      ),
+      party_totals AS (
+        SELECT
+          party_id,
+          -- Brüt: iade olmayan
+          SUM(CASE WHEN fiche_type <> ${returnFType} THEN net_amount ELSE 0 END) AS gross_amount,
+          -- İade: negatif
+          SUM(CASE WHEN fiche_type = ${returnFType} THEN net_amount ELSE 0 END) AS return_amount,
+          -- Brüt adet (iade satırları dahil miktar)
+          SUM(total_quantity) AS total_quantity,
+          -- Brüt satış adedi (iade olmayan belge sayısı)
+          COUNT(*) FILTER (WHERE fiche_type <> ${returnFType}) AS gross_count,
+          -- İade adedi
+          COUNT(*) FILTER (WHERE fiche_type = ${returnFType}) AS return_count,
+          -- Ödenen tutar (sadece brüt satışlardan)
+          SUM(CASE WHEN fiche_type <> ${returnFType} THEN paid_amount ELSE 0 END) AS paid_amount,
+          -- Kalan borç (credit - paid)
+          SUM(CASE WHEN fiche_type <> ${returnFType} THEN credit_amount ELSE 0 END)
+            - SUM(CASE WHEN fiche_type <> ${returnFType} THEN paid_amount ELSE 0 END) AS remaining_debt,
+          MAX(${sqlUtcDate('doc_date')}) AS last_sale_date
+        FROM sale_lines
+        WHERE party_id IS NOT NULL
+        GROUP BY party_id
+      )
+      SELECT
+        ${partyAlias}.id::text AS party_id,
+        COALESCE(${partyAlias}.code, '') AS party_code,
+        COALESCE(${partyAlias}.name, '') AS party_name,
+        COALESCE(${partyAlias}.phone, '') AS phone,
+        COALESCE(${partyAlias}.balance, 0) AS current_balance,
+        COALESCE(pt.gross_amount, 0) AS gross_amount,
+        COALESCE(pt.return_amount, 0) AS return_amount,
+        COALESCE(pt.gross_amount, 0) + COALESCE(pt.return_amount, 0) AS net_amount,
+        COALESCE(pt.total_quantity, 0) AS total_quantity,
+        COALESCE(pt.gross_count, 0) AS gross_count,
+        COALESCE(pt.return_count, 0) AS return_count,
+        COALESCE(pt.paid_amount, 0) AS paid_amount,
+        COALESCE(pt.remaining_debt, 0) AS remaining_debt,
+        COALESCE(pt.last_sale_date::text, '') AS last_sale_date
+      FROM ${partyCol} ${partyAlias}
+      LEFT JOIN party_totals pt ON pt.party_id = ${partyAlias}.id
+      WHERE COALESCE(${partyAlias}.is_active, true) = true
+        ${partyIds && partyIds.length > 0 ? `AND ${partyAlias}.id = ANY($2::uuid[])` : ''}
+      ORDER BY COALESCE(pt.gross_amount, 0) DESC, ${partyAlias}.name ASC
+    `;
+
+    const params: unknown[] = [startDate, endDate];
+    if (partyIds && partyIds.length > 0) params.push(partyIds);
+    const { rows } = await postgres.query(sql, params);
+    return (rows || []).map((r: any) => ({
+      partyId: String(r.party_id ?? ''),
+      partyCode: String(r.party_code ?? ''),
+      partyName: String(r.party_name ?? ''),
+      phone: String(r.phone ?? ''),
+      currentBalance: Number(r.current_balance ?? 0),
+      grossAmount: Number(r.gross_amount ?? 0),
+      returnAmount: Number(r.return_amount ?? 0),
+      netAmount: Number(r.net_amount ?? 0),
+      totalQuantity: Number(r.total_quantity ?? 0),
+      grossCount: Number(r.gross_count ?? 0),
+      returnCount: Number(r.return_count ?? 0),
+      paidAmount: Number(r.paid_amount ?? 0),
+      remainingDebt: Number(r.remaining_debt ?? 0),
+      lastSaleDate: String(r.last_sale_date ?? '').slice(0, 10),
+    }));
+  },
 };
 
 /* ========================================================================== */
 /* VIVA SOLAR — Yeni ERP Raporları (Faz 2) — Tipler                            */
 /* ========================================================================== */
+
+export interface PartySalesByPeriodRow {
+  partyId: string;
+  partyCode: string;
+  partyName: string;
+  phone: string;
+  /** Carinin güncel ledger bakiyesi (cari kart.balance) — referans kontrol. */
+  currentBalance: number;
+  /** Brüt satış toplamı (iade hariç) */
+  grossAmount: number;
+  /** İade toplamı (negatif işaretli) */
+  returnAmount: number;
+  /** Net = brüt + iade (işaretli) */
+  netAmount: number;
+  /** Brüt miktar (kg/adet) — tüm satır.quantities toplamı */
+  totalQuantity: number;
+  /** Brüt satış adedi (iade olmayan belge sayısı) */
+  grossCount: number;
+  /** İade adedi */
+  returnCount: number;
+  /** Brüt satışlardan tahsil edilen toplam */
+  paidAmount: number;
+  /** Brüt satışlardan kalan borç (credit - paid) */
+  remainingDebt: number;
+  /** Son satış tarihi (YYYY-MM-DD) */
+  lastSaleDate: string;
+}
 
 export interface EarningsByProjectRow {
   id: string;
