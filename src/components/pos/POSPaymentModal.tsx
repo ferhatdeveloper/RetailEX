@@ -188,8 +188,8 @@ interface POSPaymentModalProps {
  * `totalAmount === prePaymentAmount + remainingAmount` matematiksel tutarlılık.
  */
 export interface POSPaymentModalAppointmentContext {
-  /** Randevu/appointment UUID */
-  appointmentId: string;
+  /** Randevu/appointment UUID — opsiyonel: peşinat henüz ayrılmamış / oluşmamış randevu için boş olabilir */
+  appointmentId?: string;
   /** Hizmet toplam tutarı (IQD) — ön ödeme + kalan toplamı */
   totalAmount: number;
   /** Daha önce alınmış peşinat (deposit_amount) — bilgi amaçlı */

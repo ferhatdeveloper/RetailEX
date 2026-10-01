@@ -430,6 +430,8 @@ export function AppointmentPOS({
     // ── Cart ─────────────────────────────────────────────────────────────
     const [cart, setCart] = useState<CartLine[]>([]);
     const [discount, setDiscount] = useState(0);
+    // Rezervasyon tutarı (müşteriden peşin alınan tutar; toplamdan düşer)
+    const [reservationAmount, setReservationAmount] = useState(0);
 
     // ── Customer ─────────────────────────────────────────────────────────
     const [customer, setCustomer] = useState<BeautyCustomer | null>(null);
@@ -830,7 +832,7 @@ export function AppointmentPOS({
     // ── Derived ──────────────────────────────────────────────────────────
     const subtotal = cart.reduce((s, l) => s + l.unit_price * l.qty, 0);
     const discAmt = subtotal * (discount / 100);
-    const total = subtotal - discAmt;
+    const total = Math.max(0, subtotal - discAmt - Math.max(0, reservationAmount || 0));
     const totalDur = cart.filter(l => l.type === 'service').reduce((s, l) => s + (l.duration_min ?? 0) * l.qty, 0);
 
     useEffect(() => {
@@ -1510,6 +1512,7 @@ export function AppointmentPOS({
         setCart([]);
         setCustomer(null);
         setDiscount(0);
+        setReservationAmount(0);
         setReceiptTreatmentDegree('');
         setReceiptTreatmentShots('');
     };
@@ -4400,6 +4403,19 @@ export function AppointmentPOS({
 
                         {/* Totals + Checkout */}
                         <div style={{ padding: '12px 14px' }}>
+                            {/* Rezervasyon Tutarı (ön ödeme / kaparo) */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{tm('bReservationAmount') || 'Rezervasyon Tutarı'}</span>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    value={reservationAmount || ''}
+                                    onChange={e => setReservationAmount(Math.max(0, Number(e.target.value) || 0))}
+                                    placeholder="0"
+                                    data-testid="appointment-reservation-amount"
+                                    style={{ width: 90, height: 26, textAlign: 'right', border: '1px solid #e5e7eb', borderRadius: 4, fontSize: 12, fontWeight: 700, paddingRight: 5, outline: 'none' }}
+                                />
+                            </div>
                             {/* Discount */}
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                                 <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{tm('bDiscountPercentShort')}</span>
@@ -4417,6 +4433,12 @@ export function AppointmentPOS({
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                                         <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>{tm('bDiscountMinusPct').replace('{n}', String(discount))}</span>
                                         <span style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>-{fmt(discAmt)}</span>
+                                    </div>
+                                )}
+                                {reservationAmount > 0 && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                        <span style={{ fontSize: 11, color: '#0891b2', fontWeight: 600 }}>{tm('bReservationAmount') || 'Rezervasyon Tutarı'}</span>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: '#0891b2' }}>-{fmt(reservationAmount)}</span>
                                     </div>
                                 )}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e8e4f0', paddingTop: 6 }}>
@@ -4916,13 +4938,30 @@ export function AppointmentPOS({
             {showPay && (() => {
                 // IN_PROGRESS randevuda: daha önce alınmış peşinat (deposit_amount)
                 // biliniyor; "Kalan Ödemeyi Al" UX'i için bağlam geçir.
-                const aptCtx = buildAppointmentPesinatliContext({
+                // Yeni randevuda (henüz ID yok) ve rezervasyon tutarı girildiyse
+                // → brüt toplam + rezervasyon + kalan bilgisi ile modal açılır;
+                // kullanıcı "Peşinat Ekle" / "Kalan Ödemeyi Al" seçebilir.
+                const builtCtx = buildAppointmentPesinatliContext({
                     appointmentId: existingAppointment?.id,
                     status: existingAppointment?.status,
                     totalPrice: existingAppointment?.total_price,
                     depositAmount: existingAppointment?.deposit_amount,
                     prePaymentFicheNo: (existingAppointment as { deposit_sale_fiche_no?: string | null } | undefined)?.deposit_sale_fiche_no ?? null,
-                }) ?? undefined;
+                });
+                // Yeni rezervasyon durumu: randevu yok ama kullanıcı rezervasyon tutarı girdi.
+                // Brüt toplam = subtotal - discAmt (rezervasyon hariç).
+                const grossBeforeReservation = Math.max(0, subtotal - discAmt);
+                const liveReservation = Math.max(0, reservationAmount || 0);
+                const liveRemaining = Math.max(0, grossBeforeReservation - liveReservation);
+                const aptCtx =
+                    builtCtx ??
+                    (liveReservation > 0
+                        ? {
+                              totalAmount: grossBeforeReservation,
+                              prePaymentAmount: liveReservation,
+                              remainingAmount: liveRemaining,
+                          }
+                        : undefined);
                 return (
                 <POSPaymentModal
                     total={total}
@@ -4943,7 +4982,8 @@ export function AppointmentPOS({
                     mode="prePayment"
                     // IN_PROGRESS randevuda daha önce peşinat alındıysa,
                     // modal açıldığında default tutar = kalan + ön ödeme/kalan
-                    // bilgi kartı görünür.
+                    // bilgi kartı görünür. Yeni randevuda rezervasyon tutarı
+                    // girilmişse aynı bilgi kartı gösterilir.
                     appointmentContext={aptCtx}
                 />
                 );
