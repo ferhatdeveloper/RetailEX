@@ -832,7 +832,16 @@ export function AppointmentPOS({
     // ── Derived ──────────────────────────────────────────────────────────
     const subtotal = cart.reduce((s, l) => s + l.unit_price * l.qty, 0);
     const discAmt = subtotal * (discount / 100);
-    const total = Math.max(0, subtotal - discAmt - Math.max(0, reservationAmount || 0));
+    // Mevcut randevuda daha önce alınmış ön ödeme (deposit_amount) tutarı.
+    // Yeni randevu oluştururken bu alan boş olacağı için 0 döner.
+    const existingDeposit = existingAppointment?.id
+        ? Number((existingAppointment as { deposit_amount?: number }).deposit_amount ?? 0)
+        : 0;
+    // Toplam = Ara Toplam − İndirim − Ön Ödeme.
+    // Yeni randevuda kullanıcı rezervasyon tutarı girer; mevcut randevuda
+    // (ön ödeme daha önce alınmışsa) deposit_amount kullanılır ve input kilitlenir.
+    const effectiveReservation = existingAppointment?.id ? existingDeposit : Math.max(0, reservationAmount || 0);
+    const total = Math.max(0, subtotal - discAmt - effectiveReservation);
     const totalDur = cart.filter(l => l.type === 'service').reduce((s, l) => s + (l.duration_min ?? 0) * l.qty, 0);
 
     useEffect(() => {
@@ -4478,18 +4487,30 @@ export function AppointmentPOS({
 
                         {/* Totals + Checkout */}
                         <div style={{ padding: '12px 14px' }}>
-                            {/* Rezervasyon Tutarı (ön ödeme / kaparo) */}
+                            {/* Rezervasyon Tutarı (ön ödeme / kaparo)
+                                Yeni randevuda: kullanıcı tutarı girer.
+                                Mevcut randevuda (ön ödeme daha önce alınmışsa): readonly bilgi. */}
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                                 <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{tm('bReservationAmount') || 'Rezervasyon Tutarı'}</span>
-                                <input
-                                    type="number"
-                                    min={0}
-                                    value={reservationAmount || ''}
-                                    onChange={e => setReservationAmount(Math.max(0, Number(e.target.value) || 0))}
-                                    placeholder="0"
-                                    data-testid="appointment-reservation-amount"
-                                    style={{ width: 90, height: 26, textAlign: 'right', border: '1px solid #e5e7eb', borderRadius: 4, fontSize: 12, fontWeight: 700, paddingRight: 5, outline: 'none' }}
-                                />
+                                {existingAppointment?.id && existingDeposit > 0 ? (
+                                    <span
+                                        data-testid="appointment-reservation-amount-readonly"
+                                        title={tm('bReservationLockedHint') || 'Bu randevu için daha önce ön ödeme alındı'}
+                                        style={{ width: 90, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px dashed #bbf7d0', borderRadius: 4, fontSize: 12, fontWeight: 800, paddingRight: 6, color: '#15803d', background: '#f0fdf4' }}
+                                    >
+                                        {fmt(existingDeposit)}
+                                    </span>
+                                ) : (
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        value={reservationAmount || ''}
+                                        onChange={e => setReservationAmount(Math.max(0, Number(e.target.value) || 0))}
+                                        placeholder="0"
+                                        data-testid="appointment-reservation-amount"
+                                        style={{ width: 90, height: 26, textAlign: 'right', border: '1px solid #e5e7eb', borderRadius: 4, fontSize: 12, fontWeight: 700, paddingRight: 5, outline: 'none' }}
+                                    />
+                                )}
                             </div>
                             {/* Discount */}
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -4510,10 +4531,10 @@ export function AppointmentPOS({
                                         <span style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>-{fmt(discAmt)}</span>
                                     </div>
                                 )}
-                                {reservationAmount > 0 && (
+                                {effectiveReservation > 0 && (
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                                         <span style={{ fontSize: 11, color: '#0891b2', fontWeight: 600 }}>{tm('bReservationAmount') || 'Rezervasyon Tutarı'}</span>
-                                        <span style={{ fontSize: 12, fontWeight: 700, color: '#0891b2' }}>-{fmt(reservationAmount)}</span>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: '#0891b2' }}>-{fmt(effectiveReservation)}</span>
                                     </div>
                                 )}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e8e4f0', paddingTop: 6 }}>
