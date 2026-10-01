@@ -2316,6 +2316,59 @@ export function AppointmentPOS({
             const finalAptStatus: AppointmentStatus = isPesinatliPrePayment
                 ? AppointmentStatus.IN_PROGRESS
                 : AppointmentStatus.COMPLETED;
+
+            // ── Rezervasyon tutarı → ayrı ön ödeme sales kaydı ──
+            // Eğer rezervasyon tutarı girildiyse + peşinatlı ön ödeme modunda
+            // → sadece rezervasyon tutarı kadar ayrı bir sales fiş oluşturulur,
+            // bu fiş appointment.deposit_amount + deposit_sale_fiche_no alanlarına
+            // yazılır. Stok/sarf düşümü YOK (hizmet henüz verilmedi).
+            let reservationSaleId: string | null = null;
+            let reservationSaleFicheNo: string | null = null;
+            const reservationAmt = Math.max(0, reservationAmount || 0);
+            const shouldRecordReservation =
+                isPesinatliPrePayment && reservationAmt > 0 && !!customer?.id;
+            if (shouldRecordReservation) {
+                try {
+                    const resPayRows = Array.isArray(paymentData.payments)
+                        ? paymentData.payments
+                        : [];
+                    const resPaidNow = Math.min(
+                        reservationAmt,
+                        resPayRows.reduce(
+                            (s: number, p: { amount?: number }) => s + Math.max(0, Number(p?.amount) || 0),
+                            0,
+                        ),
+                    );
+                    const resResult = await beautyService.createSale(
+                        {
+                            customer_id: customer!.id,
+                            customer_name: customer?.name,
+                            subtotal: reservationAmt,
+                            discount: 0,
+                            tax: 0,
+                            total: reservationAmt,
+                            payment_method:
+                                (resPayRows[0]?.method as string | undefined) || 'cash',
+                            payment_status: 'paid',
+                            paid_amount: resPaidNow,
+                            remaining_amount: Math.max(0, reservationAmt - resPaidNow),
+                            notes: tm('bReservationSaleNote') || `Rezervasyon ön ödeme — ${reservationAmt.toLocaleString('tr-TR')} IQD`,
+                            payments: resPayRows,
+                        },
+                        [], // ayrı sales; cart satırları bu fişe GIRMEZ (stok düşümü yok)
+                        { skipErpAndLoyalty: true },
+                    );
+                    reservationSaleId =
+                        String((resResult as any)?.id ?? '') || null;
+                    reservationSaleFicheNo =
+                        String((resResult as any)?.fiche_no ?? (resResult as any)?.receiptNumber ?? '') ||
+                        null;
+                } catch (resErr: unknown) {
+                    logger.error('AppointmentPOS', 'handlePayComplete: reservation sale failed', resErr);
+                    toast.error(tm('bReservationSaleFailed') || 'Rezervasyon ön ödemesi kaydedilemedi');
+                    return;
+                }
+            }
             if (isBlockNegativeStockSaleEnabled()) {
                 const productLines = cart.filter((l) => l.type === 'product');
                 if (productLines.length > 0) {
@@ -2376,6 +2429,10 @@ export function AppointmentPOS({
                     duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
                     treatment_degree: receiptTreatmentDegree.trim() || null,
                     treatment_shots: receiptTreatmentShots.trim() || null,
+                    // Rezervasyon ön ödeme: deposit_amount + fiche_no kaydı
+                    ...(shouldRecordReservation && reservationSaleFicheNo
+                            ? { deposit_amount: reservationAmt, deposit_sale_fiche_no: reservationSaleFicheNo }
+                            : {}),
                 });
 
                 // Standart ödeme: aynı kuyruk grubundaki diğer randevuları da
@@ -2415,6 +2472,24 @@ export function AppointmentPOS({
                         if (typeof id === 'string' && id.trim()) {
                             createdAppointmentIds.push(id.trim());
                         }
+                    }
+                }
+
+                // Rezervasyon ön ödeme kaydı → oluşturulan ilk randevuya yaz.
+                // Sadece peşinatlı modda ve rezervasyon tutarı > 0 ise.
+                if (
+                    shouldRecordReservation &&
+                    reservationAmt > 0 &&
+                    reservationSaleFicheNo &&
+                    createdAppointmentIds.length > 0
+                ) {
+                    try {
+                        await updateAppointment(createdAppointmentIds[0], {
+                            deposit_amount: reservationAmt,
+                            deposit_sale_fiche_no: reservationSaleFicheNo,
+                        });
+                    } catch (depErr: unknown) {
+                        logger.warn('AppointmentPOS', 'deposit update yazılamadı', depErr);
                     }
                 }
             }
@@ -4964,7 +5039,11 @@ export function AppointmentPOS({
                         : undefined);
                 return (
                 <POSPaymentModal
-                    total={total}
+                    // Brüt toplam (rezervasyon hariç) — POS modalı kendi içinde
+                    // appointmentContext.remainingAmount ile ödenecek tutarı
+                    // otomatik hesaplar; rezervasyon tutarı bilgi satırında
+                    // "Ön Ödenen" olarak görünür.
+                    total={Math.max(0, subtotal - discAmt)}
                     subtotal={subtotal}
                     itemDiscount={discAmt}
                     campaignDiscount={0}
