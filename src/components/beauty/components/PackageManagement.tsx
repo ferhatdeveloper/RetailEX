@@ -254,7 +254,16 @@ let suggested = pct;
                             return (
                                 <Card
                                     key={pkg.id}
-                                    className="group overflow-hidden rounded-[2rem] border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+                                    onClick={() => openEditInfo(pkg)}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            openEditInfo(pkg);
+                                        }
+                                    }}
+                                    className="group overflow-hidden rounded-[2rem] border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
                                 >
                                     {/* Başlık / kapak */}
                                     <div
@@ -270,14 +279,14 @@ let suggested = pct;
                                             ) : <span />}
                                             <div className="flex gap-1">
                                                 <button
-                                                    onClick={() => openEditInfo(pkg)}
+                                                    onClick={(e) => { e.stopPropagation(); openEditInfo(pkg); }}
                                                     className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition"
                                                     aria-label={tm('bPackageEdit')}
                                                 >
                                                     <Edit2 size={14} />
                                                 </button>
                                                 <button
-                                                    onClick={() => setDeleteConfirm(pkg.id)}
+                                                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm(pkg.id); }}
                                                     className="p-1.5 bg-white/20 rounded-lg hover:bg-red-500/50 transition"
                                                     aria-label={tm('delete')}
                                                 >
@@ -353,7 +362,7 @@ let suggested = pct;
                                                     type="button"
                                                     variant="outline"
                                                     size="sm"
-                                                    onClick={() => openAddServiceRow(pkg.id)}
+                                                    onClick={(e) => { e.stopPropagation(); openAddServiceRow(pkg.id); }}
                                                     disabled={!pkg.id}
                                                     className="rounded-xl border-indigo-200 text-indigo-600 font-bold text-xs"
                                                 >
@@ -391,7 +400,9 @@ let suggested = pct;
                                                                         max={100}
                                                                         step={0.01}
                                                                         value={it.percent}
+                                                                        onClick={(e) => e.stopPropagation()}
                                                                         onChange={e => {
+                                                                            e.stopPropagation();
                                                                             const v = Math.max(
                                                                                 0,
                                                                                 Math.min(100, Number(e.target.value) || 0),
@@ -407,7 +418,7 @@ let suggested = pct;
                                                                 </div>
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => void removePackageCommissionRow(pkg.id, idx)}
+                                                                    onClick={(e) => { e.stopPropagation(); void removePackageCommissionRow(pkg.id, idx); }}
                                                                     className="text-slate-400 hover:text-red-500 transition"
                                                                     aria-label={tm('delete')}
                                                                 >
