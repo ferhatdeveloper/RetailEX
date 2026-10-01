@@ -3057,14 +3057,20 @@ export const erpReportsAPI = {
     startDate: string; // YYYY-MM-DD
     endDate: string;   // YYYY-MM-DD (dahil)
     productIds?: string[];
+    partyIds?: string[]; // müşteri filtresi (boş = tüm cariler)
     onlyReturn?: boolean; // opsiyonel: sadece iade edilenler
   }): Promise<ProductSalesByPeriodRow[]> {
-    const { startDate, endDate, productIds, onlyReturn } = opts;
+    const { startDate, endDate, productIds, partyIds, onlyReturn } = opts;
     if (!startDate || !endDate) return [];
 
+    // Parametre indeksleri dinamik: $1=start, $2=end, $3.. opsiyonel diziler.
     const productFilter =
       productIds && productIds.length > 0
-        ? `AND si.product_id = ANY($3::uuid[])`
+        ? `AND si.product_id = ANY($${3 + (partyIds && partyIds.length > 0 ? 1 : 0)}::uuid[])`
+        : '';
+    const partyFilter =
+      partyIds && partyIds.length > 0
+        ? `AND s.customer_id = ANY($3::uuid[])`
         : '';
     const returnOnlyFilter = onlyReturn
       ? `AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'`
@@ -3081,7 +3087,7 @@ export const erpReportsAPI = {
           COALESCE(si.quantity, 0) AS quantity,
           COALESCE(si.net_amount, si.quantity * si.unit_price, 0) AS line_amount,
           COALESCE(si.unit_price, 0) AS unit_price,
-          COALESCE(s.customer_id, si.invoice_id::text) AS buyer_id,
+          COALESCE(s.customer_id::text, si.invoice_id::text) AS buyer_id,
           COALESCE(s.is_cancelled, false) AS is_cancelled,
           LOWER(TRIM(COALESCE(s.fiche_type, ''))) AS fiche_type_norm,
           COALESCE(NULLIF(${sqlUtcDate('s.date')}, NULL), ${sqlUtcDate('s.created_at')}) AS doc_date
@@ -3093,6 +3099,7 @@ export const erpReportsAPI = {
           AND si.product_id IS NOT NULL
           AND ${sqlUtcDate('COALESCE(s.date, s.created_at)')} BETWEEN $1 AND $2
           ${productFilter}
+          ${partyFilter}
           ${returnOnlyFilter}
       ),
       product_totals AS (
@@ -3140,6 +3147,7 @@ export const erpReportsAPI = {
     `;
 
     const params: unknown[] = [startDate, endDate];
+    if (partyIds && partyIds.length > 0) params.push(partyIds);
     if (productIds && productIds.length > 0) params.push(productIds);
     const { rows } = await postgres.query(sql, params);
     return (rows || []).map((r: any) => ({

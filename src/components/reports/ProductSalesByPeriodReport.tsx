@@ -27,9 +27,11 @@ import {
 } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { formatMoneyAmount } from '../../utils/formatMoney';
-import { Input } from 'antd';
+import { Input, Select } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import { erpReportsAPI, type ProductSalesByPeriodRow } from '../../services/api/erpReports';
+import { supplierAPI } from '../../services/api/suppliers';
+import type { Supplier } from '../../core/types';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import {
   buildReportGridColumns,
@@ -83,6 +85,9 @@ export function ProductSalesByPeriodReport() {
   const [rows, setRows] = useState<ProductSalesByPeriodRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState('');
+  const [partyIds, setPartyIds] = useState<string[]>([]);
+  const [partyOptions, setPartyOptions] = useState<{ value: string; label: string }[]>([]);
+  const [partyLoading, setPartyLoading] = useState(false);
   const [dateRange, setDateRange] = useState(() => {
     const end = localTodayDateKey();
     const startDate = new Date();
@@ -92,12 +97,38 @@ export function ProductSalesByPeriodReport() {
 
   const rootRef = useRef<HTMLDivElement>(null);
 
+  // Müşteri listesi (cari filtresi için) — supplierAPI üzerinden "customer" kartları.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setPartyLoading(true);
+        const list: Supplier[] = await supplierAPI.getAll({ cardType: 'customer' });
+        if (cancelled) return;
+        const opts = (Array.isArray(list) ? list : []).map((c) => ({
+          value: String(c.id),
+          label: c.code ? `${c.code} — ${c.name}` : c.name,
+        }));
+        setPartyOptions(opts);
+      } catch (err) {
+        console.error('[ProductSalesByPeriodReport] cari load failed', err);
+        if (!cancelled) setPartyOptions([]);
+      } finally {
+        if (!cancelled) setPartyLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFirm?.firm_nr]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const list = await erpReportsAPI.getProductSalesByPeriod({
         startDate: dateRange.start,
         endDate: dateRange.end,
+        partyIds: partyIds.length > 0 ? partyIds : undefined,
       });
       setRows(list);
     } catch (err: unknown) {
@@ -110,7 +141,7 @@ export function ProductSalesByPeriodReport() {
     } finally {
       setLoading(false);
     }
-  }, [dateRange.start, dateRange.end]);
+  }, [dateRange.start, dateRange.end, partyIds]);
 
   useEffect(() => {
     void load();
@@ -324,6 +355,23 @@ export function ProductSalesByPeriodReport() {
               prefix={<SearchOutlined className="text-slate-400" />}
               style={{ width: 240 }}
             />
+            <Select
+              mode="multiple"
+              allowClear
+              size="middle"
+              loading={partyLoading}
+              value={partyIds}
+              onChange={(vals) => setPartyIds(vals as string[])}
+              options={partyOptions}
+              placeholder={tm('productPeriodSalesCustomerPlaceholder') || 'Müşteri seçin (birden fazla)'}
+              maxTagCount="responsive"
+              style={{ minWidth: 240, maxWidth: 360 }}
+              filterOption={(input, option) =>
+                String(option?.label ?? '').toLocaleLowerCase('tr-TR').includes(
+                  input.toLocaleLowerCase('tr-TR'),
+                )
+              }
+            />
             <label className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
               {dateFromLabel}
               <input
@@ -447,7 +495,10 @@ export function ProductSalesByPeriodReport() {
             label: tm('productPeriodSalesDistinctCustomers') || 'Benzersiz Müşteri',
             value: fmtAmt(totals.distinctCustomers),
             valueClassName: 'text-purple-600',
-            hint: `${totals.productCount} ${tm('product') || 'ürün'}`,
+            hint:
+              partyIds.length > 0
+                ? `${partyIds.length} ${tm('productPeriodSalesCustomersSelected') || 'müşteri seçili'} · ${totals.productCount} ${tm('product') || 'ürün'}`
+                : `${totals.productCount} ${tm('product') || 'ürün'}`,
           },
         ]}
       />

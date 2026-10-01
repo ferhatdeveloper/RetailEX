@@ -12290,6 +12290,18 @@ export const excelModuleTranslations = {
     ar: 'آخر بيع',
     ku: 'دواین فرۆشتن',
   },
+  productPeriodSalesCustomerPlaceholder: {
+    tr: 'Müşteri seçin (birden fazla)',
+    en: 'Select customer (multiple)',
+    ar: 'اختر العميل (متعدد)',
+    ku: 'کڕیار هەڵبژێرە (چەند)',
+  },
+  productPeriodSalesCustomersSelected: {
+    tr: 'müşteri seçili',
+    en: 'customers selected',
+    ar: 'عميل محدد',
+    ku: 'کڕیار دیاریکراو',
+  },
   rptCustSubtitle: {
     tr: 'Müşteri bazlı satış performansı ve analizi',
     en: 'Customer-based sales performance',
