@@ -987,15 +987,26 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
   const alacHdr = fmtEkstreAmount(totalAlacak);
   const netHdr = fmtEkstreSignedNet();
 
+  // Cari bakiye chip'i her zaman DB'deki `selectedAccount.balance`'ten
+  // alınır. Ekstre Σ borç − Σ alacak ile bu değer eşit olmalı; eşit
+  // değilse (ledger henüz yazılmamış veya yanlış trcode'lu satırlar
+  // ekstreye girmemiş olabilir) cari kartındaki tutar tek doğruluk
+  // kaynağıdır. Cari Σ = ledger Σ olduğunda ikisi de aynı sonucu verir;
+  // ayrıştığında cari.balance gösterilir ve kullanıcı uyarılır.
+  const extRowsCount = ekstresiRows.length;
+  const lastRowBalanceValue = extRowsCount > 0
+    ? ekstresiRows[extRowsCount - 1].balance
+    : 0;
+  const listDisagreesWithLastRow = extRowsCount > 1
+    && Math.abs(netBalance - lastRowBalanceValue) > 0.5;
+  const chipBalanceValue = selectedAccount?.balance || 0;
   const currentBalanceHdr = selectedAccount
-    ? fmtEkstreAmount(Math.abs(
-        ekstresiData.length > 0 ? netBalance : (selectedAccount.balance || 0)
-      ))
+    ? fmtEkstreAmount(Math.abs(chipBalanceValue))
     : null;
   const currentBalanceDir = selectedAccount
     ? getCariBalanceDirection(
         selectedAccount.cardType,
-        ekstresiData.length > 0 ? netBalance : (selectedAccount.balance || 0),
+        chipBalanceValue,
         tm
       )
     : { side: '' as const, sideLabel: '', hint: '' };

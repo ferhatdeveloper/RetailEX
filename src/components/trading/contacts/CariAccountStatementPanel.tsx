@@ -353,8 +353,10 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
   const netHdr = fmtEkstreSignedNet();
   const lastRowHdr = fmtEkstreAmount(Math.abs(lastRowBalance));
 
-  /** Dönem verisi yokken kart bakiyesi; veri varken toolbar’daki tek net sonuç kullanılır */
-  const showCardBalanceChip = ekstresiRows.length === 0;
+  /** Cari bakiye chip'i her zaman DB'deki `account.balance`'ten alınır —
+   * cari kartındaki tutar tek doğruluk kaynağıdır. Σ borç − Σ alacak
+   * ile bu değer eşit olmalı; ayrıştığında (örn. ledger henüz
+   * yazılmamış satırlar) cari.balance chip'i doğruyu gösterir. */
   const currentBalanceHdr = fmtEkstreAmount(Math.abs(account.balance || 0));
   const currentBalanceDir = getCariBalanceDirection(account.cardType, account.balance || 0, tm);
 
@@ -377,8 +379,7 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
             <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${account.cardType === 'customer' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
               {account.cardType === 'customer' ? tm('customer') : tm('supplierLabel')}
             </span>
-            {showCardBalanceChip ? (
-              <span
+            <span
                 className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs font-black ${
                   currentBalanceDir.side === 'B'
                     ? 'bg-red-50 border-red-200 text-red-700'
@@ -391,7 +392,6 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
                 {tm('custColBalance')}: {currentBalanceHdr.primary} {currentBalanceHdr.code}
                 {currentBalanceDir.sideLabel ? ` · ${currentBalanceDir.sideLabel}` : ''}
               </span>
-            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input
