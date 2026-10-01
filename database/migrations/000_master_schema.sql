@@ -3388,6 +3388,9 @@ BEGIN
     v_prefix || '_party_ledger_firm_period_party_date_idx', v_prefix || '_party_ledger_movements');
   EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (transaction_type)',
     v_prefix || '_party_ledger_trtype_idx', v_prefix || '_party_ledger_movements');
+  -- Migration 190: cash_line_id backfill guard + delete ters kayıt hızı.
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (cash_line_id)',
+    v_prefix || '_party_ledger_cash_line_id_idx', v_prefix || '_party_ledger_movements');
 
   -- 3d. Partner Distributions (kâr/zarar dağıtım geçmişi)
   EXECUTE format('
