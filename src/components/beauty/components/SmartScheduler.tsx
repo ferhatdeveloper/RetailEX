@@ -236,6 +236,7 @@ export function SmartScheduler() {
     const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
         scheduled:   { label: tm('bAppointmentScheduled'), color: '#6366f1', bg: '#eef2ff' },
         confirmed:   { label: tm('bAppointmentConfirmed'), color: '#0284c7', bg: '#e0f2fe' },
+        pre_paid:    { label: tm('bAppointmentPrePaid')   || 'Ön Ödeme Alındı', color: '#7c3aed', bg: '#ede9fe' },
         in_progress: { label: tm('bAppointmentStarted'),   color: '#d97706', bg: '#fef3c7' },
         completed:   { label: tm('bAppointmentCompleted'), color: '#059669', bg: '#d1fae5' },
         cancelled:   { label: tm('bAppointmentCancelled'), color: '#dc2626', bg: '#fee2e2' },
@@ -2998,10 +2999,11 @@ export function SmartScheduler() {
                                 <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{tm('bUpdateStatus')}</p>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                     {([
-                                        { status: AppointmentStatus.CONFIRMED,   label: tm('bStatusConfirm'), color: '#0284c7', bg: '#e0f2fe' },
-                                        { status: AppointmentStatus.IN_PROGRESS, label: tm('bStatusStarted'), color: '#d97706', bg: '#fef3c7' },
-                                        { status: AppointmentStatus.CANCELLED,   label: tm('bStatusCancel'),  color: '#dc2626', bg: '#fee2e2' },
-                                        { status: AppointmentStatus.NO_SHOW,     label: tm('bStatusNoShow'),  color: '#9ca3af', bg: '#f3f4f6' },
+                                        { status: AppointmentStatus.CONFIRMED,   label: tm('bStatusConfirm'),   color: '#0284c7', bg: '#e0f2fe' },
+                                        { status: AppointmentStatus.PRE_PAID,    label: tm('bStatusPrePaid') || 'Ön Ödeme Alındı', color: '#7c3aed', bg: '#ede9fe' },
+                                        { status: AppointmentStatus.IN_PROGRESS, label: tm('bStatusStarted'),   color: '#d97706', bg: '#fef3c7' },
+                                        { status: AppointmentStatus.CANCELLED,   label: tm('bStatusCancel'),    color: '#dc2626', bg: '#fee2e2' },
+                                        { status: AppointmentStatus.NO_SHOW,     label: tm('bStatusNoShow'),    color: '#9ca3af', bg: '#f3f4f6' },
                                     ] as { status: AppointmentStatus; label: string; color: string; bg: string }[]).map(opt => {
                                         const isCurrent = appointmentStatusMatches(selectedApt.status, opt.status);
                                         return (

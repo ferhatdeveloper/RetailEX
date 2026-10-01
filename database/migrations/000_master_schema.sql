@@ -1683,6 +1683,25 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 -- 9. GLOBAL MASTER DATA
 -- ============================================================================
 
+-- 9.1 Gider Kategorileri (migration 189 — firma başına CRUD)
+-- CREATE_FIRM_TABLES içinde firma kurulumunda 8 default seed eklenir.
+CREATE TABLE IF NOT EXISTS expense_categories (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    firm_nr     VARCHAR(10) NOT NULL,
+    code        VARCHAR(50) NOT NULL,
+    name        VARCHAR(100) NOT NULL,
+    color       VARCHAR(50) DEFAULT 'bg-gray-100 text-gray-700',
+    description TEXT,
+    sort_order  INTEGER NOT NULL DEFAULT 100,
+    is_active   BOOLEAN NOT NULL DEFAULT true,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (code, firm_nr)
+);
+
+CREATE INDEX IF NOT EXISTS expense_categories_firm_idx
+    ON expense_categories (firm_nr, is_active, sort_order);
+
 CREATE TABLE IF NOT EXISTS brands (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code        VARCHAR(50) NOT NULL UNIQUE,
@@ -3090,9 +3109,65 @@ BEGIN
   -- Varsayılan Kasa
   EXECUTE format('INSERT INTO %I (id, firm_nr, code, name, is_active) VALUES (''00000000-0000-0000-0000-000000000001'', %L, ''KASA.001'', ''MERKEZ KASA'', true) ON CONFLICT DO NOTHING;', v_prefix || '_cash_registers', p_firm_nr);
 
-  -- Varsayılan cari kartları (POS / fatura — yerel kurulumda boş liste olmasın)
-  EXECUTE format('INSERT INTO %I (firm_nr, code, name, is_active) VALUES (%L, ''PESIN'', ''Peşin Müşteri'', true) ON CONFLICT (code) DO NOTHING;', v_prefix || '_customers', p_firm_nr);
-  EXECUTE format('INSERT INTO %I (firm_nr, code, name, is_active) VALUES (%L, ''GENEL'', ''Genel Tedarikçi'', true) ON CONFLICT (code) DO NOTHING;', v_prefix || '_suppliers', p_firm_nr);
+  -- Varsayılan cari kartları (PESIN / GENEL) — 2026-10-01 itibarıyla devre dışı.
+  -- Yeni sıfır data'larda "Peşin Müşteri" ve "Genel Tedarikçi" seed'lenmez.
+  -- Mevcut veritabanları için migration 188 ile bu satırlar silinebilir (idempotent).
+  -- Geri açmak için aşağıdaki iki satırı yorumdan çıkarın:
+  -- EXECUTE format('INSERT INTO %I (firm_nr, code, name, is_active) VALUES (%L, ''PESIN'', ''Peşin Müşteri'', true) ON CONFLICT (code) DO NOTHING;', v_prefix || '_customers', p_firm_nr);
+  -- EXECUTE format('INSERT INTO %I (firm_nr, code, name, is_active) VALUES (%L, ''GENEL'', ''Genel Tedarikçi'', true) ON CONFLICT (code) DO NOTHING;', v_prefix || '_suppliers', p_firm_nr);
+
+  -- Varsayılan Gider Kategorileri (firm başına) — migration 189 ile
+  -- public.expense_categories tablosuna bağlı. CRUD UI üzerinden yönetilir.
+  IF to_regclass('public.expense_categories') IS NOT NULL THEN
+    EXECUTE format(
+      'INSERT INTO public.expense_categories (firm_nr, code, name, color, sort_order, description)
+         VALUES (%L, %L, %L, %L, %L, %L)
+         ON CONFLICT (code, firm_nr) DO NOTHING',
+      p_firm_nr, 'rent',         'Kira',         'bg-blue-100 text-blue-700',     10, 'Mağaza/ofis kira ödemeleri'
+    );
+    EXECUTE format(
+      'INSERT INTO public.expense_categories (firm_nr, code, name, color, sort_order, description)
+         VALUES (%L, %L, %L, %L, %L, %L)
+         ON CONFLICT (code, firm_nr) DO NOTHING',
+      p_firm_nr, 'salary',       'Maaş',         'bg-green-100 text-green-700',   20, 'Personel maaş ödemeleri'
+    );
+    EXECUTE format(
+      'INSERT INTO public.expense_categories (firm_nr, code, name, color, sort_order, description)
+         VALUES (%L, %L, %L, %L, %L, %L)
+         ON CONFLICT (code, firm_nr) DO NOTHING',
+      p_firm_nr, 'electricity',  'Elektrik',     'bg-yellow-100 text-yellow-700', 30, 'Elektrik faturaları'
+    );
+    EXECUTE format(
+      'INSERT INTO public.expense_categories (firm_nr, code, name, color, sort_order, description)
+         VALUES (%L, %L, %L, %L, %L, %L)
+         ON CONFLICT (code, firm_nr) DO NOTHING',
+      p_firm_nr, 'water',        'Su',           'bg-cyan-100 text-cyan-700',     40, 'Su faturaları'
+    );
+    EXECUTE format(
+      'INSERT INTO public.expense_categories (firm_nr, code, name, color, sort_order, description)
+         VALUES (%L, %L, %L, %L, %L, %L)
+         ON CONFLICT (code, firm_nr) DO NOTHING',
+      p_firm_nr, 'internet',     'İnternet',     'bg-purple-100 text-purple-700', 50, 'İnternet/telefon hattı'
+    );
+    EXECUTE format(
+      'INSERT INTO public.expense_categories (firm_nr, code, name, color, sort_order, description)
+         VALUES (%L, %L, %L, %L, %L, %L)
+         ON CONFLICT (code, firm_nr) DO NOTHING',
+      p_firm_nr, 'phone',        'Telefon',      'bg-indigo-100 text-indigo-700', 60, 'Cep/telefon faturaları'
+    );
+    EXECUTE format(
+      'INSERT INTO public.expense_categories (firm_nr, code, name, color, sort_order, description)
+         VALUES (%L, %L, %L, %L, %L, %L)
+         ON CONFLICT (code, firm_nr) DO NOTHING',
+      p_firm_nr, 'maintenance',  'Bakım-Onarım', 'bg-orange-100 text-orange-700', 70, 'Bakım ve onarım giderleri'
+    );
+    EXECUTE format(
+      'INSERT INTO public.expense_categories (firm_nr, code, name, color, sort_order, description)
+         VALUES (%L, %L, %L, %L, %L, %L)
+         ON CONFLICT (code, firm_nr) DO NOTHING',
+      p_firm_nr, 'cleaning',     'Temizlik',     'bg-pink-100 text-pink-700',     80, 'Temizlik malzemeleri/hizmetleri'
+    );
+  END IF;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -5603,3 +5678,65 @@ INSERT INTO public.audit_logs (firm_nr, table_name, record_id, action, new_data)
 VALUES ('000', 'system', '00000000-0000-0000-0000-000000000000', 'MASTER_SCHEMA_V6',
         '{"status": "completed", "version": "6.0", "description": "Clean consolidated master schema"}'::JSONB)
 ON CONFLICT DO NOTHING;
+
+-- ============================================================================
+-- CODE FORMATI: LPAD(6) — fatura / cari / ürün / marka / kategori / kasa / banka /
+-- expense_card / cost_center / partner / customer / supplier / sales_rep vb.
+-- ============================================================================
+-- Amaç: Tüm `code` kolonları INSERT/UPDATE öncesi LPAD(6) ile 6 haneli olur
+--   ('12345' → '012345', 42 → '000042'). Sayısal olmayan / çok uzun / boş
+--   code'a dokunulmaz (ürün barkodu, lokasyon kodu vb. için istisna).
+--   Sadece `firm_nr` ile çalışan firmaya ait tablolarda geçerlidir.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.lpad_retail_code()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_is_numeric BOOLEAN;
+    v_cur_len    INTEGER;
+BEGIN
+    -- Sadece code kolonu varsa ve değer NULL değilse çalış
+    IF NEW.code IS NOT NULL AND NEW.code <> '' THEN
+        v_cur_len := length(NEW.code::text);
+        -- 6 hane veya daha kısa + sadece rakam → LPAD(6)
+        IF v_cur_len <= 6 AND NEW.code ~ '^[0-9]+$' THEN
+            NEW.code := lpad(NEW.code::text, 6, '0');
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+-- LPAD trigger'ı tüm rex_<firmNr>_ tablolarındaki code kolonuna bağla.
+-- İsim kalıbı: rex_[0-9]+_... (firm kartı + hareket tabloları)
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT n.nspname AS sch, c.relname AS tbl
+          FROM pg_class c
+          JOIN pg_namespace n ON c.relnamespace = n.oid
+         WHERE c.relkind = 'r'
+           AND n.nspname IN ('public','beauty','wms','rest','logic')
+           AND c.relname ~ '^rex_[0-9]+_'
+           AND EXISTS (
+               SELECT 1 FROM pg_attribute
+                WHERE attrelid = c.oid
+                  AND attname = 'code'
+                  AND NOT attisdropped
+           )
+    LOOP
+        EXECUTE format(
+            'DROP TRIGGER IF EXISTS trg_lpad_code ON %I.%I;
+             CREATE TRIGGER trg_lpad_code
+                 BEFORE INSERT OR UPDATE OF code ON %I.%I
+                 FOR EACH ROW
+                 EXECUTE FUNCTION public.lpad_retail_code();',
+            r.sch, r.tbl, r.sch, r.tbl
+        );
+    END LOOP;
+END;
+$$;

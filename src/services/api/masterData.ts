@@ -597,6 +597,23 @@ export interface SpecialCode {
 }
 
 // ============================================================================
+// EXPENSE CATEGORY API — migration 189 (public.expense_categories, firma başına CRUD)
+// ============================================================================
+
+export interface ExpenseCategory {
+    id: string;
+    firm_nr: string;
+    code: string;
+    name: string;
+    color: string;
+    description?: string | null;
+    sort_order: number;
+    is_active: boolean;
+    created_at?: string;
+    updated_at?: string;
+}
+
+// ============================================================================
 // CATEGORY API
 // ============================================================================
 
@@ -778,6 +795,108 @@ export const categoryAPI = {
             return true;
         } catch (error) {
             console.error('[CategoryAPI] delete failed:', error);
+            return false;
+        }
+    },
+};
+
+// ============================================================================
+// EXPENSE CATEGORY API — public.expense_categories (firma başına)
+// ============================================================================
+
+export const expenseCategoryAPI = {
+    async getAll(): Promise<ExpenseCategory[]> {
+        try {
+            const { postgres } = await import('../postgres');
+            const { rows } = await postgres.query<ExpenseCategory>(
+                `SELECT id, firm_nr, code, name, color, sort_order, is_active
+                     , created_at, updated_at
+                     , description
+                  FROM public.expense_categories
+                 WHERE firm_nr = $1
+                 ORDER BY sort_order ASC, name ASC`,
+                [padFirmNr()],
+            );
+            return rows;
+        } catch (error) {
+            console.error('[ExpenseCategoryAPI] getAll failed:', error);
+            return [];
+        }
+    },
+
+    async create(input: { code: string; name: string; color?: string; description?: string; sort_order?: number }): Promise<ExpenseCategory | null> {
+        try {
+            const { postgres } = await import('../postgres');
+            const fn = padFirmNr();
+            const { rows } = await postgres.query<ExpenseCategory>(
+                `INSERT INTO public.expense_categories
+                    (firm_nr, code, name, color, description, sort_order)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT (code, firm_nr) DO UPDATE
+                    SET name = EXCLUDED.name,
+                        color = EXCLUDED.color,
+                        description = EXCLUDED.description,
+                        sort_order = EXCLUDED.sort_order,
+                        updated_at = NOW()
+                 RETURNING id, firm_nr, code, name, color, sort_order, is_active, description`,
+                [fn, input.code, input.name, input.color || 'bg-gray-100 text-gray-700', input.description || null, input.sort_order ?? 100],
+            );
+            return rows[0] ?? null;
+        } catch (error) {
+            console.error('[ExpenseCategoryAPI] create failed:', error);
+            return null;
+        }
+    },
+
+    async update(id: string, patch: Partial<{ name: string; color: string; description: string; sort_order: number; is_active: boolean }>): Promise<boolean> {
+        try {
+            const { postgres } = await import('../postgres');
+            const fields: string[] = [];
+            const values: unknown[] = [];
+            let idx = 1;
+            for (const [k, v] of Object.entries(patch)) {
+                if (v === undefined) continue;
+                fields.push(`${k} = $${idx}`);
+                values.push(v);
+                idx += 1;
+            }
+            if (fields.length === 0) return true;
+            fields.push(`updated_at = NOW()`);
+            values.push(id);
+            const sql = `UPDATE public.expense_categories SET ${fields.join(', ')} WHERE id = $${idx}`;
+            await postgres.query(sql, values);
+            return true;
+        } catch (error) {
+            console.error('[ExpenseCategoryAPI] update failed:', error);
+            return false;
+        }
+    },
+
+    async remove(id: string): Promise<boolean> {
+        try {
+            const { postgres } = await import('../postgres');
+            // Güvenli sil — referans varsa is_active=false yap, yoksa sil
+            const usageCheck = await postgres.query<{ c: number }>(
+                `SELECT count(*)::int AS c FROM public.rex_001_expenses WHERE category = (
+                    SELECT code FROM public.expense_categories WHERE id = $1
+                 )`,
+                [id],
+            );
+            const uses = usageCheck.rows[0]?.c ?? 0;
+            if (uses > 0) {
+                await postgres.query(
+                    `UPDATE public.expense_categories SET is_active = false, updated_at = NOW() WHERE id = $1`,
+                    [id],
+                );
+                return true;
+            }
+            await postgres.query(
+                `DELETE FROM public.expense_categories WHERE id = $1`,
+                [id],
+            );
+            return true;
+        } catch (error) {
+            console.error('[ExpenseCategoryAPI] remove failed:', error);
             return false;
         }
     },

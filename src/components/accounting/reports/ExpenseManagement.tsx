@@ -23,6 +23,7 @@ import { formatCurrency } from '../../../utils/formatNumber';
 import { InlineLanguageSwitcher } from '../../shared/InlineLanguageSwitcher';
 import { expenseAPI, ExpenseSaveError, parseExpenseAmount, type Expense } from '../../../services/api/expenses';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
+import { expenseCategoryAPI, type ExpenseCategory as ApiExpenseCategory } from '../../../services/api/masterData';
 import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface ExpenseLocal extends Expense {
@@ -30,13 +31,11 @@ interface ExpenseLocal extends Expense {
   created_by_name?: string;
 }
 
-interface ExpenseCategory {
-  id: string;
-  name: string;
-  color: string;
-}
+// Görüntü için DB'den gelen kategori (id/code/name/color/sort_order/is_active)
+type ExpenseCategory = ApiExpenseCategory;
 
-const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+// Sabit liste fallback'i — DB henüz yüklenmediyse kullanılır
+const CATEGORY_FALLBACK_PRESETS: Array<{ id: string; name: string; color: string }> = [
   { id: 'rent', name: 'Kira', color: 'bg-blue-100 text-blue-700' },
   { id: 'salary', name: 'Maaş', color: 'bg-green-100 text-green-700' },
   { id: 'electricity', name: 'Elektrik', color: 'bg-yellow-100 text-yellow-700' },
@@ -55,8 +54,12 @@ const EXPENSE_CATEGORIES: ExpenseCategory[] = [
 
 const CATEGORY_FALLBACK: ExpenseCategory = {
   id: 'custom',
+  firm_nr: '',
+  code: 'custom',
   name: 'Özel Kategori',
-  color: 'bg-slate-100 text-slate-700'
+  color: 'bg-slate-100 text-slate-700',
+  sort_order: 9999,
+  is_active: true,
 };
 
 const getCurrentMonthDateRange = () => {
@@ -102,9 +105,21 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
 
   const [kasalar, setKasalar] = useState<Kasa[]>([]);
   const [savingExpense, setSavingExpense] = useState(false);
+  // Gider kategorileri — DB'den (migration 189 / public.expense_categories)
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
+  const [categoryForm, setCategoryForm] = useState<{ code: string; name: string; color: string; description: string; sort_order: number }>({
+    code: '',
+    name: '',
+    color: 'bg-gray-100 text-gray-700',
+    description: '',
+    sort_order: 100,
+  });
 
   useEffect(() => {
     void loadKasalar();
+    void loadExpenseCategories();
   }, []);
 
   const loadKasalar = async () => {
@@ -113,6 +128,56 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       setKasalar(data);
     } catch (error) {
       console.error('Error loading cash registers:', error);
+    }
+  };
+
+  const loadExpenseCategories = async () => {
+    try {
+      const list = await expenseCategoryAPI.getAll();
+      setExpenseCategories(list.filter(c => c.is_active));
+    } catch (error) {
+      console.error('Error loading expense categories:', error);
+    }
+  };
+
+  const handleSaveCategory = async () => {
+    const code = categoryForm.code.trim().toLowerCase().replace(/\s+/g, '_');
+    const name = categoryForm.name.trim();
+    if (!code || !name) return;
+    const created = await expenseCategoryAPI.create({
+      code,
+      name,
+      color: categoryForm.color,
+      description: categoryForm.description.trim() || undefined,
+      sort_order: categoryForm.sort_order,
+    });
+    if (created) {
+      setEditingCategory(null);
+      setCategoryForm({ code: '', name: '', color: 'bg-gray-100 text-gray-700', description: '', sort_order: 100 });
+      void loadExpenseCategories();
+    }
+  };
+
+  const handleUpdateCategory = async (id: string) => {
+    if (!editingCategory) return;
+    const ok = await expenseCategoryAPI.update(id, {
+      name: editingCategory.name,
+      color: editingCategory.color,
+      description: editingCategory.description ?? '',
+      sort_order: editingCategory.sort_order,
+      is_active: editingCategory.is_active,
+    });
+    if (ok) {
+      setEditingCategory(null);
+      void loadExpenseCategories();
+    }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    if (!confirm(tm('expenseCategoryDeleteConfirm') || 'Bu kategoriyi silmek/iptal etmek istiyor musunuz?')) return;
+    const ok = await expenseCategoryAPI.remove(id);
+    if (ok) {
+      void loadExpenseCategories();
     }
   };
 
@@ -277,8 +342,16 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
   const getCategoryInfo = (categoryValue: string) => {
     const trimmed = String(categoryValue || '').trim();
     if (!trimmed) return CATEGORY_FALLBACK;
+    // DB'den yüklenen listede code / name ile eşleş
     return (
-      EXPENSE_CATEGORIES.find(c =>
+      expenseCategories.find(c =>
+        c.code === trimmed ||
+        c.id === trimmed ||
+        normalizeCategory(c.name) === normalizeCategory(trimmed) ||
+        normalizeCategory(tm(`expenseCategory_${c.code}`)) === normalizeCategory(trimmed)
+      ) ||
+      // Hardcoded preset fallback (DB boşsa)
+      CATEGORY_FALLBACK_PRESETS.find(c =>
         c.id === trimmed ||
         normalizeCategory(c.name) === normalizeCategory(trimmed) ||
         normalizeCategory(tm(`expenseCategory_${c.id}`)) === normalizeCategory(trimmed)
@@ -291,15 +364,15 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     const trimmed = String(categoryValue || '').trim();
     if (!trimmed) return tm('expenseCategoryCustom');
     const info = getCategoryInfo(trimmed);
-    if (info.id === 'custom') return trimmed;
-    return tm(`expenseCategory_${info.id}`);
+    if (info.code === 'custom') return trimmed;
+    return tm(`expenseCategory_${info.code}`) || info.name || trimmed;
   };
 
   const categoryKey = (categoryValue: string) => {
     const trimmed = String(categoryValue || '').trim();
     if (!trimmed) return '';
     const info = getCategoryInfo(trimmed);
-    return info.id === 'custom' ? normalizeCategory(trimmed) : info.id;
+    return info.code === 'custom' ? normalizeCategory(trimmed) : info.code;
   };
 
   const columnHelper = createColumnHelper<ExpenseLocal>();
@@ -531,8 +604,8 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
                 >
                   <option value="all">{tm('allCategories')}</option>
-                  {EXPENSE_CATEGORIES.map(cat => (
-                    <option key={cat.id} value={cat.id}>{tm(`expenseCategory_${cat.id}`)}</option>
+                  {expenseCategories.map(cat => (
+                    <option key={cat.id} value={cat.code}>{cat.name}</option>
                   ))}
                 </select>
               </div>
@@ -698,19 +771,29 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
             <div className="mx-auto w-full max-w-4xl space-y-5">
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                    {tm('category')} *
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                    <span>{tm('category')} *</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowCategoryManager(true)}
+                      className="text-[10px] text-blue-600 hover:text-blue-700 font-medium normal-case tracking-normal"
+                    >
+                      ⚙ {tm('manage') || 'Yönet'}
+                    </button>
                   </label>
-                  <input
-                    list="expense-category-options"
+                  <select
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    placeholder={tm('expenseCategoryPlaceholder')}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
-                  />
+                    className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium bg-white"
+                  >
+                    <option value="">{tm('expenseCategoryPlaceholder')}</option>
+                    {expenseCategories.map(cat => (
+                      <option key={cat.id} value={cat.code}>{cat.name}</option>
+                    ))}
+                  </select>
                   <datalist id="expense-category-options">
-                    {EXPENSE_CATEGORIES.map(cat => (
-                      <option key={cat.id} value={tm(`expenseCategory_${cat.id}`)} />
+                    {expenseCategories.map(cat => (
+                      <option key={cat.id} value={cat.name} />
                     ))}
                   </datalist>
                 </div>
@@ -850,7 +933,186 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
         </div>,
         document.body
       )}
+
+      {/* Gider Kategorileri Yönetimi — CRUD modal */}
+      {showCategoryManager && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[2147483646] flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-200"
+          onClick={() => setShowCategoryManager(false)}
+        >
+          <div
+            className="bg-white shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white shrink-0 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold uppercase tracking-wide">
+                  {tm('expenseCategoryManagerTitle') || 'Gider Kategorileri Yönetimi'}
+                </h2>
+                <p className="text-xs text-blue-100 mt-0.5">
+                  {tm('expenseCategoryManagerSubtitle') || 'Kira, Mağaza, Tür seçimi gibi kategorileri ekleyin/düzenleyin/silin.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCategoryManager(false)}
+                className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
+              {/* Yeni Kategori Formu */}
+              <div className="rounded-2xl border border-slate-200 p-4 bg-slate-50">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+                  {tm('expenseCategoryAddNew') || 'Yeni Kategori Ekle'}
+                </h3>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <input
+                    placeholder={tm('expenseCategoryCodePlaceholder') || 'kod (örn: rent, salary, ...)'}
+                    value={categoryForm.code}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, code: e.target.value })}
+                    className="px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                  <input
+                    placeholder={tm('expenseCategoryNamePlaceholder') || 'Ad (örn: Kira)'}
+                    value={categoryForm.name}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                    className="px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                  <select
+                    value={categoryForm.color}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, color: e.target.value })}
+                    className="px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+                  >
+                    {CATEGORY_COLOR_PRESETS.map(p => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    placeholder={tm('expenseCategorySortOrder') || 'Sıra'}
+                    value={categoryForm.sort_order}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, sort_order: parseInt(e.target.value, 10) || 100 })}
+                    className="px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                  <input
+                    placeholder={tm('expenseCategoryDescriptionPlaceholder') || 'Açıklama (opsiyonel)'}
+                    value={categoryForm.description}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
+                    className="px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:col-span-2"
+                  />
+                </div>
+                <div className="flex justify-end mt-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveCategory()}
+                    disabled={!categoryForm.code.trim() || !categoryForm.name.trim()}
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none"
+                  >
+                    + {tm('add') || 'Ekle'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Mevcut Kategoriler */}
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+                  {tm('expenseCategoryExisting') || 'Mevcut Kategoriler'}
+                </h3>
+                {expenseCategories.length === 0 ? (
+                  <div className="text-sm text-slate-500 italic p-4 rounded-xl border border-dashed border-slate-200 text-center">
+                    {tm('expenseCategoryNone') || 'Henüz kategori tanımlanmamış.'}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {expenseCategories.map(cat => (
+                      <div
+                        key={cat.id}
+                        className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-slate-300 transition-colors"
+                      >
+                        {editingCategory?.id === cat.id ? (
+                          <>
+                            <input
+                              value={editingCategory.name}
+                              onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
+                              className="flex-1 px-2 py-1 border border-slate-200 rounded outline-none text-sm"
+                            />
+                            <input
+                              type="number"
+                              value={editingCategory.sort_order}
+                              onChange={(e) => setEditingCategory({ ...editingCategory, sort_order: parseInt(e.target.value, 10) || 100 })}
+                              className="w-20 px-2 py-1 border border-slate-200 rounded outline-none text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void handleUpdateCategory(cat.id)}
+                              className="px-3 py-1 rounded bg-emerald-600 text-white text-xs font-semibold"
+                            >
+                              {tm('save') || 'Kaydet'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingCategory(null)}
+                              className="px-3 py-1 rounded bg-slate-200 text-slate-700 text-xs font-semibold"
+                            >
+                              {tm('cancel') || 'Vazgeç'}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${cat.color}`}>{cat.name}</span>
+                            <span className="text-xs text-slate-500 font-mono">{cat.code}</span>
+                            <span className="text-xs text-slate-400">#{cat.sort_order}</span>
+                            <div className="flex-1" />
+                            <button
+                              type="button"
+                              onClick={() => setEditingCategory({ ...cat })}
+                              className="px-2 py-1 rounded text-blue-600 hover:bg-blue-50"
+                              title={tm('edit') || 'Düzenle'}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteCategory(cat.id)}
+                              className="px-2 py-1 rounded text-red-600 hover:bg-red-50"
+                              title={tm('delete') || 'Sil'}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
+
+// Renk seçenekleri (CRUD modal'i için)
+const CATEGORY_COLOR_PRESETS: Array<{ value: string; label: string }> = [
+  { value: 'bg-blue-100 text-blue-700',     label: 'Mavi' },
+  { value: 'bg-green-100 text-green-700',   label: 'Yeşil' },
+  { value: 'bg-yellow-100 text-yellow-700', label: 'Sarı' },
+  { value: 'bg-cyan-100 text-cyan-700',     label: 'Turkuaz' },
+  { value: 'bg-purple-100 text-purple-700', label: 'Mor' },
+  { value: 'bg-indigo-100 text-indigo-700', label: 'İndigo' },
+  { value: 'bg-orange-100 text-orange-700', label: 'Turuncu' },
+  { value: 'bg-pink-100 text-pink-700',     label: 'Pembe' },
+  { value: 'bg-red-100 text-red-700',       label: 'Kırmızı' },
+  { value: 'bg-amber-100 text-amber-700',   label: 'Amber' },
+  { value: 'bg-lime-100 text-lime-700',     label: 'Lime' },
+  { value: 'bg-teal-100 text-teal-700',     label: 'Teal' },
+  { value: 'bg-gray-100 text-gray-700',     label: 'Gri' },
+  { value: 'bg-slate-100 text-slate-700',   label: 'Slate' },
+];
 

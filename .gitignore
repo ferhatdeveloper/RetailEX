@@ -106,6 +106,10 @@ tsc-errors*.txt
 
 # Yerel kiracı PG yedekleri (pg_dump) — asla commit etme
 /backups/
+/database/backups/
+/database/snapshots/
+/.tmp_backup/
+/import-log.txt
 
 # Logs
 logs/

@@ -194,11 +194,17 @@ class AppointmentPaymentService {
 
         try {
             // 2. appointments üzerinde deposit kolonlarını güncelle
+            // Status: scheduled/confirmed → pre_paid (hizmet henüz başlamadı)
+            // pre_paid / in_progress / completed → status değişmez (zaten peşinatlı)
             await postgres.query(
                 `UPDATE ${aptTable}
                     SET deposit_amount    = COALESCE(deposit_amount, 0) + $2,
                         deposit_provider  = COALESCE($3, deposit_provider),
                         deposit_date      = COALESCE(deposit_date, $4),
+                        status            = CASE
+                                                WHEN status IN ('scheduled','confirmed') THEN 'pre_paid'
+                                                ELSE status
+                                            END,
                         updated_at        = NOW()
                   WHERE id = $1 AND firm_nr = $5`,
                 [

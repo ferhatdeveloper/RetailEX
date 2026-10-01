@@ -14,6 +14,11 @@ export interface BeautyAppointmentClinicalData {
 export enum AppointmentStatus {
     SCHEDULED = 'scheduled',
     CONFIRMED = 'confirmed',
+    /**
+     * Ön Ödeme Alındı — hizmet henüz başlamadı ama peşinat tahsil edildi.
+     * Detay panelinde "Başla" / "Tamamla" aksiyonları hâlâ açık.
+     */
+    PRE_PAID = 'pre_paid',
     IN_PROGRESS = 'in_progress',
     COMPLETED = 'completed',
     CANCELLED = 'cancelled',
