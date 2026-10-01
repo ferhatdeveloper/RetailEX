@@ -81,6 +81,8 @@ export const REPORT_MENU_PARAM_KEYS = [
   'daily-report-card-total-expense',
   'daily-report-card-cash-expenses',
   'daily-report-card-net',
+  'daily-report-card-cash-in',
+  'daily-report-card-cash-out',
   /** Aylık gün / yıllık ay özeti KPI kartları (varsayılan açık) */
   'period-summary-card-total-revenue',
   'period-summary-card-total-expenses',
@@ -88,6 +90,7 @@ export const REPORT_MENU_PARAM_KEYS = [
   'period-summary-card-supplier-payables',
   'period-summary-card-net',
   'period-summary-card-payment-split',
+  'period-summary-card-cash-in',
 ] as const;
 
 export type ReportMenuParamKey = (typeof REPORT_MENU_PARAM_KEYS)[number];
@@ -128,12 +131,15 @@ const DEFAULT_PARAMS: ReportMenuParams = {
   'daily-report-card-total-expense': true,
   'daily-report-card-cash-expenses': true,
   'daily-report-card-net': true,
+  'daily-report-card-cash-in': true,
+  'daily-report-card-cash-out': true,
   'period-summary-card-total-revenue': true,
   'period-summary-card-total-expenses': true,
   'period-summary-card-period-purchases': true,
   'period-summary-card-supplier-payables': true,
   'period-summary-card-net': true,
   'period-summary-card-payment-split': true,
+  'period-summary-card-cash-in': true,
 };
 
 type Listener = (params: ReportMenuParams) => void;

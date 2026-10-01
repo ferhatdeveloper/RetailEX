@@ -353,6 +353,8 @@ export interface KasaIslemi {
   olusturma_tarihi?: string;
   guncelleme_tarihi?: string;
   ozel_kod?: string;
+  /** Geçmiş tarihe işlem kaydı audit bayrağı (UI onayı ile set edilir). */
+  is_back_dated?: boolean | string | number;
   /** Detay modalında gösterilen ek alanlar (Logo/ERP uyumluluğu) */
   makbuz_no?: string;
   durumu?: string;
@@ -1039,6 +1041,7 @@ async function createKasaIslemiViaPostgrest(
     expense_card_id: islem.expense_card_id || null,
     tax_rate: islem.tax_rate || 0,
     withholding_tax_rate: islem.withholding_tax_rate || 0,
+    is_back_dated: Boolean(islem.is_back_dated),
   };
 
   const rows = await postgrest.post<any[]>(linesPath, lineBody, {
@@ -1427,7 +1430,8 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
       `INSERT INTO ${table} (
          firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type,
          customer_id, party_id, currency_code, exchange_rate, f_amount, transfer_status, special_code,
-         target_register_id, bank_id, bank_account_id, expense_card_id, tax_rate, withholding_tax_rate
+         target_register_id, bank_id, bank_account_id, expense_card_id, tax_rate, withholding_tax_rate,
+         is_back_dated
        )
          VALUES (
            $1::text,
@@ -1451,7 +1455,8 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
            $18::text::uuid,
            $19::text::uuid,
            $20::text::numeric,
-           $21::text::numeric
+           $21::text::numeric,
+           $22::boolean
          ) RETURNING *`,
       [
         ERP_SETTINGS.firmNr,
@@ -1474,7 +1479,8 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
         islem.bank_account_id || null,
         islem.expense_card_id || null,
         islem.tax_rate || 0,
-        islem.withholding_tax_rate || 0
+        islem.withholding_tax_rate || 0,
+        Boolean(islem.is_back_dated),
       ]
     );
 
@@ -1516,7 +1522,8 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
         `INSERT INTO ${table} (
            firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type,
            customer_id, party_id, currency_code, exchange_rate, f_amount, transfer_status, special_code,
-           target_register_id, bank_id, bank_account_id, expense_card_id, tax_rate, withholding_tax_rate
+           target_register_id, bank_id, bank_account_id, expense_card_id, tax_rate, withholding_tax_rate,
+           is_back_dated
          )
            VALUES (
              $1::text,
@@ -1540,7 +1547,8 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
              NULL,
              NULL,
              0,
-             0
+             0,
+             $13::boolean
            ) RETURNING id`,
         [
           ERP_SETTINGS.firmNr,
@@ -1555,6 +1563,7 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
           islem.dovizli_tutar || 0,
           islem.ozel_kod || '',
           islem.kasa_id,
+          Boolean(islem.is_back_dated),
         ]
       );
       // Hedef kasa bakiyesi: +tutar.

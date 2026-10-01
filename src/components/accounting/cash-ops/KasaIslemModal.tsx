@@ -4,7 +4,7 @@
  * Flat design matching 'Ödeme Al' style
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Calendar, Search, Save, Wallet, FileText } from 'lucide-react';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -61,6 +61,15 @@ export function KasaIslemModal({
   initialDescription,
 }: KasaIslemModalProps) {
   const { selectedFirma, selectedDonem } = useFirmaDonem();
+  // Dönem tarih sınırları — `baslangic_tarihi` / `bitis_tarihi` Period tipinde ISO (YYYY-MM-DD).
+  const periodBegDate = useMemo(() => {
+    const raw = (selectedDonem as any)?.baslangic_tarihi || (selectedDonem as any)?.start_date;
+    return raw ? String(raw).slice(0, 10) : '';
+  }, [selectedDonem]);
+  const periodEndDate = useMemo(() => {
+    const raw = (selectedDonem as any)?.bitis_tarihi || (selectedDonem as any)?.end_date;
+    return raw ? String(raw).slice(0, 10) : '';
+  }, [selectedDonem]);
   const { t, tm } = useLanguage();
 
   const ledgerCurrency = (
@@ -131,6 +140,24 @@ export function KasaIslemModal({
       islem_aciklamasi: initialDescription || '',
     };
   });
+
+  // Bugünün tarihi (YYYY-MM-DD). Dönem kontrolü ve audit için referans.
+  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  /** İşlem tarihi bugünden önce mi? Audit (`is_back_dated`) ve checkbox görünürlüğü. */
+  const isOperationDateBackDated = useMemo(() => {
+    const d = String(formData.islem_tarihi || '').slice(0, 10);
+    return !!d && d < todayIso;
+  }, [formData.islem_tarihi, todayIso]);
+  /** Geçmiş tarihe işlem onayı — düzenleme modunda her zaman etkin (eski veri). */
+  const [backDatedConfirmed, setBackDatedConfirmed] = useState(false);
+  // Düzenleme modunda ve tarih back-dated ise varsayılan onaylı (zaten var olan geçmiş kayıt).
+  useEffect(() => {
+    if (isEdit && isOperationDateBackDated) setBackDatedConfirmed(true);
+  }, [isEdit, isOperationDateBackDated]);
+  // Tarih bugüne/ileriye alındığında onayı sıfırla (yanlışlıkla kalmasın).
+  useEffect(() => {
+    if (!isOperationDateBackDated) setBackDatedConfirmed(false);
+  }, [isOperationDateBackDated]);
 
   // Amount Formatting Logic
   const [displayAmount, setDisplayAmount] = useState('');
@@ -279,6 +306,37 @@ export function KasaIslemModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // 1) Erken UI kontrolü — tarih dönem aralığı dışında mı?
+    const dateInput = String(formData.islem_tarihi || '').slice(0, 10);
+    if (dateInput) {
+      if (periodBegDate && dateInput < periodBegDate) {
+        toast.error(
+          tm('cashModalDateRangeOutOfBounds')
+            ?.replace('{date}', dateInput)
+            ?.replace('{beg}', periodBegDate)
+            ?.replace('{end}', periodEndDate || '—') ||
+            `İşlem tarihi (${dateInput}) dönem başlangıcından (${periodBegDate}) önce olamaz.`,
+        );
+        return;
+      }
+      if (periodEndDate && dateInput > periodEndDate) {
+        toast.error(
+          tm('cashModalDateRangeOutOfBounds')
+            ?.replace('{date}', dateInput)
+            ?.replace('{beg}', periodBegDate || '—')
+            ?.replace('{end}', periodEndDate) ||
+            `İşlem tarihi (${dateInput}) dönem bitişinden (${periodEndDate}) sonra olamaz.`,
+        );
+        return;
+      }
+    }
+
+    // 2) Geçmiş tarih onayı — checkbox zorunlu
+    if (isOperationDateBackDated && !backDatedConfirmed) {
+      toast.error(tm('cashModalBackDatedRequired') || 'Geçmiş tarihe işlem girişi için onay kutucuğu zorunlu.');
+      return;
+    }
+
     if (!formData.tutar || formData.tutar <= 0) {
       toast.error(t['pleaseEnterAmount']);
       return;
@@ -328,6 +386,8 @@ export function KasaIslemModal({
         islem_tipi: postedTip,
         islem_no: invoiceFiche || formData.islem_no,
         party_id: islemTipi === 'CH_ODEME' && ortakAdina ? formData.party_id : undefined,
+        // Geçmiş tarih audit bilgisi: UI onayı varsa true; aksi halda false (güvenlik).
+        is_back_dated: isOperationDateBackDated && backDatedConfirmed,
       };
       if (isEdit && editingIslem?.id) {
         await updateKasaIslemi(editingIslem.id, submitFormData);
@@ -486,9 +546,36 @@ export function KasaIslemModal({
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['dateLabel']}</label>
               <div className="relative">
-                <input type="date" value={formData.islem_tarihi} onChange={(e) => setFormData({ ...formData, islem_tarihi: e.target.value })} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none" />
+                <input
+                  type="date"
+                  value={formData.islem_tarihi}
+                  min={periodBegDate || undefined}
+                  max={periodEndDate || undefined}
+                  onChange={(e) => setFormData({ ...formData, islem_tarihi: e.target.value })}
+                  className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                />
                 <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               </div>
+              {(periodBegDate || periodEndDate) ? (
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 leading-snug">
+                  {tm('cashModalDateRangeHint')
+                    .replace('{beg}', periodBegDate || '—')
+                    .replace('{end}', periodEndDate || '—')}
+                </p>
+              ) : null}
+              {isOperationDateBackDated ? (
+                <label className="mt-2 flex items-start gap-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 p-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={backDatedConfirmed}
+                    onChange={(e) => setBackDatedConfirmed(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-amber-600"
+                  />
+                  <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-200 leading-snug">
+                    {tm('cashModalBackDatedConfirm')}
+                  </span>
+                </label>
+              ) : null}
             </div>
           </div>
 

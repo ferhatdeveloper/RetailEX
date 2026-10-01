@@ -24,6 +24,24 @@ export const REPORT_CASH_OUT_TYPES = new Set([
   'ORTAK_SERMAYE_ODEME',
 ]);
 
+/** Günlük/Dönem raporu için kasa para GİRİŞİ tipleri (sign=+1). */
+export const REPORT_CASH_IN_TYPES = new Set([
+  'KASA_GIRIS',
+  'ORTAK_SERMAYE_TAHSILAT',
+  'ORTAK_PARA_GIRIS',
+]);
+
+const CASH_IN_CATEGORY_TR: Record<string, string> = {
+  KASA_GIRIS: 'Kasa giriş',
+  ORTAK_SERMAYE_TAHSILAT: 'Ortak sermaye tahsilatı',
+  ORTAK_PARA_GIRIS: 'Ortak para girişi',
+};
+
+export function reportCashInCategory(typeCode: string): string {
+  const u = String(typeCode || '').trim().toUpperCase();
+  return CASH_IN_CATEGORY_TR[u] || u || 'Kasa giriş';
+}
+
 const CASH_OUT_CATEGORY_TR: Record<string, string> = {
   GIDER_PUSULASI: 'Gider pusulası',
   MAAS_ODEME: 'Maaş ödemesi',
@@ -96,4 +114,66 @@ export function mergeExpensesWithCashOuts(
   }
 
   return unified;
+}
+
+/**
+ * Cash_lines kayıtları içinden kasa para GİRİŞİ tiplerini (`REPORT_CASH_IN_TYPES`)
+ * `DailyExpenseRow` benzeri tek-forma dönüştürür. sign=+1 doğrulanır.
+ * Günlük raporda "Kasa Para Girişi" panelinde gösterilir.
+ */
+export function mergeExpensesWithCashIns(
+  cashLines: KasaIslemi[],
+): KasaIslemi[] {
+  const list = Array.isArray(cashLines) ? cashLines : [];
+  const unified: KasaIslemi[] = [];
+  for (const cl of list) {
+    const type = String(cl.islem_tipi || '').trim().toUpperCase();
+    if (!REPORT_CASH_IN_TYPES.has(type)) continue;
+    const amt = Math.abs(Number(cl.tutar) || 0);
+    if (!amt) continue;
+    unified.push({
+      ...cl,
+        tutar: amt,
+        islem_tipi: type,
+      });
+  }
+  return unified;
+}
+
+/**
+ * cashIn listesini tarih (YYYY-MM-DD) veya ay (YYYY-MM) bazında toplar.
+ * - `groupBy='day'` → `Map<YYYY-MM-DD, number>`
+ * - `groupBy='month'` → `Map<YYYY-MM, number>`
+ */
+export function aggregateCashIns(
+  cashIns: KasaIslemi[],
+  groupBy: 'day' | 'month' = 'day',
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const cl of Array.isArray(cashIns) ? cashIns : []) {
+    const day =
+      toSqlDateInputString(cl.islem_tarihi || '') ||
+      localCalendarDateKey(cl.islem_tarihi) ||
+      '';
+    if (!day) continue;
+    const key = groupBy === 'month' ? day.slice(0, 7) : day;
+    map.set(key, (map.get(key) || 0) + (Number(cl.tutar) || 0));
+  }
+  return map;
+}
+
+/** Bir `KasaIslemi`'nin geçmiş tarihe işaretlenip işaretlenmediğini söyler (audit). */
+export function isCashLineBackDated(
+  cl: KasaIslemi | null | undefined,
+  today: string = new Date().toISOString().slice(0, 10),
+): boolean {
+  if (!cl) return false;
+  const raw = cl.islem_tarihi || '';
+  const dateKey = String(raw).slice(0, 10);
+  if (!dateKey) return false;
+  // created_at varsa ve islem_tarihi created_at'ten önceyse gerçekten geçmiş tarihli
+  const created = cl.olusturma_tarihi || '';
+  const createdKey = String(created).slice(0, 10);
+  if (createdKey && dateKey < createdKey) return true;
+  return dateKey < today;
 }

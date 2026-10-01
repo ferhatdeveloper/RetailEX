@@ -36,6 +36,7 @@ import { userAPI } from '../../services/api/users';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
+import { DailyCashFlowModal } from './DailyCashFlowModal';
 import {
   displayUserCashierName,
   isPlaceholderCashierName,
@@ -43,7 +44,7 @@ import {
   resolveCashierDisplayName,
   resolveWriteCashierName,
 } from '../../utils/loginCashierName';
-import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
+import { mergeExpensesWithCashOuts, mergeExpensesWithCashIns, REPORT_CASH_IN_TYPES, reportCashInCategory } from '../../utils/reportUnifiedExpenses';
 import { productCardUnitCost } from '../../utils/productCardUnitCost';
 import type { BeautyAppointment, BeautySale, BeautyService, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
@@ -1088,6 +1089,9 @@ export function ReportsModule({
   const reportConfirmResolverRef = useRef<((result: { approved: boolean; reason: string }) => void) | null>(null);
   const [kasaLinesForSelectedDate, setKasaLinesForSelectedDate] = useState<KasaIslemi[]>([]);
   const [dailyExpenseRows, setDailyExpenseRows] = useState<DailyExpenseRow[]>([]);
+  const [dailyCashInRows, setDailyCashInRows] = useState<KasaIslemi[]>([]);
+  const [dailyCashInModalOpen, setDailyCashInModalOpen] = useState(false);
+  const [dailyCashOutModalOpen, setDailyCashOutModalOpen] = useState(false);
   const [comparisonPeriod, setComparisonPeriod] = useState<'week' | 'month'>('week');
   const [comparisonOrders, setComparisonOrders] = useState<any[]>([]);
   const [loadingComparisonOrders, setLoadingComparisonOrders] = useState(false);
@@ -1239,9 +1243,19 @@ export function ReportsModule({
 
       unified.sort((a, b) => String(b.date).localeCompare(String(a.date)));
       setDailyExpenseRows(unified);
+
+      // Günlük kasa para girişleri (sign=+1). Yeni kartlar bu listeden beslenir.
+      const cashInList: KasaIslemi[] = Array.isArray(cashLines)
+        ? cashLines.filter((cl) => {
+            const t = String(cl.islem_tipi || '').trim().toUpperCase();
+            return REPORT_CASH_IN_TYPES.has(t);
+          })
+        : [];
+      setDailyCashInRows(cashInList);
       setKasaLinesForSelectedDate(Array.isArray(cashLines) ? cashLines : []);
     } catch {
       setDailyExpenseRows([]);
+      setDailyCashInRows([]);
       setKasaLinesForSelectedDate([]);
     }
   }, [selectedDateFrom, selectedDateTo]);
@@ -2995,6 +3009,14 @@ export function ReportsModule({
     reportMenuParams,
   );
   const showDailyCardNet = isReportMenuParamEnabled('daily-report-card-net', reportMenuParams);
+  const showDailyCardCashIn = isReportMenuParamEnabled(
+    'daily-report-card-cash-in',
+    reportMenuParams,
+  );
+  const showDailyCardCashOut = isReportMenuParamEnabled(
+    'daily-report-card-cash-out',
+    reportMenuParams,
+  );
   const dailyExpenseRowsForReport = useMemo(() => {
     if (showDailySupplierPayments) return dailyExpenseRows;
     return dailyExpenseRows.filter((r) => r.typeCode !== 'CH_ODEME');
@@ -3006,6 +3028,12 @@ export function ReportsModule({
   const cashExpensesForReport = useMemo(
     () => dailyExpenseRowsForReport.reduce((sum, row) => sum + (row.isCash ? row.amount : 0), 0),
     [dailyExpenseRowsForReport],
+  );
+  /** Günlük kasa para girişi toplamı — sign=+1 (KASA_GIRIS, ORTAK_SERMAYE_TAHSILAT, ORTAK_PARA_GIRIS). */
+  const totalDailyCashIn = useMemo(
+    () =>
+      dailyCashInRows.reduce((s, cl) => s + (Math.abs(Number(cl.tutar) || 0)), 0),
+    [dailyCashInRows],
   );
   /**
    * Gider kartı kapalıysa net'ten gider düşülmez.
@@ -5979,6 +6007,43 @@ export function ReportsModule({
                   return <ReportKpiStrip items={stripItems} />;
                 })()}
 
+                {(showDailyCardCashIn || showDailyCardCashOut) ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {showDailyCardCashIn ? (
+                  <button
+                    type="button"
+                    onClick={() => setDailyCashInModalOpen(true)}
+                    className="bg-white rounded-lg p-4 border-2 border-emerald-100 text-left hover:bg-emerald-50/40 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('dailyCashIn')}</p>
+                        <p className="text-2xl font-bold mt-1 text-emerald-700">{formatNumber(totalDailyCashIn, 2, false)}</p>
+                        <p className="text-xs text-slate-500 mt-1">{tm('dailyCount')}: {dailyCashInRows.length}</p>
+                      </div>
+                      <Banknote className="w-12 h-12 text-emerald-400 opacity-40" />
+                    </div>
+                  </button>
+                  ) : null}
+                  {showDailyCardCashOut ? (
+                  <button
+                    type="button"
+                    onClick={() => setDailyCashOutModalOpen(true)}
+                    className="bg-white rounded-lg p-4 border-2 border-rose-100 text-left hover:bg-rose-50/40 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('dailyCashOut')}</p>
+                        <p className="text-2xl font-bold mt-1 text-rose-700">{formatNumber(cashExpensesForReport, 2, false)}</p>
+                        <p className="text-xs text-slate-500 mt-1">{tm('dailyCount')}: {dailyExpenseRowsForReport.length}</p>
+                      </div>
+                      <Wallet className="w-12 h-12 text-rose-400 opacity-40" />
+                    </div>
+                  </button>
+                  ) : null}
+                </div>
+                ) : null}
+
                 {(showDailyCardTotalExpense || showDailyCardCashExpenses || showDailyCardNet) ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {showDailyCardTotalExpense ? (
@@ -6027,6 +6092,26 @@ export function ReportsModule({
                   </div>
                   ) : null}
                 </div>
+                ) : null}
+
+                {dailyCashInModalOpen ? (
+                  <DailyCashFlowModal
+                    kind="cash-in"
+                    cashLines={dailyCashInRows}
+                    title={tm('dailyCashIn')}
+                    currency={reportCurrency}
+                    onClose={() => setDailyCashInModalOpen(false)}
+                  />
+                ) : null}
+
+                {dailyCashOutModalOpen ? (
+                  <DailyCashFlowModal
+                    kind="cash-out"
+                    expenseRows={dailyExpenseRowsForReport}
+                    title={tm('dailyCashOut')}
+                    currency={reportCurrency}
+                    onClose={() => setDailyCashOutModalOpen(false)}
+                  />
                 ) : null}
 
                 {/* Sales List */}

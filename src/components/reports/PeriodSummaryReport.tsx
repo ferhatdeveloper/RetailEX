@@ -9,7 +9,11 @@ import { supplierAPI } from '../../services/api/suppliers';
 import { fetchKasaIslemleri } from '../../services/api/kasa';
 import { isReturnSale } from '../../utils/posZReport';
 import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
-import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
+import {
+  mergeExpensesWithCashOuts,
+  mergeExpensesWithCashIns,
+  aggregateCashIns,
+} from '../../utils/reportUnifiedExpenses';
 import type { Sale } from '../../App';
 import type { Invoice, Supplier } from '../../core/types/models';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInputString } from '../../utils/localCalendarDate';
@@ -40,6 +44,7 @@ import {
 import { PeriodExpenseShareDetailModal } from './PeriodExpenseShareDetailModal';
 import { PeriodSupplierPayablesDetailModal } from './PeriodSupplierPayablesDetailModal';
 import { PartnerDetailReportModal } from './PartnerDetailReportModal';
+import { PeriodCashInDetailModal } from './PeriodCashInDetailModal';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 import { ReportKpiStrip, type ReportKpiItem } from './shared/ReportKpiStrip';
 
@@ -59,14 +64,15 @@ interface PeriodSummaryRow {
   returnsCount: number;
   returnsAmount: number;
   expenses: number;
+  cashIn: number;
   purchases: number;
   netRemaining: number;
   partnerShares: Record<string, number>;
   expenseShares: Record<string, number>;
 }
 
-function hasPeriodActivity(row: Pick<PeriodSummaryRow, 'saleCount' | 'revenue' | 'expenses' | 'purchases'>): boolean {
-  return row.saleCount > 0 || row.revenue > 0 || row.expenses > 0 || row.purchases > 0;
+function hasPeriodActivity(row: Pick<PeriodSummaryRow, 'saleCount' | 'revenue' | 'expenses' | 'cashIn' | 'purchases'>): boolean {
+  return row.saleCount > 0 || row.revenue > 0 || row.expenses > 0 || row.cashIn > 0 || row.purchases > 0;
 }
 
 function isRemovedSaleStatus(status: unknown): boolean {
@@ -243,6 +249,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const [partners, setPartners] = useState<PartyPartner[]>([]);
   const [expenseDetail, setExpenseDetail] = useState<{ title: string; periodKey: string | null } | null>(null);
   const [partnerDetail, setPartnerDetail] = useState<PartyPartner | null>(null);
+  const [cashInDetail, setCashInDetail] = useState<{ title: string; periodKey: string | null } | null>(null);
   const [reportMenuParams, setReportMenuParams] = useState<ReportMenuParams>(() =>
     getRuntimeReportMenuParams(),
   );
@@ -271,6 +278,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const showPeriodCardNet = isReportMenuParamEnabled('period-summary-card-net', reportMenuParams);
   const showPeriodCardPaymentSplit = isReportMenuParamEnabled(
     'period-summary-card-payment-split',
+    reportMenuParams,
+  );
+  const showPeriodCardCashIn = isReportMenuParamEnabled(
+    'period-summary-card-cash-in',
     reportMenuParams,
   );
 
@@ -383,6 +394,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     [expensesBaseQuery.data, cashLinesQuery.data],
   );
 
+  /** Kasa para girişleri (sign=+1): REPORT_CASH_IN_TYPES — day/month map. */
+  const cashInsRows = useMemo(
+    () => mergeExpensesWithCashIns(cashLinesQuery.data ?? []),
+    [cashLinesQuery.data],
+  );
+  const cashInMap = useMemo(() => {
+    return aggregateCashIns(cashInsRows, mode === 'monthly-days' ? 'day' : 'month');
+  }, [cashInsRows, mode]);
+
   // Alış faturaları — sayfalı, hepsi birleştirilir
   const purchasesQuery = useQuery({
     queryKey: ['periodSummary', 'purchases', firmKey, periodRange?.start, periodRange?.end],
@@ -472,6 +492,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         ? aggregateExpenses(expenses, (e) => expenseDayKey(e.expense_date))
         : aggregateExpenses(expenses, (e) => expenseDayKey(e.expense_date).slice(0, 7));
 
+    // cashInMap anahtarı zaten mode'a göre day/month üretildi
     const purchaseMap =
       mode === 'monthly-days'
         ? aggregatePurchases(purchases, (inv) => localCalendarDateKey(inv.invoice_date))
@@ -490,6 +511,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         returnsCount: 0, returnsAmount: 0,
       };
       const exp = expenseMap.get(periodKey) || 0;
+      const cashIn = cashInMap.get(periodKey) || 0;
       const purch = purchaseMap.get(periodKey) || 0;
       const periodLabel =
         mode === 'monthly-days'
@@ -524,6 +546,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         returnsCount: sale.returnsCount,
         returnsAmount: sale.returnsAmount,
         expenses: exp,
+        cashIn,
         purchases: purch,
         netRemaining,
         partnerShares: partnerShareMap,
@@ -536,6 +559,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     sales,
     expenses,
     purchases,
+    cashInMap,
     selectedMonth,
     selectedYear,
     tm,
@@ -555,13 +579,14 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         returnsCount: acc.returnsCount + r.returnsCount,
         returnsAmount: acc.returnsAmount + r.returnsAmount,
         expenses: acc.expenses + r.expenses,
+        cashIn: acc.cashIn + r.cashIn,
         purchases: acc.purchases + r.purchases,
         netRemaining: acc.netRemaining + r.netRemaining,
       }),
       {
         saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
         returnsCount: 0, returnsAmount: 0,
-        expenses: 0, purchases: 0, netRemaining: 0,
+        expenses: 0, cashIn: 0, purchases: 0, netRemaining: 0,
       }
     );
     const shareList = splitAmountByPartners(base.netRemaining, partnerSlices);
@@ -732,6 +757,34 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         },
       },
       {
+        key: 'cashIn',
+        header: `${tm('rptPeriodColCashIn')} (${currency})`,
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => (
+          <span className="text-emerald-700">{money(n)}</span>
+        ),
+        cell: (row) => {
+          if (!hasPeriodActivity(row) || !(row.cashIn > 0)) return '—';
+          return (
+            <button
+              type="button"
+              className="text-emerald-700 font-semibold underline-offset-2 hover:underline"
+              onClick={(e) => {
+                e.stopPropagation();
+                setCashInDetail({
+                  title: `${tm('rptPeriodCashInDetailTitle')} · ${row.periodLabel}`,
+                  periodKey: row.periodKey,
+                });
+              }}
+            >
+              {money(row.cashIn)}
+            </button>
+          );
+        },
+      },
+      {
         key: 'purchases',
         header: `${tm('rptPeriodColPurchases')} (${currency})`,
         type: 'number',
@@ -765,6 +818,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       if (key === 'revenue') return showPeriodCardRevenue;
       if (key === 'cash' || key === 'card' || key === 'veresiye') return showPeriodCardPaymentSplit;
       if (key === 'expenses') return showPeriodCardExpenses;
+      if (key === 'cashIn') return showPeriodCardCashIn;
       if (key === 'purchases') return showPeriodCardPurchases;
       if (key === 'netRemaining') return showPeriodCardNet;
       return true;
@@ -819,6 +873,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     showPeriodCardRevenue,
     showPeriodCardPaymentSplit,
     showPeriodCardExpenses,
+    showPeriodCardCashIn,
     showPeriodCardPurchases,
     showPeriodCardNet,
     totals.returnsCount,
@@ -856,6 +911,29 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             }
           >
             {tm('rptPeriodOpenExpenseDetail')}
+          </button>
+        ),
+      });
+    }
+
+    if (showPeriodCardCashIn) {
+      items.push({
+        key: 'cashIn',
+        label: tm('rptPeriodCardCashIn'),
+        value: money(totals.cashIn),
+        valueClassName: 'text-emerald-700 dark:text-emerald-400',
+        hint: (
+          <button
+            type="button"
+            className="font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+            onClick={() =>
+              setCashInDetail({
+                title: tm('rptPeriodCashInDetailTitle'),
+                periodKey: null,
+              })
+            }
+          >
+            {tm('rptPeriodOpenCashInDetail')}
           </button>
         ),
       });
@@ -1014,6 +1092,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     showPeriodCardSupplierPayables,
     showPeriodCardNet,
     showPeriodCardPaymentSplit,
+    showPeriodCardCashIn,
     showPartnerCols,
     partnerSlices,
     partners,
@@ -1154,6 +1233,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           periodEnd={periodRange.end}
           currency={currency}
           onClose={() => setPartnerDetail(null)}
+        />
+      ) : null}
+      {cashInDetail ? (
+        <PeriodCashInDetailModal
+          cashLines={cashInsRows}
+          periodKey={cashInDetail.periodKey}
+          title={cashInDetail.title}
+          currency={currency}
+          onClose={() => setCashInDetail(null)}
         />
       ) : null}
     </div>

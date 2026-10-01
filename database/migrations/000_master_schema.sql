@@ -3262,6 +3262,7 @@ BEGIN
       tax_rate             DECIMAL(5,2) DEFAULT 0,
       withholding_tax_rate DECIMAL(5,2) DEFAULT 0,
       store_id             UUID,
+      is_back_dated        BOOLEAN DEFAULT FALSE,
       created_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_cash_lines');
