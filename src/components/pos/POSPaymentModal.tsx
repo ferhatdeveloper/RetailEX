@@ -159,6 +159,13 @@ interface POSPaymentModalProps {
   onClose: () => void;
   onComplete: (paymentData: any, options?: { autoPrint?: boolean; language?: string }) => Promise<void> | void;
   /**
+   * Peşinatlı ("pesinatli") ödeme eklendiğinde tetiklenir. Beauty randevu POS'unda
+   * girilen tutarı randevu detaylarındaki rezervasyon tutarına yansıtmak için
+   * kullanılır — böylece ödeme alındıktan sonra randevu panelinde «Rezervasyon Tutarı»
+   * otomatik dolar ve Toplam = brüt − peşinat olarak güncellenir.
+   */
+  onPesinatliAdded?: (amount: number) => void;
+  /**
    * Tamamla butonunun etiketi. Genelde "Ödemeyi Tamamla"; ancak Peşinatlı
    * satışta parent ("Ön Ödeme Alındı") gönderebilir. Verilmezse standart
    * `t.completePayment` kullanılır.
@@ -218,6 +225,7 @@ export function POSPaymentModal({
   onCloseForSilentPrint,
   onClose,
   onComplete,
+  onPesinatliAdded,
   completeButtonLabel,
   mode = 'standard',
   appointmentContext,
@@ -593,6 +601,9 @@ export function POSPaymentModal({
         });
         setPayments((prev) => [...prev, ...sanitized]);
         setCurrentAmount('');
+        // Beauty randevu POS: peşinat tutarını parent'a bildir → randevu
+        // detaylarındaki rezervasyon input'u otomatik dolar.
+        onPesinatliAdded?.(normalizedAmount);
         const kalanRow = sanitized.find((r) => r.method === 'veresiye') as Payment | undefined;
         // Plan §6 Adım 8 — toast'a peşinat fiş no ekle (parent appointmentContext'ten)
         const ficheTag = appointmentContext?.prePaymentFicheNo

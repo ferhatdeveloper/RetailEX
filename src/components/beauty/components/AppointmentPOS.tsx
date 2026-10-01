@@ -5080,6 +5080,10 @@ export function AppointmentPOS({
                     // verilmeden "başladı" durumuna alınır; hizmet verildiğinde
                     // ayrıca "Hizmet Tamamlandı" akışı çalışır.
                     mode="prePayment"
+                    // Peşinat eklendiğinde randevu detaylarındaki rezervasyon
+                    // tutarı input'unu otomatik doldur — kullanıcı ikinci kez
+                    // girmek zorunda kalmasın.
+                    onPesinatliAdded={(amt) => setReservationAmount(Math.max(0, Number(amt) || 0))}
                     // IN_PROGRESS randevuda daha önce peşinat alındıysa,
                     // modal açıldığında default tutar = kalan + ön ödeme/kalan
                     // bilgi kartı görünür. Yeni randevuda rezervasyon tutarı
