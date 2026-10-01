@@ -144,40 +144,81 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     const code = categoryForm.code.trim().toLowerCase().replace(/\s+/g, '_');
     const name = categoryForm.name.trim();
     if (!code || !name) return;
-    const created = await expenseCategoryAPI.create({
-      code,
-      name,
-      color: categoryForm.color,
-      description: categoryForm.description.trim() || undefined,
-      sort_order: categoryForm.sort_order,
-    });
-    if (created) {
-      setEditingCategory(null);
-      setCategoryForm({ code: '', name: '', color: 'bg-gray-100 text-gray-700', description: '', sort_order: 100 });
-      void loadExpenseCategories();
+    try {
+      const created = await expenseCategoryAPI.create({
+        code,
+        name,
+        color: categoryForm.color,
+        description: categoryForm.description.trim() || undefined,
+        sort_order: categoryForm.sort_order,
+      });
+      if (created) {
+        setEditingCategory(null);
+        setCategoryForm({ code: '', name: '', color: 'bg-gray-100 text-gray-700', description: '', sort_order: 100 });
+        void loadExpenseCategories();
+      } else {
+        // API `null` döndüyse (kasap datasında tablo yok / RLS / yetki yok
+        // gibi) kullanıcıya net mesaj göster — sessizce yutmuyoruz.
+        alert(
+          tm('expenseCategorySaveFailed') ||
+          'Gider kategorisi eklenemedi. Veritabanı bağlantısını veya yetkileri kontrol edin.',
+        );
+      }
+    } catch (e: unknown) {
+      const msg = (e as Error)?.message || String(e);
+      console.error('[ExpenseManagement] handleSaveCategory error:', e);
+      alert(
+        (tm('expenseCategorySaveFailed') || 'Gider kategorisi eklenemedi.') +
+        '\n\n' +
+        msg,
+      );
     }
   };
 
   const handleUpdateCategory = async (id: string) => {
     if (!editingCategory) return;
-    const ok = await expenseCategoryAPI.update(id, {
-      name: editingCategory.name,
-      color: editingCategory.color,
-      description: editingCategory.description ?? '',
-      sort_order: editingCategory.sort_order,
-      is_active: editingCategory.is_active,
-    });
-    if (ok) {
-      setEditingCategory(null);
-      void loadExpenseCategories();
+    try {
+      const ok = await expenseCategoryAPI.update(id, {
+        name: editingCategory.name,
+        color: editingCategory.color,
+        description: editingCategory.description ?? '',
+        sort_order: editingCategory.sort_order,
+        is_active: editingCategory.is_active,
+      });
+      if (ok) {
+        setEditingCategory(null);
+        void loadExpenseCategories();
+      } else {
+        alert(tm('expenseCategoryUpdateFailed') || 'Kategori güncellenemedi.');
+      }
+    } catch (e: unknown) {
+      const msg = (e as Error)?.message || String(e);
+      console.error('[ExpenseManagement] handleUpdateCategory error:', e);
+      alert(
+        (tm('expenseCategoryUpdateFailed') || 'Kategori güncellenemedi.') +
+        '\n\n' +
+        msg,
+      );
     }
   };
 
   const handleDeleteCategory = async (id: string) => {
     if (!confirm(tm('expenseCategoryDeleteConfirm') || 'Bu kategoriyi silmek/iptal etmek istiyor musunuz?')) return;
-    const ok = await expenseCategoryAPI.remove(id);
-    if (ok) {
-      void loadExpenseCategories();
+    try {
+      const ok = await expenseCategoryAPI.remove(id);
+      if (ok) {
+        void loadExpenseCategories();
+      } else {
+        alert(tm('expenseCategoryDeleteFailed') || 'Kategori silinemedi.');
+      }
+    } catch (e: unknown) {
+      const msg = (e as Error)?.message || String(e);
+      console.error('[ExpenseManagement] handleDeleteCategory error:', e);
+      alert(
+        (tm('expenseCategoryDeleteFailed') || 'Kategori silinemedi.') +
+        '\n\n' +
+        msg,
+      );
     }
   };
 

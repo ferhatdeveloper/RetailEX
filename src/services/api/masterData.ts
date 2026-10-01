@@ -8,6 +8,13 @@ function padFirmNr(): string {
     return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
 }
 
+/** SQL identifier olarak kullanılacak padFirmNr: yalnızca rakam. */
+function safeFirmTableFirmNr(): string {
+    const raw = padFirmNr();
+    const sanitized = raw.replace(/[^0-9]/g, '').padStart(3, '0').slice(0, 10);
+    return sanitized || '001';
+}
+
 function isRestApi(): boolean {
     return DB_SETTINGS.connectionProvider === 'rest_api';
 }
@@ -843,8 +850,11 @@ export const expenseCategoryAPI = {
             );
             return rows[0] ?? null;
         } catch (error) {
+            // Sessizce yutmuyoruz: hatayı fırlat ki UI yakalasın.
+            // Kasap datasında tablo yoksa veya RLS/permission kısıtı varsa
+            // kullanıcı toast/alert ile gerçek nedeni görsün.
             console.error('[ExpenseCategoryAPI] create failed:', error);
-            return null;
+            throw error;
         }
     },
 
@@ -868,18 +878,22 @@ export const expenseCategoryAPI = {
             return true;
         } catch (error) {
             console.error('[ExpenseCategoryAPI] update failed:', error);
-            return false;
+            throw error;
         }
     },
 
     async remove(id: string): Promise<boolean> {
         try {
             const { postgres } = await import('../postgres');
-            // Güvenli sil — referans varsa is_active=false yap, yoksa sil
+            // Güvenli sil — referans varsa is_active=false yap, yoksa sil.
+            // Önce bu firmanın gerçek tablo adını bul: firmNr prefix'i ile
+            // dynamic tenant tablo (`rex_{firmNr}_expenses`). Identifier
+            // whitelist: sadece rakam — firmNr sanitize edilir.
+            const fn = safeFirmTableFirmNr();
             const usageCheck = await postgres.query<{ c: number }>(
-                `SELECT count(*)::int AS c FROM public.rex_001_expenses WHERE category = (
-                    SELECT code FROM public.expense_categories WHERE id = $1
-                 )`,
+                `SELECT count(*)::int AS c
+                   FROM public.rex_${fn}_expenses
+                  WHERE category = (SELECT code FROM public.expense_categories WHERE id = $1)`,
                 [id],
             );
             const uses = usageCheck.rows[0]?.c ?? 0;
