@@ -3083,7 +3083,8 @@ export const erpReportsAPI = {
           si.product_id,
           COALESCE(si.item_code, '') AS item_code,
           COALESCE(NULLIF(TRIM(si.item_name), ''), '') AS item_name,
-          COALESCE(si.unit, '') AS unit,
+          COALESCE(NULLIF(LOWER(TRIM(COALESCE(si.unit, ''))), ''), 'adet') AS unit_norm,
+          COALESCE(NULLIF(LOWER(TRIM(COALESCE(si.unit, ''))), ''), 'adet') AS unit_disp,
           COALESCE(si.quantity, 0) AS quantity,
           COALESCE(si.net_amount, si.quantity * si.unit_price, 0) AS line_amount,
           COALESCE(si.unit_price, 0) AS unit_price,
@@ -3105,9 +3106,10 @@ export const erpReportsAPI = {
       product_totals AS (
         SELECT
           product_id,
+          unit_norm,
           MAX(item_code) AS item_code,
           MAX(item_name) AS item_name,
-          MAX(unit) AS unit,
+          MAX(unit_disp) AS unit,
           SUM(CASE WHEN fiche_type_norm <> 'return_invoice' THEN 1 ELSE 0 END) AS gross_count,
           SUM(CASE WHEN fiche_type_norm = 'return_invoice' THEN 1 ELSE 0 END) AS return_count,
           SUM(CASE WHEN fiche_type_norm <> 'return_invoice' THEN quantity ELSE 0 END) AS gross_quantity,
@@ -3121,13 +3123,13 @@ export const erpReportsAPI = {
           MAX(doc_date)::text AS last_sale_date
         FROM item_lines
         WHERE product_id IS NOT NULL
-        GROUP BY product_id
+        GROUP BY product_id, unit_norm
       )
       SELECT
         pt.product_id::text AS product_id,
         COALESCE(pt.item_code, '') AS product_code,
         COALESCE(pt.item_name, '') AS product_name,
-        COALESCE(pt.unit, '') AS unit,
+        COALESCE(pt.unit, 'adet') AS unit,
         COALESCE(pt.gross_count, 0)::int AS gross_count,
         COALESCE(pt.return_count, 0)::int AS return_count,
         COALESCE(pt.gross_quantity, 0) AS gross_quantity,
@@ -3143,7 +3145,7 @@ export const erpReportsAPI = {
         COALESCE(pt.first_sale_date, '') AS first_sale_date,
         COALESCE(pt.last_sale_date, '') AS last_sale_date
       FROM product_totals pt
-      ORDER BY COALESCE(pt.gross_amount, 0) DESC, product_code ASC
+      ORDER BY COALESCE(pt.gross_amount, 0) DESC, product_code ASC, unit ASC
     `;
 
     const params: unknown[] = [startDate, endDate];

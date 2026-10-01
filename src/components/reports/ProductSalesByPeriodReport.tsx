@@ -164,31 +164,40 @@ export function ProductSalesByPeriodReport() {
   const totals = useMemo(() => {
     let grossCount = 0;
     let returnCount = 0;
-    let grossQuantity = 0;
-    let returnQuantity = 0;
     let grossAmount = 0;
     let returnAmount = 0;
     let netAmount = 0;
     let distinctCustomers = 0;
+    // Birim-bazlı miktar toplamları (kg/adet/l vs.) — karışmasın diye ayrı Map.
+    const qtyByUnit = new Map<string, { gross: number; ret: number }>();
+    const addUnit = (u: string, g: number, r: number) => {
+      const key = String(u || '').trim() || 'adet';
+      const cur = qtyByUnit.get(key) ?? { gross: 0, ret: 0 };
+      cur.gross += g;
+      cur.ret += r;
+      qtyByUnit.set(key, cur);
+    };
     for (const r of gridRows) {
       grossCount += r.grossCount;
       returnCount += r.returnCount;
-      grossQuantity += r.grossQuantity;
-      returnQuantity += r.returnQuantity;
       grossAmount += r.grossAmount;
       returnAmount += r.returnAmount;
       netAmount += r.netAmount;
       distinctCustomers += r.distinctCustomers;
+      addUnit(r.unit, r.grossQuantity, r.returnQuantity);
     }
+    // Brüt tutara göre azalan sırala — okunabilirlik
+    const unitBreakdown = Array.from(qtyByUnit.entries())
+      .map(([unit, v]) => ({ unit, gross: v.gross, ret: v.ret, net: v.gross + v.ret }))
+      .sort((a, b) => b.gross - a.gross);
     return {
       grossCount,
       returnCount,
-      grossQuantity,
-      returnQuantity,
       grossAmount,
       returnAmount,
       netAmount,
       distinctCustomers,
+      unitBreakdown,
       productCount: gridRows.length,
     };
   }, [gridRows]);
@@ -210,17 +219,24 @@ export function ProductSalesByPeriodReport() {
         {
           id: 'productName',
           header: tm('product') || 'Ürün',
-          size: 240,
+          size: 230,
           cell: (r) => (
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center text-white">
                 <Package className="w-4 h-4" />
               </div>
               <span className="font-medium">{r.productName || '—'}</span>
-              {r.unit ? (
-                <span className="text-[10px] uppercase text-slate-500">({r.unit})</span>
-              ) : null}
             </div>
+          ),
+        },
+        {
+          id: 'unit',
+          header: tm('unit') || 'Birim',
+          size: 90,
+          cell: (r) => (
+            <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+              {r.unit || 'adet'}
+            </span>
           ),
         },
         {
@@ -240,20 +256,26 @@ export function ProductSalesByPeriodReport() {
           header: tm('productPeriodSalesGrossQty') || 'Brüt Miktar',
           type: 'number',
           align: 'right',
-          size: 120,
-          cell: (r) => fmtQty(r.grossQuantity),
+          size: 130,
+          cell: (r) => (
+            <span>
+              {fmtQty(r.grossQuantity)}{' '}
+              <span className="text-[10px] uppercase text-slate-500">{r.unit || 'adet'}</span>
+            </span>
+          ),
         },
         {
           id: 'returnQuantity',
           header: tm('productPeriodSalesReturnQty') || 'İade Miktar',
           type: 'number',
           align: 'right',
-          size: 120,
+          size: 130,
           cell: (r) => (
             <span
               className={Math.abs(r.returnQuantity) > 0.001 ? 'text-red-600' : 'text-gray-400'}
             >
-              {fmtQty(r.returnQuantity)}
+              {fmtQty(r.returnQuantity)}{' '}
+              <span className="text-[10px] uppercase text-slate-500">{r.unit || 'adet'}</span>
             </span>
           ),
         },
@@ -481,6 +503,26 @@ export function ProductSalesByPeriodReport() {
             valueClassName: 'text-blue-600',
           },
           {
+            key: 'qtyByUnit',
+            label: tm('productPeriodSalesGrossQty') || 'Brüt Miktar',
+            value:
+              totals.unitBreakdown.length === 0
+                ? '—'
+                : totals.unitBreakdown
+                    .slice(0, 2)
+                    .map((u) => `${fmtQty(u.gross)} ${u.unit}`)
+                    .join(' · '),
+            valueClassName: 'text-purple-600',
+            hint:
+              totals.unitBreakdown.length > 2
+                ? `${tm('productPeriodSalesMoreUnits') || 've'} ${totals.unitBreakdown.length - 2} ${tm('productPeriodSalesMoreUnitsSuffix') || 'birim daha'}`
+                : totals.unitBreakdown.length > 0
+                  ? totals.unitBreakdown
+                      .map((u) => `${u.unit}: ${fmtQty(u.ret)}`)
+                      .join(' · ')
+                  : undefined,
+          },
+          {
             key: 'net',
             label: tm('productPeriodSalesNetAmount') || 'Net Tutar',
             value: formatLedgerAmount(totals.netAmount, currency),
@@ -488,17 +530,9 @@ export function ProductSalesByPeriodReport() {
             hint:
               totals.returnAmount < 0
                 ? `${tm('productPeriodSalesReturnAmount') || 'İade'}: ${formatLedgerAmount(totals.returnAmount, currency)}`
-                : undefined,
-          },
-          {
-            key: 'customers',
-            label: tm('productPeriodSalesDistinctCustomers') || 'Benzersiz Müşteri',
-            value: fmtAmt(totals.distinctCustomers),
-            valueClassName: 'text-purple-600',
-            hint:
-              partyIds.length > 0
-                ? `${partyIds.length} ${tm('productPeriodSalesCustomersSelected') || 'müşteri seçili'} · ${totals.productCount} ${tm('product') || 'ürün'}`
-                : `${totals.productCount} ${tm('product') || 'ürün'}`,
+                : partyIds.length > 0
+                  ? `${partyIds.length} ${tm('productPeriodSalesCustomersSelected') || 'müşteri seçili'} · ${totals.productCount} ${tm('product') || 'ürün'}`
+                  : `${totals.productCount} ${tm('product') || 'ürün'}`,
           },
         ]}
       />
@@ -518,12 +552,23 @@ export function ProductSalesByPeriodReport() {
             {
               columnId: 'grossQuantity',
               getValue: (r: GridRow) => Number(r.grossQuantity) || 0,
-              format: (n: number) => fmtQty(n),
+              // Footer'da birim-bazlı ayrı toplam: "1.500 kg · 230 adet"
+              format: () =>
+                totals.unitBreakdown.length === 0
+                  ? '—'
+                  : totals.unitBreakdown
+                      .map((u) => `${fmtQty(u.gross)} ${u.unit}`)
+                      .join(' · '),
             },
             {
               columnId: 'returnQuantity',
               getValue: (r: GridRow) => Number(r.returnQuantity) || 0,
-              format: (n: number) => fmtQty(n),
+              format: () =>
+                totals.unitBreakdown.length === 0
+                  ? '—'
+                  : totals.unitBreakdown
+                      .map((u) => `${fmtQty(u.ret)} ${u.unit}`)
+                      .join(' · '),
             },
             {
               columnId: 'grossAmount',

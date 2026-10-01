@@ -12302,6 +12302,24 @@ export const excelModuleTranslations = {
     ar: 'عميل محدد',
     ku: 'کڕیار دیاریکراو',
   },
+  productPeriodSalesMoreUnits: {
+    tr: 've',
+    en: 'and',
+    ar: 'و',
+    ku: 'و',
+  },
+  productPeriodSalesMoreUnitsSuffix: {
+    tr: 'birim daha',
+    en: 'more units',
+    ar: 'وحدة أخرى',
+    ku: 'یەکەی تر',
+  },
+  unit: {
+    tr: 'Birim',
+    en: 'Unit',
+    ar: 'الوحدة',
+    ku: 'یەکە',
+  },
   rptCustSubtitle: {
     tr: 'Müşteri bazlı satış performansı ve analizi',
     en: 'Customer-based sales performance',
