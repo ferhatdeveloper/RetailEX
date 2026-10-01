@@ -873,6 +873,9 @@ customerAdvanceBalance: string;
   pesinatAddButton: string;
   pesinatTodayPaid: string;
   pesinatRemainderToCari: string;
+  pesinatPartialPaidLabel: string;
+  pesinatPartialNotCari: string;
+  pesinatPartialFooter: string;
   pesinatliLabel: string;
   installmentShort: string;
   paymentFailed: string;
@@ -2287,6 +2290,9 @@ export const translations: any = {
     pesinatAddButton: 'Peşinat Ekle',
     pesinatTodayPaid: 'Bugün ödenen',
     pesinatRemainderToCari: 'Kalan cariye yazıldı',
+    pesinatPartialPaidLabel: 'Peşinat alındı',
+    pesinatPartialNotCari: 'Kalan tutar cariye yazılmaz.',
+    pesinatPartialFooter: 'Randevu tamamlanırken ayrıca tahsil edilir.',
     pesinatliLabel: 'Peşinatlı Satış',
     installmentShort: 'ay',
     paymentFailed: 'Ödeme başlatılamadı:',
@@ -4098,6 +4104,9 @@ export const translations: any = {
     pesinatAddButton: 'Add Down Payment',
     pesinatTodayPaid: 'Paid today',
     pesinatRemainderToCari: 'Remainder posted to customer account',
+    pesinatPartialPaidLabel: 'Down payment received',
+    pesinatPartialNotCari: 'Remainder is not posted to the customer account.',
+    pesinatPartialFooter: 'It will be collected separately when the appointment is completed.',
     pesinatliLabel: 'Installment Sale',
     installmentShort: 'mo',
     paymentFailed: 'Payment could not be initiated:',
@@ -5771,6 +5780,9 @@ export const translations: any = {
     pesinatAddButton: 'إضافة الدفعة الأولى',
     pesinatTodayPaid: 'تم الدفع اليوم',
     pesinatRemainderToCari: 'تم تسجيل الباقي في حساب العميل',
+    pesinatPartialPaidLabel: 'تم استلام الدفعة المقدمة',
+    pesinatPartialNotCari: 'لا يتم تسجيل المبلغ المتبقي في حساب العميل.',
+    pesinatPartialFooter: 'سيُحصَّل بشكل منفصل عند إكمال الموعد.',
     pesinatliLabel: 'بيع بالأقساط',
     installmentShort: 'شهر',
     paymentFailed: 'تعذر بدء الدفع:',
@@ -7444,6 +7456,9 @@ export const translations: any = {
     pesinatAddButton: 'پێشەکی زیادبکە',
     pesinatTodayPaid: 'ئەمڕۆ دراوە',
     pesinatRemainderToCari: 'ماوەکە لە هەژماری کڕیار تۆمارکرا',
+    pesinatPartialPaidLabel: 'پێشەکی وەرگیراوە',
+    pesinatPartialNotCari: 'ماوەکە لە هەژماری کڕیار تۆمارناکرێت.',
+    pesinatPartialFooter: 'کاتی تەواوکردنی مەوعید بە جیا وەردەگیرێتەوە.',
     pesinatliLabel: 'فرۆشتن بە قیست',
     installmentShort: 'مانگ',
     paymentFailed: 'پارەدان دەستی پێ نەکرا:',
