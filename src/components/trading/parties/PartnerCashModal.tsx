@@ -7,7 +7,7 @@ import {
 import { partnerAPI } from '../../../services/api/partiesPartners';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import { ficheTypeToInfo } from '../../../utils/cariAccountStatement';
-import { ChevronDown, FileText, Loader2, Search, X } from 'lucide-react';
+import { CalendarClock, ChevronDown, FileText, Loader2, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { Party, PartyLedgerMovement } from '../../../core/types/models';
@@ -37,6 +37,8 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
   const [amount, setAmount] = useState('');
   const [registerId, setRegisterId] = useState('');
   const [definition, setDefinition] = useState('');
+  const [txnDate, setTxnDate] = useState<string>(''); // YYYY-MM-DD; boşsa bugün
+  const [isBackDated, setIsBackDated] = useState(false);
   const [registers, setRegisters] = useState<Kasa[]>([]);
   const [loading, setLoading] = useState(false);
   const [recent, setRecent] = useState<PartyLedgerMovement[]>([]);
@@ -113,18 +115,24 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
     }
     setLoading(true);
     try {
+      // Geçmiş tarihli işlem: ISO formatında tarih gönder, yoksa bugün (API default)
+      const dateIso = txnDate
+        ? (txnDate.includes('T') ? txnDate : `${txnDate}T12:00:00`)
+        : undefined;
       const result = action === 'in'
         ? await partnerAPI.cashIn({
             partnerId: partner.id,
             amount: amt,
             registerId,
             definition: definition || undefined,
+            date: dateIso,
           })
         : await partnerAPI.cashOut({
             partnerId: partner.id,
             amount: amt,
             registerId,
             definition: definition || undefined,
+            date: dateIso,
           });
       setBalance(result.balance);
       toast.success(t('party.partnerCash.saveSuccess'));
@@ -132,6 +140,8 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
       setViewTab('movements');
       setAmount('');
       setDefinition('');
+      setTxnDate('');
+      setIsBackDated(false);
       onSaved();
     } catch (err: any) {
       setError(err?.message || String(err));
@@ -239,6 +249,45 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
                 placeholder={t('party.partnerCash.notePlaceholder')}
                 className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-purple-400 outline-none text-slate-800 font-medium"
               />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                {t('party.partnerCash.date')}
+              </label>
+              <div className="relative">
+                <input
+                  type="date"
+                  value={txnDate}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setTxnDate(v);
+                    if (v) {
+                      const today = new Date().toISOString().slice(0, 10);
+                      setIsBackDated(v < today);
+                    } else {
+                      setIsBackDated(false);
+                    }
+                  }}
+                  max={new Date().toISOString().slice(0, 10)}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-purple-400 outline-none text-slate-800 font-medium"
+                />
+                {txnDate && (
+                  <button
+                    type="button"
+                    onClick={() => { setTxnDate(''); setIsBackDated(false); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold uppercase"
+                  >
+                    {t('party.partnerCash.dateToday')}
+                  </button>
+                )}
+              </div>
+              {isBackDated && (
+                <div className="mt-2 p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2">
+                  <CalendarClock className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{t('party.partnerCash.backDatedWarning')}</span>
+                </div>
+              )}
             </div>
 
             {error && (
@@ -356,9 +405,20 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
                   <tbody>
                     {rows.map((r) => {
                       const { label, color } = ficheTypeToInfo(r.transaction_type, 0, false, tm);
+                      const backDated = isPartyMovementBackDated(r);
                       return (
                         <tr key={r.id} className="border-t border-slate-100">
-                          <td className="px-3 py-2 whitespace-nowrap">{formatDate(r.date)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1.5">
+                              {formatDate(r.date)}
+                              {backDated && (
+                                <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[9px] font-bold uppercase tracking-wider inline-flex items-center gap-0.5">
+                                  <CalendarClock className="w-2.5 h-2.5" />
+                                  {tm('rptPeriodBackDatedShort')}
+                                </span>
+                              )}
+                            </span>
+                          </td>
                           <td className="px-3 py-2 font-mono text-xs">{r.fiche_no || '—'}</td>
                           <td className="px-3 py-2">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${color}`}>{label}</span>
@@ -401,6 +461,19 @@ function partnerMovementKind(type: string): 'share' | 'cash' | 'other' {
   }
   if (u.includes('SERMAYE') || u.includes('PARA_GIRIS') || u.includes('PARA_CIKIS')) return 'cash';
   return 'other';
+}
+
+/**
+ * Partner hareketi geçmiş tarihe mi yazılmış? Bugün içindeyse false.
+ * Audit rozeti için kullanılır.
+ */
+function isPartyMovementBackDated(
+  r: { date?: string; created_at?: string },
+  today: string = new Date().toISOString().slice(0, 10),
+): boolean {
+  const d = String(r?.date || '').slice(0, 10);
+  if (!d) return false;
+  return d < today;
 }
 
 function withRunning(rows: PartyLedgerMovement[]): MovementRow[] {

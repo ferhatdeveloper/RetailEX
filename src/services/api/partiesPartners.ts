@@ -388,28 +388,30 @@ export const partnerAPI = {
     }));
   },
 
-  /** Ortak kasaya para koyar (kasa +, hesap alacağı +). */
+  /** Ortak kasaya para koyar (kasa +, hesap alacağı +). Geçmiş tarihli yazım `date` ile desteklenir. */
   async cashIn(input: {
     partnerId: string;
     amount: number;
     registerId: string;
     definition?: string;
+    date?: string;
   }): Promise<PartnerCashWriteResult> {
     return this.postCash(input, 'in');
   },
 
-  /** Ortak kasadan para çeker (kasa −, hesap alacağı −). */
+  /** Ortak kasadan para çeker (kasa −, hesap alacağı −). Geçmiş tarihli yazım `date` ile desteklenir. */
   async cashOut(input: {
     partnerId: string;
     amount: number;
     registerId: string;
     definition?: string;
+    date?: string;
   }): Promise<PartnerCashWriteResult> {
     return this.postCash(input, 'out');
   },
 
   async postCash(
-    input: { partnerId: string; amount: number; registerId: string; definition?: string },
+    input: { partnerId: string; amount: number; registerId: string; definition?: string; date?: string },
     direction: 'in' | 'out',
   ): Promise<PartnerCashWriteResult> {
     if (!input.partnerId) throw new Error('Ortak seçilmedi.');
@@ -424,10 +426,14 @@ export const partnerAPI = {
     const label = isIn ? 'Para girişi' : 'Para çıkışı';
     const definition = input.definition || `${label} — ${partner.name}`;
 
+    // Geçmiş tarihli işlem: kullanıcı girdiyse onu, yoksa bugünü kullan.
+    // createKasaIslemi içinde assertPeriodOpen ile dönem kontrolü yapılır.
+    const txnDate = input.date ? String(input.date) : new Date().toISOString();
+
     const cih = await createKasaIslemi({
       firma_id: normalizeFirmTableNr(ERP_SETTINGS.firmNr),
       kasa_id: input.registerId,
-      islem_tarihi: new Date().toISOString(),
+      islem_tarihi: txnDate,
       tutar: input.amount,
       islem_tipi: kasaTipi,
       islem_aciklamasi: definition,
@@ -448,6 +454,7 @@ export const partnerAPI = {
       sourceModule: 'partner_cash',
       sourceId: cih.id,
       cashLineId: cih.id,
+      date: txnDate,
     });
 
     const fresh = await this.getById(partner.id);

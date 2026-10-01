@@ -3100,6 +3100,9 @@ export const translations: any = {
         statementEmpty: 'Bu tarih aralığında ortak hesap hareketi yok.',
         colDebit: 'Para girişi / Hak ediş',
         colCredit: 'Para çıkışı / Yapılan ödeme',
+        date: 'İşlem Tarihi',
+        dateToday: 'Bugün',
+        backDatedWarning: 'Geçmiş tarihe kayıt: Bu işlem audit izi olarak işaretlenecek.',
       },
       payroll: {
         title: 'Maaş / Avans',
@@ -4784,6 +4787,9 @@ export const translations: any = {
         statementEmpty: 'No partner account movements in this date range.',
         colDebit: 'Money in / Entitlement',
         colCredit: 'Money out / Payment made',
+        date: 'Transaction Date',
+        dateToday: 'Today',
+        backDatedWarning: 'Back-dated entry: this transaction will be marked for audit.',
       },
       payroll: {
         title: 'Salary / Advance',
@@ -6456,6 +6462,9 @@ export const translations: any = {
         statementEmpty: 'لا توجد حركات حساب شريك في هذا النطاق.',
         colDebit: 'دخول المال / الاستحقاق',
         colCredit: 'خروج المال / الدفع',
+        date: 'تاريخ الحركة',
+        dateToday: 'اليوم',
+        backDatedWarning: 'إدخال بتأريخ سابق: سيتم وضع علامة على هذه الحركة للتدقيق.',
       },
       payroll: {
         title: 'الراتب / السلفة',
@@ -8178,6 +8187,9 @@ export const translations: any = {
         statementEmpty: 'لەم ماوەیەدا جووڵەی حسابی هاوبەش نییە.',
         colDebit: 'هاتنی پارە / ماف',
         colCredit: 'دەرچوونی پارە / پارەدان',
+        date: 'بەرواری مامەڵە',
+        dateToday: 'ئەمڕۆ',
+        backDatedWarning: 'تۆمارکردنی بەرواری پێشوو: ئەم مامەڵەیە بۆ پشکنین نیشانە دەکرێت.',
       },
       payroll: {
         title: 'مووچە / پێشەکی',
