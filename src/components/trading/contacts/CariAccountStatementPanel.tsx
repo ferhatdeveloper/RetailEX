@@ -292,6 +292,18 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
   const isSupplierAccount = account.cardType === 'supplier';
   const netBalance = isSupplierAccount ? totalAlacak - totalBorc : totalBorc - totalAlacak;
   const netBalanceDir = getCariBalanceDirection(account.cardType, netBalance, tm);
+  // Detay tablosunun **son satırının balance'i** cari gerçek bakiyesini temsil eder.
+  // Üst özet Σ borç − Σ alacak invariant gereği son satırla eşit olmalı;
+  // eşit değilse (DevExDataGrid kolon filtresi altkümeyi gösterebilir)
+  // kullanıcının ayrımı net görmesi için **iki değeri de** gösteriyoruz.
+  const lastRowBalance = ekstresiRows.length > 0
+    ? ekstresiRows[ekstresiRows.length - 1].balance
+    : 0;
+  const lastRowBalanceDir = getCariBalanceDirection(account.cardType, lastRowBalance, tm);
+  // Σ ile son satır aynı değilse uyarı (filtre uygulanmış olabilir).
+  const listDisagreesWithLastRow =
+    ekstresiRows.length > 1 &&
+    Math.abs(netBalance - lastRowBalance) > 0.5;
 
   const fmtEkstreSignedNet = () => {
     if (reportingCurrency === mainCurrency) {
@@ -339,6 +351,7 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
   const borcHdr = fmtEkstreAmount(totalBorc);
   const alacHdr = fmtEkstreAmount(totalAlacak);
   const netHdr = fmtEkstreSignedNet();
+  const lastRowHdr = fmtEkstreAmount(Math.abs(lastRowBalance));
 
   /** Dönem verisi yokken kart bakiyesi; veri varken toolbar’daki tek net sonuç kullanılır */
   const showCardBalanceChip = ekstresiRows.length === 0;
@@ -409,13 +422,31 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
                 <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-black text-emerald-700">
                   {tm('creditor')}: {alacHdr.primary} {alacHdr.code}
                 </span>
+                {/* Liste toplamı (Σ borç − Σ alacak): invariant gereği son
+                    satırla aynı olmalı. DevExDataGrid kolon filtresi
+                    uygulandığında ayrışırsa uyarı işareti gösterilir. */}
                 <span
                   className={`rounded border px-2 py-0.5 text-xs font-black ${
                     netBalanceDir.side === 'B' ? 'border-red-200 bg-red-50 text-red-700' : netBalanceDir.side === 'A' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-500'
                   }`}
-                  title={netBalanceDir.hint}
+                  title={
+                      listDisagreesWithLastRow
+                        ? 'Liste toplamı son satırdan farklı — detayda kolon filtresi uygulanmış olabilir'
+                        : netBalanceDir.hint
+                    }
                 >
                   {tm('balance')}: {netHdr.primary} {netHdr.code}{netBalanceDir.sideLabel ? ` · ${netBalanceDir.sideLabel}` : ''}
+                  {listDisagreesWithLastRow ? ' ⚠' : ''}
+                </span>
+                {/* Son satır bakiyesi = cari gerçek bakiyesi */}
+                <span
+                  className={`rounded border px-2 py-0.5 text-xs font-black ${
+                    lastRowBalanceDir.side === 'B' ? 'border-red-300 bg-red-100 text-red-800' : lastRowBalanceDir.side === 'A' ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-gray-200 bg-gray-50 text-gray-500'
+                  }`}
+                  title="Detay tablosunun son satırındaki kümülatif bakiye — cari gerçek bakiyesi budur"
+                  data-testid="cari-ekstre-last-balance"
+                >
+                  Son Bakiye: {lastRowHdr.primary} {lastRowHdr.code}{lastRowBalanceDir.sideLabel ? ` · ${lastRowBalanceDir.sideLabel}` : ''}
                 </span>
               </div>
             ) : null}
