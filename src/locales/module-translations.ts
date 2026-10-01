@@ -12210,6 +12210,86 @@ export const excelModuleTranslations = {
     ar: 'الدين المتبقي',
     ku: 'قەرزی ماوە',
   },
+
+  // Ürün bazlı tarih aralığı satış raporu
+  productPeriodSalesTitle: {
+    tr: 'Ürün Bazlı Satış Raporu',
+    en: 'Product Sales Period Report',
+    ar: 'تقرير مبيعات المنتجات حسب الفترة',
+    ku: 'ڕاپۆرتی فرۆشتنی بەرهەم بەپێی ماوە',
+  },
+  productPeriodSalesSubtitle: {
+    tr: 'İki tarih arası her ürünün satış adedi, miktar (kg/adet), brüt/iade/net tutarı ve kaç farklı müşteriye satıldığı',
+    en: 'Per-product sales count, quantity (kg/pcs), gross/return/net amount and distinct customer count between two dates',
+    ar: 'ملخص مبيعات المنتج (العدد، الكمية، الإجمالي/المرتجع/الصافي، عدد العملاء) بين تاريخين',
+    ku: 'پوختەی فرۆشتنی بەرهەم (ژمارە، بڕ، کۆ/گەڕانەوە/پاک، ژمارەی کڕیار) لە نێوان دوو بەروار',
+  },
+  productPeriodSalesFilterPlaceholder: {
+    tr: 'Ürün ara (kod, ad, birim)',
+    en: 'Search product (code, name, unit)',
+    ar: 'بحث عن المنتج (الرمز، الاسم، الوحدة)',
+    ku: 'گەڕان بۆ بەرهەم (کۆد، ناو، یەکە)',
+  },
+  productPeriodSalesGrossCount: {
+    tr: 'Satış Adedi',
+    en: 'Sales Count',
+    ar: 'عدد المبيعات',
+    ku: 'ژمارەی فرۆشتن',
+  },
+  productPeriodSalesGrossQty: {
+    tr: 'Brüt Miktar',
+    en: 'Gross Quantity',
+    ar: 'الكمية الإجمالية',
+    ku: 'بڕی کۆ',
+  },
+  productPeriodSalesReturnQty: {
+    tr: 'İade Miktar',
+    en: 'Return Quantity',
+    ar: 'كمية المرتجع',
+    ku: 'بڕی گەڕانەوە',
+  },
+  productPeriodSalesGrossAmount: {
+    tr: 'Brüt Tutar',
+    en: 'Gross Amount',
+    ar: 'المبلغ الإجمالي',
+    ku: 'بڕی کۆ',
+  },
+  productPeriodSalesReturnAmount: {
+    tr: 'İade Tutarı',
+    en: 'Return Amount',
+    ar: 'مبلغ المرتجع',
+    ku: 'بڕی گەڕانەوە',
+  },
+  productPeriodSalesNetAmount: {
+    tr: 'Net Tutar',
+    en: 'Net Amount',
+    ar: 'المبلغ الصافي',
+    ku: 'بڕی پاک',
+  },
+  productPeriodSalesAvgUnitPrice: {
+    tr: 'Ağır. Ort. Birim Fiyat',
+    en: 'Weighted Avg Unit Price',
+    ar: 'متوسط السعر المرجح',
+    ku: 'نرخی تێکڕای کێشکراو',
+  },
+  productPeriodSalesDistinctCustomers: {
+    tr: 'Müşteri Sayısı',
+    en: 'Distinct Customers',
+    ar: 'عدد العملاء',
+    ku: 'ژمارەی کڕیار',
+  },
+  productPeriodSalesFirstSale: {
+    tr: 'İlk Satış',
+    en: 'First Sale',
+    ar: 'أول بيع',
+    ku: 'یەکەم فرۆشتن',
+  },
+  productPeriodSalesLastSale: {
+    tr: 'Son Satış',
+    en: 'Last Sale',
+    ar: 'آخر بيع',
+    ku: 'دواین فرۆشتن',
+  },
   rptCustSubtitle: {
     tr: 'Müşteri bazlı satış performansı ve analizi',
     en: 'Customer-based sales performance',

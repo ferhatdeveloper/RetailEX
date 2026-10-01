@@ -3034,6 +3034,132 @@ export const erpReportsAPI = {
       lastSaleDate: String(r.last_sale_date ?? '').slice(0, 10),
     }));
   },
+
+  /**
+   * Ürün bazlı tarih aralığı satış raporu.
+   *
+   * `sale_items` üzerinden ürün başına gruplar; `sales` ile join tarih filtresi,
+   * `is_cancelled`, fiche_type ve status için.
+   *
+   * Brüt / İade / Net ayrı:
+   *   - **gross_amount** = sadece satış (iade olmayan kalem) tutar toplamı
+   *   - **return_amount** = iade kalemleri (negatif işaretli)
+   *   - **net_amount** = gross + return
+   *
+   * Miktar:
+   *   - **gross_quantity** = iade hariç kalem miktarı
+   *   - **return_quantity** = iade miktarı (negatif)
+   *
+   * `distinct_customers` ürünü kaç farklı müşteri almış (benzersiz customer_id).
+   * `avg_unit_price` = net_amount / net_quantity (ağırlıklı ortalama).
+   */
+  async getProductSalesByPeriod(opts: {
+    startDate: string; // YYYY-MM-DD
+    endDate: string;   // YYYY-MM-DD (dahil)
+    productIds?: string[];
+    onlyReturn?: boolean; // opsiyonel: sadece iade edilenler
+  }): Promise<ProductSalesByPeriodRow[]> {
+    const { startDate, endDate, productIds, onlyReturn } = opts;
+    if (!startDate || !endDate) return [];
+
+    const productFilter =
+      productIds && productIds.length > 0
+        ? `AND si.product_id = ANY($3::uuid[])`
+        : '';
+    const returnOnlyFilter = onlyReturn
+      ? `AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'`
+      : '';
+
+    const sql = `
+      WITH item_lines AS (
+        SELECT
+          si.id AS line_id,
+          si.product_id,
+          COALESCE(si.item_code, '') AS item_code,
+          COALESCE(NULLIF(TRIM(si.item_name), ''), '') AS item_name,
+          COALESCE(si.unit, '') AS unit,
+          COALESCE(si.quantity, 0) AS quantity,
+          COALESCE(si.net_amount, si.quantity * si.unit_price, 0) AS line_amount,
+          COALESCE(si.unit_price, 0) AS unit_price,
+          COALESCE(s.customer_id, si.invoice_id::text) AS buyer_id,
+          COALESCE(s.is_cancelled, false) AS is_cancelled,
+          LOWER(TRIM(COALESCE(s.fiche_type, ''))) AS fiche_type_norm,
+          COALESCE(NULLIF(${sqlUtcDate('s.date')}, NULL), ${sqlUtcDate('s.created_at')}) AS doc_date
+        FROM sale_items si
+        JOIN sales s ON s.id = si.invoice_id
+        WHERE COALESCE(s.is_cancelled, false) = false
+          AND ${SQL_COUNTABLE_SALE_STATUS}
+          AND s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice')
+          AND si.product_id IS NOT NULL
+          AND ${sqlUtcDate('COALESCE(s.date, s.created_at)')} BETWEEN $1 AND $2
+          ${productFilter}
+          ${returnOnlyFilter}
+      ),
+      product_totals AS (
+        SELECT
+          product_id,
+          MAX(item_code) AS item_code,
+          MAX(item_name) AS item_name,
+          MAX(unit) AS unit,
+          SUM(CASE WHEN fiche_type_norm <> 'return_invoice' THEN 1 ELSE 0 END) AS gross_count,
+          SUM(CASE WHEN fiche_type_norm = 'return_invoice' THEN 1 ELSE 0 END) AS return_count,
+          SUM(CASE WHEN fiche_type_norm <> 'return_invoice' THEN quantity ELSE 0 END) AS gross_quantity,
+          SUM(CASE WHEN fiche_type_norm = 'return_invoice' THEN quantity ELSE 0 END) AS return_quantity,
+          SUM(CASE WHEN fiche_type_norm <> 'return_invoice' THEN line_amount ELSE 0 END) AS gross_amount,
+          SUM(CASE WHEN fiche_type_norm = 'return_invoice' THEN line_amount ELSE 0 END) AS return_amount,
+          SUM(CASE WHEN fiche_type_norm <> 'return_invoice' THEN line_amount ELSE 0 END)
+            + SUM(CASE WHEN fiche_type_norm = 'return_invoice' THEN line_amount ELSE 0 END) AS net_amount,
+          COUNT(DISTINCT buyer_id) AS distinct_customers,
+          MIN(doc_date)::text AS first_sale_date,
+          MAX(doc_date)::text AS last_sale_date
+        FROM item_lines
+        WHERE product_id IS NOT NULL
+        GROUP BY product_id
+      )
+      SELECT
+        pt.product_id::text AS product_id,
+        COALESCE(pt.item_code, '') AS product_code,
+        COALESCE(pt.item_name, '') AS product_name,
+        COALESCE(pt.unit, '') AS unit,
+        COALESCE(pt.gross_count, 0)::int AS gross_count,
+        COALESCE(pt.return_count, 0)::int AS return_count,
+        COALESCE(pt.gross_quantity, 0) AS gross_quantity,
+        COALESCE(pt.return_quantity, 0) AS return_quantity,
+        COALESCE(pt.gross_amount, 0) AS gross_amount,
+        COALESCE(pt.return_amount, 0) AS return_amount,
+        COALESCE(pt.net_amount, 0) AS net_amount,
+        COALESCE(pt.distinct_customers, 0)::int AS distinct_customers,
+        CASE WHEN ABS(COALESCE(pt.gross_quantity, 0) + COALESCE(pt.return_quantity, 0)) > 0.0001
+          THEN COALESCE(pt.net_amount, 0) / (COALESCE(pt.gross_quantity, 0) + COALESCE(pt.return_quantity, 0))
+          ELSE 0
+        END AS avg_unit_price,
+        COALESCE(pt.first_sale_date, '') AS first_sale_date,
+        COALESCE(pt.last_sale_date, '') AS last_sale_date
+      FROM product_totals pt
+      ORDER BY COALESCE(pt.gross_amount, 0) DESC, product_code ASC
+    `;
+
+    const params: unknown[] = [startDate, endDate];
+    if (productIds && productIds.length > 0) params.push(productIds);
+    const { rows } = await postgres.query(sql, params);
+    return (rows || []).map((r: any) => ({
+      productId: String(r.product_id ?? ''),
+      productCode: String(r.product_code ?? ''),
+      productName: String(r.product_name ?? ''),
+      unit: String(r.unit ?? ''),
+      grossCount: Number(r.gross_count ?? 0),
+      returnCount: Number(r.return_count ?? 0),
+      grossQuantity: Number(r.gross_quantity ?? 0),
+      returnQuantity: Number(r.return_quantity ?? 0),
+      grossAmount: Number(r.gross_amount ?? 0),
+      returnAmount: Number(r.return_amount ?? 0),
+      netAmount: Number(r.net_amount ?? 0),
+      distinctCustomers: Number(r.distinct_customers ?? 0),
+      avgUnitPrice: Number(r.avg_unit_price ?? 0),
+      firstSaleDate: String(r.first_sale_date ?? '').slice(0, 10),
+      lastSaleDate: String(r.last_sale_date ?? '').slice(0, 10),
+    }));
+  },
 };
 
 /* ========================================================================== */
@@ -3064,6 +3190,35 @@ export interface PartySalesByPeriodRow {
   /** Brüt satışlardan kalan borç (credit - paid) */
   remainingDebt: number;
   /** Son satış tarihi (YYYY-MM-DD) */
+  lastSaleDate: string;
+}
+
+export interface ProductSalesByPeriodRow {
+  productId: string;
+  productCode: string;
+  productName: string;
+  unit: string;
+  /** Brüt satış adedi (kalem satırı sayısı, iade hariç) */
+  grossCount: number;
+  /** İade adedi (kalem satırı sayısı) */
+  returnCount: number;
+  /** Brüt miktar (iade hariç) */
+  grossQuantity: number;
+  /** İade miktarı (negatif işaretli) */
+  returnQuantity: number;
+  /** Brüt tutar (iade hariç) */
+  grossAmount: number;
+  /** İade tutarı (negatif işaretli) */
+  returnAmount: number;
+  /** Net tutar (gross + return) */
+  netAmount: number;
+  /** Benzersiz müşteri sayısı */
+  distinctCustomers: number;
+  /** Ağırlıklı ortalama birim fiyat (net / net miktar) */
+  avgUnitPrice: number;
+  /** İlk satış tarihi */
+  firstSaleDate: string;
+  /** Son satış tarihi */
   lastSaleDate: string;
 }
 
