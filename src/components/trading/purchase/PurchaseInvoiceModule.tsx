@@ -249,7 +249,8 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
         const date = info.getValue() as string;
         if (!date) return '-';
         return new Date(date).toLocaleDateString('tr-TR');
-      }
+      },
+      meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     columnHelper.accessor('total_amount', {
       header: tm('amount'),

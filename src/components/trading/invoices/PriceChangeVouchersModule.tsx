@@ -325,7 +325,8 @@ export function PriceChangeVouchersModule({ products = [] }: PriceChangeVouchers
         } catch {
           return <span className="text-gray-400">-</span>;
         }
-      }
+      },
+      meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     columnHelper.accessor('items', {
       header: 'Ürün Sayısı',

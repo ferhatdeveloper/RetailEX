@@ -167,6 +167,7 @@ export function buildStockMovementsListColumns(options: {
         <span className="text-gray-600 whitespace-nowrap">{formatShortDate(info.getValue())}</span>
       ),
       size: 110,
+      meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     columnHelper.accessor((row) => warehouseName(row) || '—', {
       id: 'warehouse',

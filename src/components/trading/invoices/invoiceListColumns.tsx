@@ -241,6 +241,7 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
           const inv = info.row.original;
           return <span className="tabular-nums">{formatDate(info.getValue() || inv.date)}</span>;
         },
+        meta: { filterKind: 'date', format: 'date', type: 'date' },
       }),
     );
   }

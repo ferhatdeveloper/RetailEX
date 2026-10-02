@@ -894,6 +894,7 @@ function KasaIslemleriTable({
         return tarih ? new Date(tarih).toLocaleDateString('tr-TR') : '-';
       },
       size: 120,
+      meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     columnHelper.accessor(
       (row) => resolveKasaIslemTipiLabel(row.islem_tipi, row.islem_aciklamasi, tm),

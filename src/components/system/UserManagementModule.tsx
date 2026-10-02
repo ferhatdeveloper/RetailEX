@@ -237,7 +237,8 @@ export function UserManagementModule() {
         const date = info.getValue();
         return date ? new Date(date).toLocaleDateString('tr-TR') : '-';
       },
-      size: 120
+      size: 120,
+      meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     columnHelper.display({
       id: 'actions',

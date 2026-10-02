@@ -651,6 +651,7 @@ export function CurrencyManagement() {
         if (!y || !m || !d) return raw;
         return new Date(y, m - 1, d).toLocaleDateString(localeCode);
       },
+      meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     historyColumnHelper.accessor('currencyCode', {
       header: tm('currencyCodeLabel') || 'Kod',
@@ -694,6 +695,7 @@ export function CurrencyManagement() {
           return v;
         }
       },
+      meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     historyColumnHelper.display({
       id: 'historyActions',

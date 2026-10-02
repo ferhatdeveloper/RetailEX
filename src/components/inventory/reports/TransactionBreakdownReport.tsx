@@ -130,6 +130,7 @@ export function TransactionBreakdownReport() {
                     return v || '';
                 }
             },
+            meta: { filterKind: 'date', format: 'date', type: 'date' },
         }),
         columnHelper.accessor('type_label', {
             id: 'type_label',

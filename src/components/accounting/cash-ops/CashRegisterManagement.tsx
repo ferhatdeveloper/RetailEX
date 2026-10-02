@@ -210,7 +210,8 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
     txColumnHelper.accessor('islem_tarihi', {
       header: tm('date').toUpperCase(),
       cell: info => new Date(info.getValue()).toLocaleString(language === 'ar' ? 'ar-SA' : language === 'ku' ? 'ku-Arab' : 'tr-TR'),
-      size: 150
+      size: 150,
+      meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     txColumnHelper.accessor('islem_no', {
       header: tm('transactionNo').toUpperCase(),

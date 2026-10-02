@@ -78,6 +78,7 @@ export function BankaIslemleriModal({ banka, islemler, loading, onClose, onIslem
             header: tm('date'),
             cell: info => info.getValue() ? new Date(info.getValue()).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US') : '-',
             size: 100,
+            meta: { filterKind: 'date', format: 'date', type: 'date' },
         }),
         columnHelper.accessor('islem_no', {
             header: tm('transactionNo'),

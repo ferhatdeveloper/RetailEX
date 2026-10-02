@@ -110,7 +110,8 @@ export function BankRegisterManagement() {
         bankaColumnHelper.accessor('olusturma_tarihi', {
             header: tm('date'),
             cell: info => info.getValue() ? new Date(info.getValue()).toLocaleString(language === 'tr' ? 'tr-TR' : 'en-US') : '-',
-            size: 160
+            size: 160,
+            meta: { filterKind: 'date', format: 'date', type: 'date' },
         }),
     ];
 
@@ -119,7 +120,8 @@ export function BankRegisterManagement() {
         txColumnHelper.accessor('islem_tarihi', {
             header: tm('date'),
             cell: info => info.getValue() ? new Date(info.getValue()).toLocaleString(language === 'tr' ? 'tr-TR' : 'en-US') : '-',
-            size: 150
+            size: 150,
+            meta: { filterKind: 'date', format: 'date', type: 'date' },
         }),
         txColumnHelper.accessor('islem_no', {
             header: tm('transactionNo'),

@@ -77,6 +77,7 @@ export function KasaIslemleriModal({ kasa, islemler, loading, onClose, onIslemCl
       header: tm('date').toUpperCase(),
       cell: info => info.getValue() ? new Date(info.getValue()).toLocaleDateString(language === 'ar' ? 'ar-SA' : language === 'ku' ? 'ku-Arab' : 'tr-TR') : '-',
       size: 100,
+      meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     columnHelper.accessor('islem_no', {
       header: tm('transactionNo').toUpperCase(),

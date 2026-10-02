@@ -422,7 +422,8 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     columnHelper.accessor('expense_date', {
       header: tm('date').toUpperCase(),
       cell: info => new Date(info.getValue()).toLocaleDateString('tr-TR'),
-      size: 100
+      size: 100,
+      meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     columnHelper.accessor('category', {
       header: tm('category').toUpperCase(),

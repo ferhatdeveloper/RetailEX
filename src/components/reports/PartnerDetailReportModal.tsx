@@ -295,6 +295,7 @@ export function PartnerDetailReportModal({
                     {
                       key: 'displayDate',
                       header: tm('date'),
+                      type: 'date',
                       size: 100,
                       cell: (r) => <span className="font-mono text-slate-600">{r.displayDate}</span>,
                     },

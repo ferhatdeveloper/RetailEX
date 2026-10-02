@@ -755,6 +755,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     }),
     columnHelper.accessor('date', {
       header: 'Tarih',
+      meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     columnHelper.accessor('type', {
       header: 'Tip',

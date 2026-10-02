@@ -785,6 +785,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
           }
         },
         size: 140,
+        meta: { filterKind: 'date', format: 'date', type: 'date' },
       }));
     }
     if (isColumnVisible('balance')) {

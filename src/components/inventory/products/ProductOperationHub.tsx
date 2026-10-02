@@ -265,6 +265,7 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                         <span className="block text-[9px] opacity-60">{row.original.timeLabel}</span>
                     </div>
                 ),
+                meta: { filterKind: 'date', format: 'date', type: 'date' },
             }),
             pohMovCol.accessor('documentNo', {
                 id: 'documentNo',

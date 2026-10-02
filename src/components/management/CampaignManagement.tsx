@@ -156,7 +156,8 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
           </div>
         );
       },
-      size: 200
+      size: 200,
+      meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     columnHelper.accessor('productIds', {
       header: tm('campColProductCount'),
