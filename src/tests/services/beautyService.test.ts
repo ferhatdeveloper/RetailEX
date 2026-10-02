@@ -313,6 +313,57 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
             expect(Number(calls[9][1][0])).toBe(70);
         });
 
+        it('cash_lines INSERT inserted=false ise customers.balance UPDATE atlanır (idempotent)', async () => {
+            // Bug ARZ regresyon: aynı fiche_no ile tekrar çağrı geldiğinde
+            // (cash_lines ON CONFLICT DO UPDATE) kasa/customer balance çift düşürülmemeli.
+            // 1) SELECT randevu
+            queryMock.mockResolvedValueOnce(
+                ok([
+                    {
+                        id: 'apt-1',
+                        customer_id: 'cust-9',
+                        customer_name: 'Test Müşteri',
+                        total_price: 100,
+                        deposit_amount: 30,
+                        deposit_sale_id: null,
+                        sale_group_id: null,
+                        service_name: 'Hizmet',
+                        remainder_paid_amount: 0,
+                    },
+                ]),
+            );
+            // 2) cash_register verify
+            queryMock.mockResolvedValueOnce(ok([{ id: 'k-1' }]));
+            // 3) cash_lines INSERT ... inserted=false (ON CONFLICT DO UPDATE patikası)
+            queryMock.mockResolvedValueOnce(ok([{ id: 'cr-77', inserted: false }]));
+            // 4) sales INSERT (cash_lines update → bu blok ATLANIR, devam)
+            queryMock.mockResolvedValueOnce(ok([{ id: 'sale-main-1', fiche_no: 'BEAUTY-MAIN-apt-1-20260930120000' }]));
+            // 5) sale_items INSERT
+            queryMock.mockResolvedValueOnce(ok([]));
+            // 6) appointment geri yaz UPDATE
+            queryMock.mockResolvedValueOnce(ok([]));
+            // 7) payments INSERT
+            queryMock.mockResolvedValueOnce(ok([]));
+            // 8) appointment UPDATE
+            queryMock.mockResolvedValueOnce(ok([]));
+
+            await beautyService.collectAppointmentRemainder({
+                appointmentId: 'apt-1',
+                amount: 70,
+                cashRegisterId: 'k-1',
+            });
+
+            // customers UPDATE hiç çağrılmamalı (inserted=false → cash_reg + customer UPDATE skip)
+            const allSqls = queryMock.mock.calls.map((c) => String(c[0]));
+            expect(
+                allSqls.some((s) => sqlContains(s, 'UPDATE rex_001_customers')),
+            ).toBe(false);
+            // cash_registers UPDATE da atlanır
+            expect(
+                allSqls.some((s) => sqlContains(s, 'UPDATE rex_001_cash_registers')),
+            ).toBe(false);
+        });
+
         it('sales INSERT hata verirse ana akış yine de tamamlanır (saleId/ficheNo null)', async () => {
             // 1) SELECT randevu
             queryMock.mockResolvedValueOnce(
