@@ -2667,51 +2667,32 @@ export function SmartScheduler() {
                                 />
                             ) : (
                                 <>
-                            <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{tm('bPanelOperationDetails')}</p>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginBottom: 14 }}>
+                            {/* minimal görünüm — 8 alan yerine inline tek satır (tarih, durum, uzman, süre, cihaz, ücret) */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 2, fontSize: 11, color: '#374151', marginBottom: 14 }}>
                                 {(() => {
                                     const dk = beautyAppointmentDateKey(selectedApt);
                                     const dateShown = dk ? formatWeekdayShort(new Date(`${dk}T12:00:00`), scheduleDayHeaderLocale, { fallback: dk }) : '—';
                                     const st = STATUS_CFG[String(selectedApt.status)]?.label ?? String(selectedApt.status ?? '');
-                                    const created =
-                                        selectedApt.created_at &&
-                                        formatDateTimeMedium(new Date(selectedApt.created_at), scheduleDayHeaderLocale, { fallback: selectedApt.created_at });
+                                    const specialist = selectedApt.specialist_name ?? selectedApt.staff_name ?? '—';
+                                    const duration = `${selectedApt.duration ?? 30}${tm('bDkSuffix')}`;
+                                    const device = selectedApt.device_name ?? '—';
+                                    const price = (selectedApt.total_price ?? 0) > 0 ? formatMoneyAmount(selectedApt.total_price!, { minFrac: 0, maxFrac: 0 }) : '—';
                                     return (
                                         <>
-                                            {[
-                                                { label: tm('bPanelAppointmentDate'), value: dateShown },
-                                                { label: tm('bPanelAppointmentStatus'), value: st || '—' },
-                                                {
-                                                    label: tm('bPanelAppointmentId'),
-                                                    value: (
-                                                        <span style={{ fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' }}>
-                                                            {selectedApt.id}
-                                                        </span>
-                                                    ),
-                                                },
-                                                ...(created ? [{ label: tm('createdAt'), value: created }] : []),
-                                            ].map(({ label, value }) => (
-                                                <div key={label} style={{ background: '#fff', border: '1px solid #eceff3', borderRadius: 8, padding: '8px 10px' }}>
-                                                    <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{label}</p>
-                                                    <div style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{value}</div>
-                                                </div>
-                                            ))}
+                                            <span><span style={{ color: '#9ca3af' }}>{tm('bPanelAppointmentDate')}: </span><strong style={{ color: '#111827' }}>{dateShown}</strong></span>
+                                            <span style={{ color: '#d1d5db' }}>·</span>
+                                            <span><span style={{ color: '#9ca3af' }}>{tm('bPanelAppointmentStatus')}: </span><strong style={{ color: '#111827' }}>{st || '—'}</strong></span>
+                                            <span style={{ color: '#d1d5db' }}>·</span>
+                                            <span><span style={{ color: '#9ca3af' }}>{tm('bSpecialist')}: </span><strong style={{ color: '#111827' }}>{specialist}</strong></span>
+                                            <span style={{ color: '#d1d5db' }}>·</span>
+                                            <span><span style={{ color: '#9ca3af' }}>{tm('bDuration')}: </span><strong style={{ color: '#111827' }}>{duration}</strong></span>
+                                            <span style={{ color: '#d1d5db' }}>·</span>
+                                            <span><span style={{ color: '#9ca3af' }}>{tm('bDeviceView')}: </span><strong style={{ color: '#111827' }}>{device}</strong></span>
+                                            <span style={{ color: '#d1d5db' }}>·</span>
+                                            <span><span style={{ color: '#9ca3af' }}>{tm('bPriceHeader')}: </span><strong style={{ color: '#111827' }}>{price}</strong></span>
                                         </>
                                     );
                                 })()}
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginBottom: 14 }}>
-                                {[
-                                    { label: tm('bSpecialist'),    value: selectedApt.specialist_name ?? selectedApt.staff_name ?? '—' },
-                                    { label: tm('bDuration'),      value: `${selectedApt.duration ?? 30}${tm('bDkSuffix')}` },
-                                    { label: tm('bDeviceView'),    value: selectedApt.device_name ?? '—' },
-                                    { label: tm('bPriceHeader'),   value: (selectedApt.total_price ?? 0) > 0 ? formatMoneyAmount(selectedApt.total_price!, { minFrac: 0, maxFrac: 0 }) : '—' },
-                                ].map(({ label, value }) => (
-                                    <div key={label} style={{ background: '#fff', border: '1px solid #eceff3', borderRadius: 8, padding: '8px 10px' }}>
-                                        <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{label}</p>
-                                        <p style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{value}</p>
-                                    </div>
-                                ))}
                             </div>
                             {/* Peşinat / Kalan bilgi kartı — peşinat alınmışsa göster */}
                             {(() => {
