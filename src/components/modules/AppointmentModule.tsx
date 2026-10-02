@@ -1,5 +1,6 @@
-﻿import { useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Calendar, Clock, Users, Search, Plus, X, Check, Phone, Mail, AlertCircle, Bell, ChevronLeft, ChevronRight, Filter, Download, Printer, Edit, Trash2, Video, MapPin } from 'lucide-react';
+import { salesAPI } from '../../services/api/sales';
 
 type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'noshow';
 type AppointmentType = 'in-person' | 'online' | 'phone';
@@ -34,6 +35,47 @@ export function AppointmentModule() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [tempInvoiceNo, setTempInvoiceNo] = useState<string>('');
+  const [tempInvoiceNoLoading, setTempInvoiceNoLoading] = useState(false);
+
+  /**
+   * Henüz fatura oluşmadan, kayıt sonrası atanacak fiş numarasının önizlemesini üretir.
+   * MarketPOS / AppointmentPOS'taki kalıbı paylaşır: gün+18 ve ay+18 sayaçları + rassal.
+   */
+  const generateTempInvoiceNo = async (): Promise<string> => {
+    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const randomPart = String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0');
+    try {
+      const c18 = await salesAPI.getSequenceCounts();
+        return `BTY-${datePart}-M${c18.monthly}-D${c18.daily}-${randomPart}`;
+    } catch {
+        return `BTY-${datePart}-${randomPart}`;
+    }
+  };
+
+  // Modal yeni randevu için açıldığında (mevcut randevu düzenlenmiyorsa) tahmini üret.
+  useEffect(() => {
+    if (!showAppointmentModal) {
+      setTempInvoiceNo('');
+      return;
+    }
+    if (selectedAppointment?.invoiceNo) {
+      setTempInvoiceNo(selectedAppointment.invoiceNo);
+      return;
+    }
+    let cancelled = false;
+    setTempInvoiceNoLoading(true);
+    (async () => {
+      const next = await generateTempInvoiceNo();
+      if (!cancelled) {
+        setTempInvoiceNo(next);
+        setTempInvoiceNoLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showAppointmentModal, selectedAppointment?.invoiceNo]);
   const [filterStatus, setFilterStatus] = useState<AppointmentStatus | 'all'>('all');
   const [filterStaff, setFilterStaff] = useState<string>('all');
 
@@ -832,13 +874,17 @@ export function AppointmentModule() {
                     type="text"
                     readOnly
                     value={
-                      selectedAppointment?.invoiceNo
-                        ? selectedAppointment.invoiceNo
-                        : '(atama bekleniyor)'
+                      tempInvoiceNoLoading
+                        ? tm('common.loading') || '…'
+                        : tempInvoiceNo ||
+                            (tm('appointmentTempInvoiceNoWaiting') || '(atama bekleniyor)')
                     }
                     title={tm('appointmentTempInvoiceNoHint') || 'Fatura oluşturulduğunda atanır; şimdilik yalnızca önizleme.'}
                     className="w-full px-3 py-2 border border-amber-200 rounded-lg bg-white/60 font-mono text-sm text-amber-900 cursor-not-allowed focus:outline-none"
                   />
+                  <p className="mt-1 text-[11px] text-amber-700/80">
+                    {tm('appointmentTempInvoiceNoHint') || 'Fatura oluşturulduğunda atanır; bu seçenek önizleme amaçlıdır.'}
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
