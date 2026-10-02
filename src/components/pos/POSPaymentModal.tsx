@@ -1044,7 +1044,7 @@ const handleCollectCustomerDebt = async () => {
               <span
                 data-testid="pos-payment-temp-invoice-no"
                 title="Fatura oluşturulduğunda atanır; şimdilik yalnızca önizleme."
-                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-300/90 text-amber-950 text-[11px] font-mono font-semibold shadow-sm border border-amber-400/70"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-300 text-amber-950 text-[11px] font-mono font-semibold shadow-sm border border-amber-400"
               >
                 <Receipt className="w-3.5 h-3.5" />
                 <span className="uppercase tracking-wide opacity-70">Fatura No:</span>
@@ -1177,6 +1177,24 @@ const handleCollectCustomerDebt = async () => {
                 <h4 className={`text-xs uppercase tracking-wide mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   {t.paymentSummary || 'Ödeme Özeti'}
                 </h4>
+                {/* Geçici fatura no önizleme — büyük, gözden kaçmaz */}
+                {tempInvoiceNo && (
+                  <div
+                    data-testid="pos-payment-temp-invoice-no-strip"
+                    className="mb-3 flex items-center gap-2 px-3 py-2 rounded-md bg-amber-100 border border-amber-300 text-amber-900"
+                  >
+                    <Receipt className="w-4 h-4 shrink-0" />
+                    <div className="flex flex-col leading-tight">
+                      <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">
+                        Geçici Fatura No
+                      </span>
+                      <span className="font-mono text-sm font-semibold">{tempInvoiceNo}</span>
+                    </div>
+                    <span className="ml-auto text-[10px] text-amber-700/80 hidden md:inline">
+                      Fatura oluşturulduğunda atanır
+                    </span>
+                  </div>
+                )}
                 <div className="space-y-2.5 text-sm">
                   <div className={`flex justify-between ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                     <span>{t.subtotalLabel || 'ARA TOPLAM'}:</span>
