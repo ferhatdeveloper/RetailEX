@@ -239,3 +239,80 @@ describe('resolvePosCheckoutSettlement — kısmi nakit + kalan cari', () => {
     })).toBe(20000);
   });
 });
+
+describe('iptal edilen randevu — Bug 12 (dashboard günlük satış)', () => {
+  it('iptal payment_status=cancelled: ciro 0, kalan cari 0', () => {
+    expect(beautySalePocketCollected({
+      total: 75000,
+      payment_method: 'veresiye',
+      paid_amount: 20000,
+      remaining_amount: 55000,
+      payment_status: 'cancelled',
+    })).toBe(0);
+    expect(beautySaleRemainingCari({
+      total: 75000,
+      payment_method: 'veresiye',
+      paid_amount: 20000,
+      remaining_amount: 55000,
+      payment_status: 'cancelled',
+    })).toBe(0);
+  });
+
+  it('iptal payment_status=CANCELLED (büyük harf) ve TR iptal etiketleri de filtrelenir', () => {
+    for (const ps of ['CANCELLED', 'Canceled', 'refunded', 'void', 'iptal', 'silindi', 'deleted']) {
+      expect(beautySalePocketCollected({
+        total: 75000,
+        payment_method: 'veresiye',
+        paid_amount: 20000,
+        remaining_amount: 55000,
+        payment_status: ps,
+      })).toBe(0);
+      expect(beautySaleRemainingCari({
+        total: 75000,
+        payment_method: 'veresiye',
+        paid_amount: 20000,
+        remaining_amount: 55000,
+        payment_status: ps,
+      })).toBe(0);
+    }
+  });
+
+  it('iptal edilmiş satışın payments[] olsa bile ciro 0 (defence-in-depth)', () => {
+    expect(beautySalePocketCollected({
+      total: 75000,
+      payment_method: 'veresiye',
+      payments: [
+        { method: 'cash', amount: 20000 },
+        { method: 'veresiye', amount: 55000 },
+      ],
+      payment_status: 'cancelled',
+    })).toBe(0);
+  });
+
+  it('aktif satış iptal filtresinden etkilenmez (regresyon)', () => {
+    expect(beautySalePocketCollected({
+      total: 75000,
+      payment_method: 'veresiye',
+      paid_amount: 20000,
+      remaining_amount: 55000,
+      payment_status: 'paid',
+    })).toBe(20000);
+    expect(beautySaleRemainingCari({
+      total: 75000,
+      payment_method: 'veresiye',
+      paid_amount: 20000,
+      remaining_amount: 55000,
+      payment_status: 'paid',
+    })).toBe(55000);
+  });
+
+  it('payment_status boş olan (eski kayıt) iptal sayılmaz — geriye dönük uyum', () => {
+    expect(beautySalePocketCollected({
+      total: 75000,
+      payment_method: 'veresiye',
+      paid_amount: 20000,
+      remaining_amount: 55000,
+      payment_status: '',
+    })).toBe(20000);
+  });
+});

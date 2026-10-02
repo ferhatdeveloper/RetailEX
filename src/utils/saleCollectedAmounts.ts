@@ -248,14 +248,30 @@ function receiptKey(raw: unknown): string {
   return String(raw ?? '').trim().toLowerCase();
 }
 
-/** Güzellik/klinik satış: kayıtlı tahsilat varsa o; yoksa belge kırılımı. */
+/** İptal edilmiş / iade edilmiş satış payment_status değerleri (case-insensitive). */
+const CANCELLED_PAYMENT_STATUSES = new Set(['cancelled', 'canceled', 'refunded', 'void', 'iptal', 'silindi', 'deleted']);
+
+/** Sale.payment_status iptal/iptal-vari mu? — KPI'lardan düşmek için. */
+export function isBeautySaleCancelled(sale: { payment_status?: string | null } | null | undefined): boolean {
+  const st = String(sale?.payment_status ?? '').trim().toLowerCase();
+  return st !== '' && CANCELLED_PAYMENT_STATUSES.has(st);
+}
+
+/** Güzellik/klinik satış: kayıtlı tahsilat varsa o; yoksa belge kırılımı.
+ * İptal edilmiş satışlar (`payment_status` cancelled/void vb.) 0 döndürür
+ * (iptal sonrası ciro ve cari KPA'larına katılmaz). Bug 12: dashboard
+ * günlük satış KPI'sında iptal edilen randevunun cari 55.000'i hâlâ
+ * görünüyordu — bu filtre ile artık iptal edilen kayıtlar hariç tutulur.
+ */
 export function beautySalePocketCollected(sale: {
   total?: number;
   payment_method?: string;
   paid_amount?: number;
   remaining_amount?: number;
   payments?: SalePaymentRow[] | null;
+  payment_status?: string | null;
 }): number {
+  if (isBeautySaleCancelled(sale)) return 0;
   const paid = Number(sale.paid_amount);
   const rem = Number(sale.remaining_amount);
   // payments[] varsa her zaman kırılımdan (eski 0/0 + veresiye yanlış KPI’yı düzeltir)
@@ -288,7 +304,11 @@ export function beautySaleRemainingCari(sale: {
   paid_amount?: number;
   remaining_amount?: number;
   payments?: SalePaymentRow[] | null;
+  payment_status?: string | null;
 }): number {
+  // İptal edilen satışta cari borç da KPA'ya yansımaz (cari reversal/negation
+  // `cancelAppointmentWithRevert` içinde ayrıca uygulanır).
+  if (isBeautySaleCancelled(sale)) return 0;
   const paid = Number(sale.paid_amount);
   const rem = Number(sale.remaining_amount);
   if (Array.isArray(sale.payments) && sale.payments.length > 0) {

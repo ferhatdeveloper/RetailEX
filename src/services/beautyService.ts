@@ -3433,6 +3433,7 @@ export const beautyService = {
         mainSaleCancelled: boolean;
         appointmentReverted: boolean;
         depositAmountReverted: number;
+        customerBalanceReversed: number;
     }> {
         const aid = String(appointmentId ?? '').trim();
         const result = {
@@ -3440,15 +3441,18 @@ export const beautyService = {
             mainSaleCancelled: false,
             appointmentReverted: false,
             depositAmountReverted: 0,
+            customerBalanceReversed: 0,
         };
         if (!aid) return result;
 
-        // Önce appointment'ı oku — deposit tutarını rapora dahil etmek için.
+        // Önce appointment'ı oku — deposit tutarı + cari id (cari reversal için).
         let depositAmount = 0;
+        let customerIdForReversal: string | null = null;
         try {
             const apt = await beautyService.getAppointmentById(aid);
             if (apt) {
                 depositAmount = Math.max(0, Number(apt.deposit_amount ?? 0) || 0);
+                if (apt.customer_id) customerIdForReversal = String(apt.customer_id);
             }
         } catch (e) {
             console.warn('[beautyService] cancelAppointmentWithRevert: apt read:', e);
@@ -3470,6 +3474,8 @@ export const beautyService = {
                 is_deposit?: boolean | null;
                 parent_sale_id?: string | null;
                 paid_amount?: number | string | null;
+                total?: number | string | null;
+                customer_id?: string | null;
                 notes?: string | null;
                 payment_status?: string | null;
             };
@@ -3478,7 +3484,7 @@ export const beautyService = {
                 linked = await postgrest.get<SalesRow[]>(
                     salesPath,
                     {
-                        select: 'id,is_deposit,parent_sale_id,paid_amount,notes,payment_status',
+                        select: 'id,is_deposit,parent_sale_id,paid_amount,total,customer_id,notes,payment_status',
                         linked_appointment_id: `eq.${aid}`,
                         limit: 50,
                     },
@@ -3522,6 +3528,12 @@ export const beautyService = {
                     console.warn('[beautyService] cancelAppointmentWithRevert: reservation patch:', e);
                 }
             }
+            // İptal edilen ana satış(lar)ın orijinal `total` (cari) toplamı
+            // müşterinin `customers.balance` alanından düşülür → cari borç
+            // sıfırlanır (audit trail: sales iptal + cari reversal dengeli).
+            // Bug 12: cari reversal yapılmazsa dashboard "Kalan Cari" KPA'sı
+            // ve cari ekstresi iptal sonrası 55.000'i hâlâ gösteriyordu.
+            let reversalDelta = 0;
             for (const row of mains) {
                 if (!row?.id) continue;
                 const prevNotes = String(row.notes ?? '');
@@ -3539,8 +3551,26 @@ export const beautyService = {
                         { schema: 'beauty', prefer: 'return=minimal' },
                     );
                     result.mainSaleCancelled = true;
+                    // İptal edilen ana satışın orijinal tutarını cari reversal
+                    // delta'sına ekle (iptal öncesi toplam belge tutarı).
+                    const origTotal = Math.abs(Number(row.total ?? 0)) || 0;
+                    if (origTotal > 0) reversalDelta += origTotal;
                 } catch (e) {
                     console.warn('[beautyService] cancelAppointmentWithRevert: main patch:', e);
+                }
+            }
+
+            // 4) Cari reversal — müşterinin bakiyesinden iptal edilen ana
+            //    satış(lar)ın toplam tutarını düş. Negatif delta uygulanır
+            //    (borç azaltıcı). Audit trail: sales.payment_status='cancelled'
+            //    + customers.balance reversal aynı transaction grubu.
+            if (reversalDelta > 0 && customerIdForReversal) {
+                try {
+                    const { customersAPI } = await import('./api/customers');
+                    await customersAPI.addBalance(customerIdForReversal, -reversalDelta);
+                    result.customerBalanceReversed = reversalDelta;
+                } catch (e) {
+                    console.warn('[beautyService] cancelAppointmentWithRevert: cari reversal:', e);
                 }
             }
 
@@ -3562,13 +3592,84 @@ export const beautyService = {
             } catch (e) {
                 console.warn('[beautyService] cancelAppointmentWithRevert: apt patch:', e);
             }
+
+            // 4) Cari reversal — iptal edilen satışların (total - paid_amount)
+            //    net bakiye etkisini müşteriden geri al. PostgREST yolunda satır
+            //    verilerini zaten `linked` üzerinden topladık; idempotent:
+            //    sadece bu çağrıda gerçekten iptal edilen satırların deltası.
+            try {
+                let reversalDelta = 0;
+                const saleCustomerIds = new Set<string>();
+                const notCancelled = (st: string | null | undefined) => {
+                    const s = String(st || 'paid').toLowerCase();
+                    return s !== 'cancelled' && s !== 'canceled' && s !== 'void';
+                };
+                for (const r of linked) {
+                    if (!r?.id) continue;
+                    if (!notCancelled(r.payment_status)) continue;
+                    const tot = Number(r.total ?? 0) || 0;
+                    const paid = Number(r.paid_amount ?? 0) || 0;
+                    if (tot === 0 && paid === 0) continue;
+                    // Net cari etki: +total (borç) - paid (peşin tahsilat).
+                    // İptalde tersi: -(total - paid) = paid - total.
+                    reversalDelta += paid - tot;
+                    if (r.customer_id) saleCustomerIds.add(String(r.customer_id));
+                }
+                if (reversalDelta !== 0) {
+                    // Öncelik appointment'tan okuduğumuz customer_id; boşsa sales'tan.
+                    const custId =
+                        customerIdForReversal ||
+                        (saleCustomerIds.size === 1 ? [...saleCustomerIds][0] : null);
+                    if (custId) {
+                        try {
+                            const { customerAPI } = await import('./api/customers');
+                            const ok = await customerAPI.addBalance(custId, reversalDelta);
+                            if (ok) {
+                                result.customerBalanceReversed = reversalDelta;
+                            } else {
+                                console.warn('[beautyService] cancelAppointmentWithRevert: cari reversal başarısız');
+                            }
+                        } catch (e) {
+                            console.warn('[beautyService] cancelAppointmentWithRevert: cari reversal exception:', e);
+                        }
+                    } else {
+                        console.warn('[beautyService] cancelAppointmentWithRevert: cari reversal atlandı — customer_id bulunamadı');
+                    }
+                }
+            } catch (e) {
+                console.warn('[beautyService] cancelAppointmentWithRevert: cari reversal outer:', e);
+            }
         } else {
             // Doğrudan SQL yolu
             const salesTable = postgres.getMovementTableName('beauty_sales', 'beauty');
             const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
 
-            // 1+2) Rezervasyon ve ana satış fişlerini birlikte güncelle
-            // Not: payment_status iptal değilse güncelle; idempotent.
+            // 1) İptal EDİLMEDEN önce satır durumlarını oku — cari reversal
+            //    için `total` ve `paid_amount` snapshot'ı gerekiyor.
+            let preCancelSnapshot: Array<{
+                customer_id?: string | null;
+                total?: number | string | null;
+                paid_amount?: number | string | null;
+            }> = [];
+            try {
+                const { rows } = await postgres.query<{
+                    customer_id: string | null;
+                    total: number | string | null;
+                    paid_amount: number | string | null;
+                }>(
+                    `SELECT customer_id, total, paid_amount
+                       FROM ${salesTable}
+                      WHERE linked_appointment_id::text = $1::text
+                        AND LOWER(TRIM(COALESCE(payment_status, 'paid'))) NOT IN ('cancelled', 'canceled', 'void')`,
+                    [aid],
+                );
+                preCancelSnapshot = Array.isArray(rows) ? rows : [];
+            } catch (e) {
+                console.warn('[beautyService] cancelAppointmentWithRevert: SQL pre-snapshot:', e);
+            }
+
+            // 2) Rezervasyon ve ana satış fişlerini birlikte güncelle
+            //    Not: payment_status iptal değilse güncelle; idempotent.
             try {
                 await postgres.query(
                     `UPDATE ${salesTable}
@@ -3609,6 +3710,43 @@ export const beautyService = {
                 result.appointmentReverted = true;
             } catch (e) {
                 console.warn('[beautyService] cancelAppointmentWithRevert: SQL apt update:', e);
+            }
+
+            // 4) Cari reversal — iptal edilen satışların net bakiye etkisini
+            //    müşteriden geri al (snapshot'tan). Sadece SQL yolunda olduğu
+            //    için direkt customers tablosuna UPDATE yazıyoruz.
+            try {
+                let reversalDelta = 0;
+                const saleCustomerIds = new Set<string>();
+                for (const row of preCancelSnapshot) {
+                    const tot = Number(row.total ?? 0) || 0;
+                    const paid = Number(row.paid_amount ?? 0) || 0;
+                    if (tot === 0 && paid === 0) continue;
+                    reversalDelta += paid - tot;
+                    if (row.customer_id) saleCustomerIds.add(String(row.customer_id));
+                }
+                if (reversalDelta !== 0) {
+                    const custId =
+                        customerIdForReversal ||
+                        (saleCustomerIds.size === 1 ? [...saleCustomerIds][0] : null);
+                    if (custId) {
+                        try {
+                            const { customerAPI } = await import('./api/customers');
+                            const ok = await customerAPI.addBalance(custId, reversalDelta);
+                            if (ok) {
+                                result.customerBalanceReversed = reversalDelta;
+                            } else {
+                                console.warn('[beautyService] cancelAppointmentWithRevert: SQL cari reversal başarısız');
+                            }
+                        } catch (e) {
+                            console.warn('[beautyService] cancelAppointmentWithRevert: SQL cari reversal exception:', e);
+                        }
+                    } else {
+                        console.warn('[beautyService] cancelAppointmentWithRevert: SQL cari reversal atlandı — customer_id bulunamadı');
+                    }
+                }
+            } catch (e) {
+                console.warn('[beautyService] cancelAppointmentWithRevert: SQL cari reversal outer:', e);
             }
         }
 

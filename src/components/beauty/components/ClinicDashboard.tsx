@@ -317,10 +317,37 @@ export function ClinicDashboard() {
         const inProg    = todayApts.filter(a => a.status === AppointmentStatus.IN_PROGRESS);
         const cancelled = todayAll.filter(a => a.status === AppointmentStatus.CANCELLED);
         const remaining = [...pending, ...inProg];
-        const revenue = todaySales.reduce((s, sale) => s + beautySalePocketCollected(sale), 0) + todayExtraCash;
+        /**
+         * Peşinat fişleri (`is_deposit === true` veya `parent_sale_id != null`)
+         * ana satış fişinin `paid_amount` alanına zaten yansıtılıyor; ayrıca
+         * KPI'ya eklersek aynı tahsilatı iki kez sayıyoruz (ör. 20.000 peşinat
+         * → rezervasyon fişi 20.000 + ana satış paid_amount 20.000 = 40.000).
+         * Bu nedenle ciro-dışı peşinat fişleri KPI toplamından hariç tutulur;
+         * 90 yıllık muhasebeci: "kasaya giren nakit" = ana satışların
+         * ödenen kısmı; peşinat ayrıca sayılmaz, kalan cari = ana satış
+         * `remaining_amount` toplamı olarak hesaplanır.
+         *
+         * Bug 12: iptal edilen satışlar (`payment_status` cancelled/void
+         * vb.) hem ciro hem kalan cari toplamından dışlanır; aksi hâlde
+         * iptal edilen randevunun cari 55.000'i günlük satışta görünmeye
+         * devam ediyordu. `beautySalePocketCollected` / `beautySaleRemainingCari`
+         * de kendi içinde filtreliyor; burada da açıkça dışlıyoruz.
+         */
+        const mainSales = todaySales.filter((sale) => {
+            const s = sale as BeautySale & {
+                is_deposit?: boolean | null;
+                parent_sale_id?: string | null;
+                payment_status?: string | null;
+            };
+            if (s.is_deposit === true || s.parent_sale_id != null) return false;
+            const ps = String(s.payment_status ?? '').trim().toLowerCase();
+            if (ps === 'cancelled' || ps === 'canceled' || ps === 'refunded' || ps === 'void' || ps === 'iptal' || ps === 'silindi' || ps === 'deleted') return false;
+            return true;
+        });
+        const revenue = mainSales.reduce((s, sale) => s + beautySalePocketCollected(sale), 0) + todayExtraCash;
         const remainingCari = Math.max(
             0,
-            todaySales.reduce((s, sale) => s + beautySaleRemainingCari(sale), 0) - todayExtraCash,
+            mainSales.reduce((s, sale) => s + beautySaleRemainingCari(sale), 0) - todayExtraCash,
         );
         const expectedRevenue = remaining.reduce((s, a) => s + (a.total_price || 0), 0);
         const rate      = todayApts.length ? Math.round((completed.length / todayApts.length) * 100) : 0;

@@ -2360,9 +2360,21 @@ export function AppointmentPOS({
             const isPesinatliPrePayment = Boolean(
                 paymentData && paymentData.mode === 'prePayment' && paymentData.hasPesinatli === true,
             );
-            const finalAptStatus: AppointmentStatus = isPesinatliPrePayment
-                ? AppointmentStatus.IN_PROGRESS
-                : AppointmentStatus.COMPLETED;
+            /**
+             * Bug 2 düzeltmesi — gelecekteki randevu tarihi için status her
+             * zaman SCHEDULED kalmalı; hizmet henüz verilmedi, "başladı"
+             * anlamına gelmez. Örnek: 02.10.2026'da 05.10.2026 için randevu
+             * oluşturuluyor → eski kod `in_progress` yazıyordu (sarı rozet).
+             * Doğru davranış: tarih gelene kadar Planlandı rozeti.
+             */
+            const aptDateYmd = safeDateYmd(aptDate);
+            const todayYmd = new Date().toISOString().slice(0, 10);
+            const isFutureAppointment = aptDateYmd > todayYmd;
+            const finalAptStatus: AppointmentStatus = isFutureAppointment
+                ? AppointmentStatus.SCHEDULED
+                : (isPesinatliPrePayment
+                    ? AppointmentStatus.IN_PROGRESS
+                    : AppointmentStatus.COMPLETED);
 
             // ── Rezervasyon tutarı → ayrı ön ödeme sales kaydı ──
             // Eğer rezervasyon tutarı girildiyse + peşinatlı ön ödeme modunda

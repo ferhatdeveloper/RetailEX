@@ -1756,7 +1756,16 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                                     {tm('bBalance')}
                                                 </Space>
                                             ),
-                                            children: formatCurrency(selected.balance ?? 0),
+                                            /**
+                                             * Bug 3: DB `selected.balance`, deposit + parent_sale_id
+                                             * ile bağlı fişlerin cariye yansıması nedeniyle henüz
+                                             * tamamlanmamış randevuya rağmen borçlu gösteriyor.
+                                             * Hesaplanmış `profileStats.veresiyeCari` (deposit/parent
+                                             * hariç, yalnızca gerçekleşmiş ana hizmet satışlarının
+                                             * açık cari kalanı) kullanılır — DB bakiye ile çelişiyorsa
+                                             * muhasebeci tarafında ledger onarımı gerekir.
+                                             */
+                                            children: formatCurrency(profileStats.veresiyeCari),
                                         },
                                     ]}
                                 />

@@ -11753,6 +11753,11 @@ export const excelModuleTranslations = {
   bMonthlyCartNeedStaff: { tr: 'Bu hizmet satırında personel seçin.', en: 'Assign staff on this service line.', ar: 'عيّن موظفاً لهذا السطر.', ku: 'ستاف بۆ ئەم هێڵە هەڵبژێرە.' },
   bDiscountPercentShort: { tr: 'İndirim (%)', en: 'Discount (%)', ar: 'خصم (%)', ku: 'داشکاندن (%)' },
   bDiscountMinusPct: { tr: 'İndirim -%{n}%', en: 'Disc. -%{n}%', ar: 'خصم -%{n}%', ku: 'داشکاندن -%{n}%' },
+  // Randevu Detayları paneli — "Ön Ödenen Tutar" bilgi kutusu içindeki
+  // dinamik Kalan Tutar satırı: hizmet tamamlandıysa gerçek tutar, aksi
+  // hâlde "Henüz gerçekleşmedi" notu.
+  bRemainingAmount: { tr: 'Kalan Tutar', en: 'Remaining Amount', ar: 'المبلغ المتبقي', ku: 'بڕی ماوە' },
+  bAppointmentNotYetDone: { tr: 'Henüz gerçekleşmedi', en: 'Not yet completed', ar: 'لم يتم بعد', ku: 'هێشتا تەواو نەبووە' },
   bPaymentCollect: { tr: 'Ödeme Al', en: 'Take Payment', ar: 'تحصيل الدفع', ku: 'وەرگرتنی پارە' },
   bPaymentCollectComplete: { tr: 'Ödeme Al ve Tamamla', en: 'Take Payment & Complete', ar: 'تحصيل وإتمام', ku: 'پارە و تەواوکردن' },
   bPaymentAlreadyReceived: { tr: 'Bu randevu için ödeme zaten alındı.', en: 'Payment has already been received for this appointment.', ar: 'تم استلام الدفع لهذا الموعد مسبقاً.', ku: 'پارە بۆ ئەم ئامادەبوونە پێشتر وەرگیراوە.' },
