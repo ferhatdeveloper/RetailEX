@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Eye, Loader2, RefreshCw } from 'lucide-react';
+import { Eye, FileSearch, Loader2, RefreshCw } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatNumber } from '../../utils/formatNumber';
 import { expenseAPI, type Expense } from '../../services/api/expenses';
@@ -45,6 +45,7 @@ import { PeriodExpenseShareDetailModal } from './PeriodExpenseShareDetailModal';
 import { PeriodSupplierPayablesDetailModal } from './PeriodSupplierPayablesDetailModal';
 import { PartnerDetailReportModal } from './PartnerDetailReportModal';
 import { PeriodCashInDetailModal } from './PeriodCashInDetailModal';
+import { PeriodSummaryDayDetailModal } from './PeriodSummaryDayDetailModal';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 import { ReportKpiStrip, type ReportKpiItem } from './shared/ReportKpiStrip';
 
@@ -250,6 +251,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const [expenseDetail, setExpenseDetail] = useState<{ title: string; periodKey: string | null } | null>(null);
   const [partnerDetail, setPartnerDetail] = useState<PartyPartner | null>(null);
   const [cashInDetail, setCashInDetail] = useState<{ title: string; periodKey: string | null } | null>(null);
+  const [dayDetail, setDayDetail] = useState<{ title: string; date: string } | null>(null);
   const [reportMenuParams, setReportMenuParams] = useState<ReportMenuParams>(() =>
     getRuntimeReportMenuParams(),
   );
@@ -635,6 +637,31 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         key: 'periodLabel',
         header: mode === 'monthly-days' ? tm('rptPeriodColDay') : tm('rptPeriodColMonth'),
         size: 160,
+      },
+      {
+        key: 'dayDetailAction',
+        header: tm('rptPeriodDayDetailOpen') || 'Detay',
+        size: 88,
+        cell: (row) => {
+          if (!hasPeriodActivity(row)) return '—';
+          return (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
+              title={tm('rptPeriodDayDetailOpen')}
+              onClick={(e) => {
+                e.stopPropagation();
+                setDayDetail({
+                  title: `${row.periodLabel} · ${tm('rptPeriodDayDetailTitle')}`,
+                  date: row.periodKey,
+                });
+              }}
+            >
+              <FileSearch className="w-3 h-3" aria-hidden />
+              {tm('rptPeriodDayDetailOpen')}
+            </button>
+          );
+        },
       },
       {
         key: 'saleCount',
@@ -1242,6 +1269,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           title={cashInDetail.title}
           currency={currency}
           onClose={() => setCashInDetail(null)}
+        />
+      ) : null}
+      {dayDetail ? (
+        <PeriodSummaryDayDetailModal
+          date={dayDetail.date}
+          title={dayDetail.title}
+          currency={currency}
+          cashLines={cashLinesQuery.data ?? []}
+          onClose={() => setDayDetail(null)}
         />
       ) : null}
     </div>

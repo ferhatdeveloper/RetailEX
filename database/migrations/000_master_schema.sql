@@ -3359,6 +3359,7 @@ BEGIN
       trcode       INTEGER,
       module_nr    INTEGER,
       definition   TEXT,
+      transaction_type VARCHAR(50), -- Migration 190: CH_TAHSILAT/CH_ODEME guard için eklendi
       created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_account_movements');
