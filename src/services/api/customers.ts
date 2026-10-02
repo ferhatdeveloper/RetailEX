@@ -51,11 +51,12 @@ export const customerAPI = {
               {
                 select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled,payment_method',
                 is_cancelled: 'eq.false',
-                // Deterministic order — ORDER BY olmadan LIMIT 10000 PostgreSQL'in
-                // keyfi sıralamasına bağlı kalır; her sorguda farklı 8/12 satır gelir
-                // ve cari ledger'ı yanlış hesaplar (MUS-018: 25.026.000 yerine 35.895.000).
+                // Deterministic order — ORDER BY olmadan LIMIT keyfi sıralamaya bağlı
+                // kalır; cari ledger'ı yanlış hesaplar (MUS-018: 25.026.000 yerine 35.895.000).
                 order: 'created_at.asc,id.asc',
-                limit: '10000',
+                // 50.000 limit 11k-30k satırlı dönemleri kapsar; daha büyük tenant'ta
+                // aşağıdaki aggregate fallback (computeBalanceWithAggregateFallback) devreye girer.
+                limit: '50000',
               },
               { schema: 'public' }
             )

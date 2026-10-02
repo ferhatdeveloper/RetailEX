@@ -427,7 +427,20 @@ export function computeCustomerBalanceFromLedger(
   // yedek olarak kullanılır — fatura silindikten veya tamamen iptal edildikten sonra
   // ledger boşalırsa kullanıcı −40k gibi saçma orphan değerler görmez.
   // Açılış bakiyesi de defter kaynaklarında (satış/kasa) yoksa 0; SQL repair CTE ile aynı.
-  if (txnCount > 0) return salesSum + cashSum;
+  if (txnCount > 0) {
+    const ledger = salesSum + cashSum;
+    // Limit aşımı koruması: ledger ile DB saklı bakiye arasında büyük fark varsa
+    // (örn. 50k+ satırlı tenant, satır kesildi, MUS-018 10.869k fark) DB balance'a
+    // güven. Fatura silme sonrası orphan'a düşmemek için küçük farklar (≤ 10%) korunur.
+    if (Number.isFinite(_storedBalance) && _storedBalance !== 0) {
+      const diff = Math.abs(ledger - _storedBalance);
+      const rel = Math.max(Math.abs(ledger), Math.abs(_storedBalance), 1);
+      if (diff / rel > 0.1 && Math.abs(ledger) < Math.abs(_storedBalance)) {
+        return _storedBalance;
+      }
+    }
+    return ledger;
+  }
   return Number.isFinite(_storedBalance) ? _storedBalance : 0;
 }
 
@@ -464,7 +477,18 @@ export function computeSupplierBalanceFromLedger(
       const tt = String(cl.transaction_type || '').trim().toUpperCase();
       return (tt === 'CH_ODEME' || tt === 'CH_TAHSILAT') && cashLineMatchesParty(cl, idStr);
     });
-  if (hasSupplierActivity) return sum;
+  if (hasSupplierActivity) {
+    // Limit aşımı koruması (müşteri ile simetrik): ledger ile DB saklı bakiye
+    // arasında > %10 fark varsa DB balance'a güven.
+    if (Number.isFinite(_storedBalance) && _storedBalance !== 0) {
+      const diff = Math.abs(sum - _storedBalance);
+      const rel = Math.max(Math.abs(sum), Math.abs(_storedBalance), 1);
+      if (diff / rel > 0.1 && Math.abs(sum) < Math.abs(_storedBalance)) {
+        return _storedBalance;
+      }
+    }
+    return sum;
+  }
   return Number.isFinite(_storedBalance) ? _storedBalance : 0;
 }
 
