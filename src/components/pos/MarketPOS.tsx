@@ -1928,6 +1928,211 @@ export default function MarketPOS({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [cart, parkedReceipts, barcodeInput, handleReturnAction]);
 
+  // Barkod okuyucu için global yakalayıcı: kullanıcı başka bir input'a focus olmadıysa,
+  // modal açık değilse ve aktif elemanlık için barkod alanı değilse,
+  // tuş vuruşlarını barkod input'una yönlendir (input'a tıklamaya gerek yok).
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!target || !(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (target.isContentEditable) return true;
+      return false;
+    };
+
+    const isModalOpen = (): boolean => {
+      // PercentBodyModal ve diğer açık diyaloglar
+      if (typeof document !== 'undefined' && document.querySelector('[role="dialog"]')) return true;
+      // Ödeme / nakit / yönetici onay / iptal / iade / bekleyen fiş / kampanyal
+      if (
+        showPaymentModal ||
+        showManagerAuthModal ||
+        showCancelReasonModal ||
+        showParkedReceiptsModal ||
+        showCampaignModal ||
+        showCategoryModal ||
+        showStockQueryModal ||
+        showSalesHistoryModal ||
+        showLastReceiptModal ||
+        showOpenCashRegisterModal ||
+        showCloseCashRegisterModal ||
+        showItemDiscountModal ||
+        showMissingBarcodesModal ||
+        showProductCatalogModal ||
+        showPageSelectorModal ||
+        showBalanceLoadModal ||
+        showLanguageModal ||
+        showExpenseScreen ||
+        showShortcutOverlay ||
+        showReceiptModal ||
+        showVariantSelection ||
+        !!quantityModalProduct ||
+        !!selectedItemForDiscount
+      ) {
+        return true;
+      }
+      return false;
+    };
+
+    const handleGlobalScannerKey = (e: KeyboardEvent) => {
+      // Ödeme modalı açıkken veya herhangi bir modal açıkken yakalama — kullanıcı etkileşimi engellenmesin
+      if (isModalOpen()) return;
+
+      // Aktif element barkod input'unun kendisi ise zaten doğal akışta işleniyor
+      const active = document.activeElement;
+      if (active === barcodeInputRef.current) return;
+
+      // Kullanıcı başka bir input/textarea/contenteditable'a yazıyorsa dokunma
+      if (isEditableTarget(active)) return;
+      if (isEditableTarget(e.target)) return;
+
+      // Modifier tuşlar (Ctrl / Alt / Meta) kullanıcı kısayolu ise — bizim işimiz değil
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+      const inputEl = barcodeInputRef.current;
+      if (!inputEl) return;
+
+      // Enter: mevcut barkod submit akışını tetikle
+      if (e.key === 'Enter') {
+        const latest = barcodeInputLatestRef.current.trim();
+        if (latest) {
+          e.preventDefault();
+          e.stopPropagation();
+          void submitBarcodeSearch(latest);
+        } else {
+          e.preventDefault();
+          inputEl.focus();
+        }
+        return;
+      }
+
+      // Backspace: son karakteri sil
+      if (e.key === 'Backspace') {
+        const current = barcodeInputLatestRef.current;
+        if (current.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          const next = current.slice(0, -1);
+          barcodeInputLatestRef.current = next;
+          setBarcodeInput(next);
+          inputEl.focus();
+        }
+        return;
+      }
+
+      // Escape: input'a focus dön
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        inputEl.focus();
+        return;
+      }
+
+      // Yazdırılabilir tek karakter (sayı / tire, vs.)
+      if (e.key.length === 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        const next = barcodeInputLatestRef.current + e.key;
+        barcodeInputLatestRef.current = next;
+        setBarcodeInput(next);
+        // Okuyucu Enter göndermiyorsa otomatik submit için debounce
+        scheduleBarcodeAutoSubmit(next);
+        inputEl.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalScannerKey, true);
+    return () => window.removeEventListener('keydown', handleGlobalScannerKey, true);
+    // Modal state'lerine bağımlı ki modal açılınca yakalama otomatik devre dışı kalabilsin
+    // (modal kontrolünü yine de her çağrıda yapıyoruz; listede olan bağımlılık sadece referans).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    showPaymentModal,
+    showManagerAuthModal,
+    showCancelReasonModal,
+    showParkedReceiptsModal,
+    showCampaignModal,
+    showCategoryModal,
+    showStockQueryModal,
+    showSalesHistoryModal,
+    showLastReceiptModal,
+    showOpenCashRegisterModal,
+    showCloseCashRegisterModal,
+    showItemDiscountModal,
+    showMissingBarcodesModal,
+    showProductCatalogModal,
+    showPageSelectorModal,
+    showBalanceLoadModal,
+    showLanguageModal,
+    showExpenseScreen,
+    showShortcutOverlay,
+    showReceiptModal,
+    showVariantSelection,
+    quantityModalProduct,
+    selectedItemForDiscount,
+    scheduleBarcodeAutoSubmit,
+    submitBarcodeSearch,
+  ]);
+
+  // Modal kapanınca barkod input'una focus dön (her zaman canlı tutmak için)
+  useEffect(() => {
+    const anyModalOpen =
+      showPaymentModal ||
+      showManagerAuthModal ||
+      showCancelReasonModal ||
+      showParkedReceiptsModal ||
+      showCampaignModal ||
+      showCategoryModal ||
+      showStockQueryModal ||
+      showSalesHistoryModal ||
+      showLastReceiptModal ||
+      showOpenCashRegisterModal ||
+      showCloseCashRegisterModal ||
+      showItemDiscountModal ||
+      showMissingBarcodesModal ||
+      showProductCatalogModal ||
+      showPageSelectorModal ||
+      showBalanceLoadModal ||
+      showLanguageModal ||
+      showExpenseScreen ||
+      showShortcutOverlay ||
+      showReceiptModal ||
+      showVariantSelection ||
+      !!quantityModalProduct ||
+      !!selectedItemForDiscount;
+    if (!anyModalOpen) {
+      // rAF ile bir sonraki frame'de odakla — DOM güncellemesini bekle
+      const id = window.requestAnimationFrame(() => {
+        barcodeInputRef.current?.focus();
+      });
+      return () => window.cancelAnimationFrame(id);
+    }
+    return undefined;
+  }, [
+    showPaymentModal,
+    showManagerAuthModal,
+    showCancelReasonModal,
+    showParkedReceiptsModal,
+    showCampaignModal,
+    showCategoryModal,
+    showStockQueryModal,
+    showSalesHistoryModal,
+    showLastReceiptModal,
+    showOpenCashRegisterModal,
+    showCloseCashRegisterModal,
+    showItemDiscountModal,
+    showMissingBarcodesModal,
+    showProductCatalogModal,
+    showPageSelectorModal,
+    showBalanceLoadModal,
+    showLanguageModal,
+    showExpenseScreen,
+    showShortcutOverlay,
+    showReceiptModal,
+    showVariantSelection,
+    quantityModalProduct,
+    selectedItemForDiscount,
+  ]);
+
   // Listen for last receipt event from header button
   useEffect(() => {
     const handleOpenLastReceipt = () => {
