@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../../utils/formatNumber';
 import {
   Truck, Users, X, Search, Edit, Trash2, Mail, Phone, MapPin, Wallet,
-  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock, ArrowRightLeft, Copy, GitMerge
+  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock, ArrowRightLeft, Copy, GitMerge, BarChart3
 } from 'lucide-react';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
+import { CariPeriodBalanceModal } from './CariPeriodBalanceModal';
 import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
@@ -125,6 +126,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
   // Context menu
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; supplier: Supplier | null } | null>(null);
   const [defaultKasa, setDefaultKasa] = useState<Kasa | null>(null);
+  // Tarih aralığı bakiyesi modal state
+  const [periodBalanceAccount, setPeriodBalanceAccount] = useState<Supplier | null>(null);
   const [cashAction, setCashAction] = useState<{
     type: 'CH_TAHSILAT' | 'CH_ODEME';
     account: Supplier;
@@ -1525,6 +1528,16 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
                 },
             { id: 'edit', label: tm('edit'), icon: Edit, onClick: () => { if (contextMenu.supplier) handleEditClick(contextMenu.supplier); setContextMenu(null); } },
             {
+              id: 'period-balance',
+              label: (tm as any).periodBalance || 'Tarih Aralığı Bakiyesi',
+              icon: BarChart3,
+              onClick: () => {
+                if (contextMenu.supplier) setPeriodBalanceAccount(contextMenu.supplier);
+                setContextMenu(null);
+              },
+              divider: true
+            },
+            {
               id: 'extract',
               label: tm('accountStatement'),
               icon: FileText,
@@ -1572,6 +1585,15 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
                 ]
               : [])
           ]}
+        />
+      )}
+
+      {/* Tarih Aralığı Bakiyesi Modal */}
+      {periodBalanceAccount && (
+        <CariPeriodBalanceModal
+          account={periodBalanceAccount}
+          cardType={(periodBalanceAccount.cardType === 'customer' ? 'customer' : 'supplier')}
+          onClose={() => setPeriodBalanceAccount(null)}
         />
       )}
 

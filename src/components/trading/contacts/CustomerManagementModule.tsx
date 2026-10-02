@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Users, Search, Plus, Edit, Trash2, Phone, Mail, MapPin, TrendingUp, Calendar, FileText, Eye, X } from 'lucide-react';
+import { Users, Search, Plus, Edit, Trash2, Phone, Mail, MapPin, TrendingUp, Calendar, FileText, Eye, X, BarChart3 } from 'lucide-react';
 import type { Customer, Sale } from '../../../App';
 import { formatNumber } from '../../../utils/formatNumber';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -14,6 +14,8 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { DEMO_CUSTOMER_CODES } from '../../../utils/demoSeedCodes';
 import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import { SupplierModule } from './SupplierModule';
+import { CariPeriodBalanceModal } from './CariPeriodBalanceModal';
+import type { Supplier } from '../../../core/types';
 import { compareFileIdAsc, sortByFileIdAsc } from '../../../utils/customerFileIdSort';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
@@ -65,6 +67,9 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
     y: number;
     customer: Customer | null;
   } | null>(null);
+
+  // Tarih aralığı bakiyesi modal state
+  const [periodBalanceAccount, setPeriodBalanceAccount] = useState<Customer | null>(null);
 
   // Form state
   const [formData, setFormData] = useState(emptyCustomerForm);
@@ -746,6 +751,16 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
               }
             },
             {
+              id: 'period-balance',
+              label: (t as any).periodBalance || 'Tarih Aralığı Bakiyesi',
+              icon: BarChart3,
+              onClick: () => {
+                if (contextMenu.customer) setPeriodBalanceAccount(contextMenu.customer);
+                setContextMenu(null);
+              },
+              divider: true
+            },
+            {
               id: 'edit',
               label: t.edit || 'Düzenle',
               icon: Edit,
@@ -779,6 +794,15 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                 ]
               : [])
           ]}
+        />
+      )}
+
+      {/* Tarih Aralığı Bakiyesi Modal */}
+      {periodBalanceAccount && (
+        <CariPeriodBalanceModal
+          account={periodBalanceAccount as unknown as Supplier & Customer}
+          cardType="customer"
+          onClose={() => setPeriodBalanceAccount(null)}
         />
       )}
 
