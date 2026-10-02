@@ -3395,6 +3395,33 @@ export const beautyService = {
                     { schema: 'beauty', prefer: 'return=minimal' }
                 );
             }
+            // Plan N — bağlı ERP `sales` fişlerini de ciro dışı işaretle (dashboard).
+            try {
+                const erpRows = await postgrest.get<{ id: string }[]>(
+                    `/rex_${fn}_${pn}_sales`,
+                    {
+                        select: 'id',
+                        notes: `like.*rex_appt:${aid}*`,
+                        is_cancelled: 'eq.false',
+                        limit: 50,
+                    },
+                    { schema: 'public' },
+                );
+                for (const er of Array.isArray(erpRows) ? erpRows : []) {
+                    if (!er?.id) continue;
+                    try {
+                        await postgrest.patch(
+                            `/rex_${fn}_${pn}_sales?id=eq.${encodeURIComponent(String(er.id))}`,
+                            { is_cancelled: true },
+                            { schema: 'public', prefer: 'return=minimal' },
+                        );
+                    } catch (e) {
+                        console.warn('[beautyService] voidPaidBeautySales: ERP sales patch:', e);
+                    }
+                }
+            } catch (e) {
+                console.warn('[beautyService] voidPaidBeautySales: ERP sales fetch:', e);
+            }
             return;
         }
         const table = postgres.getMovementTableName('beauty_sales', 'beauty');
@@ -3406,27 +3433,50 @@ export const beautyService = {
                AND COALESCE(payment_status, 'paid') = 'paid'`,
             [needle]
         );
+        // Plan N — bağlı ERP `sales` fişlerini de ciro dışı işaretle (dashboard).
+        try {
+            const erpSalesTable = postgres.getMovementTableName('sales');
+            await postgres.query(
+                `UPDATE ${erpSalesTable}
+                   SET is_cancelled = true
+                 WHERE firm_nr = $1::text
+                   AND COALESCE(is_cancelled, false) = false
+                   AND COALESCE(notes, '') LIKE $2`,
+                [String(ERP_SETTINGS.firmNr ?? '001').trim(), needle],
+            );
+        } catch (e) {
+            console.warn('[beautyService] voidPaidBeautySales: SQL ERP sales update:', e);
+        }
     },
 
     /**
      * Randevu iptali sırasında bağlı reservation / peşinat satış fiş(ler)i ve
      * ana satış fiş(ler)ini ciro dışı işaretler; appointment'tan deposit_* alanlarını
-     * NULL'lar.
+     * NULL'lar; bağlı ERP `sales` fişlerini `is_cancelled = true` yapar; cari
+     * bakiyeden iptal edilen satışların `total` borç katkısını geri alır.
      *
-     * **Akış (Plan §6.3 + 90 yıllık kıdemli muhasebeci gözüyle):**
+     * **Akış (Plan N — peşinat avans olarak kalsın + 90 yıllık kıdemli muhasebeci gözüyle):**
      *   1) Rezervasyon sales fiş(ler)i (`linked_appointment_id = aptId`,
-     *      `is_deposit = true` veya linked) → `payment_status='cancelled'`,
-     *      `paid_amount=0`, `remaining_amount=0`, notes'a `[İPTAL]` prefix.
-     *      Audit trail için soft-cancel tercih edildi (silme yok).
-     *   2) Ana satış fişi varsa (`parent_sale_id = reservationSaleId`,
-     *      `is_deposit=false` veya aynı `sale_group_id`'de bağlı diğer fişler) → aynı.
-     *   3) Appointment → `deposit_amount=0`, `deposit_sale_id=NULL`,
+     *      `is_deposit = true` veya `parent_sale_id = NULL`) →
+     *      `payment_status='cancelled'`, `remaining_amount=0`, `paid_amount` KORUNUR
+     *      (peşinat avans olarak müşteri bakiyesinde kalsın). notes'a `[İPTAL]` prefix.
+     *   2) Ana satış fişi varsa (`is_deposit = false`, `parent_sale_id != NULL`) →
+     *      `payment_status='cancelled'`, `paid_amount=0`, `remaining_amount=0`.
+     *   3) Bağlı ERP `sales` fişleri (notes içinde `rex_appt:<id>`) →
+     *      `is_cancelled = true`. Dashboard (`erpReports.ts`) bunları `is_cancelled = false`
+     *      filtresi ile gizler; peşinat avans müşteri bakiyesinde ayrı görünür.
+     *   4) Appointment → `deposit_amount=0`, `deposit_sale_id=NULL`,
      *      `deposit_sale_fiche_no=NULL`, `deposit_date=NULL`,
      *      `deposit_provider=NULL`. (`status` zaten caller'da CANCELLED set edilecek.)
+     *   5) Cari reversal: iptal edilen her satırın `total` tutarı borç katkısıdır;
+     *      `customers.balance -= sum(total)` ile geri alınır. cash_lines CH_TAHSILAT
+     *      (peşinat) dokunulmaz → ledger'da müşteri peşinat tutarı kadar alacak (avans)
+     *      görünür. Önceki davranış (paid - total) hem borcu hem peşinatı siliyor,
+     *      avansı sıfırlıyordu (orphan ledger). `customers.balance` ile cash_lines
+     *      ledger toplamı eşleşir.
      *
-     * **TODO (ileride):** Cari reversal — `customerDebtCollection` ile negation
-     * entry yazılması gerekiyor. Şu an yalnızca `payment_status='cancelled'`
-     * yeterli; cari ledger'ında tutar hâlâ görünür kalır (audit trail tercih).
+     * Audit trail için soft-cancel tercih edildi (silme yok); negatif
+     * `paid_amount` veya `total` YAZILMAZ — yalnızca DB balance'tan düşülür.
      */
     async cancelAppointmentWithRevert(appointmentId: string): Promise<{
         reservationSaleCancelled: boolean;
@@ -3434,6 +3484,8 @@ export const beautyService = {
         appointmentReverted: boolean;
         depositAmountReverted: number;
         customerBalanceReversed: number;
+        /** useSaleStore içinde işaretlenen iptal adayı receipt sayısı (Bug 12) */
+        saleStoreTouched?: number;
     }> {
         const aid = String(appointmentId ?? '').trim();
         const result = {
@@ -3442,6 +3494,7 @@ export const beautyService = {
             appointmentReverted: false,
             depositAmountReverted: 0,
             customerBalanceReversed: 0,
+            saleStoreTouched: 0,
         };
         if (!aid) return result;
 
@@ -3512,11 +3565,15 @@ export const beautyService = {
                 const prevNotes = String(row.notes ?? '');
                 const tag = prevNotes.includes(cancelTag) ? prevNotes : `${cancelTag} ${prevNotes}`.trim();
                 try {
+                    // Plan N — peşinat avans olarak müşteri bakiyesinde kalsın.
+                    // Rezervasyon satırının `paid_amount`'ı cash_lines CH_TAHSILAT'ı
+                    // yansıtır; iade YAZILMAZ, satır sadece payment_status ile ciro dışı
+                    // işaretlenir. Ana satışın aksine paid_amount/remaining_amount burada
+                    // SIFIRLANMAZ — müşteri bakiyesi avans olarak görünmeye devam eder.
                     await postgrest.patch(
                         `${salesPath}?id=eq.${encodeURIComponent(String(row.id))}`,
                         {
                             payment_status: 'cancelled',
-                            paid_amount: 0,
                             remaining_amount: 0,
                             notes: tag || null,
                             updated_at: new Date().toISOString(),
@@ -3533,6 +3590,8 @@ export const beautyService = {
                 const prevNotes = String(row.notes ?? '');
                 const tag = prevNotes.includes(cancelTag) ? prevNotes : `${cancelTag} ${prevNotes}`.trim();
                 try {
+                    // Ana satış → cari borç kısmı sıfırlansın; peşinat bu satırdan değil
+                    // rezervasyondan gelir, orada avans olarak korunur.
                     await postgrest.patch(
                         `${salesPath}?id=eq.${encodeURIComponent(String(row.id))}`,
                         {
@@ -3549,6 +3608,35 @@ export const beautyService = {
                     console.warn('[beautyService] cancelAppointmentWithRevert: main patch:', e);
                 }
             }
+            // Plan N — bağlı ERP `sales` fişlerini de ciro dışı işaretle. Dashboard
+            // (`erpReports.ts`) `is_cancelled = false` filtresi ile bu fişleri gizler;
+            // peşinat avans müşteri bakiyesinde ayrı görünür.
+            try {
+                    const erpSalesRows = await postgrest.get<{ id: string }[]>(
+                        `/rex_${fn}_${pn}_sales`,
+                        {
+                            select: 'id',
+                            notes: `like.*rex_appt:${aid}*`,
+                            is_cancelled: 'eq.false',
+                            limit: 50,
+                        },
+                        { schema: 'public' },
+                    );
+                    for (const er of Array.isArray(erpSalesRows) ? erpSalesRows : []) {
+                        if (!er?.id) continue;
+                        try {
+                            await postgrest.patch(
+                                `/rex_${fn}_${pn}_sales?id=eq.${encodeURIComponent(String(er.id))}`,
+                                { is_cancelled: true },
+                                { schema: 'public', prefer: 'return=minimal' },
+                            );
+                        } catch (e) {
+                            console.warn('[beautyService] cancelAppointmentWithRevert: ERP sales patch:', e);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[beautyService] cancelAppointmentWithRevert: ERP sales fetch:', e);
+                }
 
             // 3) Appointment deposit_* alanlarını NULL'la
             try {
@@ -3569,10 +3657,12 @@ export const beautyService = {
                 console.warn('[beautyService] cancelAppointmentWithRevert: apt patch:', e);
             }
 
-            // 4) Cari reversal — iptal edilen satışların (total - paid_amount)
-            //    net bakiye etkisini müşteriden geri al. PostgREST yolunda satır
-            //    verilerini zaten `linked` üzerinden topladık; idempotent:
-            //    sadece bu çağrıda gerçekten iptal edilen satırların deltası.
+            // 4) Cari reversal — Plan N: peşinat avans olarak müşteri bakiyesinde
+            //    kalsın. İptal edilen her satırın `total` tutarı borç katkısıdır;
+            //    bunu DB balance'tan geri alıyoruz. cash_lines CH_TAHSILAT (peşinat)
+            //    dokunulmaz → ledger'da müşteri 20.000 alacak (avans) görünür.
+            //    Önceki davranış (paid - total) hem borcu hem peşinatı geri alıyor,
+            //    avansı sıfırlıyordu (orphan ledger).
             try {
                 let reversalDelta = 0;
                 const saleCustomerIds = new Set<string>();
@@ -3584,11 +3674,10 @@ export const beautyService = {
                     if (!r?.id) continue;
                     if (!notCancelled(r.payment_status)) continue;
                     const tot = Number(r.total ?? 0) || 0;
-                    const paid = Number(r.paid_amount ?? 0) || 0;
-                    if (tot === 0 && paid === 0) continue;
-                    // Net cari etki: +total (borç) - paid (peşin tahsilat).
-                    // İptalde tersi: -(total - paid) = paid - total.
-                    reversalDelta += paid - tot;
+                    if (tot === 0) continue;
+                    // İptalde yalnızca borç katkısını (total) geri al; peşinat (paid)
+                    // cash_lines'ta kalır ve avans olarak görünür.
+                    reversalDelta += -tot;
                     if (r.customer_id) saleCustomerIds.add(String(r.customer_id));
                 }
                 if (reversalDelta !== 0) {
@@ -3646,12 +3735,18 @@ export const beautyService = {
 
             // 2) Rezervasyon ve ana satış fişlerini birlikte güncelle
             //    Not: payment_status iptal değilse güncelle; idempotent.
+            //    Plan N: rezervasyon (`is_deposit = true` veya parent_sale_id NULL)
+            //    satırında `paid_amount` korunur — peşinat avans olarak müşteri
+            //    bakiyesinde kalsın. Ana satışta paid_amount/remaining_amount sıfırlanır.
             try {
                 await postgres.query(
                     `UPDATE ${salesTable}
                        SET payment_status = 'cancelled',
-                           paid_amount = 0,
                            remaining_amount = 0,
+                           paid_amount = CASE
+                                           WHEN COALESCE(is_deposit, false) = true THEN paid_amount
+                                           ELSE 0
+                                         END,
                            notes = CASE
                                      WHEN COALESCE(notes, '') LIKE '%[İPTAL]%' THEN notes
                                      ELSE '[' || 'İPTAL' || '] ' || COALESCE(notes, '')
@@ -3668,6 +3763,23 @@ export const beautyService = {
                 result.mainSaleCancelled = true;
             } catch (e) {
                 console.warn('[beautyService] cancelAppointmentWithRevert: SQL sales update:', e);
+            }
+
+            // 2b) Plan N — bağlı ERP `sales` fişlerini de ciro dışı işaretle.
+            //     `erpReports.ts` dashboard `is_cancelled = false` filtresi ile
+            //     gizler; peşinat avans müşteri bakiyesinde ayrı görünür.
+            try {
+                const erpSalesTable = postgres.getMovementTableName('sales');
+                await postgres.query(
+                    `UPDATE ${erpSalesTable}
+                       SET is_cancelled = true
+                     WHERE firm_nr = $1::text
+                       AND COALESCE(is_cancelled, false) = false
+                       AND COALESCE(notes, '') LIKE $2`,
+                    [String(ERP_SETTINGS.firmNr ?? '001').trim(), `%rex_appt:${aid}%`],
+                );
+            } catch (e) {
+                console.warn('[beautyService] cancelAppointmentWithRevert: SQL ERP sales update:', e);
             }
 
             // 3) Appointment deposit_* NULL
@@ -3688,17 +3800,19 @@ export const beautyService = {
                 console.warn('[beautyService] cancelAppointmentWithRevert: SQL apt update:', e);
             }
 
-            // 4) Cari reversal — iptal edilen satışların net bakiye etkisini
-            //    müşteriden geri al (snapshot'tan). Sadece SQL yolunda olduğu
-            //    için direkt customers tablosuna UPDATE yazıyoruz.
+            // 4) Cari reversal — Plan N: peşinat avans olarak müşteri bakiyesinde kalsın.
+            //    İptal edilen her satırın `total` tutarı borç katkısıdır; bunu DB
+            //    balance'tan geri alıyoruz. cash_lines CH_TAHSILAT (peşinat)
+            //    dokunulmaz → ledger'da müşteri peşinat tutarı kadar alacak (avans).
+            //    Önceki davranış (paid - total) hem borcu hem peşinatı geri alıyor,
+            //    avansı sıfırlıyordu (orphan ledger).
             try {
                 let reversalDelta = 0;
                 const saleCustomerIds = new Set<string>();
                 for (const row of preCancelSnapshot) {
                     const tot = Number(row.total ?? 0) || 0;
-                    const paid = Number(row.paid_amount ?? 0) || 0;
-                    if (tot === 0 && paid === 0) continue;
-                    reversalDelta += paid - tot;
+                    if (tot === 0) continue;
+                    reversalDelta += -tot;
                     if (row.customer_id) saleCustomerIds.add(String(row.customer_id));
                 }
                 if (reversalDelta !== 0) {
@@ -3724,6 +3838,42 @@ export const beautyService = {
             } catch (e) {
                 console.warn('[beautyService] cancelAppointmentWithRevert: SQL cari reversal outer:', e);
             }
+        }
+
+        // 5) POS useSaleStore senkronizasyonu — Bug 12.
+        // İptal edilen beauty_sales fiş(ler)i POS'un bellekte tuttuğu `useSaleStore`
+        // listesinde de "cancelled" olarak işaretlenir; aksi halde DashboardModule
+        // (ve diğer modüller) iptal edilen satışı hâlâ aktif sayarak
+        // "Bugünkü Satış / Haftalık / Bugünkü Kâr" KPI'larını yanlış hesaplar.
+        // Eşleştirme: `notes` içinde `rex_appt:<appointmentId>` veya
+        // `parent_sale:<uuid>` tag'i. idempotent.
+        try {
+            const saleStore = useSaleStore.getState();
+            const current = Array.isArray(saleStore.sales) ? saleStore.sales : [];
+            const cancelTag = '[İPTAL]';
+            const apptNeedle = `rex_appt:${aid}`;
+            const touchedIds: string[] = [];
+            for (const s of current) {
+                if (!s) continue;
+                const notes = String((s as any).notes ?? '');
+                if (!notes.includes(apptNeedle)) continue;
+                const ps = String((s as any).paymentStatus || '').toLowerCase();
+                const st = String((s as any).status || '').toLowerCase();
+                if (ps === 'cancelled' || st === 'cancelled') continue;
+                (s as any).paymentStatus = 'cancelled';
+                (s as any).status = 'cancelled';
+                if (!notes.includes(cancelTag)) {
+                    (s as any).notes = `${cancelTag} ${notes}`.trim();
+                }
+                if (s.id) touchedIds.push(String(s.id));
+            }
+            if (touchedIds.length > 0) {
+                // Zustand immutability için yeni referanslı dizi ata
+                saleStore.setSales([...current]);
+                result.saleStoreTouched = touchedIds.length;
+            }
+        } catch (e) {
+            console.warn('[beautyService] cancelAppointmentWithRevert: useSaleStore senkronizasyonu başarısız:', e);
         }
 
         result.depositAmountReverted = depositAmount;

@@ -151,19 +151,37 @@ export function DashboardModule({
     };
   }, [products, selectedFirm?.firm_nr, selectedPeriod?.nr]);
 
-  // Today's sales
+  // Bug 12: İptal edilen satışlar (paymentStatus veya status='cancelled') dashboard
+  // KPI'larına, grafiklerine, ödeme yöntemi kırılımına ve topProducts'a ASLA dahil
+  // edilmemeli. POS `useSaleStore` iptal edilen fişleri silmiyor (audit trail için
+  // bellekte tutulur), bu nedenle client-side filtre zorunlu.
+  // Notlar içinde "[İPTAL]" prefix'i de cancelAppointmentWithRevert tarafından
+  // yazılıyor; çift güvenlik olarak kontrol ediyoruz.
+  const isActiveSale = (s: Sale): boolean => {
+    const ps = String((s as any).paymentStatus ?? '').toLowerCase().trim();
+    const st = String((s as any).status ?? '').toLowerCase().trim();
+    const notes = String((s as any).notes ?? '');
+    if (ps === 'cancelled' || ps === 'canceled' || ps === 'void') return false;
+    if (st === 'cancelled' || st === 'canceled' || st === 'void') return false;
+    if (/^\s*\[İPTAL\]/i.test(notes) || /\[İPTAL\]/i.test(notes)) return false;
+    return true;
+  };
+  /** Tarih filtresi uygulanmış, iptal edilmemiş aktif satışlar */
+  const activeSales = useMemo(() => sales.filter(isActiveSale), [sales]);
+
+  // Today's sales (iptal hariç)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todaysSales = sales.filter(s => new Date(s.date) >= today);
+  const todaysSales = activeSales.filter(s => new Date(s.date) >= today);
   const totalRevenue = todaysSales.reduce((sum, s) => sum + s.total, 0);
   const totalProfitToday = layeredValuation
     ? totalRevenue - layeredValuation.todayCogs
     : todaysSales.reduce((sum, s) => sum + (s.profit || 0), 0);
 
-  // Yesterday's sales for comparison
+  // Yesterday's sales for comparison (iptal hariç)
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdaySales = sales.filter(s => {
+  const yesterdaySales = activeSales.filter(s => {
     const saleDate = new Date(s.date);
     return saleDate >= yesterday && saleDate < today;
   });
@@ -178,10 +196,10 @@ export function DashboardModule({
     ? ((totalProfitToday - yesterdayProfit) / yesterdayProfit) * 100
     : 0;
 
-  // This week's data
+  // This week's data (iptal hariç)
   const weekAgo = new Date(today);
   weekAgo.setDate(weekAgo.getDate() - 7);
-  const weekSales = sales.filter(s => new Date(s.date) >= weekAgo);
+  const weekSales = activeSales.filter(s => new Date(s.date) >= weekAgo);
   const weekRevenue = weekSales.reduce((sum, s) => sum + s.total, 0);
 
   // Stock value — FIFO kalan katman (kart alış × miktar değil)
@@ -193,8 +211,8 @@ export function DashboardModule({
   const lowStockProducts = products.filter(p => p.stock < 30);
   const criticalStockProducts = products.filter(p => p.stock < 10);
 
-  // Top selling products (by revenue)
-  const productSales = sales.reduce((acc, sale) => {
+  // Top selling products (by revenue) — iptal edilenler HARİÇ (Bug 12)
+  const productSales = activeSales.reduce((acc, sale) => {
     sale.items.forEach((item: any) => {
       if (!acc[item.productId]) {
         acc[item.productId] = {
@@ -213,8 +231,8 @@ export function DashboardModule({
     .sort((a: any, b: any) => b.revenue - a.revenue)
     .slice(0, 5);
 
-  // Sales by payment method
-  const paymentData = sales.reduce((acc, sale) => {
+  // Sales by payment method — iptal edilenler HARİÇ (Bug 12)
+  const paymentData = activeSales.reduce((acc, sale) => {
     acc[sale.paymentMethod] = (acc[sale.paymentMethod] || 0) + sale.total;
     return acc;
   }, {} as Record<string, number>);
@@ -224,7 +242,7 @@ export function DashboardModule({
     value
   }));
 
-  // Sales trend (last 7 days)
+  // Sales trend (last 7 days) — iptal edilenler HARİÇ (Bug 12)
   const last7Days = Array.from({ length: 7 }, (_, i) => {
     const date = new Date(today);
     date.setDate(date.getDate() - (6 - i));
@@ -235,7 +253,7 @@ export function DashboardModule({
     };
   });
 
-  sales.forEach(sale => {
+  activeSales.forEach(sale => {
     const saleDate = new Date(sale.date);
     const dayIndex = last7Days.findIndex(day => {
       const checkDate = new Date(today);
