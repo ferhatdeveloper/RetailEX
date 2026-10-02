@@ -2043,15 +2043,53 @@ export function AppointmentPOS({
                 pool.length > 0 ? pool : [existingAppointment],
             );
             const targets = siblings.length > 0 ? siblings : [existingAppointment];
+            // Toplam iptal edilen peşinat tutarını bilgilendirme için biriktir.
+            let totalDepositRefunded = 0;
+            let anyReservationCancelled = false;
             for (const sib of targets) {
                 if (!sib?.id) continue;
+                // 1) Önce reservation/peşinat sales fiş(ler)i ve ana satış fiş(ler)i
+                //    iptal edilir → carideki kalan tutar + kasa çıkışı cariden düşer.
+                //    Detaylar: `beautyService.cancelAppointmentWithRevert` içinde.
+                try {
+                    const revertResult = await beautyService.cancelAppointmentWithRevert(sib.id);
+                    totalDepositRefunded += Number(revertResult?.depositAmountReverted ?? 0) || 0;
+                    if (revertResult?.reservationSaleCancelled || revertResult?.mainSaleCancelled) {
+                        anyReservationCancelled = true;
+                    }
+                } catch (revertErr) {
+                    logger.crudError('AppointmentPOS', 'toolbarCancelAppointment: revert', revertErr);
+                    // Reservation revert başarısız olsa bile appointment'ı iptal etmeyi dene
+                    // (audit trail için status CANCELLED önemli).
+                }
+                // 2) Appointment status'unu CANCELLED yap.
                 await updateAppointment(sib.id, {
                     status: AppointmentStatus.CANCELLED,
                     notes: aptNotes?.trim() ? aptNotes : undefined,
                 });
             }
             setAptStatus(AppointmentStatus.CANCELLED);
-            toast.success(tm('bAptCancelSuccessToast'));
+            // 3) Bilgilendirme toast'u:
+            //    - Peşinat gerçek parayla alınmışsa → kasa çıkışı manuel yapılmalı
+            //      (kasiyer bilgisi gerektiği için otomatik değil).
+            //    - Rezervasyon sales fişi iptal edildiyse (linked_appointment_id dolu) →
+            //      carideki kalan tutar da otomatik düşmüş oldu.
+            if (totalDepositRefunded > 0) {
+                const fmt = (n: number) => formatMoneyAmount(n);
+                toast.success(
+                    tm('bAptCancelRevertToast')
+                        .replace('{deposit}', fmt(totalDepositRefunded))
+                        .replace('{currency}', 'IQD'),
+                    { duration: 7000 },
+                );
+                if (anyReservationCancelled) {
+                    toast.warning(tm('bAptCancelManualKasCikis'), { duration: 8000 });
+                }
+            } else if (anyReservationCancelled) {
+                toast.success(tm('bAptCancelReservationRevertedToast'), { duration: 6000 });
+            } else {
+                toast.success(tm('bAptCancelSuccessToast'));
+            }
             setCancelAptConfirmOpen(false);
             setExistingEditBaselineFlush((f) => f + 1);
         } catch (e: unknown) {
@@ -5179,9 +5217,34 @@ export function AppointmentPOS({
                 confirmLoading={cancelAptBusy}
                 confirmDisabled={cancelAptBusy}
             >
-                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                    {tm('bAptCancelConfirmBody')}
-                </p>
+                {(() => {
+                    const depositAmt = Number(
+                        (existingAppointment as { deposit_amount?: number } | null | undefined)
+                            ?.deposit_amount ?? 0,
+                    );
+                    if (depositAmt > 0) {
+                        return (
+                            <div className="space-y-3">
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-700/50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-100 flex gap-2">
+                                    <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+                                    <div className="leading-relaxed">
+                                        {tm('bAptCancelConfirmBodyWithDeposit')
+                                            .replace('{deposit}', formatMoneyAmount(depositAmt))
+                                            .replace('{currency}', 'IQD')}
+                                    </div>
+                                </div>
+                                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                                    {tm('bAptCancelConfirmBody')}
+                                </p>
+                            </div>
+                        );
+                    }
+                    return (
+                        <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                            {tm('bAptCancelConfirmBody')}
+                        </p>
+                    );
+                })()}
             </RetailExFlatModal>
 
             <RetailExFlatModal

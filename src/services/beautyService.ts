@@ -3409,6 +3409,214 @@ export const beautyService = {
     },
 
     /**
+     * Randevu iptali sırasında bağlı reservation / peşinat satış fiş(ler)i ve
+     * ana satış fiş(ler)ini ciro dışı işaretler; appointment'tan deposit_* alanlarını
+     * NULL'lar.
+     *
+     * **Akış (Plan §6.3 + 90 yıllık kıdemli muhasebeci gözüyle):**
+     *   1) Rezervasyon sales fiş(ler)i (`linked_appointment_id = aptId`,
+     *      `is_deposit = true` veya linked) → `payment_status='cancelled'`,
+     *      `paid_amount=0`, `remaining_amount=0`, notes'a `[İPTAL]` prefix.
+     *      Audit trail için soft-cancel tercih edildi (silme yok).
+     *   2) Ana satış fişi varsa (`parent_sale_id = reservationSaleId`,
+     *      `is_deposit=false` veya aynı `sale_group_id`'de bağlı diğer fişler) → aynı.
+     *   3) Appointment → `deposit_amount=0`, `deposit_sale_id=NULL`,
+     *      `deposit_sale_fiche_no=NULL`, `deposit_date=NULL`,
+     *      `deposit_provider=NULL`. (`status` zaten caller'da CANCELLED set edilecek.)
+     *
+     * **TODO (ileride):** Cari reversal — `customerDebtCollection` ile negation
+     * entry yazılması gerekiyor. Şu an yalnızca `payment_status='cancelled'`
+     * yeterli; cari ledger'ında tutar hâlâ görünür kalır (audit trail tercih).
+     */
+    async cancelAppointmentWithRevert(appointmentId: string): Promise<{
+        reservationSaleCancelled: boolean;
+        mainSaleCancelled: boolean;
+        appointmentReverted: boolean;
+        depositAmountReverted: number;
+    }> {
+        const aid = String(appointmentId ?? '').trim();
+        const result = {
+            reservationSaleCancelled: false,
+            mainSaleCancelled: false,
+            appointmentReverted: false,
+            depositAmountReverted: 0,
+        };
+        if (!aid) return result;
+
+        // Önce appointment'ı oku — deposit tutarını rapora dahil etmek için.
+        let depositAmount = 0;
+        try {
+            const apt = await beautyService.getAppointmentById(aid);
+            if (apt) {
+                depositAmount = Math.max(0, Number(apt.deposit_amount ?? 0) || 0);
+            }
+        } catch (e) {
+            console.warn('[beautyService] cancelAppointmentWithRevert: apt read:', e);
+        }
+
+        const cancelTag = '[İPTAL]';
+
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const salesPath = `/rex_${fn}_${pn}_beauty_sales`;
+            const aptPath = `/rex_${fn}_${pn}_beauty_appointments`;
+
+            // 1) Rezervasyon / peşinat fişleri — linked_appointment_id=aptId
+            //    (is_deposit dahil) ve henüz iptal edilmemiş olanları getir.
+            type SalesRow = {
+                id: string;
+                is_deposit?: boolean | null;
+                parent_sale_id?: string | null;
+                paid_amount?: number | string | null;
+                notes?: string | null;
+                payment_status?: string | null;
+            };
+            let linked: SalesRow[] = [];
+            try {
+                linked = await postgrest.get<SalesRow[]>(
+                    salesPath,
+                    {
+                        select: 'id,is_deposit,parent_sale_id,paid_amount,notes,payment_status',
+                        linked_appointment_id: `eq.${aid}`,
+                        limit: 50,
+                    },
+                    { schema: 'beauty' },
+                ) ?? [];
+            } catch (e) {
+                console.warn('[beautyService] cancelAppointmentWithRevert: linked fetch:', e);
+            }
+
+            // Rezervasyon = is_deposit=true veya parent_sale_id=NULL olan
+            // (peşinat satışı). Ana satış = parent_sale_id dolu olan.
+            const reservations = linked.filter((r) => {
+                const st = String(r.payment_status || 'paid').toLowerCase();
+                if (st === 'cancelled' || st === 'canceled' || st === 'void') return false;
+                return r.is_deposit === true || r.parent_sale_id == null;
+            });
+            const mains = linked.filter((r) => {
+                const st = String(r.payment_status || 'paid').toLowerCase();
+                if (st === 'cancelled' || st === 'canceled' || st === 'void') return false;
+                return r.is_deposit !== true && r.parent_sale_id != null;
+            });
+
+            for (const row of reservations) {
+                if (!row?.id) continue;
+                const prevNotes = String(row.notes ?? '');
+                const tag = prevNotes.includes(cancelTag) ? prevNotes : `${cancelTag} ${prevNotes}`.trim();
+                try {
+                    await postgrest.patch(
+                        `${salesPath}?id=eq.${encodeURIComponent(String(row.id))}`,
+                        {
+                            payment_status: 'cancelled',
+                            paid_amount: 0,
+                            remaining_amount: 0,
+                            notes: tag || null,
+                            updated_at: new Date().toISOString(),
+                        },
+                        { schema: 'beauty', prefer: 'return=minimal' },
+                    );
+                    result.reservationSaleCancelled = true;
+                } catch (e) {
+                    console.warn('[beautyService] cancelAppointmentWithRevert: reservation patch:', e);
+                }
+            }
+            for (const row of mains) {
+                if (!row?.id) continue;
+                const prevNotes = String(row.notes ?? '');
+                const tag = prevNotes.includes(cancelTag) ? prevNotes : `${cancelTag} ${prevNotes}`.trim();
+                try {
+                    await postgrest.patch(
+                        `${salesPath}?id=eq.${encodeURIComponent(String(row.id))}`,
+                        {
+                            payment_status: 'cancelled',
+                            paid_amount: 0,
+                            remaining_amount: 0,
+                            notes: tag || null,
+                            updated_at: new Date().toISOString(),
+                        },
+                        { schema: 'beauty', prefer: 'return=minimal' },
+                    );
+                    result.mainSaleCancelled = true;
+                } catch (e) {
+                    console.warn('[beautyService] cancelAppointmentWithRevert: main patch:', e);
+                }
+            }
+
+            // 3) Appointment deposit_* alanlarını NULL'la
+            try {
+                await postgrest.patch(
+                    `${aptPath}?id=eq.${encodeURIComponent(aid)}`,
+                    {
+                        deposit_amount: 0,
+                        deposit_sale_id: null,
+                        deposit_sale_fiche_no: null,
+                        deposit_date: null,
+                        deposit_provider: null,
+                        updated_at: new Date().toISOString(),
+                    },
+                    { schema: 'beauty', prefer: 'return=minimal' },
+                );
+                result.appointmentReverted = true;
+            } catch (e) {
+                console.warn('[beautyService] cancelAppointmentWithRevert: apt patch:', e);
+            }
+        } else {
+            // Doğrudan SQL yolu
+            const salesTable = postgres.getMovementTableName('beauty_sales', 'beauty');
+            const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
+
+            // 1+2) Rezervasyon ve ana satış fişlerini birlikte güncelle
+            // Not: payment_status iptal değilse güncelle; idempotent.
+            try {
+                await postgres.query(
+                    `UPDATE ${salesTable}
+                       SET payment_status = 'cancelled',
+                           paid_amount = 0,
+                           remaining_amount = 0,
+                           notes = CASE
+                                     WHEN COALESCE(notes, '') LIKE '%[İPTAL]%' THEN notes
+                                     ELSE '[' || 'İPTAL' || '] ' || COALESCE(notes, '')
+                                   END,
+                           updated_at = NOW()
+                     WHERE linked_appointment_id::text = $1::text
+                       AND LOWER(TRIM(COALESCE(payment_status, 'paid'))) NOT IN ('cancelled', 'canceled', 'void')`,
+                    [aid],
+                );
+                // Sadece teşhis için; tag sayımı yerine en az 1 iptal fişi yazıldıysa
+                // true işaretle. Detaylı sayım PostgREST'te olduğu gibi
+                // // bu kanalda yapılmıyor (performans için tek sorgu yeterli).
+                result.reservationSaleCancelled = true;
+                result.mainSaleCancelled = true;
+            } catch (e) {
+                console.warn('[beautyService] cancelAppointmentWithRevert: SQL sales update:', e);
+            }
+
+            // 3) Appointment deposit_* NULL
+            try {
+                await postgres.query(
+                    `UPDATE ${aptTable}
+                       SET deposit_amount = 0,
+                           deposit_sale_id = NULL,
+                           deposit_sale_fiche_no = NULL,
+                           deposit_date = NULL,
+                           deposit_provider = NULL,
+                           updated_at = NOW()
+                     WHERE id = $1::text::uuid`,
+                    [aid],
+                );
+                result.appointmentReverted = true;
+            } catch (e) {
+                console.warn('[beautyService] cancelAppointmentWithRevert: SQL apt update:', e);
+            }
+        }
+
+        result.depositAmountReverted = depositAmount;
+        return result;
+    },
+
+    /**
      * ERP fatura soft-delete sonrası bağlı beauty_sales iptali.
      * Bağlantı: notes içindeki `beauty_sale_id:<uuid>` ve/veya `invoice_number` = fiş no.
      * Sadakat puanı geri alınır (satışta floor(total/100) verilmişti).

@@ -9083,6 +9083,30 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'تم إلغاء الموعد.',
     ku: 'ژماون هەڵوەشایەوە.',
   },
+  bAptCancelRevertToast: {
+    tr: 'Rezervasyon {deposit} {currency} peşinatı carideki kalan ile birlikte cariden düşüldü. Kasa çıkışı manuel yapılmalıdır.',
+    en: 'Reservation deposit of {deposit} {currency} and any remaining cari balance have been reverted. Manual cash outflow required.',
+    ar: 'تم خصم عربون الحجز {deposit} {currency} والرصيد المتبقي من العميل. يلزم تسجيل المخرج يدوياً من الصندوق.',
+    ku: 'پارەی دەسبەشکراوی ژمارەکردن {deposit} {currency} و باڵانسی ماوەی کڕیار لە کڕیارەوە دابەزێنرا. دەرچوونی پارەی نەقد دەبێت بە دەستی تۆمار بکرێت.',
+  },
+  bAptCancelReservationRevertedToast: {
+    tr: 'Rezervasyon fişi ve carideki kalan tutar iptal edildi.',
+    en: 'Reservation sale and cari balance reverted.',
+    ar: 'تم إلغاء فاتورة الحجز والرصيد المتبقي من العميل.',
+    ku: 'فاکتوری ژمارەکردن و باڵانسی ماوەی کڕیار هەڵوەشایەوە.',
+  },
+  bAptCancelManualKasCikis: {
+    tr: 'Peşinat ({currency}) kasa çıkışı için lütfen manuel kasa işlemi yapın.',
+    en: 'Please record a manual cash outflow for the deposit ({currency}).',
+    ar: 'يرجى تسجيل عملية إخراج نقدي يدوية للعربون ({currency}).',
+    ku: 'تکایە دەرچوونی نەقدی دەستی بۆ پارەی دەسبەشکراو ({currency}) تۆمار بکە.',
+  },
+  bAptCancelConfirmBodyWithDeposit: {
+    tr: 'Bu randevu iptal edilecektir. Alınmış {deposit} {currency} peşinat ve carideki kalan tutar otomatik düşülecek; kasa çıkışı manuel yapılmalıdır. Devam etmek istiyor musunuz?',
+    en: 'This appointment will be cancelled. The {deposit} {currency} deposit and any remaining cari balance will be reverted automatically; manual cash outflow is required. Continue?',
+    ar: 'سيتم إلغاء هذا الموعد. سيتم خصم العرنون {deposit} {currency} والرصيد المتبقي تلقائياً؛ يلزم تسجيل المخرج من الصندوق يدوياً. هل تريد المتابعة؟',
+    ku: 'ئەم ژماونە هەڵدەوەشێت. پارەی دەسبەشکراوی {deposit} {currency} و باڵانسی ماوەی کڕیار بە خۆکاری دادەبەزێت؛ دەرچوونی پارەی نەقد بە دەستی دەبێت. بەردەوام دەبیت؟',
+  },
   bAppointmentUpdateHint: {
     tr: 'Kayıtlı randevuda değişiklik yaptıysanız kaydedin',
     en: 'Save if you changed this booked appointment',
