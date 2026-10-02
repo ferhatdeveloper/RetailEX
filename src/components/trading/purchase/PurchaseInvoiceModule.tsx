@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FileText, Plus, Edit, Trash2, RefreshCw, Archive } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';

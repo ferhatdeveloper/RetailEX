@@ -5700,6 +5700,8 @@ export const beautyService = {
             parentSaleId?: string | null;
             saleGroupId?: string | null;
             isDeposit?: boolean;
+            /** Bu satıştan sonra yazılacak peşinat sales fiş id (ana satışta). */
+            depositSaleId?: string | null;
         },
     ): Promise<string> {
         const id = uuidv4();
@@ -5752,6 +5754,13 @@ export const beautyService = {
                         paid_amount: paidAmount,
                         remaining_amount: remainingAmount,
                         notes: taggedNotes || null,
+                        // Migration 192 — peşinat/appointment bağlantı kolonları
+                        // (beauty_sales eşdeğeri sales.182).
+                        linked_appointment_id: pgUuidOrNull(opts?.linkedAppointmentId ?? null),
+                        deposit_sale_id: pgUuidOrNull(opts?.depositSaleId ?? null),
+                        parent_sale_id: pgUuidOrNull(opts?.parentSaleId ?? null),
+                        sale_group_id: pgUuidOrNull(opts?.saleGroupId ?? null),
+                        is_deposit: Boolean(opts?.isDeposit),
                     },
                 ],
                 { schema: 'beauty', prefer: 'return=minimal' }
@@ -5793,13 +5802,19 @@ export const beautyService = {
             await postgres.query(`
                 INSERT INTO ${st}
                     (id, invoice_number, customer_id, subtotal, discount, tax, total,
-                     payment_method, payment_status, paid_amount, remaining_amount, notes)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                     payment_method, payment_status, paid_amount, remaining_amount, notes,
+                     linked_appointment_id, deposit_sale_id, parent_sale_id, sale_group_id, is_deposit)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
             `, [id, invoiceNumber, pgUuidOrNull(sale.customer_id),
                 sale.subtotal ?? 0, sale.discount ?? 0, sale.tax ?? 0, sale.total ?? 0,
                 pm, sale.payment_status ?? 'paid',
                 paidAmount,
-                remainingAmount, taggedNotes || null]);
+                remainingAmount, taggedNotes || null,
+                pgUuidOrNull(opts?.linkedAppointmentId ?? null),
+                pgUuidOrNull(opts?.depositSaleId ?? null),
+                pgUuidOrNull(opts?.parentSaleId ?? null),
+                pgUuidOrNull(opts?.saleGroupId ?? null),
+                Boolean(opts?.isDeposit)]);
 
             if (items.length > 0) {
                 const values: unknown[] = [];

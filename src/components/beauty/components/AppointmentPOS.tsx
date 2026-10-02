@@ -2348,6 +2348,12 @@ export function AppointmentPOS({
                             0,
                         ),
                     );
+                    // Rezervasyon fişi hangi randevuya bağlı? Yeni oluşturulacaksa
+                    // aşağıda `createAppointment` çağrısı sonrası yazacağız; mevcut
+                    // randevuda doğrudan id'yi kullanırız. Henüz appointment id yoksa
+                    // (yeni akış) bu reservation fişine bağlantıyı sonradan
+                    // updateAppointment ile iliştireceğiz — `deposit_sale_id` kolonu.
+                    const resLinkedApptId = existingAppointment?.id || null;
                     const resResult = await beautyService.createSale(
                         {
                             customer_id: customer!.id,
@@ -2365,7 +2371,17 @@ export function AppointmentPOS({
                             payments: resPayRows,
                         },
                         [], // ayrı sales; cart satırları bu fişe GIRMEZ (stok düşümü yok)
-                        { skipErpAndLoyalty: true },
+                        {
+                            skipErpAndLoyalty: true,
+                            // Migration 192 — peşinat/parent/sale_group belliktası:
+                            // * linked_appointment_id: mevcut randevuya bağ
+                            // * is_deposit:  true  (bu raporaki fiş bir ön ödeme)
+                            linkedAppointmentId: resLinkedApptId,
+                            isDeposit: true,
+                            // Yeni randevu akışında appointment ID henüz yok;
+                            // aşağıdaki updateAppointment çağrısında deposit_sale_id
+                            // ile bu reservationSaleId appointment'a geri yazılacak.
+                        },
                     );
                     reservationSaleId =
                         String((resResult as any)?.id ?? '') || null;
@@ -2438,9 +2454,18 @@ export function AppointmentPOS({
                     duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
                     treatment_degree: receiptTreatmentDegree.trim() || null,
                     treatment_shots: receiptTreatmentShots.trim() || null,
-                    // Rezervasyon ön ödeme: deposit_amount + fiche_no kaydı
+                    // Rezervasyon ön ödeme: deposit tutarı + sales fiş bağlantısı.
+                    // Plan §6 — appointment'a deposit_sale_id (UUID), deposit_date
+                    // ve deposit_provider (peşinatı alan: 'pos') yazılır ki sonraki
+                    // girişte kalan doğru hesaplansın ve fiş geri izlenebilsin.
                     ...(shouldRecordReservation && reservationSaleFicheNo
-                            ? { deposit_amount: reservationAmt, deposit_sale_fiche_no: reservationSaleFicheNo }
+                            ? {
+                                deposit_amount: reservationAmt,
+                                deposit_sale_fiche_no: reservationSaleFicheNo,
+                                deposit_sale_id: reservationSaleId,
+                                deposit_date: new Date().toISOString(),
+                                deposit_provider: 'pos',
+                            }
                             : {}),
                 });
 
@@ -2496,6 +2521,12 @@ export function AppointmentPOS({
                         await updateAppointment(createdAppointmentIds[0], {
                             deposit_amount: reservationAmt,
                             deposit_sale_fiche_no: reservationSaleFicheNo,
+                            // Rezervasyon fişi appointment oluşturulduktan sonra
+                            // yazıldığı için deposit_sale_id (UUID) burada geri
+                            // bağlanıyor; sonraki girişte bu bağlantı korunur.
+                            deposit_sale_id: reservationSaleId,
+                            deposit_date: new Date().toISOString(),
+                            deposit_provider: 'pos',
                         });
                     } catch (depErr: unknown) {
                         logger.warn('AppointmentPOS', 'deposit update yazılamadı', depErr);
@@ -2586,6 +2617,19 @@ export function AppointmentPOS({
                 linkedAppointmentId,
             );
 
+            // Plan §6 Adım 5 — peşinat sonrası oluşan ana satışta:
+            //   - linked_appointment_id  : hangi randevu
+            //   - parent_sale_id         : peşinat fişi (varsa)
+            //   - sale_group_id          : peşinat + ana satışı gruplar (peşinat id)
+            //   - is_deposit            : false (ana satış)
+            const parentOpts = {
+                linkedAppointmentId,
+                parentSaleId: reservationSaleId,
+                saleGroupId: reservationSaleId,
+                isDeposit: false,
+                depositSaleId: null,
+            };
+
             if (separateLineInvoices && cart.length > 1) {
                 const splitSaleTasks = cart.map((line, idx) => {
                     const gross = line.unit_price * line.qty;
@@ -2626,7 +2670,7 @@ export function AppointmentPOS({
                                 commission_amount: resolveLineCommissionAmount(line, net),
                             },
                         ],
-                        { skipErpAndLoyalty: true },
+                        { skipErpAndLoyalty: true, ...parentOpts },
                     );
                 });
                 await Promise.all(splitSaleTasks);
@@ -2661,7 +2705,7 @@ export function AppointmentPOS({
                     remaining_amount: remainingNow,
                     notes: saleNotesLink,
                     payments: payRows,
-                }, saleItems);
+                }, saleItems, parentOpts);
             }
 
             const splitInvoiceCount =

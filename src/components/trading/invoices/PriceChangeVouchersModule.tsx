@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Price Change Vouchers Module
  * Fiyat Değişim Fişleri Yönetimi
  */

@@ -58,6 +58,11 @@ export function splitPaymentRows(
       if (bucket === 'cash') cash += amt;
       else if (bucket === 'card') card += amt;
       else if (bucket === 'transfer') transfer += amt;
+      // Peşinat (`pesinatli`) ilk taksit tahsilatıdır: gerçek para kasaya girer.
+      // Bu yüzden `collected` toplamına (cash gibi) eklenir; kalan cari
+      // farkı aşağıdaki `remaining = belge − collected` mantığıyla hesaplanır.
+      // Muhasebeci gözü: pesinat = kasa tahsilatı (CH_TAHSILAT), kalan = cari borç.
+      else if (bucket === 'pesinatli') cash += amt;
       else credit += amt;
     }
     let collected = cash + card + transfer;
@@ -195,12 +200,22 @@ export function resolvePosCheckoutSettlement(
   let prepaidDominant: 'cash' | 'card' | 'transfer' = 'cash';
   let bestPrepaid = 0;
   let hasCredit = false;
+  let hasPesinatli = false;
   for (const row of rows) {
     const amt = toLocalAmount(Number(row.amount) || 0, row.currency);
     if (!(amt > 0)) continue;
     const bucket = normalizePaymentMethodBucket(row.method);
     if (bucket === 'credit') {
       hasCredit = true;
+      continue;
+    }
+    if (bucket === 'pesinatli') {
+      // Peşinat = ilk taksit tahsilatı; kasaya yansır (cash gibi sayılır).
+      hasPesinatli = true;
+      if (amt > bestPrepaid) {
+        bestPrepaid = amt;
+        prepaidDominant = 'cash';
+      }
       continue;
     }
     if (bucket === 'card' || bucket === 'transfer' || bucket === 'cash') {

@@ -298,6 +298,8 @@ export interface BeautyAppointment {
     remainder_payment_date?: string | null;
     /** Peşinatlı ön ödeme tarihi. */
     deposit_date?: string | null;
+    /** Peşinatı alan kanal/pos adı (örn. `pos`, `appointment_detail`). */
+    deposit_provider?: string | null;
     /** Peşinat sales fişinin UUID'si (`BEAUTY-PESINAT-{aptId}-{ts}`). */
     deposit_sale_id?: string | null;
     /** Peşinat sales fişinin numarası (örn. `BEAUTY-PESINAT-…`). */
