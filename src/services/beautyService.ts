@@ -6115,6 +6115,34 @@ export const beautyService = {
     },
 
     /**
+     * Belirli bir gündeki iptal edilen güzellik satışlarının `invoice_number`
+     * (receiptNumber) listesi. Kasa tarafındaki CH_TAHSILAT satırlarını
+     * filtrelemek için kullanılır; aksi hâlde iptal edilen fişin tahsilatı
+     * "ek nakit" olarak KPA'ya eklenir ve Klinik Paneli TAHSİLAT KPI'sı
+     * hatalı şişer (Bug 13: 20.000 IQD görünüyordu). SQL sorgusu
+     * `getSalesWithItemsForLocalCalendarDay` iptal edilen fişleri zaten
+     * dışarıda bıraktığı için bu listeden gelen CH_TAHSILAT'lar
+     * `extraCustomerCollectionsNotOnSales`'a eklenmemelidir.
+     */
+    async getCancelledReceiptNumbersForDay(ymd: string): Promise<string[]> {
+        const { startIso, endIso } = localYmdToIsoRange(ymd);
+        const st = postgres.getMovementTableName('beauty_sales', 'beauty');
+        const { rows } = await postgres.query(
+            `SELECT invoice_number FROM ${st}
+             WHERE created_at >= $1 AND created_at <= $2
+               AND LOWER(COALESCE(payment_status, '')) IN
+                   ('cancelled','canceled','refunded','void','iptal','silindi','deleted')`,
+            [startIso, endIso]
+        );
+        const out: string[] = [];
+        for (const r of rows) {
+            const v = String((r as { invoice_number?: string }).invoice_number ?? '').trim();
+            if (v) out.push(v);
+        }
+        return out;
+    },
+
+    /**
      * Excel / yedek: yerel gün aralığında güzellik satışları + kalemler + müşteri kodu.
      * `payment_status` filtresi yok (paid / pending / cancelled hepsi listelenir; Excel’de süzebilirsiniz).
      */

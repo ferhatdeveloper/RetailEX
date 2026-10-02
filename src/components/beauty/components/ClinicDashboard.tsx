@@ -117,11 +117,32 @@ export function ClinicDashboard() {
                 baslangic_tarihi: todayStr,
                 bitis_tarihi: `${todayStr}T23:59:59`,
             }).catch(() => []),
-        ]).then(([salesRows, kasaRows]) => {
+            // Bug 13: iptal edilen güzellik satışlarının fiş numaralarını da çek.
+            // `getSalesWithItemsForLocalCalendarDay` zaten iptal olanları SQL'de
+            // filtreliyor; bu yüzden `extraCustomerCollectionsNotOnSales` iptal
+            // fişlerin CH_TAHSILAT satırını "satış yok → ek nakit" sanıyor ve
+            // Klinik Paneli TAHSİLAT KPI'sı yanlış şişiyordu (20.000 IQD).
+            beautyService.getCancelledReceiptNumbersForDay(todayStr).catch(() => [] as string[]),
+        ]).then(([salesRows, kasaRows, cancelledReceipts]) => {
             const sales = Array.isArray(salesRows) ? salesRows : [];
+            const cancelledSet = new Set(
+                (Array.isArray(cancelledReceipts) ? cancelledReceipts : [])
+                    .map((x) => String(x ?? '').trim().toLowerCase())
+                    .filter(Boolean)
+            );
+            const kasaRowsFiltered = Array.isArray(kasaRows)
+                ? cancelledSet.size === 0
+                    ? kasaRows
+                    : kasaRows.filter((line) => {
+                        const tip = String((line as { islem_tipi?: string }).islem_tipi ?? '').trim().toUpperCase();
+                        if (tip !== 'CH_TAHSILAT') return true;
+                        const ref = String((line as { islem_no?: string }).islem_no ?? '').trim().toLowerCase();
+                        return !cancelledSet.has(ref);
+                    })
+                : [];
             setTodaySales(sales);
             setTodayExtraCash(extraCustomerCollectionsNotOnSales(
-                kasaRows,
+                kasaRowsFiltered,
                 sales.map((s) => ({
                     total: Number(s.total) || 0,
                     paymentMethod: s.payment_method,
