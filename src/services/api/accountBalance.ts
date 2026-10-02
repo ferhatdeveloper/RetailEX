@@ -422,10 +422,13 @@ export function computeCustomerBalanceFromLedger(
     cashSum += contrib;
   }
   const txnCount = salesTxn + cashTxn;
-  // Hareket yoksa saklanan bakiyeyi koruma — iptal/silme sonrası orphan (ör. −40k) kalır.
+  // Hareket varsa ledger dön.
+  // Hareket yoksa orphan koruması: saklanan `_storedBalance` (DB'deki `customers.balance`)
+  // yedek olarak kullanılır — fatura silindikten veya tamamen iptal edildikten sonra
+  // ledger boşalırsa kullanıcı −40k gibi saçma orphan değerler görmez.
   // Açılış bakiyesi de defter kaynaklarında (satış/kasa) yoksa 0; SQL repair CTE ile aynı.
   if (txnCount > 0) return salesSum + cashSum;
-  return 0;
+  return Number.isFinite(_storedBalance) ? _storedBalance : 0;
 }
 
 /** PostgREST: tedarikçi defter bakiyesi — alış/iade + kasa hareketleri */
@@ -450,7 +453,19 @@ export function computeSupplierBalanceFromLedger(
     if (!contrib) continue;
     sum += contrib;
   }
-  return sum;
+  // Hareket varsa ledger dön. Yoksa orphan koruması: saklanan `_storedBalance`
+  // (DB'deki `suppliers.balance`) yedek olarak kullanılır — fatura silindikten
+  // veya tamamen iptal edildikten sonra ledger boşalırsa saçma orphan değerler görmez.
+  // sumSupplierSalesLedger 0 dönmüyorsa (ör. iade alışı ledger'ı netlesetliyor),
+  // veya herhangi bir cash_lines hareketi varsa ledger'ı dön.
+  const hasSupplierActivity =
+    sumSupplierSalesLedger(accountId, accountName, sales) !== 0 ||
+    cashLines.some((cl) => {
+      const tt = String(cl.transaction_type || '').trim().toUpperCase();
+      return (tt === 'CH_ODEME' || tt === 'CH_TAHSILAT') && cashLineMatchesParty(cl, idStr);
+    });
+  if (hasSupplierActivity) return sum;
+  return Number.isFinite(_storedBalance) ? _storedBalance : 0;
 }
 
 /** @deprecated PostgREST için computeCustomerBalanceFromLedger kullanın */

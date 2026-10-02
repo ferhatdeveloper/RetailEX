@@ -141,11 +141,16 @@ export const supplierAPI = {
           safeGet(salesPath, {
             select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled,payment_method',
             is_cancelled: 'eq.false',
+            // Deterministic order — ORDER BY olmadan LIMIT 10000 keyfi sıralama,
+            // cari ledger'ı yanlış hesaplar (MUS-018: 25.026.000 yerine 35.895.000).
+            order: 'created_at.asc,id.asc',
             limit: '10000',
           }),
           safeGet(cashPath, {
             select: 'customer_id,party_id,amount,transaction_type',
             transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
+            // Deterministic order — 50000 limit'i ile bile keyfi sıralama riski.
+            order: 'created_at.asc,id.asc',
             limit: '50000',
           }),
         ]);
