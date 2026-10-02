@@ -153,6 +153,7 @@ export function ReportColumnTable<T extends object>({
   data,
   columns,
   onRowClick,
+  onRowDoubleClick,
   height = 520,
   footerLabel,
   storageNamespace,
@@ -165,7 +166,10 @@ export function ReportColumnTable<T extends object>({
 }: {
   data: T[];
   columns: ReportColumnTableCol<T>[];
+  /** Tek tıklama — varsayılan primary drill-down (örn. gün detayı). */
   onRowClick?: (row: T) => void;
+  /** Çift tıklama — secondary drill-down (örn. masraf paylaşımı detayı). */
+  onRowDoubleClick?: (row: T) => void;
   height?: string | number;
   footerLabel?: ReactNode;
   /** Aynı ekranda birden fazla tablo için sabit ad alanı */
@@ -230,6 +234,7 @@ export function ReportColumnTable<T extends object>({
         data={data}
         columns={gridColumns}
         onRowClick={onRowClick}
+        onRowDoubleClick={onRowDoubleClick}
         footerSumColumns={footerSumColumns.length > 0 ? footerSumColumns : undefined}
         footerLabel={footerLabel}
         storageNamespace={storageNamespace}

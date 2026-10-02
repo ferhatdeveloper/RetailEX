@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Eye, FileSearch, Loader2, RefreshCw } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatNumber } from '../../utils/formatNumber';
@@ -252,6 +252,16 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const [partnerDetail, setPartnerDetail] = useState<PartyPartner | null>(null);
   const [cashInDetail, setCashInDetail] = useState<{ title: string; periodKey: string | null } | null>(null);
   const [dayDetail, setDayDetail] = useState<{ title: string; date: string } | null>(null);
+  // Çift tıklama flash'ını önlemek için tek-tıklamayı 220ms geciktir.
+  const dayClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (dayClickTimerRef.current) {
+        clearTimeout(dayClickTimerRef.current);
+        dayClickTimerRef.current = null;
+      }
+    };
+  }, []);
   const [reportMenuParams, setReportMenuParams] = useState<ReportMenuParams>(() =>
     getRuntimeReportMenuParams(),
   );
@@ -1226,6 +1236,28 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           footerLabel={tm('rptPeriodTotalRow')}
           storageNamespace="period-summary"
           onRowClick={(row) => {
+            // Gün satırına TEK tıklayınca açılan ana drill-down:
+            // CH_TAHSILAT + Nakit Giriş + CH_ODEME listesi.
+            // Çift tıklama flash'ı önlemek için 220ms gecikme.
+            if (!hasPeriodActivity(row)) return;
+            if (dayClickTimerRef.current) {
+              clearTimeout(dayClickTimerRef.current);
+            }
+            const captured = row;
+            dayClickTimerRef.current = setTimeout(() => {
+              setDayDetail({
+                title: `${captured.periodLabel} · ${tm('rptPeriodDayDetailTitle')}`,
+                date: captured.periodKey,
+              });
+              dayClickTimerRef.current = null;
+            }, 220);
+          }}
+          onRowDoubleClick={(row) => {
+            // Çift tıklayınca eski masraf paylaşımı detayı (ortak oranları).
+            if (dayClickTimerRef.current) {
+              clearTimeout(dayClickTimerRef.current);
+              dayClickTimerRef.current = null;
+            }
             if (!hasPeriodActivity(row) || !(row.expenses > 0) || !partnerSlices.length) return;
             setExpenseDetail({
               title: `${tm('rptPeriodExpenseDetailTitle')} · ${row.periodLabel}`,
