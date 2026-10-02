@@ -5703,7 +5703,7 @@ export const beautyService = {
             /** Bu satıştan sonra yazılacak peşinat sales fiş id (ana satışta). */
             depositSaleId?: string | null;
         },
-    ): Promise<string> {
+    ): Promise<{ id: string; invoiceNumber: string }> {
         const id = uuidv4();
         const invoiceNumber = `BEA-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
         const docTotal = Number(sale.total ?? 0);
@@ -5869,7 +5869,12 @@ export const beautyService = {
             );
         }
 
-        return id;
+        // Caller'lar (AppointmentPOS) hem id hem de fiche no'ya ihtiyaç duyar —
+        // `Promise<string>` döndürürken obje property erişimi `undefined`
+        // yapıyor ve `reservationSaleId / reservationSaleFicheNo` her iki
+        // yerde null kalıyordu; bu da appointment'a deposit_* alanlarının
+        // yazılmamasına yol açıyordu. Şimdi obje döndürüyoruz.
+        return { id, invoiceNumber };
     },
 
     /** Satış notundaki `rex_appt:<uuid>` bağlantısı */

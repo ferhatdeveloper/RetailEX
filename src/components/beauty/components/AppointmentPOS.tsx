@@ -2386,7 +2386,12 @@ export function AppointmentPOS({
                     reservationSaleId =
                         String((resResult as any)?.id ?? '') || null;
                     reservationSaleFicheNo =
-                        String((resResult as any)?.fiche_no ?? (resResult as any)?.receiptNumber ?? '') ||
+                        // beautyService.createSale { id, invoiceNumber } döndürür
+                        // (Promise<string> değil). Önceden obje property
+                        // erişimi undefined dönüyordu ve bu alanlar her iki
+                        // yerde null kalıyordu → randevuya deposit_*
+                        // alanları yazılmıyordu.
+                        String((resResult as any)?.invoiceNumber ?? (resResult as any)?.fiche_no ?? (resResult as any)?.receiptNumber ?? '') ||
                         null;
                 } catch (resErr: unknown) {
                     logger.error('AppointmentPOS', 'handlePayComplete: reservation sale failed', resErr);
