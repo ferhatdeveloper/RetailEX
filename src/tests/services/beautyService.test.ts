@@ -211,6 +211,8 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
             queryMock.mockResolvedValueOnce(ok([{ id: 'cr-77', inserted: true }]));
             // 4) UPDATE cash_registers.balance
             queryMock.mockResolvedValueOnce(ok([]));
+            // 4.5) UPDATE customers.balance (Bug ARZ — CH_TAHSILAT → cari borç azalır)
+            queryMock.mockResolvedValueOnce(ok([]));
             // 5) Plan §6 Adım 4 — ana sales INSERT (BEAUTY-MAIN-{aptId}-{ts})
             queryMock.mockResolvedValueOnce(ok([{ id: 'sale-main-1', fiche_no: 'BEAUTY-MAIN-apt-1-20260930120000' }]));
             // 6) sale_items INSERT (hizmet kalemi)
@@ -238,7 +240,7 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
             expect(res.ficheNo).toMatch(/^BEAUTY-MAIN-apt-1-\d{14}$/);
 
             const calls = queryMock.mock.calls;
-            expect(calls.length).toBeGreaterThanOrEqual(9);
+            expect(calls.length).toBeGreaterThanOrEqual(10);
 
             // (1) SELECT appointment — JOIN customers + service_name/deposit_sale_id
             expect(String(calls[0][0])).toMatch(/FROM beauty\.rex_001_01_beauty_appointments/i);
@@ -261,47 +263,54 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
             expect(Number(calls[3][1][0])).toBe(70);
             expect(String(calls[3][1][1])).toBe('k-1');
 
+            // (4.5) Bug ARZ düzeltmesi — UPDATE customers.balance (CH_TAHSILAT → −amount)
+            const updateCustSql = String(calls[4][0]);
+            expect(sqlContains(updateCustSql, 'UPDATE rex_001_customers')).toBe(true);
+            expect(sqlContains(updateCustSql, 'balance = COALESCE')).toBe(true);
+            expect(Number(calls[4][1][0])).toBe(-70); // müşteri simetrisi: tahsilat → borç azalır
+            expect(String(calls[4][1][1])).toBe('cust-9');
+
             // (5) Plan §6 Adım 4 — ana sales INSERT — BEAUTY-MAIN-{aptId}-{ts}
-            const salesSql = String(calls[4][0]);
+            const salesSql = String(calls[5][0]);
             expect(sqlContains(salesSql, 'INSERT INTO rex_001_01_sales')).toBe(true);
             expect(salesSql).toMatch(/deposit_sale_id/);
             expect(salesSql).toMatch(/sale_group_id/);
             expect(salesSql).toMatch(/is_deposit/);
             expect(salesSql).toMatch(/ON CONFLICT \(fiche_no\) DO NOTHING/i);
             // ficheNo artık parametre $3 olarak gönderiliyor (literal değil)
-            expect(String(calls[4][1][2])).toMatch(/^BEAUTY-MAIN-apt-1-\d{14}$/);
-            expect(String(calls[4][1][5])).toBe('cust-9');   // customer_id
-            expect(String(calls[4][1][6])).toBe('Test Müşteri'); // customer_name
-            expect(Number(calls[4][1][7])).toBe(70);        // amount
-            expect(String(calls[4][1][10])).toBe('apt-1');  // linked_appointment_id
-            expect(String(calls[4][1][11])).toBe('sale-pep-1'); // deposit_sale_id (peşinat fişine bağ)
-            expect(String(calls[4][1][12])).toBe('apt-apt-1'); // sale_group_id
+            expect(String(calls[5][1][2])).toMatch(/^BEAUTY-MAIN-apt-1-\d{14}$/);
+            expect(String(calls[5][1][5])).toBe('cust-9');   // customer_id
+            expect(String(calls[5][1][6])).toBe('Test Müşteri'); // customer_name
+            expect(Number(calls[5][1][7])).toBe(70);        // amount
+            expect(String(calls[5][1][10])).toBe('apt-1');  // linked_appointment_id
+            expect(String(calls[5][1][11])).toBe('sale-pep-1'); // deposit_sale_id (peşinat fişine bağ)
+            expect(String(calls[5][1][12])).toBe('apt-apt-1'); // sale_group_id
 
             // (6) sale_items INSERT — hizmet kalemi (serviceName)
-            const itemsSql = String(calls[5][0]);
+            const itemsSql = String(calls[6][0]);
             expect(sqlContains(itemsSql, 'INSERT INTO rex_001_01_sale_items')).toBe(true);
             expect(String(itemsSql)).toMatch(/item_type/);
-            expect(String(calls[5][1][2])).toBe('Lazer Epilasyon'); // service_name
+            expect(String(calls[6][1][2])).toBe('Lazer Epilasyon'); // service_name
 
             // (7) appointment geri yaz UPDATE (remainder_sale_id + fiche_no)
-            const aptBackSql = String(calls[6][0]);
+            const aptBackSql = String(calls[7][0]);
             expect(sqlContains(aptBackSql, 'remainder_sale_id')).toBe(true);
             expect(sqlContains(aptBackSql, 'remainder_sale_fiche_no')).toBe(true);
-            expect(String(calls[6][1][0])).toBe('apt-1');
-            expect(String(calls[6][1][1])).toBe('sale-main-1');
+            expect(String(calls[7][1][0])).toBe('apt-1');
+            expect(String(calls[7][1][1])).toBe('sale-main-1');
 
             // (8) INSERT appointment_payments — payment_kind='remainder'
-            const paymentsSql = String(calls[7][0]);
+            const paymentsSql = String(calls[8][0]);
             expect(sqlContains(paymentsSql, 'payment_kind')).toBe(true);
             expect(sqlContains(paymentsSql, "'remainder'")).toBe(true);
             expect(sqlContains(paymentsSql, 'beauty_appointment_payments')).toBe(true);
-            expect(Number(calls[7][1][3])).toBe(70); // amount
+            expect(Number(calls[8][1][3])).toBe(70); // amount
 
             // (9) UPDATE appointment.remainder_paid_amount + remainder_payment_date
-            const updateAptSql = String(calls[8][0]);
+            const updateAptSql = String(calls[9][0]);
             expect(sqlContains(updateAptSql, 'remainder_paid_amount')).toBe(true);
             expect(sqlContains(updateAptSql, 'remainder_payment_date')).toBe(true);
-            expect(Number(calls[8][1][0])).toBe(70);
+            expect(Number(calls[9][1][0])).toBe(70);
         });
 
         it('sales INSERT hata verirse ana akış yine de tamamlanır (saleId/ficheNo null)', async () => {
@@ -327,6 +336,8 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
             queryMock.mockResolvedValueOnce(ok([{ id: 'cr-77', inserted: true }]));
             // 4) UPDATE cash_registers
             queryMock.mockResolvedValueOnce(ok([]));
+            // 4.5) UPDATE customers.balance (Bug ARZ — kasa ile simetrise entegre)
+            queryMock.mockResolvedValueOnce(ok([]));
             // 5) sales INSERT → HATA (best-effort)
             queryMock.mockRejectedValueOnce(new Error('FK violation'));
 
@@ -340,8 +351,8 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
             expect(res.ok).toBe(true);
             expect(res.saleId).toBeUndefined();
             expect(res.ficheNo).toBeUndefined();
-            // payment INSERT + appointment UPDATE yine de çağrıldı
-            expect(queryMock.mock.calls.length).toBeGreaterThanOrEqual(6);
+            // cash_lines + cash_reg UPDATE + customer UPDATE + (sales hata) + payments + apt UPDATE
+            expect(queryMock.mock.calls.length).toBeGreaterThanOrEqual(7);
         });
 
         it('cashRegisterId verilmediğinde MERKEZ/PATRON kasaya düşer', async () => {
@@ -367,6 +378,8 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
             // 3) cash_lines INSERT
             queryMock.mockResolvedValueOnce(ok([{ id: 'cr-77', inserted: true }]));
             // 4) UPDATE cash_registers
+            queryMock.mockResolvedValueOnce(ok([]));
+            // 4.5) UPDATE customers.balance (Bug ARZ)
             queryMock.mockResolvedValueOnce(ok([]));
             // 5) sales INSERT (Plan §6 Adım 4)
             queryMock.mockResolvedValueOnce(ok([{ id: 'sale-main-1', fiche_no: 'BEAUTY-MAIN-apt-1-20260930120000' }]));
@@ -416,6 +429,8 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
             // 4) cash_lines INSERT
             queryMock.mockResolvedValueOnce(ok([{ id: 'cr-77', inserted: true }]));
             // 5) UPDATE cash_registers
+            queryMock.mockResolvedValueOnce(ok([]));
+            // 5.5) UPDATE customers.balance (Bug ARZ)
             queryMock.mockResolvedValueOnce(ok([]));
             // 6) sales INSERT (Plan §6 Adım 4)
             queryMock.mockResolvedValueOnce(ok([{ id: 'sale-main-1', fiche_no: 'BEAUTY-MAIN-apt-1-20260930120000' }]));
@@ -533,6 +548,8 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
             queryMock.mockResolvedValueOnce(ok([{ id: 'k-1' }]));
             queryMock.mockResolvedValueOnce(ok([{ id: 'cr-77', inserted: true }]));
             queryMock.mockResolvedValueOnce(ok([]));
+            // customers.balance UPDATE (Bug ARZ)
+            queryMock.mockResolvedValueOnce(ok([]));
             // sales INSERT
             queryMock.mockResolvedValueOnce(ok([{ id: 'sale-main-1', fiche_no: 'BEAUTY-MAIN-apt-1-20260930120000' }]));
             // sale_items INSERT
@@ -554,8 +571,9 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
 
             // payments INSERT — provider parametresi 'card' (5. sırada)
             // Sorgu sırası: SELECT(0), cash_reg verify(1), cash_lines(2), cash_reg UPDATE(3),
-            //               sales INSERT(4), sale_items(5), apt back(6), payments(7), apt UPDATE(8)
-            const paymentsArgs = queryMock.mock.calls[7][1];
+            //               customers UPDATE(4), sales INSERT(5), sale_items(6),
+            //               apt back(7), payments(8), apt UPDATE(9)
+            const paymentsArgs = queryMock.mock.calls[8][1];
             expect(String(paymentsArgs[4])).toBe('card');
         });
     });
@@ -572,7 +590,7 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
                 .spyOn(beautyService, 'updateAppointmentStatus')
                 .mockResolvedValue(undefined as unknown as void);
 
-            // collectAppointmentRemainder içindeki sorgular (Plan §6 Adım 4 ile 9 adet):
+            // collectAppointmentRemainder içindeki sorgular (Plan §6 Adım 4 + Bug ARZ customer balance ile 10 adet):
             // 1) SELECT randevu
             queryMock.mockResolvedValueOnce(
                 ok([
@@ -594,6 +612,8 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
             // 3) cash_lines INSERT
             queryMock.mockResolvedValueOnce(ok([{ id: 'cr-77', inserted: true }]));
             // 4) UPDATE cash_registers
+            queryMock.mockResolvedValueOnce(ok([]));
+            // 4.5) UPDATE customers.balance (Bug ARZ)
             queryMock.mockResolvedValueOnce(ok([]));
             // 5) Plan §6 Adım 4 — sales INSERT
             queryMock.mockResolvedValueOnce(ok([{ id: 'sale-main-1', fiche_no: 'BEAUTY-MAIN-apt-1-20260930120000' }]));
