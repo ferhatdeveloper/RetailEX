@@ -322,7 +322,7 @@ describe('dailyPaymentKind — Bug 14 (Günlük Rapor Ödeme kolonu karma)', () 
   it('ARAM senaryosu: 50k brüt + 5k peşin + 45k kalan → kind=mixed', () => {
     const k = dailyPaymentKind({
       total: 50000,
-      payment_method: 'veresiye',
+      paymentMethod: 'veresiye',
       payments: [{ method: 'cash', amount: 5000 }],
     });
     expect(k.kind).toBe('mixed');
@@ -334,7 +334,7 @@ describe('dailyPaymentKind — Bug 14 (Günlük Rapor Ödeme kolonu karma)', () 
   it('ROZA senaryosu: 25k brüt + payments yok → kind=credit (saf veresiye)', () => {
     const k = dailyPaymentKind({
       total: 25000,
-      payment_method: 'veresiye',
+      paymentMethod: 'veresiye',
     });
     expect(k.kind).toBe('credit');
     expect(k.collected).toBe(0);
@@ -344,7 +344,7 @@ describe('dailyPaymentKind — Bug 14 (Günlük Rapor Ödeme kolonu karma)', () 
   it('tamamen peşin nakit 30k → kind=cash', () => {
     const k = dailyPaymentKind({
       total: 30000,
-      payment_method: 'cash',
+      paymentMethod: 'cash',
       payments: [{ method: 'cash', amount: 30000 }],
     });
     expect(k.kind).toBe('cash');
@@ -352,15 +352,12 @@ describe('dailyPaymentKind — Bug 14 (Günlük Rapor Ödeme kolonu karma)', () 
     expect(k.remaining).toBe(0);
   });
 
-  it('header veresiye + payments tam nakit: split credit kontrolü ile kind=cash', () => {
-    // Bu durumda saleCollectedSplit `methodIsCredit && collected===document` görür,
-    // kasayı sıfırlar, remaining=document=100 döner. dailyKind bunu "credit" sınıflar.
+  it('header veresiye + payments tam nakit: split credit kontrolü ile kind=credit (header korunur)', () => {
     const k = dailyPaymentKind({
       total: 100,
-      payment_method: 'veresiye',
+      paymentMethod: 'veresiye',
       payments: [{ method: 'cash', amount: 100 }],
     });
-    // split.cash=0, split.remaining=100 → kind=credit (header veresiye korunur)
     expect(k.kind).toBe('credit');
     expect(k.collected).toBe(0);
     expect(k.remaining).toBe(100);
@@ -374,7 +371,7 @@ describe('dailyPaymentKind — Bug 14 (Günlük Rapor Ödeme kolonu karma)', () 
       { total: 40000 },
     ];
     for (const s of samples) {
-      const k = dailyPaymentKind({ total: s.total, payment_method: 'veresiye', payments: s.payments });
+      const k = dailyPaymentKind({ total: s.total, paymentMethod: 'veresiye', payments: s.payments });
       expect(k.collected + k.remaining).toBeCloseTo(k.total, 6);
     }
   });
