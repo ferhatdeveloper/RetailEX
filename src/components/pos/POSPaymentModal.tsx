@@ -46,6 +46,7 @@ import {
   isPosPaymentBackToSaleAllowed,
   isPosPaymentCancelWithoutReasonAllowed,
 } from '../../utils/posPaymentBackGuard';
+import { salesAPI } from '../../services/api/sales';
 
 // Helper function to format number with Turkish formatting (nokta binlik, virgül ondalık)
 const formatNumberInput = (value: string): string => {
@@ -253,6 +254,8 @@ export function POSPaymentModal({
   const [showNumpad, setShowNumpad] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [showCancelReasonModal, setShowCancelReasonModal] = useState(false);
+  // Fatura henüz oluşmadan, başlıkta önizlenen geçici fiş no.
+  const [tempInvoiceNo, setTempInvoiceNo] = useState<string>('');
   // Müşteri cari borç tahsilatı — müşteri seçildiğinde listelenir
   const [customerInvoices, setCustomerInvoices] = useState<CustomerOutstandingInvoice[]>([]);
   const [customerInvoicesLoading, setCustomerInvoicesLoading] = useState(false);
@@ -307,6 +310,35 @@ export function POSPaymentModal({
       unsub();
     };
   }, []);
+
+  // Fatura henüz oluşmadan, başlıkta gösterilecek geçici fiş no önizlemesi.
+  // - appointmentContext.prePaymentFicheNo varsa o kullanılır (daha önce alınmış peşinat).
+  // - Mod = prePayment → BTY- kalıbı (güzellik/randevu).
+  // - Mod = standart  → MRK- kalıbı (market/restoran).
+  useEffect(() => {
+    let cancelled = false;
+    const preset = appointmentContext?.prePaymentFicheNo;
+    if (preset) {
+      setTempInvoiceNo(preset);
+      return;
+    }
+    const prefix = mode === 'prePayment' ? 'BTY' : 'MRK';
+    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const randomPart = String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0');
+    (async () => {
+      try {
+        const counts = await salesAPI.getSequenceCounts();
+        if (cancelled) return;
+        setTempInvoiceNo(`${prefix}-${datePart}-M${counts.monthly}-D${counts.daily}-${randomPart}`);
+      } catch {
+        if (cancelled) return;
+        setTempInvoiceNo(`${prefix}-${datePart}-${randomPart}`);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, appointmentContext?.prePaymentFicheNo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1007,6 +1039,18 @@ const handleCollectCustomerDebt = async () => {
             {t.paymentTitle || 'Ödeme Al'}
           </h3>
           <div className="flex items-center gap-2">
+            {/* Geçici fatura no önizleme — fatura oluşmadan başlıkta gösterilir */}
+            {tempInvoiceNo && (
+              <span
+                data-testid="pos-payment-temp-invoice-no"
+                title="Fatura oluşturulduğunda atanır; şimdilik yalnızca önizleme."
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-300/90 text-amber-950 text-[11px] font-mono font-semibold shadow-sm border border-amber-400/70"
+              >
+                <Receipt className="w-3.5 h-3.5" />
+                <span className="uppercase tracking-wide opacity-70">Fatura No:</span>
+                <span>{tempInvoiceNo}</span>
+              </span>
+            )}
             <button
               onClick={() => setShowNumpad(!showNumpad)}
               className={`px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition-colors ${showNumpad
