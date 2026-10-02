@@ -1039,18 +1039,6 @@ const handleCollectCustomerDebt = async () => {
             {t.paymentTitle || 'Ödeme Al'}
           </h3>
           <div className="flex items-center gap-2">
-            {/* Geçici fatura no önizleme — fatura oluşmadan başlıkta gösterilir */}
-            {tempInvoiceNo && (
-              <span
-                data-testid="pos-payment-temp-invoice-no"
-                title="Fatura oluşturulduğunda atanır; şimdilik yalnızca önizleme."
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-300 text-amber-950 text-[11px] font-mono font-semibold shadow-sm border border-amber-400"
-              >
-                <Receipt className="w-3.5 h-3.5" />
-                <span className="uppercase tracking-wide opacity-70">Fatura No:</span>
-                <span>{tempInvoiceNo}</span>
-              </span>
-            )}
             <button
               onClick={() => setShowNumpad(!showNumpad)}
               className={`px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition-colors ${showNumpad
@@ -1737,6 +1725,34 @@ const handleCollectCustomerDebt = async () => {
                   {t.addPaymentLabel || 'Ödeme Ekle'}
                 </button>
               </div>
+
+              {/* Kasa seçimi — Tam Tutar / + Ödeme Ekle satırının hemen altında */}
+              <button
+                type="button"
+                aria-label={tm('cashRegisterLabel') || 'Kasa Seçimi'}
+                disabled={cashRegistersLoading || cashRegisters.length === 0}
+                onClick={() => setShowCashRegisterModal(true)}
+                className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 ${
+                  darkMode
+                    ? 'bg-emerald-900/30 border-emerald-800/60 text-emerald-300 hover:bg-emerald-900/50'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+                }`}
+                title={
+                  selectedCashRegister
+                    ? `${selectedCashRegister.kasa_adi} (${selectedCashRegister.kasa_kodu}) — ${selectedCashRegister.id_doviz_kodu} · ${selectedCashRegister.bakiye.toLocaleString('tr-TR')}`
+                    : (tm('selectCashRegister') || 'Kasa seçin')
+                }
+              >
+                <Wallet className="w-4 h-4 shrink-0" aria-hidden />
+                <span className="text-sm font-medium truncate min-w-0 flex-1">
+                  {cashRegistersLoading
+                    ? (tm('loading') || 'Yükleniyor...')
+                    : selectedCashRegister
+                      ? `${selectedCashRegister.kasa_adi} (${selectedCashRegister.kasa_kodu}) — ${selectedCashRegister.id_doviz_kodu} · ${selectedCashRegister.bakiye.toLocaleString('tr-TR')}`
+                      : (tm('selectCashRegister') || 'Kasa seçin')}
+                </span>
+                <ChevronDown className="w-4 h-4 shrink-0 opacity-70" aria-hidden />
+              </button>
             </div>
 
             {/* Right - Numpad (conditional) */}
@@ -1950,34 +1966,6 @@ const handleCollectCustomerDebt = async () => {
               </select>
             </div>
           </div>
-
-          {/* Kasa seçimi — eski POS ID yerinde */}
-          <button
-            type="button"
-            aria-label={tm('cashRegisterLabel') || 'Kasa Seçimi'}
-            disabled={cashRegistersLoading || cashRegisters.length === 0}
-            onClick={() => setShowCashRegisterModal(true)}
-            className={`max-w-[min(100%,22rem)] text-left flex items-center gap-1.5 px-2.5 py-1 rounded-full shrink-0 border transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 ${
-              darkMode
-                ? 'bg-emerald-900/30 border-emerald-800/60 text-emerald-300 hover:bg-emerald-900/50'
-                : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
-            }`}
-            title={
-              selectedCashRegister
-                ? `${selectedCashRegister.kasa_adi} (${selectedCashRegister.kasa_kodu}) — ${selectedCashRegister.id_doviz_kodu} · ${selectedCashRegister.bakiye.toLocaleString('tr-TR')}`
-                : (tm('selectCashRegister') || 'Kasa seçin')
-            }
-          >
-            <Wallet className="w-3.5 h-3.5 shrink-0" aria-hidden />
-            <span className="text-[10px] font-medium truncate min-w-0">
-              {cashRegistersLoading
-                ? (tm('loading') || 'Yükleniyor...')
-                : selectedCashRegister
-                  ? `${selectedCashRegister.kasa_adi} (${selectedCashRegister.kasa_kodu}) — ${selectedCashRegister.id_doviz_kodu} · ${selectedCashRegister.bakiye.toLocaleString('tr-TR')}`
-                  : (tm('selectCashRegister') || 'Kasa seçin')}
-            </span>
-            <ChevronDown className="w-3 h-3 shrink-0 opacity-70" aria-hidden />
-          </button>
         </div>
 
         {/* Footer */}

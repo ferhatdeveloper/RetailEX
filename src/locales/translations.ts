@@ -1621,7 +1621,7 @@ export const translations: any = {
     commissionReport: 'Komisyon Raporu',
     communicationAndNotifications: 'İletişim & Bildirimler',
     complete: 'Tamamla',
-    completePayment: 'Complete Payment',
+    completePayment: 'Ödemeyi Tamamla',
     confirmBarcode: 'Barkod Onayla',
     confirmClearLogs: 'Tüm kayıtlar temizlenecektir. Emin misiniz?',
     confirmDelete: 'Silmek istediğinizden emin misiniz?',
