@@ -284,6 +284,12 @@ export function suggestPesinatliPayNow(remaining: number): number {
  *
  * Boş / hatalı durumlarda `null` döner; modal bağlamı olmadan mevcut
  * davranışıyla çalışır.
+ *
+ * Status filtresi: in_progress / started varsayılan — fakat daha önce
+ * peşinat alınmış randevularda (deposit_amount > 0), status henüz
+ * `in_progress`'e alınmamış olsa bile modalın ön ödeme bağlamını
+ * göstermesi için scheduled / confirmed de kabul edilir. Kullanıcı
+ * detay panelden "Ödeme Al"a tıklayınca bağlamda ön ödeme net görünür.
  */
 export function buildAppointmentPesinatliContext(args: {
   appointmentId?: string | null;
@@ -292,6 +298,12 @@ export function buildAppointmentPesinatliContext(args: {
   depositAmount?: number | null;
   /** Plan §6 Adım 8 — daha önce alınmış peşinatın sales fiş no'su (örn. `BEAUTY-PESINAT-…`). */
   prePaymentFicheNo?: string | null;
+  /**
+   * Daha önce alınmış kalan ödeme tutarı (remainder_paid_amount). Kalan
+   * hesaplanırken brüt - deposit - remainder_paid_amount kullanılır.
+   * Geçilmezse 0 varsayılır.
+   */
+  remainderPaidAmount?: number | null;
 }): {
   appointmentId: string;
   totalAmount: number;
@@ -299,18 +311,27 @@ export function buildAppointmentPesinatliContext(args: {
   remainingAmount: number;
   prePaymentFicheNo?: string | null;
 } | null {
-  const { appointmentId, status, totalPrice, depositAmount, prePaymentFicheNo } = args;
+  const { appointmentId, status, totalPrice, depositAmount, prePaymentFicheNo, remainderPaidAmount } = args;
   if (!appointmentId) return null;
   const statusNorm = String(status ?? '').toLowerCase();
-  if (statusNorm !== 'in_progress' && statusNorm !== 'started') return null;
+  // Status filtreleme yalnızca deposit_amount > 0 OLMADIĞINDA uygulanır:
+  // deposit varsa her statüde context üret (kullanıcı ön ödemeyi görsün).
+  // Deposit yoksa yalnızca in_progress / started / scheduled / confirmed → context boş döner.
   const dep = Number(depositAmount ?? 0);
   const tot = Number(totalPrice ?? 0);
-  if (!Number.isFinite(dep) || !Number.isFinite(tot) || dep <= 0 || tot <= 0) return null;
+  const paidRemainder = Number(remainderPaidAmount ?? 0);
+  if (!Number.isFinite(dep) || !Number.isFinite(tot) || dep <= 0) return null;
+  // totalPrice = 0 ise yine de context üret: deposit > 0 ise bilgi kartı gösterilsin,
+  // sadece kalan 0 olarak hesaplanır.
+  const remaining = Math.max(0, tot - dep - (Number.isFinite(paidRemainder) ? paidRemainder : 0));
+  // Status kontrolü yalnızca deposit > 0 olmayan durumda uygulanır (yukarıda null döndü).
+  // Buraya ulaştıysa deposit > 0 → status ne olursa olsun kabul.
+  void statusNorm;
   return {
     appointmentId,
     totalAmount: tot,
     prePaymentAmount: dep,
-    remainingAmount: Math.max(0, tot - dep),
+    remainingAmount: remaining,
     prePaymentFicheNo: prePaymentFicheNo ?? null,
   };
 }

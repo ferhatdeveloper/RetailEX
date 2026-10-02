@@ -5042,6 +5042,7 @@ export function AppointmentPOS({
                     status: existingAppointment?.status,
                     totalPrice: existingAppointment?.total_price,
                     depositAmount: existingAppointment?.deposit_amount,
+                    remainderPaidAmount: existingAppointment?.remainder_paid_amount,
                     prePaymentFicheNo: (existingAppointment as { deposit_sale_fiche_no?: string | null } | undefined)?.deposit_sale_fiche_no ?? null,
                 });
                 // Yeni rezervasyon durumu: randevu yok ama kullanıcı rezervasyon tutarı girdi.

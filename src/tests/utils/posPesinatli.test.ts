@@ -334,23 +334,36 @@ describe('posPesinatli - buildAppointmentPesinatliContext (IN_PROGRESS randevuda
     expect(ctx?.remainingAmount).toBe(40_000);
   });
 
-  it('SCHEDULED/COMPLETED → null (geriye dönük uyum, eski akış)', () => {
-    expect(
-      buildAppointmentPesinatliContext({
-        appointmentId: 'apt-1',
-        status: 'scheduled',
-        totalPrice: 100_000,
-        depositAmount: 30_000,
-      }),
-    ).toBeNull();
-    expect(
-      buildAppointmentPesinatliContext({
-        appointmentId: 'apt-1',
-        status: 'completed',
-        totalPrice: 100_000,
-        depositAmount: 30_000,
-      }),
-    ).toBeNull();
+  it('SCHEDULED/COMPLETED → status fark etmez, deposit > 0 ise bağlam üretilir', () => {
+    // Davranış değişikliği: daha önce peşinat alınmış randevuda, status
+    // scheduled / completed / confirmed / started / in_progress fark etmez;
+    // kullanıcı detay panelden ödeme al'a basınca bağlamda ön ödeme görünür.
+    const ctxSched = buildAppointmentPesinatliContext({
+      appointmentId: 'apt-1',
+      status: 'scheduled',
+      totalPrice: 100_000,
+      depositAmount: 30_000,
+    });
+    expect(ctxSched?.remainingAmount).toBe(70_000);
+
+    const ctxCompleted = buildAppointmentPesinatliContext({
+      appointmentId: 'apt-1',
+      status: 'completed',
+      totalPrice: 100_000,
+      depositAmount: 30_000,
+    });
+    expect(ctxCompleted?.remainingAmount).toBe(70_000);
+  });
+
+  it('remainderPaidAmount verilirse kalan = toplam − deposit − remainder', () => {
+    const ctx = buildAppointmentPesinatliContext({
+      appointmentId: 'apt-1',
+      status: 'in_progress',
+      totalPrice: 100_000,
+      depositAmount: 30_000,
+      remainderPaidAmount: 20_000,
+    });
+    expect(ctx?.remainingAmount).toBe(50_000);
   });
 
   it('appointmentId yoksa null', () => {
