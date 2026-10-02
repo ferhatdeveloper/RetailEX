@@ -1209,39 +1209,18 @@ const handleCollectCustomerDebt = async () => {
                     </div>
                   )}
 
-                  {totalPaid > 0 && (
-                    <>
-                      <div className="flex justify-between text-green-600">
-                        <span>{t.totalPaid || 'Ödenen'}:</span>
-                        <span className="font-medium font-mono">{formatCurrency(totalPaid)}</span>
+                  {totalPaid > 0 && remaining <= 0 && (
+                    <div className={`p-3 rounded-lg mt-2 ${darkMode ? 'bg-green-900/30 border-2 border-green-600' : 'bg-green-50 border-2 border-green-400'
+                      }`}>
+                      <div className="flex justify-between items-center">
+                        <span className="text-green-700 dark:text-green-400 font-semibold">
+                          {t.changeAmount || 'Para Üstü'}:
+                        </span>
+                        <span className="text-2xl font-bold font-mono text-green-700 dark:text-green-300">
+                          {formatCurrency(change)}
+                        </span>
                       </div>
-
-                      {remaining > 0 ? (
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-red-600 font-medium">
-                            <span>{t.remainingAmount || 'Kalan'}:</span>
-                            <span className="font-mono">{formatCurrency(remaining)}</span>
-                          </div>
-                          {hasCariRemainder && !selectedCustomer ? (
-                            <p className={`text-xs ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
-                              {selectCustomerForCariMessage}
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <div className={`p-3 rounded-lg mt-2 ${darkMode ? 'bg-green-900/30 border-2 border-green-600' : 'bg-green-50 border-2 border-green-400'
-                          }`}>
-                          <div className="flex justify-between items-center">
-                            <span className="text-green-700 dark:text-green-400 font-semibold">
-                              {t.changeAmount || 'Para Üstü'}:
-                            </span>
-                            <span className="text-2xl font-bold font-mono text-green-700 dark:text-green-300">
-                              {formatCurrency(change)}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </>
+                    </div>
                   )}
 
                   {canPostRemainderToCari && (
@@ -1494,60 +1473,9 @@ const handleCollectCustomerDebt = async () => {
                 )}
 
                 {/* Peşinatlı + peşinat eklendikten sonra: Sepet / Alınan / Kalan
-                    bilgi kartı. Kalan cariye yazılmaz — randevu tamamlanırken
-                    ayrıca tahsil edilecek. appointmentContext olsa bile
-                    "şu an sepete girilen tutar" bilgisini gösterir. */}
-                {currentMethod === 'pesinatli' &&
-                  totalPaid > 0 &&
-                  remaining > posMoneyEpsilon(baseCurrency) && (
-                    <div
-                      data-testid="pesinat-partial-paid-strip"
-                      className={`mt-1.5 px-2 py-1.5 text-[11px] rounded border ${
-                        darkMode
-                          ? 'bg-amber-900/20 border-amber-700/60 text-amber-200'
-                          : 'bg-amber-50 border-amber-200 text-amber-800'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium">
-                          {tm('pesinatPartialPaidLabel') ||
-                            t.pesinatPartialPaidLabel ||
-                            'Peşinat alındı'}
-                          :
-                        </span>
-                        <span
-                          data-testid="pesinat-partial-paid-amount"
-                          className="font-mono font-bold"
-                        >
-                          {formatMoneyWithCode(totalPaid, baseCurrency)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2 mt-0.5">
-                        <span className="font-medium">
-                          {tm('remainingAmount') ||
-                            t.remainingAmount ||
-                            'Kalan Tutar'}
-                          :
-                        </span>
-                        <span
-                          data-testid="pesinat-partial-remaining-amount"
-                          className="font-mono font-bold text-rose-700 dark:text-rose-300"
-                        >
-                          {formatMoneyWithCode(remaining, baseCurrency)}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-[10px] opacity-90 font-medium">
-                        {tm('pesinatPartialNotCari') ||
-                          t.pesinatPartialNotCari ||
-                          'Kalan tutar cariye yazılmaz.'}
-                      </div>
-                      <div className="mt-0.5 text-[10px] opacity-80">
-                        {tm('pesinatPartialFooter') ||
-                          t.pesinatPartialFooter ||
-                          'Randevu tamamlanırken ayrıca tahsil edilir.'}
-                      </div>
-                    </div>
-                  )}
+                    bilgi kartı. Bu strip kullanıcı talebiyle kaldırıldı (hatalı ve
+                    fazlalık). Yalnızca randevu context'i zaten Ödeme Özeti panelinde
+                    Ön Ödenen + Kalan Tutar olarak gösteriliyor. */}
               </div>
 
               {/* Amount Input */}
