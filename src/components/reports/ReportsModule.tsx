@@ -2961,16 +2961,17 @@ export function ReportsModule({
       const erpForKind = row.erpSale;
       const kindInfo = dailyPaymentKind({
         total: Number(row.total) || 0,
-        payment_method: erpForKind?.paymentMethod ?? row.paymentMethod,
+        paymentMethod: erpForKind?.paymentMethod ?? row.paymentMethod,
         payments: erpForKind?.payments ?? undefined,
       });
       let paymentLabelText = tm(paymentMethodBucketTranslationKey(bucket));
       if (kindInfo.total > 0 && kindInfo.kind === 'mixed') {
         // X peşin + Y veresiye — sıra: önce peşin (tahsil edilen), sonra kalan
-        paymentLabelText = tm('dailyPaymentMixed', {
-          paid: formatNumber(kindInfo.collected, 0, false),
-          remaining: formatNumber(kindInfo.remaining, 0, false),
-        });
+        const paidStr = formatNumber(kindInfo.collected, 0, false);
+        const remStr = formatNumber(kindInfo.remaining, 0, false);
+        paymentLabelText = tm('dailyPaymentMixed')
+          .replace('{paid}', paidStr)
+          .replace('{remaining}', remStr);
       } else if (kindInfo.kind === 'cash') {
         paymentLabelText = tm('dailyPaymentCashOnly');
       } else if (kindInfo.kind === 'credit') {
@@ -6276,10 +6277,8 @@ export function ReportsModule({
                             const erpForKind = row.erpSale;
                             const kindInfo = dailyPaymentKind({
                               total: Number(row.total) || 0,
-                              payment_method: erpForKind?.paymentMethod ?? row.paymentMethod,
+                              paymentMethod: erpForKind?.paymentMethod ?? row.paymentMethod,
                               payments: erpForKind?.payments ?? undefined,
-                              paid_amount: erpForKind?.paidAmount ?? erpForKind?.paid_amount ?? undefined,
-                              remaining_amount: erpForKind?.remainingAmount ?? erpForKind?.remaining_amount ?? undefined,
                             });
                             const cls = kindInfo.kind === 'mixed'
                               ? 'bg-orange-100 text-orange-800'

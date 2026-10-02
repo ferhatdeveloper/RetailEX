@@ -255,14 +255,11 @@ export function resolvePosCheckoutSettlement(
 export type DailyPaymentKind = 'cash' | 'credit' | 'mixed';
 
 export function dailyPaymentKind(
-  sale: Pick<Sale, 'total'> & {
-    payment_method?: string;
-    payments?: SalePaymentRow[] | null;
-  },
+  sale: Pick<Sale, 'total' | 'paymentMethod' | 'payments'>,
 ): { kind: DailyPaymentKind; collected: number; remaining: number; total: number } {
   const split = saleCollectedSplit({
     total: Number(sale.total) || 0,
-    paymentMethod: sale.payment_method,
+    paymentMethod: sale.paymentMethod,
     payments: sale.payments,
   });
   const total = Math.abs(Number(sale.total) || 0);
