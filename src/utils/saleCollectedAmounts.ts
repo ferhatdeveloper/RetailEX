@@ -238,6 +238,52 @@ export function resolvePosCheckoutSettlement(
   };
 }
 
+/**
+ * Satır bazlı ödeme tipi etiketi — Günlük Rapor Ödeme kolonu.
+ *
+ * `payments[]` veya `paid_amount`/`remaining_amount` üzerinden üç net durum:
+ *  - Tamamen peşin tahsil edildi (collected == total) → "Peşin"
+ *  - Hiç tahsil edilmedi, kalan cari borç (collected == 0) → "Veresiye"
+ *  - Kısmi peşin + kısmi veresiye (0 < collected < total) → "Karma"
+ *
+ * Önceki bug: `paymentMethod='veresiye'` (header) + `payments=[{cash, 5000}]`
+ * olduğunda sütunda yalnızca "Veresiye" görünüyordu; ARAM satışının
+ * 5.000 peşinatı rapor yok sayıyordu. Bu helper header + satır
+ * kırılımını birleştirir. 90 yıllık muhasebeci: brüt ciro = tahsilat +
+ * kalan cari; peşin + veresiye eksiksiz görünmeli.
+ */
+export type DailyPaymentKind = 'cash' | 'credit' | 'mixed';
+
+export function dailyPaymentKind(
+  sale: Pick<Sale, 'total'> & {
+    payment_method?: string;
+    payments?: SalePaymentRow[] | null;
+  },
+): { kind: DailyPaymentKind; collected: number; remaining: number; total: number } {
+  const split = saleCollectedSplit({
+    total: Number(sale.total) || 0,
+    paymentMethod: sale.payment_method,
+    payments: sale.payments,
+  });
+  const total = Math.abs(Number(sale.total) || 0);
+  let collected = Math.abs(Number(split.collected) || 0);
+  let remaining = Math.abs(Number(split.remaining) || 0);
+  // Yuvarlama: 1e-6 altında farkları sıfırla
+  if (collected < 1e-6) collected = 0;
+  if (remaining < 1e-6) remaining = 0;
+  // Bütçe kontrolü: total = collected + remaining (muhasebe çift yönü)
+  const sumGap = Math.abs(total - collected - remaining);
+  if (sumGap < 1e-6) {
+    if (remaining < 1e-6 && total > 0) collected = total;
+    if (collected < 1e-6 && total > 0) remaining = total;
+  }
+  let kind: DailyPaymentKind;
+  if (remaining < 1e-6 && collected > 0) kind = 'cash';
+  else if (collected < 1e-6 && remaining > 0) kind = 'credit';
+  else kind = 'mixed';
+  return { kind, collected, remaining, total };
+}
+
 export type KasaCollectionLine = {
   islem_tipi?: string;
   tutar?: number;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   beautySalePocketCollected,
   beautySaleRemainingCari,
+  dailyPaymentKind,
   extraCustomerCollectionsNotOnSales,
   resolvePosCheckoutSettlement,
   saleCollectedSplit,
@@ -314,5 +315,67 @@ describe('iptal edilen randevu — Bug 12 (dashboard günlük satış)', () => {
       remaining_amount: 55000,
       payment_status: '',
     })).toBe(20000);
+  });
+});
+
+describe('dailyPaymentKind — Bug 14 (Günlük Rapor Ödeme kolonu karma)', () => {
+  it('ARAM senaryosu: 50k brüt + 5k peşin + 45k kalan → kind=mixed', () => {
+    const k = dailyPaymentKind({
+      total: 50000,
+      payment_method: 'veresiye',
+      payments: [{ method: 'cash', amount: 5000 }],
+    });
+    expect(k.kind).toBe('mixed');
+    expect(k.collected).toBe(5000);
+    expect(k.remaining).toBe(45000);
+    expect(k.total).toBe(50000);
+  });
+
+  it('ROZA senaryosu: 25k brüt + payments yok → kind=credit (saf veresiye)', () => {
+    const k = dailyPaymentKind({
+      total: 25000,
+      payment_method: 'veresiye',
+    });
+    expect(k.kind).toBe('credit');
+    expect(k.collected).toBe(0);
+    expect(k.remaining).toBe(25000);
+  });
+
+  it('tamamen peşin nakit 30k → kind=cash', () => {
+    const k = dailyPaymentKind({
+      total: 30000,
+      payment_method: 'cash',
+      payments: [{ method: 'cash', amount: 30000 }],
+    });
+    expect(k.kind).toBe('cash');
+    expect(k.collected).toBe(30000);
+    expect(k.remaining).toBe(0);
+  });
+
+  it('header veresiye + payments tam nakit: split credit kontrolü ile kind=cash', () => {
+    // Bu durumda saleCollectedSplit `methodIsCredit && collected===document` görür,
+    // kasayı sıfırlar, remaining=document=100 döner. dailyKind bunu "credit" sınıflar.
+    const k = dailyPaymentKind({
+      total: 100,
+      payment_method: 'veresiye',
+      payments: [{ method: 'cash', amount: 100 }],
+    });
+    // split.cash=0, split.remaining=100 → kind=credit (header veresiye korunur)
+    expect(k.kind).toBe('credit');
+    expect(k.collected).toBe(0);
+    expect(k.remaining).toBe(100);
+  });
+
+  it('toplam = tahsilat + kalan (muhasebe çift yönü simetrisi)', () => {
+    const samples = [
+      { total: 50000, payments: [{ method: 'cash', amount: 5000 }] },
+      { total: 100000, payments: [{ method: 'card', amount: 60000 }, { method: 'cash', amount: 40000 }] },
+      { total: 75000, payments: [{ method: 'cash', amount: 25000 }, { method: 'veresiye', amount: 50000 }] },
+      { total: 40000 },
+    ];
+    for (const s of samples) {
+      const k = dailyPaymentKind({ total: s.total, payment_method: 'veresiye', payments: s.payments });
+      expect(k.collected + k.remaining).toBeCloseTo(k.total, 6);
+    }
   });
 });
