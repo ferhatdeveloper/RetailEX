@@ -345,20 +345,21 @@ export function POSPaymentModal({
   }, [baseCurrency]);
 
   // Ödeme yöntemi değiştiğinde "Miktar" inputu için default değer öner:
-  //   • Peşinatlı + appointmentContext → kalan tutar (toplam − ön ödeme)
+  //   • Peşinatlı + appointmentContext → kalan tutar (sepet − ön ödeme)
   //   • Peşinatlı (bağlam yok)         → kalan sepet tutarı
   //   • Nakit / Kart / Veresiye        → finalTotal (toplam)
   // Kullanıcı input'a yazdıysa müdahale etme (override korunur).
+  //
+  // Bug-9 düzeltmesi: randevu bağlamında öneri `finalTotal`'dan gelir
+  // (yani sepet subtotal − ön ödeme); `appointmentContext.remainingAmount`
+  // randevunun kendi `total_price`'ından türetildiği için sepetten farklı
+  // olabiliyor ve öneri tutarını bozuyor.
   useEffect(() => {
     if (currentAmount && parseFormattedNumber(currentAmount) > 0) return;
     let suggested = 0;
     if (currentMethod === 'pesinatli') {
       const remainingFromContext =
-        appointmentContext &&
-        Number.isFinite(appointmentContext.remainingAmount) &&
-        appointmentContext.remainingAmount > 0
-          ? appointmentContext.remainingAmount
-          : null;
+        appointmentContext && finalTotal > 0 ? finalTotal : null;
       suggested = remainingFromContext ?? suggestPesinatliPayNow(remaining);
     } else {
       // Nakit / Kart / Veresiye — sepet toplamı (finalTotal) default.
@@ -1469,7 +1470,7 @@ const handleCollectCustomerDebt = async () => {
                           darkMode ? 'text-rose-200' : 'text-rose-900'
                         }`}
                       >
-                        {formatMoneyWithCode(appointmentContext.remainingAmount, baseCurrency)}
+                        {formatMoneyWithCode(finalTotal, baseCurrency)}
                       </div>
                     </div>
                   </div>
@@ -1550,16 +1551,15 @@ const handleCollectCustomerDebt = async () => {
                     // öneri olarak `suggestPesinatliPayNow` kullanılır — input
                     // boşsa kalan sepetle dolar, kullanıcı küçültebilir.
                     //
-                    // Randevu bağlamı verildiğinde: default değer
-                    // `appointmentContext.remainingAmount` olur — daha önce
-                    // alınmış peşinat düşülmüş kalan kısmı.
+                    // Randevu bağlamı verildiğinde: default değer `finalTotal`
+                    // olur (sepet subtotal − ön ödeme). `appointmentContext`
+                    // üzerinden gelen `remainingAmount` randevunun kendi
+                    // `total_price`'ından türetildiği için sepetten farklı
+                    // olabiliyor; bu yüzden cart-tabanlı `finalTotal` tercih
+                    // ediliyor (Bug-9 düzeltmesi).
                     if (currentMethod === 'pesinatli') {
                       const remainingFromContext =
-                        appointmentContext &&
-                        Number.isFinite(appointmentContext.remainingAmount) &&
-                        appointmentContext.remainingAmount > 0
-                          ? appointmentContext.remainingAmount
-                          : null;
+                        appointmentContext && finalTotal > 0 ? finalTotal : null;
                       const suggested = remainingFromContext ?? suggestPesinatliPayNow(remaining);
                       const amount = suggested > 0 ? suggested : amountToAdd;
                       setCurrentAmount(formatNumberInput(amount.toString()));
