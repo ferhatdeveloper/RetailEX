@@ -11486,6 +11486,31 @@ export const excelModuleTranslations = {
   avgSaleLabel: { tr: 'Ortalama Satış', en: 'Average Sale', ar: 'متوسط المبيعات', ku: 'تێکڕای فرۆشتن' },
   cashLabel: { tr: 'Nakit', en: 'Cash', ar: 'نقد', ku: 'کاش' },
   cardLabel: { tr: 'Kart', en: 'Card', ar: 'بطاقة', ku: 'کارت' },
+  // Bug 14: Günlük rapor Ödeme kolonu — kısmi peşin + kısmi veresiye satırları.
+  dailyPaymentMixed: {
+    tr: 'Karma ({paid} peşin + {remaining} veresiye)',
+    en: 'Mixed ({paid} cash + {remaining} on account)',
+    ar: 'مختلط ({paid} نقدي + {remaining} آجل)',
+    ku: 'تێکەڵ ({paid} نەقد + {remaining} قەرز)',
+  },
+  dailyPaymentMixedTitle: {
+    tr: 'Karma ödeme: tahsil edilen + cari kalan',
+    en: 'Mixed payment: collected + remaining on account',
+    ar: 'دفع مختلط: محصّل + متبقي على الحساب',
+    ku: 'پارەدانی تێکەڵ: وەرگیراو + ماوەی هەژمار',
+  },
+  dailyPaymentCashOnly: {
+    tr: 'Peşin',
+    en: 'Cash',
+    ar: 'نقدي',
+    ku: 'نەقد',
+  },
+  dailyPaymentCreditOnly: {
+    tr: 'Veresiye',
+    en: 'On account',
+    ar: 'آجل',
+    ku: 'قەرز',
+  },
   rankLabel: { tr: 'Sıra', en: 'Rank', ar: 'ترتيب', ku: 'ڕیزبەندی' },
   productNameLabel: { tr: 'Ürün Adı', en: 'Product Name', ar: 'اسم المنتج', ku: 'ناوی بەرهەم' },
   categoryLabel: { tr: 'Kategori', en: 'Category', ar: 'الفئة', ku: 'هاوپۆل' },

@@ -76,7 +76,7 @@ import {
 } from '../../utils/purchasePromotionReport';
 import { applyExtraCashCollections, buildPosZReportForRange, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
-import { extraCustomerCollectionsNotOnSales, saleCollectedSplit } from '../../utils/saleCollectedAmounts';
+import { extraCustomerCollectionsNotOnSales, saleCollectedSplit, dailyPaymentKind } from '../../utils/saleCollectedAmounts';
 import {
   buildPaymentTypeDistribution,
   buildPaymentTypeMovements,
@@ -2954,11 +2954,33 @@ export function ReportsModule({
       const isCancelled = st === 'cancelled' || st === 'canceled';
       const isRefunded = st === 'refunded';
       const isReturn = st === 'return';
+      // Bug 14: header `paymentMethod='veresiye'` olsa bile payments[]
+      // üzerinden tahsil/kısmıtahsil/kalan ayrımı yap; Ödeme kolonu
+      // tek "Veresiye" yazmasın. ARAM: 50.000 brüt + 5.000 peşin +
+      // 45.000 kalan → "Karma (5.000 peşin + 45.000 veresiye)".
+      const erpForKind = row.erpSale;
+      const kindInfo = dailyPaymentKind({
+        total: Number(row.total) || 0,
+        payment_method: erpForKind?.paymentMethod ?? row.paymentMethod,
+        payments: erpForKind?.payments ?? undefined,
+      });
+      let paymentLabelText = tm(paymentMethodBucketTranslationKey(bucket));
+      if (kindInfo.total > 0 && kindInfo.kind === 'mixed') {
+        // X peşin + Y veresiye — sıra: önce peşin (tahsil edilen), sonra kalan
+        paymentLabelText = tm('dailyPaymentMixed', {
+          paid: formatNumber(kindInfo.collected, 0, false),
+          remaining: formatNumber(kindInfo.remaining, 0, false),
+        });
+      } else if (kindInfo.kind === 'cash') {
+        paymentLabelText = tm('dailyPaymentCashOnly');
+      } else if (kindInfo.kind === 'credit') {
+        paymentLabelText = tm('dailyPaymentCreditOnly');
+      }
       return {
         ...row,
         hour,
         kindLabel: kindLabel(row.kind),
-        paymentLabel: tm(paymentMethodBucketTranslationKey(bucket)),
+        paymentLabel: paymentLabelText,
         statusLabel: isReturn
           ? 'Satış İade'
           : isCancelled
@@ -6247,18 +6269,37 @@ export function ReportsModule({
                         {
                           key: 'paymentLabel',
                           header: tm('paymentLabel_rep'),
-                          size: 110,
+                          size: 160,
                           cell: (row) => {
                             const bucket = normalizePaymentMethodBucket(row.paymentMethod);
-                            const cls =
-                              bucket === 'cash'
+                            // Karma ödeme için kırmızı-turuncu vurgu; diğerleri bucket renginde
+                            const erpForKind = row.erpSale;
+                            const kindInfo = dailyPaymentKind({
+                              total: Number(row.total) || 0,
+                              payment_method: erpForKind?.paymentMethod ?? row.paymentMethod,
+                              payments: erpForKind?.payments ?? undefined,
+                              paid_amount: erpForKind?.paidAmount ?? erpForKind?.paid_amount ?? undefined,
+                              remaining_amount: erpForKind?.remainingAmount ?? erpForKind?.remaining_amount ?? undefined,
+                            });
+                            const cls = kindInfo.kind === 'mixed'
+                              ? 'bg-orange-100 text-orange-800'
+                              : kindInfo.kind === 'cash' || bucket === 'cash'
                                 ? 'bg-green-100 text-green-700'
                                 : bucket === 'card'
                                   ? 'bg-blue-100 text-blue-700'
                                   : bucket === 'credit'
                                     ? 'bg-amber-100 text-amber-800'
                                     : 'bg-slate-100 text-slate-700';
-                            return <span className={`px-2 py-1 rounded text-xs ${cls}`}>{row.paymentLabel}</span>;
+                            return (
+                              <span
+                                className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${cls}`}
+                                title={kindInfo.kind === 'mixed'
+                                  ? `${tm('dailyPaymentMixedTitle')} — T:${formatNumber(kindInfo.collected, 0, false)} / K:${formatNumber(kindInfo.remaining, 0, false)}`
+                                  : undefined}
+                              >
+                                {row.paymentLabel}
+                              </span>
+                            );
                           },
                         },
                         {
