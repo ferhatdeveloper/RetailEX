@@ -3146,6 +3146,13 @@ export const beautyService = {
                             ? String(appointment.treatment_shots).trim()
                             : null,
                     clinical_data: clinicalDataForPgInput(appointment),
+                    // Peşinatlı ön ödeme alanları — Rezervasyon anında ayarlanırsa INSERT'e dahil.
+                    deposit_amount: Number(appointment.deposit_amount ?? 0),
+                    deposit_date: appointment.deposit_date ?? null,
+                    deposit_provider: appointment.deposit_provider ?? null,
+                    deposit_sale_id: pgUuidOrNull(appointment.deposit_sale_id),
+                    deposit_sale_fiche_no: appointment.deposit_sale_fiche_no ?? null,
+                    remainder_paid_amount: Number(appointment.remainder_paid_amount ?? 0),
                 },
                 { schema: 'beauty', prefer: 'return=minimal' }
             );
@@ -3157,8 +3164,9 @@ export const beautyService = {
                 appointment_date, appointment_time, duration,
                 status, type, notes, total_price, commission_amount, is_package_session, package_purchase_id,
                 branch_id, room_id, tele_meeting_url, booking_channel, corporate_account_id,
-                session_series_id, treatment_degree, treatment_shots, clinical_data
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+                session_series_id, treatment_degree, treatment_shots, clinical_data,
+                deposit_amount, deposit_date, deposit_provider, deposit_sale_id, deposit_sale_fiche_no, remainder_paid_amount
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
         `, [
             id,
             pgUuidOrNull(appointment.customer_id ?? appointment.client_id),
@@ -3189,6 +3197,12 @@ export const beautyService = {
                 ? String(appointment.treatment_shots).trim()
                 : null,
             clinicalDataForPgInput(appointment),
+            Number(appointment.deposit_amount ?? 0),
+            appointment.deposit_date ?? null,
+            appointment.deposit_provider ?? null,
+            pgUuidOrNull(appointment.deposit_sale_id),
+            appointment.deposit_sale_fiche_no ?? null,
+            Number(appointment.remainder_paid_amount ?? 0),
         ]);
         return id;
     },
@@ -3262,6 +3276,13 @@ export const beautyService = {
                 treatment_degree: treatmentDegree,
                 treatment_shots: treatmentShots,
                 clinical_data: hasClinicalDataPatch ? clinicalDataForPgInput(data) : undefined,
+                // Peşinatlı ön ödeme alanları — Rezervasyon / Ön Ödeme Al akışında denilen patch.
+                deposit_amount: data.deposit_amount !== undefined ? Number(data.deposit_amount ?? 0) : undefined,
+                deposit_date: data.deposit_date !== undefined ? data.deposit_date ?? null : undefined,
+                deposit_provider: data.deposit_provider !== undefined ? data.deposit_provider ?? null : undefined,
+                deposit_sale_id: data.deposit_sale_id !== undefined ? pgUuidOrNull(data.deposit_sale_id) : undefined,
+                deposit_sale_fiche_no: data.deposit_sale_fiche_no !== undefined ? data.deposit_sale_fiche_no ?? null : undefined,
+                remainder_paid_amount: data.remainder_paid_amount !== undefined ? Number(data.remainder_paid_amount ?? 0) : undefined,
                 updated_at: new Date().toISOString(),
             });
             await postgrest.patch(
@@ -3308,6 +3329,9 @@ export const beautyService = {
                  branch_id=$13, room_id=$14, tele_meeting_url=$15, booking_channel=$16, corporate_account_id=$17,
                  confirmation_call_at=$18, pre_visit_activity_at=$19,
                  treatment_degree=$20, treatment_shots=$21, clinical_data=$22::jsonb,
+                 deposit_amount=$23, deposit_date=$24, deposit_provider=$25,
+                 deposit_sale_id=$26, deposit_sale_fiche_no=$27,
+                 remainder_paid_amount=$28, remainder_payment_date=$29,
                  updated_at=NOW()
              WHERE id=$1`,
             [id,
@@ -3331,7 +3355,14 @@ export const beautyService = {
              pgTimestamptzOrNull(merged.pre_visit_activity_at),
              treatmentDegree,
              treatmentShots,
-             JSON.stringify(clinicalJson)]
+             JSON.stringify(clinicalJson),
+             Number(merged.deposit_amount ?? 0),
+             merged.deposit_date ?? null,
+             merged.deposit_provider ?? null,
+             pgUuidOrNull(merged.deposit_sale_id),
+             merged.deposit_sale_fiche_no ?? null,
+             Number(merged.remainder_paid_amount ?? 0),
+             pgTimestamptzOrNull(merged.remainder_payment_date)]
         );
         if (statusStr === 'cancelled') {
             await beautyService.voidPaidBeautySalesLinkedToAppointment(id);
