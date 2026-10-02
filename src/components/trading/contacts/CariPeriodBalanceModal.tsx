@@ -7,7 +7,7 @@
  * - Liste halinde dönem içi hareketler
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Calendar, Loader2, X } from 'lucide-react';
+import { Calendar, Loader2, X, Package } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { getAppDefaultCurrency } from '../../../services/postgres';
@@ -79,6 +79,12 @@ export function CariPeriodBalanceModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Ürün satırı görünümü (drill-down)
+  const [viewMode, setViewMode] = useState<'fiche' | 'line'>('line');
+  const [lineRows, setLineRows] = useState<Array<Record<string, unknown>>>([]);
+  const [lineLoading, setLineLoading] = useState(false);
+  const [lineError, setLineError] = useState<string | null>(null);
+
   const ct: 'customer' | 'supplier' = (cardType ?? account?.cardType ?? 'customer') as 'customer' | 'supplier';
   const isSupplierAccount = ct === 'supplier';
 
@@ -93,21 +99,39 @@ export function CariPeriodBalanceModal({
     }
     setLoading(true);
     setError(null);
+    setLineLoading(true);
+    setLineError(null);
     try {
-      const data = await supplierAPI.getAccountStatement(
-        account.id,
-        startDate,
-        endDate,
-        account.name,
-        ct,
-      );
-      setRows(Array.isArray(data) ? data : []);
+      // İki sorguyu paralel yap: fatura özeti + ürün satırları
+      const [ficheData, lineData] = await Promise.all([
+        supplierAPI.getAccountStatement(
+          account.id,
+          startDate,
+          endDate,
+          account.name,
+          ct,
+        ),
+        supplierAPI.getAccountStatementLineItems(
+          account.id,
+          startDate,
+          endDate,
+          account.name,
+          ct,
+        ).catch((e) => {
+          console.warn('[CariPeriodBalance] line items failed:', e);
+          setLineError(e instanceof Error ? e.message : String(e));
+          return [];
+        }),
+      ]);
+      setRows(Array.isArray(ficheData) ? ficheData : []);
+      setLineRows(Array.isArray(lineData) ? lineData : []);
     } catch (e) {
       console.error('[CariPeriodBalance] load failed:', e);
       setError(e instanceof Error ? e.message : String(e));
       setRows([]);
     } finally {
       setLoading(false);
+      setLineLoading(false);
     }
   };
 
@@ -132,6 +156,43 @@ export function CariPeriodBalanceModal({
     [ekstreRows],
   );
   const periodNet = isSupplierAccount ? totalAlacak - totalBorc : totalBorc - totalAlacak;
+
+  // Fatura başlığı vs ürün satırı toplamı mutabakatı
+  const reconcile = useMemo(() => {
+    if (!lineRows.length || !ekstreRows.length) return null;
+    // Fatura başlığı toplamları (borç)
+    const ficheMap = new Map<string, { ficheNo: string; ficheTotal: number; linesTotal: number; lineCount: number }>();
+    for (const e of ekstreRows) {
+      const fno = String(e.fiche_no || '').trim();
+      if (!fno) continue;
+      const amt = e.borcAmount > 0 ? e.borcAmount : e.alacakAmount;
+      if (!(amt > 0)) continue;
+      const cur = ficheMap.get(fno) || { ficheNo: fno, ficheTotal: 0, linesTotal: 0, lineCount: 0 };
+      cur.ficheTotal += amt;
+      ficheMap.set(fno, cur);
+    }
+    // Ürün satırı toplamları
+    for (const l of lineRows) {
+      const fno = String(l.fiche_no || '').trim();
+      if (!fno) continue;
+      const cur = ficheMap.get(fno) || { ficheNo: fno, ficheTotal: 0, linesTotal: 0, lineCount: 0 };
+      cur.linesTotal += Number(l.total_amount || 0);
+      cur.lineCount += 1;
+      ficheMap.set(fno, cur);
+    }
+    // Mutabakat: diff > 0.5% olan faturalar
+    const mismatches: Array<{ ficheNo: string; ficheTotal: number; linesTotal: number; lineCount: number; diffPct: number }> = [];
+    for (const v of ficheMap.values()) {
+      if (v.lineCount === 0) continue;
+      if (Math.abs(v.ficheTotal - v.linesTotal) / Math.max(v.ficheTotal, 1) > 0.005) {
+        mismatches.push({
+          ...v,
+          diffPct: ((v.ficheTotal - v.linesTotal) / Math.max(v.ficheTotal, 1)) * 100,
+        });
+      }
+    }
+    return mismatches;
+  }, [lineRows, ekstreRows]);
   // Başlangıç bakiyesi = kart balance - periodNet
   const cardBalance = Number(account.balance ?? 0) || 0;
   const openingBalance = cardBalance - periodNet;
@@ -247,6 +308,110 @@ export function CariPeriodBalanceModal({
     [tr, mainDec, mainShowDec],
   );
 
+  // Ürün satırı kolonları (fatura içi kalemler)
+  const lineColumns = useMemo<ColumnDef<Record<string, any>, any>[]>(
+    () => [
+      {
+        id: 'sale_date',
+        accessorKey: 'sale_date',
+        header: tr('dateLabel'),
+        size: 110,
+        cell: ({ row }) => (
+          <span className="font-mono text-gray-600">
+            {row.original.sale_date ? formatExtractDate(String(row.original.sale_date)) : '-'}
+          </span>
+        ),
+      },
+      {
+        id: 'fiche_no',
+        accessorKey: 'fiche_no',
+        header: tr('ficheNo'),
+        size: 130,
+        cell: ({ row }) => (
+          <span className="font-mono font-bold text-blue-600">
+            {row.original.fiche_no || '-'}
+          </span>
+        ),
+      },
+      {
+        id: 'item_code',
+        accessorKey: 'item_code',
+        header: tr('productCode') || 'Ürün Kodu',
+        size: 110,
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-violet-700">
+            {row.original.item_code || '-'}
+          </span>
+        ),
+      },
+      {
+        id: 'item_name',
+        accessorKey: 'item_name',
+        header: tr('productName') || 'Ürün Adı',
+        size: 240,
+        cell: ({ row }) => (
+          <span className="text-gray-800 break-words">
+            {row.original.item_name || '-'}
+          </span>
+        ),
+      },
+      {
+        id: 'quantity',
+        accessorKey: 'quantity',
+        header: tr('quantity') || 'Miktar',
+        size: 90,
+        meta: { align: 'right' },
+        cell: ({ row }) => {
+          const q = Number(row.original.quantity || 0);
+          const u = String(row.original.unit || '').trim();
+          return (
+            <span className="font-mono text-gray-700">
+              {fmt(q)}{u ? ` ${u}` : ''}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'unit_price',
+        accessorKey: 'unit_price',
+        header: tr('unitPrice') || 'Birim Fiyat',
+        size: 120,
+        meta: { align: 'right' },
+        cell: ({ row }) => (
+          <span className="font-mono text-gray-700">
+            {fmt(Number(row.original.unit_price || 0))}
+          </span>
+        ),
+      },
+      {
+        id: 'discount_amount',
+        accessorKey: 'discount_amount',
+        header: tr('discount') || 'İndirim',
+        size: 90,
+        meta: { align: 'right' },
+        cell: ({ row }) => {
+          const v = Number(row.original.discount_amount || 0);
+          if (!(v > 0)) return null;
+          return <span className="font-mono text-orange-600">-{fmt(v)}</span>;
+        },
+      },
+      {
+        id: 'total_amount',
+        accessorKey: 'total_amount',
+        header: tr('amount') || 'Tutar',
+        size: 130,
+        meta: { align: 'right' },
+        cell: ({ row }) => (
+          <span className="font-bold text-red-600">
+            {fmt(Number(row.original.total_amount || 0))}
+          </span>
+        ),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tr, mainDec, mainShowDec],
+  );
+
   return (
     <PercentBodyModal
       onClose={onClose}
@@ -317,6 +482,25 @@ export function CariPeriodBalanceModal({
 
         {/* Hızlı seçim butonları */}
         <div className="ml-auto flex items-center gap-1">
+          {/* View mode toggle */}
+          <div className="flex items-center bg-white border border-gray-300 rounded mr-2 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setViewMode('line')}
+              className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${viewMode === 'line' ? 'bg-violet-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              title={tr('cariPeriodBalanceLineView') || 'Ürün satırı bazında'}
+            >
+              {tr('cariPeriodBalanceLineView') || 'Ürün Satırı'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('fiche')}
+              className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${viewMode === 'fiche' ? 'bg-violet-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              title={tr('cariPeriodBalanceFicheView') || 'Fatura bazında'}
+            >
+              {tr('cariPeriodBalanceFicheView') || 'Fatura'}
+            </button>
+          </div>
           {[
             { label: '7g', days: 7 },
             { label: '30g', days: 30 },
@@ -394,11 +578,62 @@ export function CariPeriodBalanceModal({
       )}
 
       <PercentBodyModalScrollBody className="p-0">
-        {loading ? (
+        {loading || lineLoading ? (
           <div className="flex items-center justify-center h-48 text-gray-500 gap-2">
             <Loader2 className="w-5 h-5 animate-spin" />
             {tr('loading') || 'Yükleniyor...'}
           </div>
+        ) : viewMode === 'line' ? (
+          <>
+            {lineError && (
+              <div className="px-5 py-2 bg-orange-50 border-b border-orange-200 text-sm text-orange-700">
+                {tr('cariPeriodBalanceLineLoadError') || 'Ürün satırları yüklenemedi'}: {lineError}
+              </div>
+            )}
+            {reconcile && reconcile.length > 0 && (
+              <div className="px-5 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800">
+                <div className="font-bold mb-1">
+                  {tr('cariPeriodBalanceReconcileWarning') || 'Mutabakat uyarısı'}: {reconcile.length} {tr('cariPeriodBalanceReconcileFiches') || 'faturada fiş başlığı ile ürün satırı toplamı farklı'}
+                </div>
+                <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                  {reconcile.slice(0, 8).map((m) => (
+                    <div key={m.ficheNo} className="font-mono flex items-center gap-3">
+                      <span className="font-bold">{m.ficheNo}</span>
+                      <span>Fiş: {fmt(m.ficheTotal)}</span>
+                      <span>· Satır: {fmt(m.linesTotal)} ({m.lineCount})</span>
+                      <span className={m.diffPct > 0 ? 'text-red-600' : 'text-green-600'}>
+                        {m.diffPct > 0 ? '+' : ''}{m.diffPct.toFixed(1)}%
+                      </span>
+                    </div>
+                  ))}
+                  {reconcile.length > 8 && (
+                    <div className="text-amber-700 italic">
+                      ... +{reconcile.length - 8} {tr('cariPeriodBalanceMore') || 'daha'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="px-5 py-2 bg-violet-50 border-b border-violet-200 text-xs text-violet-700 flex items-center gap-2">
+              <Package className="w-4 h-4" />
+              {tr('cariPeriodBalanceLineCount') || 'Ürün satırı sayısı'}: <span className="font-bold">{lineRows.length}</span>
+              {lineRows.length > 0 && (
+                <span className="ml-3 text-violet-600">
+                  · {tr('cariPeriodBalanceLineTotal') || 'Toplam'}:{' '}
+                  <span className="font-bold">
+                    {fmt(lineRows.reduce((s, r: any) => s + Number(r.total_amount || 0), 0))} {mainCurrency}
+                  </span>
+                </span>
+              )}
+            </div>
+            <DevExDataGrid
+              data={lineRows}
+              columns={lineColumns}
+              pageSize={100}
+              enableFiltering
+              enablePagination
+            />
+          </>
         ) : (
           <DevExDataGrid
             data={ekstreRows}

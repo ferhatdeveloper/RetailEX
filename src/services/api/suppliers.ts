@@ -837,6 +837,162 @@ export const supplierAPI = {
   },
 
   /**
+   * Cari hesabın seçili tarih aralığındaki **ürün satırları** (fatura içi kalemler).
+   * - Müşteri: `customer_id` üzerinden, supplier: `party_id` üzerinden filtreler
+   * - sale_items tablosunu sales (fiche_no ile birleşik) üzerinden çeker
+   * - Dönüş: her satır = { fiche_no, date, item_code, item_name, quantity, unit_price, total_amount, ... }
+   */
+  async getAccountStatementLineItems(
+    accountId: string,
+    startDate?: string,
+    endDate?: string,
+    accountName?: string,
+    cardType: 'customer' | 'supplier' = 'customer',
+  ): Promise<any[]> {
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      try {
+        const { postgrest } = await import('./postgrestClient');
+        const fn = String(ERP_SETTINGS.firmNr ?? '001').padStart(3, '0');
+        const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+        const salesPath = `/rex_${fn}_${pn}_sales`;
+        const itemsPath = `/rex_${fn}_${pn}_sale_items`;
+
+        // Önce carinin tarih aralığındaki faturalarını çek (id listesi için)
+        const salesQuery: Record<string, string> = {
+          select: 'id,fiche_no,date,trcode,fiche_type,is_cancelled,customer_id,customer_name',
+          order: 'date.asc',
+          limit: '50000',
+        };
+        if (cardType === 'customer') {
+          salesQuery.customer_id = `eq.${accountId}`;
+        } else {
+          salesQuery.or = `(customer_id.eq.${accountId},party_id.eq.${accountId})`;
+        }
+        if (startDate && endDate) {
+          salesQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
+        } else if (startDate) {
+          salesQuery.date = `gte.${startDate}`;
+        } else if (endDate) {
+          salesQuery.date = `lte.${endDate}`;
+        }
+
+        const safeFetch = async (path: string, q: Record<string, string>, label: string) => {
+          try {
+            const rows = await postgrest.get<any[]>(path, q, { schema: 'public' });
+            return Array.isArray(rows) ? rows : [];
+          } catch (err) {
+            console.warn(`[SupplierAPI] getAccountStatementLineItems ${label}:`, err);
+            return [] as any[];
+          }
+        };
+
+        const saleRows = await safeFetch(salesPath, salesQuery, 'sales');
+
+        // İptal edilenleri çıkar
+        const activeSales = (saleRows || []).filter(
+          (r) => String(r?.fiche_type || '').toLowerCase() !== 'cancelled' && r?.is_cancelled !== true
+        );
+
+        if (!activeSales.length) return [];
+
+        const salesIds = activeSales.map((s) => s.id).filter(Boolean);
+
+        // sales_id -> header map (fiche_no, date, customer_name)
+        const salesById = new Map<string, any>();
+        for (const s of activeSales) {
+          if (s.id) salesById.set(String(s.id), s);
+        }
+
+        // sale_items'ı invoice_id üzerinden çek (IN clause)
+        // PostgREST "in" operatörünü kullanır
+        const itemsQuery: Record<string, string> = {
+          select: 'invoice_id,item_code,item_name,quantity,unit_price,vat_rate,discount_rate,discount_amount,total_amount,product_id,unit',
+          order: 'invoice_id.asc',
+          limit: '50000',
+        };
+        // 50+ UUID için `or=(invoice_id.in.(...))` — PostgREST sınırı 50-100 arası
+        // 50'lik parçalara bölelim
+        const CHUNK = 50;
+        const itemRows: any[] = [];
+        for (let i = 0; i < salesIds.length; i += CHUNK) {
+          const chunk = salesIds.slice(i, i + CHUNK);
+          const q: Record<string, string> = {
+            ...itemsQuery,
+            or: `(${chunk.map((id) => `invoice_id.eq.${id}`).join(',')})`,
+          };
+          const rows = await safeFetch(itemsPath, q, `items-${i}`);
+          itemRows.push(...rows);
+        }
+
+        // Her item'ı sales header'ı ile birleştir
+        return itemRows.map((it: any) => {
+          const hdr = salesById.get(String(it.invoice_id)) || {};
+          return {
+            ...it,
+            fiche_no: hdr.fiche_no ?? '',
+            sale_date: hdr.date ?? null,
+            trcode: hdr.trcode ?? null,
+            fiche_type: hdr.fiche_type ?? '',
+            customer_name: hdr.customer_name ?? '',
+            quantity: Number(it.quantity ?? 0),
+            unit_price: Number(it.unit_price ?? 0),
+            discount_amount: Number(it.discount_amount ?? 0),
+            total_amount: Number(it.total_amount ?? 0),
+          };
+        });
+      } catch (err) {
+        console.warn('[SupplierAPI] getAccountStatementLineItems rest_api failed:', err);
+        return [];
+      }
+    }
+
+    // SQL fallback (postgres direct)
+    try {
+      const fn = String(ERP_SETTINGS.firmNr ?? '001').padStart(3, '0');
+      const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+      const salesTbl = `rex_${fn}_${pn}_sales`;
+      const itemsTbl = `rex_${fn}_${pn}_sale_items`;
+      const idCol = cardType === 'customer' ? 'customer_id' : 'COALESCE(customer_id, party_id)';
+      const values: any[] = [accountId];
+      let dateFilter = '';
+      let i = 2;
+      if (startDate) { dateFilter += ` AND s.date::date >= $${i++}::date`; values.push(startDate); }
+      if (endDate) { dateFilter += ` AND s.date::date <= $${i++}::date`; values.push(endDate); }
+      const sql = `
+        SELECT
+          s.fiche_no,
+          s.date        AS sale_date,
+          s.trcode,
+          s.fiche_type,
+          s.customer_name,
+          i.invoice_id,
+          i.item_code,
+          i.item_name,
+          i.quantity,
+          i.unit_price,
+          i.vat_rate,
+          i.discount_rate,
+          i.discount_amount,
+          i.total_amount,
+          i.unit
+        FROM ${itemsTbl} i
+        INNER JOIN ${salesTbl} s ON s.id = i.invoice_id
+        WHERE ${idCol} = $1
+          AND s.fiche_type <> 'cancelled'
+          AND s.is_cancelled = false
+          ${dateFilter}
+        ORDER BY s.date ASC, s.fiche_no ASC, i.invoice_id ASC
+        LIMIT 50000
+      `;
+      const { rows } = await postgres.query(sql, values);
+      return Array.isArray(rows) ? rows : [];
+    } catch (error) {
+      console.error('[SupplierAPI] getAccountStatementLineItems sql failed:', error);
+      return [];
+    }
+  },
+
+  /**
    * Generate next code
    */
   async generateCode(cardType: 'customer' | 'supplier'): Promise<string> {
