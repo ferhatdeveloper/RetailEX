@@ -4773,29 +4773,7 @@ export function AppointmentPOS({
                                 </button>
                             </div>
                             )}
-                            {/* "Hizmet Ver ve Kapat" — yalnızca in_progress randevularda,
-                                Actions grid'inin altında 3. buton olarak. BAŞLADI kartından
-                                buraya taşındı. openRemainerModal handler'ı mevcut mini
-                                modalı açar; default tutar = remaining_amount. */}
-                            {existingAppointment?.id && appointmentStatusMatches(existingAppointment.status, AppointmentStatus.IN_PROGRESS) && (
-                                <button
-                                    type="button"
-                                    onClick={openRemainerModal}
-                                    data-testid="beauty-complete-and-close"
-                                    style={{
-                                        width: '100%', height: 38, borderRadius: 5, border: 'none',
-                                        background: '#7c3aed', color: '#fff',
-                                        fontSize: 11, fontWeight: 800, cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                                        transition: 'background 0.1s',
-                                    }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = '#6d28d9'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = '#7c3aed'; }}
-                                >
-                                    <CheckCircle size={13} />
-                                    {tm('bServiceCompleteAndClose') || 'Hizmet Ver ve Kapat'}
-                                </button>
-                            )}
+                            {/* "Hizmet Ver ve Kapat" butonu kaldırıldı (kullanıcı isteği). */}
                             </div>
                         </div>
                     </div>{/* end scrollable bottom section */}
@@ -5401,29 +5379,7 @@ export function AppointmentPOS({
                 </div>
             </RetailExFlatModal>
 
-            {/* ── In-progress randevu bilgi kartı ──
-                existingAppointment.status === 'in_progress' ise sağ panelde bilgi
-                amaçlı rozet + tarih + ipucu gösterilir. "Hizmet Ver ve Kapat" eylem
-                butonu artık bu kartta değil; ana checkout panelinin Actions bölümünün
-                altında, yalnızca in_progress randevularda görünür. */}
-            {showInProgressPanel && existingAppointment?.id && appointmentStatusMatches(existingAppointment.status, AppointmentStatus.IN_PROGRESS) && (() => {
-                return (
-                    <div style={{ padding: '8px 16px 12px', background: '#faf5ff', borderTop: '1px solid #ede9fe', flexShrink: 0 }}>
-                        <div style={{ background: '#fff', border: '1px solid #ede9fe', borderRadius: 8, padding: '10px 12px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, color: '#5b21b6', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                    <Activity size={12} color="#7c3aed" />
-                                    {tm('bInProgressBadge') || '🟣 Başladı'}
-                                </span>
-                                <span style={{ fontSize: 10, color: '#6b7280' }}>
-                                    {String(existingAppointment.date ?? existingAppointment.appointment_date ?? '').slice(0, 10)}
-                                    {existingAppointment.appointment_time ? ` · ${String(existingAppointment.appointment_time).slice(0, 5)}` : ''}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
+            {/* ── In-progress randevu bilgi kartı kaldırıldı (kullanıcı isteği). ── */}
 
             {/* ── "Hizmet Ver ve Kapat" inline mini modal (kalan ödeme + tamamla) ── */}
             {remainerModalOpen && existingAppointment?.id && (() => {
