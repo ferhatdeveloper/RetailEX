@@ -5,6 +5,7 @@ import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
 import { postgres, ERP_SETTINGS } from './postgres';
 import { useSaleStore } from '../store/useSaleStore';
 import { useCustomerStore } from '../store/useCustomerStore';
+import { cariCashStoredBalanceDelta } from './api/accountBalance';
 import { currentLoginCashierName, currentLoginStoreId, currentLoginUserId } from '../utils/loginCashierName';
 import {
     buildReminderText,
@@ -10192,6 +10193,27 @@ export const beautyService = {
                       WHERE id = $2::text::uuid`,
                     [amount, targetRegisterId],
                 );
+                // Müşteri cari bakiyesi: CH_TAHSILAT → borç azalır (müşteri simetrisi).
+                // `cariCashStoredBalanceDelta('CH_TAHSILAT', customer)` = −amount.
+                // Düzeltme: Bug ARZ — ödeme alındığında cash_lines yazılıyordu ama
+                // customers.balance güncellenmediği için cari "hep veresiye" görünüyordu.
+                // (kasa.ts:1672 ile aynı desen — invoice.ts:984 paraleli).
+                const customerDelta = cariCashStoredBalanceDelta(amount, 'CH_TAHSILAT', 'customer');
+                if (customerDelta !== 0) {
+                    const customersTable = `rex_${firmNr}_customers`;
+                    await postgres
+                        .query(
+                            `UPDATE ${customersTable}
+                                SET balance = COALESCE(balance, 0) + $1::numeric,
+                                    updated_at = NOW()
+                              WHERE id = $2::text::uuid`,
+                            [customerDelta, customerId],
+                        )
+                        .catch((custErr: unknown) => {
+                            const detail = custErr instanceof Error ? custErr.message : String(custErr);
+                            console.warn('[collectAppointmentRemainder] customer balance update failed:', detail);
+                        });
+                }
             }
 
             // 3.5) Plan §6 Adım 4 — ana hizmet sales fişi INSERT.
