@@ -3528,12 +3528,6 @@ export const beautyService = {
                     console.warn('[beautyService] cancelAppointmentWithRevert: reservation patch:', e);
                 }
             }
-            // İptal edilen ana satış(lar)ın orijinal `total` (cari) toplamı
-            // müşterinin `customers.balance` alanından düşülür → cari borç
-            // sıfırlanır (audit trail: sales iptal + cari reversal dengeli).
-            // Bug 12: cari reversal yapılmazsa dashboard "Kalan Cari" KPA'sı
-            // ve cari ekstresi iptal sonrası 55.000'i hâlâ gösteriyordu.
-            let reversalDelta = 0;
             for (const row of mains) {
                 if (!row?.id) continue;
                 const prevNotes = String(row.notes ?? '');
@@ -3551,26 +3545,8 @@ export const beautyService = {
                         { schema: 'beauty', prefer: 'return=minimal' },
                     );
                     result.mainSaleCancelled = true;
-                    // İptal edilen ana satışın orijinal tutarını cari reversal
-                    // delta'sına ekle (iptal öncesi toplam belge tutarı).
-                    const origTotal = Math.abs(Number(row.total ?? 0)) || 0;
-                    if (origTotal > 0) reversalDelta += origTotal;
                 } catch (e) {
                     console.warn('[beautyService] cancelAppointmentWithRevert: main patch:', e);
-                }
-            }
-
-            // 4) Cari reversal — müşterinin bakiyesinden iptal edilen ana
-            //    satış(lar)ın toplam tutarını düş. Negatif delta uygulanır
-            //    (borç azaltıcı). Audit trail: sales.payment_status='cancelled'
-            //    + customers.balance reversal aynı transaction grubu.
-            if (reversalDelta > 0 && customerIdForReversal) {
-                try {
-                    const { customersAPI } = await import('./api/customers');
-                    await customersAPI.addBalance(customerIdForReversal, -reversalDelta);
-                    result.customerBalanceReversed = reversalDelta;
-                } catch (e) {
-                    console.warn('[beautyService] cancelAppointmentWithRevert: cari reversal:', e);
                 }
             }
 

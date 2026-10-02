@@ -154,6 +154,30 @@ function isActiveBeautySale(s: BeautySale): boolean {
     return st !== 'cancelled' && st !== 'canceled' && st !== 'void';
 }
 
+/**
+ * Ana hizmet satışı — deposit ve parent_sale_id hariç.
+ * ClinicDashboard ile aynı mantık: peşinat (`is_deposit=true`) ve parent_sale_id
+ * dolu olan fişler, ana satışın paid_amount'una yansıtılmış olur; KPI
+ * toplamına eklersek aynı tahsilatı iki kez sayıyoruz.
+ * Ayrıca henüz tamamlanmamış randevuya bağlı (in_progress / scheduled /
+ * confirmed) ana satışlar da KPI dışı — gerçek hizmet verilmedi.
+ */
+function isMainBeautySale(s: BeautySale, completedAptIds: Set<string>): boolean {
+    if (!isActiveBeautySale(s)) return false;
+    const sale = s as BeautySale & {
+        is_deposit?: boolean | null;
+        parent_sale_id?: string | null;
+        linked_appointment_id?: string | null;
+    };
+    if (sale.is_deposit === true) return false;
+    if (sale.parent_sale_id) return false;
+    if (sale.linked_appointment_id) {
+        const aptId = String(sale.linked_appointment_id).trim().toLowerCase();
+        if (aptId && !completedAptIds.has(aptId)) return false;
+    }
+    return true;
+}
+
 function isCompletedBeautyAppointment(a: BeautyAppointment): boolean {
     return String(a.status ?? '').toLowerCase() === 'completed';
 }
@@ -738,6 +762,31 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         [salesHistory],
     );
 
+    /**
+     * Tamamlanmış randevu id'leri — ana hizmet satışları filtresi (Bug 3/4/6) ve
+     * "henüz gerçekleşmemiş randevuya bağlı satış" elemesi için kullanılır.
+     */
+    const completedAppointmentIds = useMemo(() => {
+        const set = new Set<string>();
+        for (const a of pastAppointments) {
+            if (!isCompletedBeautyAppointment(a)) continue;
+            const id = String(a.id ?? '').trim().toLowerCase();
+            if (id) set.add(id);
+        }
+        return set;
+    }, [pastAppointments]);
+
+    /**
+     * Ana hizmet satışları — KPI ve bakiye hesabında deposit + parent_sale_id
+     * hariç tutulur (ClinicDashboard ile aynı). Aynı zamanda tamamlanmamış
+     * randevuya bağlı ana satışlar da hariç (henüz hizmet verilmedi → cariye
+     * yazılmamalı; Bug 3/4/6 kök nedeni).
+     */
+    const mainSalesHistory = useMemo(
+        () => activeSalesHistory.filter((s) => isMainBeautySale(s, completedAppointmentIds)),
+        [activeSalesHistory, completedAppointmentIds],
+    );
+
     const historyDataSummary = useMemo(
         () => ({
             appointments: pastAppointments.length,
@@ -776,6 +825,11 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
      * - Alınan tutar = nakit/kart/havale (beautySalePocketCollected) toplamı
      * - Veresiye (cari) = cariye yazılan kalan (beautySaleRemainingCari) toplamı
      * Bakiye (üstte) = açık cari ledger; satış kalanı ile aynı yönde (müşteri borcu +).
+     *
+     * Bug 3/4/6 kök neden: deposit + parent_sale_id ile bağlı fişler ana
+     * hizmetin paid_amount'una zaten yansır; ayrıca sayılırsa çift olur.
+     * Ayrıca henüz tamamlanmamış randevuya bağlı ana satışlar da hariç —
+     * gerçek hizmet verilmediyse cari/total'a yansımamalı.
      */
     const profileStats = useMemo(() => {
         if (!selected) {
@@ -791,14 +845,14 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 lastSaleRemaining: 0,
             };
         }
-        const activeSales = salesHistory.filter(isActiveBeautySale);
-        const sumDocument = activeSales.reduce((acc, s) => acc + Math.max(0, Number(s.total) || 0), 0);
-        const collectedAmount = activeSales.reduce((acc, s) => acc + beautySalePocketCollected(s), 0);
-        const veresiyeCari = activeSales.reduce((acc, s) => acc + beautySaleRemainingCari(s), 0);
-        /** Belge tutarı; satış yoksa kart total_spent, o da yoksa tamamlanmış randevu fiyatları */
-        let totalSpent = activeSales.length > 0 ? sumDocument : Number(selected.total_spent ?? 0);
+        const mainSales = mainSalesHistory;
+        const sumDocument = mainSales.reduce((acc, s) => acc + Math.max(0, Number(s.total) || 0), 0);
+        const collectedAmount = mainSales.reduce((acc, s) => acc + beautySalePocketCollected(s), 0);
+        const veresiyeCari = mainSales.reduce((acc, s) => acc + beautySaleRemainingCari(s), 0);
+        /** Belge tutarı; ana hizmet satışı yoksa kart total_spent, o da yoksa tamamlanmış randevu fiyatları */
+        let totalSpent = mainSales.length > 0 ? sumDocument : Number(selected.total_spent ?? 0);
         const completedAppointments = pastAppointments.filter(isCompletedBeautyAppointment);
-        if (!(totalSpent > 0) && activeSales.length === 0) {
+        if (!(totalSpent > 0) && mainSales.length === 0) {
             const fromApts = completedAppointments.reduce(
                 (acc, a) => acc + Math.max(0, Number(a.total_price) || 0),
                 0,
@@ -806,10 +860,10 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             if (fromApts > 0) totalSpent = fromApts;
         }
 
-        /** Fiş bazında: randevuya bağlı aktif satış fişi adedi (yoksa tamamlanan randevu). */
-        const linkedAptIds = collectAppointmentIdsLinkedToSales(activeSales, pastAppointments);
+        /** Fiş bazında: randevuya bağlı aktif ana hizmet satış fişi adedi (yoksa tamamlanan randevu). */
+        const linkedAptIds = collectAppointmentIdsLinkedToSales(mainSales, pastAppointments);
         const receiptSaleKeys = new Set<string>();
-        for (const s of activeSales) {
+        for (const s of mainSales) {
             const saleKey = String(s.id || `${s.created_at}-${s.total}`);
             const fromLink = String(s.linked_appointment_id ?? '').trim();
             const fromNotes = beautyService.parseRexAppointmentIdFromNotes(s.notes);
@@ -859,7 +913,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             String(completedAppointments.length),
         );
 
-        const lastSale = activeSales[0];
+        const lastSale = mainSales[0];
         const lastSaleCollected = lastSale ? beautySalePocketCollected(lastSale) : 0;
         const lastSaleRemaining = lastSale ? beautySaleRemainingCari(lastSale) : 0;
         return {
@@ -869,11 +923,11 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             appointmentCount: receiptBasedCount,
             appointmentCountDetail,
             lastVisitLabel,
-            activeSaleCount: activeSales.length,
+            activeSaleCount: mainSales.length,
             lastSaleCollected,
             lastSaleRemaining,
         };
-    }, [selected, salesHistory, pastAppointments, dateLocale, tm]);
+    }, [selected, mainSalesHistory, pastAppointments, dateLocale, tm]);
 
     const historyColumns: ColumnsType<UnifiedHistoryRow> = useMemo(
         () => [
@@ -923,6 +977,21 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                     }
                     if (row.kind === 'sale') {
                         const s = row.sale;
+                        const itemNames = (s.items ?? [])
+                            .map((it) => String(it?.name ?? '').trim())
+                            .filter(Boolean);
+                        // Bug 5: items[] içindeki tüm hizmet adlarını invoice_number
+                        // ile birlikte göster — aksi halde kullanıcı tek bir fişte
+                        // yalnızca ilk kalemi görüyor (HAND JELISH + HIGH LIGHT gibi).
+                        if (itemNames.length > 0) {
+                            return (
+                                <span>
+                                    {s.invoice_number ? <span className="font-medium">{String(s.invoice_number)}</span> : null}
+                                    {s.invoice_number ? ' · ' : ''}
+                                    {itemNames.join(' · ')}
+                                </span>
+                            );
+                        }
                         return s.invoice_number ? String(s.invoice_number) : '—';
                     }
                     const p = row.purchase;

@@ -840,8 +840,22 @@ export function AppointmentPOS({
     // Toplam = Ara Toplam − İndirim − Ön Ödeme.
     // Yeni randevuda kullanıcı rezervasyon tutarı girer; mevcut randevuda
     // (ön ödeme daha önce alınmışsa) deposit_amount kullanılır ve input kilitlenir.
+    // effectiveReservation yalnızca ödeme/akış hesaplarında kullanılır (yeni
+    // randevu booking, peşinatlı mod, receipt toplamı); panel "Toplam" satırı
+    // brüt hizmet tutarı + indirim gösterir, peşinat ayrıca "Ön Ödenen Tutar"
+    // olarak aşağıda listelenir (randevu henüz gerçekleşmediyse kalan borç
+    // "Henüz gerçekleşmedi" notu olarak gösterilir, gerçekleştikten sonra
+    // gerçek kalan = brüt − peşinat).
     const effectiveReservation = existingAppointment?.id ? existingDeposit : Math.max(0, reservationAmount || 0);
-    const total = Math.max(0, subtotal - discAmt - effectiveReservation);
+    // Panel "Toplam" = Ara Toplam − İndirim (peşinat dahil edilmez).
+    const total = Math.max(0, subtotal - discAmt);
+    // Brüt hizmet toplamı (panel Toplam satırı ile aynı; kalan = brüt − peşinat).
+    const grossAfterDiscount = Math.max(0, subtotal - discAmt);
+    // Mevcut randevuda henüz gerçekleşmediyse kalan borç gizlenir (ödemeler
+    // sadece hizmet tamamlandıktan sonra tahsil edilir).
+    const existingIsCompleted = !!existingAppointment?.id
+        && appointmentStatusMatches(existingAppointment.status, AppointmentStatus.COMPLETED);
+    const remainingAfterDeposit = Math.max(0, grossAfterDiscount - existingDeposit);
     const totalDur = cart.filter(l => l.type === 'service').reduce((s, l) => s + (l.duration_min ?? 0) * l.qty, 0);
 
     useEffect(() => {
@@ -4630,12 +4644,9 @@ export function AppointmentPOS({
                                         <span style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>-{fmt(discAmt)}</span>
                                     </div>
                                 )}
-                                {effectiveReservation > 0 && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                                        <span style={{ fontSize: 11, color: '#0891b2', fontWeight: 600 }}>{tm('bReservationAmount') || 'Rezervasyon Tutarı'}</span>
-                                        <span style={{ fontSize: 12, fontWeight: 700, color: '#0891b2' }}>-{fmt(effectiveReservation)}</span>
-                                    </div>
-                                )}
+                                {/* Peşinat ayrıca yeşil "Ön Ödenen Tutar" bilgi satırında
+                                    gösteriliyor; burada çift negatif işaret kullanma
+                                    (muhasebe "borç" yönü ile karışır). Toplam = brüt. */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e8e4f0', paddingTop: 6 }}>
                                     <span style={{ fontSize: 12, fontWeight: 800, color: '#111827' }}>{tm('total')}</span>
                                     <span style={{ fontSize: 15, fontWeight: 800, color: '#7c3aed' }}>{fmt(total)}</span>
@@ -4646,7 +4657,12 @@ export function AppointmentPOS({
                                 altında readonly bilgi amaçlı gösterim. Toplam ile butonlar
                                 arasında kompakt yeşil yatay bilgi satırı. Input değil.
                                 Plan §6 Adım 7: fiş no (`deposit_sale_fiche_no`) ikinci
-                                satırda monospace olarak gösterilir. */}
+                                satırda monospace olarak gösterilir.
+                                Kalan Tutar satırı sadece COMPLETED durumda gerçek
+                                tutarı gösterir; henüz gerçekleşmemiş randevularda
+                                (SCHEDULED/CONFIRMED/IN_PROGRESS) "Henüz gerçekleşmedi"
+                                notu ile değişir (kalan borç hizmet tamamlandıktan
+                                sonra tahsil edilir). */}
                             {existingAppointment?.id && Number((existingAppointment as { deposit_amount?: number }).deposit_amount ?? 0) > 0 && (
                                 <div
                                     data-testid="appointment-prepaid-amount-row"
@@ -4682,6 +4698,39 @@ export function AppointmentPOS({
                                             </span>
                                         </div>
                                     )}
+                                    {/* Kalan Tutar: hizmet tamamlandıysa gerçek kalan,
+                                        aksi hâlde hizmet henüz verilmedi bilgisi. */}
+                                    <div
+                                        data-testid="appointment-remaining-row"
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'baseline',
+                                            fontSize: 10,
+                                            marginTop: 2,
+                                            paddingTop: 4,
+                                            borderTop: '1px dashed #bbf7d0',
+                                        }}
+                                    >
+                                        <span style={{ color: existingIsCompleted ? '#b45309' : '#6b7280', fontWeight: 700 }}>
+                                            {tm('bRemainingAmount') || 'Kalan Tutar'}
+                                        </span>
+                                        {existingIsCompleted ? (
+                                            <span
+                                                data-testid="appointment-remaining-value"
+                                                style={{ fontSize: 12, fontWeight: 800, color: '#b45309' }}
+                                            >
+                                                {fmt(remainingAfterDeposit)} IQD
+                                            </span>
+                                        ) : (
+                                            <span
+                                                data-testid="appointment-remaining-not-yet"
+                                                style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', fontStyle: 'italic' }}
+                                            >
+                                                {tm('bAppointmentNotYetDone') || 'Henüz gerçekleşmedi'}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 

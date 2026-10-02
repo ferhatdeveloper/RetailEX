@@ -479,16 +479,24 @@ export function POSPaymentModal({
   //  - "Kalanı cariye yaz" butonu doğru tutarı gösterir
   //  - Nakit/Kart default tutarı kalan olarak başlar
   //  - Final ekstrede Toplam = hizmet bedeli − peşinat
-  const appointmentRemainingTotal =
-    appointmentContext &&
-    Number.isFinite(appointmentContext.remainingAmount) &&
-    appointmentContext.remainingAmount >= 0
-      ? appointmentContext.remainingAmount
-      : null;
-  const finalTotal =
-    appointmentRemainingTotal !== null
-      ? roundPosMoneyAmount(appointmentRemainingTotal - calculatedDiscount, baseCurrency)
-      : roundPosMoneyAmount(total - calculatedDiscount, baseCurrency);
+  //
+  // Bug-9 düzeltmesi: Kalan tutarı **sepet (cart) subtotal**'ından hesaplanır,
+  // `appointmentContext.remainingAmount`'tan DEĞİL. Sebep: `remainingAmount`
+  // randevunun kendi `total_price` kolonundan türetilir ve randevuya yeni
+  // eklenen/düşürülen satırlarla sepet subtotal'ı farklılaşabilir. Kullanıcı
+  // ödeme ekranındaki "ARA TOPLAM" satırını (sepet subtotal'ı) referans alır;
+  // Kalan daima subtotal − ön ödeme olarak gösterilir.
+  const appointmentPrePayment =
+    appointmentContext && Number.isFinite(appointmentContext.prePaymentAmount)
+      ? Math.max(0, appointmentContext.prePaymentAmount)
+      : 0;
+  const appointmentHasPrePayment = appointmentContext !== undefined && appointmentPrePayment > 0;
+  const finalTotal = appointmentHasPrePayment
+    ? roundPosMoneyAmount(
+        Math.max(0, subtotal - appointmentPrePayment - calculatedDiscount),
+        baseCurrency,
+      )
+    : roundPosMoneyAmount(total - calculatedDiscount, baseCurrency);
 
   // Calculate total paid (convert all to base currency)
   const totalPaidRaw = payments.reduce((sum, payment) => {
@@ -657,7 +665,7 @@ export function POSPaymentModal({
   /** Kompakt müşteri borcu badge'i tıklanınca — bakiye tahsilat modalı aç. */
   const handleOpenCollectModal = () => {
     if (!selectedCustomer) return;
-    if (customerBalance >= 0) {
+    if (customerBalance <= 0) {
       // Alacaklı/hesap sıfır — tahsil edilecek bir şey yok. Modal açma,
       // bilgilendirme ver (müşteri zaten borçlu değil).
       toast.info(
@@ -1188,12 +1196,7 @@ const handleCollectCustomerDebt = async () => {
                           className={`font-bold font-mono px-3 py-1 rounded ${darkMode ? 'text-blue-400 bg-blue-900/30' : 'text-blue-700 bg-blue-50'}`}
                           data-testid="payment-modal-remaining-total"
                         >
-                          {formatCurrency(
-                            Number.isFinite(appointmentContext.remainingAmount) &&
-                              appointmentContext.remainingAmount >= 0
-                              ? appointmentContext.remainingAmount
-                              : finalTotal,
-                          )}
+                          {formatCurrency(finalTotal)}
                         </span>
                       </div>
                     </>
@@ -1316,12 +1319,12 @@ const handleCollectCustomerDebt = async () => {
                   data-testid="pos-customer-debt-badge"
                   onClick={handleOpenCollectModal}
                   title={
-                    customerBalance < 0
+                    customerBalance > 0
                       ? tm('collectBadgeTitle') || 'Tahsilat için tıklayın'
                       : tm('customerDetailTitle') || 'Müşteri detayı'
                   }
                   className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border transition ${
-                    customerBalance < 0
+                    customerBalance > 0
                       ? darkMode
                         ? 'bg-red-900/20 border-red-800/60 hover:bg-red-900/30 text-red-200'
                         : 'bg-red-50 border-red-300 hover:bg-red-100 text-red-900'
@@ -1339,7 +1342,7 @@ const handleCollectCustomerDebt = async () => {
                   <span
                     data-testid="pos-customer-balance"
                     className={`text-sm font-bold font-mono shrink-0 ${
-                      customerBalance < 0
+                      customerBalance > 0
                         ? darkMode
                           ? 'text-red-300'
                           : 'text-red-700'
@@ -1348,10 +1351,10 @@ const handleCollectCustomerDebt = async () => {
                           : 'text-gray-600'
                     }`}
                   >
-                    {customerBalance < 0
-                      ? `${tm('customerDebt') || 'Borç'}: ${formatSummaryMoney(Math.abs(customerBalance))} ${baseCurrency}`
-                      : customerBalance > 0
-                        ? `${tm('customerCredit') || 'Alacak'}: ${formatSummaryMoney(customerBalance)} ${baseCurrency}`
+                    {customerBalance > 0
+                      ? `${tm('customerDebt') || 'Borç'}: ${formatSummaryMoney(customerBalance)} ${baseCurrency}`
+                      : customerBalance < 0
+                        ? `${tm('customerCredit') || 'Alacak'}: ${formatSummaryMoney(Math.abs(customerBalance))} ${baseCurrency}`
                         : `${formatSummaryMoney(0)} ${baseCurrency}`}
                   </span>
                 </button>
@@ -2028,8 +2031,8 @@ const handleCollectCustomerDebt = async () => {
               {tm('collectCurrentBalance') || 'Cari bakiye'}
             </div>
             <div className={`text-lg font-bold font-mono ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
-              {customerBalance < 0
-                ? `${formatSummaryMoney(Math.abs(customerBalance))} ${baseCurrency} ${tm('customerDebt') || 'borç'}`
+              {customerBalance > 0
+                ? `${formatSummaryMoney(customerBalance)} ${baseCurrency} ${tm('customerDebt') || 'borç'}`
                 : `${formatSummaryMoney(0)} ${baseCurrency}`}
             </div>
           </div>
