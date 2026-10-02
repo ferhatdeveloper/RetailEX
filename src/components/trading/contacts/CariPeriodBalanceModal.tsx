@@ -90,11 +90,11 @@ export function CariPeriodBalanceModal({
 
   const loadStatement = async () => {
     if (!startDate || !endDate) {
-      setError(tr('cariPeriodBalanceDateRequired') || 'Başlangıç ve bitiş tarihi gerekli');
+      setError(tr('cariPeriodBalanceDateRequired'));
       return;
     }
     if (startDate > endDate) {
-      setError(tr('cariPeriodBalanceDateOrder') || 'Başlangıç tarihi bitişten büyük olamaz');
+      setError(tr('cariPeriodBalanceDateOrder'));
       return;
     }
     setLoading(true);
@@ -336,7 +336,7 @@ export function CariPeriodBalanceModal({
       {
         id: 'item_code',
         accessorKey: 'item_code',
-        header: tr('productCode') || 'Ürün Kodu',
+        header: tr('productCode'),
         size: 110,
         cell: ({ row }) => (
           <span className="font-mono text-xs text-violet-700">
@@ -347,7 +347,7 @@ export function CariPeriodBalanceModal({
       {
         id: 'item_name',
         accessorKey: 'item_name',
-        header: tr('productName') || 'Ürün Adı',
+        header: tr('productName'),
         size: 240,
         cell: ({ row }) => (
           <span className="text-gray-800 break-words">
@@ -358,7 +358,7 @@ export function CariPeriodBalanceModal({
       {
         id: 'quantity',
         accessorKey: 'quantity',
-        header: tr('quantity') || 'Miktar',
+        header: tr('quantity'),
         size: 90,
         meta: { align: 'right' },
         cell: ({ row }) => {
@@ -374,7 +374,7 @@ export function CariPeriodBalanceModal({
       {
         id: 'unit_price',
         accessorKey: 'unit_price',
-        header: tr('unitPrice') || 'Birim Fiyat',
+        header: tr('unitPrice'),
         size: 120,
         meta: { align: 'right' },
         cell: ({ row }) => (
@@ -386,7 +386,7 @@ export function CariPeriodBalanceModal({
       {
         id: 'discount_amount',
         accessorKey: 'discount_amount',
-        header: tr('discount') || 'İndirim',
+        header: tr('discount'),
         size: 90,
         meta: { align: 'right' },
         cell: ({ row }) => {
@@ -398,7 +398,7 @@ export function CariPeriodBalanceModal({
       {
         id: 'total_amount',
         accessorKey: 'total_amount',
-        header: tr('amount') || 'Tutar',
+        header: tr('amount'),
         size: 130,
         meta: { align: 'right' },
         cell: ({ row }) => (
@@ -416,14 +416,14 @@ export function CariPeriodBalanceModal({
     <PercentBodyModal
       onClose={onClose}
       size="wide"
-      ariaLabel={tr('cariPeriodBalanceTitle') || 'Tarih Aralığı Bakiyesi'}
+      ariaLabel={tr('cariPeriodBalanceTitle')}
     >
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 shrink-0">
         <div className="flex items-center gap-3">
           <Calendar className="w-5 h-5 text-violet-600" />
           <div>
             <h2 className="text-base font-bold text-gray-900">
-              {tr('cariPeriodBalanceTitle') || 'Tarih Aralığı Bakiyesi'}
+              {tr('cariPeriodBalanceTitle')}
             </h2>
             <p className="text-xs text-gray-500">
               <span className="font-mono text-blue-600 font-bold">
@@ -447,7 +447,7 @@ export function CariPeriodBalanceModal({
       <div className="flex flex-wrap items-center gap-3 px-5 py-3 bg-gray-50 border-b border-gray-200 shrink-0">
         <label className="flex items-center gap-2 text-sm">
           <span className="text-gray-600 font-medium">
-            {tr('cariPeriodBalanceStart') || 'Başlangıç'}
+            {tr('cariPeriodBalanceStart')}
           </span>
           <input
             type="date"
@@ -459,7 +459,7 @@ export function CariPeriodBalanceModal({
         </label>
         <label className="flex items-center gap-2 text-sm">
           <span className="text-gray-600 font-medium">
-            {tr('cariPeriodBalanceEnd') || 'Bitiş'}
+            {tr('cariPeriodBalanceEnd')}
           </span>
           <input
             type="date"
@@ -477,7 +477,7 @@ export function CariPeriodBalanceModal({
           className="px-4 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-bold rounded flex items-center gap-2"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-          {tr('cariPeriodBalanceApply') || 'Uygula'}
+          {tr('cariPeriodBalanceApply')}
         </button>
 
         {/* Hızlı seçim butonları */}
@@ -488,27 +488,27 @@ export function CariPeriodBalanceModal({
               type="button"
               onClick={() => setViewMode('line')}
               className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${viewMode === 'line' ? 'bg-violet-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-              title={tr('cariPeriodBalanceLineView') || 'Ürün satırı bazında'}
+              title={tr('cariPeriodBalanceLineView')}
             >
-              {tr('cariPeriodBalanceLineView') || 'Ürün Satırı'}
+              {tr('cariPeriodBalanceLineView')}
             </button>
             <button
               type="button"
               onClick={() => setViewMode('fiche')}
               className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${viewMode === 'fiche' ? 'bg-violet-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-              title={tr('cariPeriodBalanceFicheView') || 'Fatura bazında'}
+              title={tr('cariPeriodBalanceFicheView')}
             >
-              {tr('cariPeriodBalanceFicheView') || 'Fatura'}
+              {tr('cariPeriodBalanceFicheView')}
             </button>
           </div>
           {[
-            { label: '7g', days: 7 },
-            { label: '30g', days: 30 },
-            { label: '90g', days: 90 },
-            { label: '1yıl', days: 365 },
+            { key: 'cariPeriodBalanceQuick7', days: 7 },
+            { key: 'cariPeriodBalanceQuick30', days: 30 },
+            { key: 'cariPeriodBalanceQuick90', days: 90 },
+            { key: 'cariPeriodBalanceQuick365', days: 365 },
           ].map((q) => (
             <button
-              key={q.label}
+              key={q.key}
               type="button"
               onClick={() => {
                 setStartDate(daysAgoIso(q.days));
@@ -516,7 +516,7 @@ export function CariPeriodBalanceModal({
               }}
               className="px-2 py-1 text-xs font-bold text-gray-600 hover:bg-gray-200 rounded"
             >
-              {q.label}
+              {tr(q.key)}
             </button>
           ))}
         </div>
@@ -526,7 +526,7 @@ export function CariPeriodBalanceModal({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-5 py-3 border-b border-gray-200 shrink-0 bg-white">
         <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
           <div className="text-[10px] uppercase tracking-wide text-gray-500 font-bold">
-            {tr('cariPeriodBalanceOpening') || 'Açılış Bakiyesi'}
+            {tr('cariPeriodBalanceOpening')}
           </div>
           <div className={`text-lg font-black ${openingBalance > 0 ? 'text-red-600' : openingBalance < 0 ? 'text-green-600' : 'text-gray-500'}`}>
             {fmt(Math.abs(openingBalance))} {mainCurrency}
@@ -543,7 +543,7 @@ export function CariPeriodBalanceModal({
             {fmt(totalBorc)} {mainCurrency}
           </div>
           <div className="text-[10px] text-red-600">
-            {ekstreRows.filter(r => r.borcAmount > 0).length} {tr('cariPeriodBalanceTxns') || 'işlem'}
+            {ekstreRows.filter(r => r.borcAmount > 0).length} {tr('cariPeriodBalanceTxns')}
           </div>
         </div>
         <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2">
@@ -554,18 +554,18 @@ export function CariPeriodBalanceModal({
             {fmt(totalAlacak)} {mainCurrency}
           </div>
           <div className="text-[10px] text-green-600">
-            {ekstreRows.filter(r => r.alacakAmount > 0).length} {tr('cariPeriodBalanceTxns') || 'işlem'}
+            {ekstreRows.filter(r => r.alacakAmount > 0).length} {tr('cariPeriodBalanceTxns')}
           </div>
         </div>
         <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2">
           <div className="text-[10px] uppercase tracking-wide text-violet-700 font-bold">
-            {tr('cariPeriodBalanceClosing') || 'Kapanış Bakiyesi'}
+            {tr('cariPeriodBalanceClosing')}
           </div>
           <div className={`text-lg font-black ${closingBalance > 0 ? 'text-red-700' : closingBalance < 0 ? 'text-green-700' : 'text-gray-500'}`}>
             {fmt(Math.abs(closingBalance))} {mainCurrency}
           </div>
           <div className="text-[10px] text-violet-600">
-            {tr('cariPeriodBalanceCardBalance') || 'Kart balance'} ({new Date().toLocaleDateString(dateLocale)})
+            {tr('cariPeriodBalanceCardBalance')} ({new Date().toLocaleDateString(dateLocale)})
           </div>
         </div>
       </div>
@@ -581,26 +581,26 @@ export function CariPeriodBalanceModal({
         {loading || lineLoading ? (
           <div className="flex items-center justify-center h-48 text-gray-500 gap-2">
             <Loader2 className="w-5 h-5 animate-spin" />
-            {tr('loading') || 'Yükleniyor...'}
+            {tr('loading')}
           </div>
         ) : viewMode === 'line' ? (
           <>
             {lineError && (
               <div className="px-5 py-2 bg-orange-50 border-b border-orange-200 text-sm text-orange-700">
-                {tr('cariPeriodBalanceLineLoadError') || 'Ürün satırları yüklenemedi'}: {lineError}
+                {tr('cariPeriodBalanceLineLoadError')}: {lineError}
               </div>
             )}
             {reconcile && reconcile.length > 0 && (
               <div className="px-5 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800">
                 <div className="font-bold mb-1">
-                  {tr('cariPeriodBalanceReconcileWarning') || 'Mutabakat uyarısı'}: {reconcile.length} {tr('cariPeriodBalanceReconcileFiches') || 'faturada fiş başlığı ile ürün satırı toplamı farklı'}
+                  {tr('cariPeriodBalanceReconcileWarning')}: {reconcile.length} {tr('cariPeriodBalanceReconcileCount')}
                 </div>
                 <div className="space-y-0.5 max-h-24 overflow-y-auto">
                   {reconcile.slice(0, 8).map((m) => (
                     <div key={m.ficheNo} className="font-mono flex items-center gap-3">
                       <span className="font-bold">{m.ficheNo}</span>
-                      <span>Fiş: {fmt(m.ficheTotal)}</span>
-                      <span>· Satır: {fmt(m.linesTotal)} ({m.lineCount})</span>
+                      <span>{tr('cariPeriodBalanceFicheHeaderTotal')}: {fmt(m.ficheTotal)}</span>
+                      <span>· {tr('cariPeriodBalanceLineTotalAmount')}: {fmt(m.linesTotal)} ({m.lineCount})</span>
                       <span className={m.diffPct > 0 ? 'text-red-600' : 'text-green-600'}>
                         {m.diffPct > 0 ? '+' : ''}{m.diffPct.toFixed(1)}%
                       </span>
@@ -608,7 +608,7 @@ export function CariPeriodBalanceModal({
                   ))}
                   {reconcile.length > 8 && (
                     <div className="text-amber-700 italic">
-                      ... +{reconcile.length - 8} {tr('cariPeriodBalanceMore') || 'daha'}
+                      ... +{reconcile.length - 8} {tr('cariPeriodBalanceMore')}
                     </div>
                   )}
                 </div>
@@ -616,10 +616,10 @@ export function CariPeriodBalanceModal({
             )}
             <div className="px-5 py-2 bg-violet-50 border-b border-violet-200 text-xs text-violet-700 flex items-center gap-2">
               <Package className="w-4 h-4" />
-              {tr('cariPeriodBalanceLineCount') || 'Ürün satırı sayısı'}: <span className="font-bold">{lineRows.length}</span>
+              {tr('cariPeriodBalanceLineCount')}: <span className="font-bold">{lineRows.length}</span>
               {lineRows.length > 0 && (
                 <span className="ml-3 text-violet-600">
-                  · {tr('cariPeriodBalanceLineTotal') || 'Toplam'}:{' '}
+                  · {tr('cariPeriodBalanceLineTotal')}:{' '}
                   <span className="font-bold">
                     {fmt(lineRows.reduce((s, r: any) => s + Number(r.total_amount || 0), 0))} {mainCurrency}
                   </span>

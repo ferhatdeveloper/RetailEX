@@ -752,7 +752,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
             },
             {
               id: 'period-balance',
-              label: (t as any).periodBalance || 'Tarih Aralığı Bakiyesi',
+              label: tm('cariPeriodBalanceTitle'),
               icon: BarChart3,
               onClick: () => {
                 if (contextMenu.customer) setPeriodBalanceAccount(contextMenu.customer);

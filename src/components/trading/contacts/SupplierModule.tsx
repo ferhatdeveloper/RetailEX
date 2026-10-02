@@ -1529,7 +1529,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
             { id: 'edit', label: tm('edit'), icon: Edit, onClick: () => { if (contextMenu.supplier) handleEditClick(contextMenu.supplier); setContextMenu(null); } },
             {
               id: 'period-balance',
-              label: (tm as any).periodBalance || 'Tarih Aralığı Bakiyesi',
+              label: tm('cariPeriodBalanceTitle'),
               icon: BarChart3,
               onClick: () => {
                 if (contextMenu.supplier) setPeriodBalanceAccount(contextMenu.supplier);
