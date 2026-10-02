@@ -295,6 +295,23 @@ export type EkstreRow = {
   balance: number;
 };
 
+/** `payment_status` iptal/iade seti (müşteri/peşin satışlar için). */
+const CANCELLED_SALE_STATUSES = new Set([
+  'cancelled', 'canceled', 'void', 'refunded', 'iptal', 'silindi', 'deleted',
+]);
+
+/**
+ * Satır iptal sayılır mı? `is_cancelled=true` veya `status`/`payment_status`
+ * iptal setinde ise true. suppliers.ts sorgusu zaten `status NOT IN
+ * ('iptal',...)` filtresi uyguluyor; burada savunma amaçlı tekrar kontrol.
+ */
+function isRowCancelledLike(row: Record<string, unknown>): boolean {
+  if (row.is_cancelled === true) return true;
+  const st = String(row.status ?? '').trim().toLowerCase();
+  const ps = String(row.payment_status ?? '').trim().toLowerCase();
+  return CANCELLED_SALE_STATUSES.has(st) || CANCELLED_SALE_STATUSES.has(ps);
+}
+
 export function buildEkstreRows(
   data: Array<Record<string, unknown>>,
   cardType: ExtCardType,
@@ -302,9 +319,36 @@ export function buildEkstreRows(
   const isSupplierAccount = cardType === 'supplier';
   let runningBalance = 0;
 
+  /**
+   * Peşin müşteri satışları + aynı tutardaki eşleşen CH_TAHSILAT'ları
+   * işaretle: her ikisi de 0/0 + delta=0 yazılır (bakiyeyi şişirmez, borç
+   * sütununda "50.000" görünmez). Aksi halde (aynı tutarda ayrı tahsilat
+   * satırı) running balance yanlış (−50k) hesaplanır ve Borç sütununda
+   * tam tutar görünür — bu Bug 13: cari hareketler detayında peşin
+   * hizmette "borç" yazma hatasının kök nedeni.
+   */
+  const customerCashSaleKeys = new Set<string>();
+  for (const row of data) {
+    const cancelledLike = isRowCancelledLike(row);
+    const ftLower = String(row.fiche_type ?? '').trim().toLowerCase();
+    if (cancelledLike) continue;
+    if (isSupplierAccount) continue;
+    if (ftLower !== 'sales_invoice' && ftLower !== 'service' && ftLower !== 'hizmet') continue;
+    const amount = parseFloat(String(row.total_amount ?? 0));
+    if (!(amount > 0)) continue;
+    const saleSplit = splitPaymentRows(
+      amount,
+      Array.isArray(row.payments) ? (row.payments as Array<{ method?: string; amount?: number; currency?: string }>) : null,
+      row.payment_method,
+    );
+    if (Math.abs(saleSplit.remaining) > 1e-9) continue;
+    const key = `${String(row.fiche_no ?? '').trim()}|${Math.round(Math.abs(amount) * 100) / 100}`;
+    if (key) customerCashSaleKeys.add(key);
+  }
+
   return data.map(row => {
     const amount = parseFloat(String(row.total_amount ?? 0));
-    const cancelled = row.is_cancelled === true;
+    const cancelled = row.is_cancelled === true || isRowCancelledLike(row);
     const ficheType = String(row.fiche_type ?? '').trim().toUpperCase();
     const ftLower = String(row.fiche_type ?? '').trim().toLowerCase();
     const typeInfo = ficheTypeToInfo(String(row.fiche_type ?? ''), Number(row.trcode), cancelled);
@@ -314,64 +358,73 @@ export function buildEkstreRows(
       Array.isArray(row.payments) ? (row.payments as Array<{ method?: string; amount?: number; currency?: string }>) : null,
       row.payment_method,
     );
+    const absAmt = Math.abs(amount);
     const isCustomerCashSale =
       !isSupplierAccount &&
       !cancelled &&
       (ftLower === 'sales_invoice' || ftLower === 'service' || ftLower === 'hizmet') &&
       Math.abs(saleSplit.remaining) <= 1e-9;
+    /**
+     * Peşin satışla eşleşen CH_TAHSILAT — aynı tutar + aynı gün, kasa
+     * tarafında ayrıca yazılmış tahsilat. Satış borc=0 olduğu için bu
+     * tahsilat da nötrlenir (delta=0), aksi halde bakiye −tutar gider.
+     * Eşleşme anahtarı: cash_lines.f_amount (defter tutarı) ile aynı.
+     */
+    const isMatchingCashCollection =
+      !cancelled &&
+      !isSupplierAccount &&
+      ficheType === 'CH_TAHSILAT' &&
+      absAmt > 0 &&
+      customerCashSaleKeys.has(`${String(row.fiche_no ?? '').trim()}|${Math.round(absAmt * 100) / 100}`);
     let delta = 0;
+    let borcAmount = 0;
+    let alacakAmount = 0;
     if (!cancelled) {
       // Kasa satırları (CH_TAHSILAT / CH_ODEME) ayrı imza ile işlenir —
       // tahsilat müşteri bakiyesini düşürür, ödeme tedarikçi bakiyesini düşürür.
       // "ABS + her zaman +1" kısayolu burada YASAK (muhasebe denetimi).
-      if (ficheType === 'CH_TAHSILAT' || ficheType === 'CH_ODEME') {
+      if (isMatchingCashCollection) {
+        // Peşin satışın yanında ayrıca yazılan eşleşen tahsilat → nötr.
+        delta = 0;
+        borcAmount = 0;
+        alacakAmount = 0;
+      } else if (ficheType === 'CH_TAHSILAT' || ficheType === 'CH_ODEME') {
         delta = cashLineLedgerDelta(amount, ficheType, cardType);
+        if (delta > 0) {
+          borcAmount = absAmt;
+        } else if (delta < 0) {
+          alacakAmount = absAmt;
+        }
       } else if (isOpening) {
         // Açılış/devir fişi: kullanıcının girdiği yön (borç + / alacak −) korunur.
         delta = amount;
+        if (amount > 0) borcAmount = absAmt;
+        else if (amount < 0) alacakAmount = absAmt;
       } else if (isCustomerCashSale) {
-        // Peşin satış ekstede görünür; açık bakiyeyi şişirmez.
+        // Peşin müşteri satışı: ekstrede borç yazılmaz (zaten tahsil edildi);
+        // bakiyeyi şişirmez. Muhasebeci kuralı: çift yön her satırda biri 0,
+        // diğeri tutar olmalı — peşin satış 0/0 yazılır.
         delta = 0;
+        borcAmount = 0;
+        alacakAmount = 0;
       } else if (isSupplierAccount) {
-        delta = isReturn ? -Math.abs(amount) : Math.abs(amount);
+        // Tedarikçi alışı borç artırır (Debit), iade borç azaltır (Credit) — müşteriyle aynı mantık.
+        delta = isReturn ? -absAmt : absAmt;
+        if (isReturn) alacakAmount = absAmt;
+        else borcAmount = absAmt;
       } else {
-        delta = isReturn ? -Math.abs(amount) : Math.abs(amount);
+        // Müşteri veresiye satış: borç artar (kalan veresiye olarak).
+        // Eğer satır içi `payments` verilmişse kalan = saleSplit.remaining
+        // (kısmi peşinat + üst bilgi veresiye senaryoları için doğru).
+        const remaining = Math.max(0, Math.abs(saleSplit.remaining));
+        const docTotal = absAmt;
+        const effective = remaining > 1e-9 ? remaining : docTotal;
+        delta = isReturn ? -effective : effective;
+        if (isReturn) alacakAmount = effective;
+        else borcAmount = effective;
       }
     }
     runningBalance += delta;
-    const absAmt = Math.abs(amount);
-    // Personel/Ortağı: working'de amount her zaman + (zaten yön ayarlı);
-    // borc/alacak sütunları için normal müşteri/tedarikçi mantığı kullanılır.
-    // Tedarikçi alışı borç artırır (Debit), ödeme/iade borç azaltır (Credit) — müşteriyle aynı mantık.
-    // Kasa satırlarında işaret cari türüne göre doğru sütuna yazılır:
-    //   müşteri CH_TAHSILAT → alacak (−delta); tedarikçi CH_ODEME → alacak (−delta).
-    const isCashLine = ficheType === 'CH_TAHSILAT' || ficheType === 'CH_ODEME';
-    let isBorcEntry: boolean;
-    if (cancelled) {
-      isBorcEntry = false;
-    } else if (isCustomerCashSale) {
-      isBorcEntry = true;
-    } else if (isOpening) {
-      isBorcEntry = amount > 0;
-    } else if (isCashLine) {
-      // Kasa satırı: işaret cari türüyle tutarlı → müşteri CH_TAHSILAT alacak,
-      // tedarikçi CH_ODEME alacak; tersi borç sütununda.
-      isBorcEntry = delta > 0;
-    } else {
-      isBorcEntry = !isReturn;
-    }
-    let borcAmount = 0;
-    let alacakAmount = 0;
-    if (!cancelled) {
-      if (isCustomerCashSale) {
-        borcAmount = absAmt;
-        alacakAmount = absAmt;
-      } else if (isBorcEntry) {
-        borcAmount = absAmt;
-      } else {
-        alacakAmount = absAmt;
-      }
-    }
     return {
       ...row,
       borcAmount,

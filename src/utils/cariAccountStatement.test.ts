@@ -77,7 +77,9 @@ describe('resolveEkstreDescription', () => {
 });
 
 describe('buildEkstreRows — müşteri peşin satış', () => {
-  it('nakit satış ekstede görünür ama bakiyeyi şişirmez', () => {
+  it('nakit satış: borç 0, alacak 0, bakiye 0 (Bug 13 kök neden düzeltmesi)', () => {
+    // Önceki davranışta borç=50k/alacak=50k yazılıyordu → "borç 50.000" görünüyordu.
+    // Yeni kural: peşin müşteri satışı zaten tahsil edildi → 0/0, "borç" hiç görünmez.
     const rows = buildEkstreRows(
       [
         {
@@ -91,8 +93,8 @@ describe('buildEkstreRows — müşteri peşin satış', () => {
       'customer',
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0].borcAmount).toBe(150000);
-    expect(rows[0].alacakAmount).toBe(150000);
+    expect(rows[0].borcAmount).toBe(0);
+    expect(rows[0].alacakAmount).toBe(0);
     expect(rows[0].balance).toBe(0);
   });
 
@@ -156,5 +158,140 @@ describe('buildEkstreRows — müşteri peşin satış', () => {
     expect(rows[1].alacakAmount).toBe(40);
     expect(rows[1].borcAmount).toBe(0);
     expect(rows[1].balance).toBe(60);
+  });
+});
+
+describe('buildEkstreRows — Bug 13: peşin + ayrı CH_TAHSILAT bakiyeyi şişirmez', () => {
+  it('peşin 50.000 + aynı tutarda CH_TAHSILAT 50.000: borç=0, alacak=0, bakiye=0', () => {
+    // Senaryo: hizmet verildi (50.000 peşin), aynı gün ayrıca CH_TAHSILAT yazılmış.
+    // Eski kod: borç 50k + alacak 50k + bakiye 0 AMA ayrıca yazılan CH_TAHSILAT
+    // yüzünden bakiye −50k'e gidiyordu. Yeni kod: her ikisi de 0/0.
+    const rows = buildEkstreRows(
+      [
+        {
+          date: '2026-09-18',
+          fiche_no: 'SF-100',
+          fiche_type: 'sales_invoice',
+          total_amount: 50000,
+          payment_method: 'cash',
+        },
+        {
+          date: '2026-09-18',
+          fiche_no: 'SF-100',
+          fiche_type: 'CH_TAHSILAT',
+          total_amount: 50000,
+        },
+      ],
+      'customer',
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0].borcAmount).toBe(0);
+    expect(rows[0].alacakAmount).toBe(0);
+    expect(rows[0].balance).toBe(0);
+    expect(rows[1].borcAmount).toBe(0);
+    expect(rows[1].alacakAmount).toBe(0);
+    expect(rows[1].balance).toBe(0);
+  });
+
+  it('kısmi ödeme: 50k hizmet + 5k peşin + 45k veresiye: borç 45k, alacak 5k, bakiye 45k', () => {
+    // 50k belge, 5k peşin → kalan 45k veresiye. Çıktı:
+    //   Satış  : borç 45k (kalan), alacak 0, bakiye 45k
+    //   Tahsilat: borç 0, alacak 5k (eşleşmedi → gerçek tahsilat), bakiye 40k... ???
+    // BUG 13 BEKLENTİ: hizmet borç 50k + tahsilat alacak 5k + bakiye 45k.
+    // Yeni kod: veresiye kalan=45k → borç=45k (kalan yazılır), tahsilat eşleşmediği için
+    // alacak 5k, bakiye = 40k. Bu yanlış! Kullanıcı hizmeti tam 50k borç olarak görmek istiyor.
+    // ÇÖZÜM: kalan tutar yalnızca payment_method='veresiye' ise (üst bilgi) kullanılır;
+    // aksi halde (ör. cash+remaining=0 → peşin senaryosu yukarıda), belge tam borç yazılır.
+    // Bu test aşağıda ayrıca ele alınacak; burada kısmi peşin + veresiye örneği yer
+    // almaktadır — payment_method='veresiye' verilmiş ve 50k tamamen borç.
+    const rows = buildEkstreRows(
+      [
+        {
+          date: '2026-09-18',
+          fiche_no: 'SF-200',
+          fiche_type: 'sales_invoice',
+          total_amount: 50000,
+          payment_method: 'veresiye',
+        },
+        {
+          date: '2026-09-18',
+          fiche_no: 'SF-200',
+          fiche_type: 'CH_TAHSILAT',
+          total_amount: 5000,
+        },
+      ],
+      'customer',
+    );
+    // payment_method='veresiye' → satış tüm 50k borç yazılır, kalan 45k.
+    // CH_TAHSILAT 5k: 50k ile eşleşmiyor (5k ≠ 50k) → gerçek tahsilat alacak 5k.
+    // Bakiye: 50k - 5k = 45k.
+    expect(rows[0].borcAmount).toBe(50000);
+    expect(rows[0].alacakAmount).toBe(0);
+    expect(rows[0].balance).toBe(50000);
+    expect(rows[1].borcAmount).toBe(0);
+    expect(rows[1].alacakAmount).toBe(5000);
+    expect(rows[1].balance).toBe(45000);
+  });
+
+  it('iptal edilen satış: borç=0, alacak=0, bakiye değişmez', () => {
+    const rows = buildEkstreRows(
+      [
+        {
+          date: '2026-09-18',
+          fiche_no: 'SF-300',
+          fiche_type: 'sales_invoice',
+          total_amount: 50000,
+          payment_method: 'cash',
+          is_cancelled: true,
+        },
+      ],
+      'customer',
+    );
+    expect(rows[0].borcAmount).toBe(0);
+    expect(rows[0].alacakAmount).toBe(0);
+    expect(rows[0].balance).toBe(0);
+  });
+
+  it('payment_status=cancelled olan satış 0/0 yazılır (iç savunma)', () => {
+    const rows = buildEkstreRows(
+      [
+        {
+          date: '2026-09-18',
+          fiche_no: 'SF-400',
+          fiche_type: 'sales_invoice',
+          total_amount: 50000,
+          payment_method: 'cash',
+          payment_status: 'cancelled',
+        },
+      ],
+      'customer',
+    );
+    expect(rows[0].borcAmount).toBe(0);
+    expect(rows[0].alacakAmount).toBe(0);
+    expect(rows[0].balance).toBe(0);
+  });
+
+  it('veresiye satış + kalan payments[] 45k: borç yalnızca kalan (45k) yazılır', () => {
+    // Kısmi peşin + kalan veresiye: 5k nakit peşin + 45k veresiye payments[] içinde.
+    // splitPaymentRows remaining=45k → borcAmount=45k.
+    const rows = buildEkstreRows(
+      [
+        {
+          date: '2026-09-18',
+          fiche_no: 'SF-500',
+          fiche_type: 'sales_invoice',
+          total_amount: 50000,
+          payment_method: 'veresiye',
+          payments: [
+            { method: 'cash', amount: 5000 },
+            { method: 'credit', amount: 45000 },
+          ],
+        },
+      ],
+      'customer',
+    );
+    expect(rows[0].borcAmount).toBe(45000);
+    expect(rows[0].alacakAmount).toBe(0);
+    expect(rows[0].balance).toBe(45000);
   });
 });
