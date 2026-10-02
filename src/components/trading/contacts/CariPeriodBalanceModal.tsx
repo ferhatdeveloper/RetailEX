@@ -81,6 +81,7 @@ export function CariPeriodBalanceModal({
 
   // Ürün satırı görünümü (drill-down)
   const [viewMode, setViewMode] = useState<'fiche' | 'line'>('line');
+  const [lineMode, setLineMode] = useState<'detailed' | 'consolidated'>('consolidated');
   const [lineRows, setLineRows] = useState<Array<Record<string, unknown>>>([]);
   const [lineLoading, setLineLoading] = useState(false);
   const [lineError, setLineError] = useState<string | null>(null);
@@ -193,6 +194,108 @@ export function CariPeriodBalanceModal({
     }
     return mismatches;
   }, [lineRows, ekstreRows]);
+
+  // Ürün + birim bazında konsolide edilmiş satırlar.
+  // Aynı (fiche_no + item_code + unit) tek satıra toplanır; farklı birimler
+  // ayrı satır olarak kalır.
+  const lineRowsConsolidated = useMemo(() => {
+    if (!lineRows.length) return [] as Array<Record<string, unknown> & { _rowCount: number; _rowIds: string[] }>;
+    const map = new Map<string, Record<string, unknown> & { _rowCount: number; _rowIds: string[] }>();
+    for (const r of lineRows) {
+      const fno = String(r.fiche_no || '').trim();
+      const code = String(r.item_code || '').trim();
+      const unit = String(r.unit || '').trim() || '—';
+      const key = `${fno}|${code}|${unit}`;
+      const q = Number(r.quantity || 0);
+      const up = Number(r.unit_price || 0);
+      const disc = Number(r.discount_amount || 0);
+      const tot = Number(r.total_amount || 0);
+      const cur = map.get(key);
+      if (cur) {
+        cur.quantity = Number(cur.quantity || 0) + q;
+        cur.discount_amount = Number(cur.discount_amount || 0) + disc;
+        cur.total_amount = Number(cur.total_amount || 0) + tot;
+        // Ağırlıklı ortalama birim fiyat (tutar / miktar)
+        if (Number(cur.quantity || 0) > 0) {
+          cur.unit_price = Number(cur.total_amount || 0) / Number(cur.quantity || 0);
+        }
+        cur._rowCount = (cur._rowCount || 0) + 1;
+        const idVal = r.id ?? `${fno}-${code}-${cur._rowIds.length}`;
+        cur._rowIds.push(String(idVal));
+      } else {
+        map.set(key, {
+          ...r,
+          unit,
+          unit_price: up,
+          quantity: q,
+          discount_amount: disc,
+          total_amount: tot,
+          _rowCount: 1,
+          _rowIds: [String(r.id ?? `${fno}-${code}-0`)],
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      const da = new Date(String(a.sale_date || '')).getTime();
+      const db = new Date(String(b.sale_date || '')).getTime();
+      if (da !== db) return da - db;
+      return String(a.fiche_no || '').localeCompare(String(b.fiche_no || ''));
+    });
+  }, [lineRows]);
+
+  // Ürün adı + birim bazında toplamlar (ürün seviyesi özet).
+  // Çıktı: { "DOMATES|Kg": { itemName, unit, totalQty, totalAmount, ficheCount } }
+  const productSummary = useMemo(() => {
+    if (!lineRows.length) return [] as Array<{
+      key: string;
+      itemCode: string;
+      itemName: string;
+      unit: string;
+      totalQty: number;
+      totalAmount: number;
+      ficheCount: number;
+    }>;
+    const map = new Map<string, {
+      key: string;
+      itemCode: string;
+      itemName: string;
+      unit: string;
+      totalQty: number;
+      totalAmount: number;
+      ficheCount: Set<string>;
+    }>();
+    for (const r of lineRows) {
+      const code = String(r.item_code || '').trim() || '?';
+      const name = String(r.item_name || '').trim() || code;
+      const unit = String(r.unit || '').trim() || '—';
+      const key = `${code}|${unit}`;
+      const cur = map.get(key) || {
+        key,
+        itemCode: code,
+        itemName: name,
+        unit,
+        totalQty: 0,
+        totalAmount: 0,
+        ficheCount: new Set<string>(),
+      };
+      cur.totalQty += Number(r.quantity || 0);
+      cur.totalAmount += Number(r.total_amount || 0);
+      const fno = String(r.fiche_no || '').trim();
+      if (fno) cur.ficheCount.add(fno);
+      map.set(key, cur);
+    }
+    return Array.from(map.values())
+      .map((v) => ({
+        key: v.key,
+        itemCode: v.itemCode,
+        itemName: v.itemName,
+        unit: v.unit,
+        totalQty: v.totalQty,
+        totalAmount: v.totalAmount,
+        ficheCount: v.ficheCount.size,
+      }))
+      .sort((a, b) => b.totalAmount - a.totalAmount);
+  }, [lineRows]);
   // Başlangıç bakiyesi = kart balance - periodNet
   const cardBalance = Number(account.balance ?? 0) || 0;
   const openingBalance = cardBalance - periodNet;
@@ -349,24 +452,65 @@ export function CariPeriodBalanceModal({
         accessorKey: 'item_name',
         header: tr('productName'),
         size: 240,
-        cell: ({ row }) => (
-          <span className="text-gray-800 break-words">
-            {row.original.item_name || '-'}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const isConsolidated = Number(row.original._rowCount || 0) > 1;
+          return (
+            <div className="flex flex-col">
+              <span className="text-gray-800 break-words">
+                {row.original.item_name || '-'}
+              </span>
+              {isConsolidated && (
+                <span className="text-[10px] text-violet-600 font-mono mt-0.5">
+                  ({row.original._rowCount} {tr('cariPeriodBalanceLineCount')})
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        id: 'unit',
+        accessorKey: 'unit',
+        header: tr('cariPeriodBalanceUnit') || 'Birim',
+        size: 80,
+        cell: ({ row }) => {
+          const u = String(row.original.unit || '').trim() || '—';
+          const palette: Record<string, string> = {
+            'Kg': 'bg-orange-100 text-orange-800 border-orange-300',
+            'KG': 'bg-orange-100 text-orange-800 border-orange-300',
+            'kg': 'bg-orange-100 text-orange-800 border-orange-300',
+            'Adet': 'bg-blue-100 text-blue-800 border-blue-300',
+            'ADET': 'bg-blue-100 text-blue-800 border-blue-300',
+            'adet': 'bg-blue-100 text-blue-800 border-blue-300',
+            'Litre': 'bg-cyan-100 text-cyan-800 border-cyan-300',
+            'LT': 'bg-cyan-100 text-cyan-800 border-cyan-300',
+            'Mt': 'bg-green-100 text-green-800 border-green-300',
+            'M': 'bg-green-100 text-green-800 border-green-300',
+            'Paket': 'bg-purple-100 text-purple-800 border-purple-300',
+          };
+          const color = palette[u] || 'bg-gray-100 text-gray-700 border-gray-300';
+          return (
+            <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${color}`}>
+              {u}
+            </span>
+          );
+        },
       },
       {
         id: 'quantity',
         accessorKey: 'quantity',
         header: tr('quantity'),
-        size: 90,
+        size: 100,
         meta: { align: 'right' },
         cell: ({ row }) => {
           const q = Number(row.original.quantity || 0);
-          const u = String(row.original.unit || '').trim();
+          // Birim bazlı ondalık hassasiyet
+          const u = String(row.original.unit || '').trim().toLowerCase();
+          const isWeight = ['kg', 'lt', 'litre', 'mt', 'm'].includes(u);
+          const decimals = isWeight ? 3 : 0;
           return (
-            <span className="font-mono text-gray-700">
-              {fmt(q)}{u ? ` ${u}` : ''}
+            <span className="font-mono text-gray-700 font-bold">
+              {q.toLocaleString('tr-TR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
             </span>
           );
         },
@@ -482,7 +626,7 @@ export function CariPeriodBalanceModal({
 
         {/* Hızlı seçim butonları */}
         <div className="ml-auto flex items-center gap-1">
-          {/* View mode toggle */}
+          {/* View mode toggle (Ürün Satırı / Fatura) */}
           <div className="flex items-center bg-white border border-gray-300 rounded mr-2 overflow-hidden">
             <button
               type="button"
@@ -501,6 +645,27 @@ export function CariPeriodBalanceModal({
               {tr('cariPeriodBalanceFicheView')}
             </button>
           </div>
+          {/* Detaylı / Birleşik toggle (sadece ürün satırı modunda) */}
+          {viewMode === 'line' && (
+            <div className="flex items-center bg-white border border-gray-300 rounded mr-2 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setLineMode('detailed')}
+                className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${lineMode === 'detailed' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                title={tr('cariPeriodBalanceDetailedView')}
+              >
+                {tr('cariPeriodBalanceDetailedView')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLineMode('consolidated')}
+                className={`px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${lineMode === 'consolidated' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                title={tr('cariPeriodBalanceConsolidatedView')}
+              >
+                {tr('cariPeriodBalanceConsolidatedView')}
+              </button>
+            </div>
+          )}
           {[
             { key: 'cariPeriodBalanceQuick7', days: 7 },
             { key: 'cariPeriodBalanceQuick30', days: 30 },
@@ -614,9 +779,17 @@ export function CariPeriodBalanceModal({
                 </div>
               </div>
             )}
-            <div className="px-5 py-2 bg-violet-50 border-b border-violet-200 text-xs text-violet-700 flex items-center gap-2">
+            <div className="px-5 py-2 bg-violet-50 border-b border-violet-200 text-xs text-violet-700 flex items-center gap-2 flex-wrap">
               <Package className="w-4 h-4" />
-              {tr('cariPeriodBalanceLineCount')}: <span className="font-bold">{lineRows.length}</span>
+              {tr('cariPeriodBalanceLineCount')}:{' '}
+              <span className="font-bold">
+                {lineMode === 'consolidated' ? lineRowsConsolidated.length : lineRows.length}
+                {lineMode === 'consolidated' && lineRows.length !== lineRowsConsolidated.length && (
+                  <span className="text-violet-500 ml-1">
+                    / {lineRows.length}
+                  </span>
+                )}
+              </span>
               {lineRows.length > 0 && (
                 <span className="ml-3 text-violet-600">
                   · {tr('cariPeriodBalanceLineTotal')}:{' '}
@@ -626,8 +799,67 @@ export function CariPeriodBalanceModal({
                 </span>
               )}
             </div>
+
+            {/* Ürün Bazında Özet — birim bazında toplamlar */}
+            {lineMode === 'consolidated' && productSummary.length > 0 && (
+              <div className="px-5 py-3 bg-gradient-to-r from-indigo-50 to-violet-50 border-b border-indigo-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <Package className="w-4 h-4 text-indigo-600" />
+                  <h3 className="text-xs font-black uppercase tracking-wide text-indigo-800">
+                    {tr('cariPeriodBalanceProductSummary')}
+                  </h3>
+                  <span className="text-[10px] text-indigo-500 font-mono">
+                    ({productSummary.length} {tr('cariPeriodBalanceUnit').toLowerCase()})
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 max-h-48 overflow-y-auto">
+                  {productSummary.map((p) => {
+                    const u = String(p.unit || '').trim().toLowerCase();
+                    const isWeight = ['kg', 'lt', 'litre', 'mt', 'm'].includes(u);
+                    const decimals = isWeight ? 3 : 0;
+                    const palette: Record<string, string> = {
+                      'kg': 'bg-orange-50 border-orange-300 text-orange-900',
+                      'adet': 'bg-blue-50 border-blue-300 text-blue-900',
+                      'litre': 'bg-cyan-50 border-cyan-300 text-cyan-900',
+                      'lt': 'bg-cyan-50 border-cyan-300 text-cyan-900',
+                      'mt': 'bg-green-50 border-green-300 text-green-900',
+                      'm': 'bg-green-50 border-green-300 text-green-900',
+                      'paket': 'bg-purple-50 border-purple-300 text-purple-900',
+                    };
+                    const color = palette[u] || 'bg-gray-50 border-gray-300 text-gray-900';
+                    return (
+                      <div key={p.key} className={`rounded-md border ${color} px-2.5 py-1.5 text-xs`}>
+                        <div className="font-bold truncate" title={p.itemName}>
+                          {p.itemName}
+                        </div>
+                        <div className="flex items-center justify-between mt-0.5">
+                          <span className="font-mono text-[11px] opacity-80">
+                            {p.itemCode}
+                          </span>
+                          <span className={`text-[10px] font-black uppercase rounded px-1.5 py-0 ${color}`}>
+                            {p.unit}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between mt-1 font-mono">
+                          <span className="font-black">
+                            {p.totalQty.toLocaleString('tr-TR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} {p.unit}
+                          </span>
+                          <span className="font-bold text-red-600">
+                            {fmt(p.totalAmount)} {mainCurrency}
+                          </span>
+                        </div>
+                        <div className="text-[10px] opacity-70 mt-0.5">
+                          {p.ficheCount} {tr('cariPeriodBalanceProductFiches')}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <DevExDataGrid
-              data={lineRows}
+              data={lineMode === 'consolidated' ? lineRowsConsolidated : lineRows}
               columns={lineColumns}
               pageSize={100}
               enableFiltering
