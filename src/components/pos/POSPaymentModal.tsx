@@ -254,8 +254,6 @@ export function POSPaymentModal({
   const [showNumpad, setShowNumpad] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [showCancelReasonModal, setShowCancelReasonModal] = useState(false);
-  // Fatura henüz oluşmadan, başlıkta önizlenen geçici fiş no.
-  const [tempInvoiceNo, setTempInvoiceNo] = useState<string>('');
   // Müşteri cari borç tahsilatı — müşteri seçildiğinde listelenir
   const [customerInvoices, setCustomerInvoices] = useState<CustomerOutstandingInvoice[]>([]);
   const [customerInvoicesLoading, setCustomerInvoicesLoading] = useState(false);
@@ -310,35 +308,6 @@ export function POSPaymentModal({
       unsub();
     };
   }, []);
-
-  // Fatura henüz oluşmadan, başlıkta gösterilecek geçici fiş no önizlemesi.
-  // - appointmentContext.prePaymentFicheNo varsa o kullanılır (daha önce alınmış peşinat).
-  // - Mod = prePayment → BTY- kalıbı (güzellik/randevu).
-  // - Mod = standart  → MRK- kalıbı (market/restoran).
-  useEffect(() => {
-    let cancelled = false;
-    const preset = appointmentContext?.prePaymentFicheNo;
-    if (preset) {
-      setTempInvoiceNo(preset);
-      return;
-    }
-    const prefix = mode === 'prePayment' ? 'BTY' : 'MRK';
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const randomPart = String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0');
-    (async () => {
-      try {
-        const counts = await salesAPI.getSequenceCounts();
-        if (cancelled) return;
-        setTempInvoiceNo(`${prefix}-${datePart}-M${counts.monthly}-D${counts.daily}-${randomPart}`);
-      } catch {
-        if (cancelled) return;
-        setTempInvoiceNo(`${prefix}-${datePart}-${randomPart}`);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [mode, appointmentContext?.prePaymentFicheNo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1165,24 +1134,6 @@ const handleCollectCustomerDebt = async () => {
                 <h4 className={`text-xs uppercase tracking-wide mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   {t.paymentSummary || 'Ödeme Özeti'}
                 </h4>
-                {/* Geçici fatura no önizleme — büyük, gözden kaçmaz */}
-                {tempInvoiceNo && (
-                  <div
-                    data-testid="pos-payment-temp-invoice-no-strip"
-                    className="mb-3 flex items-center gap-2 px-3 py-2 rounded-md bg-amber-100 border border-amber-300 text-amber-900"
-                  >
-                    <Receipt className="w-4 h-4 shrink-0" />
-                    <div className="flex flex-col leading-tight">
-                      <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">
-                        Geçici Fatura No
-                      </span>
-                      <span className="font-mono text-sm font-semibold">{tempInvoiceNo}</span>
-                    </div>
-                    <span className="ml-auto text-[10px] text-amber-700/80 hidden md:inline">
-                      Fatura oluşturulduğunda atanır
-                    </span>
-                  </div>
-                )}
                 <div className="space-y-2.5 text-sm">
                   <div className={`flex justify-between ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                     <span>{t.subtotalLabel || 'ARA TOPLAM'}:</span>
