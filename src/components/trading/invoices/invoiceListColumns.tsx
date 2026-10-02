@@ -239,7 +239,23 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
         header: tm('date'),
         cell: (info) => {
           const inv = info.row.original;
-          return <span className="tabular-nums">{formatDate(info.getValue() || inv.date)}</span>;
+          const isBackDated = Boolean((inv as any).is_back_dated);
+          const insertionAt = String((inv as any).insertion_at || (inv as any).created_at || '').trim();
+          return (
+            <span className="tabular-nums inline-flex items-center gap-1.5">
+              <span>{formatDate(info.getValue() || inv.date)}</span>
+              {isBackDated ? (
+                <span
+                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800"
+                  title={insertionAt
+                    ? `${tm('invoiceBackDated')} — ${tm('invoiceInsertionAt')}: ${new Date(insertionAt).toLocaleString(localeCode)}`
+                    : tm('invoiceBackDated')}
+                >
+                  {tm('invoiceBackDated')}
+                </span>
+              ) : null}
+            </span>
+          );
         },
         meta: { filterKind: 'date', format: 'date', type: 'date' },
       }),

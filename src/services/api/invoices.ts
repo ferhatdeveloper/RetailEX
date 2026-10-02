@@ -1684,6 +1684,28 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
     cashier: String((invoice as any).cashier || ''),
     store_id: isValidUuid((invoice as any).store_id) ? (invoice as any).store_id : null,
     created_by_user_id: isValidUuid((invoice as any).created_by_user_id) ? (invoice as any).created_by_user_id : null,
+    // Migration 190: Back-dated audit alanları — INSERT'te set edilir.
+    // Form `header_fields` içinde `insertion_at`, `is_back_dated`,
+    // `back_dated_at`, `back_dated_by_user_id` taşır; kök kolonlara da yaz
+    // (raporlama/kasa/muhasebe sorguları için). UPDATE'te servis katmanı
+    // bu alanları payload'a dahil etmez (doğal readonly).
+    insertion_at: (() => {
+      const hf = ((invoice as any).header_fields as Record<string, unknown>) ?? {};
+      return String(hf.insertion_at || new Date().toISOString());
+    })(),
+    is_back_dated: (() => {
+      const hf = ((invoice as any).header_fields as Record<string, unknown>) ?? {};
+      return Boolean(hf.is_back_dated);
+    })(),
+    back_dated_at: (() => {
+      const hf = ((invoice as any).header_fields as Record<string, unknown>) ?? {};
+      return hf.back_dated_at ? String(hf.back_dated_at) : null;
+    })(),
+    back_dated_by_user_id: (() => {
+      const hf = ((invoice as any).header_fields as Record<string, unknown>) ?? {};
+      const id = hf.back_dated_by_user_id;
+      return isValidUuid(id) ? String(id) : null;
+    })(),
     header_fields: {
       ...(((invoice as any).header_fields as Record<string, unknown>) ?? {}),
       ...((invoice as any).cash_register_id
@@ -3348,34 +3370,51 @@ export const invoicesAPI = {
         if ((invoice as Record<string, unknown>).header_fields !== undefined) {
           patchBody.header_fields = (invoice as Record<string, unknown>).header_fields;
         }
+        // Migration 190: UPDATE'te audit alanları (insertion_at, is_back_dated,
+        // back_dated_at, back_dated_by_user_id) ASLA değişmemelidir. Mevcut
+        // header_fields'i çekip audit anahtarlarını spread ile koru, sonra
+        // formdan gelen (audit içermeyen) header_fields ile birleştir.
+        try {
+          const existingHf = (await postgrest.get<any[]>(
+            `${salesTable}?id=eq.${encodeURIComponent(cleanId)}&select=header_fields&limit=1`,
+            { schema: 'public' },
+          )) as any[];
+          const prev = (existingHf?.[0]?.header_fields as Record<string, unknown>) || {};
+          const preservedAudit = {
+            insertion_at: prev.insertion_at,
+            is_back_dated: prev.is_back_dated,
+            back_dated_at: prev.back_dated_at,
+            back_dated_by_user_id: prev.back_dated_by_user_id,
+          };
+          // Mevcut patch'te audit anahtarları varsa (form hatalı yolladıysa)
+          // yoksay — readonly.
+          const incoming = { ...((patchBody.header_fields as Record<string, unknown>) ?? {}) };
+          for (const k of ['insertion_at', 'is_back_dated', 'back_dated_at', 'back_dated_by_user_id']) {
+            if (k in incoming) delete (incoming as Record<string, unknown>)[k];
+          }
+          patchBody.header_fields = { ...preservedAudit, ...incoming };
+        } catch {
+          // header_fields çekilemedi → audit anahtarlarını koruyamayız; yine de
+          // gelen payload'dan audit alanlarını temizle (form tarafı zaten göndermiyor).
+          if (patchBody.header_fields && typeof patchBody.header_fields === 'object') {
+            const incoming = { ...(patchBody.header_fields as Record<string, unknown>) };
+            for (const k of ['insertion_at', 'is_back_dated', 'back_dated_at', 'back_dated_by_user_id']) {
+              if (k in incoming) delete (incoming as Record<string, unknown>)[k];
+            }
+            patchBody.header_fields = incoming;
+          }
+        }
         // cash_register_id / cash_register_name — header_fields JSON'unda saklanır
         if ((invoice as any).cash_register_id || (invoice as any).cash_register_name) {
-          try {
-            const existing = (await postgrest.get<any[]>(
-              `${salesTable}?id=eq.${encodeURIComponent(cleanId)}&select=header_fields&limit=1`,
-              { schema: 'public' },
-            )) as any[];
-            const prev = (existing?.[0]?.header_fields as Record<string, unknown>) || {};
-            patchBody.header_fields = {
-              ...prev,
-              ...((invoice as any).cash_register_id
-                ? { cash_register_id: String((invoice as any).cash_register_id) }
-                : {}),
-              ...((invoice as any).cash_register_name
-                ? { cash_register_name: String((invoice as any).cash_register_name) }
-                : {}),
-            };
-          } catch {
-            patchBody.header_fields = {
-              ...((invoice as any).header_fields as Record<string, unknown> | undefined ?? {}),
-              ...((invoice as any).cash_register_id
-                ? { cash_register_id: String((invoice as any).cash_register_id) }
-                : {}),
-              ...((invoice as any).cash_register_name
-                ? { cash_register_name: String((invoice as any).cash_register_name) }
-                : {}),
-            };
-          }
+          patchBody.header_fields = {
+            ...((patchBody.header_fields as Record<string, unknown>) ?? {}),
+            ...((invoice as any).cash_register_id
+              ? { cash_register_id: String((invoice as any).cash_register_id) }
+              : {}),
+            ...((invoice as any).cash_register_name
+              ? { cash_register_name: String((invoice as any).cash_register_name) }
+              : {}),
+          };
         }
         if ((invoice as Record<string, unknown>).cashier !== undefined) {
           patchBody.cashier = String((invoice as Record<string, unknown>).cashier || '');

@@ -77,8 +77,10 @@ export function POSSalesHistoryModal({
   autoSelectLast = false,
   isLoading = false,
 }: POSSalesHistoryModalProps) {
-  const { t, tm } = useLanguage();
+  const { t, tm, language } = useLanguage();
   const { darkMode } = useTheme();
+  // Intl locale map: POS Sales history tooltip için.
+  const localeCode = String(language || 'tr-TR');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState('today'); // varsayılan: bugün
   const [selectedSale, setSelectedSale] = useState<Sale | null>(
@@ -215,11 +217,26 @@ export function POSSalesHistoryModal({
         size: 140,
         minSize: 110,
         sortingFn: 'basic',
-        cell: (info) => (
-          <span className={`text-xs tabular-nums ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-            {formatSaleDateTime(info.row.original)}
-          </span>
-        ),
+        cell: (info) => {
+          const sale = info.row.original;
+          const isBackDated = Boolean((sale as any).is_back_dated);
+          const insertionAt = String((sale as any).insertion_at || '').trim();
+          return (
+            <span className={`inline-flex items-center gap-1.5 text-xs tabular-nums ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              <span>{formatSaleDateTime(sale)}</span>
+              {isBackDated ? (
+                <span
+                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800"
+                  title={insertionAt
+                    ? `${tm('invoiceBackDated')} — ${tm('invoiceInsertionAt')}: ${new Date(insertionAt).toLocaleString(localeCode)}`
+                    : tm('invoiceBackDated')}
+                >
+                  {tm('invoiceBackDated')}
+                </span>
+              ) : null}
+            </span>
+          );
+        },
       }),
       col.accessor((row) => row.customerName || t.generalSale || '', {
         id: 'customerName',

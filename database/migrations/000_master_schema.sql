@@ -3228,6 +3228,11 @@ BEGIN
       is_deposit           BOOLEAN NOT NULL DEFAULT false,
       -- Migration 183: Tahsil edilen tutar (kümülatif). credit_amount = kalan veresiye bakiyesi.
       paid_amount     DECIMAL(15,2) NOT NULL DEFAULT 0,
+      -- Migration 190: Geçmiş tarihli fatura audit alanları
+      is_back_dated        BOOLEAN NOT NULL DEFAULT false,
+      insertion_at         TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      back_dated_at        TIMESTAMPTZ,
+      back_dated_by_user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
       created_at     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
@@ -3243,7 +3248,11 @@ BEGIN
        ADD COLUMN IF NOT EXISTS parent_sale_id       UUID,
        ADD COLUMN IF NOT EXISTS sale_group_id        UUID,
        ADD COLUMN IF NOT EXISTS is_deposit           BOOLEAN NOT NULL DEFAULT false,
-       ADD COLUMN IF NOT EXISTS paid_amount          DECIMAL(15,2) NOT NULL DEFAULT 0',
+       ADD COLUMN IF NOT EXISTS paid_amount          DECIMAL(15,2) NOT NULL DEFAULT 0,
+       ADD COLUMN IF NOT EXISTS is_back_dated        BOOLEAN NOT NULL DEFAULT false,
+       ADD COLUMN IF NOT EXISTS insertion_at         TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       ADD COLUMN IF NOT EXISTS back_dated_at        TIMESTAMPTZ,
+       ADD COLUMN IF NOT EXISTS back_dated_by_user_id UUID',
     v_tbl_sales
   );
 

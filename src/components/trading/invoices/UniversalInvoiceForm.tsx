@@ -582,6 +582,25 @@ export function UniversalInvoiceForm({
   const [transactionDate, setTransactionDate] = useState(() =>
     formatShortDate(editData?.invoice_date || new Date(), tm('localeCode')),
   );
+  // Migration 190: Back-dated audit state'leri (KasaIslemModal kalıbı).
+  // Bugünün ISO tarihi (YYYY-MM-DD, yerel TZ) — back-dated karşılaştırması için.
+  const todayIsoInvoice = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  /** İşlem tarihi bugünden önce mi? (KasaIslemModal ile uyumlu: < todayIso) */
+  const isOperationDateBackDated = useMemo(() => {
+    const iso = transactionDateToIsoDateString(transactionDate);
+    return !!iso && iso < todayIsoInvoice;
+  }, [transactionDate, todayIsoInvoice]);
+  /** INSERT modunda kullanıcı onayı — back-dated ise zorunlu. */
+  const [backDatedConfirmed, setBackDatedConfirmed] = useState(false);
+  // Düzenleme modunda ve tarih back-dated ise varsayılan onaylı (zaten var olan geçmiş kayıt).
+  const isEditMode = !!editData?.id;
+  useEffect(() => {
+    if (isEditMode && isOperationDateBackDated) setBackDatedConfirmed(true);
+  }, [isEditMode, isOperationDateBackDated]);
+  // Tarih bugüne/ileriye alındığında onayı sıfırla (yanlışlıkla kalmasın).
+  useEffect(() => {
+    if (!isOperationDateBackDated) setBackDatedConfirmed(false);
+  }, [isOperationDateBackDated]);
   const [specialCode, setSpecialCode] = useState('');
   const [tradingGroup, setTradingGroup] = useState('');
 
@@ -3851,6 +3870,14 @@ export function UniversalInvoiceForm({
       return;
     }
 
+    // Migration 190: INSERT modunda back-dated onayı zorunlu.
+    // UPDATE'te `insertion_at` ASLA değişmemelidir; audit alanları payload'a
+    // eklenmez (servis katmanı bunları readonly korur).
+    if (!isEditMode && isOperationDateBackDated && !backDatedConfirmed) {
+      toast.error('❌ ' + (tm('cashModalBackDatedRequired') || 'Geçmiş tarihe fatura kaydı için onay kutucuğu zorunlu.'));
+      return;
+    }
+
     // Cari kontrol — iade yönüne göre:
     //   Alış (code 1/5) + Alış İade (code 6) + Alınan Hizmet (code 4) → tedarikçi zorunlu
     //   Satış + Satış İade (code 3) + Verilen Hizmet (code 9) → müşteri zorunlu
@@ -4231,6 +4258,22 @@ export function UniversalInvoiceForm({
               name: effectiveCashRegisterName || null,
               code: effectiveCashRegisterCode || null,
             },
+            // Migration 190 — back-dated audit (yalnızca INSERT modunda set).
+            // UPDATE'te bu alanlar geçirilmez → doğal readonly koruma.
+            ...(isEditMode
+              ? {}
+              : {
+                  insertionAt: new Date().toISOString(),
+                  isBackDated: isOperationDateBackDated && backDatedConfirmed,
+                  backDatedAt:
+                    isOperationDateBackDated && backDatedConfirmed
+                      ? new Date().toISOString()
+                      : undefined,
+                  backDatedByUserId:
+                    isOperationDateBackDated && backDatedConfirmed && user?.id
+                      ? String(user.id)
+                      : undefined,
+                }),
             payments: (() => {
               const netTotal = Math.abs(Number(totals.netIQD) || 0);
               const rows = effectivePaymentRows.length > 0
@@ -4665,6 +4708,20 @@ export function UniversalInvoiceForm({
                   selectedCariCurrency={currency || 'IQD'}
                   description={description}
                   setDescription={setDescription}
+                  // Migration 190 — Back-dated audit
+                  insertionAt={
+                    isEditMode
+                      ? String(
+                          (editData as any)?.insertion_at ||
+                            (editData as any)?.created_at ||
+                            new Date().toISOString(),
+                        )
+                      : new Date().toISOString()
+                  }
+                  isBackDated={Boolean((editData as any)?.is_back_dated)}
+                  isOperationDateBackDated={isOperationDateBackDated}
+                  backDatedConfirmed={backDatedConfirmed}
+                  setBackDatedConfirmed={setBackDatedConfirmed}
                 />
 
                 {invoiceType.category === 'Alis' && createSaveOptions?.skipProductStockUpdate && (

@@ -10758,6 +10758,31 @@ export const excelModuleTranslations = {
     ar: 'العملية بتاريخ سابق تتطلب خانة التأكيد.',
     ku: 'کارپێکردن بە بەرواری پێشووتر پێویستی بە چاککردنی خانەی پشتڕاستکردنەوە هەیە.',
   },
+  // Migration 190 — Fatura back-dated audit
+  invoiceInsertionAt: {
+    tr: 'Ekleme Tarihi',
+    en: 'Insertion Date',
+    ar: 'تاريخ الإدخال',
+    ku: 'بەرواری تۆمارکردن',
+  },
+  invoiceBackDated: {
+    tr: 'Geçmiş Tarihli',
+    en: 'Back-Dated',
+    ar: 'تاريخ سابق',
+    ku: 'مەوعیدی کۆن',
+  },
+  invoiceBackDatedConfirm: {
+    tr: 'Geçmiş tarihe fatura kaydı ekliyorum (audit izi bırakılacak)',
+    en: 'I confirm I am recording a back-dated invoice (audit trail will be recorded)',
+    ar: 'أؤكد أنني أضيف فاتورة بتاريخ سابق (سيُسجَّل المسار التدقيقي)',
+    ku: 'پشتڕاست دەکەمەوە کە فاتورەیەک بە بەرواری پێشووتر تۆمار دەکەم (شوێنپێی وردبینی تۆمار دەکرێت)',
+  },
+  invoiceBackDatedWarning: {
+    tr: 'Bu fatura geçmiş bir tarihe eklendi. Ekleme tarihi: {date}',
+    en: 'This invoice was entered with a back-dated date. Insertion date: {date}',
+    ar: 'تم إدخال هذه الفاتورة بتاريخ سابق. تاريخ الإدخال: {date}',
+    ku: 'ئەم فاتورەیە بە بەرواری پێشووتر تۆمارکراوە. بەرواری تۆمارکردن: {date}',
+  },
   gunSonuRaporu: { tr: 'Gün Sonu Raporu', en: 'End of Day Report', ar: 'تقرير نهاية اليوم', ku: 'ڕاپۆرتی کۆتایی ڕۆژ' },
   zRaporu: { tr: 'Z Raporu', en: 'Z Report', ar: 'تقرير Z', ku: 'ڕاپۆرتی Z' },
   donemKarsilastirma: { tr: 'Dönem Karşılaştırma', en: 'Period Comparison', ar: 'مقارنة الفترات', ku: 'بەراوردکردنی ماوەکان' },

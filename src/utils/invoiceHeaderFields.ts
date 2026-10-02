@@ -43,6 +43,16 @@ export type InvoiceHeaderFields = {
   }>;
   /** Fatura formu vs POS — karma peşin CH_TAHSILAT yazımını ayırır */
   source?: string;
+  /**
+   * Migration 190 — Back-dated audit. INSERT sırasında set edilir; UPDATE'te
+   * payload'dan çıkarılarak doğal readonly koruma sağlanır.
+   * `is_back_dated=true` ise `back_dated_at` ve `back_dated_by_user_id`
+   * dolu olur.
+   */
+  insertion_at?: string;
+  is_back_dated?: boolean;
+  back_dated_at?: string;
+  back_dated_by_user_id?: string;
 };
 
 export function readInvoiceHeaderFields(raw: unknown): InvoiceHeaderFields {
@@ -119,6 +129,14 @@ export function buildInvoiceHeaderFieldsFromForm(input: {
   footerDiscountAmount?: string | number;
   cashRegister?: { id?: string | null; name?: string | null; code?: string | null };
   payments?: InvoiceHeaderFields['payments'];
+  /** Migration 190: INSERT sırasında ISO timestamp (new Date().toISOString()). */
+  insertionAt?: string;
+  /** Migration 190: Frontend hesaplar (transactionDate < today). */
+  isBackDated?: boolean;
+  /** Migration 190: isBackDated ise set edilir (audit). */
+  backDatedAt?: string;
+  /** Migration 190: Back-dated onaylayan kullanıcı UUID. */
+  backDatedByUserId?: string;
 }): InvoiceHeaderFields {
   const out: InvoiceHeaderFields = {};
   const set = (key: keyof InvoiceHeaderFields, val?: string | null) => {
@@ -168,5 +186,13 @@ export function buildInvoiceHeaderFieldsFromForm(input: {
       notes: p?.notes,
     }));
   }
+  // Migration 190 — Back-dated audit (INSERT'te set; UPDATE'te payload'dan çıkar).
+  // INSERT'te her zaman yazılır (kullanıcı kimliği set olsun olmasın). UPDATE'te
+  // bu fonksiyon çağrılırsa geçmiş alanlar korunur; servis katmanı UPDATE
+  // yolunda bu alanları payload'a dahil etmemelidir.
+  if (input.insertionAt) out.insertion_at = String(input.insertionAt);
+  if (typeof input.isBackDated === 'boolean') out.is_back_dated = input.isBackDated;
+  if (input.backDatedAt) out.back_dated_at = String(input.backDatedAt);
+  if (input.backDatedByUserId) out.back_dated_by_user_id = String(input.backDatedByUserId);
   return out;
 }

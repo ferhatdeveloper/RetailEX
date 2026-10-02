@@ -454,6 +454,10 @@ export interface Sale {
   saleGroupId?: string | null;
   /** Bu fiş bir ön ödeme (deposit) mi? */
   isDeposit?: boolean | null;
+  /** Migration 190: Kayıt anı (INSERT'te set, UPDATE'te readonly). */
+  insertion_at?: string;
+  /** Migration 190: Geçmiş tarihli mi? */
+  is_back_dated?: boolean;
 }
 
 export interface SaleItem {
@@ -636,5 +640,13 @@ export interface Invoice {
   header_fields?: Record<string, unknown>;
   /** Liste: ürün / hizmet / karma */
   line_mix?: 'product' | 'service' | 'mixed' | 'unknown';
+  /** Migration 190: Kayıt anı (INSERT'te set edilir; UPDATE'te readonly). */
+  insertion_at?: string;
+  /** Migration 190: Geçmiş tarihli mi? Frontend'de hesaplanır; SQL'e yazılır. */
+  is_back_dated?: boolean;
+  /** Migration 190: Back-dated ise INSERT anı. */
+  back_dated_at?: string;
+  /** Migration 190: Back-dated kaydı onaylayan kullanıcı. */
+  back_dated_by_user_id?: string;
 }
 

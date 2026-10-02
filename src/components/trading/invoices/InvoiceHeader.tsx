@@ -102,6 +102,17 @@ interface InvoiceHeaderProps {
     // Detay tab açıklama alanı — collapsed görünümde cari alanının yanında gösterilir
     description?: string;
     setDescription?: (val: string) => void;
+
+    // Migration 190 — Back-dated audit (readonly chip + onay checkbox)
+    /** INSERT'te `new Date().toISOString()` set edilir (yeni fatura). */
+    insertionAt?: string;
+    /** Düzenleme modunda mevcut `is_back_dated` değeri. */
+    isBackDated?: boolean;
+    /** INSERT'te hesaplanır (transactionDate < todayIso). */
+    isOperationDateBackDated?: boolean;
+    /** INSERT modunda back-dated onayı (UI checkbox). */
+    backDatedConfirmed?: boolean;
+    setBackDatedConfirmed?: (val: boolean) => void;
 }
 
 export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
@@ -177,6 +188,11 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     selectedCariCurrency = 'IQD',
     description,
     setDescription,
+    insertionAt,
+    isBackDated,
+    isOperationDateBackDated = false,
+    backDatedConfirmed = false,
+    setBackDatedConfirmed,
 }) => {
     const { tm } = useLanguage();
     const cashierLabel = cashierFieldLabel || tm('cashier');
@@ -505,6 +521,48 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
+                            {/* Migration 190 — Ekleme Tarihi (audit) chip + onay.
+                                Yeni fatura: now readonly. Düzenleme: mevcut insertion_at.
+                                Back-dated ise yanında turuncu rozet. */}
+                            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                <span
+                                    className="inline-flex items-center gap-1 text-[10px] font-mono text-gray-500 dark:text-gray-400"
+                                    title={insertionAt || tm('invoiceInsertionAt')}
+                                >
+                                    <span className="uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                                        {tm('invoiceInsertionAt')}:
+                                    </span>
+                                    <span className="font-semibold tabular-nums text-gray-700 dark:text-gray-200">
+                                        {insertionAt
+                                            ? new Date(insertionAt).toLocaleString('tr-TR', {
+                                                year: 'numeric', month: '2-digit', day: '2-digit',
+                                                hour: '2-digit', minute: '2-digit',
+                                              })
+                                            : '—'}
+                                    </span>
+                                </span>
+                                {(isBackDated || (isOperationDateBackDated && backDatedConfirmed)) ? (
+                                    <span
+                                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                                        title={tm('invoiceBackDated')}
+                                    >
+                                        {tm('invoiceBackDated')}
+                                    </span>
+                                ) : null}
+                            </div>
+                            {isOperationDateBackDated && setBackDatedConfirmed ? (
+                                <label className="mt-1.5 flex items-start gap-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 p-1.5 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={backDatedConfirmed}
+                                        onChange={(e) => setBackDatedConfirmed(e.target.checked)}
+                                        className="mt-0.5 w-3.5 h-3.5 accent-amber-600"
+                                    />
+                                    <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-200 leading-snug">
+                                        {tm('invoiceBackDatedConfirm')}
+                                    </span>
+                                </label>
+                            ) : null}
                         </div>
 
                         <div>
