@@ -1301,6 +1301,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   custColAppointmentCount: { tr: 'Randevu Sayısı', en: 'Appointment count', ar: 'عدد المواعيد', ku: 'ژمارەی مەوع|د' },
   custColLastAction: { tr: 'Son İşlem', en: 'Last action', ar: 'آخر إجراء', ku: 'دوایین کردار' },
   custColLastAmount: { tr: 'Son Tutar', en: 'Last amount', ar: 'آخر مبلغ', ku: 'دوایین بڕ' },
+  appointmentTempInvoiceNoLabel: {
+    tr: 'Fatura No (Geçici)',
+    en: 'Invoice No (Temporary)',
+    ar: 'رقم الفاتورة (مؤقت)',
+    ku: 'ژمارەی وەسڵ (کاتی)',
+  },
+  appointmentTempInvoiceNoHint: {
+    tr: 'Fatura oluşturulduğunda atanır; şimdilik yalnızca önizleme.',
+    en: 'Assigned when the invoice is created; preview for now.',
+    ar: 'يُعيَّن عند إنشاء الفاتورة؛ معاينة فقط الآن.',
+    ku: 'کاتێک وەسڵ دروست دەکرێت دابەشدەکرێت؛ ئێستا تەنها پێشبینین.',
+  },
   custTabCrm: { tr: 'Müşteri CRM', en: 'Customer CRM', ar: 'إدارة العملاء', ku: 'CRM کڕیار' },
   custTabCari: { tr: 'Cari & Bakiye', en: 'Accounts & balance', ar: 'الحسابات والرصيد', ku: 'هەژمار و باڵانس' },
   buyersLabel: { tr: 'Alıcılar', en: 'Buyers', ar: 'المشترون', ku: 'کڕیاران' },

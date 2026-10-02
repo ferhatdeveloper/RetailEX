@@ -12,6 +12,8 @@ interface Appointment {
   customerEmail: string;
   service: string;
   staff: string;
+  /** Fatura oluşturulduğunda atanır; geçici önizleme için kullanılır. */
+  invoiceNo?: string;
   date: string;
   time: string;
   duration: number;
@@ -818,6 +820,24 @@ export function AppointmentModule() {
                     rows={3}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                     placeholder="Ek notlar..."
+                  />
+                </div>
+
+                {/* Geçici fatura no önizleme — kayıt sonrası atanır */}
+                <div className="p-3 rounded-lg border border-dashed border-amber-300 bg-amber-50">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-amber-700 mb-1.5">
+                    {tm('appointmentTempInvoiceNoLabel') || 'Fatura No (Geçici)'}
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={
+                      selectedAppointment?.invoiceNo
+                        ? selectedAppointment.invoiceNo
+                        : '(atama bekleniyor)'
+                    }
+                    title={tm('appointmentTempInvoiceNoHint') || 'Fatura oluşturulduğunda atanır; şimdilik yalnızca önizleme.'}
+                    className="w-full px-3 py-2 border border-amber-200 rounded-lg bg-white/60 font-mono text-sm text-amber-900 cursor-not-allowed focus:outline-none"
                   />
                 </div>
 
