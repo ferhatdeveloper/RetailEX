@@ -161,6 +161,12 @@ function isActiveBeautySale(s: BeautySale): boolean {
  * toplamına eklersek aynı tahsilatı iki kez sayıyoruz.
  * Ayrıca henüz tamamlanmamış randevuya bağlı (in_progress / scheduled /
  * confirmed) ana satışlar da KPI dışı — gerçek hizmet verilmedi.
+ *
+ * Migration 192 (`is_deposit` / `parent_sale_id` kolonları) yazılamamış veya
+ * geriye dönük uygulanmamış olabilir; bu durumda eski peşinat fişleri `false/null`
+ * kolon değeri taşır ve KPI'ya sızar. `notes` içine `encodeSaleLinkTags` ile
+ * yazılan `deposit:1` ve `parent_sale:<uuid>` tag'leri yedek tanımlayıcıdır;
+ * sütun değerleriyle birlikte değerlendirilir (Bug ARAM-collected-2x).
  */
 function isMainBeautySale(s: BeautySale, completedAptIds: Set<string>): boolean {
     if (!isActiveBeautySale(s)) return false;
@@ -171,6 +177,13 @@ function isMainBeautySale(s: BeautySale, completedAptIds: Set<string>): boolean 
     };
     if (sale.is_deposit === true) return false;
     if (sale.parent_sale_id) return false;
+    // Yedek tanımlayıcı: notes içinde `deposit:1` veya `parent_sale:<uuid>`
+    // tag'i varsa bu fiş bir peşinat veya peşinata bağlı ana satıştır → KPI dışı.
+    const notes = String(sale.notes ?? '');
+    if (notes) {
+        if (beautyService.parseDepositFlagFromNotes(notes)) return false;
+        if (beautyService.parseParentSaleIdFromNotes(notes)) return false;
+    }
     if (sale.linked_appointment_id) {
         const aptId = String(sale.linked_appointment_id).trim().toLowerCase();
         if (aptId && !completedAptIds.has(aptId)) return false;

@@ -6384,6 +6384,26 @@ export const beautyService = {
         return m ? m[1] : null;
     },
 
+    /**
+     * Satış notundaki `deposit:1` tag'i → bu fiş bir ön ödeme mi?
+     * `is_deposit` kolonu eksik / null / false olan eski veya yazılamamış
+     * peşinat kayıtlarını KPI dışı bırakmak için yedek tanımlayıcı.
+     * `encodeSaleLinkTags` her peşinat satışında `deposit:1` tag'i üretir.
+     */
+    parseDepositFlagFromNotes(notes?: string | null): boolean {
+        return /deposit:1(?:[|]|$)/i.test(String(notes ?? ''));
+    },
+
+    /**
+     * Satış notundaki `parent_sale:<uuid>` tag'i → ana satışın bağlı olduğu
+     * peşinat fiş kimliği. `parent_sale_id` kolonu eksik olan eski kayıtları
+     * KPI dışı bırakmak için yedek tanımlayıcı.
+     */
+    parseParentSaleIdFromNotes(notes?: string | null): string | null {
+        const m = String(notes ?? '').match(/parent_sale:([0-9a-f-]{36})/i);
+        return m ? m[1] : null;
+    },
+
     /** Randevuya bağlı ürün adları (beauty_sales + sale_items) */
     async getProductLabelsByAppointmentIds(appointmentIds: string[]): Promise<Map<string, string[]>> {
         const out = new Map<string, string[]>();

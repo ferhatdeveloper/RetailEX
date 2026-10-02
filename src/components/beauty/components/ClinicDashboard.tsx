@@ -359,8 +359,17 @@ export function ClinicDashboard() {
                 is_deposit?: boolean | null;
                 parent_sale_id?: string | null;
                 payment_status?: string | null;
+                notes?: string | null;
             };
             if (s.is_deposit === true || s.parent_sale_id != null) return false;
+            // Yedek tanımlayıcı: migration 192 kolonları eksik/yanlış olan
+            // eski peşinat fişleri için notes içindeki `deposit:1` ve
+            // `parent_sale:<uuid>` tag'lerine de bakılır (Bug ARAM-collected-2x).
+            const notes = String(s.notes ?? '');
+            if (notes) {
+                if (beautyService.parseDepositFlagFromNotes(notes)) return false;
+                if (beautyService.parseParentSaleIdFromNotes(notes)) return false;
+            }
             const ps = String(s.payment_status ?? '').trim().toLowerCase();
             if (ps === 'cancelled' || ps === 'canceled' || ps === 'refunded' || ps === 'void' || ps === 'iptal' || ps === 'silindi' || ps === 'deleted') return false;
             return true;
