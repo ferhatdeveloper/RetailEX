@@ -2380,6 +2380,14 @@ export function AppointmentPOS({
              * anlamına gelmez. Örnek: 02.10.2026'da 05.10.2026 için randevu
              * oluşturuluyor → eski kod `in_progress` yazıyordu (sarı rozet).
              * Doğru davranış: tarih gelene kadar Planlandı rozeti.
+             *
+             * Bug 15 düzeltmesi — bugünün tarihli randevuda peşinatlı ödeme
+             * alındığında status her zaman PRE_PAID olmalı, IN_PROGRESS değil.
+             * Eski kod IN_PROGRESS yazıyordu; sağ panelde "Başladı (Mevcut)"
+             * butonu seçili geliyordu. Oysa peşinat = "hizmet henüz
+             * başlamadı, sadece ön ödeme alındı" → randevu detay panelinde
+             * "Ön Ödeme Alındı" butonu seçili olmalı. Müşteri geldi ve hizmet
+             * başladığında kullanıcı manuel olarak "Başladı"ya geçirir.
              */
             const aptDateYmd = safeDateYmd(aptDate);
             const todayYmd = new Date().toISOString().slice(0, 10);
@@ -2387,7 +2395,7 @@ export function AppointmentPOS({
             const finalAptStatus: AppointmentStatus = isFutureAppointment
                 ? AppointmentStatus.SCHEDULED
                 : (isPesinatliPrePayment
-                    ? AppointmentStatus.IN_PROGRESS
+                    ? AppointmentStatus.PRE_PAID
                     : AppointmentStatus.COMPLETED);
 
             // ── Rezervasyon tutarı → ayrı ön ödeme sales kaydı ──
