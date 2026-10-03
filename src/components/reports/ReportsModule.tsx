@@ -34,6 +34,7 @@ import { expenseAPI } from '../../services/api/expenses';
 import { fetchKasaIslemleri, deleteKasaIslemi, type KasaIslemi } from '../../services/api/kasa';
 import { userAPI } from '../../services/api/users';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
+import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import { DailyCashFlowModal } from './DailyCashFlowModal';
@@ -3636,6 +3637,10 @@ export function ReportsModule({
       cashier: row.cashier,
       customerName: row.customerName,
       description: row.customerName || row.receiptNumber || '—',
+      // Rezervasyon avansı (henüz hizmet verilmemiş peşinat) — Açık Cari
+      // bucket'ına yazılmaz; tutarı Nakit'e kaydırılır.
+      isDeposit: isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true,
+      notes: row.erpSale?.notes ?? row.notes,
     }));
     const dist = buildPaymentTypeDistribution(saleInputs, {
       extraCash: extraCollections,
@@ -3672,6 +3677,8 @@ export function ReportsModule({
       cashier: row.cashier,
       customerName: row.customerName,
       description: row.customerName || row.receiptNumber || '—',
+      isDeposit: isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true,
+      notes: row.erpSale?.notes ?? row.notes,
     }));
     return buildPaymentTypeMovements(saleInputs, code, {
       extraCash: extraCollections,
@@ -10108,6 +10115,7 @@ export function ReportsModule({
                 dateLabel: m.date ? formatReportDateCell(m.date) : '—',
                 amountDisplay: formatNumber(m.amount, 2, false),
               }));
+              const movementTotal = movementRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
               return (
                 <PercentBodyModal
                   onClose={() => setPaymentTypeDetailCode(null)}
@@ -10135,56 +10143,80 @@ export function ReportsModule({
                     {movements.length === 0 ? (
                       <div className="py-16 text-center text-slate-500 text-sm">{tm('noDataFound')}</div>
                     ) : (
-                      <div className="min-h-[360px] flex-1">
-                        <ReportColumnTable
-                          data={movementRows}
-                          height={480}
-                          footerLabel={tm('totalLabel_rep') || 'Toplam'}
-                          columns={[
-                            {
-                              key: 'date',
-                              header: tm('date') || 'Tarih',
-                              type: 'date',
-                              size: 140,
-                              cell: (row) => row.dateLabel,
-                            },
-                            {
-                              key: 'receiptNumber',
-                              header: tm('receiptNo') || tm('documentNo') || 'Fiş No',
-                              size: 140,
-                            },
-                            {
-                              key: 'description',
-                              header: tm('description') || 'Açıklama',
-                              size: 220,
-                            },
-                            {
-                              key: 'customerName',
-                              header: tm('customer') || 'Müşteri',
-                              size: 160,
-                            },
-                            {
-                              key: 'cashier',
-                              header: tm('cashier') || 'Kasiyer',
-                              size: 120,
-                            },
-                            {
-                              key: 'amount',
-                              header: tm('amount') || 'Tutar',
-                              type: 'number',
-                              align: 'right',
-                              size: 140,
-                              footerSum: true,
-                              footerFormat: (n) => `${formatNumber(n, 2, false)} ${reportCurrency}`,
-                              cell: (row) => (
-                                <span className="font-semibold tabular-nums">
-                                  {row.amountDisplay} {reportCurrency}
-                                </span>
-                              ),
-                            },
-                          ]}
-                        />
-                      </div>
+                      <>
+                          <div className="min-h-[360px] flex-1">
+                            <DevExDataGrid
+                              data={movementRows}
+                              enableSorting
+                              enableFiltering
+                              enablePagination
+                              pageSize={20}
+                              columns={[
+                                {
+                                  id: 'date',
+                                  accessorKey: 'date',
+                                  header: tm('date') || 'Tarih',
+                                  size: 140,
+                                  meta: { filterKind: 'date', format: 'date', type: 'date' },
+                                  cell: ({ row }) => row.original.dateLabel,
+                                },
+                                {
+                                  id: 'receiptNumber',
+                                  accessorKey: 'receiptNumber',
+                                  header: tm('receiptNo') || tm('documentNo') || 'Fiş No',
+                                  size: 140,
+                                },
+                                {
+                                  id: 'description',
+                                  accessorKey: 'description',
+                                  header: tm('description') || 'Açıklama',
+                                  size: 220,
+                                },
+                                {
+                                  id: 'customerName',
+                                  accessorKey: 'customerName',
+                                  header: tm('customer') || 'Müşteri',
+                                  size: 160,
+                                },
+                                {
+                                  id: 'cashier',
+                                  accessorKey: 'cashier',
+                                  header: tm('cashier') || 'Kasiyer',
+                                  size: 120,
+                                },
+                                {
+                                  id: 'amount',
+                                  accessorKey: 'amount',
+                                  header: tm('amount') || 'Tutar',
+                                  size: 140,
+                                  meta: { align: 'right' },
+                                  cell: ({ row }) => (
+                                    <span className="font-semibold tabular-nums">
+                                      {row.original.amountDisplay} {reportCurrency}
+                                    </span>
+                                  ),
+                                },
+                              ]}
+                              footerSumColumns={[
+                                {
+                                  columnId: 'amount',
+                                  getValue: (r: { amount: number }) => Number(r.amount) || 0,
+                                  format: (sum: number) => (
+                                    <span className="font-bold text-green-700">
+                                      {formatNumber(sum, 2, false)} {reportCurrency}
+                                    </span>
+                                  ),
+                                },
+                              ]}
+                            />
+                          </div>
+                          <div className="mt-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between text-xs shrink-0">
+                            <span className="text-slate-600">{tm('totalLabel_rep') || 'Toplam'}</span>
+                            <span className="font-bold text-green-700 tabular-nums">
+                              {formatNumber(movementTotal, 2, false)} {reportCurrency}
+                            </span>
+                          </div>
+                        </>
                     )}
                   </PercentBodyModalScrollBody>
                   <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end shrink-0">

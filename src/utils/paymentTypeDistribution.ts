@@ -41,6 +41,11 @@ export type PaymentTypeSaleInput = {
   cashier?: string;
   customerName?: string;
   description?: string;
+  /** Rezervasyon avansı (henüz hizmet verilmemiş peşinat). Veresiye bucket'ına
+   *  dahil edilmez — bilgi amaçlı Nakit'e yazılır. */
+  isDeposit?: boolean;
+  /** Notlardan türetilmiş peşinat etiketi (örn. parent_sale:, sale_group:) */
+  notes?: string;
 };
 
 function emptyAmounts(): Record<PaymentFormCode, number> {
@@ -125,8 +130,21 @@ export function buildPaymentTypeDistribution(
 
   for (const sale of sales) {
     const split = allocateSaleAmountsByFormCode(sale.total, sale.payments, sale.paymentMethod);
+    // Rezervasyon avansı (is_deposit): Açık Cari (veresiye) bucket'ına
+    // yazılmaz — henüz hizmet verilmemiş peşinat henüz alacak değil. Tutarı
+    // Nakit'e kaydır (kasa paraya girdiği için nakit olarak raporlanır;
+    // veresiye kısmına yazılmaz, böylece Kasa Durumu özetinde müşteri
+    // borçlu görünmez).
+    const isDepositSale = sale.isDeposit === true ||
+      /parent_sale:|sale_group:|deposit:1/.test(String(sale.notes ?? ''));
     for (const code of SYSTEM_PAYMENT_FORM_CODES) {
-      const amt = split[code];
+      let amt = split[code];
+      if (isDepositSale && code === 'ACIK_CARI') {
+        // Veresiye kısmını Nakit'e kaydır
+        amounts.NAKIT += amt;
+        counts.NAKIT += 1;
+        continue;
+      }
       if (Math.abs(amt) > 1e-9) {
         amounts[code] += amt;
         counts[code] += 1;
@@ -195,6 +213,11 @@ export function buildPaymentTypeMovements(
 
   for (const sale of sales) {
     const split = allocateSaleAmountsByFormCode(sale.total, sale.payments, sale.paymentMethod);
+    const isDepositSale = sale.isDeposit === true ||
+      /parent_sale:|sale_group:|deposit:1/.test(String(sale.notes ?? ''));
+    // Rezervasyon avansı: ACIK_CARI altında görünmemeli. methodCode ACIK_CARI ise
+    // bu satıyı atla — kullanıcı isteği.
+    if (isDepositSale && methodCode === 'ACIK_CARI') continue;
     const amt = split[methodCode];
     if (!(Math.abs(amt) > 1e-9)) continue;
     const receipt = String(sale.receiptNumber || '').trim() || '—';

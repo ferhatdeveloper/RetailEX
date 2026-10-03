@@ -48,6 +48,66 @@ describe('paymentTypeDistribution', () => {
     expect(dist.byCode.SENET.amount).toBe(60);
   });
 
+  it('rezervasyon avansı ACIK_CARI bucket\'ına yazılmaz, NAKIT\'e kaydırılır', () => {
+    const dist = buildPaymentTypeDistribution(
+      [
+        {
+          id: 'r1',
+          total: 20_000,
+          paymentMethod: 'veresiye',
+          receiptNumber: 'R1',
+          date: '2024-09-19',
+          isDeposit: true,
+        },
+        {
+          id: 'r2',
+          total: 30_000,
+          paymentMethod: 'nakit',
+          receiptNumber: 'R2',
+          date: '2024-09-19',
+        },
+      ],
+      { includeZero: true },
+    );
+    expect(dist.byCode.ACIK_CARI.amount).toBe(0);
+    expect(dist.byCode.NAKIT.amount).toBe(50_000);
+  });
+
+  it('rezervasyon avansı (notes: parent_sale:) ACIK_CARI\'a yazılmaz', () => {
+    const dist = buildPaymentTypeDistribution(
+      [
+        {
+          id: 'r3',
+          total: 75_000,
+          paymentMethod: 'veresiye',
+          receiptNumber: 'R3',
+          date: '2024-09-19',
+          notes: 'parent_sale:abc',
+        },
+      ],
+      { includeZero: true },
+    );
+    expect(dist.byCode.ACIK_CARI.amount).toBe(0);
+    expect(dist.byCode.NAKIT.amount).toBe(75_000);
+  });
+
+  it('buildPaymentTypeMovements ACIK_CARI için rezervasyon avansı satırını atlar', () => {
+    const rows = buildPaymentTypeMovements(
+      [
+        {
+          id: 'r1',
+          total: 20_000,
+          paymentMethod: 'veresiye',
+          receiptNumber: 'R1',
+          date: '2024-09-19',
+          isDeposit: true,
+        },
+      ],
+      'ACIK_CARI',
+    );
+    expect(rows).toHaveLength(0);
+  });
+
   it('tip hareket listesini filtreler', () => {
     const rows = buildPaymentTypeMovements(
       [
