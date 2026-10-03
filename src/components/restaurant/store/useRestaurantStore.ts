@@ -16,6 +16,7 @@ import { categoryAPI, type Category } from '../../../services/api';
 import { v4 as uuidv4 } from 'uuid';
 import { convertUnit } from '../utils/unitConverter';
 import { printKitchenTicketsAfterSend } from '../../../utils/restaurantKitchenPrint';
+import { ensureWriteCashierName } from '../../../utils/loginCashierName';
 
 /** `closeBill` — kasa/satış kaydı sepetle aynı olsun diye (store gecikmesinde) */
 export type CloseBillSaleOverride = {
@@ -563,7 +564,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                             customerName: saleCustomerName,
                             ...(salePayments && salePayments.length > 0 ? { payments: salePayments } : {}),
                             status: 'completed',
-                            cashier: tableSnapshot.waiter || 'Garson',
+                            cashier: ensureWriteCashierName(tableSnapshot.waiter || ''),
                             /** Günlük raporda ERP fişi silindiğinde aynı işlemin RES-* adisyon satırı tekrar çıkmasın diye */
                             notes: `RestoranPOS|rest_order_id:${orderId}`,
                         });
