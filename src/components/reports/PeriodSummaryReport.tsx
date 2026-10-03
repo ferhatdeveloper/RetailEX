@@ -70,6 +70,11 @@ interface PeriodSummaryRow {
   depositAmount: number;
   expenses: number;
   cashIn: number;
+  /** Bug 29 — CH_TAHSILAT (cari tahsilatları). Kasa Para Girişi sütunundan ayrı
+   * izlenir; ledger'da müşteri alacağını azaltır, kasa etkisi modal'da ayrı
+   * bölümde gösterilir (PeriodCashInDetailModal). Bu kolon kullanıcının 22.4M
+   * IQD CH_TAHSILAT kayıtlarını raporda da görmesini sağlar. */
+  cariTahsilat: number;
   purchases: number;
   netRemaining: number;
   partnerShares: Record<string, number>;
@@ -448,6 +453,24 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     return aggregateCashIns(cashInsRows, mode === 'monthly-days' ? 'day' : 'month');
   }, [cashInsRows, mode]);
 
+  /** Bug 29 — CH_TAHSILAT (cari tahsilatları) gün/ay bazında toplam.
+   * Modal ile aynı kaynak (`cariTahsilatRows`); raporda ayrı kolon olarak
+   * kullanıcıya açılır. Kasa Para Girişi sütununa dahil edilmez — cari alacağı
+   * azaltıcı, kasa etkisi (modal'daki) ile birlikte görünür. */
+  const cariTahsilatMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const cl of Array.isArray(cariTahsilatRows) ? cariTahsilatRows : []) {
+      const day =
+        toSqlDateInputString(cl.islem_tarihi || '') ||
+        localCalendarDateKey(cl.islem_tarihi) ||
+        '';
+      if (!day) continue;
+      const key = mode === 'monthly-days' ? day : day.slice(0, 7);
+      map.set(key, (map.get(key) || 0) + (Number(cl.tutar) || 0));
+    }
+    return map;
+  }, [cariTahsilatRows, mode]);
+
   // Alış faturaları — sayfalı, hepsi birleştirilir
   const purchasesQuery = useQuery({
     queryKey: ['periodSummary', 'purchases', firmKey, periodRange?.start, periodRange?.end],
@@ -557,6 +580,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       };
       const exp = expenseMap.get(periodKey) || 0;
       const cashIn = cashInMap.get(periodKey) || 0;
+      const cariTahsilat = cariTahsilatMap.get(periodKey) || 0;
       const purch = purchaseMap.get(periodKey) || 0;
       const periodLabel =
         mode === 'monthly-days'
@@ -595,6 +619,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         depositAmount: sale.depositAmount,
         expenses: exp,
         cashIn,
+        cariTahsilat,
         purchases: purch,
         netRemaining,
         partnerShares: partnerShareMap,
@@ -608,6 +633,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     expenses,
     purchases,
     cashInMap,
+    cariTahsilatMap,
     selectedMonth,
     selectedYear,
     tm,
@@ -630,6 +656,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         depositAmount: acc.depositAmount + r.depositAmount,
         expenses: acc.expenses + r.expenses,
         cashIn: acc.cashIn + r.cashIn,
+        cariTahsilat: acc.cariTahsilat + r.cariTahsilat,
         purchases: acc.purchases + r.purchases,
         netRemaining: acc.netRemaining + r.netRemaining,
       }),
@@ -637,7 +664,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
         returnsCount: 0, returnsAmount: 0,
         depositCount: 0, depositAmount: 0,
-        expenses: 0, cashIn: 0, purchases: 0, netRemaining: 0,
+        expenses: 0, cashIn: 0, cariTahsilat: 0, purchases: 0, netRemaining: 0,
       }
     );
     const shareList = splitAmountByPartners(base.netRemaining, partnerSlices);
@@ -888,6 +915,33 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             </button>
           );
         },
+      },
+      // Bug 29 — Cari Tahsilat (CH_TAHSILAT). Kasa Para Girişi sütununa
+      // dahil edilmemiş cari tahsilatlar burada ayrıca gösterilir; modal
+      // hâlâ her iki listeyi (Kasa Para Girişi + Cari Tahsilatlar) birlikte
+      // açar. Modal butonu Cari Tahsilat kolonundaki değil, Kasa Para Girişi
+      // kolonundaki butona bağlıdır — kullanıcı tek tıkla tüm liste.
+      {
+        key: 'cariTahsilat',
+        header: `${tm('rptPeriodColCariTahsilat') || 'Cari Tahsilat'} (${currency})`,
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) =>
+          n > 0 ? (
+            <span className="text-cyan-700">{money(n)}</span>
+          ) : (
+            '—'
+          ),
+        cell: (row) =>
+          row.cariTahsilat > 0 ? (
+            <span className="text-cyan-700 font-medium" title={tm('rptPeriodCashInCariTahsilatTitle')}>
+              {money(row.cariTahsilat)}
+            </span>
+          ) : (
+            '—'
+          ),
+        meta: { defaultVisible: true },
       },
       {
         key: 'purchases',

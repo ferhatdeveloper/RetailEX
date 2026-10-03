@@ -10762,6 +10762,13 @@ export const excelModuleTranslations = {
     ar: 'إجمالي تحصيل العملاء',
     ku: 'کۆی وەرگرتنەوەی کڕیار',
   },
+  // Bug 29 — Aylık/Yıllık özet tablosunda yeni "Cari Tahsilat" kolon başlığı.
+  rptPeriodColCariTahsilat: {
+    tr: 'Cari Tahsilat',
+    en: 'Customer Collections',
+    ar: 'تحصيل العملاء',
+    ku: 'وەرگرتنەوەی کڕیار',
+  },
   rptPeriodCashInCariTahsilatEmpty: {
     tr: 'Bu dönemde cari tahsilat kaydı yok.',
     en: 'No customer collections in this period.',
