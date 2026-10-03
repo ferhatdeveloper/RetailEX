@@ -13,6 +13,7 @@ import type { BeautyAppointment } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { beautyAppointmentDateKey, formatLocalYmd, getWeekRangeLocal, getMonthRangeLocal } from '../../../utils/dateLocal';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
+import { computeClinicDayKpis } from '../../../utils/clinicDashboardStats';
 import { beautyService } from '../../../services/beautyService';
 import { beautySalePocketCollected, beautySaleRemainingCari, extraCustomerCollectionsNotOnSales } from '../../../utils/saleCollectedAmounts';
 import { fetchKasaIslemleri } from '../../../services/api/kasa';
@@ -331,13 +332,17 @@ export function ClinicDashboard() {
     };
 
     const stats = useMemo(() => {
-        const todayAll = appointments.filter(a => beautyAppointmentDateKey(a) === todayStr);
-        const todayApts = todayAll.filter(a => beautyAptVisibleOnSchedule(a));
-        const completed = todayApts.filter(a => a.status === AppointmentStatus.COMPLETED);
-        const pending   = todayApts.filter(a => a.status === AppointmentStatus.SCHEDULED || a.status === AppointmentStatus.CONFIRMED);
-        const inProg    = todayApts.filter(a => a.status === AppointmentStatus.IN_PROGRESS);
-        const cancelled = todayAll.filter(a => a.status === AppointmentStatus.CANCELLED);
-        const remaining = [...pending, ...inProg];
+        /**
+         * Bug 21: KPI şeridi (TAHSİLAT hariç) pure helper'dan hesaplanır.
+         * Yardımcı, `expectedRevenue`/`remaining` hesabını appointments
+         * tablosundan bağımsız yapar (peşinatlı modda `beauty_sales` boş
+         * dönse bile PRE_PAID/SCHEDULED/CONFIRMED/IN_PROGRESS dahil).
+         */
+        const kpis = computeClinicDayKpis({
+            appointments,
+            todayStr,
+            dateKeyOf: beautyAppointmentDateKey,
+        });
         /**
          * Peşinat fişleri (`is_deposit === true` veya `parent_sale_id != null`)
          * ana satış fişinin `paid_amount` alanına zaten yansıtılıyor; ayrıca
@@ -385,25 +390,23 @@ export function ClinicDashboard() {
             0,
             mainSales.reduce((s, sale) => s + beautySaleRemainingCari(sale), 0) - todayExtraCash,
         );
-        const expectedRevenue = remaining.reduce((s, a) => s + (a.total_price || 0), 0);
-        const rate      = todayApts.length ? Math.round((completed.length / todayApts.length) * 100) : 0;
 
-        const sorted = [...todayApts].sort((a, b) => {
+        const sorted = [...kpis.todayApts].sort((a, b) => {
             return (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? '');
         });
 
         return {
             todayApts: sorted,
-            completed: completed.length,
-            pending: pending.length,
-            inProg: inProg.length,
-            cancelled: cancelled.length,
+            completed: kpis.completed,
+            pending: kpis.pending,
+            inProg: kpis.inProg,
+            cancelled: kpis.cancelled,
             revenue,
             remainingCari,
-            expectedRevenue,
-            remaining: remaining.length,
-            rate,
-            total: todayApts.length,
+            expectedRevenue: kpis.expectedRevenue,
+            remaining: kpis.remaining,
+            rate: kpis.rate,
+            total: kpis.total,
         };
     }, [appointments, todayStr, todaySales, todayExtraCash]);
 
