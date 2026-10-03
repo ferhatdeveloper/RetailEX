@@ -2988,7 +2988,10 @@ export const invoicesAPI = {
       const total = countRows && countRows[0] ? parseInt(countRows[0].total) : 0;
 
       // Add ordering and pagination
-      sql += ` ORDER BY date DESC LIMIT $${paramIndex}::text::int OFFSET $${paramIndex + 1}::text::int`;
+      // date kolonu timestamptz — saat bilgisini içerir; aynı anda
+      // birden fazla fatura olursa tie-break id DESC ile (en yeni
+      // eklenen/UUID büyük olan) deterministik sıra garantilenir.
+      sql += ` ORDER BY date DESC, id DESC LIMIT $${paramIndex}::text::int OFFSET $${paramIndex + 1}::text::int`;
       params.push(pageSize);
       params.push((page - 1) * pageSize);
 
