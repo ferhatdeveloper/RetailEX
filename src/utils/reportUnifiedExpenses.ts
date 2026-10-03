@@ -107,7 +107,17 @@ export function mergeExpensesWithCashOuts(
   for (const cl of Array.isArray(cashLines) ? cashLines : []) {
     const type = String(cl.islem_tipi || '').trim().toUpperCase();
     if (!allowedTypes.has(type)) continue;
-    if (cl.id && linkedCashIds.has(String(cl.id))) continue;
+    // Bug 30 — Kök neden: MAAS_ODEME / ORTAK_SERMAYE_ODEME satırları Gider
+    // Yönetimi'nde (expenses tablosu) mirror olarak yer almaz; bunlar
+    // doğrudan party_ledger_movements tablosuna yazılır ve cash_lines'a
+    // yansır. `linkedCashIds` filtresi normalde cash_line_id eşleşmesi ile
+    // çift sayımı engeller — ancak bu tip için filtre uygulanırsa, mirror
+    // olmamasına rağmen cash_lines satırı **atlanır** ve gider raporundan
+    // düşer. PERIOD_SUMMARY_CASH_OUT_TYPES set genişletmesi sonrası bu
+    // satırlar set'e dahil olduğu için filtreyi skip ediyoruz.
+    const skipLinkedCheck =
+      type === 'MAAS_ODEME' || type === 'ORTAK_SERMAYE_ODEME';
+    if (!skipLinkedCheck && cl.id && linkedCashIds.has(String(cl.id))) continue;
     const amt = Math.abs(Number(cl.tutar) || 0);
     if (!amt) continue;
     const day =

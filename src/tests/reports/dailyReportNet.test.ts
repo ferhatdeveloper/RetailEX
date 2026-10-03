@@ -131,9 +131,15 @@ describe('periodSummaryCashOutTypes — gider filtre kök neden', () => {
     expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('KASA_CIKIS')).toBe(true);
   });
 
-  it('PERIOD_SUMMARY_CASH_OUT_TYPES kasa hareketlerini (maaş, ortak, cari ödeme) Hariç tutar', () => {
-    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('MAAS_ODEME')).toBe(false);
-    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('ORTAK_SERMAYE_ODEME')).toBe(false);
+  it('PERIOD_SUMMARY_CASH_OUT_TYPES gerçek işletme giderlerini + maaş/ortak sermaye ödemelerini içerir', () => {
+    // Bug 30 — set genişletildi: GIDER_PUSULASI, KASA_CIKIS, MAAS_ODEME,
+    // ORTAK_SERMAYE_ODEME (commit ee02fbf0 + Bug 30 kök neden düzeltmesi).
+    // CH_ODEME, AVANS_ODEME, ORTAK_DAGITIM_KAR Hariç (muhasebe açısından
+    // Ciro'dan/kasadan çıkan hareketler, gider DEĞİL).
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('GIDER_PUSULASI')).toBe(true);
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('KASA_CIKIS')).toBe(true);
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('MAAS_ODEME')).toBe(true);
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('ORTAK_SERMAYE_ODEME')).toBe(true);
     expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('CH_ODEME')).toBe(false);
     expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('AVANS_ODEME')).toBe(false);
     expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('ORTAK_DAGITIM_KAR')).toBe(false);
