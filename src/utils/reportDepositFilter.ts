@@ -31,6 +31,18 @@ const CANCELLED_STATUSES = new Set([
   'deleted',
 ]);
 
+/** Randevu tamamlanmış sayılan `Sale.status` değerleri (Bug 26). */
+const COMPLETED_SALE_STATUSES = new Set([
+  'completed',
+  'complete',
+  'done',
+  'finished',
+  'tamamlandi',
+  'tamamlandı',
+  'paid',
+  'closed',
+]);
+
 const PENDING_PAYMENT_STATUSES = new Set([
   'pending',
   'awaiting_service',
@@ -85,6 +97,11 @@ export function isDepositSale(sale: Partial<Sale> | null | undefined): boolean {
  *  - İptal / iade (`status` veya `payment_status` cancelled/refunded/...)
  *  - Henüz hizmet verilmemiş (`payment_status` pending/awaiting_service/partial)
  *  - Peşinat fişi (`is_deposit === true` — Bug 24)
+ *  - **Randevuya bağlı ama tamamlanmamış fiş** (Bug 26 follow-up): `linkedAppointmentId`
+ *    set edilmişse VE `status` değeri `completed`/`done`/`paid`/`tamamlandı` listesinde
+ *    DEĞİLSE Hariç tutulur. Bu, güzellik POS'ta hizmet verilmeden önce oluşturulmuş
+ *    "şimdiden" satış fişlerinin (örn. `status=''` veya `status='scheduled'`)
+ *    günlük raporun Toplam Satış / Ciro kartlarında şişirmesini engeller.
  *
  * Kasa / TAHSİL EDİLEN tahsilatı için bu fonksiyon KULLANILMAZ;
  * orada yalnızca iptal Hariç tutulur, peşinat dahil edilir.
@@ -95,6 +112,14 @@ export function isCiroyaDahilSale(sale: Partial<Sale> | null | undefined): boole
   const ps = (sale as Sale & { payment_status?: string }).payment_status;
   if (isCancelledPaymentStatus(ps) || isPendingPaymentStatus(ps)) return false;
   if (isDepositSale(sale)) return false;
+  // Bug 26 follow-up: randevuya bağlı fişlerde hizmet tamamlanmamışsa Hariç.
+  // `linkedAppointmentId` set edilmiş + status belirleyici değilse Hariç.
+  const linkedAppt = (sale as Sale).linkedAppointmentId;
+  if (linkedAppt) {
+    const st = String((sale as Sale).status ?? '').trim().toLowerCase();
+    // status boş/scheduled/confirmed/in_progress/no_show/cancelled ise Hariç
+    if (!COMPLETED_SALE_STATUSES.has(st)) return false;
+  }
   return true;
 }
 

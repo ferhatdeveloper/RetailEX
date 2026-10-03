@@ -140,6 +140,78 @@ describe('reportDepositFilter — Bug 24 (peşinat Hariç)', () => {
     });
   });
 
+  describe('Bug 26 follow-up: Randevuya bağlı fiş hizmet tamamlanmamışsa Hariç', () => {
+    it('linkedAppointmentId var + status boş → Hariç', () => {
+      const s = makeSale({
+        total: 75_000,
+        payment_status: 'paid',
+        isDeposit: false,
+        linkedAppointmentId: 'apt-1',
+        status: '',
+      });
+      expect(isCiroyaDahilSale(s)).toBe(false);
+    });
+    it('linkedAppointmentId var + status=scheduled → Hariç', () => {
+      const s = makeSale({
+        total: 75_000,
+        payment_status: 'paid',
+        isDeposit: false,
+        linkedAppointmentId: 'apt-1',
+        status: 'scheduled',
+      });
+      expect(isCiroyaDahilSale(s)).toBe(false);
+    });
+    it('linkedAppointmentId var + status=confirmed → Hariç', () => {
+      const s = makeSale({
+        total: 75_000,
+        payment_status: 'paid',
+        isDeposit: false,
+        linkedAppointmentId: 'apt-1',
+        status: 'confirmed',
+      });
+      expect(isCiroyaDahilSale(s)).toBe(false);
+    });
+    it('linkedAppointmentId var + status=in_progress → Hariç', () => {
+      const s = makeSale({
+        total: 75_000,
+        payment_status: 'paid',
+        isDeposit: false,
+        linkedAppointmentId: 'apt-1',
+        status: 'in_progress',
+      });
+      expect(isCiroyaDahilSale(s)).toBe(false);
+    });
+    it('linkedAppointmentId var + status=completed → DAHİL', () => {
+      const s = makeSale({
+        total: 75_000,
+        payment_status: 'paid',
+        isDeposit: false,
+        linkedAppointmentId: 'apt-1',
+        status: 'completed',
+      });
+      expect(isCiroyaDahilSale(s)).toBe(true);
+    });
+    it('linkedAppointmentId var + status=paid → DAHİL', () => {
+      const s = makeSale({
+        total: 75_000,
+        payment_status: 'paid',
+        isDeposit: false,
+        linkedAppointmentId: 'apt-1',
+        status: 'paid',
+      });
+      expect(isCiroyaDahilSale(s)).toBe(true);
+    });
+    it('linkedAppointmentId yok + status boş → DAHİL (randevu dışı satış)', () => {
+      const s = makeSale({
+        total: 50_000,
+        payment_status: 'paid',
+        isDeposit: false,
+        status: '',
+      });
+      expect(isCiroyaDahilSale(s)).toBe(true);
+    });
+  });
+
   describe('isKasaTahsilatiSale (Kasa/Tahsil Edilen)', () => {
     it('peşinat fişi (paid + is_deposit=true) DAHİL (kasaya girmiştir)', () => {
       const s = makeSale({
