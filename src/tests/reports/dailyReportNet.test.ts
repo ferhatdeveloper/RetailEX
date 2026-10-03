@@ -112,43 +112,40 @@ describe('dailyReportNet — muhasebe çift yönü', () => {
 });
 
 // =============================================================
-// Bug 31: Ciro/Gider/Alış formülünde MAAS_ODEME ve ORTAK_SERMAYE_ODEME
-// gerçek işletme gideri olarak Gider kolonuna DAHİL edilir.
-//
-// Kök neden: Bug 29 follow-up'ta PERIOD_SUMMARY_CASH_OUT_TYPES yalnızca
-// GIDER_PUSULASI + KASA_CIKIS olacak şekilde kısıtlanmıştı; ancak
-// MAAS_ODEME ve ORTAK_SERMAYE_ODEME de gerçek işletme gideridir (maaş
-// bordrosu, ortak sermaye çıkışı). Bunların dışlanması Gider'i eksik
-// gösteriyordu.
+// Bug 31 geri-çevrimi (2026-10-04 — Ferhat datası 72M beklentisi):
+// Ciro/Gider/Alış formülünde Gider kolonuna CH_ODEME, MAAS_ODEME,
+// AVANS_ODEME, ORTAK_SERMAYE_ODEME, ORTAK_DAGITIM_KAR dahil edildi
+// (780965d6 öncesi 7-kalem davranışı). Bug 31 sürümünde yalnızca
+// MAAS_ODEME + ORTAK_SERMAYE_ODEME dahildi; CH_ODEME / AVANS_ODEME /
+// ORTAK_DAGITIM_KAR hariç tutuluyordu → Ferhat datası 48M (yanlış).
 //
 // Ciro kök neden (korundu): iade faturaları Ciro'ya dahil edilince iki
 // kez düşülüyordu (Sale.total zaten negatif; aggregateSales ayrıca
 // absTotal daha düşüyordu). salesAPI.getByDateRange artık yalnız Satis
 // kategorisini (iade Hariç) döner.
 //
-// mergeExpensesWithCashOuts içinde Bug 31 düzeltmesi: linkedCashIds
-// filtresi MAAS_ODEME ve ORTAK_SERMAYE_ODEME için skip edilir; diğer
-// type'lar için çift sayım koruması korunur.
+// mergeExpensesWithCashOuts içinde linkedCashIds filtresi 7 tip için
+// skip edilir; böylece Expense tablosuna bağlı olmayan kasa çıkışları
+// da gider olarak sayılır.
 // =============================================================
 
 import { PERIOD_SUMMARY_CASH_OUT_TYPES, REPORT_CASH_OUT_TYPES } from '../../utils/reportUnifiedExpenses';
 
-describe('periodSummaryCashOutTypes — gider filtre (Bug 31)', () => {
-  it('PERIOD_SUMMARY_CASH_OUT_TYPES gerçek gider tiplerini içerir (Bug 31)', () => {
+describe('periodSummaryCashOutTypes — gider filtre (Ferhat 72M)', () => {
+  it('PERIOD_SUMMARY_CASH_OUT_TYPES tüm gerçek gider + kasa çıkışlarını içerir', () => {
     expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('GIDER_PUSULASI')).toBe(true);
     expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('KASA_CIKIS')).toBe(true);
   });
 
-  it('PERIOD_SUMMARY_CASH_OUT_TYPES MAAS_ODEME ve ORTAK_SERMAYE_ODEME dahil eder (Bug 31)', () => {
-    // Bug 31: Ciro/Gider/Alış formülü maaş + ortak sermaye çıkışını gider sayar
+  it('PERIOD_SUMMARY_CASH_OUT_TYPES MAAS_ODEME ve ORTAK_SERMAYE_ODEME dahil eder', () => {
     expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('MAAS_ODEME')).toBe(true);
     expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('ORTAK_SERMAYE_ODEME')).toBe(true);
   });
 
-  it('PERIOD_SUMMARY_CASH_OUT_TYPES cari ödeme / avans / kar dağıtımı Hariç tutar', () => {
-    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('CH_ODEME')).toBe(false);
-    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('AVANS_ODEME')).toBe(false);
-    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('ORTAK_DAGITIM_KAR')).toBe(false);
+  it('PERIOD_SUMMARY_CASH_OUT_TYPES CH_ODEME / AVANS_ODEME / ORTAK_DAGITIM_KAR dahil eder (Ferhat 72M geri-çevrimi)', () => {
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('CH_ODEME')).toBe(true);
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('AVANS_ODEME')).toBe(true);
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('ORTAK_DAGITIM_KAR')).toBe(true);
   });
 
   it('REPORT_CASH_OUT_TYPES (günlük rapor) tüm kasa çıkışlarını içerir', () => {
@@ -156,14 +153,12 @@ describe('periodSummaryCashOutTypes — gider filtre (Bug 31)', () => {
     expect(REPORT_CASH_OUT_TYPES.has('CH_ODEME')).toBe(true);
   });
 });
-describe('periodSummaryNet — Ciro − Gider − Alış (CH_TAHSILAT hariç) — Bug 31', () => {
-  it('aqua_beauty 30.09.2026 (Bug 31): Ciro + Gider(GIDER+MAAS+ORTAK) + Alış', () => {
-    // Bug 31 sonrası doğru değerler — Ciro/Gider/Alış formülü:
-    // - Ciro = 35 satış faturası total_net = 3.315.370 IQD (iade Hariç)
-    // - Gider = Expense tablosu (43.000) + MAAS_ODEME (6.500.000) +
-    //   ORTAK_SERMAYE_ODEME (1.250.000) = 7.793.000 IQD
-    // - Alış = 5 alış faturası = 4.937.000 IQD
-    // - Net Kalan = Ciro − Gider − Alış = −9.414.630 IQD
+describe('periodSummaryNet — Ciro − Gider − Alış (CH_TAHSILAT hariç)', () => {
+  it('aqua_beauty 30.09.2026: Ciro + Gider(GIDER+MAAS+ORTAK) + Alış', () => {
+    // Ciro/Gider/Alış formülü — Bug 31 geri-çevrimi (2026-10-04) sonrası
+    // sabit sayılar: Ciro 3.315.370, Gider (GIDER+MAAS+ORTAK) 7.793.000,
+    // Alış 4.937.000 → Net Kalan −9.414.630. CH_TAHSILAT Hariç (ledger
+    // simetrisi).
     const revenue = 3_315_370;
     const gider = 7_793_000; // 43.000 (GIDER_PUSULASI) + 6.500.000 (MAAS) + 1.250.000 (ORTAK_SERMAYE)
     const alis = 4_937_000;
@@ -185,8 +180,7 @@ describe('periodSummaryNet — Ciro − Gider − Alış (CH_TAHSILAT hariç) �
     expect(net - cariTahsilat).toBe(-31_814_630);
   });
 
-  it('kullanıcı senaryosu doğrulama (Bug 31): Ciro − Gider − Alış formülü simetri', () => {
-    // Bug 31: Gider kolonu MAAS_ODEME + ORTAK_SERMAYE_ODEME'yi de içerir.
+  it('kullanıcı senaryosu doğrulama: Ciro − Gider − Alış formülü simetri', () => {
     // Ciro 3.315.370 − Gider 7.793.000 − Alış 4.937.000 = −9.414.630.
     const revenue = 3_315_370;
     const gider = 7_793_000;
@@ -350,8 +344,9 @@ describe('mergeExpensesWithCashOuts — Bug 31 linkedCashIds skip', () => {
     expect(merged[0].notes).toBe('MAAS_ODEME');
   });
 
-  it('CH_ODEME / AVANS_ODEME / ORTAK_DAGITIM_KAR: allowedTypes dışı; merge edilmez', () => {
-    // REPORT_CASH_OUT_TYPES hepsini içerir, ancak PERIOD_SUMMARY_CASH_OUT_TYPES Hariç.
+  it('CH_ODEME / AVANS_ODEME / ORTAK_DAGITIM_KAR: Ferhat 72M geri-çevrimi — 7 kalem dahil', () => {
+    // Ferhat datası 72M geri-çevrimi (2026-10-04): PERIOD_SUMMARY_CASH_OUT_TYPES
+    // artık CH_ODEME / AVANS_ODEME / ORTAK_DAGITIM_KAR dahil (7 kalem).
     const cashLines: KasaIslemi[] = [
       makeCashLine({ id: 'cl-ch', islem_tipi: 'CH_ODEME', tutar: 1_000 }),
       makeCashLine({ id: 'cl-av', islem_tipi: 'AVANS_ODEME', tutar: 1_000 }),
@@ -360,8 +355,9 @@ describe('mergeExpensesWithCashOuts — Bug 31 linkedCashIds skip', () => {
     const merged = mergeExpensesWithCashOuts([], cashLines, {
       allowedCashOutTypes: PERIOD_SUMMARY_CASH_OUT_TYPES,
     });
-    // Bug 31: PERIOD_SUMMARY_CASH_OUT_TYPES yalnız GIDER_PUSULASI + KASA_CIKIS
-    // + MAAS_ODEME + ORTAK_SERMAYE_ODEME; CH_ODEME/AVANS/ORTAK_DAGITIM_KAR Hariç
-    expect(merged.length).toBe(0);
+    expect(merged.length).toBe(3);
+    expect(merged.map((m) => m.notes).sort()).toEqual(
+      ['AVANS_ODEME', 'CH_ODEME', 'ORTAK_DAGITIM_KAR'].sort(),
+    );
   });
 });

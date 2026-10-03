@@ -27,13 +27,17 @@ export const REPORT_CASH_OUT_TYPES = new Set([
 /**
  * Dönem özeti "Gider" kolonuna dahil edilecek kasa çıkış tipleri.
  *
- * Bug 31 — Ciro/Gider/Alış: MAAS_ODEME (maaş ödemesi) ve
- * ORTAK_SERMAYE_ODEME (ortak sermaye ödemesi) gerçek işletme gideri
- * sayılır ve "Gider" kolonuna DAHİL edilir.
+ * Bug 31 geri-çevrimi (2026-10-04 — Ferhat datası 72M beklentisi):
+ * Ciro/Gider/Alış formülünde Gider = işletme gideri + kasa çıkışları
+ * (cari ödeme, maaş, avans, ortak sermaye ödeme, kâr dağıtımı). Kullanıcı
+ * doğrulaması: 780965d6 öncesi Gider 72M görünüyordu; Bug 31 sonrası 48M
+ * (CH_ODEME / AVANS_ODEME / ORTAK_DAGITIM_KAR hariç). Eski 7-kalem
+ * davranışına geri dönüldü.
  *
  * - Dönem özetinin Net Kalan'ı = Ciro − Gider − Alış.
- * - CH_ODEME, AVANS_ODEME, ORTAK_DAGITIM_KAR muhasebe açısından gider
- *   değildir (Ciro'dan/kasadan çıkan hareketler / kar dağıtımı); Hariç.
+ * - CH_ODEME, MAAS_ODEME, AVANS_ODEME, ORTAK_SERMAYE_ODEME, ORTAK_DAGITIM_KAR
+ *   kasadan çıkan hareketlerdir; işletme gideri sayılır ve Gider kolonuna
+ *   DAHİL edilir (Ferhat datası 72M doğrulaması).
  * - Expense tablosundaki (Gider Yönetimi) gerçek giderler +
  *   bağlanmamış GIDER_PUSULASI / KASA_CIKIS (işletme gideri olarak
  *   nitelenen manuel kasa çıkışları) DAHİL.
@@ -45,6 +49,9 @@ export const PERIOD_SUMMARY_CASH_OUT_TYPES = new Set([
   'KASA_CIKIS',
   'MAAS_ODEME',
   'ORTAK_SERMAYE_ODEME',
+  'CH_ODEME',
+  'AVANS_ODEME',
+  'ORTAK_DAGITIM_KAR',
 ]);
 
 /** Günlük/Dönem raporu için kasa para GİRİŞİ tipleri (sign=+1). */
@@ -109,12 +116,18 @@ export function mergeExpensesWithCashOuts(
   for (const cl of Array.isArray(cashLines) ? cashLines : []) {
     const type = String(cl.islem_tipi || '').trim().toUpperCase();
     if (!allowedTypes.has(type)) continue;
-    // Bug 31: Ciro/Gider/Alış formülünde MAAS_ODEME ve ORTAK_SERMAYE_ODEME
-    // gerçek işletme gideri sayılır. Bu iki tip için `cash_line_id` üzerinden
-    // Expense tablosuna bağlı satırların "çift sayım" filtresi devre dışı
-    // bırakılır; GIDER_PUSULASI / KASA_CIKIS için çift sayım koruması korunur.
+    // Ferhat datası 72M geri-çevrimi (2026-10-04): MAAS_ODEME,
+    // ORTAK_SERMAYE_ODEME, CH_ODEME, AVANS_ODEME, ORTAK_DAGITIM_KAR
+    // Gider kolonuna dahil edildiği için bu 5 tip için `cash_line_id`
+    // üzerinden Expense tablosuna bağlı satırların "çift sayım" filtresi
+    // devre dışı bırakılır; GIDER_PUSULASI / KASA_CIKIS için çift sayım
+    // koruması korunur.
     const skipLinkedCheck =
-      type === 'MAAS_ODEME' || type === 'ORTAK_SERMAYE_ODEME';
+      type === 'MAAS_ODEME' ||
+      type === 'ORTAK_SERMAYE_ODEME' ||
+      type === 'CH_ODEME' ||
+      type === 'AVANS_ODEME' ||
+      type === 'ORTAK_DAGITIM_KAR';
     if (!skipLinkedCheck && cl.id && linkedCashIds.has(String(cl.id))) continue;
     const amt = Math.abs(Number(cl.tutar) || 0);
     if (!amt) continue;

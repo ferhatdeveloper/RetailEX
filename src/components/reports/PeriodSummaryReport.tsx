@@ -463,10 +463,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       mergeExpensesWithCashOuts(
         expensesBaseQuery.data ?? [],
         cashLinesQuery.data ?? [],
-        // Dönem özetinde Gider kolonuna yalnızca gerçek giderler (Gider Yönetimi +
-        // GIDER_PUSULASI / KASA_CIKIS) dahil; MAAS_ODEME, ORTAK_SERMAYE_ODEME,
-        // CH_ODEME, AVANS_ODEME, ORTAK_DAGITIM_KAR Ciro'dan/kasadan çıkan
-        // kalemlerdir — muhasebe açısından gider değildir.
+        // Ferhat datası 72M geri-çevrimi (2026-10-04): Gider kolonuna
+        // Gider Yönetimi satırları + tüm kasa çıkışları (CH_ODEME,
+        // MAAS_ODEME, AVANS_ODEME, ORTAK_SERMAYE_ODEME, ORTAK_DAGITIM_KAR,
+        // GIDER_PUSULASI, KASA_CIKIS) dahil — 780965d6 öncesi 7-kalem
+        // davranışına geri dönüldü. CH_TAHSILAT hariç (kasa +, cari -).
         { allowedCashOutTypes: PERIOD_SUMMARY_CASH_OUT_TYPES },
       ),
     [expensesBaseQuery.data, cashLinesQuery.data],
