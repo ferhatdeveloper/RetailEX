@@ -9,6 +9,7 @@ import { getAppDefaultCurrency } from '../../services/postgres';
 import { isReturnSale } from '../../utils/posZReport';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { useReportFilters } from '../../contexts/ReportFiltersContext';
 import { localCalendarDateKey, localTodayDateKey } from '../../utils/localCalendarDate';
 import { formatReportDateCell } from '../../utils/dateLocale';
 import { ReportYmdDatePicker } from '../shared/ReportDateRangePresets';
@@ -44,13 +45,15 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
     selectedFirm,
     getAppDefaultCurrency() || getGlobalCurrency(),
   );
-  const [dateRange, setDateRange] = useState(() => {
-    const end = localTodayDateKey();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 30);
-    return { start: localCalendarDateKey(startDate), end };
-  });
-  const [customerFilter, setCustomerFilter] = useState('');
+  // Rapor filtreleri — diğer raporlarla paylaşılan ortak bağlam (Bug rapor bağlantı kopukluğu).
+  const {
+    dateStart,
+    dateEnd,
+    setDateRange,
+    customerFilter,
+    setCustomerFilter,
+  } = useReportFilters();
+  const dateRange = { start: dateStart, end: dateEnd };
 
   const unknownCustomerLabel = tm('rptCustUnknown');
   const unknownShort = tm('rptCustUnknownShort');

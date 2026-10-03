@@ -147,6 +147,7 @@ import {
 import { getReceiptSettings } from '../../services/receiptSettingsService';
 import { retailexAntdThemeWithPrimary } from '../../theme/retailexAntdTheme';
 import { ReportHtmlPrintPreviewModal } from './ReportHtmlPrintPreviewModal';
+import { ReportFiltersProvider } from '../../contexts/ReportFiltersContext';
 import type { ColumnsType } from 'antd/es/table';
 import {
   RobotOutlined,
@@ -5763,12 +5764,13 @@ export function ReportsModule({
   const mobileMenuOpen = isMobile && !collapsed;
 
   return (
-    <ConfigProvider
-      theme={retailexAntdThemeWithPrimary(bizConfig.color, darkMode)}
-      select={{ styles: { popup: { root: { zIndex: REPORTS_SELECT_POPUP_Z } as React.CSSProperties } } }}
-    >
-      <Layout className={`h-full min-w-0 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
-        {mobileMenuOpen && (
+    <ReportFiltersProvider>
+      <ConfigProvider
+        theme={retailexAntdThemeWithPrimary(bizConfig.color, darkMode)}
+        select={{ styles: { popup: { root: { zIndex: REPORTS_SELECT_POPUP_Z } as React.CSSProperties } } }}
+      >
+        <Layout className={`h-full min-w-0 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
+          {mobileMenuOpen && (
           <button
             type="button"
             className="fixed inset-0 border-0 p-0 md:hidden bg-black/45 cursor-default"
@@ -10170,7 +10172,8 @@ export function ReportsModule({
           hintLabel={tm('reportsPrintPreviewHint')}
         />
       )}
-    </ConfigProvider>
+      </ConfigProvider>
+    </ReportFiltersProvider>
   );
 }
 
