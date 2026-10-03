@@ -1061,6 +1061,24 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const title = mode === 'monthly-days' ? tm('aylikGunOzeti') : tm('yillikAyOzeti');
 
   const kpiItems = useMemo((): ReportKpiItem[] => {
+    // DEBUG: Ciro/Net/cariTahsilat gerçek değerlerini logla (aqua_beauty Net Kalan yanlış araştırması)
+    if (typeof window !== 'undefined' && (window as any).__RETAILEX_DEBUG_KPI__ !== false) {
+      // eslint-disable-next-line no-console
+      console.log('[KPI DEBUG]', {
+        revenue: totals.revenue,
+        expenses: totals.expenses,
+        cashIn: totals.cashIn,
+        purchases: totals.purchases,
+        netRemaining: totals.netRemaining,
+        cariTahsilat: (totals as any).cariTahsilat,
+        showPeriodCardRevenue,
+        showPeriodCardExpenses,
+        showPeriodCardPurchases,
+        showPeriodCardNet,
+        showPeriodCardCashIn,
+        reportMenuParams,
+      });
+    }
     const items: ReportKpiItem[] = [];
 
     if (showPeriodCardRevenue) {
