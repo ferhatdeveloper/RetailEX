@@ -27,20 +27,24 @@ export const REPORT_CASH_OUT_TYPES = new Set([
 /**
  * Dönem özeti "Gider" kolonuna dahil edilecek kasa çıkış tipleri.
  *
- * Bug 29 follow-up — Ciro/Gider/Alış kök neden analizi:
+ * Bug 31 — Ciro/Gider/Alış: MAAS_ODEME (maaş ödemesi) ve
+ * ORTAK_SERMAYE_ODEME (ortak sermaye ödemesi) gerçek işletme gideri
+ * sayılır ve "Gider" kolonuna DAHİL edilir.
+ *
  * - Dönem özetinin Net Kalan'ı = Ciro − Gider − Alış.
- * - MAAS_ODEME, ORTAK_SERMAYE_ODEME, CH_ODEME, AVANS_ODEME, ORTAK_DAGITIM_KAR
- *   gibi kalemler Ciro'dan/kasadan çıkan hareketlerdir; muhasebe açısından
- *   Gider DEĞİLDİR (gider = işletme gideri, maaş değil).
- * - Dönem özeti "Gider" kolonuna yalnızca Expense tablosundaki (Gider Yönetimi)
- *   gerçek giderler + bağlanmamış GIDER_PUSULASI / KASA_CIKIS (işletme gideri
- *   olarak nitelenen manuel kasa çıkışları) dahil edilir.
+ * - CH_ODEME, AVANS_ODEME, ORTAK_DAGITIM_KAR muhasebe açısından gider
+ *   değildir (Ciro'dan/kasadan çıkan hareketler / kar dağıtımı); Hariç.
+ * - Expense tablosundaki (Gider Yönetimi) gerçek giderler +
+ *   bağlanmamış GIDER_PUSULASI / KASA_CIKIS (işletme gideri olarak
+ *   nitelenen manuel kasa çıkışları) DAHİL.
  * - CH_TAHSILAT (ledger simetrisi: kasa + / cari -) Ciro'ya DEĞİL; Net
  *   Kalan'a da dahil değildir.
  */
 export const PERIOD_SUMMARY_CASH_OUT_TYPES = new Set([
   'GIDER_PUSULASI',
   'KASA_CIKIS',
+  'MAAS_ODEME',
+  'ORTAK_SERMAYE_ODEME',
 ]);
 
 /** Günlük/Dönem raporu için kasa para GİRİŞİ tipleri (sign=+1). */
@@ -105,7 +109,13 @@ export function mergeExpensesWithCashOuts(
   for (const cl of Array.isArray(cashLines) ? cashLines : []) {
     const type = String(cl.islem_tipi || '').trim().toUpperCase();
     if (!allowedTypes.has(type)) continue;
-    if (cl.id && linkedCashIds.has(String(cl.id))) continue;
+    // Bug 31: Ciro/Gider/Alış formülünde MAAS_ODEME ve ORTAK_SERMAYE_ODEME
+    // gerçek işletme gideri sayılır. Bu iki tip için `cash_line_id` üzerinden
+    // Expense tablosuna bağlı satırların "çift sayım" filtresi devre dışı
+    // bırakılır; GIDER_PUSULASI / KASA_CIKIS için çift sayım koruması korunur.
+    const skipLinkedCheck =
+      type === 'MAAS_ODEME' || type === 'ORTAK_SERMAYE_ODEME';
+    if (!skipLinkedCheck && cl.id && linkedCashIds.has(String(cl.id))) continue;
     const amt = Math.abs(Number(cl.tutar) || 0);
     if (!amt) continue;
     const day =
