@@ -394,6 +394,14 @@ export interface KasaIslemi {
    * (Bkz. `src/utils/cashLineReservationDeposit.ts` — Bug 22 / Plan §6)
    */
   is_reservation_deposit?: boolean;
+  /**
+   * Kasa İşlemleri UI: bu satırın `cash_lines.payment_method` ham değeri
+   * (cash / card / credit / transfer vb.). Yeni "Ödeme Tipi" kolonu için.
+   * DB'de yazılı değer genelde POS: 'cash' | 'card' | 'veresiye'; fatura
+   * tahsilatlarında 'Nakit' / 'Kredi Kartı' / 'Veresiye' / 'Havale' da olabilir.
+   * (Bkz. `src/utils/cashLinePaymentType.ts`)
+   */
+  payment_method?: string | null;
   /** Polimorfik cari ref — Personel/Şirket Ortağı işlemleri için (customer_id ayrı tutulur) */
   party_id?: string;
   party_code?: string;
@@ -2017,6 +2025,8 @@ function mapDbIslemToIslem(row: any): KasaIslemi {
     islem_aciklamasi: row.definition,
     // fetchKasaIslemleri sonradan reservation deposit tespitinde set eder
     is_reservation_deposit: row.is_reservation_deposit === true,
+    // Ödeme Tipi kolonu: cash_lines.payment_method ham değeri (cash/card/veresiye/...)
+    payment_method: row.payment_method ?? null,
     // cari_hesap_id: customer_id öncelikli; tedarikçi/personel için party_id fallback.
     // Bu sayede eski müşteri tahsilatları ve yeni tedarikçi ödemelerinin ikisi de
     // CariHesapSelector / CariHesapPicker bileşeninde doğru şekilde görünür.

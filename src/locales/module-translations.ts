@@ -470,6 +470,34 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'عربون',
     ku: 'پێشەکی',
   },
+  /**
+   * Kasa İşlemleri — "Ödeme Tipi" kolonu başlığı.
+   * Nakit / Kart / Veresiye / Banka Havalesi / Rezervasyon Peşinatı ayrımı.
+   * (Bkz. `src/utils/cashLinePaymentType.ts`)
+   */
+  cashLinePaymentTypeColumn: {
+    tr: 'Ödeme Tipi',
+    en: 'Payment Type',
+    ar: 'نوع الدفع',
+    ku: 'جۆری پارەدان',
+  },
+  /** "Banka Havalesi" rozet etiketi (cash_lines.payment_method='havale'/'eft'/'transfer'). */
+  cashLinePaymentTypeTransfer: {
+    tr: 'Banka Havalesi',
+    en: 'Bank Transfer',
+    ar: 'حوالة بنكية',
+    ku: 'گواستنەوەی بانکی',
+  },
+  /**
+   * Diğer/bilinmeyen ödeme tipleri için geri dönüş rozeti (çek/senet vb.).
+   * `normalizePaymentMethodBucket` 'other' döndüğünde kullanılır.
+   */
+  cashLinePaymentTypeOther: {
+    tr: 'Diğer',
+    en: 'Other',
+    ar: 'آخر',
+    ku: 'تر',
+  },
   cashPurchaseInvoice: { tr: 'Alış faturası', en: 'Purchase invoice', ar: 'فاتورة شراء', ku: 'وەسڵی کڕین' },
   cashServiceInvoice: { tr: 'Hizmet faturası', en: 'Service invoice', ar: 'فاتورة خدمة', ku: 'وەسڵی خزمەتگوزاری' },
   cashReceivedServiceInvoice: { tr: 'Alınan hizmet faturası', en: 'Received service invoice', ar: 'فاتورة خدمة مستلمة', ku: 'وەسڵی خزمەتگوزاری وەرگیراو' },

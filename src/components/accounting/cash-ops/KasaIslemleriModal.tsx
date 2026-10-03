@@ -6,6 +6,10 @@ import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { resolveCashLineTypeLabelShort } from '../../../utils/cashLineReservationDeposit';
+import {
+  resolvePaymentType,
+  paymentTypeBadgeClass,
+} from '../../../utils/cashLinePaymentType';
 
 interface KasaIslemleriModalProps {
   kasa: Kasa;
@@ -129,6 +133,42 @@ export function KasaIslemleriModal({ kasa, islemler, loading, onClose, onIslemCl
           );
         },
         size: 150,
+      },
+    ),
+    // Ödeme Tipi — Nakit / Kart / Veresiye / Banka Havalesi / Rezervasyon Peşinatı.
+    columnHelper.accessor(
+      (row) => {
+        const pt = resolvePaymentType({
+          paymentMethod: row.payment_method,
+          isReservationDeposit: row.is_reservation_deposit === true,
+        });
+        return pt?.labelKey ?? null;
+      },
+      {
+        id: 'odeme_tipi',
+        header: (tm('cashLinePaymentTypeColumn') || 'Ödeme Tipi').toUpperCase(),
+        cell: (info) => {
+          const row = info.row.original;
+          const pt = resolvePaymentType({
+            paymentMethod: row.payment_method,
+            isReservationDeposit: row.is_reservation_deposit === true,
+          });
+          if (!pt) return <span className="text-gray-400 text-xs">—</span>;
+          const label = tm(pt.labelKey) || pt.labelKey;
+          return (
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold whitespace-nowrap ${paymentTypeBadgeClass(pt.tone)}`}
+              title={pt.raw ? `payment_method=${pt.raw}` : label}
+            >
+              {pt.tone === 'reservation' ? (
+                <span aria-hidden="true">🗓</span>
+              ) : null}
+              {label}
+            </span>
+          );
+        },
+        size: 150,
+        meta: { filterKind: 'text' },
       },
     ),
     columnHelper.accessor((row) => formatKasaCariLabel(row), {

@@ -12,6 +12,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { resolveCashLineTypeLabelShort } from '../../../utils/cashLineReservationDeposit';
 import {
+  resolvePaymentType,
+  paymentTypeBadgeClass,
+} from '../../../utils/cashLinePaymentType';
+import {
   Wallet,
   Plus,
   Search,
@@ -924,6 +928,46 @@ function KasaIslemleriTable({
           );
         },
         size: 160,
+      },
+    ),
+    // Ödeme Tipi — Nakit / Kart / Veresiye / Banka Havalesi / Rezervasyon Peşinatı.
+    // Bug 22 (is_reservation_deposit) ile cash_lines.payment_method birleşik
+    // türetilir; detay: src/utils/cashLinePaymentType.ts.
+    columnHelper.accessor(
+      (row) => {
+        const pt = resolvePaymentType({
+          paymentMethod: row.payment_method,
+          isReservationDeposit: row.is_reservation_deposit === true,
+        });
+        return pt?.labelKey ?? null;
+      },
+      {
+        id: 'odeme_tipi',
+        header: tm('cashLinePaymentTypeColumn'),
+        cell: (info) => {
+          const row = info.row.original;
+          const pt = resolvePaymentType({
+            paymentMethod: row.payment_method,
+            isReservationDeposit: row.is_reservation_deposit === true,
+          });
+          if (!pt) {
+            return <span className="text-gray-400 text-xs">—</span>;
+          }
+          const label = tm(pt.labelKey) || pt.labelKey;
+          return (
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold whitespace-nowrap ${paymentTypeBadgeClass(pt.tone)}`}
+              title={pt.raw ? `payment_method=${pt.raw}` : label}
+            >
+              {pt.tone === 'reservation' ? (
+                <span aria-hidden="true">🗓</span>
+              ) : null}
+              {label}
+            </span>
+          );
+        },
+        size: 160,
+        meta: { filterKind: 'text' },
       },
     ),
     columnHelper.accessor((row) => formatKasaCariLabel(row), {
