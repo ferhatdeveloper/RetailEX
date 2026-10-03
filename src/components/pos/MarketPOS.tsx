@@ -1644,7 +1644,13 @@ export default function MarketPOS({
       campaignId: selectedCampaign?.id,
       campaignName: selectedCampaign?.name,
       campaignDiscount: campaignDiscount,
-      cashier: resolveWriteCashierName(currentStaff),
+      // Kasiyer fallback: personel modalıyla seçilmiş currentStaff öncelikli;
+      // boşsa oturum açan kullanıcının adını yaz (resolveWriteCashierName
+      // placeholder/boşsa login user'ı döner). Aksi halde DB'ye boş yazılır
+      // ve fatura listesinde kasiyer kolonu boş kalır.
+      cashier: resolveWriteCashierName(
+        currentStaff || currentUser.full_name || currentUser.username,
+      ),
       firmNr: selectedFirm?.firm_nr,
       periodNr: selectedPeriod?.nr.toString().padStart(2, '0'),
       storeId: currentUser.storeId && !isPlaceholderDeviceName(currentUser.storeId) ? currentUser.storeId : undefined,
