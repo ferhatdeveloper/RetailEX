@@ -2,10 +2,17 @@
  * Günlük Rapor — Kasa Para Girişi / Çıkışı detay modalı.
  * ReportsModule'taki `dailyCashInRows` (KasaIslemi[]) veya
  * `dailyExpenseRows` (DailyExpenseRow[]) üzerinden tek tip listeleme yapar.
+ *
+ * Kasa Para Girişi modunda, üst tabloda `REPORT_CASH_IN_TYPES` filtrelenir
+ * (KASA_GIRIS / ORTAK_SERMAYE_TAHSILAT / ORTAK_PARA_GIRIS). CH_TAHSILAT
+ * (cari tahsilatları) bu üst toplama dahil edilmez; ayrı bölümde listelenir.
+ * Cari tahsilatları, ledger'da müşteri alacağını azaltır (kasa + / cari -)
+ * — Net Kalan'a etkisi yoktur (simetri). Parent component (ReportsModule)
+ * `cariTahsilatlar` prop'u ile bu listeyi modal'a iletir.
  */
 
 import { useMemo } from 'react';
-import { Banknote, Wallet, X } from 'lucide-react';
+import { Banknote, HandCoins, Wallet, X } from 'lucide-react';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import { useLanguage } from '../../contexts/LanguageContext';
 import {
@@ -37,6 +44,12 @@ interface DailyCashFlowModalProps {
   kind: DailyCashFlowKind;
   cashLines?: KasaIslemi[];
   expenseRows?: DailyExpenseRowLike[];
+  /**
+   * Cari tahsilatları (CH_TAHSILAT) — yalnız `cash-in` modunda kullanılır.
+   * Üst "Toplam Kasa Para Girişi"ne dahil edilmez; modal'ın "Cari Tahsilatlar"
+   * alt bölümünde ayrıca gösterilir. Boş/undefined ise bölüm gizlenir.
+   */
+  cariTahsilatlar?: KasaIslemi[];
   title: string;
   currency: string;
   onClose: () => void;
@@ -50,6 +63,7 @@ export function DailyCashFlowModal({
   kind,
   cashLines,
   expenseRows,
+  cariTahsilatlar,
   title,
   currency,
   onClose,
@@ -84,6 +98,35 @@ export function DailyCashFlowModal({
     () => rows.reduce((s, r) => s + (Number(r.amount) || 0), 0),
     [rows],
   );
+
+  // Cari tahsilatlar (CH_TAHSILAT) — yalnız cash-in modunda, ayrı bölüm.
+  const cariTahsilatRows = useMemo<DailyExpenseRowLike[]>(() => {
+    if (kind !== 'cash-in') return [];
+    const list = Array.isArray(cariTahsilatlar) ? cariTahsilatlar : [];
+    return list
+      .filter((cl) => String(cl.islem_tipi || '').trim().toUpperCase() === 'CH_TAHSILAT')
+      .map<DailyExpenseRowLike & { isBackDated: boolean }>((cl) => ({
+        key: String(cl.id || cl.islem_no || Math.random()),
+        sourceKind: 'cash',
+        sourceId: String(cl.id || ''),
+        date: String(cl.islem_tarihi || ''),
+        ficheNo: String(cl.islem_no || ''),
+        typeCode: 'CH_TAHSILAT',
+        category: 'Cari Tahsilat',
+        description: String(cl.islem_aciklamasi || ''),
+        partyName: String(cl.cari_hesap_unvani || ''),
+        amount: Math.abs(Number(cl.tutar) || 0),
+        isBackDated: isCashLineBackDated(cl),
+      }))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  }, [kind, cariTahsilatlar]);
+
+  const cariTahsilatTotal = useMemo(
+    () => cariTahsilatRows.reduce((s, r) => s + (Number(r.amount) || 0), 0),
+    [cariTahsilatRows],
+  );
+
+  const showCariTahsilatSection = kind === 'cash-in' && cariTahsilatRows.length > 0;
   const money = (v: number) => `${formatNumber(v, 0, false)} ${currency}`;
 
   const Icon = kind === 'cash-in' ? Banknote : Wallet;
@@ -198,6 +241,81 @@ export function DailyCashFlowModal({
             </table>
           </div>
         )}
+
+        {/* Cari Tahsilatlar alt bölümü — CH_TAHSILAT (ayrı sorgudan).
+            Ledger simetrisi: kasa + / cari - → Net Kalan'a etkisi 0. Bu bölüm
+            kullanıcıya "Kasa Para Girişi" kartı içinde CH_TAHSILAT'ı gösterir;
+            üst toplama katılmaz. */}
+        {showCariTahsilatSection ? (
+          <section className="border-t-2 border-slate-200 dark:border-slate-700 mt-2 px-6 pb-6 pt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <HandCoins className="w-4 h-4 text-cyan-700 dark:text-cyan-300" aria-hidden />
+              <h4 className="text-[12px] font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-300">
+                {tm('rptPeriodCashInCariTahsilatTitle') ||
+                  'Cari Tahsilatlar (müşteri alacağı azaltıcı — Net Kalan\'a etkisiz)'}
+              </h4>
+              <span className="ml-auto text-[11px] text-slate-500">{cariTahsilatRows.length} kayıt</span>
+              <span className="font-mono font-extrabold text-cyan-700 dark:text-cyan-300">
+                {money(cariTahsilatTotal)}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-300 bg-cyan-50/60 dark:bg-cyan-950/20">
+                    <th className="px-3 py-1.5 text-left">{tm('rptPeriodCashInColDate')}</th>
+                    <th className="px-3 py-1.5 text-left">{labelType}</th>
+                    <th className="px-3 py-1.5 text-left">{tm('rptPeriodCashInColFiche')}</th>
+                    <th className="px-3 py-1.5 text-left">{tm('rptPeriodCashInColDescription')}</th>
+                    <th className="px-3 py-1.5 text-left">{tm('rptPeriodCashInColParty')}</th>
+                    <th className="px-3 py-1.5 text-right">{tm('rptPeriodCashInColAmount')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cariTahsilatRows.map((row) => {
+                    const dateLabel = fmtDate(row.date);
+                    const isBackDated = Boolean(
+                      (row as DailyExpenseRowLike & { isBackDated?: boolean }).isBackDated,
+                    );
+                    return (
+                      <tr
+                        key={row.key}
+                        className="border-t border-slate-100 dark:border-slate-700/50 hover:bg-cyan-50/40 dark:hover:bg-cyan-950/20"
+                      >
+                        <td className="px-3 py-1.5 font-mono text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                          {dateLabel}
+                          {isBackDated ? (
+                            <span
+                              className="ml-1.5 inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                              title={tm('cashModalBackDatedConfirm')}
+                            >
+                              {tm('cashLineBackDated')}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-1.5 text-slate-700 dark:text-slate-200">
+                          {tm('rptPeriodColCariTahsilat') || 'Cari Tahsilat'}
+                        </td>
+                        <td className="px-3 py-1.5 font-mono text-slate-700 dark:text-slate-200">
+                          {row.ficheNo || '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-slate-700 dark:text-slate-200">
+                          {row.description || '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-slate-700 dark:text-slate-200">
+                          {row.partyName || '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-semibold whitespace-nowrap text-cyan-700 dark:text-cyan-300">
+                          {money(Number(row.amount) || 0)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
       </PercentBodyModalScrollBody>
 
       <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-800/30 flex items-center justify-end gap-3 shrink-0">

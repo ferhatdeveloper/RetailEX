@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { reportNetAfterOptionalExpense } from '../../services/reportMenuParamsService';
+import {
+  reportNetAfterOptionalExpense,
+  reportNetAfterOptionalExpenseAndPurchases,
+} from '../../services/reportMenuParamsService';
 import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
 
 /**
@@ -105,5 +108,73 @@ describe('dailyReportNet — muhasebe çift yönü', () => {
     expect(split.card).toBe(40);
     expect(split.collected).toBe(100);
     expect(split.remaining).toBe(0);
+  });
+});
+
+// =============================================================
+// Bug 29 follow-up: Dönem özeti Net Kalan = Ciro − Gider − Alış
+// CH_TAHSILAT etkisiz (ledger simetrisi: kasa + / cari -).
+// =============================================================
+describe('periodSummaryNet — Ciro − Gider − Alış (CH_TAHSILAT hariç)', () => {
+  it('kullanıcı senaryosu: Ciro 2.173.250 / Gider 525.000 / Alış 4.357.000 → −2.708.750', () => {
+    const revenue = 2_173_250;
+    const gider = 525_000;
+    const alis = 4_357_000;
+    const cariTahsilat = 22_400_000; // CH_TAHSILAT — Net Kalan'a etki ETMEMELİ
+
+    // CH_TAHSILAT bu fonksiyona geçilmiyor; ledger simetrisi nedeniyle
+    // Net Kalan'da yer almaz. Hesap yalnızca Ciro − Gider − Alış.
+    const net = reportNetAfterOptionalExpenseAndPurchases(
+      revenue,
+      gider,
+      true, // gider kartı açık
+      alis,
+      true, // alış kartı açık
+    );
+    expect(net).toBe(-2_708_750);
+
+    // CH_TAHSILAT'ı eklemeye çalışırsak hata verir:
+    expect(net + cariTahsilat).not.toBe(net); // 22.4M eklemek yanlış
+    expect(net - cariTahsilat).not.toBe(net); // 22.4M çıkarmak da yanlış
+  });
+
+  it('gider kartı kapalı → gider düşülmez', () => {
+    const revenue = 100_000;
+    const gider = 20_000;
+    const alis = 30_000;
+
+    const netAcik = reportNetAfterOptionalExpenseAndPurchases(revenue, gider, true, alis, true);
+    expect(netAcik).toBe(50_000);
+
+    const netGiderKapali = reportNetAfterOptionalExpenseAndPurchases(revenue, gider, false, alis, true);
+    expect(netGiderKapali).toBe(70_000);
+  });
+
+  it('alış kartı kapalı → alış düşülmez', () => {
+    const revenue = 100_000;
+    const gider = 20_000;
+    const alis = 30_000;
+
+    const netAcik = reportNetAfterOptionalExpenseAndPurchases(revenue, gider, true, alis, true);
+    expect(netAcik).toBe(50_000);
+
+    const netAlisKapali = reportNetAfterOptionalExpenseAndPurchases(revenue, gider, true, alis, false);
+    expect(netAlisKapali).toBe(80_000);
+  });
+
+  it('tüm parametreler açık → tam Ciro − Gider − Alış', () => {
+    const revenue = 65_000;
+    const gider = 11_000;
+    const alis = 5_000;
+    const net = reportNetAfterOptionalExpenseAndPurchases(revenue, gider, true, alis, true);
+    expect(net).toBe(49_000);
+  });
+
+  it('tüm parametreler kapalı → yalnız Ciro döner', () => {
+    const revenue = 65_000;
+    const gider = 11_000;
+    const alis = 5_000;
+    const net = reportNetAfterOptionalExpenseAndPurchases(revenue, gider, false, alis, false);
+    expect(net).toBe(65_000);
   });
 });

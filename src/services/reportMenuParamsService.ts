@@ -190,6 +190,11 @@ export function isReportMenuParamEnabled(
 /**
  * Net (ciro − gider): gider kartı/parametresi kapalıysa gider düşülmez.
  * Ciro her zaman veri kaynağından alınır (kart gizli olsa bile net hesabı tutarlı kalsın).
+ *
+ * Muhasebe notu: CH_TAHSILAT (cari tahsilatları) bu hesaba **dahil edilmez**.
+ * CH_TAHSILAT ledger'da simetriktir: kasa +22.4M / cari -22.4M → net 0.
+ * Cari tahsilatlar ayrı kolon olarak raporlanır; "Kasa Para Girişi" ve
+ * "Net Kalan" üzerinde etkisi sıfırdır.
  */
 export function reportNetAfterOptionalExpense(
   revenue: number,
@@ -197,6 +202,24 @@ export function reportNetAfterOptionalExpense(
   expenseParamEnabled: boolean,
 ): number {
   return revenue - (expenseParamEnabled ? expense : 0);
+}
+
+/**
+ * Net (ciro − gider − alış): gider/alış kartlarından hangisi açıksa o düşülür.
+ * CH_TAHSILAT (cari tahsilatları) dahil edilmez (ledger simetrisi; net 0).
+ * Dönem özeti (Aylık/Yıllık) "Net Kalan" kolonu için kullanılır; alışlar ayrı
+ * kolonda raporlanır ama muhasebeci gözüyle Net'e yansıması gerekir.
+ */
+export function reportNetAfterOptionalExpenseAndPurchases(
+  revenue: number,
+  expense: number,
+  expenseParamEnabled: boolean,
+  purchases: number,
+  purchasesParamEnabled: boolean,
+): number {
+  const exp = expenseParamEnabled ? expense : 0;
+  const pur = purchasesParamEnabled ? purchases : 0;
+  return revenue - exp - pur;
 }
 
 function notify(params: ReportMenuParams): void {

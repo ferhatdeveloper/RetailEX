@@ -31,7 +31,7 @@ import {
   getRuntimeReportMenuParams,
   isReportMenuParamEnabled,
   loadReportMenuParams,
-  reportNetAfterOptionalExpense,
+  reportNetAfterOptionalExpenseAndPurchases,
   subscribeReportMenuParams,
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
@@ -587,12 +587,17 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ? formatIsoDateTr(periodKey)
           : new Date(`${periodKey}-01T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
-      // Günlük Rapor neti: ciro − gider (alış ayrı kolonda; netten düşülmez).
-      // Gider kartı parametresi kapalıysa gider düşülmez.
-      const netRemaining = reportNetAfterOptionalExpense(
+      // Dönem özeti neti: ciro − gider − alışlar.
+      // Gider kartı/parametresi kapalıysa gider düşülmez; alış kartı/parametresi
+      // kapalıysa alış düşülmez. CH_TAHSILAT (cari tahsilatları) **hariç** —
+      // ledger simetrisi (kasa + / cari -) Net Kalan'da nötrdür; raporun ayrı
+      // kolonunda izlenir.
+      const netRemaining = reportNetAfterOptionalExpenseAndPurchases(
         sale.revenue,
         exp,
         showPeriodCardExpenses,
+        purch,
+        showPeriodCardPurchases,
       );
 
       const shareList = splitAmountByPartners(netRemaining, partnerSlices);
@@ -639,6 +644,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     tm,
     partnerSlices,
     showPeriodCardExpenses,
+    showPeriodCardPurchases,
   ]);
 
   const totals = useMemo(() => {

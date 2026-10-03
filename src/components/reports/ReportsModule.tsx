@@ -1108,6 +1108,10 @@ export function ReportsModule({
   const [kasaLinesForSelectedDate, setKasaLinesForSelectedDate] = useState<KasaIslemi[]>([]);
   const [dailyExpenseRows, setDailyExpenseRows] = useState<DailyExpenseRow[]>([]);
   const [dailyCashInRows, setDailyCashInRows] = useState<KasaIslemi[]>([]);
+  // Bug 29 follow-up: CH_TAHSILAT (cari tahsilatları) — Kasa Para Girişi
+  // modal'ında ayrı bölümde gösterilir. Üst toplama katılmaz (ledger
+  // simetrisi: kasa + / cari - → Net Kalan'a etkisi yok).
+  const [dailyCariTahsilatRows, setDailyCariTahsilatRows] = useState<KasaIslemi[]>([]);
   const [dailyCashInModalOpen, setDailyCashInModalOpen] = useState(false);
   const [dailyCashOutModalOpen, setDailyCashOutModalOpen] = useState(false);
   const [comparisonPeriod, setComparisonPeriod] = useState<'week' | 'month'>('week');
@@ -1270,10 +1274,21 @@ export function ReportsModule({
           })
         : [];
       setDailyCashInRows(cashInList);
+      // Bug 29 follow-up: Cari tahsilatları (CH_TAHSILAT) ayrı listede —
+      // Kasa Para Girişi modal'ında alt bölümde gösterilecek. Net Kalan'a
+      // katılmaz (ledger simetrisi).
+      const cariTahsilatList: KasaIslemi[] = Array.isArray(cashLines)
+        ? cashLines.filter((cl) => {
+            const t = String(cl.islem_tipi || '').trim().toUpperCase();
+            return t === 'CH_TAHSILAT';
+          })
+        : [];
+      setDailyCariTahsilatRows(cariTahsilatList);
       setKasaLinesForSelectedDate(Array.isArray(cashLines) ? cashLines : []);
     } catch {
       setDailyExpenseRows([]);
       setDailyCashInRows([]);
+      setDailyCariTahsilatRows([]);
       setKasaLinesForSelectedDate([]);
     }
   }, [selectedDateFrom, selectedDateTo]);
@@ -6209,6 +6224,7 @@ export function ReportsModule({
                   <DailyCashFlowModal
                     kind="cash-in"
                     cashLines={dailyCashInRows}
+                    cariTahsilatlar={dailyCariTahsilatRows}
                     title={tm('dailyCashIn')}
                     currency={reportCurrency}
                     onClose={() => setDailyCashInModalOpen(false)}
