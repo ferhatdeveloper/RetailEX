@@ -161,10 +161,10 @@ export function resolvePaymentType(
 
   const trimmed = raw.trim();
   if (!trimmed) {
-    // Bug 28 — fallback: payment_method boş + fiş bir "fatura" kayıtı ise
-    // (SATIS_FATURASI / ALIS_FATURASI / HIZMET_FATURASI) "Belgesel" döndür.
-    // Bu, eski fişlerde payment_method set edilmediği durumda Ödeme Tipi
-    // kolonunun "—" yerine anlamlı bir etiket göstermesini sağlar.
+    // Bug 28 follow-up — payment_method boş olduğunda transactionType'a
+    // bakıp anlamlı etiket türet:
+    //   - KASA_GIRIS / KASA_CIKIS: nakit kasa hareketi → "Nakit" (Belgesel değil)
+    //   - SATIS_FATURASI / HIZMET_FATURASI / ALIS_FATURASI: fatura kaydı → "Belgesel"
     const txn =
       typeof input === 'object' && input !== null
         ? String(
@@ -174,12 +174,19 @@ export function resolvePaymentType(
           ).trim()
         : '';
     const upper = txn.toUpperCase();
+    if (upper === 'KASA_GIRIS' || upper === 'KASA_CIKIS') {
+      // Kasa giriş/çıkış = fiziksel nakit kasadan para alıp/verme
+      return {
+        code: 'cash',
+        labelKey: 'paymentCash',
+        tone: 'cash',
+        raw: 'cash_register_movement',
+      };
+    }
     if (
       upper === 'SATIS_FATURASI' ||
       upper === 'HIZMET_FATURASI' ||
-      upper === 'ALIS_FATURASI' ||
-      upper === 'KASA_GIRIS' ||
-      upper === 'KASA_CIKIS'
+      upper === 'ALIS_FATURASI'
     ) {
       return {
         code: 'document',

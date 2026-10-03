@@ -228,24 +228,37 @@ describe('Bug 28 — Belgesel fallback (payment_method boş + fatura fişi)', ()
         expect(pt).toBeNull();
     });
 
-    // Bug 28 follow-up — KASA_GIRIS/KASA_CIKIS da Belgesel fallback kapsamında
-    it('payment_method=null + KASA_GIRIS → Belgesel (eski manuel kasa girişleri)', async () => {
+    // Bug 28 follow-up — KASA_GIRIS/KASA_CIKIS Nakit kabul edilir (fiziksel
+    // nakit kasadan para alıp/verme; fatura belgesi değil). Belgesel yalnızca
+    // gerçek fatura kayıtlarında (SATIS_FATURASI / HIZMET_FATURASI / ALIS_FATURASI).
+    it('payment_method=null + KASA_GIRIS → Nakit', async () => {
         const { resolvePaymentType } = await import('../../utils/cashLinePaymentType');
         const pt = resolvePaymentType({
             paymentMethod: null,
             transactionType: 'KASA_GIRIS',
         });
-        expect(pt?.tone).toBe('document');
-        expect(pt?.labelKey).toBe('cashLinePaymentTypeDocument');
+        expect(pt?.tone).toBe('cash');
+        expect(pt?.labelKey).toBe('paymentCash');
     });
 
-    it('payment_method=null + KASA_CIKIS → Belgesel', async () => {
+    it('payment_method=null + KASA_CIKIS → Nakit', async () => {
         const { resolvePaymentType } = await import('../../utils/cashLinePaymentType');
         const pt = resolvePaymentType({
             paymentMethod: null,
             transactionType: 'KASA_CIKIS',
         });
+        expect(pt?.tone).toBe('cash');
+        expect(pt?.labelKey).toBe('paymentCash');
+    });
+
+    it('payment_method=null + SATIS_FATURASI → Belgesel', async () => {
+        const { resolvePaymentType } = await import('../../utils/cashLinePaymentType');
+        const pt = resolvePaymentType({
+            paymentMethod: null,
+            transactionType: 'SATIS_FATURASI',
+        });
         expect(pt?.tone).toBe('document');
+        expect(pt?.labelKey).toBe('cashLinePaymentTypeDocument');
     });
 });
 
