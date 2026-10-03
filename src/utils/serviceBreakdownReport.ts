@@ -96,7 +96,9 @@ export function buildErpServiceBreakdownGroups(
       if (!isHizmetInvoice && !isServiceLineItem(lineType, productId, productName, products, serviceCardKeys)) {
         continue;
       }
-      const amount = Number(item.total ?? 0);
+      const lineGross = Number(item.total ?? 0);
+      const lineDiscount = Number((item as { discount?: number }).discount ?? 0);
+      const amount = lineGross - (Number.isFinite(lineDiscount) ? lineDiscount : 0);
       if (!Number.isFinite(amount) || amount === 0) continue;
 
       lines.push({
