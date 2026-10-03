@@ -1657,9 +1657,10 @@ export default function MarketPOS({
       // 1) Satış Elemanı modalı ile seçilmiş currentStaff
       // 2) MarketPOS prop currentUser.username / full_name
       // 3) useAuthStore.user.username / full_name (auth context fallback)
-      // 4) ensureWriteCashierName: admin/root/superadmin vb. placeholder
-      //    yönetici adlarını eler; gerçek login user yoksa
-      //    "Bilinmeyen Kasiyer" hardcoded placeholder yazılır.
+      // 4) ensureWriteCashierName: yalnızca teknik placeholder'ları eler
+      //    (default/unknown/—/-/Güzellik); admin/root/superadmin gibi
+      //    gerçek username/full_name olabilecek etiketlere dokunmaz.
+      //    Hiçbir şey bulunamazsa "Bilinmeyen Kasiyer" hardcoded fallback.
       cashier: ensureWriteCashierName(
         resolvePosCashierCandidate({
           currentStaff,

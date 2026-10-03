@@ -24,13 +24,14 @@ export function displayUserCashierName(user?: LoginCashierUser | null): string {
 /**
  * Placeholder / default kasiyer adları:
  * - Generic: 'default', 'unknown', '—', '-'
- * - Modül adı: 'Güzellik'
- * - Sistem yönetici / default kullanıcı: 'admin', 'administrator', 'system',
- *   'system administrator', 'root', 'superadmin', 'super admin',
- *   'site admin', 'site administrator'
- *   Bunlar gerçek bir kasiyer (Market POS) adı değildir; cashier yazımında
- *   sanitize aşamasında ele yakalanır ve ensureWriteCashierName fallback
- *   zinciri tetiklenir (currentLoginCashierName → 'Bilinmeyen Kasiyer').
+ * - Modül adı: 'Güzellik' (müşteri adı yerine geçen fallback)
+ *
+ * NOT: 'admin', 'administrator', 'system', 'root', 'superadmin' vb. gibi
+ * sistem yönetici / unvan etiketleri listede YOKTUR; bunlar gerçek
+ * username veya full_name olabilir (ör. Personel Değiştir → admin).
+ * Bu etiketler placeholder olarak elenirse, DB'ye yanlış cashier yazılır
+ * (authStore fallback tetiklenir, login user farklıysa hatalı eşleşme).
+ * Sadece teknik olarak "kişi adı olmayan" gerçek placeholder'lar listede.
  */
 const PLACEHOLDER_CASHIER_LABELS: string[] = [
   'default',
@@ -39,15 +40,6 @@ const PLACEHOLDER_CASHIER_LABELS: string[] = [
   '-',
   'güzellik',
   'guzellik',
-  'admin',
-  'administrator',
-  'system',
-  'system administrator',
-  'root',
-  'superadmin',
-  'super admin',
-  'site admin',
-  'site administrator',
 ];
 
 export function isPlaceholderCashierName(raw: unknown): boolean {
@@ -149,10 +141,12 @@ export function currentLoginStoreId(): string | undefined {
  *  2) currentUser.username / full_name (MarketPOS prop)
  *  3) useAuthStore.user.username / full_name (auth context fallback)
  *
- * Not: ensureWriteCashierName çağrısı ayrıca placeholder / default
- * yönetici adlarını ('admin' vb.) ele yakalar; burada yalnızca
- * "ham değer" hazırlanır. Hiçbir şey bulunamazsa '' döner ve
- * ensureWriteCashierName fallback zinciri 'Bilinmeyen Kasiyer'e düşer.
+ * Not: Burada yalnızca "ham değer" hazırlanır — admin/root/superadmin
+ * gibi gerçek username/full_name olabilecek etiketlere DOKUNULMAZ
+ * (isPlaceholderCashierName listesi sadece teknik placeholder'ları
+ * içerir: default/unknown/—/-/Güzellik). Hiçbir şey bulunamazsa ''
+ * döner ve ensureWriteCashierName fallback zinciri 'Bilinmeyen Kasiyer'e
+ * düşer (authStore.user yoksa).
  */
 export function resolvePosCashierCandidate(args: {
   currentStaff?: unknown;
