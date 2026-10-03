@@ -15,9 +15,23 @@ interface InvoiceSalespersonModalProps {
   currentSalesperson: string;
   onSelect: (code: string) => void;
   onClose: () => void;
+  /**
+   * Liste boşken hızlı seçim için fallback kod/ad. Genelde oturum açan
+   * kullanıcının kodu ve adıdır. Modal liste boşsa bu satırı "Mevcut
+   * Kullanıcı" rozeti ile gösterir; tıklayınca `onSelect` ile seçtirilir.
+   * Verilirse "Kayıt yok" ekranında hızlı seçim butonu görünür.
+   */
+  fallbackCode?: string;
+  fallbackName?: string;
 }
 
-export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose }: InvoiceSalespersonModalProps) {
+export function InvoiceSalespersonModal({
+  currentSalesperson,
+  onSelect,
+  onClose,
+  fallbackCode,
+  fallbackName,
+}: InvoiceSalespersonModalProps) {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
@@ -150,6 +164,22 @@ export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose 
           <div className={`text-center py-10 ${cardMuted}`}>
             <User className="w-12 h-12 mx-auto mb-2 opacity-40" />
             <p className="text-sm font-medium">{tm('invoicePickerNoRecords')}</p>
+            {fallbackCode && fallbackName ? (
+              <button
+                type="button"
+                data-testid="invoice-salesperson-fallback-current-user"
+                onClick={() => handleSelect(fallbackCode)}
+                className={`mt-3 inline-flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg border-2 ${
+                  darkMode
+                    ? 'text-emerald-300 border-emerald-500 bg-emerald-900/30 hover:bg-emerald-900/50'
+                    : 'text-emerald-700 border-emerald-400 bg-emerald-50 hover:bg-emerald-100'
+                }`}
+                title={fallbackName}
+              >
+                <User className="w-4 h-4" />
+                {tm('cashierLabel') || 'Kasiyer'}: {fallbackName}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={openQuickAdd}

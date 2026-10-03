@@ -176,6 +176,21 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
             row.original.is_cancelled === true,
             tm,
           );
+          // AVANS → FATURA (Basit Model): cari avansı ayrı rozet (yeşil).
+          if (row.original.isAvans === true) {
+            const ref = row.original.avansReferenceNo
+              ? ` · ${row.original.avansReferenceNo}`
+              : '';
+            return (
+              <span
+                className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-800 ring-1 ring-emerald-300"
+                title={`${tm('ekstreAvansBadge') || 'Cari Avansı'}${ref}`}
+              >
+                {tm('ekstreAvansBadge') || 'Avans'}
+                {ref ? <span className="ml-1 text-[9px] font-mono opacity-75">{ref}</span> : null}
+              </span>
+            );
+          }
           return (
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${color}`}>
               {label}

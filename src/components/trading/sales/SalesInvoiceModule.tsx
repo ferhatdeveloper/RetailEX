@@ -13,8 +13,15 @@ import { unitAPI } from '../../../services/api/masterData';
 import { unitSetAPI } from '../../../services/unitSetAPI';
 import { buildUnitSelectOptions, withMissingUnitValue, type UnitSelectOption } from '../../../utils/unitOptions';
 import { InvoiceCariSelectModal, type InvoiceCariItem } from '../invoices/InvoiceCariSelectModal';
+import { InvoiceSalespersonModal } from '../invoices/InvoiceSalespersonModal';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useAuth } from '../../../contexts/AuthContext';
+import { useAuthStore } from '../../../store/useAuthStore';
+import { getOpenAdvances } from '../../../services/avansService';
+import type { AvansRecord } from '../../../core/types/avans';
+import { formatAvansReference } from '../../../utils/avansFormatting';
+import { resolveWriteCashierName, displayUserCashierName } from '../../../utils/loginCashierName';
 
 interface SalesInvoiceModuleProps {
   customers: Customer[];
@@ -57,6 +64,25 @@ export function SalesInvoiceModule({ customers, products, onCreateInvoice, onSwi
   // ===== CONTEXT & HOOKS =====
   const { tm } = useLanguage();
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
+  // Kasiyer (cashier) — login olan kullanıcı otomatik; Satış Elemanı modalı ile değiştirilebilir.
+  const { user: authUser } = useAuth();
+  // useAuth bazı contextlerde user döndürmeyebilir; fallback olarak useAuthStore kullan
+  const authStoreUser = useAuthStore((s) => s.user);
+  const loginUser = authUser || authStoreUser;
+  const defaultCashierName = resolveWriteCashierName(
+    displayUserCashierName(loginUser) || (loginUser as any)?.username || '',
+  );
+  // Satış Elemanı (salesperson) seçimi: Fatura başlığında gösterilir, kayda yazılır.
+  // Varsayılan: giriş yapan kullanıcının adı (kasiyer ile aynı) — modal ile değiştirilebilir.
+  const [salespersonCode, setSalespersonCode] = useState<string>('');
+  const [salespersonName, setSalespersonName] = useState<string>('');
+  const [showSalespersonModal, setShowSalespersonModal] = useState(false);
+  // Kullanıcı henüz seçim yapmadıysa otomatik kasiyer ile doldur
+  useEffect(() => {
+    if (!salespersonCode && !salespersonName && defaultCashierName) {
+      setSalespersonName(defaultCashierName);
+    }
+  }, [defaultCashierName, salespersonCode, salespersonName]);
 
   // Mappings for backward compatibility
   const selectedFirma = selectedFirm ? {
@@ -105,32 +131,40 @@ export function SalesInvoiceModule({ customers, products, onCreateInvoice, onSwi
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   // Invoice list state - category ve invoiceTypeCode alanları eklendi
-  const [invoices, setInvoices] = useState([
-    {
-      id: 'SAT-2025-0001',
-      customer: 'Ahmad Hassan',
-      date: '2025-12-04',
-      type: 'Standart',
-      category: 'Satis', // Satış faturaları için
-      invoiceTypeCode: 0, // Satış Faturası
-      total: 12500000,
-      tax: 0,
-      grandTotal: 12500000,
-      status: 'Ödendi',
-    },
-    {
-      id: 'SAT-2025-0002',
-      customer: 'Fatima Ali',
-      date: '2025-12-03',
-      type: 'Standart',
-      category: 'Satis', // Satış faturaları için
-      invoiceTypeCode: 1, // Perakende Satış
-      total: 8750000,
-      tax: 0,
-      grandTotal: 8750000,
-      status: 'Beklemede',
-    }
-  ]);
+  const [invoices, setInvoices] = useState(() => {
+    // İlk yüklemede oturum açan kullanıcıyı kasiyer olarak yaz (POS'tan gelen faturalar için fallback).
+    const fallbackCashier = defaultCashierName || '';
+    return [
+      {
+        id: 'SAT-2025-0001',
+        customer: 'Ahmad Hassan',
+        date: '2025-12-04',
+        type: 'Standart',
+        category: 'Satis', // Satış faturaları için
+        invoiceTypeCode: 0, // Satış Faturası
+        total: 12500000,
+        tax: 0,
+        grandTotal: 12500000,
+        status: 'Ödendi',
+        cashier: fallbackCashier,
+        salesperson: fallbackCashier,
+      },
+      {
+        id: 'SAT-2025-0002',
+        customer: 'Fatima Ali',
+        date: '2025-12-03',
+        type: 'Standart',
+        category: 'Satis', // Satış faturaları için
+        invoiceTypeCode: 1, // Perakende Satış
+        total: 8750000,
+        tax: 0,
+        grandTotal: 8750000,
+        status: 'Beklemede',
+        cashier: fallbackCashier,
+        salesperson: fallbackCashier,
+      }
+    ];
+  });
 
   // Sadece Satış kategorisine ait faturaları filtrele ve invoiceType filtresini uygula
   const filteredInvoices = invoices.filter(inv => {
@@ -224,6 +258,14 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     }
 
     // ===== 7. FATURA OBJESI OLUŞTUR =====
+    // Kasiyer/Satış Elemanı: modal ile seçilmediyse oturum açan kullanıcıya düş (zorunlu).
+    const cashierName = String(salespersonName || defaultCashierName || '').trim();
+    if (!cashierName) {
+      toast.error(tm('salespersonNotSelected') || 'Satış Elemanı Seçilmedi', {
+        duration: 4000,
+      });
+      return;
+    }
     const newInvoice = {
       id: invoiceNo || `SAT-${Date.now()}`,
       customer: customerTitle,
@@ -235,6 +277,10 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
       tax,
       grandTotal,
       status: 'Beklemede',
+      // Kasiyer (cashier) + Satış Elemanı (salesperson) bilgileri
+      cashier: cashierName,
+      salesperson: cashierName,
+      salespersonCode: String(salespersonCode || '').trim(),
       // Firma/Dönem bilgileri
       firma_id: selectedFirma.id,
       firma_name: selectedFirma.firma_adi,
@@ -247,33 +293,74 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
       const { invoicesAPI } = await import('../../../services/api/invoices');
 
       // API'ye uygun format
+      // AVANS → FATURA: seçilen avans varsa indirim satırı ve nota ekle
+      const selectedAvans = openAvansList.find((a) => a.id === selectedAvansId);
+      const avansDiscount = selectedAvans
+        ? Math.min(Number(selectedAvans.amount || 0), grandTotal)
+        : 0;
+      const avansNoteText = selectedAvans
+        ? `${formatAvansReference(selectedAvans.id, selectedAvans.referenceNo)} düşülmüştür (−${avansDiscount.toFixed(2)})`
+        : '';
       const apiInvoice = {
         invoice_no: invoiceNo || `SAT-${Date.now()}`,
         invoice_category: 'Satis',
         customer_id: customerId || customers.find(c => c.title === customerTitle || c.name === customerTitle)?.id,
         subtotal: total,
         tax: tax,
-        discount: 0,
-        total_amount: grandTotal,
+        discount: avansDiscount,
+        total_amount: grandTotal - avansDiscount,
 
         status: 'approved',
-        notes: 'Satış Faturası',
+        notes: avansNoteText || 'Satış Faturası',
+        // Kasiyer (cashier) + Satış Elemanı (salesperson) — DB alanları
+        cashier: cashierName,
+        salesperson: cashierName,
+        salesperson_code: String(salespersonCode || '').trim(),
 
-        items: items.filter(i => i.quantity > 0).map(item => ({
-          code: item.code,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          price: item.unitPrice,
-          total: item.amount,
-          netAmount: item.netAmount,
-          tax: 0,
-          discount: 0
-        }))
+        items: [
+          ...items.filter(i => i.quantity > 0).map(item => ({
+            code: item.code,
+            description: item.description,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            price: item.unitPrice,
+            total: item.amount,
+            netAmount: item.netAmount,
+            tax: 0,
+            discount: 0
+          })),
+          // Avans indirimi (negatif satır olarak ekle)
+          ...(selectedAvans && avansDiscount > 0
+            ? [
+                {
+                  code: `AVANS-${selectedAvans.id}`,
+                  description: `Avans (${formatAvansReference(selectedAvans.id, selectedAvans.referenceNo)})`,
+                  quantity: 1,
+                  unitPrice: -avansDiscount,
+                  price: -avansDiscount,
+                  total: -avansDiscount,
+                  netAmount: -avansDiscount,
+                  tax: 0,
+                  discount: 0,
+                  item_type: 'İndirim',
+                },
+              ]
+            : []),
+        ],
       };
 
       console.log('Saving invoice via API:', apiInvoice);
       const result = await invoicesAPI.create(apiInvoice as any);
+
+      // AVANS → FATURA: avansı satışa uygula (status=applied, reservation finalize)
+      if (result && selectedAvans) {
+        try {
+          const { applyAdvanceToSale } = await import('../../../services/avansService');
+          await applyAdvanceToSale(selectedAvans.id, String((result as any).id));
+        } catch (avansErr) {
+          console.warn('[SalesInvoiceModule] applyAdvanceToSale failed:', avansErr);
+        }
+      }
 
       if (result) {
         toast.success(tm('invoiceSaved'), {
@@ -318,6 +405,19 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     setInvoiceNo(invoice.id);
     setCustomerTitle(invoice.customer);
     setTransactionDate(invoice.date);
+
+    // Kasiyer / Satış Elemanı: faturada kayıtlıysa geri yükle; yoksa mevcut oturum kullanıcısı.
+    const invRecord = invoice as unknown as Record<string, unknown>;
+    const invCashier = String(invRecord.cashier || invRecord.salesperson || '').trim();
+    if (invCashier) {
+      setSalespersonName(invCashier);
+      setSalespersonCode(
+        String(invRecord.salespersonCode || invRecord.salesperson_code || '').trim(),
+      );
+    } else if (defaultCashierName) {
+      setSalespersonName(defaultCashierName);
+      setSalespersonCode('');
+    }
 
     // Set customer code based on customer name
     const customer = displayCustomers.find(c => c.title === invoice.customer || c.name === invoice.customer);
@@ -472,6 +572,11 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
   const [customerCode, setCustomerCode] = useState('');
   const [customerTitle, setCustomerTitle] = useState('');
 
+  // AVANS → FATURA (Basit Model)
+  const [openAvansList, setOpenAvansList] = useState<AvansRecord[]>([]);
+  const [selectedAvansId, setSelectedAvansId] = useState<string>('');
+  const [openAvansLoading, setOpenAvansLoading] = useState(false);
+
   const displayCustomers = useMemo(() => {
     const map = new Map<string, Customer>();
     for (const c of customers) map.set(c.id, c);
@@ -513,6 +618,49 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
       cancelled = true;
     };
   }, []);
+
+  // AVANS → FATURA — müşteri değişince açık avansları yükle
+  useEffect(() => {
+    if (!customerId) {
+      setOpenAvansList([]);
+      setSelectedAvansId('');
+      return;
+    }
+    let cancelled = false;
+    setOpenAvansLoading(true);
+    getOpenAdvances(customerId)
+      .then((rows) => {
+        if (cancelled) return;
+        setOpenAvansList(rows);
+        // Otomatik olarak en yeni açık avansı seç (kolaylık)
+        if (rows.length > 0) {
+          setSelectedAvansId((prev) => prev || String(rows[0].id));
+          const totalAmount = rows.reduce(
+            (s, a) => s + Number(a.amount || 0),
+            0,
+          );
+          const ref = formatAvansReference(rows[0].id, rows[0].referenceNo);
+          toast.info(
+            `Bu müşterinin ${rows.length} adet açık avansı var (toplam ${totalAmount.toFixed(2)}). ${ref} seçildi — isterseniz değiştirebilirsiniz.`,
+            { duration: 6000 },
+          );
+        } else {
+          setSelectedAvansId('');
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn('[SalesInvoiceModule] getOpenAdvances failed:', err);
+        setOpenAvansList([]);
+        setSelectedAvansId('');
+      })
+      .finally(() => {
+        if (!cancelled) setOpenAvansLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId]);
 
   // Filter products
   const getFilteredProducts = () => {
@@ -752,6 +900,24 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     }),
     columnHelper.accessor('customer', {
       header: 'Müşteri',
+    }),
+    columnHelper.accessor('cashier', {
+      header: tm('cashier') || 'Kasiyer',
+      cell: info => (
+        <span className="text-sm font-medium text-gray-900">
+          {info.getValue() || '—'}
+        </span>
+      ),
+      meta: { filterKind: 'text' },
+    }),
+    columnHelper.accessor('salesperson', {
+      header: tm('salespersonLabel') || 'Satış Elemanı',
+      cell: info => (
+        <span className="text-sm text-gray-800">
+          {info.getValue() || '—'}
+        </span>
+      ),
+      meta: { filterKind: 'text' },
     }),
     columnHelper.accessor('date', {
       header: 'Tarih',
@@ -1085,6 +1251,39 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
                               className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-white"
                             />
                           </div>
+
+                          {/* AVANS → FATURA: Açık avanslar */}
+                          {customerId && (
+                            <div className="mt-2 p-2 bg-cyan-50 border border-cyan-200 rounded">
+                              <div className="text-cyan-700 mb-1 flex items-center gap-1 text-xs font-semibold uppercase">
+                                Avans
+                              </div>
+                              {openAvansLoading ? (
+                                <div className="text-xs text-gray-500">Yükleniyor...</div>
+                              ) : openAvansList.length === 0 ? (
+                                <div className="text-xs text-gray-500">Açık avans yok.</div>
+                              ) : (
+                                <select
+                                  value={selectedAvansId}
+                                  onChange={(e) => setSelectedAvansId(e.target.value)}
+                                  className="w-full px-2 py-1 border border-cyan-300 rounded text-sm bg-white"
+                                  data-testid="avans-selector"
+                                >
+                                  <option value="">— Avans uygulanmasın —</option>
+                                  {openAvansList.map((a) => (
+                                    <option key={a.id} value={a.id}>
+                                      {formatAvansReference(a.id, a.referenceNo)} · {a.amount.toFixed(2)} · {a.paymentMethod}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                              {selectedAvansId && (
+                                <div className="text-xs text-cyan-800 mt-1">
+                                  Bu avans satışa uygulanacak ve indirim olarak eklenecek.
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1401,6 +1600,25 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Kasiyer / Satış Elemanı seçimi — kasiyer adı başlıkta rozet */}
+          <button
+            type="button"
+            onClick={() => setShowSalespersonModal(true)}
+            data-testid="sales-invoice-salesperson-btn"
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 border ${
+              salespersonName
+                ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-300/40 text-white'
+                : 'bg-amber-500/30 hover:bg-amber-500/40 border-amber-300/50 text-white'
+            }`}
+            title={tm('selectSalesperson') || 'Satış Elemanı Seç'}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">{tm('salespersonLabel') || 'Satış Elemanı'}:</span>
+            <span className="font-bold truncate max-w-[160px]">
+              {salespersonName || (tm('salespersonNotSelected') || 'Seçilmedi')}
+            </span>
+          </button>
+
           {/* Sekme Değiştirme Butonu */}
           {onSwitchTab && (
             <button
@@ -1476,6 +1694,29 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
           onRowDoubleClick={handleRowDoubleClick}
         />
       </div>
+
+      {/* Satış Elemanı Seçim Modalı (geriye dönük uyumlu — InvoiceSalespersonModal yeniden kullanılır) */}
+      {showSalespersonModal && (
+        <InvoiceSalespersonModal
+          currentSalesperson={salespersonCode}
+          fallbackCode={(loginUser as any)?.id || (loginUser as any)?.username || defaultCashierName}
+          fallbackName={defaultCashierName}
+          onSelect={async (code) => {
+            setSalespersonCode(code);
+            // Seçilen satış elemanının adını bul (kısa etiket)
+            try {
+              const { listInvoiceSalespersons } = await import('../../../utils/invoiceDetailMasters');
+              const list = await listInvoiceSalespersons();
+              const found = list.find((p) => p.code === code);
+              if (found) setSalespersonName(found.name);
+              else setSalespersonName(code);
+            } catch {
+              setSalespersonName(code);
+            }
+          }}
+          onClose={() => setShowSalespersonModal(false)}
+        />
+      )}
     </div>
   );
 }

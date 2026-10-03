@@ -3444,6 +3444,138 @@ BEGIN
   EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (partner_id)',
     v_prefix || '_partner_distribution_items_partner_idx', v_prefix || '_partner_distribution_items');
 
+  -- ============================================================================
+  -- Migration 194: AVANS → FATURA (Basit Model)
+  -- ----------------------------------------------------------------------------
+  -- Kararlar:
+  --   1. Avans referans no: UUID (örn. `AVANS-<uuid-kısa>`)
+  --   2. Stok: RESERVE — avans anında `reserved_quantity` artır, finalize'da
+  --      gerçek stoğa düş + reserve serbest bırak
+  --   3. Çoklu avans: HAYIR — tek avans tek satışla eşleşir
+  --   4. Avans iade: YOK — iptal olursa avans cari bakiyesinde kalır
+  --   5. Para birimi: Ana birime çevrim (nadir durum, exchange rate kullan)
+  --
+  -- Tablolar: cari_avans + inventory_reservations
+  -- ============================================================================
+
+  -- 1) cari_avans (firm-period düzeyinde, sales pattern'i)
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS %I (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firm_nr             VARCHAR(10) NOT NULL,
+      period_nr           VARCHAR(10) NOT NULL,
+      customer_id         UUID NOT NULL,
+      amount              NUMERIC(18,4) NOT NULL,
+      original_amount     NUMERIC(18,4),
+      original_currency   VARCHAR(10),
+      payment_method      VARCHAR(20) NOT NULL,
+      status              VARCHAR(20) NOT NULL DEFAULT ''open'',
+      applied_sale_id     UUID,
+      reference_no        VARCHAR(60) GENERATED ALWAYS AS (''AVANS-'' || LEFT(id::text, 8)) STORED,
+      cash_register_id    UUID,
+      cash_register_code  VARCHAR(40),
+      cash_line_id        UUID,
+      cari_movement_id    UUID,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_by          VARCHAR(100),
+      notes               TEXT
+    );
+  ', v_prefix || '_' || '01' || '_cari_avans');
+
+  -- İdempotent: mevcut kurulumlarda eksik kolonları ekle
+  EXECUTE format(
+    'ALTER TABLE %I
+       ADD COLUMN IF NOT EXISTS firm_nr           VARCHAR(10) NOT NULL DEFAULT %L,
+       ADD COLUMN IF NOT EXISTS period_nr         VARCHAR(10) NOT NULL DEFAULT %L,
+       ADD COLUMN IF NOT EXISTS original_amount   NUMERIC(18,4),
+       ADD COLUMN IF NOT EXISTS original_currency VARCHAR(10),
+       ADD COLUMN IF NOT EXISTS applied_sale_id   UUID,
+       ADD COLUMN IF NOT EXISTS reference_no      VARCHAR(60),
+       ADD COLUMN IF NOT EXISTS cash_register_id  UUID,
+       ADD COLUMN IF NOT EXISTS cash_register_code VARCHAR(40),
+       ADD COLUMN IF NOT EXISTS cash_line_id      UUID,
+       ADD COLUMN IF NOT EXISTS cari_movement_id  UUID,
+       ADD COLUMN IF NOT EXISTS notes             TEXT',
+    v_prefix || '_' || '01' || '_cari_avans',
+    p_firm_nr, '01'
+  );
+
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (customer_id, status)',
+    v_prefix || '_01_cari_avans_customer_status_idx',
+    v_prefix || '_01_cari_avans'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (applied_sale_id)',
+    v_prefix || '_01_cari_avans_applied_sale_idx',
+    v_prefix || '_01_cari_avans'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (firm_nr, period_nr)',
+    v_prefix || '_01_cari_avans_firm_period_idx',
+    v_prefix || '_01_cari_avans'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (created_at DESC)',
+    v_prefix || '_01_cari_avans_created_at_idx',
+    v_prefix || '_01_cari_avans'
+  );
+
+  -- 2) inventory_reservations (firm-period düzeyinde, sales pattern'i)
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS %I (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firm_nr             VARCHAR(10) NOT NULL,
+      period_nr           VARCHAR(10) NOT NULL,
+      customer_id         UUID NOT NULL,
+      product_id          VARCHAR(100) NOT NULL,
+      quantity            NUMERIC(18,4) NOT NULL,
+      status              VARCHAR(20) NOT NULL DEFAULT ''reserved'',
+      avans_id            UUID,
+      sale_id             UUID,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      released_at         TIMESTAMPTZ,
+      notes               TEXT
+    );
+  ', v_prefix || '_' || '01' || '_inventory_reservations');
+
+  -- İdempotent
+  EXECUTE format(
+    'ALTER TABLE %I
+       ADD COLUMN IF NOT EXISTS firm_nr      VARCHAR(10) NOT NULL DEFAULT %L,
+       ADD COLUMN IF NOT EXISTS period_nr    VARCHAR(10) NOT NULL DEFAULT %L,
+       ADD COLUMN IF NOT EXISTS released_at  TIMESTAMPTZ,
+       ADD COLUMN IF NOT EXISTS notes        TEXT',
+    v_prefix || '_01_inventory_reservations',
+    p_firm_nr, '01'
+  );
+
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (customer_id, status)',
+    v_prefix || '_01_inventory_reservations_customer_status_idx',
+    v_prefix || '_01_inventory_reservations'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (product_id, status)',
+    v_prefix || '_01_inventory_reservations_product_status_idx',
+    v_prefix || '_01_inventory_reservations'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (avans_id)',
+    v_prefix || '_01_inventory_reservations_avans_idx',
+    v_prefix || '_01_inventory_reservations'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (sale_id)',
+    v_prefix || '_01_inventory_reservations_sale_idx',
+    v_prefix || '_01_inventory_reservations'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (firm_nr, period_nr)',
+    v_prefix || '_01_inventory_reservations_firm_period_idx',
+    v_prefix || '_01_inventory_reservations'
+  );
+
   -- 4. Bank Transactions
   EXECUTE format('
     CREATE TABLE IF NOT EXISTS %I (
@@ -3603,6 +3735,8 @@ BEGIN
   PERFORM public.try_apply_sync_triggers(v_prefix || '_stock_movements');
   PERFORM public.try_apply_sync_triggers(v_prefix || '_stock_movement_items');
   PERFORM public.try_apply_sync_triggers(v_prefix || '_account_movements');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_cari_avans');
+  PERFORM public.try_apply_sync_triggers(v_prefix || '_inventory_reservations');
   PERFORM public.INIT_RESTAURANT_KITCHEN_PRINT_JOBS_TABLE(p_firm_nr, p_period_nr);
   PERFORM public.INIT_RESTAURANT_PRINT_JOBS_TABLE(p_firm_nr, p_period_nr);
 END;

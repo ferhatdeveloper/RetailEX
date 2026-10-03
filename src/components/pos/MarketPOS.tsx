@@ -72,6 +72,10 @@ import { printThermalReceipt } from '../../utils/thermalPrinter';
 import { resolvePosCheckoutSettlement } from '../../utils/saleCollectedAmounts';
 import { KeyboardShortcutOverlay, KeyboardShortcutHint } from '../shared/KeyboardShortcutOverlay';
 import { salesAPI } from '../../services/api/sales';
+import { recordAdvance } from '../../services/avansService';
+import { finalizeSale } from '../../services/saleFinalizeService';
+import { formatNumber } from '../../utils/formatNumber';
+import { formatAvansReference } from '../../utils/avansFormatting';
 import { isPlaceholderDeviceName, resolveWriteCashierName } from '../../utils/loginCashierName';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import type { KeyboardShortcut } from '../../hooks/useKeyboardShortcuts';
@@ -1489,6 +1493,80 @@ export default function MarketPOS({
     setShowPaymentModal(true);
   };
 
+  /**
+   * AVANS → FATURA (Basit Model) — POSPaymentModal'dan gelen avans kaydı.
+   * MarketPOS burada:
+   *   1. `recordAdvance` çağırır (avans + cari hareketi + kasa hareketi
+   *      + stok rezervasyonu)
+   *   2. Sepeti temizler
+   *   3. Modalı kapatır
+   *   4. Kullanıcıya bilgi toast'ı gösterir
+   *
+   * Fatura oluşturulmaz; müşteri sonraki gelişinde kalan ödemeyi yapınca
+   * `finalizeSale` çağrılır.
+   */
+  const handleAvansRecorded = async (avans: {
+    id: string;
+    referenceNo: string | null;
+    amount: number;
+    customerId: string;
+    customerName?: string;
+    paymentMethod: string;
+    items: Array<{ productId: string; quantity: number }>;
+  }) => {
+    if (!selectedCustomer) {
+      showNotif('Avans için müşteri seçilmelidir.', 'error');
+      return;
+    }
+    if (!Number.isFinite(avans.amount) || avans.amount <= 0) {
+      showNotif('Avans tutarı 0\'dan büyük olmalı.', 'error');
+      return;
+    }
+    try {
+      const cashRegister =
+        (cart?.[0] && (cart[0] as any).cashRegister) || undefined;
+      const result = await recordAdvance({
+        customerId: selectedCustomer.id,
+        amount: avans.amount,
+        paymentMethod: (avans.paymentMethod as any) || 'cash',
+        currency: 'IQD',
+        items: avans.items || [],
+        cashRegisterId: cashRegister?.id,
+        cashRegisterCode: cashRegister?.kasa_kodu,
+        cashRegisterName: cashRegister?.kasa_adi,
+        userId: currentUser?.id,
+        userName: currentStaff,
+        notes: `Avans alındı (${selectedCustomer.name || ''}) — Sepet: ${cart.length} kalem`,
+      });
+      const ref = formatAvansReference(result.avans.id, result.avans.referenceNo);
+      const reservedCount = (result.reservations || []).length;
+      const reservedInfo =
+        reservedCount > 0
+          ? ` · ${reservedCount} ürün rezerve edildi`
+          : '';
+      showNotif(
+        `Avans alındı (${formatNumber(avans.amount, 2, true)} IQD) — ${ref}.${reservedInfo} Kalan ödeme için tekrar beklenir.`,
+        'success',
+      );
+      // Sepeti temizle ve modalı kapat
+      setCart([]);
+      setSelectedCampaign(null);
+      clearPosCartSession(selectedFirm?.firm_nr, currentUser.storeId, currentUser.id);
+      generateNewReceiptNumber();
+      setShowPaymentModal(false);
+      // Müşteriyi temizle
+      if (selectedCustomer) {
+        const event = new CustomEvent('clearCustomer');
+        window.dispatchEvent(event);
+      }
+      notifyPosSaleSuccess();
+    } catch (err) {
+      console.error('[MarketPOS] recordAdvance failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      showNotif(`Avans kaydı başarısız: ${msg}`, 'error');
+    }
+  };
+
   const handlePaymentComplete = async (paymentData: any) => {
     if (paymentSubmitRef.current) return;
     paymentSubmitRef.current = true;
@@ -2801,9 +2879,19 @@ export default function MarketPOS({
           </div>
           <div className={`flex items-center gap-1.5 ${rtlMode ? 'flex-row-reverse' : ''}`}>
             <span className="text-gray-400">{t.cashierLabel}:</span>
-            <span className="text-emerald-400 font-semibold truncate max-w-[140px]" title={currentStaff || currentUser.username}>
-              {currentStaff || currentUser.username || '—'}
-            </span>
+            <button
+              type="button"
+              data-testid="market-pos-cashier-change"
+              onClick={() => window.dispatchEvent(new Event('openStaffModal'))}
+              className={`font-semibold truncate max-w-[140px] underline-offset-2 hover:underline ${
+                currentStaff || currentUser.username
+                  ? 'text-emerald-400'
+                  : 'text-amber-300'
+              }`}
+              title={currentStaff || currentUser.username || (tm('salespersonNotSelected') || 'Satış Elemanı Seçilmedi')}
+            >
+              {currentStaff || currentUser.username || (tm('salespersonNotSelected') || '—')}
+            </button>
           </div>
           <div className={`flex items-center gap-1.5 ${rtlMode ? 'flex-row-reverse' : ''}`}>
             <span className="text-gray-400">{t.shift}:</span>
@@ -2857,8 +2945,17 @@ export default function MarketPOS({
           selectedCustomer={selectedCustomer}
           receiptNumber={receiptNumber}
           showAutoPrintOption={false}
+          currentStaff={currentStaff}
+          requireCashier
           onClose={() => setShowPaymentModal(false)}
           onComplete={handlePaymentComplete}
+          onAvansRecorded={handleAvansRecorded}
+          cartItems={cart.map((it) => ({
+            productId: it.product.id,
+            quantity: it.quantity,
+            name: it.product.name,
+            total: it.subtotal,
+          }))}
         />
       )}
 

@@ -297,6 +297,12 @@ export type EkstreRow = {
   reservationDeposit?: number;
   /** Rezervasyon avansı mı? (sales.is_deposit=true / notes: parent_sale:) */
   isReservationDeposit?: boolean;
+  /** AVANS → FATURA (Basit Model): cari avansı ayrı rozet (yeşil). */
+  isAvans?: boolean;
+  /** Avans referans no: `AVANS-<uuid-kısa>` */
+  avansReferenceNo?: string;
+  /** Avans kayıt UUID */
+  avansId?: string;
 };
 
 /** `payment_status` iptal/iade seti (müşteri/peşin satışlar için). */
@@ -380,6 +386,9 @@ export function buildEkstreRows(
       ficheType === 'CH_TAHSILAT' &&
       absAmt > 0 &&
       customerCashSaleKeys.has(`${String(row.fiche_no ?? '').trim()}|${Math.round(absAmt * 100) / 100}`);
+    // AVANS → FATURA (Basit Model): cari_avans satırı. Müşteri için tahsilat
+    // mantığı ile aynı (müşteri bize para verdi → bakiye alacaklanır).
+    const isAvansRow = !cancelled && row.is_avans === true && absAmt > 0;
     let delta = 0;
     let borcAmount = 0;
     let alacakAmount = 0;
@@ -392,6 +401,14 @@ export function buildEkstreRows(
         delta = 0;
         borcAmount = 0;
         alacakAmount = 0;
+      } else if (isAvansRow) {
+        // Avans: müşteri bize para verdi (alacaklanır), supplier ise tersi.
+        delta = cashLineLedgerDelta(amount, 'CH_TAHSILAT', cardType);
+        if (delta > 0) {
+          borcAmount = absAmt;
+        } else if (delta < 0) {
+          alacakAmount = absAmt;
+        }
       } else if (ficheType === 'CH_TAHSILAT' || ficheType === 'CH_ODEME') {
         delta = cashLineLedgerDelta(amount, ficheType, cardType);
         if (delta > 0) {
@@ -445,6 +462,13 @@ export function buildEkstreRows(
       balance: runningBalance,
       reservationDeposit: isReservationDeposit ? absAmt : 0,
       isReservationDeposit,
+      // AVANS → FATURA (Basit Model): cari avansı ayrı rozet (yeşil). Avans
+      // müşteriden tahsil edilen paradır; müşteri bakiyesini alacaklanır;
+      // tedarikçi yönünde tersi. Bakiyeyi şişirmemek için yine de borç ya da
+      // alacak sütununa yazılır.
+      isAvans: row.is_avans === true,
+      avansReferenceNo: row.avans_reference_no != null ? String(row.avans_reference_no) : undefined,
+      avansId: row.avans_id != null ? String(row.avans_id) : undefined,
     } as EkstreRow;
   });
 }

@@ -696,7 +696,7 @@ function readOpeningCashForReports(businessType: BusinessType): number {
 /** Günlük rapor tablosu satırı — fiş önizleme / ERP silme için kaynak bilgisi */
 type DailyUnifiedRow = {
   key: string;
-  source: 'erp' | 'rest';
+  source: 'erp' | 'rest' | 'avans';
   receiptNumber: string;
   date: string;
   cashier?: string;
@@ -712,6 +712,8 @@ type DailyUnifiedRow = {
   remaining?: number;
   /** Bu satır bir randevuya bağlı peşinat fişi mi? (Bug 28) */
   isDeposit?: boolean;
+  /** AVANS → FATURA (Basit Model): cari avanslardan gelen sanal satır */
+  isAvans?: boolean;
   erpSale?: Sale;
   restOrder?: any;
   kind: SaleKindBucket;
@@ -2867,15 +2869,63 @@ export function ReportsModule({
   }, 0);
 
   /** Günlük tablo + özet kartlar: restoranda Perakende Satışlar (ERP) ile birebir; ERP yoksa kapalı adisyonlar */
+  // AVANS → FATURA (Basit Model): seçilen gün için cari_avans kayıtlarını
+  // yükle ve sanal satır olarak dailyUnifiedRows'a ekle.
+  const [dailyAvansList, setDailyAvansList] = useState<any[]>([]);
+  React.useEffect(() => {
+    // Rapor tarih filtresi değiştiğinde cari_avans'ı çek
+    const fromIso = dailyReportDateRange?.from;
+    const toIso = dailyReportDateRange?.to;
+    if (!fromIso || !toIso) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { postgres, ERP_SETTINGS } = await import('../../services/postgres');
+        const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
+        const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
+        const tbl = `rex_${firm}_${period}_cari_avans`;
+        const { rows } = await postgres.query<any>(
+          `SELECT id, customer_id, amount, payment_method, status, reference_no, created_at
+             FROM ${tbl}
+            WHERE created_at >= $1::date
+              AND created_at < ($2::date + INTERVAL '1 day')
+              AND status = 'open'
+            ORDER BY created_at DESC`,
+          [fromIso, toIso],
+        );
+        if (cancelled) return;
+        setDailyAvansList(rows || []);
+      } catch (e) {
+        if (cancelled) return;
+        console.warn('[ReportsModule] daily avans fetch failed:', e);
+        setDailyAvansList([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dailyReportDateRange?.from, dailyReportDateRange?.to]);
+
   const dailyUnifiedRows = useMemo((): DailyUnifiedRow[] => {
     const mapErpSale = (s: Sale): DailyUnifiedRow => {
       const split = saleCollectedSplit(s);
       const net = Number(s.total) || 0;
       const discount = Number(s.discount) || 0;
       const before = erpSaleBeforeDiscount(s);
+      // Rezervasyon avansı (deposit) — İndirim Öncesi ve İndirim hücreleri
+      // boş ("—") gösteriliyor; footerSum ham değeri topladığı için
+      // deposit satırlarda bu alanları 0'a çekiyoruz. Aksi halde dip toplam
+      // deposit brüt tutarını da içerir.
+      const isDepositRow =
+        isDepositSale(s as Partial<Sale>) ||
+        (s as Sale & { isDeposit?: boolean | null }).isDeposit === true;
+      // AVANS → FATURA (Basit Model): Cari avanslardan gelen satışlar
+      // (`isAvans=true` ve `avansId` set) ayrı rozet — İndirim Öncesi/Net
+      // Tutar 0 (henüz fatura yok), Ödeme = avans tutarı, Kalan = 0.
+      const isAvansRow = (s as Sale & { isAvans?: boolean }).isAvans === true;
       return {
-        key: `erp-${s.id}`,
-        source: 'erp' as const,
+        key: isAvansRow ? `avans-${s.id}` : `erp-${s.id}`,
+        source: isAvansRow ? ('avans' as const) : ('erp' as const),
         receiptNumber: s.receiptNumber,
         date: s.date,
         cashier: resolveCashierDisplayName(s.cashier, s.userId, userNameById),
@@ -2886,16 +2936,17 @@ export function ReportsModule({
           s.storeId,
         ),
         customerName: s.customerName,
-        beforeDiscount: before,
-        total: net,
-        discount,
+        beforeDiscount: (isDepositRow || isAvansRow) ? 0 : before,
+        total: (isDepositRow || isAvansRow) ? 0 : net,
+        discount: (isDepositRow || isAvansRow) ? 0 : discount,
         paymentMethod: normalizePaymentMethodBucket(s.paymentMethod),
         status: String(s.status ?? 'completed'),
         cancelReason: extractCancelReason(s.notes),
-        collected: split.collected,
-        remaining: split.remaining,
+        collected: isAvansRow ? net : split.collected,
+        remaining: 0,
         // Bug 28: randevuya bağlı peşinat ayrımı
-        isDeposit: (s as Sale & { isDeposit?: boolean | null }).isDeposit === true,
+        isDeposit: isDepositRow,
+        isAvans: isAvansRow,
         erpSale: s,
         ...kindFieldsFromItems(
           (s.items || []).map((it) => ({
@@ -2914,55 +2965,108 @@ export function ReportsModule({
       };
     };
 
+    // AVANS → FATURA: cari_avans satırlarını sanal satırlara dönüştür
+    const mapAvans = (a: any): DailyUnifiedRow => {
+      const amount = Number(a.amount || 0);
+      const ref = a.reference_no || `AVANS-${String(a.id).slice(0, 8)}`;
+      return {
+        key: `avans-${a.id}`,
+        source: 'avans' as const,
+        receiptNumber: ref,
+        date: a.created_at,
+        customerName: a.customer_id,
+        beforeDiscount: amount,
+        total: amount,
+        discount: 0,
+        paymentMethod: String(a.payment_method ?? 'cash'),
+        status: 'avans_open',
+        collected: amount,
+        remaining: 0,
+        isAvans: true,
+        erpSale: {
+          id: a.id,
+          receiptNumber: ref,
+          date: a.created_at,
+          customerId: a.customer_id,
+          total: amount,
+          paymentMethod: a.payment_method,
+          status: 'avans_open',
+          items: [],
+          isAvans: true,
+          notes: a.notes ?? undefined,
+        } as unknown as Sale,
+        kind: 'product' as const,
+        serviceTotal: 0,
+        productTotal: amount,
+        serviceDiscount: 0,
+        productDiscount: 0,
+        serviceBefore: 0,
+        productBefore: amount,
+      };
+    };
+    const avansRows = dailyAvansList.map(mapAvans);
+
     if (businessType !== 'restaurant') {
-      return dailySales.map(mapErpSale);
+      return [...dailySales.map(mapErpSale), ...avansRows].sort(
+        (a, b) =>
+          saleWallClockTimestamp(dailyRowWallClockSource(a)) -
+          saleWallClockTimestamp(dailyRowWallClockSource(b)),
+      );
     }
     if (dailySales.length > 0) {
-      return dailySales
-        .map(mapErpSale)
-        .sort((a, b) => saleWallClockTimestamp(dailyRowWallClockSource(a)) - saleWallClockTimestamp(dailyRowWallClockSource(b)));
+      return [...dailySales.map(mapErpSale), ...avansRows].sort(
+        (a, b) =>
+          saleWallClockTimestamp(dailyRowWallClockSource(a)) -
+          saleWallClockTimestamp(dailyRowWallClockSource(b)),
+      );
     }
-    return restOrdersClosedOnSelectedDate
-      .map((o: any) => {
-        const pm = restOrderPaymentMethod(o);
-        const paymentMethod = restaurantPaymentBucket(pm);
-        const disc = Number(o.discount_amount ?? o.discountAmount ?? 0) || 0;
-        const net = restOrderNetAmount(o);
-        const before = restOrderBeforeDiscount(o);
-        const split = saleCollectedSplit({ total: net, paymentMethod });
-        const restItems = (Array.isArray(o.items) ? o.items : [])
-          .filter((it: any) => it?.is_void !== true)
-          .map((it: any) => ({
-            productId: String(it.product_id ?? it.productId ?? ''),
-            productName: String(it.product_name ?? it.productName ?? ''),
-            lineType: String(it.line_type ?? it.lineType ?? it.item_type ?? ''),
-            item_type: String(it.item_type ?? ''),
-            total: Number(it.subtotal ?? it.total ?? 0),
-          }));
-        return {
-          key: `rest-${o.id}`,
-          source: 'rest' as const,
-          receiptNumber: String(o.order_no || `ADİSYON-${String(o.id).slice(0, 8)}`),
-          date: o.closed_at || o.closedAt || o.opened_at,
-          cashier: resolveCashierDisplayName(o.waiter, o.user_id ?? o.created_by, userNameById),
-          deviceName: resolveDailyRowDeviceName(
-            (o as any).device_name,
-            (o as any).terminal_name,
-            (o as any).table_no,
-          ),
-          customerName: o.customer_name || '-',
-          beforeDiscount: before,
-          total: net,
-          discount: disc,
-          paymentMethod,
-          status: 'completed',
-          collected: split.collected,
-          remaining: split.remaining,
-          restOrder: o,
-          ...kindFieldsFromItems(restItems, net, disc, before, catalogProducts, analysisServiceKeys),
-        };
-      })
-      .sort((a, b) => saleWallClockTimestamp(dailyRowWallClockSource(a)) - saleWallClockTimestamp(dailyRowWallClockSource(b)));
+    return [
+      ...restOrdersClosedOnSelectedDate
+        .map((o: any) => {
+          const pm = restOrderPaymentMethod(o);
+          const paymentMethod = restaurantPaymentBucket(pm);
+          const disc = Number(o.discount_amount ?? o.discountAmount ?? 0) || 0;
+          const net = restOrderNetAmount(o);
+          const before = restOrderBeforeDiscount(o);
+          const split = saleCollectedSplit({ total: net, paymentMethod });
+          const restItems = (Array.isArray(o.items) ? o.items : [])
+            .filter((it: any) => it?.is_void !== true)
+            .map((it: any) => ({
+              productId: String(it.product_id ?? it.productId ?? ''),
+              productName: String(it.product_name ?? it.productName ?? ''),
+              lineType: String(it.line_type ?? it.lineType ?? it.item_type ?? ''),
+              item_type: String(it.item_type ?? ''),
+              total: Number(it.subtotal ?? (it.total || 0)),
+            }));
+          return {
+            key: `rest-${o.id}`,
+            source: 'rest' as const,
+            receiptNumber: String(o.order_no || `ADİSYON-${String(o.id).slice(0, 8)}`),
+            date: o.closed_at || o.closedAt || o.opened_at,
+            cashier: resolveCashierDisplayName(o.waiter, o.user_id ?? o.created_by, userNameById),
+            deviceName: resolveDailyRowDeviceName(
+              (o as any).device_name,
+              (o as any).terminal_name,
+              (o as any).table_no,
+            ),
+            customerName: o.customer_name || '-',
+            beforeDiscount: before,
+            total: net,
+            discount: disc,
+            paymentMethod,
+            status: 'completed',
+            collected: split.collected,
+            remaining: split.remaining,
+            restOrder: o,
+            ...kindFieldsFromItems(restItems, net, disc, before, catalogProducts, analysisServiceKeys),
+          };
+        }),
+      ...avansRows,
+    ].sort(
+      (a, b) =>
+        saleWallClockTimestamp(dailyRowWallClockSource(a)) -
+        saleWallClockTimestamp(dailyRowWallClockSource(b)),
+    );
   }, [
     businessType,
     dailySales,
@@ -2970,6 +3074,7 @@ export function ReportsModule({
     userNameById,
     catalogProducts,
     analysisServiceKeys,
+    dailyAvansList,
   ]);
 
   const dailySalesForAi = useMemo((): Sale[] => {
@@ -3062,6 +3167,10 @@ export function ReportsModule({
       // isteği — ödeme kolonunda fişin türü net olmalı.
       if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit) {
         paymentLabelText = tm('paymentLabelReservationDeposit') || 'Rezervasyon Tutarı';
+      }
+      // AVANS → FATURA (Basit Model): cari avansı ayrı rozet
+      if (row.isAvans) {
+        paymentLabelText = tm('paymentLabelAvans') || 'Avans';
       }
       return {
         ...row,
@@ -3640,7 +3749,7 @@ export function ReportsModule({
       // Rezervasyon avansı (henüz hizmet verilmemiş peşinat) — Açık Cari
       // bucket'ına yazılmaz; tutarı Nakit'e kaydırılır.
       isDeposit: isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true,
-      notes: row.erpSale?.notes ?? row.notes,
+      notes: row.erpSale?.notes,
     }));
     const dist = buildPaymentTypeDistribution(saleInputs, {
       extraCash: extraCollections,
@@ -3678,7 +3787,7 @@ export function ReportsModule({
       customerName: row.customerName,
       description: row.customerName || row.receiptNumber || '—',
       isDeposit: isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true,
-      notes: row.erpSale?.notes ?? row.notes,
+      notes: row.erpSale?.notes,
     }));
     return buildPaymentTypeMovements(saleInputs, code, {
       extraCash: extraCollections,
@@ -6340,7 +6449,19 @@ export function ReportsModule({
                           align: 'right',
                           size: 120,
                           footerSum: true,
-                          footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                          // footerSum ham satır değerini toplar; deposit
+                          // satırları hariç tutmak için footerFormat'ta rows
+                          // üzerinden yeniden hesaplanır.
+                          footerFormat: (_n, rows) => {
+                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; beforeDiscount?: number; total?: number; discount?: number }>).reduce(
+                              (acc, r) => {
+                                if (isDepositSale(r.erpSale as Partial<Sale> | undefined) || r.isDeposit === true) return acc;
+                                return acc + (Number(r.beforeDiscount ?? ((Number(r.total) || 0) + (Number(r.discount) || 0))) || 0);
+                              },
+                              0,
+                            );
+                            return formatLedgerAmount(total, reportCurrency);
+                          },
                           cell: (row) => {
                             // Rezervasyon avansı (henüz hizmet verilmemiş peşinat):
                             // belge karşılığı yok, "İndirim Öncesi" boş bırakılır —
@@ -6358,8 +6479,24 @@ export function ReportsModule({
                           align: 'right',
                           size: 110,
                           footerSum: true,
-                          footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
-                          cell: (row) => formatNumber(Number(row.discount) || 0, 2, false),
+                          // Deposit satırlarda 0 gösteriliyor; aynı şekilde footer
+                          // toplamı da deposit'i katmamalı.
+                          footerFormat: (_n, rows) => {
+                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; discount?: number }>).reduce(
+                              (acc, r) => {
+                                if (isDepositSale(r.erpSale as Partial<Sale> | undefined) || r.isDeposit === true) return acc;
+                                return acc + (Number(r.discount) || 0);
+                              },
+                              0,
+                            );
+                            return formatLedgerAmount(total, reportCurrency);
+                          },
+                          cell: (row) => {
+                            if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) {
+                              return '—';
+                            }
+                            return formatNumber(Number(row.discount) || 0, 2, false);
+                          },
                         },
                         {
                           key: 'total',
@@ -6368,8 +6505,23 @@ export function ReportsModule({
                           align: 'right',
                           size: 140,
                           footerSum: true,
-                          footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                          // Deposit satırlarda net tutar "—" gösterilir ve footer'a
+                          // katılmaz (ciro zaten randevu tamamlanınca ana hizmete
+                          // yansıyacak).
+                          footerFormat: (_n, rows) => {
+                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; total?: number }>).reduce(
+                              (acc, r) => {
+                                if (isDepositSale(r.erpSale as Partial<Sale> | undefined) || r.isDeposit === true) return acc;
+                                return acc + (Number(r.total) || 0);
+                              },
+                              0,
+                            );
+                            return formatLedgerAmount(total, reportCurrency);
+                          },
                           cell: (row) => {
+                            if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) {
+                              return '—';
+                            }
                             const remaining = Number(row.remaining) > 0.009
                               ? Number(row.remaining)
                               : dailyRowShowsCreditSplit(row)
@@ -6412,12 +6564,23 @@ export function ReportsModule({
                               paymentMethod: erpForKind?.paymentMethod ?? row.paymentMethod,
                               payments: erpForKind?.payments ?? undefined,
                             });
+                            // Rezervasyon avansı (deposit) — 6337'deki beforeDiscount
+                            // hücresinde "—" döndüren satırlar burada da
+                            // "Rezervasyon Tutarı" rozeti göstermeli.
+                            const depositRow =
+                              isDepositSale(erpForKind as Partial<Sale> | undefined) ||
+                              (row as { isDeposit?: boolean }).isDeposit === true;
+                            const displayLabel = depositRow
+                              ? (tm('paymentLabelReservationDeposit') || 'Rezervasyon Tutarı')
+                              : row.paymentLabel;
                             const cls = kindInfo.kind === 'mixed'
                               ? 'bg-orange-100 text-orange-800'
-                              : kindInfo.kind === 'cash' || bucket === 'cash'
-                                ? 'bg-green-100 text-green-700'
-                                : bucket === 'card'
-                                  ? 'bg-blue-100 text-blue-700'
+                              : depositRow
+                                ? 'bg-cyan-100 text-cyan-800'
+                                : kindInfo.kind === 'cash' || bucket === 'cash'
+                                  ? 'bg-green-100 text-green-700'
+                                  : bucket === 'card'
+                                    ? 'bg-blue-100 text-blue-700'
                                   : bucket === 'credit'
                                     ? 'bg-amber-100 text-amber-800'
                                     : 'bg-slate-100 text-slate-700';
@@ -6428,7 +6591,7 @@ export function ReportsModule({
                                   ? `${tm('dailyPaymentMixedTitle')} — T:${formatNumber(kindInfo.collected, 0, false)} / K:${formatNumber(kindInfo.remaining, 0, false)}`
                                   : undefined}
                               >
-                                {row.paymentLabel}
+                                {displayLabel}
                               </span>
                             );
                           },

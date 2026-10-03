@@ -1,4 +1,4 @@
-import { X, CreditCard, Banknote, Wallet, Plus, Trash2, CheckCircle, Calculator, ShoppingCart, Minus, Globe, Tag, TrendingDown, Loader2, Printer, ChevronDown, FileText, Receipt, Calendar, Info } from 'lucide-react';
+import { X, CreditCard, Banknote, Wallet, Plus, Trash2, CheckCircle, Calculator, ShoppingCart, Minus, Globe, Tag, TrendingDown, Loader2, Printer, ChevronDown, FileText, Receipt, Calendar, Info, User } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import type { CartItem } from './types';
@@ -167,6 +167,24 @@ interface POSPaymentModalProps {
    */
   onPesinatliAdded?: (amount: number) => void;
   /**
+   * AVANS → FATURA (Basit Model) — peşinatlı ödeme alındığında tetiklenir.
+   * Parent (MarketPOS) bu callback'i `recordAdvance` ile bağlar; dönen
+   * avans bilgisi parent state'ine yazılır, fatura oluşturulmaz.
+   * Satış tamamen ödendiğinde parent `finalizeSale` çağırır.
+   *
+   * `onPesinatliAdded` ile birlikte gönderilir; randevu/sale context'inde
+   * uyumluluk için ikisi de tetiklenir.
+   */
+  onAvansRecorded?: (avans: {
+    id: string;
+    referenceNo: string | null;
+    amount: number;
+    customerId: string;
+    customerName?: string;
+    paymentMethod: string;
+    items: Array<{ productId: string; quantity: number }>;
+  }) => void | Promise<void>;
+  /**
    * Tamamla butonunun etiketi. Genelde "Ödemeyi Tamamla"; ancak Peşinatlı
    * satışta parent ("Ön Ödeme Alındı") gönderebilir. Verilmezse standart
    * `t.completePayment` kullanılır.
@@ -189,6 +207,20 @@ interface POSPaymentModalProps {
    * Verilmezse mevcut davranış korunur (geriye dönük uyumlu).
    */
   appointmentContext?: POSPaymentModalAppointmentContext;
+  /**
+   * AVANS → FATURA — opsiyonel sepet bilgisi. Peşinatlı modda
+   * `onAvansRecorded` çağrılırken items listesi (stok rezervasyonu
+   * için) parent'a iletilir. Verilmezse rezervasyon yapılmaz.
+   */
+  cartItems?: Array<{ productId: string; quantity: number; name?: string; total?: number }>;
+  /** Kasiyer adı (MainLayout.currentStaff). Tamamla butonu buna göre pasifleşir. */
+  currentStaff?: string;
+  /**
+   * Satış tamamlanmadan önce kasiyer seçilmiş olması zorunlu mu?
+   * Varsayılan: true. POS tarafında kasiyer otomatik set edilir; boşsa
+   * "Ödemeyi Tamamla" butonu pasif olur ve fiş yazılmaz.
+   */
+  requireCashier?: boolean;
 }
 
 /**
@@ -227,9 +259,13 @@ export function POSPaymentModal({
   onClose,
   onComplete,
   onPesinatliAdded,
+  onAvansRecorded,
   completeButtonLabel,
   mode = 'standard',
   appointmentContext,
+  cartItems,
+  currentStaff = '',
+  requireCashier = true,
 }: POSPaymentModalProps) {
   const { t, tm, language: uiLanguage } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
@@ -584,49 +620,73 @@ export function POSPaymentModal({
 
     // Peşinatlı: serbest tutar — kalan cariye yazılır.
     if (currentMethod === 'pesinatli') {
+      // AVANS → FATURA (Basit Model) — yeni mod: onAvansRecorded varsa
+      // YALNIZCA peşinat satırı eklenir, veresiye satırı eklenmez.
+      // Eski akış (randevu POS / `onAvansRecorded` yok) korunur.
+      const useAvansModel = Boolean(onAvansRecorded) && !appointmentContext;
       try {
-        const totalForPesinat = remaining + totalPaid;
-        const rows = buildPesinatliPayments({
-          totalAmount: totalForPesinat,
-          payNow: normalizedAmount,
-          currency: currentCurrency,
-          installments: isValidPesinatliInstallments(pesinatInstallments)
-            ? (pesinatInstallments as 3 | 6 | 9 | 12)
-            : null,
-          cashRegister: selectedCashRegister
-            ? {
-                id: selectedCashRegister.id,
-                kasa_adi: selectedCashRegister.kasa_adi,
-                kasa_kodu: selectedCashRegister.kasa_kodu,
-              }
-            : null,
-        });
-        // Veresiye satırına cari türü kasa alanı yazılmaz.
-        const sanitized = rows.map((row) => {
-          if (row.method === 'veresiye') {
-            const { cash_register_id, cash_register_name, cash_register_code, ...rest } = row as any;
-            return rest as Payment;
-          }
-          return row as Payment;
-        });
-        setPayments((prev) => [...prev, ...sanitized]);
-        setCurrentAmount('');
-        // Beauty randevu POS: peşinat tutarını parent'a bildir → randevu
-        // detaylarındaki rezervasyon input'u otomatik dolar.
-        onPesinatliAdded?.(normalizedAmount);
-        const kalanRow = sanitized.find((r) => r.method === 'veresiye') as Payment | undefined;
-        // Plan §6 Adım 8 — toast'a peşinat fiş no ekle (parent appointmentContext'ten)
-        const ficheTag = appointmentContext?.prePaymentFicheNo
-          ? ` · ${appointmentContext.prePaymentFicheNo}`
-          : '';
-        if (kalanRow && Number(kalanRow.amount) > 0) {
+        if (useAvansModel) {
+          // Yeni avans akışı: sadece peşinat satırı (veresiye YOK)
+          const pesinatRow: Payment = {
+            method: 'pesinatli',
+            amount: normalizedAmount,
+            currency: currentCurrency,
+            installments: isValidPesinatliInstallments(pesinatInstallments)
+              ? (pesinatInstallments as 3 | 6 | 9 | 12)
+              : undefined,
+            installment_amount: isValidPesinatliInstallments(pesinatInstallments)
+              ? Number((remaining - normalizedAmount) / pesinatInstallments)
+              : undefined,
+            cash_register_id: selectedCashRegister?.id,
+            cash_register_name: selectedCashRegister?.kasa_adi,
+            cash_register_code: selectedCashRegister?.kasa_kodu,
+          };
+          setPayments((prev) => [...prev, pesinatRow]);
+          setCurrentAmount('');
           toast.success(
-            `${tm('pesinatAddButton') || 'Peşinat Ekle'}: ${formatMoneyWithCode(normalizedAmount, currentCurrency)} · ${tm('pesinatRemainderToCari') || 'Kalan cariye yazıldı'}: ${formatMoneyWithCode(Number(kalanRow.amount), currentCurrency)}${ficheTag}`,
+            `${tm('pesinatAddButton') || 'Peşinat Ekle'}: ${formatMoneyWithCode(normalizedAmount, currentCurrency)} — kalan ödeme için tekrar beklenir`,
           );
         } else {
-          toast.success(
-            `${tm('pesinatTodayPaid') || 'Bugün ödenen'}: ${formatMoneyWithCode(normalizedAmount, currentCurrency)}${ficheTag}`,
-          );
+          // Eski akış: 2 satır (peşinat + veresiye) — randevu POS uyumu
+          const totalForPesinat = remaining + totalPaid;
+          const rows = buildPesinatliPayments({
+            totalAmount: totalForPesinat,
+            payNow: normalizedAmount,
+            currency: currentCurrency,
+            installments: isValidPesinatliInstallments(pesinatInstallments)
+              ? (pesinatInstallments as 3 | 6 | 9 | 12)
+              : null,
+            cashRegister: selectedCashRegister
+              ? {
+                  id: selectedCashRegister.id,
+                  kasa_adi: selectedCashRegister.kasa_adi,
+                  kasa_kodu: selectedCashRegister.kasa_kodu,
+                }
+              : null,
+          });
+          const sanitized = rows.map((row) => {
+            if (row.method === 'veresiye') {
+              const { cash_register_id, cash_register_name, cash_register_code, ...rest } = row as any;
+              return rest as Payment;
+            }
+            return row as Payment;
+          });
+          setPayments((prev) => [...prev, ...sanitized]);
+          setCurrentAmount('');
+          onPesinatliAdded?.(normalizedAmount);
+          const kalanRow = sanitized.find((r) => r.method === 'veresiye') as Payment | undefined;
+          const ficheTag = appointmentContext?.prePaymentFicheNo
+            ? ` · ${appointmentContext.prePaymentFicheNo}`
+            : '';
+          if (kalanRow && Number(kalanRow.amount) > 0) {
+            toast.success(
+              `${tm('pesinatAddButton') || 'Peşinat Ekle'}: ${formatMoneyWithCode(normalizedAmount, currentCurrency)} · ${tm('pesinatRemainderToCari') || 'Kalan cariye yazıldı'}: ${formatMoneyWithCode(Number(kalanRow.amount), currentCurrency)}${ficheTag}`,
+            );
+          } else {
+            toast.success(
+              `${tm('pesinatTodayPaid') || 'Bugün ödenen'}: ${formatMoneyWithCode(normalizedAmount, currentCurrency)}${ficheTag}`,
+            );
+          }
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -904,7 +964,7 @@ const handleCollectCustomerDebt = async () => {
         // yalnızca fallback — kullanıcı eski usul "peşinat ekle + Kalanı
         // cariye yaz" akışını kullandıysa devreye girer.
         const veresiyeRow =
-          currentMethod === 'pesinatli' &&
+          (currentMethod as 'cash' | 'card' | 'veresiye' | 'pesinatli') === 'pesinatli' &&
           isValidPesinatliInstallments(pesinatInstallments)
             ? buildPesinatliVeresiye({
                 amount: remainingAfter,
@@ -955,6 +1015,51 @@ const handleCollectCustomerDebt = async () => {
       mode,
       hasPesinatli: paymentsToSubmit.some((p) => p.method === 'pesinatli'),
     };
+
+    // AVANS → FATURA (Basit Model) — peşinatlı modda avans kaydı
+    // tetikle. Mevcut `onComplete` akışı KORUNUR (geriye dönük uyumlu);
+    // yeni davranışta parent avansı yazar, fatura oluşturmaz.
+    if (currentMethod === 'pesinatli' && onAvansRecorded && selectedCustomer) {
+      try {
+        // Toplam peşinat tutarı (cash + card + transfer satırları)
+        const pesinatPayments = paymentsToSubmit.filter(
+          (p) => p.method !== 'veresiye' && p.method !== 'pesinatli',
+        );
+        const advanceAmount = roundPosMoneyAmount(
+          pesinatPayments.reduce(
+            (s, p) => s + Number(p.amount || 0) * (exchangeRates[p.currency] ?? 1),
+            0,
+          ),
+          baseCurrency,
+        );
+        if (advanceAmount > 0) {
+          const pesinatRow = paymentsToSubmit.find((p) => p.method === 'pesinatli') as
+            | Payment
+            | undefined;
+          await Promise.resolve(
+            onAvansRecorded({
+              id: `avans-pending-${Date.now()}`,
+              referenceNo: null,
+              amount: advanceAmount,
+              customerId: selectedCustomer.id,
+              customerName: selectedCustomer.name,
+              paymentMethod: (pesinatRow?.installments
+                ? 'pesinatli'
+                : pesinatPayments[0]?.method ?? 'cash') as string,
+              items: (cartItems || []).map((it) => ({
+                productId: it.productId,
+                quantity: it.quantity,
+              })),
+            }),
+          );
+          // Geriye dönük uyumlu: onPesinatliAdded da tetiklenir
+          onPesinatliAdded?.(advanceAmount);
+        }
+      } catch (avErr) {
+        console.error('[POSPaymentModal] onAvansRecorded failed:', avErr);
+        // Hata olursa normal onComplete akışına düş (mevcut davranış)
+      }
+    }
     const PAYMENT_TIMEOUT_MS = 45_000;
     try {
       await Promise.race([
@@ -1192,7 +1297,7 @@ const handleCollectCustomerDebt = async () => {
                     <>
                       <div className="flex justify-between text-sm">
                         <span className={darkMode ? 'text-emerald-300' : 'text-emerald-700'}>
-                          {t.prePayment || 'Ön Ödenen'}:
+                          {String(t.prePayment ?? '') || 'Ön Ödenen'}:
                         </span>
                         <span
                           className={`font-medium font-mono ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}
@@ -1863,6 +1968,23 @@ const handleCollectCustomerDebt = async () => {
         </div>
 
         {/* Footer */}
+        {requireCashier && !String(currentStaff || '').trim() ? (
+          <div
+            role="alert"
+            data-testid="pos-cashier-required-banner"
+            className={`px-4 py-2 border-t flex items-center gap-2 text-sm font-medium ${
+              darkMode
+                ? 'border-amber-700 bg-amber-950/40 text-amber-200'
+                : 'border-amber-200 bg-amber-50 text-amber-800'
+            }`}
+          >
+            <User className="w-4 h-4 shrink-0" />
+            <span>
+              {tm('salespersonNotSelected') || 'Satış Elemanı Seçilmedi'} —{' '}
+              {tm('cashierNamePlaceholder') || 'Kasiyer adı...'}
+            </span>
+          </div>
+        ) : null}
         <div className={`p-4 border-t flex flex-col sm:flex-row gap-2 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
           <button
             type="button"
@@ -1916,13 +2038,22 @@ const handleCollectCustomerDebt = async () => {
           <button
             type="button"
             onClick={handleConfirmPayment}
-            disabled={isLoading || draftPrintLoading || (hasCariRemainder && !selectedCustomer) || totalPaid <= 0 || payments.length === 0}
+            disabled={
+              isLoading ||
+              draftPrintLoading ||
+              (hasCariRemainder && !selectedCustomer) ||
+              totalPaid <= 0 ||
+              payments.length === 0 ||
+              (requireCashier && !String(currentStaff || '').trim())
+            }
             title={
-              totalPaid <= 0 || payments.length === 0
-                ? (tm('collectPaymentFirst') || 'Önce Tam Tutar veya + Ödeme Ekle ile ödeme alın.')
-                : hasCariRemainder && !selectedCustomer
-                  ? selectCustomerForCariMessage
-                  : undefined
+              requireCashier && !String(currentStaff || '').trim()
+                ? (tm('salespersonNotSelected') || 'Satış Elemanı Seçilmedi')
+                : totalPaid <= 0 || payments.length === 0
+                  ? (tm('collectPaymentFirst') || 'Önce Tam Tutar veya + Ödeme Ekle ile ödeme alın.')
+                  : hasCariRemainder && !selectedCustomer
+                    ? selectCustomerForCariMessage
+                    : undefined
             }
             className={`flex-1 px-4 py-3 bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 sm:min-w-[11rem]`}
           >
