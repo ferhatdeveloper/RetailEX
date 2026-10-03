@@ -11565,6 +11565,12 @@ export const excelModuleTranslations = {
   customerLabel_rep: { tr: 'Müşteri', en: 'Customer', ar: 'العميل', ku: 'کڕیار' },
   amountLabel_rep: { tr: 'Tutar', en: 'Amount', ar: 'المبلغ', ku: 'بڕ' },
   paymentLabel_rep: { tr: 'Ödeme', en: 'Payment', ar: 'دفع', ku: 'پارەدان' },
+  paymentLabelReservationDeposit: {
+    tr: 'Rezervasyon Tutarı',
+    en: 'Reservation Deposit',
+    ar: 'مبلغ الحجز',
+    ku: 'بڕی نۆرە',
+  },
   cashierPerformanceReport: { tr: 'Kasiyer Performans Raporu', en: 'Cashier Performance Report', ar: 'تقرير أداء الصراف', ku: 'ڕاپۆرتی ئەدای سندوقدار' },
   cashierLabel: { tr: 'Kasiyer', en: 'Cashier', ar: 'الصراف', ku: 'سندوقدار' },
   reportsDailyKindLabel: { tr: 'Tür', en: 'Type', ar: 'النوع', ku: 'جۆر' },
