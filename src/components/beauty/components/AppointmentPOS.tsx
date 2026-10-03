@@ -2713,6 +2713,15 @@ export function AppointmentPOS({
                     const disc = lineSplits[idx]?.discount ?? 0;
                     const net = lineSplits[idx]?.total ?? gross;
                     const ratio = finalTotalSale > 0 ? net / finalTotalSale : 0;
+                    // Peşinatlı Cari Düzeltmesi (madde 1): peşinatlı modda kalan
+                    // tutar cariye yazılmamalı. Ana satış fişine yalnızca peşinat
+                    // tutarı yazılır → ERP cari etkisi 0. Randevu tamamlanma
+                    // anında `beautyService.collectAppointmentRemainder` kalanı
+                    // tahsil eder ve cari orada oluşur.
+                    const splitTotal = isPesinatliPrePayment ? paidNow * ratio : net;
+                    const splitPaid = isPesinatliPrePayment ? paidNow * ratio : paidNow * ratio;
+                    const splitRemaining = isPesinatliPrePayment ? 0 : remainingNow * ratio;
+                    const splitStatus = isPesinatliPrePayment ? 'pending' : 'paid';
                     return beautyService.createSale(
                         {
                             customer_id: customer!.id,
@@ -2720,11 +2729,11 @@ export function AppointmentPOS({
                             subtotal: gross,
                             discount: disc,
                             tax: 0,
-                            total: net,
+                            total: splitTotal,
                             payment_method: paymentMethod,
-                            payment_status: 'paid',
-                            paid_amount: paidNow * ratio,
-                            remaining_amount: remainingNow * ratio,
+                            payment_status: splitStatus,
+                            paid_amount: splitPaid,
+                            remaining_amount: splitRemaining,
                             notes: saleNotesLink,
                             // Oranlanmış peşin/cari kırılımı createSale settlement için
                             payments: payRows.map((p: { method?: string; amount?: number; currency?: string; cash_register_id?: string | null }) => ({
@@ -2751,6 +2760,11 @@ export function AppointmentPOS({
                     );
                 });
                 await Promise.all(splitSaleTasks);
+                // Peşinatlı modda ERP cari etkisi 0; sync ERP'ye sadece tahsilat olarak
+                // peşinat tutarını yaz (kalan cari olarak yansımaz).
+                const syncTotal = isPesinatliPrePayment ? paidNow : finalTotalSale;
+                const syncRemaining = isPesinatliPrePayment ? 0 : remainingNow;
+                const syncStatus = isPesinatliPrePayment ? 'pending' : 'paid';
                 await beautyService.syncBeautyCheckoutToErp(
                     {
                         customer_id: customer!.id,
@@ -2758,28 +2772,35 @@ export function AppointmentPOS({
                         subtotal,
                         discount: headerDiscount,
                         tax: 0,
-                        total: finalTotalSale,
+                        total: syncTotal,
                         payment_method: paymentMethod,
-                        payment_status: 'paid',
+                        payment_status: syncStatus,
                         paid_amount: paidNow,
-                        remaining_amount: remainingNow,
+                        remaining_amount: syncRemaining,
                         notes: (saleNotesLink ?? aptNotes?.trim()) || undefined,
                         payments: payRows,
                     },
                     saleItems,
                 );
             } else {
+                // Peşinatlı Cari Düzeltmesi (madde 1): tek fiş yolunda da aynı
+                // kural — peşinatlı modda ana satış fişi sadece peşinat tutarında,
+                // remaining_amount=0 ile yazılır. Cari etkisi yok.
+                const singleTotal = isPesinatliPrePayment ? paidNow : finalTotalSale;
+                const singlePaid = paidNow;
+                const singleRemaining = isPesinatliPrePayment ? 0 : remainingNow;
+                const singleStatus = isPesinatliPrePayment ? 'pending' : 'paid';
                 await beautyService.createSale({
                     customer_id: customer!.id,
                     customer_name: customer?.name,
                     subtotal,
                     discount: headerDiscount,
                     tax: 0,
-                    total: finalTotalSale,
+                    total: singleTotal,
                     payment_method: paymentMethod,
-                    payment_status: 'paid',
-                    paid_amount: paidNow,
-                    remaining_amount: remainingNow,
+                    payment_status: singleStatus,
+                    paid_amount: singlePaid,
+                    remaining_amount: singleRemaining,
                     notes: saleNotesLink,
                     payments: payRows,
                 }, saleItems, parentOpts);

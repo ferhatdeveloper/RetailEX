@@ -372,6 +372,12 @@ export function ClinicDashboard() {
             }
             const ps = String(s.payment_status ?? '').trim().toLowerCase();
             if (ps === 'cancelled' || ps === 'canceled' || ps === 'refunded' || ps === 'void' || ps === 'iptal' || ps === 'silindi' || ps === 'deleted') return false;
+            // Peşinatlı Cari Düzeltmesi (madde 4): peşinatlı modda oluşan ana
+            // satış fişi `payment_status='pending'` ve `remaining_amount=0`.
+            // Gerçek hizmet verilmedi → ciro/cari KPI'ya sızmamalı. Sadece
+            // hizmet verildikten sonra `collectAppointmentRemainder`
+            // tarafından oluşturulan `BEAUTY-MAIN-{aptId}` fişi sayılır.
+            if (ps === 'pending' || ps === 'partial' || ps === 'awaiting_service') return false;
             return true;
         });
         const revenue = mainSales.reduce((s, sale) => s + beautySalePocketCollected(sale), 0) + todayExtraCash;

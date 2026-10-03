@@ -10213,12 +10213,21 @@ export const beautyService = {
                       WHERE id = $2::text::uuid`,
                     [amount, targetRegisterId],
                 );
-                // Müşteri cari bakiyesi: CH_TAHSILAT → borç azalır (müşteri simetrisi).
-                // `cariCashStoredBalanceDelta('CH_TAHSILAT', customer)` = −amount.
-                // Düzeltme: Bug ARZ — ödeme alındığında cash_lines yazılıyordu ama
-                // customers.balance güncellenmediği için cari "hep veresiye" görünüyordu.
-                // (kasa.ts:1672 ile aynı desen — invoice.ts:984 paraleli).
-                const customerDelta = cariCashStoredBalanceDelta(amount, 'CH_TAHSILAT', 'customer');
+                // Müşteri cari bakiyesi — Peşinatlı Cari Düzeltmesi (madde 4):
+                //   Peşinatlı randevuda ana satış fişi `remaining_amount=0` ile
+                //   yazıldığı için cari henüz oluşmamıştır. Burada
+                //     • cari yaratma:  += (total − deposit − paidRemainderBefore)
+                //     • tahsilat simetrisi: −= amount (CH_TAHSILAT)
+                //   tek sorguda birleştirilir. Yeni `customerDelta` = kalan kısım.
+                //   Eğer amount = kalan → net 0 (tam tahsilat). Kısmi tahsilatta
+                //   net pozitif (kalan borç cari olarak kalır).
+                //   Bug ARZ düzeltmesi — kasa simetrisi ile entegre.
+                //   (kasa.ts:1672 ile aynı desen — invoice.ts:984 paraleli).
+                const totalPrice = Number(apt.total_price ?? 0);
+                const depositAmt = Number(apt.deposit_amount ?? 0);
+                const paidRemainderBefore = Number(apt.remainder_paid_amount ?? 0);
+                const remainingAfter = Math.max(0, totalPrice - depositAmt - paidRemainderBefore - amount);
+                const customerDelta = remainingAfter;
                 if (customerDelta !== 0) {
                     const customersTable = `rex_${firmNr}_customers`;
                     await postgres
