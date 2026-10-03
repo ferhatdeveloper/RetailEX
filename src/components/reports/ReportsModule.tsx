@@ -77,7 +77,7 @@ import {
 import { applyExtraCashCollections, buildPosZReportForRange, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
 import { extraCustomerCollectionsNotOnSales, saleCollectedSplit, dailyPaymentKind } from '../../utils/saleCollectedAmounts';
-import { filterForRevenue, filterForCash, isCompletedAppointmentStatus } from '../../utils/reportDepositFilter';
+import { filterForRevenue, filterForCash, filterForDeposit, isCompletedAppointmentStatus, isDepositSale } from '../../utils/reportDepositFilter';
 import {
   buildPaymentTypeDistribution,
   buildPaymentTypeMovements,
@@ -699,6 +699,8 @@ type DailyUnifiedRow = {
   cancelReason?: string;
   collected?: number;
   remaining?: number;
+  /** Bu satır bir randevuya bağlı peşinat fişi mi? (Bug 28) */
+  isDeposit?: boolean;
   erpSale?: Sale;
   restOrder?: any;
   kind: SaleKindBucket;
@@ -2799,6 +2801,23 @@ export function ReportsModule({
     dailyDiscount = dailySalesForCash.reduce((sum, s) => sum + s.discount, 0);
   }
 
+  // Bug 28 — Peşinat / Ana fiş ayrımı:
+  // Brüt satış adedi ve ciro YALNIZCA ana fişleri (`isDeposit=false`) sayar;
+  // peşinat (`isDeposit=true`) ayrı bir kartta gösterilir.
+  const dailyDepositSales = useMemo(
+    () => filterForDeposit(dailySales),
+    [dailySales],
+  );
+  const dailyMainSales = useMemo(
+    () => filterForRevenue(dailySales).filter((s) => !isDepositSale(s)),
+    [dailySales],
+  );
+  const dailyDepositCount = dailyDepositSales.length;
+  const dailyDepositTotal = dailyDepositSales.reduce(
+    (sum, s) => sum + (Number(s.total) || 0),
+    0,
+  );
+
   const extraCollections = extraCustomerCollectionsNotOnSales(
     kasaLinesForSelectedDate,
     dailySalesForCash,
@@ -2849,6 +2868,8 @@ export function ReportsModule({
         cancelReason: extractCancelReason(s.notes),
         collected: split.collected,
         remaining: split.remaining,
+        // Bug 28: randevuya bağlı peşinat ayrımı
+        isDeposit: (s as Sale & { isDeposit?: boolean | null }).isDeposit === true,
         erpSale: s,
         ...kindFieldsFromItems(
           (s.items || []).map((it) => ({
@@ -5934,13 +5955,13 @@ export function ReportsModule({
                   showDailyCardCard ||
                   showDailyCardRemainingAccount ||
                   showDailyCardSalesReturn) && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
                   {showDailyCardTotalSales ? (
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-gray-600">{tm('totalSales')}</p>
-                        <p className="text-3xl font-bold mt-1" style={{ color: bizConfig.color }}>{dailyActiveRows.filter((r) => r.status !== 'return').length}</p>
+                        <p className="text-3xl font-bold mt-1" style={{ color: bizConfig.color }}>{dailyMainSales.length}</p>
                         <p className="text-xs text-slate-500 mt-1">
                           {tm('reportsSalesReturnCount').replace('{count}', String(dailyReturnRows.length))}
                           {dailyReturnTotal > 0 ? ` · −${formatNumber(dailyReturnTotal, 2, false)}` : ''}
@@ -5953,6 +5974,21 @@ export function ReportsModule({
                     </div>
                   </div>
                   ) : null}
+
+                  {/* Bug 28 — Peşinat ayrı kartı (randevuya bağlı avanslar) */}
+                  <div className="bg-white rounded-lg p-4 border-2 border-cyan-100" data-testid="daily-deposit-card">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('dailyDepositCollected') || 'Peşinat (Avans)'}</p>
+                        <p className="text-2xl font-bold mt-1 text-cyan-700">{formatNumber(dailyDepositTotal, 2, false)}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {(tm('dailyDepositCountShort') || 'Adet')}: {dailyDepositCount}
+                          {dailyDepositCount > 0 ? ' · ' + (tm('reservationNote') || 'randevu') : ''}
+                        </p>
+                      </div>
+                      <Calendar className="w-12 h-12 text-cyan-300 opacity-40" aria-hidden />
+                    </div>
+                  </div>
 
                   {showDailyCardTotalRevenue ? (
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>

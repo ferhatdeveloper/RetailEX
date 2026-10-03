@@ -123,7 +123,35 @@ export function isKasaTahsilatiSale(sale: Partial<Sale> | null | undefined): boo
  * Liste filtresi — Ciro / Veresiye / Adet.
  */
 export function filterForRevenue<T extends Partial<Sale>>(sales: readonly T[]): T[] {
-  return (Array.isArray(sales) ? sales : []).filter(isCiroyaDahilSale);
+    return (Array.isArray(sales) ? sales : []).filter(isCiroyaDahilSale);
+}
+
+/**
+ * Yalnızca peşinat fişleri (`is_deposit === true`). Randevuya bağlı avanslar
+ * brüt satış adedine ve ciroya DAHİL EDİLMEZ, ancak ayrı bir "Peşinat" kartında
+ * gösterilir (kullanıcı isteği Bug 28).
+ */
+export function isDepositOnlySale(sale: Partial<Sale> | null | undefined): boolean {
+    if (!sale) return false;
+    if (isRemovedSaleStatusLite((sale as Sale).status)) return false;
+    return isDepositSale(sale);
+}
+
+export function filterForDeposit<T extends Partial<Sale>>(sales: readonly T[]): T[] {
+    return (Array.isArray(sales) ? sales : []).filter(isDepositOnlySale);
+}
+
+/**
+ * Yalnızca ANA fişler — peşinat Hariç, tamamlanmış ciro. `filterForRevenue`
+ * ile aynı sonucu verir (peşinat zaten orada Hariç) fakat adlandırma
+ * niyeti için ayrı fonksiyon.
+ */
+export function isMainFinishedSale(sale: Partial<Sale> | null | undefined): boolean {
+    return isCiroyaDahilSale(sale);
+}
+
+export function filterForMain<T extends Partial<Sale>>(sales: readonly T[]): T[] {
+    return (Array.isArray(sales) ? sales : []).filter(isMainFinishedSale);
 }
 
 /**

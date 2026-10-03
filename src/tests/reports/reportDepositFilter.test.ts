@@ -286,6 +286,45 @@ describe('reportDepositFilter — Bug 24 (peşinat Hariç)', () => {
   });
 
   // ===========================================================
+  // BUG 28 — Peşinat / Ana fiş ayrımı (Günlük Rapor kartı)
+  // ===========================================================
+  describe('Bug 28 — Peşinat / Ana fiş ayrımı', () => {
+    it('filterForDeposit: yalnızca isDeposit=true olanları döndürür', async () => {
+      const { filterForDeposit, isDepositOnlySale } = await import('../../utils/reportDepositFilter');
+      const peşinat = makeSale({ id: 'A', total: 20_000, status: 'completed', isDeposit: true });
+      const anaSatış = makeSale({ id: 'B', total: 55_000, status: 'completed', isDeposit: false });
+      const legacy = makeSale({ id: 'C', total: 10_000, status: 'completed' }); // undefined isDeposit
+
+      const list = filterForDeposit([peşinat, anaSatış, legacy]);
+      const ids = list.map((s) => s.id);
+      expect(ids).toEqual(['A']);
+      expect(isDepositOnlySale(peşinat)).toBe(true);
+      expect(isDepositOnlySale(anaSatış)).toBe(false);
+      expect(isDepositOnlySale(legacy)).toBe(false);
+    });
+
+    it('filterForMain: isDeposit=false olanları döndürür (peşinat Hariç)', async () => {
+      const { filterForMain, isMainFinishedSale } = await import('../../utils/reportDepositFilter');
+      const peşinat = makeSale({ id: 'A', total: 20_000, status: 'completed', isDeposit: true });
+      const anaSatış = makeSale({ id: 'B', total: 55_000, status: 'completed', isDeposit: false });
+      const iptal = makeSale({ id: 'C', total: 5_000, status: 'cancelled' });
+
+      const list = filterForMain([peşinat, anaSatış, iptal]);
+      const ids = list.map((s) => s.id);
+      expect(ids).toEqual(['B']);
+      expect(isMainFinishedSale(peşinat)).toBe(false);
+      expect(isMainFinishedSale(anaSatış)).toBe(true);
+      expect(isMainFinishedSale(iptal)).toBe(false);
+    });
+
+    it('filterForMain: legacy data (eski veri) isDeposit undefined → ana fiş sayılır', async () => {
+      const { filterForMain } = await import('../../utils/reportDepositFilter');
+      const legacy = makeSale({ id: 'L', total: 5_000, status: 'completed' });
+      expect(filterForMain([legacy]).map((s) => s.id)).toEqual(['L']);
+    });
+  });
+
+  // ===========================================================
   // BUG 26 — Tamamlanmamış randevular raporlara yansımasın
   // ===========================================================
   describe('Bug 26 — Randevu status filtresi (tamamlanmamış Hariç)', () => {
