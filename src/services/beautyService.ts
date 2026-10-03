@@ -3474,41 +3474,56 @@ export const beautyService = {
             const { postgrest } = await import('./api/postgrestClient');
             const fn = erpFirmNrForRow();
             const pn = erpPeriodNrForRow();
-            // 1) Deposit satışları çek
-            const deposits = await postgrest.get<Array<{
-                id: string;
-                total?: number | string;
-                paid_amount?: number | string;
-                notes?: string;
-            }>>(
-                `/rex_${fn}_${pn}_beauty_sales`,
-                {
-                    select: 'id,total,paid_amount,notes',
-                    or: '(is_deposit.eq.true,notes.like.*parent_sale:*,notes.like.*sale_group:*,notes.like.*deposit:1*)',
-                    notes: `like.*rex_appt:${aid}*`,
-                    limit: 50,
-                },
-                { schema: 'beauty' }
-            );
-            if (!Array.isArray(deposits) || deposits.length === 0) return;
-            // 2) Ana hizmet satışını bul (is_deposit=false olmayan, deposit etiketleri olmayan)
+            // 1) Ana hizmet satışını bul (rex_appt:aid notes'ta olan, is_deposit=false).
+            // Deposit satışında rex_appt YOK — onun yerine parent_sale:<mainId>
+            // veya linked_appointment_id vardır. Bu yüzden depositleri doğrudan
+            // rex_appt ile değil, **ana satışa bağlı** şekilde ararız.
             const mainRows = await postgrest.get<Array<{
                 id: string;
                 total?: number | string;
                 paid_amount?: number | string;
-            }>>(
-                `/rex_${fn}_${pn}_beauty_sales`,
+                linked_appointment_id?: string | null;
+                notes?: string;
+            }>(`/rex_${fn}_${pn}_beauty_sales`,
                 {
-                    select: 'id,total,paid_amount',
-                    notes: `like.*rex_appt:${aid}*`,
+                    select: 'id,total,paid_amount,linked_appointment_id,notes',
+                    or: `(linked_appointment_id.eq.${aid},notes.like.*rex_appt:${aid}*)`,
                     is_deposit: 'eq.false',
                     limit: 50,
                 },
                 { schema: 'beauty' }
             );
             const mainRow = Array.isArray(mainRows) && mainRows.length > 0 ? mainRows[0] : null;
+            // 2) Deposit satışları: ya linked_appointment_id = aid, ya parent_sale:
+            // <anaId> notes içerir.
+            const deposits = await postgrest.get<Array<{
+                id: string;
+                total?: number | string;
+                paid_amount?: number | string;
+                notes?: string;
+                linked_appointment_id?: string | null;
+                is_deposit?: boolean | null;
+            }>(`/rex_${fn}_${pn}_beauty_sales`,
+                {
+                    select: 'id,total,paid_amount,notes,linked_appointment_id,is_deposit',
+                    or: `(linked_appointment_id.eq.${aid},notes.like.*parent_sale:*,notes.like.*sale_group:*,notes.like.*deposit:1*,is_deposit.eq.true)`,
+                    limit: 200,
+                },
+                { schema: 'beauty' }
+            );
+            if (!Array.isArray(deposits) || deposits.length === 0) return;
             for (const dep of deposits) {
                 if (!dep?.id) continue;
+                const depNotes = String(dep.notes ?? '');
+                const depHasAppointmentLink = dep.linked_appointment_id === aid;
+                // Bu deposit satışın bu randevuya bağlı olup olmadığını kontrol et:
+                // ya linked_appointment_id eşleşmeli, ya notes'ta ana satışın id'si
+                // parent_sale/sale_group olarak geçmeli, ta da deposit:1 tag'i olmalı.
+                let belongsToApt = depHasAppointmentLink;
+                if (!belongsToApt && mainRow?.id && new RegExp(`(?:^|\\|)(?:parent_sale|sale_group):${String(mainRow.id).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}(?:\\||$|\\s)`, 'i').test(depNotes)) {
+                    belongsToApt = true;
+                }
+                if (!belongsToApt) continue;
                 const depTotal = Math.abs(Number(dep.total ?? 0));
                 if (depTotal <= 0) {
                     await postgrest.delete(
@@ -3518,7 +3533,6 @@ export const beautyService = {
                     continue;
                 }
                 if (mainRow && mainRow.id) {
-                    // Ana satışa ekle, deposit satışını sil
                     const curTotal = Math.abs(Number(mainRow.total ?? 0));
                     const curPaid = Math.abs(Number(mainRow.paid_amount ?? 0));
                     await postgrest.patch(
@@ -3535,12 +3549,12 @@ export const beautyService = {
                         { schema: 'beauty', prefer: 'return=minimal' }
                     );
                 } else {
-                    // Ana satış yok → deposit satışını ana satışa dönüştür
-                    const cleanedNotes = String(dep.notes ?? '')
-                        .replace(/\bparent_sale:[^\s]+/g, '')
-                        .replace(/\bsale_group:[^\s]+/g, '')
+                    const cleanedNotes = depNotes
+                        .replace(/\bparent_sale:[^\s|]+/g, '')
+                        .replace(/\bsale_group:[^\s|]+/g, '')
                         .replace(/\bdeposit:1\b/g, '')
                         .replace(/\s{2,}/g, ' ')
+                        .replace(/\|\s*\|/g, '|')
                         .trim();
                     await postgrest.patch(
                         `/rex_${fn}_${pn}_beauty_sales?id=eq.${encodeURIComponent(String(dep.id))}`,
@@ -3572,29 +3586,40 @@ export const beautyService = {
         // Direct SQL fallback
         const salesT = postgres.getMovementTableName('beauty_sales', 'beauty');
         const aptT = postgres.getMovementTableName('beauty_appointments', 'beauty');
-        const aptNeedle = `%rex_appt:${aid}%`;
         try {
-            // Deposit satışları çek
-            const { rows: deposits } = await postgres.query(
-                `SELECT id, total, paid_amount, notes
-                   FROM ${salesT}
-                  WHERE COALESCE(notes, '') LIKE $1
-                    AND (is_deposit = true
-                      OR COALESCE(notes, '') ~* $2)`,
-                [aptNeedle, 'parent_sale:|sale_group:|deposit:1']
-            );
-            if (!Array.isArray(deposits) || deposits.length === 0) return;
-            // Ana hizmet satışı
+            // Ana hizmet satışı: linked_appointment_id = aid veya notes rex_appt:aid
             const { rows: mainRows } = await postgres.query(
                 `SELECT id, total, paid_amount
                    FROM ${salesT}
-                  WHERE COALESCE(notes, '') LIKE $1
-                    AND COALESCE(is_deposit, false) = false`,
-                [aptNeedle]
+                  WHERE (COALESCE(linked_appointment_id::text, '') = $1
+                      OR COALESCE(notes, '') LIKE $2)
+                    AND COALESCE(is_deposit, false) = false
+                  ORDER BY created_at ASC
+                  LIMIT 50`,
+                [aid, `%rex_appt:${aid}%`]
             );
             const mainRow = Array.isArray(mainRows) && mainRows.length > 0 ? mainRows[0] as { id: string; total?: number | string; paid_amount?: number | string } : null;
-            for (const dep of deposits as Array<{ id: string; total?: number | string; paid_amount?: number | string; notes?: string }>) {
+            // Deposit satışları: linked_appointment_id = aid veya is_deposit=true
+            // veya notes'ta parent_sale/sale_group tag'i var.
+            const { rows: deposits } = await postgres.query(
+                `SELECT id, total, paid_amount, notes, linked_appointment_id, is_deposit
+                   FROM ${salesT}
+                  WHERE (COALESCE(linked_appointment_id::text, '') = $1
+                      OR COALESCE(is_deposit, false) = true
+                      OR COALESCE(notes, '') ~* $2)
+                  LIMIT 200`,
+                [aid, 'parent_sale:|sale_group:|deposit:1']
+            );
+            if (!Array.isArray(deposits) || deposits.length === 0) return;
+            for (const dep of deposits as Array<{ id: string; total?: number | string; paid_amount?: number | string; notes?: string; linked_appointment_id?: string | null; is_deposit?: boolean | null }>) {
                 if (!dep?.id) continue;
+                const depNotes = String(dep.notes ?? '');
+                const depHasAppointmentLink = String(dep.linked_appointment_id ?? '') === aid;
+                let belongsToApt = depHasAppointmentLink;
+                if (!belongsToApt && mainRow?.id && new RegExp(`(?:^|\\|)(?:parent_sale|sale_group):${String(mainRow.id).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}(?:\\||$|\\s)`, 'i').test(depNotes)) {
+                    belongsToApt = true;
+                }
+                if (!belongsToApt) continue;
                 const depTotal = Math.abs(Number(dep.total ?? 0));
                 if (depTotal <= 0) {
                     await postgres.query(`DELETE FROM ${salesT} WHERE id = $1`, [dep.id]);
@@ -3609,11 +3634,12 @@ export const beautyService = {
                     );
                     await postgres.query(`DELETE FROM ${salesT} WHERE id = $1`, [dep.id]);
                 } else {
-                    const cleanedNotes = String(dep.notes ?? '')
-                        .replace(/\bparent_sale:[^\s]+/g, '')
-                        .replace(/\bsale_group:[^\s]+/g, '')
+                    const cleanedNotes = depNotes
+                        .replace(/\bparent_sale:[^\s|]+/g, '')
+                        .replace(/\bsale_group:[^\s|]+/g, '')
                         .replace(/\bdeposit:1\b/g, '')
                         .replace(/\s{2,}/g, ' ')
+                        .replace(/\|\s*\|/g, '|')
                         .trim();
                     await postgres.query(
                         `UPDATE ${salesT} SET is_deposit = false, notes = $1, updated_at = NOW() WHERE id = $2`,
@@ -3631,6 +3657,196 @@ export const beautyService = {
             }
         } catch (e) {
             console.warn('[beautyService] deposit merge: SQL', e);
+        }
+    },
+
+    /**
+     * Bug 28 follow-up (ERP) — Randevu tamamlanınca ERP `sales` tablosundaki
+     * rezervasyon avansını (is_deposit=true, linked_appointment_id=aptId)
+     * ana hizmet satışına yansıt. Böylece Yıllık/Dönem raporlarındaki
+     * "Toplam Ciro" doğru hesaplanır (avans + kalan).
+     *
+     * Akış: ana satışı bul (`is_deposit=false`, linked_appointment_id=aptId),
+     * deposit satırları bul (`is_deposit=true` veya notes parent_sale: veya
+     * linked_appointment_id=aptId), deposit tutarını ana satışın net_amount +
+     * paid_amount'a ekle, deposit satırı sil.
+     */
+    async mergeErpReservationDepositForAppointment(appointmentId: string): Promise<void> {
+        const aid = String(appointmentId ?? '').trim();
+        if (!aid) return;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            // Ana hizmet satışı (is_deposit=false, linked_appointment_id=aid)
+            const mainRows = await postgrest.get<Array<{
+                id: string;
+                net_amount?: number | string;
+                paid_amount?: number | string;
+            }>>(
+                `/rex_${fn}_${pn}_sales`,
+                {
+                    select: 'id,net_amount,paid_amount',
+                    linked_appointment_id: `eq.${aid}`,
+                    is_deposit: 'eq.false',
+                    is_cancelled: 'eq.false',
+                    limit: 50,
+                },
+                { schema: 'public' }
+            );
+            const mainRow = Array.isArray(mainRows) && mainRows.length > 0 ? mainRows[0] : null;
+            // Deposit satırlar: is_deposit=true veya notes parent_sale/sale_group veya
+            // linked_appointment_id=aid
+            const deposits = await postgrest.get<Array<{
+                id: string;
+                net_amount?: number | string;
+                paid_amount?: number | string;
+                notes?: string;
+                is_deposit?: boolean | null;
+                linked_appointment_id?: string | null;
+            }>>(
+                `/rex_${fn}_${pn}_sales`,
+                {
+                    select: 'id,net_amount,paid_amount,notes,is_deposit,linked_appointment_id',
+                    or: `(is_deposit.eq.true,linked_appointment_id.eq.${aid},notes.like.*parent_sale:*,notes.like.*sale_group:*,notes.like.*deposit:1*)`,
+                    is_cancelled: 'eq.false',
+                    limit: 200,
+                },
+                { schema: 'public' }
+            );
+            if (!Array.isArray(deposits) || deposits.length === 0) return;
+            for (const dep of deposits) {
+                if (!dep?.id) continue;
+                const depNotes = String(dep.notes ?? '');
+                const depLinkedApt = String(dep.linked_appointment_id ?? '') === aid;
+                let belongsToApt = depLinkedApt || dep.is_deposit === true;
+                if (!belongsToApt && mainRow?.id) {
+                    const escaped = String(mainRow.id).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+                    belongsToApt = new RegExp(`(?:^|\\|)(?:parent_sale|sale_group):${escaped}(?:\\||$|\\s)`, 'i').test(depNotes);
+                }
+                if (!belongsToApt) continue;
+                const depTotal = Math.abs(Number(dep.net_amount ?? 0));
+                if (mainRow?.id && depTotal > 0) {
+                    const curNet = Math.abs(Number(mainRow.net_amount ?? 0));
+                    const curPaid = Math.abs(Number(mainRow.paid_amount ?? 0));
+                    await postgrest.patch(
+                        `/rex_${fn}_${pn}_sales?id=eq.${encodeURIComponent(String(mainRow.id))}`,
+                        {
+                            net_amount: curNet + depTotal,
+                            paid_amount: curPaid + depTotal,
+                            updated_at: new Date().toISOString(),
+                        },
+                        { schema: 'public', prefer: 'return=minimal' }
+                    );
+                    await postgrest.delete(
+                        `/rex_${fn}_${pn}_sales?id=eq.${encodeURIComponent(String(dep.id))}`,
+                        { schema: 'public', prefer: 'return=minimal' }
+                    );
+                } else if (!mainRow?.id) {
+                    // Ana satış yok → deposit'i ana satışa dönüştür
+                    const cleanedNotes = depNotes
+                        .replace(/\bparent_sale:[^\s|]+/g, '')
+                        .replace(/\bsale_group:[^\s|]+/g, '')
+                        .replace(/\bdeposit:1\b/g, '')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+                    await postgrest.patch(
+                        `/rex_${fn}_${pn}_sales?id=eq.${encodeURIComponent(String(dep.id))}`,
+                        {
+                            is_deposit: false,
+                            linked_appointment_id: aid,
+                            notes: cleanedNotes,
+                            updated_at: new Date().toISOString(),
+                        },
+                        { schema: 'public', prefer: 'return=minimal' }
+                    );
+                } else {
+                    await postgrest.delete(
+                        `/rex_${fn}_${pn}_sales?id=eq.${encodeURIComponent(String(dep.id))}`,
+                        { schema: 'public', prefer: 'return=minimal' }
+                    );
+                }
+            }
+            return;
+        }
+        // Direct SQL fallback
+        try {
+            const erpSalesT = postgres.getMovementTableName('sales');
+            const firmNr = String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0');
+            // Ana satış
+            const { rows: mainRows } = await postgres.query(
+                `SELECT id, net_amount, paid_amount
+                   FROM ${erpSalesT}
+                  WHERE firm_nr = $1
+                    AND COALESCE(linked_appointment_id::text, '') = $2
+                    AND COALESCE(is_deposit, false) = false
+                    AND COALESCE(is_cancelled, false) = false
+                  ORDER BY created_at ASC
+                  LIMIT 50`,
+                [firmNr, aid]
+            );
+            const mainRow = Array.isArray(mainRows) && mainRows.length > 0 ? mainRows[0] as { id: string; net_amount?: number | string; paid_amount?: number | string } : null;
+            // Deposit satırlar
+            const { rows: deposits } = await postgres.query(
+                `SELECT id, net_amount, paid_amount, notes, linked_appointment_id, is_deposit
+                   FROM ${erpSalesT}
+                  WHERE firm_nr = $1
+                    AND (COALESCE(is_deposit, false) = true
+                      OR COALESCE(linked_appointment_id::text, '') = $2
+                      OR COALESCE(notes, '') ~* $3)
+                    AND COALESCE(is_cancelled, false) = false
+                  ORDER BY created_at ASC
+                  LIMIT 200`,
+                [firmNr, aid, 'parent_sale:|sale_group:|deposit:1']
+            );
+            if (!Array.isArray(deposits) || deposits.length === 0) return;
+            for (const dep of deposits as Array<{ id: string; net_amount?: number | string; paid_amount?: number | string; notes?: string; linked_appointment_id?: string | null; is_deposit?: boolean | null }>) {
+                if (!dep?.id) continue;
+                const depNotes = String(dep.notes ?? '');
+                const depLinkedApt = String(dep.linked_appointment_id ?? '') === aid;
+                let belongsToApt = depLinkedApt || dep.is_deposit === true;
+                if (!belongsToApt && mainRow?.id) {
+                    const escaped = String(mainRow.id).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+                    belongsToApt = new RegExp(`(?:^|\\|)(?:parent_sale|sale_group):${escaped}(?:\\||$|\\s)`, 'i').test(depNotes);
+                }
+                if (!belongsToApt) continue;
+                const depTotal = Math.abs(Number(dep.net_amount ?? 0));
+                if (mainRow?.id && depTotal > 0) {
+                    const curNet = Math.abs(Number(mainRow.net_amount ?? 0));
+                    const curPaid = Math.abs(Number(mainRow.paid_amount ?? 0));
+                    await postgres.query(
+                        `UPDATE ${erpSalesT} SET net_amount = $1, paid_amount = $2, updated_at = NOW() WHERE firm_nr = $3 AND id = $4`,
+                        [curNet + depTotal, curPaid + depTotal, firmNr, mainRow.id]
+                    );
+                    await postgres.query(
+                        `DELETE FROM ${erpSalesT} WHERE firm_nr = $1 AND id = $2`,
+                        [firmNr, dep.id]
+                    );
+                } else if (!mainRow?.id) {
+                    const cleanedNotes = depNotes
+                        .replace(/\bparent_sale:[^\s|]+/g, '')
+                        .replace(/\bsale_group:[^\s|]+/g, '')
+                        .replace(/\bdeposit:1\b/g, '')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+                    await postgres.query(
+                        `UPDATE ${erpSalesT}
+                            SET is_deposit = false,
+                                linked_appointment_id = $1::uuid,
+                                notes = $2,
+                                updated_at = NOW()
+                          WHERE firm_nr = $3 AND id = $4`,
+                        [aid, cleanedNotes, firmNr, dep.id]
+                    );
+                } else {
+                    await postgres.query(
+                        `DELETE FROM ${erpSalesT} WHERE firm_nr = $1 AND id = $2`,
+                        [firmNr, dep.id]
+                    );
+                }
+            }
+        } catch (e) {
+            console.warn('[beautyService] ERP deposit merge SQL:', e);
         }
     },
 
@@ -4454,6 +4670,11 @@ export const beautyService = {
                 await beautyService.mergeReservationDepositIntoMainSaleForAppointment(id);
             } catch (e) {
                 console.warn('[updateAppointmentStatus] deposit merge failed:', e);
+            }
+            try {
+                await beautyService.mergeErpReservationDepositForAppointment(id);
+            } catch (e) {
+                console.warn('[updateAppointmentStatus] ERP deposit merge failed:', e);
             }
             // Paket seans tüketimi — D2 kök sebep düzeltmesi
             if (packagePurchaseId) {

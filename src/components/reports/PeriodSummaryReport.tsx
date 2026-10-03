@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatNumber } from '../../utils/formatNumber';
 import { expenseAPI, type Expense } from '../../services/api/expenses';
 import { salesAPI } from '../../services/api/sales';
+import { beautyService } from '../../services/beautyService';
 import { invoicesAPI } from '../../services/api/invoices';
 import { supplierAPI } from '../../services/api/suppliers';
 import { fetchKasaIslemleri } from '../../services/api/kasa';
@@ -135,7 +136,11 @@ function expenseDayKey(raw: string | undefined | null): string {
  * - aktif ciro = Σ total − Σ |iade satırı| (status=return / negatif total aktifteyse)
  * - nakit / kart ayrı kovalar; iade peşin satırı abs ile şişirmez
  */
-function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
+function aggregateSales(
+  sales: Sale[],
+  bucketKey: (s: Sale) => string,
+  completedAppointmentIds: Set<string> = new Set(),
+) {
   const map = new Map<string, {
     saleCount: number; revenue: number; cash: number; card: number; veresiye: number; discount: number;
     returnsCount: number; returnsAmount: number;
@@ -182,12 +187,23 @@ function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
     // Günlük: refunded `isRemovedSaleStatus` ile aktif dışı
     if (st === 'refunded') continue;
 
-    // Bug 28 — Peşinat ayrı sayılır: ana satış cihazlarında (revenue /
-    // saleCount / veresiye) DAHİL EDİLMEZ; depositCount + depositAmount'a yazılır.
-    // `isDepositSale` hem `isDeposit=true` hem `notes` tag fallback'i içerir.
+    // Bug 28 — Peşinat: tamamlanmış randevuya bağlı avans Ciro'ya
+    // eklenir (Toplam Ciro = avans + kalan); depositLabel'dan çıkar.
+    // Tamamlanmamış randevuya bağlı avans hâlâ depositLabel'da görünür.
     if (isDepositSale(s)) {
-      row.depositCount += 1;
-      row.depositAmount += absTotal;
+      const linkedApt = String((s as any).linked_appointment_id ?? '').trim();
+      const isCompletedLinked = linkedApt && completedAppointmentIds.has(linkedApt);
+      if (isCompletedLinked && !isReturn) {
+        row.revenue += absTotal;
+        row.saleCount += 1;
+        const split = saleCollectedSplit(s);
+        row.cash += split.cash;
+        row.card += split.card;
+        row.veresiye += Number(split.remaining) || 0;
+      } else {
+        row.depositCount += 1;
+        row.depositAmount += absTotal;
+      }
       continue;
     }
 
@@ -395,6 +411,25 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     ...queryCommon,
   });
 
+  // Tamamlanmış randevular — deposit satırlar Ciro'ya eklensin.
+  const appointmentsQuery = useQuery({
+    queryKey: ['periodSummary', 'appointments', firmKey, periodRange?.start, periodRange?.end],
+    queryFn: async () => {
+      try {
+        const rows = await beautyService.getAppointmentsInRange(
+          periodRange!.start,
+          periodRange!.end,
+        );
+        return Array.isArray(rows) ? rows : [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!periodRange,
+    ...queryCommon,
+  });
+  const appointments = appointmentsQuery.data ?? [];
+
   // Gider kartı — tarih aralığı
   const expensesBaseQuery = useQuery({
     queryKey: ['periodSummary', 'expenses', firmKey, periodRange?.start, periodRange?.end],
@@ -560,10 +595,20 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const rows = useMemo((): PeriodSummaryRow[] => {
     if (!periodRange) return [];
 
+    // Tamamlanmış randevu id'leri — deposit satırları Ciro'ya eklemek için.
+    // İlgili firm/dönem kapsamındaki beauty_appointments.status = 'completed'
+    // id'leri.
+    const completedAppointmentIds = new Set<string>();
+    for (const apt of (appointments as Array<{ id?: string; status?: string }>) || []) {
+      if (String(apt?.status ?? '').toLowerCase() === 'completed' && apt.id) {
+        completedAppointmentIds.add(String(apt.id));
+      }
+    }
+
     const saleMap =
       mode === 'monthly-days'
-        ? aggregateSales(sales, (s) => localCalendarDateKey(s.date))
-        : aggregateSales(sales, (s) => saleMonthKey(s.date));
+        ? aggregateSales(sales, (s) => localCalendarDateKey(s.date), completedAppointmentIds)
+        : aggregateSales(sales, (s) => saleMonthKey(s.date), completedAppointmentIds);
 
     const expenseMap =
       mode === 'monthly-days'
