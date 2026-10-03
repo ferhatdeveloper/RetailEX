@@ -8,6 +8,7 @@ import { invoicesAPI } from '../../services/api/invoices';
 import { supplierAPI } from '../../services/api/suppliers';
 import { fetchKasaIslemleri } from '../../services/api/kasa';
 import { isReturnSale } from '../../utils/posZReport';
+import { isDepositSale } from '../../utils/reportDepositFilter';
 import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
 import {
   mergeExpensesWithCashOuts,
@@ -64,6 +65,9 @@ interface PeriodSummaryRow {
   discount: number;
   returnsCount: number;
   returnsAmount: number;
+  /** Bug 28 — Rezervasyona bağlı peşinat (henüz hizmet verilmemiş avanslar). */
+  depositCount: number;
+  depositAmount: number;
   expenses: number;
   cashIn: number;
   purchases: number;
@@ -131,12 +135,15 @@ function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
   const map = new Map<string, {
     saleCount: number; revenue: number; cash: number; card: number; veresiye: number; discount: number;
     returnsCount: number; returnsAmount: number;
+    // Bug 28 — Rezervasyon peşinatı ayrı toplanır (henüz hizmet verilmemiş avanslar)
+    depositCount: number; depositAmount: number;
   }>();
 
   const bump = (key: string) => {
     const row = map.get(key) || {
       saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
       returnsCount: 0, returnsAmount: 0,
+      depositCount: 0, depositAmount: 0,
     };
     map.set(key, row);
     return row;
@@ -162,6 +169,15 @@ function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
 
     // Günlük: refunded `isRemovedSaleStatus` ile aktif dışı
     if (st === 'refunded') continue;
+
+    // Bug 28 — Peşinat ayrı sayılır: ana satış cihazlarında (revenue /
+    // saleCount / veresiye) DAHİL EDİLMEZ; depositCount + depositAmount'a yazılır.
+    // `isDepositSale` hem `isDeposit=true` hem `notes` tag fallback'i içerir.
+    if (isDepositSale(s)) {
+      row.depositCount += 1;
+      row.depositAmount += absTotal;
+      continue;
+    }
 
     if (!isReturn) {
       row.saleCount += 1;
@@ -557,6 +573,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         discount: sale.discount,
         returnsCount: sale.returnsCount,
         returnsAmount: sale.returnsAmount,
+        // Bug 28 — Rezervasyon peşinat (klon kolon olarak grid'de gösterilecek)
+        depositCount: sale.depositCount,
+        depositAmount: sale.depositAmount,
         expenses: exp,
         cashIn,
         purchases: purch,
@@ -590,6 +609,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         discount: acc.discount + r.discount,
         returnsCount: acc.returnsCount + r.returnsCount,
         returnsAmount: acc.returnsAmount + r.returnsAmount,
+        depositCount: acc.depositCount + r.depositCount,
+        depositAmount: acc.depositAmount + r.depositAmount,
         expenses: acc.expenses + r.expenses,
         cashIn: acc.cashIn + r.cashIn,
         purchases: acc.purchases + r.purchases,
@@ -598,6 +619,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       {
         saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
         returnsCount: 0, returnsAmount: 0,
+        depositCount: 0, depositAmount: 0,
         expenses: 0, cashIn: 0, purchases: 0, netRemaining: 0,
       }
     );
@@ -729,6 +751,35 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ) : (
             '—'
           ),
+      },
+      // Bug 28 — Rezervasyon peşinatı (klon, varsayılan GIZLI). Veresiye
+      // kolonunun yanında yer alır; kullanıcı kolon menüsünden açabilir.
+      {
+        key: 'deposit',
+        header: `${tm('dailyDepositCollected') || 'Peşinat'} (${currency})`,
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) =>
+          n > 0 ? (
+            <span className="text-cyan-700" title={`${tm('dailyDepositCountShort') || 'adet'}: ${Math.round(n)}`}>
+              {money(n)}
+            </span>
+          ) : (
+            '—'
+          ),
+        cell: (row) =>
+          row.depositAmount > 0 ? (
+            <span
+              className="text-cyan-700 font-medium"
+              title={`${tm('dailyDepositCountShort') || 'adet'}: ${row.depositCount}`}
+            >
+              {money(row.depositAmount)}
+            </span>
+          ) : (
+            '—'
+          ),
+        meta: { defaultHidden: true },
       },
       {
         key: 'discount',
