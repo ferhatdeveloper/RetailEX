@@ -3835,6 +3835,16 @@ export function ReportsModule({
     >();
 
     erpSalesForReportPeriod.forEach((sale) => {
+      // Bug 28 follow-up — Rezervasyon peşinatı ve hizmet verilmemiş
+      // randevuya bağlı satışlar Kategori Analizi ciro/adet toplamlarına
+      // katılmamalı. Aksi halde 40.000 ana satış + 20.000 peşinat → 60.000
+      // iken rapor 60.000 (peşinat) + 60.000 (ana) = 120.000 gösterir.
+      if (isDepositSale(sale as Partial<Sale>)) return;
+      const linkedAppt = (sale as Sale & { linkedAppointmentId?: string | null })
+        .linkedAppointmentId;
+      if (linkedAppt && String(linkedAppt).trim() !== '') {
+        if (!isCompletedAppointmentStatus(sale.status)) return;
+      }
       (sale.items || []).forEach((item) => {
         const lineIn = {
           productId: String(item.productId ?? (item as { product_id?: string }).product_id ?? '').trim(),
