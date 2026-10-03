@@ -112,6 +112,11 @@ describe('dailyReportNet — muhasebe çift yönü', () => {
 });
 
 // =============================================================
+// Ciro genişletmesi (2026-10-04 — Ferhat datası Ciro tahsilat dahil):
+// Ciro = satış cirosu + kasa para girişi (CH_TAHSILAT dahil).
+// REPORT_CASH_IN_TYPES set'ine CH_TAHSILAT eklendi; Ciro toplamı
+// cashInMap üzerinden Ciro'ya yansır.
+//
 // Bug 31 geri-çevrimi (2026-10-04 — Ferhat datası 72M beklentisi):
 // Ciro/Gider/Alış formülünde Gider kolonuna CH_ODEME, MAAS_ODEME,
 // AVANS_ODEME, ORTAK_SERMAYE_ODEME, ORTAK_DAGITIM_KAR dahil edildi
@@ -129,7 +134,11 @@ describe('dailyReportNet — muhasebe çift yönü', () => {
 // da gider olarak sayılır.
 // =============================================================
 
-import { PERIOD_SUMMARY_CASH_OUT_TYPES, REPORT_CASH_OUT_TYPES } from '../../utils/reportUnifiedExpenses';
+import {
+  PERIOD_SUMMARY_CASH_OUT_TYPES,
+  REPORT_CASH_IN_TYPES,
+  REPORT_CASH_OUT_TYPES,
+} from '../../utils/reportUnifiedExpenses';
 
 describe('periodSummaryCashOutTypes — gider filtre (Ferhat 72M)', () => {
   it('PERIOD_SUMMARY_CASH_OUT_TYPES tüm gerçek gider + kasa çıkışlarını içerir', () => {
@@ -153,41 +162,52 @@ describe('periodSummaryCashOutTypes — gider filtre (Ferhat 72M)', () => {
     expect(REPORT_CASH_OUT_TYPES.has('CH_ODEME')).toBe(true);
   });
 });
-describe('periodSummaryNet — Ciro − Gider − Alış (CH_TAHSILAT hariç)', () => {
-  it('aqua_beauty 30.09.2026: Ciro + Gider(GIDER+MAAS+ORTAK) + Alış', () => {
-    // Ciro/Gider/Alış formülü — Bug 31 geri-çevrimi (2026-10-04) sonrası
-    // sabit sayılar: Ciro 3.315.370, Gider (GIDER+MAAS+ORTAK) 7.793.000,
-    // Alış 4.937.000 → Net Kalan −9.414.630. CH_TAHSILAT Hariç (ledger
-    // simetrisi).
-    const revenue = 3_315_370;
+
+describe('periodSummaryCashInTypes — Ciro genişletmesi (CH_TAHSILAT dahil)', () => {
+  it('REPORT_CASH_IN_TYPES KASA_GIRIS + ortak sermaye + ortak para girişi içerir', () => {
+    expect(REPORT_CASH_IN_TYPES.has('KASA_GIRIS')).toBe(true);
+    expect(REPORT_CASH_IN_TYPES.has('ORTAK_SERMAYE_TAHSILAT')).toBe(true);
+    expect(REPORT_CASH_IN_TYPES.has('ORTAK_PARA_GIRIS')).toBe(true);
+  });
+
+  it('REPORT_CASH_IN_TYPES CH_TAHSILAT dahildir (Ciro genişletmesi 2026-10-04)', () => {
+    // Ciro = satış cirosu + kasa para girişi; CH_TAHSILAT Ciro'ya yansır.
+    expect(REPORT_CASH_IN_TYPES.has('CH_TAHSILAT')).toBe(true);
+  });
+});
+describe('periodSummaryNet — Ciro − Gider − Alış (CH_TAHSILAT dahil)', () => {
+  it('aqua_beauty 30.09.2026: Ciro(Satış + CH_TAHSILAT) + Gider + Alış', () => {
+    // Ciro genişletmesi (2026-10-04) sonrası:
+    //   Ciro = 3.315.370 (satış) + 22.400.000 (CH_TAHSILAT) = 25.715.370
+    //   Gider = 7.793.000 (GIDER+MAAS+ORTAK_SERMAYE, 7-kalem dahil)
+    //   Alış = 4.937.000
+    //   Net Kalan = Ciro − Gider − Alış = 25.715.370 − 7.793.000 − 4.937.000
+    //             = 12.985.370 IQD
+    const satishCiro = 3_315_370;
+    const cariTahsilat = 22_400_000; // CH_TAHSILAT — Ciro'ya dahil
+    const ciroTotal = satishCiro + cariTahsilat;
     const gider = 7_793_000; // 43.000 (GIDER_PUSULASI) + 6.500.000 (MAAS) + 1.250.000 (ORTAK_SERMAYE)
     const alis = 4_937_000;
-    const cariTahsilat = 22_400_000; // CH_TAHSILAT — Net Kalan'a etki ETMEMELİ
 
     const net = reportNetAfterOptionalExpenseAndPurchases(
-      revenue,
+      ciroTotal,
       gider,
       true, // gider kartı açık
       alis,
       true, // alış kartı açık
     );
-    // Doğru sonuç: Ciro − Gider − Alış = 3.315.370 − 7.793.000 − 4.937.000 = −9.414.630
-    expect(net).toBe(-9_414_630);
-
-    // CH_TAHSILAT ledger simetrisi (kasa + / cari -) Net Kalan'da yer almaz.
-    // Eklemek ya da çıkarmak yanlış olur.
-    expect(net + cariTahsilat).toBe(12_985_370);
-    expect(net - cariTahsilat).toBe(-31_814_630);
+    // Doğru sonuç: Ciro − Gider − Alış = 25.715.370 − 7.793.000 − 4.937.000 = 12.985.370
+    expect(net).toBe(12_985_370);
   });
 
   it('kullanıcı senaryosu doğrulama: Ciro − Gider − Alış formülü simetri', () => {
-    // Ciro 3.315.370 − Gider 7.793.000 − Alış 4.937.000 = −9.414.630.
-    const revenue = 3_315_370;
+    // Ciro 25.715.370 − Gider 7.793.000 − Alış 4.937.000 = 12.985.370.
+    const ciroTotal = 3_315_370 + 22_400_000;
     const gider = 7_793_000;
     const alis = 4_937_000;
 
-    const net = reportNetAfterOptionalExpenseAndPurchases(revenue, gider, true, alis, true);
-    expect(net).toBe(-9_414_630);
+    const net = reportNetAfterOptionalExpenseAndPurchases(ciroTotal, gider, true, alis, true);
+    expect(net).toBe(12_985_370);
   });
 
   it('gider kartı kapalı → gider düşülmez', () => {

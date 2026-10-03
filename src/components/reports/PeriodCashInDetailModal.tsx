@@ -1,19 +1,19 @@
 /**
  * Dönem Özeti — "Kasa Para Girişi" detay modalı.
  *
- * İki ayrı bölüm:
- * 1) REPORT_CASH_IN_TYPES (KASA_GIRIS / ORTAK_SERMAYE_TAHSILAT / ORTAK_PARA_GIRIS)
- *    → mevcut ana tablo. Üst toplam yalnızca bu satırları özetler (geriye dönük uyumlu).
- * 2) CH_TAHSILAT (cari tahsilatları) → ayrı "Cari Tahsilatlar" alt bölümü. Parent
- *    component `cariTahsilatlar` prop'u ile besler; modal kendi içinde filtreleyip
- *    sıralar. Geçmiş tarihe girilenler `is_back_dated` rozeti ile ayrıca işaretlenir.
+ * Ferhat datası Ciro genişletmesi (2026-10-04): Ciro = satış cirosu + kasa
+ * para girişi (CH_TAHSILAT dahil). REPORT_CASH_IN_TYPES artık CH_TAHSILAT'ı
+ * da içerir → modal tek tabloda tüm kasa para girişlerini gösterir.
+ * Üst toplam Ciro'nun kasaya giren kısmıdır; CH_TAHSILAT dahil.
  *
- * Üst başlıktaki "Toplam Kasa Para Girişi" CH_TAHSILAT hariç tutulur — cari tahsilat
- * raporun ayrı satırında izlenir (ledger: müşteri alacağı azaltıcı).
+ * (Eski tasarımda CH_TAHSILAT ayrı "Cari Tahsilatlar" alt bölümünde
+ * gösteriliyordu; Ciro genişletmesiyle tüm kasa girişleri tek tabloda
+ * birleştirildi — `cariTahsilatlar` prop'u geriye dönük uyum için
+ * kabul edilir ancak kullanılmaz.)
  */
 
 import { useMemo } from 'react';
-import { Banknote, CalendarClock, HandCoins, X } from 'lucide-react';
+import { Banknote, CalendarClock, X } from 'lucide-react';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import { useLanguage } from '../../contexts/LanguageContext';
 import {
@@ -90,7 +90,7 @@ export function PeriodCashInDetailModal({
 }: PeriodCashInDetailModalProps) {
   const { tm, t } = useLanguage();
 
-  // Ana tablo — yalnızca REPORT_CASH_IN_TYPES (mevcut davranış, geriye dönük uyumlu)
+  // Ana tablo — Ciro'ya dahil tüm kasa para girişleri (CH_TAHSILAT dahil).
   const rows = useMemo<CashInDetailRow[]>(() => {
     const list = Array.isArray(cashLines) ? cashLines : [];
     const out: CashInDetailRow[] = [];
@@ -107,32 +107,15 @@ export function PeriodCashInDetailModal({
   }, [cashLines, periodKey]);
 
   // Cari tahsilat alt bölümü — CH_TAHSILAT (ayrı sorgudan / parent state'ten)
-  const cariTahsilatRows = useMemo<CashInDetailRow[]>(() => {
-    const list = Array.isArray(cariTahsilatlar) ? cariTahsilatlar : [];
-    const out: CashInDetailRow[] = [];
-    for (const cl of list) {
-      const type = String(cl.islem_tipi || '').trim().toUpperCase();
-      if (type !== 'CH_TAHSILAT') continue;
-      const row = toRow(cl, out.length, type);
-      if (!row) continue;
-      if (!inPeriod(row.date, periodKey)) continue;
-      out.push(row);
-    }
-    out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    return out;
-  }, [cariTahsilatlar, periodKey]);
+  // CH_TAHSILAT (cari tahsilatları) Ciro genişletmesiyle (2026-10-04) ana
+  // tabloda Ciro'ya dahil edildi → ayrı cariTahsilatRows memo'su ve
+  // alt bölüm kaldırıldı. Tek tablo Ciro'nun kasaya giren kısmını gösterir.
 
   const total = useMemo(
     () => rows.reduce((s, r) => s + (Number(r.amount) || 0), 0),
     [rows],
   );
-  const cariTahsilatTotal = useMemo(
-    () => cariTahsilatRows.reduce((s, r) => s + (Number(r.amount) || 0), 0),
-    [cariTahsilatRows],
-  );
   const money = (v: number) => `${formatNumber(v, 0, false)} ${currency}`;
-
-  const showCariTahsilatSection = cariTahsilatRows.length > 0;
 
   return (
     <PercentBodyModal onClose={onClose} size="wide" ariaLabel={title}>
@@ -222,113 +205,7 @@ export function PeriodCashInDetailModal({
             </table>
           </div>
         )}
-
-        {/* Cari Tahsilatlar alt bölümü — CH_TAHSILAT (ayrı sorgudan) */}
-        {showCariTahsilatSection ? (
-          <section className="border-t-2 border-slate-200 dark:border-slate-700 mt-2">
-            <div className="px-6 py-3 flex items-center justify-between gap-3 bg-cyan-50/60 dark:bg-cyan-950/20">
-              <div className="inline-flex items-center gap-2 min-w-0">
-                <HandCoins className="w-4 h-4 text-cyan-700 dark:text-cyan-300 shrink-0" aria-hidden />
-                <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-800 dark:text-cyan-200 truncate">
-                  {tm('rptPeriodCashInCariTahsilatTitle')}
-                </span>
-              </div>
-              <div className="inline-flex items-center gap-2">
-                <span className="text-[10px] uppercase tracking-wider text-slate-500 hidden sm:inline">
-                  {tm('rptPeriodCashInCariTahsilatTotal')}
-                </span>
-                <span className="font-mono font-extrabold text-cyan-700 dark:text-cyan-300 text-base whitespace-nowrap">
-                  {money(cariTahsilatTotal)}
-                </span>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-50 dark:bg-slate-800/60">
-                  <tr className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    <th className="px-4 py-2 text-left">{tm('rptPeriodCashInColDate')}</th>
-                    <th className="px-4 py-2 text-left">{tm('rptPeriodCashInColType')}</th>
-                    <th className="px-4 py-2 text-left">{tm('rptPeriodCashInColFiche')}</th>
-                    <th className="px-4 py-2 text-left">{tm('rptPeriodCashInColDescription')}</th>
-                    <th className="px-4 py-2 text-left">{tm('rptPeriodCashInColParty')}</th>
-                    <th className="px-4 py-2 text-right">{tm('rptPeriodCashInColAmount')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cariTahsilatRows.map((row) => (
-                    <tr
-                      key={`ct-${row.key}`}
-                      className="border-t border-slate-100 dark:border-slate-700/50 hover:bg-cyan-50/40 dark:hover:bg-cyan-950/20"
-                    >
-                      <td className="px-4 py-2 font-mono text-slate-700 dark:text-slate-200 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span>{row.date}</span>
-                          {row.isBackDated ? (
-                            <span
-                              className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
-                              title={tm('cashModalBackDatedConfirm')}
-                            >
-                              <CalendarClock className="w-3 h-3" aria-hidden />
-                              {tm('cashLineBackDated')}
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 text-slate-700 dark:text-slate-200">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-semibold">Cari Tahsilat</span>
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                            {tm('rptPeriodCashInCariTahsilatSectionLabel')}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 font-mono text-slate-700 dark:text-slate-200">
-                        {row.ficheNo}
-                      </td>
-                      <td className="px-4 py-2 text-slate-700 dark:text-slate-200">
-                        {row.description || '—'}
-                      </td>
-                      <td className="px-4 py-2 text-slate-700 dark:text-slate-200">
-                        <div className="flex flex-col">
-                          <span className="font-medium">{row.partyName || '—'}</span>
-                          {row.partyCode ? (
-                            <span className="text-[10px] font-mono text-slate-500">
-                              {row.partyCode}
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 text-right font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
-                        {money(row.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40">
-                    <td colSpan={5} className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      {tm('rptPeriodTotalRow')}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono font-extrabold text-cyan-700 dark:text-cyan-300">
-                      {money(cariTahsilatTotal)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </section>
-        ) : null}
-
-        {/* Cari tahsilat prop'u geçildi ama boş döndüyse kullanıcıya bilgi ver */}
-        {cariTahsilatlar !== undefined && cariTahsilatRows.length === 0 ? (
-          <div className="border-t-2 border-slate-200 dark:border-slate-700 px-6 py-4 text-xs text-slate-500 dark:text-slate-400 bg-slate-50/40 dark:bg-slate-800/30">
-            <div className="inline-flex items-center gap-2">
-              <HandCoins className="w-3.5 h-3.5 text-slate-400" aria-hidden />
-              <span>{tm('rptPeriodCashInCariTahsilatEmpty')}</span>
-            </div>
-          </div>
-        ) : null}
+        {/* Ciro genişletmesi (2026-10-04) — CH_TAHSILAT Ciro'ya dahil; tek tablo yeterli */}
       </PercentBodyModalScrollBody>
 
       <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-800/30 flex items-center justify-end gap-3 shrink-0">

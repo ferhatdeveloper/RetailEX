@@ -54,11 +54,20 @@ export const PERIOD_SUMMARY_CASH_OUT_TYPES = new Set([
   'ORTAK_DAGITIM_KAR',
 ]);
 
-/** Günlük/Dönem raporu için kasa para GİRİŞİ tipleri (sign=+1). */
+/** Günlük/Dönem raporu için kasa para GİRİŞİ tipleri (sign=+1).
+ *
+ * Ferhat datası Ciro genişletmesi (2026-10-04): CH_TAHSILAT (cari
+ * tahsilatları — müşteriden kasaya giren para) Ciro'ya dahil edildi.
+ * Ciro = Satış Ciro + Kasa Para Girişi (CH_TAHSILAT dahil).
+ * Net Kalan = Ciro − Gider − Alış. CH_TAHSILAT, kasaya para girişi
+ * olduğu için Ciro'nun bir parçası olarak raporlanır; ayrıca
+ * PeriodCashInDetailModal alt bölümünde detay gösterilir.
+ */
 export const REPORT_CASH_IN_TYPES = new Set([
   'KASA_GIRIS',
   'ORTAK_SERMAYE_TAHSILAT',
   'ORTAK_PARA_GIRIS',
+  'CH_TAHSILAT',
 ]);
 
 const CASH_IN_CATEGORY_TR: Record<string, string> = {

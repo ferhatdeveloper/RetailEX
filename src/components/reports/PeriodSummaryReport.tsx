@@ -7,7 +7,7 @@ import { salesAPI } from '../../services/api/sales';
 import { beautyService } from '../../services/beautyService';
 import { invoicesAPI } from '../../services/api/invoices';
 import { supplierAPI } from '../../services/api/suppliers';
-import { fetchKasaIslemleri } from '../../services/api/kasa';
+import { fetchKasaIslemleri, type KasaIslemi } from '../../services/api/kasa';
 import { isReturnSale } from '../../utils/posZReport';
 import { isDepositSale } from '../../utils/reportDepositFilter';
 import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
@@ -473,15 +473,18 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     [expensesBaseQuery.data, cashLinesQuery.data],
   );
 
-  /** Kasa para girişleri (sign=+1): REPORT_CASH_IN_TYPES — day/month map. */
+  /** Kasa para girişleri (sign=+1): REPORT_CASH_IN_TYPES — day/month map.
+   * Ciro genişletmesi (2026-10-04): CH_TAHSILAT dahil; Ciro = satış cirosu +
+   * kasa para girişi.
+   */
   const cashInsRows = useMemo(
     () => mergeExpensesWithCashIns(cashLinesQuery.data ?? []),
     [cashLinesQuery.data],
   );
   /**
-   * CH_TAHSILAT (cari tahsilatları) — ayrı liste. PeriodCashInDetailModal bunları
-   * ana tablonun altında "Cari Tahsilatlar" bölümünde gösterir. REPORT_CASH_IN_TYPES'a
-   * eklenmez; ana tablonun toplamı ve cashInMap davranışı değişmez.
+   * CH_TAHSILAT (cari tahsilatları) — Ciro genişletmesiyle ana Ciro'ya
+   * dahil edildi. Bu memo geriye dönük uyum için korunuyor; modal
+   * hâlâ bu prop'u kabul ediyor (görmezden geliniyor).
    */
   const cariTahsilatRows = useMemo(() => {
     const list = Array.isArray(cashLinesQuery.data) ? cashLinesQuery.data : [];
@@ -499,23 +502,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     return aggregateCashIns(cashInsRows, mode === 'monthly-days' ? 'day' : 'month');
   }, [cashInsRows, mode]);
 
-  // cariTahsilatMap (gün/ay bazında CH_TAHSILAT toplamı) kullanıcı talebi ile
-  // 2026-10-03'te rapor grid'inden kaldırıldı. Modal bağlantısı için
-  // cariTahsilatRows hâlâ PeriodCashInDetailModal'a geçiriliyor; sadece
-  // tablo kolonu + satır toplamı iptal edildi.
-  // const cariTahsilatMap = useMemo(() => {
-  //   const map = new Map<string, number>();
-  //   for (const cl of Array.isArray(cariTahsilatRows) ? cariTahsilatRows : []) {
-  //     const day =
-  //       toSqlDateInputString(cl.islem_tarihi || '') ||
-  //       localCalendarDateKey(cl.islem_tarihi) ||
-  //       '';
-  //     if (!day) continue;
-  //     const key = mode === 'monthly-days' ? day : day.slice(0, 7);
-  //     map.set(key, (map.get(key) || 0) + (Number(cl.tutar) || 0));
-  //   }
-  //   return map;
-  // }, [cariTahsilatRows, mode]);
+  // cariTahsilatMap (gün/ay bazında CH_TAHSILAT toplamı) Ciro genişletmesiyle
+  // (2026-10-04) artık cashInMap'e dahil — Ciro = satış cirosu + kasa para
+  // girişi (CH_TAHSILAT dahil). Bu yüzden ayrı map'e gerek yok; CH_TAHSILAT
+  // Ciro'nun parçası olarak cashInsRows / cashInMap üzerinden izlenir.
+  // const cariTahsilatMap = useMemo(...);  ← kaldırıldı, Ciro'ya dahil
 
   // Alış faturaları — sayfalı, hepsi birleştirilir
   const purchasesQuery = useQuery({
@@ -644,13 +635,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ? formatIsoDateTr(periodKey)
           : new Date(`${periodKey}-01T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
-      // Dönem özeti neti: ciro − gider − alışlar.
-      // Gider kartı/parametresi kapalıysa gider düşülmez; alış kartı/parametresi
-      // kapalıysa alış düşülmez. CH_TAHSILAT (cari tahsilatları) **hariç** —
-      // ledger simetrisi (kasa + / cari -) Net Kalan'da nötrdür; PeriodCashInDetailModal
-      // alt bölümünde izlenir.
+      // Ferhat datası Ciro genişletmesi (2026-10-04): Ciro = Satış Ciro +
+      // Kasa Para Girişi (CH_TAHSILAT dahil). Kasaya giren her para Ciro'nun
+      // bir parçasıdır; kullanıcı talebi: "tahsilatları Ciro'ya yansıt".
+      //   Ciro = sale.revenue + cashIn (CH_TAHSILAT dahil tüm cash-in tipleri).
+      // Net Kalan = Ciro − Gider − Alış. Gider kartı/parametresi kapalıysa
+      // gider düşülmez; alış kartı/parametresi kapalıysa alış düşülmez.
+      const ciroTotal = sale.revenue + cashIn;
       const netRemaining = reportNetAfterOptionalExpenseAndPurchases(
-        sale.revenue,
+        ciroTotal,
         exp,
         showPeriodCardExpenses,
         purch,
@@ -669,7 +662,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         periodKey,
         periodLabel,
         saleCount: sale.saleCount,
-        revenue: sale.revenue,
+        // Ferhat datası Ciro genişletmesi (2026-10-04): revenue alanı artık
+        // Ciro toplamı = satış cirosu + kasa para girişi (CH_TAHSILAT dahil).
+        // `cashIn` ayrıca izlenir (kolon ve modal bağlantısı korunuyor).
+        revenue: ciroTotal,
         cash: sale.cash,
         card: sale.card,
         veresiye: sale.veresiye,
@@ -819,7 +815,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         align: 'right',
         footerSum: true,
         footerFormat: (n) => money(n),
-        cell: (row) => (row.revenue > 0 ? money(row.revenue) : '—'),
+        // Ciro = satış cirosu + kasa para girişi (CH_TAHSILAT dahil).
+        cell: (row) =>
+          row.revenue > 0 ? (
+            <span title="Ciro = satış cirosu + kasa para girişi (CH_TAHSILAT dahil)">
+              {money(row.revenue)}
+            </span>
+          ) : (
+            '—'
+          ),
       },
       {
         key: 'cash',
@@ -1140,6 +1144,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       items.push({
         key: 'revenue',
         label: tm('rptPeriodTotalRevenue'),
+        // Ciro = satış cirosu + kasa para girişi (CH_TAHSILAT dahil).
         value: money(totals.revenue),
         valueClassName: 'text-emerald-700 dark:text-emerald-400',
         hint: `${totals.saleCount} ${tm('rptPeriodColSaleCount').toLowerCase()}`,
