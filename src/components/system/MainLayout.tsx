@@ -557,17 +557,68 @@ export function MainLayout({
 
   // POS state - müşteri ve personel seçimi
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [currentStaff, setCurrentStaff] = useState(currentUser.username || '');
 
-  // Oturum kullanıcısı değişince kasiyer etiketi kullanıcı adı ile senkron —
-  // YALNIZCA kasiyer boşken set edilir. Personel Değiştir'den seçim yapıldıktan
-  // sonra currentStaff korunmalı; auth refresh'te login user geri dönse bile
-  // kasiyer seçimi ezilmez. Boş bırakılırsa POS'ta cashier guard ödemeyi durdurur.
+  /**
+   * Kasiyer seçimi (Personel Değiştir) hard refresh'te kaybolmasın diye
+   * tenant + login user bazında localStorage'a persist edilir.
+   * Tenant veya login user değişirse cache sıfırlanır.
+   *
+   * `selectedFirm` async yüklenir; başta `undefined` olabilir. Bu durumda
+   * "no_firm" placeholder anahtarı kullanılır, firma yüklenince gerçek
+   * anahtarla rehydrate edilir (aşağıdaki useEffect).
+   */
+  const firmKey = selectedFirm?.firm_nr ?? 'no_firm';
+  const userKey = currentUser.id ?? 'no_user';
+  const staffCacheKey = `retailex_pos_cashier_${firmKey}_${userKey}`;
+
+  const [currentStaff, setCurrentStaffRaw] = useState<string>(currentUser.username || '');
+
+  const setCurrentStaff = useCallback(
+    (next: string) => {
+      setCurrentStaffRaw(next);
+      try {
+        if (typeof window === 'undefined') return;
+        if (next && next.trim() && selectedFirm?.firm_nr) {
+          // Sadece tenant hazırsa persist et
+          const realKey = `retailex_pos_cashier_${selectedFirm.firm_nr}_${currentUser.id ?? 'no_user'}`;
+          window.localStorage.setItem(realKey, next);
+          window.localStorage.setItem(staffCacheKey, next);
+        } else if (!next || !next.trim()) {
+          window.localStorage.removeItem(staffCacheKey);
+        }
+      } catch {
+        /* sessizce yut */
+      }
+    },
+    [staffCacheKey, selectedFirm?.firm_nr, currentUser.id],
+  );
+
+  // İlk render + tenant değişimi: localStorage'dan cache'i çek.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!currentUser.id) return;
+    try {
+      const cached = window.localStorage.getItem(staffCacheKey);
+      if (cached && cached.trim() && cached !== currentUser.username) {
+        setCurrentStaffRaw(cached);
+      } else if (!cached && !currentStaff.trim()) {
+        // Boş + cache boş → login user'a düş
+        setCurrentStaffRaw(currentUser.username || '');
+      }
+    } catch {
+      /* localStorage erişilemedi */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staffCacheKey]);
+
+  // Oturum kullanıcısı değişince kasiyer etiketi login user'a düşer. Personel
+  // Değiştir'den sonra `currentStaff` dolu olduğu için useEffect tetiklenmez;
+  // cache de login user id ile anahtarlı, farklı user farklı cache görür.
   useEffect(() => {
     if (currentUser.username && !currentStaff) {
       setCurrentStaff(currentUser.username);
     }
-  }, [currentUser.username, currentStaff]);
+  }, [currentUser.username, currentStaff, setCurrentStaff]);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [customerModalInitialQuery, setCustomerModalInitialQuery] = useState('');
   const [showStaffModal, setShowStaffModal] = useState(false);
