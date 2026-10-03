@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { resolveCashLineTypeLabelShort } from '../../../utils/cashLineReservationDeposit';
 import {
   Wallet,
   Plus,
@@ -829,33 +830,14 @@ function resolveKasaIslemTipiLabel(
   tipRaw: string | undefined | null,
   aciklamaRaw: string | undefined | null,
   tm: (key: string) => string,
+  isReservationDeposit?: boolean,
 ): string {
-  const tip = String(tipRaw || '').trim();
-  const defNorm = String(aciklamaRaw || '').toLocaleLowerCase('tr-TR');
-  // Fatura bağlantılı kasa satırları: açıklama metninden kategori (çok dilli etiket)
-  if (defNorm.includes('hizmet fatur')) {
-    if (defNorm.includes('alınan') || defNorm.includes('alinan')) return tm('cashReceivedServiceInvoice');
-    if (defNorm.includes('verilen')) return tm('cashGivenServiceInvoice');
-    return tm('cashServiceInvoice');
-  }
-  if (defNorm.includes('satış fatur') || defNorm.includes('satis fatur')) return tm('cashSalesInvoice');
-  if (defNorm.includes('alış fatur') || defNorm.includes('alis fatur')) return tm('cashPurchaseInvoice');
-
-  const labels: Record<string, string> = {
-    CH_TAHSILAT: tm('chCollection'),
-    CH_ODEME: tm('chPayment'),
-    KASA_GIRIS: tm('cashIn'),
-    KASA_CIKIS: tm('cashOut'),
-    GIDER_PUSULASI: tm('expenseVoucher') || 'Gider pusulası',
-    SATIS_FATURASI: tm('cashSalesInvoice'),
-    ALIS_FATURASI: tm('cashPurchaseInvoice'),
-    HIZMET_FATURASI: tm('cashServiceInvoice'),
-    ACILIS: tm('openingDebit'),
-    KAPANIS: tm('openingCredit'),
-    ACILIS_BORC: tm('openingDebit'),
-    ACILIS_ALACAK: tm('openingCredit'),
-  };
-  return labels[tip] || tip;
+  return resolveCashLineTypeLabelShort(
+    tipRaw ?? '',
+    aciklamaRaw ?? '',
+    isReservationDeposit === true,
+    tm,
+  );
 }
 
 /** Açıklama satırındaki TR fatura önekini diline göre çevir (fiş no kısmı aynı kalır). */
@@ -897,13 +879,33 @@ function KasaIslemleriTable({
       meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
     columnHelper.accessor(
-      (row) => resolveKasaIslemTipiLabel(row.islem_tipi, row.islem_aciklamasi, tm),
+      (row) =>
+        resolveKasaIslemTipiLabel(
+          row.islem_tipi,
+          row.islem_aciklamasi,
+          tm,
+          row.is_reservation_deposit === true,
+        ),
       {
         id: 'tur',
         header: tm('type'),
         cell: (info) => {
-          const tip = String(info.row.original.islem_tipi || '');
+          const row = info.row.original;
+          const tip = String(row.islem_tipi || '');
           const label = String(info.getValue() || '');
+          // Bug 22 — Rezervasyon peşinatı için ayrı renk (indigo) ile
+          // yığından ayrışsın; kasiyer "bu bir ön ödeme" olduğunu görsün.
+          if (row.is_reservation_deposit === true) {
+            return (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200"
+                title="Rezervasyon peşinatı (sales.is_deposit=true)"
+              >
+                <span aria-hidden="true">🗓</span>
+                {label}
+              </span>
+            );
+          }
           const isGiris =
             tip === 'CH_TAHSILAT' ||
             tip === 'KASA_GIRIS' ||

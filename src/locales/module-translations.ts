@@ -449,6 +449,27 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   exchangeDifferenceDebitDesc: { tr: 'Kur farkı fişi (borç)', en: 'Exchange difference (debit)', ar: 'فرق الصرف (مدين)', ku: 'جیاوازی ئاڵوگۆڕ (قەرزدار)' },
   exchangeDifferenceCreditDesc: { tr: 'Kur farkı fişi (alacak)', en: 'Exchange difference (credit)', ar: 'فرق الصرف (دائن)', ku: 'جیاوازی ئاڵوگۆڕ (باوەڕپێکراو)' },
   cashSalesInvoice: { tr: 'Satış faturası', en: 'Sales invoice', ar: 'فاتورة مبيعات', ku: 'وەسڵی فرۆشتن' },
+  /**
+   * Güzellik randevusu için alınan ön ödeme (peşinat).
+   * `cash_lines.is_reservation_deposit` true olan fişlerde "Tür" kolonu
+   * bu etiketi gösterir; bağlı `sales.is_deposit=true` ile türetilir.
+   * Kasiyerin "bu bir rezervasyon peşinatıdır" demesini kolaylaştırır.
+   */
+  cashTransactionTypeReservationDeposit: {
+    tr: 'Rezervasyon Peşinatı',
+    en: 'Reservation Deposit',
+    ar: 'عربون الحجز',
+    ku: 'پێشەکی نۆرەکردن',
+  },
+  /**
+   * Kısa etiket (badge / chip) — liste satırında sığmayan uzun etiket yerine.
+   */
+  cashTransactionTypeReservationDepositShort: {
+    tr: 'Peşinat',
+    en: 'Deposit',
+    ar: 'عربون',
+    ku: 'پێشەکی',
+  },
   cashPurchaseInvoice: { tr: 'Alış faturası', en: 'Purchase invoice', ar: 'فاتورة شراء', ku: 'وەسڵی کڕین' },
   cashServiceInvoice: { tr: 'Hizmet faturası', en: 'Service invoice', ar: 'فاتورة خدمة', ku: 'وەسڵی خزمەتگوزاری' },
   cashReceivedServiceInvoice: { tr: 'Alınan hizmet faturası', en: 'Received service invoice', ar: 'فاتورة خدمة مستلمة', ku: 'وەسڵی خزمەتگوزاری وەرگیراو' },

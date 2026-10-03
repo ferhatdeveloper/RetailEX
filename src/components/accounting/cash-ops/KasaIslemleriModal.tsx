@@ -5,6 +5,7 @@ import { formatCurrency } from '../../../utils/formatNumber';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { resolveCashLineTypeLabelShort } from '../../../utils/cashLineReservationDeposit';
 
 interface KasaIslemleriModalProps {
   kasa: Kasa;
@@ -83,6 +84,53 @@ export function KasaIslemleriModal({ kasa, islemler, loading, onClose, onIslemCl
       header: tm('transactionNo').toUpperCase(),
       size: 120,
     }),
+    columnHelper.accessor(
+      (row) =>
+        resolveCashLineTypeLabelShort(
+          row.islem_tipi,
+          row.islem_aciklamasi,
+          row.is_reservation_deposit === true,
+          tm,
+        ),
+      {
+        id: 'tur',
+        header: (tm('type') || 'Tür').toUpperCase(),
+        cell: (info) => {
+          const row = info.row.original;
+          const tip = String(row.islem_tipi || '');
+          const label = String(info.getValue() || '');
+          // Bug 22 — Rezervasyon peşinatı için indigo badge.
+          if (row.is_reservation_deposit === true) {
+            return (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200"
+                title="Rezervasyon peşinatı (sales.is_deposit=true)"
+              >
+                <span aria-hidden="true">🗓</span>
+                {label}
+              </span>
+            );
+          }
+          const isGiris =
+            tip === 'CH_TAHSILAT' ||
+            tip === 'KASA_GIRIS' ||
+            tip === 'ACILIS' ||
+            tip === 'ACILIS_BORC' ||
+            tip === 'SATIS_FATURASI' ||
+            tip === 'HIZMET_FATURASI';
+          return (
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                isGiris ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              }`}
+            >
+              {label}
+            </span>
+          );
+        },
+        size: 150,
+      },
+    ),
     columnHelper.accessor((row) => formatKasaCariLabel(row), {
       id: 'cari_hesap',
       header: (tm('currentAccountTitle') || 'Cari').toUpperCase(),

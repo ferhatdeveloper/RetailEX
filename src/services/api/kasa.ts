@@ -12,6 +12,11 @@ import {
 import { ensureCariAccountInCurrentFirm } from './cariAccountResolve';
 import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 import { assertPeriodOpen } from '../periodControl';
+import {
+  detectReservationDepositFiches,
+  isBeautyFicheNo,
+  type SalesRowForDepositCheck,
+} from '../../utils/cashLineReservationDeposit';
 
 function padKasaFirmNr(): string {
   return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
@@ -382,6 +387,13 @@ export interface KasaIslemi {
   skipExpenseMirror?: boolean;
   tax_rate?: number;
   withholding_tax_rate?: number;
+  /**
+   * Kasa İşlemleri UI: bağlı `sales.fiche_no` rezervasyon peşinatı mı?
+   * `fetchKasaIslemleri` içinde `sales.is_deposit=true` olan fişler için true
+   * set edilir. Sadece bilgi amaçlı; bakiye/borç hesaplarına etki etmez.
+   * (Bkz. `src/utils/cashLineReservationDeposit.ts` — Bug 22 / Plan §6)
+   */
+  is_reservation_deposit?: boolean;
   /** Polimorfik cari ref — Personel/Şirket Ortağı işlemleri için (customer_id ayrı tutulur) */
   party_id?: string;
   party_code?: string;
@@ -940,6 +952,45 @@ export async function fetchKasaIslemleri(params?: {
     if (needsLookup) {
       const lookups = await resolveCashLineAccountLookups(rows);
       rows = rows.map((r) => applyCashLineAccountLookups(r, lookups));
+    }
+
+    // 4) Rezervasyon peşinatı tespiti (Bug 22 / Plan §6).
+    //    `cash_lines.fiche_no` ile eşleşen `sales` satırları içinden
+    //    `is_deposit=true` veya `notes LIKE '%deposit:1%'` olanlar
+    //    rezervasyon peşinatıdır. Yalnızca `BEA-*` / `BEAUTY-PESINAT-*`
+    //    önekli fişler için DB sorgusu atılır; binlerce satırlık kasa
+    //    listesinde gereksiz JOIN engellenir.
+    const beautyFiches = Array.from(
+      new Set(
+        rows
+          .map((r) => String(r.fiche_no ?? '').trim())
+          .filter((f) => isBeautyFicheNo(f)),
+      ),
+    );
+    if (beautyFiches.length > 0) {
+      try {
+        const salesTable = `rex_${padKasaFirmNr()}_${padKasaPeriodNr()}_sales`;
+        const { rows: salesRows } = await postgres.query<SalesRowForDepositCheck>(
+          `SELECT fiche_no, is_deposit, notes
+             FROM ${salesTable}
+            WHERE fiche_no = ANY($1::text[])`,
+          [beautyFiches],
+        );
+        const depositSet = detectReservationDepositFiches(beautyFiches, salesRows || []);
+        if (depositSet.size > 0) {
+          rows = rows.map((r) => {
+            const fn = String(r.fiche_no ?? '').trim();
+            if (depositSet.has(fn)) {
+              return { ...r, is_reservation_deposit: true };
+            }
+            return r;
+          });
+        }
+      } catch (e) {
+        // Sütun eksik (migration 182/182 uygulanmamış) olabilir; UI'ı bozma,
+        // sadece logla — Tür kolonu "Satış faturası" etiketiyle kalır.
+        console.warn('[Kasa] rezervasyon peşinatı tespiti atlandı:', (e as any)?.message || e);
+      }
     }
 
     console.log('[Kasa] Fetched cash transactions:', rows.length);
@@ -1964,6 +2015,8 @@ function mapDbIslemToIslem(row: any): KasaIslemi {
     islem_tipi: row.transaction_type,
     tutar: Math.abs(parseKasaAmount(row.amount)),
     islem_aciklamasi: row.definition,
+    // fetchKasaIslemleri sonradan reservation deposit tespitinde set eder
+    is_reservation_deposit: row.is_reservation_deposit === true,
     // cari_hesap_id: customer_id öncelikli; tedarikçi/personel için party_id fallback.
     // Bu sayede eski müşteri tahsilatları ve yeni tedarikçi ödemelerinin ikisi de
     // CariHesapSelector / CariHesapPicker bileşeninde doğru şekilde görünür.
