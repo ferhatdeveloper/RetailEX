@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
-import { FileText, FileCheck, Plus, Search, Printer, Send, Eye, Edit, Trash2, X, Save, Calendar, User, MoreVertical, AlertCircle, CheckCircle2, Barcode } from 'lucide-react';
+import { FileText, FileCheck, Plus, Search, Printer, Send, Eye, Edit, Trash2, X, Save, Calendar, User, MoreVertical, AlertCircle, CheckCircle2, Barcode, CreditCard } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { Customer, Product } from '../../../App';
@@ -22,6 +22,30 @@ import { getOpenAdvances } from '../../../services/avansService';
 import type { AvansRecord } from '../../../core/types/avans';
 import { formatAvansReference } from '../../../utils/avansFormatting';
 import { resolveWriteCashierName, displayUserCashierName } from '../../../utils/loginCashierName';
+
+// Ödeme Tipi (cash/card/transfer/pesinatli/avans). POS'tan gelen satışlarda
+// `header_fields.payment_type` veya `sales.payment_method` üzerinden auto-set
+// edilir; kullanıcı manuel değiştirebilir.
+export type SalesPaymentMethod = 'cash' | 'card' | 'transfer' | 'pesinatli' | 'avans';
+
+const PAYMENT_METHOD_OPTIONS: { value: SalesPaymentMethod; label: string }[] = [
+  { value: 'cash',      label: 'Nakit' },
+  { value: 'card',      label: 'Kart' },
+  { value: 'transfer',  label: 'Havale' },
+  { value: 'pesinatli', label: 'Peşinatlı' },
+  { value: 'avans',     label: 'Avans' },
+];
+
+function normalizePaymentMethod(raw: unknown): SalesPaymentMethod {
+  const s = String(raw ?? '').trim().toLocaleLowerCase('tr-TR');
+  if (!s) return 'cash';
+  if (s.includes('avans')) return 'avans';
+  if (s.includes('peşinat') || s.includes('pesinat')) return 'pesinatli';
+  if (s.includes('havale') || s.includes('eft') || s.includes('transfer')) return 'transfer';
+  if (s.includes('kart') || s.includes('card')) return 'card';
+  if (s.includes('nakit') || s.includes('cash') || s.includes('kasa')) return 'cash';
+  return 'cash';
+}
 
 interface SalesInvoiceModuleProps {
   customers: Customer[];
@@ -77,6 +101,8 @@ export function SalesInvoiceModule({ customers, products, onCreateInvoice, onSwi
   const [salespersonCode, setSalespersonCode] = useState<string>('');
   const [salespersonName, setSalespersonName] = useState<string>('');
   const [showSalespersonModal, setShowSalespersonModal] = useState(false);
+  // Ödeme Tipi — POS'tan gelen değer veya kullanıcı seçimi (cash/card/transfer/pesinatli/avans)
+  const [paymentMethod, setPaymentMethod] = useState<SalesPaymentMethod>('cash');
   // Kullanıcı henüz seçim yapmadıysa otomatik kasiyer ile doldur
   useEffect(() => {
     if (!salespersonCode && !salespersonName && defaultCashierName) {
@@ -148,6 +174,7 @@ export function SalesInvoiceModule({ customers, products, onCreateInvoice, onSwi
         status: 'Ödendi',
         cashier: fallbackCashier,
         salesperson: fallbackCashier,
+        paymentMethod: 'cash',
       },
       {
         id: 'SAT-2025-0002',
@@ -162,6 +189,7 @@ export function SalesInvoiceModule({ customers, products, onCreateInvoice, onSwi
         status: 'Beklemede',
         cashier: fallbackCashier,
         salesperson: fallbackCashier,
+        paymentMethod: 'card',
       }
     ];
   });
@@ -316,6 +344,10 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
         cashier: cashierName,
         salesperson: cashierName,
         salesperson_code: String(salespersonCode || '').trim(),
+        // Ödeme Tipi (cash/card/transfer/pesinatli/avans) — DB payment_method alanı.
+        // POS'tan gelen faturalar düzenlenirken header'daki dropdown üzerinden
+        // taşınır; aşağı yukarı tüm hesap/kasa akışları buna göre işaretlenir.
+        payment_method: paymentMethod,
 
         items: [
           ...items.filter(i => i.quantity > 0).map(item => ({
@@ -418,6 +450,21 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
       setSalespersonName(defaultCashierName);
       setSalespersonCode('');
     }
+
+    // Ödeme Tipi: POS'tan gelen `header_fields.payment_type` veya
+    // `payment_method` alanlarından birini oku; yoksa 'cash' varsay.
+    const invPaymentRaw =
+      (invRecord.paymentMethod as unknown) ??
+      (invRecord.payment_method as unknown) ??
+      // header_fields JSONB içinde saklanmış olabilir
+      (() => {
+        const hf = invRecord.header_fields as Record<string, unknown> | undefined;
+        if (hf && typeof hf === 'object') {
+          return (hf.payment_type as unknown) ?? (hf.paymentType as unknown);
+        }
+        return undefined;
+      })();
+    setPaymentMethod(normalizePaymentMethod(invPaymentRaw));
 
     // Set customer code based on customer name
     const customer = displayCustomers.find(c => c.title === invoice.customer || c.name === invoice.customer);
@@ -526,6 +573,8 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     setEditDate(new Date().toLocaleDateString('tr-TR'));
     setTransactionNo('0000004');
     setTradingGroup('');
+    // Ödeme Tipi başlangıçta Nakit; POS'tan gelen değer listeye düşünce editleyen durumu görünür
+    setPaymentMethod('cash');
 
     // Reset items to single empty row
     setItems([{
@@ -917,6 +966,26 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
           {info.getValue() || '—'}
         </span>
       ),
+      meta: { filterKind: 'text' },
+    }),
+    columnHelper.accessor('paymentMethod', {
+      header: 'Ödeme Tipi',
+      cell: info => {
+        const v = normalizePaymentMethod(info.getValue());
+        const opt = PAYMENT_METHOD_OPTIONS.find(o => o.value === v);
+        const colorByVal: Record<SalesPaymentMethod, string> = {
+          cash:      'bg-emerald-100 text-emerald-700',
+          card:      'bg-blue-100 text-blue-700',
+          transfer:  'bg-violet-100 text-violet-700',
+          pesinatli: 'bg-amber-100 text-amber-700',
+          avans:     'bg-rose-100 text-rose-700',
+        };
+        return (
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${colorByVal[v]}`}>
+            {opt?.label ?? v}
+          </span>
+        );
+      },
       meta: { filterKind: 'text' },
     }),
     columnHelper.accessor('date', {
@@ -1618,6 +1687,31 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
               {salespersonName || (tm('salespersonNotSelected') || 'Seçilmedi')}
             </span>
           </button>
+
+          {/* Ödeme Tipi — POS'tan gelen faturaları düzenlerken görünür dropdown.
+              Değer: cash | card | transfer | pesinatli | avans. Kayıt anında
+              invoicesAPI.create payload'una `payment_method` olarak yazılır. */}
+          <label
+            data-testid="sales-invoice-payment-method"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 border border-white/30 bg-white/10 hover:bg-white/20 text-white"
+            title="Ödeme Tipi"
+          >
+            <CreditCard className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Ödeme Tipi:</span>
+            <select
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(normalizePaymentMethod(e.target.value))}
+              className="bg-transparent border-0 outline-none focus:ring-0 text-white text-sm font-bold pr-1 cursor-pointer min-w-[7.5rem]"
+              style={{ colorScheme: 'dark' }}
+              data-testid="sales-invoice-payment-method-select"
+            >
+              {PAYMENT_METHOD_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value} className="text-slate-800 bg-white">
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {/* Sekme Değiştirme Butonu */}
           {onSwitchTab && (
