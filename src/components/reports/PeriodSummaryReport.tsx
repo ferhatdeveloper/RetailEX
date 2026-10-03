@@ -1061,16 +1061,24 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const title = mode === 'monthly-days' ? tm('aylikGunOzeti') : tm('yillikAyOzeti');
 
   const kpiItems = useMemo((): ReportKpiItem[] => {
-    // DEBUG: Ciro/Net/cariTahsilat gerçek değerlerini logla (aqua_beauty Net Kalan yanlış araştırması)
+    // DEBUG: Ciro/Net/cariTahsilat gerçek değerlerini logla (aqua_beauty Net Kalan
+    // yanlış araştırması). Ciro = sales.total_net toplamı (yalnız Satis
+    // kategorisi — getSalesOnlyByDateRange). Cari tahsilat (CH_TAHSILAT)
+    // ayrı memo, Ciro'ya SIZMAZ; ledger simetrisi nedeniyle Net Kalan'da da yok.
     if (typeof window !== 'undefined' && (window as any).__RETAILEX_DEBUG_KPI__ !== false) {
+      const expectedNetFromRevenue =
+        totals.revenue - (showPeriodCardExpenses ? totals.expenses : 0) - (showPeriodCardPurchases ? totals.purchases : 0);
       // eslint-disable-next-line no-console
       console.log('[KPI DEBUG]', {
-        revenue: totals.revenue,
+        revenue: totals.revenue,        // = Ciro (sales.total_net Σ)
+        cariTahsilat: totals.cariTahsilat, // = CH_TAHSILAT Σ (Ciro'ya DAHİL DEĞİL)
+        cashIn: totals.cashIn,          // = KASA_GIRIS Σ (Ciro'yla ilgisi yok)
         expenses: totals.expenses,
-        cashIn: totals.cashIn,
         purchases: totals.purchases,
         netRemaining: totals.netRemaining,
-        cariTahsilat: (totals as any).cariTahsilat,
+        // Formül kontrolü: revenue − expenses − purchases (cariTahsilat Hariç)
+        expectedNet: expectedNetFromRevenue,
+        matchesNet: Math.abs(expectedNetFromRevenue - totals.netRemaining) < 1,
         showPeriodCardRevenue,
         showPeriodCardExpenses,
         showPeriodCardPurchases,
