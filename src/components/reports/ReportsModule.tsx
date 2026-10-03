@@ -5674,7 +5674,6 @@ export function ReportsModule({
             ? [{ key: 'beauty-service-report', label: tm('beautyServiceBreakdownReport'), icon: <DeploymentUnitOutlined /> }]
             : []),
           { key: 'detailed-sales', label: tm('detayliSatisRaporu'), icon: <LineChartOutlined /> },
-          { key: 'analysis', label: tm('analiz'), icon: <BarChart3 /> },
         ],
       },
       {
