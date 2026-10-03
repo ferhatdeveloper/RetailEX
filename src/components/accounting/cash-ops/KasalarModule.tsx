@@ -71,6 +71,21 @@ import {
 
 // ===== COMPONENT =====
 
+/**
+ * Satış fatura no çıkarıcı — `islem_aciklamasi` "Satış faturası — BEA-2026-MUS34222"
+ * biçimindeyse "—" sonrasındaki ilk parçayı döndürür; aksi halde boş string.
+ * Eski veriler veya manuel tahsilatlar için boş döner (UI "—" gösterir).
+ */
+function extractSalesInvoiceNo(description: string | null | undefined): string {
+    const def = String(description ?? '').trim();
+    if (!def) return '';
+    const parts = def.split('—').map((p) => p.trim()).filter(Boolean);
+    if (parts.length < 2) return '';
+    // Tipik formatlar: "BEA-2026-MUS34222", "INV-001", "FAT-2025-..."
+    // İlk parçayı olduğu gibi döndür; boş ise boş.
+    return parts.slice(1).join(' — ');
+}
+
 interface Props {
   initialKasaId?: string | null;
   onBack?: () => void;
@@ -938,6 +953,7 @@ function KasaIslemleriTable({
         const pt = resolvePaymentType({
           paymentMethod: row.payment_method,
           isReservationDeposit: row.is_reservation_deposit === true,
+          transactionType: row.islem_tipi,
         });
         return pt?.labelKey ?? null;
       },
@@ -949,6 +965,7 @@ function KasaIslemleriTable({
           const pt = resolvePaymentType({
             paymentMethod: row.payment_method,
             isReservationDeposit: row.is_reservation_deposit === true,
+            transactionType: row.islem_tipi,
           });
           if (!pt) {
             return <span className="text-gray-400 text-xs">—</span>;
@@ -1008,6 +1025,27 @@ function KasaIslemleriTable({
       },
       size: 250,
     }),
+    // Bug 28 — Satış Fatura No (klon). Kullanıcı talebi: açıklama içindeki
+    // fiş no burada ayrı bir kolon olarak gösterilsin (gruplama için);
+    // varsayılan GIZLI — kolon menüsünden "Görünür" yapılabilir.
+    // Veri kaynağı: `islem_aciklamasi`'nın "—" sonrası kısmı (BEA-/INV-... vb.).
+    columnHelper.accessor(
+      (row) => extractSalesInvoiceNo(row.islem_aciklamasi),
+      {
+        id: 'satis_fatura_no',
+        header: tm('cashLineSalesInvoiceNo') || 'Satış Fatura No',
+        cell: (info) => {
+          const v = String(info.getValue() || '').trim();
+          if (!v) return <span className="text-gray-400 text-xs">—</span>;
+          return <span className="font-mono text-xs font-semibold text-gray-700">{v}</span>;
+        },
+        size: 160,
+        meta: {
+          filterKind: 'text',
+          defaultHidden: true,
+        },
+      },
+    ),
     columnHelper.accessor('tutar', {
       header: tm('amount'),
       cell: info => {

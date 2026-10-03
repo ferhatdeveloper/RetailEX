@@ -481,6 +481,20 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'نوع الدفع',
     ku: 'جۆری پارەدان',
   },
+  /** Bug 28 — Belgesel ödeme tipi (fatura fişi; payment_method set edilmemiş eski kayıtlar). */
+  cashLinePaymentTypeDocument: {
+    tr: 'Belgesel',
+    en: 'Documentary',
+    ar: 'وثائقي',
+    ku: 'بەڵگەنامەیی',
+  },
+  /** Bug 28 — "Satış Fatura No" kolonu başlığı (varsayılan gizli). */
+  cashLineSalesInvoiceNo: {
+    tr: 'Satış Fatura No',
+    en: 'Sales Invoice No',
+    ar: 'رقم فاتورة البيع',
+    ku: 'ژمارەی فاکتوری فرۆشتن',
+  },
   /** "Banka Havalesi" rozet etiketi (cash_lines.payment_method='havale'/'eft'/'transfer'). */
   cashLinePaymentTypeTransfer: {
     tr: 'Banka Havalesi',

@@ -179,3 +179,78 @@ describe('paymentTypeLabelKey — sade etiket anahtarı (uyumluluk)', () => {
         expect(paymentTypeLabelKey(undefined)).toBe('openTerms');
     });
 });
+
+// ===========================================================
+// BUG 28 — Belgesel fallback + Satış Fatura No parse
+// ===========================================================
+describe('Bug 28 — Belgesel fallback (payment_method boş + fatura fişi)', () => {
+    it('payment_method=null + islem_tipi=SATIS_FATURASI → Belgesel', async () => {
+        const { resolvePaymentType } = await import('../../utils/cashLinePaymentType');
+        const pt = resolvePaymentType({
+            paymentMethod: null,
+            isReservationDeposit: false,
+            transactionType: 'SATIS_FATURASI',
+        });
+        expect(pt?.tone).toBe('document');
+        expect(pt?.labelKey).toBe('cashLinePaymentTypeDocument');
+    });
+
+    it('payment_method=null + islem_tipi=HIZMET_FATURASI → Belgesel', async () => {
+        const { resolvePaymentType } = await import('../../utils/cashLinePaymentType');
+        const pt = resolvePaymentType({
+            paymentMethod: null,
+            transactionType: 'HIZMET_FATURASI',
+        });
+        expect(pt?.tone).toBe('document');
+    });
+
+    it('payment_method=null + islem_tipi=CH_TAHSILAT → null (cari tahsilatı, belge değil)', async () => {
+        const { resolvePaymentType } = await import('../../utils/cashLinePaymentType');
+        const pt = resolvePaymentType({
+            paymentMethod: null,
+            transactionType: 'CH_TAHSILAT',
+        });
+        expect(pt).toBeNull();
+    });
+
+    it('payment_method=cash her zaman cash kazanır (fatura tipi olsa bile)', async () => {
+        const { resolvePaymentType } = await import('../../utils/cashLinePaymentType');
+        const pt = resolvePaymentType({
+            paymentMethod: 'cash',
+            transactionType: 'SATIS_FATURASI',
+        });
+        expect(pt?.tone).toBe('cash');
+    });
+
+    it('payment_method=null + transactionType yok → null', async () => {
+        const { resolvePaymentType } = await import('../../utils/cashLinePaymentType');
+        const pt = resolvePaymentType({ paymentMethod: null });
+        expect(pt).toBeNull();
+    });
+});
+
+describe('Bug 28 — extractSalesInvoiceNo (KasalarModule helper)', () => {
+    // helper burada yeniden üretildi; refactor riskini test tarafında izole tutuyoruz
+    const extract = (def: string | null | undefined): string => {
+        const s = String(def ?? '').trim();
+        if (!s) return '';
+        const parts = s.split('—').map((p) => p.trim()).filter(Boolean);
+        return parts.length < 2 ? '' : parts.slice(1).join(' — ');
+    };
+
+    it('"Satış faturası — BEA-2026-MUS34222" → "BEA-2026-MUS34222"', () => {
+        expect(extract('Satış faturası — BEA-2026-MUS34222')).toBe('BEA-2026-MUS34222');
+    });
+    it('"Hizmet faturası — INV-2025-001" → "INV-2025-001"', () => {
+        expect(extract('Hizmet faturası — INV-2025-001')).toBe('INV-2025-001');
+    });
+    it('boş / null / "tek parça" → ""', () => {
+        expect(extract('')).toBe('');
+        expect(extract(null)).toBe('');
+        expect(extract(undefined)).toBe('');
+        expect(extract('Tek parça açıklama')).toBe('');
+    });
+    it('"A — B — C" → "B — C" (çoklu — birleştir)', () => {
+        expect(extract('A — B — C')).toBe('B — C');
+    });
+});

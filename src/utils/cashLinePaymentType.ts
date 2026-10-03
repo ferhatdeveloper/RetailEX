@@ -34,7 +34,7 @@
 
 import { normalizePaymentMethodBucket, type PaymentMethodBucket } from './paymentMethodUtils';
 
-export type PaymentTypeTone = 'cash' | 'card' | 'credit' | 'transfer' | 'reservation' | 'other';
+export type PaymentTypeTone = 'cash' | 'card' | 'credit' | 'transfer' | 'reservation' | 'document' | 'other';
 
 export interface ResolvedPaymentType {
   /** Dahili kod (cash/card/credit/transfer/reservation/other) */
@@ -73,6 +73,9 @@ export function paymentTypeBadgeClass(tone: PaymentTypeTone): string {
       return 'bg-purple-100 text-purple-800 ring-1 ring-purple-200';
     case 'reservation':
       return 'bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200';
+    case 'document':
+      // Bug 28 — Belgesel (sadece fatura kaydı; payment_method set edilmemiş eski fişler)
+      return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200';
     case 'other':
     default:
       return 'bg-gray-100 text-gray-600 ring-1 ring-gray-200';
@@ -118,7 +121,13 @@ export function resolvePaymentType(
     | string
     | null
     | undefined
-    | { paymentMethod?: string | null; payment_method?: string | null; isReservationDeposit?: boolean },
+    | {
+        paymentMethod?: string | null;
+        payment_method?: string | null;
+        isReservationDeposit?: boolean;
+        transactionType?: string | null;
+        islem_tipi?: string | null;
+      },
   isReservationDeposit?: boolean,
 ): ResolvedPaymentType | null {
   // 1) Rezervasyon peşinatı — en yüksek öncelik
@@ -151,7 +160,30 @@ export function resolvePaymentType(
         : '';
 
   const trimmed = raw.trim();
-  if (!trimmed) return null;
+  if (!trimmed) {
+    // Bug 28 — fallback: payment_method boş + fiş bir "fatura" kayıtı ise
+    // (SATIS_FATURASI / ALIS_FATURASI / HIZMET_FATURASI) "Belgesel" döndür.
+    // Bu, eski fişlerde payment_method set edilmediği durumda Ödeme Tipi
+    // kolonunun "—" yerine anlamlı bir etiket göstermesini sağlar.
+    const txn =
+      typeof input === 'object' && input !== null
+        ? String(
+            (input as { transactionType?: string | null; islem_tipi?: string | null }).transactionType ??
+              (input as { islem_tipi?: string | null }).islem_tipi ??
+              '',
+          ).trim()
+        : '';
+    const upper = txn.toUpperCase();
+    if (upper === 'SATIS_FATURASI' || upper === 'HIZMET_FATURASI' || upper === 'ALIS_FATURASI') {
+      return {
+        code: 'document',
+        labelKey: 'cashLinePaymentTypeDocument',
+        tone: 'document',
+        raw: 'document',
+      };
+    }
+    return null;
+  }
 
   // `normalizePaymentMethodBucket` "transfer" için 'credit' döndürür (formCode
   // boş olduğu için). Bu helper için transfer doğrudan transfer olmalı —
