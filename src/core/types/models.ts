@@ -628,6 +628,22 @@ export interface Invoice {
   notes?: string;
   created_at?: string;
   is_cancelled?: boolean;
+  /**
+   * Migration 182 — bu fatura bir ön ödeme (peşinat) mi?
+   * Randevuya bağlı peşinat satışlarında `sales.is_deposit = true` yazılır;
+   * ana satış fişi tamamlandığında `is_deposit = false` olur. Günlük Rapor /
+   * Müşteri Satış Analizi gibi ciroya etkiyen raporlar bu alanı kullanarak
+   * henüz hizmet verilmemiş peşinatları Hariç tutar.
+   */
+  is_deposit?: boolean | null;
+  /** Peşinat satış → ana satış bağlantısı (ana fişte set edilir). */
+  deposit_sale_id?: string | null;
+  /** Ana satış fişi kendisinin parent'ı. */
+  parent_sale_id?: string | null;
+  /** Peşinat + ana satışı gruplar (`apt-{aptId}` veya `grp-{uuid}`). */
+  sale_group_id?: string | null;
+  /** Bağlı randevu (beauty reservation). */
+  linked_appointment_id?: string | null;
   campaign_id?: string;
   campaign_name?: string;
   campaign_discount?: number;

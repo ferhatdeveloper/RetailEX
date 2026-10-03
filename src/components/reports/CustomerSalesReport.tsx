@@ -13,6 +13,7 @@ import { localCalendarDateKey, localTodayDateKey } from '../../utils/localCalend
 import { formatReportDateCell } from '../../utils/dateLocale';
 import { ReportYmdDatePicker } from '../shared/ReportDateRangePresets';
 import { ReportColumnTable } from './shared/ReportDataGrid';
+import { isCiroyaDahilSale } from '../../utils/reportDepositFilter';
 
 interface CustomerSalesReportProps {
   sales: Sale[];
@@ -70,6 +71,8 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
 
     sales.forEach((sale) => {
       if (!isSaleInDateRange(sale, dateRange.start, dateRange.end)) return;
+      // Bug 24: peşinat (is_deposit=true) / pending / iptal Hariç
+      if (!isCiroyaDahilSale(sale)) return;
 
       const customerId = sale.customerId || sale.customerName || 'unknown';
       const customer = customers?.find((c) => c.id === customerId) || null;

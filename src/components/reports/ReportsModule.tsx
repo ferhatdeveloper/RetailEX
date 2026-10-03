@@ -77,6 +77,7 @@ import {
 import { applyExtraCashCollections, buildPosZReportForRange, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
 import { extraCustomerCollectionsNotOnSales, saleCollectedSplit, dailyPaymentKind } from '../../utils/saleCollectedAmounts';
+import { filterForRevenue, filterForCash } from '../../utils/reportDepositFilter';
 import {
   buildPaymentTypeDistribution,
   buildPaymentTypeMovements,
@@ -2704,27 +2705,27 @@ export function ReportsModule({
 
   const dailySales = getDailySales();
   /**
-   * Bug 23: Rezervasyon peşinatları (payment_status='pending') günlük satış
-   * toplamlarına (ciro, kâr, veresiye) DAHİL EDİLMEMELİ. Henüz hizmet
-   * verilmemiş bir avanstır; kasa para girişi ayrı bir cash_lines tabanlı
-   * hesaplamadadır (TAHSİL EDİLEN). `dailyCollected` ve `dailyCash` aşağıda
-   * `saleCollectedSplit` üzerinden hesaplanıyor; pending fişlerde
-   * `payments`/split her şeyi sıfır döndürüyor — yine de ciro'dan
-   * (total) Hariç tutulmaları için burada filtreliyoruz.
-   * - isRemovedSaleStatus: cancelled/refunded (Bug 12 devamı)
-   * - payment_status === 'pending' | 'awaiting_service' | 'partial' Hariç
-   *   (kısmi ödeme zaten hizmet verilmiş bir fiş; orada sıfır döner)
+   * Bug 23 + Bug 24: Ciro / Veresiye / Adet toplamlarına dahil edilecek
+   * satış listesi. Rezervasyon peşinatları (`is_deposit=true`) ve
+   * `payment_status=pending` olanlar Hariç tutulur.
+   *  - src/utils/reportDepositFilter.ts → `filterForRevenue`
+   *  - Bug 23: pending/awaiting_service Hariç
+   *  - Bug 24: peşinat fişi Hariç
    */
   const dailySalesActive = useMemo(
-    () => dailySales.filter((s) => {
-      if (isRemovedSaleStatus(s.status)) return false;
-      const ps = String(
-        (s as Sale & { payment_status?: string }).payment_status ?? ''
-      ).toLowerCase().trim();
-      if (ps === 'pending' || ps === 'awaiting_service') return false;
-      return true;
-    }),
-    [dailySales]
+    () => filterForRevenue(dailySales),
+    [dailySales],
+  );
+
+  /**
+   * Bug 24: Kasa/Collected hesabı için liste — iptal Hariç, ama PEŞİNAT
+   * (`is_deposit=true`) DAHİL. Tahsil edilen nakit zaten kasaya girmiştir;
+   * TAHSİL EDİLEN / Kasa Para Girişi bu avansı göstermelidir.
+   *  - src/utils/reportDepositFilter.ts → `filterForCash`
+   */
+  const dailySalesForCash = useMemo(
+    () => filterForCash(dailySales),
+    [dailySales],
   );
 
   /** Seçili takvim gününde kapanan adisyonlar (Z raporu ile aynı mantık; opened_at aralığından bağımsız) */
@@ -2755,11 +2756,14 @@ export function ReportsModule({
       const grossTotal = dailySalesActive.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
       dailyTotal = grossTotal - dailyReturnTotalLocal;
       // İade satırında total negatif; split.cash zaten işaretli — tekrar düşme
-      dailyCash = dailySalesActive
+      // Bug 24: Kasa/Card tahsilatı `dailySalesForCash` üzerinden — peşinat
+      // (`is_deposit=true`) henüz hizmet verilmemiş olsa bile KASAYA
+      // girmiştir; TAHSİL EDİLEN / Kasa Para Girişi bu avansı göstermeli.
+      dailyCash = dailySalesForCash
         .reduce((sum, s) => sum + (Number(saleCollectedSplit(s).cash) || 0), 0);
-      dailyCard = dailySalesActive
+      dailyCard = dailySalesForCash
         .reduce((sum, s) => sum + (Number(saleCollectedSplit(s).card) || 0), 0);
-      dailyDiscount = dailySalesActive.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
+      dailyDiscount = dailySalesForCash.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
     } else {
       // Restoran adisyonlarında iade kavramı `trcode=3` ile ayrı ele alınmaz; mevcut brüt toplam korunur.
       dailyTotal = restOrdersClosedOnSelectedDate.reduce((sum, o) => sum + restOrderNetAmount(o), 0);
@@ -2784,24 +2788,32 @@ export function ReportsModule({
   } else {
     const grossTotal = dailySalesActive.reduce((sum, s) => sum + s.total, 0);
     dailyTotal = grossTotal - dailyReturnTotalLocal;
-    dailyCash = dailySalesActive
+    // Bug 24: Kasa/Card tahsilatı `dailySalesForCash` üzerinden — peşinat
+    // dahil edilir (kasaya zaten girmiştir).
+    dailyCash = dailySalesForCash
       .reduce((sum, s) => sum + (Number(saleCollectedSplit(s).cash) || 0), 0);
-    dailyCard = dailySalesActive
+    dailyCard = dailySalesForCash
       .reduce((sum, s) => sum + (Number(saleCollectedSplit(s).card) || 0), 0);
-    dailyDiscount = dailySalesActive.reduce((sum, s) => sum + s.discount, 0);
+    dailyDiscount = dailySalesForCash.reduce((sum, s) => sum + s.discount, 0);
   }
 
   const extraCollections = extraCustomerCollectionsNotOnSales(
     kasaLinesForSelectedDate,
-    dailySalesActive,
+    dailySalesForCash,
   );
   dailyCash += extraCollections;
 
+  // Bug 24: TAHSİL EDİLEN, peşinat dahil. dailyCollected kasa bazlıdır;
+  // peşinat tahsilatı zaten kasaya yansımıştır (cash_lines / split.paid).
   const dailyCollected =
-    dailySalesActive.reduce((sum, s) => {
+    dailySalesForCash.reduce((sum, s) => {
       if (isReturnSale(s)) return sum;
       return sum + (Number(saleCollectedSplit(s).collected) || 0);
     }, 0) + extraCollections;
+  // VERESİYE (dailyRemaining) ciro/borç tarafıdır; peşinat Hariç
+  // (`dailySalesActive` üzerinden). Henüz hizmet verilmemiş rezervasyonun
+  // `remaining_amount`'ı caride yazılmaz, ancak yine de ciro/veresiye
+  // sütununa katılmaması için `dailySalesActive` (peşinat Hariç) kalır.
   const dailyRemaining = dailySalesActive.reduce((sum, s) => {
     if (isReturnSale(s)) return sum;
     return sum + (Number(saleCollectedSplit(s).remaining) || 0);

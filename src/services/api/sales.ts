@@ -779,6 +779,19 @@ function mapInvoiceToSale(invoice: Invoice): Sale {
     })),
     status: isCustomerReturn ? 'return' : invoice.status,
     notes: invoice.notes,
+    /**
+     * Bug 24: Peşinat fiş bilgileri. `is_deposit=true` olan kayıtlar
+     * (henüz hizmet verilmemiş rezervasyon) günlük rapor ciro / veresiye
+     * toplamlarına dahil EDİLMEMELİ — kasa tahsilatı ayrı bir cash_lines
+     * hesaplamasıdır (TAHSİL EDİLEN). reports/ReportsModule.tsx
+     * `dailySalesActive` ve reports/CustomerSalesReport.tsx
+     * `customerSales` bu alanı filtre olarak kullanır.
+     */
+    isDeposit: invoice.is_deposit ?? null,
+    depositSaleId: invoice.deposit_sale_id ?? null,
+    parentSaleId: invoice.parent_sale_id ?? null,
+    saleGroupId: invoice.sale_group_id ?? null,
+    linkedAppointmentId: invoice.linked_appointment_id ?? null,
     firmNr: invoice.firma_id,
     periodNr: invoice.donem_id,
     items: invoice.items.map(res => ({
