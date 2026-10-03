@@ -22,6 +22,10 @@ import {
   type Kasa,
   type KasaIslemi,
 } from '../../../services/api/kasa';
+import {
+  computeCashBalance,
+  computeCashBalanceForRegister,
+} from '../../../utils/cashBalance';
 import { KasaDefinitionModal } from './KasaDefinitionModal';
 import { KasaIslemleriModal } from './KasaIslemleriModal';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
@@ -297,9 +301,13 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
       if (sign > 0) todayCollection += absAmt(t);
       else if (sign < 0) todayPayment += absAmt(t);
     }
-    const balance = kasalar.reduce((sum, k) => sum + (Number(k.bakiye) || 0), 0);
+    // Snapshot `cash_registers.balance` yalnızca fn_auto_cash_line_on_sale üzerinden
+    // güncelleniyor; manuel çıkışlar (GIDER_PUSULASI, MAAS_ODEME, CH_ODEME,
+    // ORTAK_SERMAYE_ODEME, AVANS_ODEME vb.) yansımıyor. Gerçek bakiye
+    // cash_lines üzerinden Σ |tutar| × sign formülüyle hesaplanır.
+    const balance = computeCashBalance(transactions);
     return { todayCollection, todayPayment, balance };
-  }, [transactions, kasalar, todayKey]);
+  }, [transactions, todayKey]);
 
   const kpiDetailRows = useMemo(() => {
     if (kpiDetail === 'collection') {
@@ -533,7 +541,9 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
               ) : (
                 <ul className="space-y-2">
                   {kasalar.map((k) => {
-                    const bal = Number(k.bakiye) || 0;
+                    // Snapshot `k.bakiye` yerine cash_lines üzerinden gerçek bakiye
+                    // (KASA_GIRIS + MAAS_ODEME + GIDER_PUSULASI + CH_ODEME + ... dahil).
+                    const bal = computeCashBalanceForRegister(k.id, transactions);
                     return (
                       <li
                         key={k.id}
