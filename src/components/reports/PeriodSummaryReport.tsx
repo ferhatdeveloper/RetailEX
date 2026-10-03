@@ -427,6 +427,23 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     () => mergeExpensesWithCashIns(cashLinesQuery.data ?? []),
     [cashLinesQuery.data],
   );
+  /**
+   * CH_TAHSILAT (cari tahsilatları) — ayrı liste. PeriodCashInDetailModal bunları
+   * ana tablonun altında "Cari Tahsilatlar" bölümünde gösterir. REPORT_CASH_IN_TYPES'a
+   * eklenmez; ana tablonun toplamı ve cashInMap davranışı değişmez.
+   */
+  const cariTahsilatRows = useMemo(() => {
+    const list = Array.isArray(cashLinesQuery.data) ? cashLinesQuery.data : [];
+    const unified: KasaIslemi[] = [];
+    for (const cl of list) {
+      const type = String(cl.islem_tipi || '').trim().toUpperCase();
+      if (type !== 'CH_TAHSILAT') continue;
+      const amt = Math.abs(Number(cl.tutar) || 0);
+      if (!amt) continue;
+      unified.push({ ...cl, tutar: amt, islem_tipi: type });
+    }
+    return unified;
+  }, [cashLinesQuery.data]);
   const cashInMap = useMemo(() => {
     return aggregateCashIns(cashInsRows, mode === 'monthly-days' ? 'day' : 'month');
   }, [cashInsRows, mode]);
@@ -1348,6 +1365,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       {cashInDetail ? (
         <PeriodCashInDetailModal
           cashLines={cashInsRows}
+          cariTahsilatlar={cariTahsilatRows}
           periodKey={cashInDetail.periodKey}
           title={cashInDetail.title}
           currency={currency}

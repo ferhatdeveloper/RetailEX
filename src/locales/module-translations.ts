@@ -10749,6 +10749,31 @@ export const excelModuleTranslations = {
   rptPeriodCashInColDescription: { tr: 'Açıklama', en: 'Description', ar: 'الوصف', ku: 'ڕوونکردنەوە' },
   rptPeriodCashInColParty: { tr: 'Cari / Ortak', en: 'Account / Partner', ar: 'الحساب / الشريك', ku: 'هەژمار / هاوبەش' },
   rptPeriodCashInColAmount: { tr: 'Tutar', en: 'Amount', ar: 'المبلغ', ku: 'بڕ' },
+  // Kasa Para Girişi Detayı modalı — CH_TAHSILAT ayrı alt bölüm başlıkları
+  rptPeriodCashInCariTahsilatTitle: {
+    tr: 'Cari Tahsilatlar',
+    en: 'Customer Collections',
+    ar: 'تحصيل العملاء',
+    ku: 'وەرگرتنەوەی کڕیار',
+  },
+  rptPeriodCashInCariTahsilatTotal: {
+    tr: 'Toplam Cari Tahsilat',
+    en: 'Total Customer Collections',
+    ar: 'إجمالي تحصيل العملاء',
+    ku: 'کۆی وەرگرتنەوەی کڕیار',
+  },
+  rptPeriodCashInCariTahsilatEmpty: {
+    tr: 'Bu dönemde cari tahsilat kaydı yok.',
+    en: 'No customer collections in this period.',
+    ar: 'لا توجد تحصيلات عملاء في هذه الفترة.',
+    ku: 'لەم ماوەیەدا هیچ وەرگرتنەوەی کڕیار نییە.',
+  },
+  rptPeriodCashInCariTahsilatSectionLabel: {
+    tr: 'CH_TAHSILAT (Müşteri Tahsilatları)',
+    en: 'CH_TAHSILAT (Customer Collections)',
+    ar: 'CH_TAHSILAT (تحصيل العملاء)',
+    ku: 'CH_TAHSILAT (وەرگرتنەوەی کڕیار)',
+  },
   // Gün Detayı modalı (Aylık Gün Özeti satır drill-down): CH_TAHSILAT + Nakit Giriş + CH_ODEME listesi
   rptPeriodDayDetailTitle: {
     tr: 'Gün Detayı — Tahsilat & Kasa Girişi',
