@@ -631,6 +631,15 @@ function buildRestaurantDetailedSaleLines(orders: any[], tm: (key: string) => st
 function buildErpDetailedSaleLines(salesDay: Sale[], tm: (key: string) => string): DetailedSaleLineRow[] {
   const out: DetailedSaleLineRow[] = [];
   salesDay.forEach((sale, saleIdx) => {
+    // Bug 28 follow-up — Rezervasyon peşinatı ve hizmet verilmemiş randevu
+    // satışları detay satış listesine Hizmet satışı olarak yansımamalı;
+    // kullanıcı açıkça "henüz hizmet verilmedi" diye Hariç tutulmasını istedi.
+    if (isDepositSale(sale)) return;
+    const linkedApptId = (sale as Sale & { linkedAppointmentId?: string | null })
+      .linkedAppointmentId;
+    if (linkedApptId && String(linkedApptId).trim() !== '') {
+      if (!isCompletedAppointmentStatus(sale.status)) return;
+    }
     const invoiceNo = String(sale.receiptNumber ?? sale.id ?? '—');
     const wall = formatSaleWallClockDateTime(sale);
     const open = wall;
