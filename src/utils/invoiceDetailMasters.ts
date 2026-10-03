@@ -186,8 +186,8 @@ export async function listCashierRoleUsers(): Promise<InvoicePickerMaster[]> {
       `SELECT
          id::text AS code,
          COALESCE(
-           NULLIF(TRIM(full_name), ''),
            NULLIF(TRIM(username), ''),
+           NULLIF(TRIM(full_name), ''),
            NULLIF(TRIM(email), ''),
            'Kullanıcı-' || SUBSTRING(id::text, 1, 8)
          ) AS name,
