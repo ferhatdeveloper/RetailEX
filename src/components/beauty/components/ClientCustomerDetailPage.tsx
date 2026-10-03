@@ -175,14 +175,25 @@ export function isMainBeautySale(s: BeautySale, completedAptIds: Set<string>): b
         parent_sale_id?: string | null;
         linked_appointment_id?: string | null;
     };
-    if (sale.is_deposit === true) return false;
     if (sale.parent_sale_id) return false;
-    // Yedek tanımlayıcı: notes içinde `deposit:1` veya `parent_sale:<uuid>`
-    // tag'i varsa bu fiş bir peşinat veya peşinata bağlı ana satıştır → KPI dışı.
+    // Bug 28 follow-up: peşinat fişinin bağlı randevusu tamamlandıysa bu
+    // peşinat artık "henüz hizmet verilmemiş avans" değil — ana satışın
+    // ayrılmaz parçası sayılır. Toplam Harcama + Alınan Tutar'a
+    // `mainSales` üzerinden dahil edilir; depositLabel'dan çıkar.
+    if (sale.is_deposit === true) {
+        const aptId = String(sale.linked_appointment_id ?? '').trim().toLowerCase();
+        return Boolean(aptId) && completedAptIds.has(aptId);
+    }
+    // Yedek tanımlayıcı: notes içinde `parent_sale:<uuid>` tag'i varsa
+    // bu fiş peşinata bağlı ana satıştır → KPI dışı.
     const notes = String(sale.notes ?? '');
     if (notes) {
-        if (beautyService.parseDepositFlagFromNotes(notes)) return false;
         if (beautyService.parseParentSaleIdFromNotes(notes)) return false;
+        // deposit:1 tag'i taşıyan fiş sadece tamamlanmış randevuya bağlıysa DAHİL
+        if (beautyService.parseDepositFlagFromNotes(notes)) {
+            const aptId = String(sale.linked_appointment_id ?? '').trim().toLowerCase();
+            return Boolean(aptId) && completedAptIds.has(aptId);
+        }
     }
     if (sale.linked_appointment_id) {
         const aptId = String(sale.linked_appointment_id).trim().toLowerCase();
@@ -207,6 +218,24 @@ export function isReservationDepositSale(s: BeautySale): boolean {
     const notes = String(sale.notes ?? '');
     if (beautyService.parseDepositFlagFromNotes(notes)) return true;
     return false;
+}
+
+/**
+ * Bug 28 follow-up — Bu peşinat fişinin bağlı olduğu randevu hâlâ
+ * tamamlanmamış mı? `completedAptIds` set'i verildiğinde, bağlı
+ * randevu **tamamlandıysa** false döner; yani peşinat artık
+ * "henüz hizmet verilmemiş avans" değil — ana satış fişinin
+ * ayrılmaz parçası sayılır (Toplam Harcama'ya zaten dahil).
+ */
+export function isOpenReservationDeposit(
+    s: BeautySale,
+    completedAptIds: Set<string>,
+): boolean {
+    if (!isReservationDepositSale(s)) return false;
+    const sale = s as BeautySale & { linked_appointment_id?: string | null };
+    const aptId = String(sale.linked_appointment_id ?? '').trim().toLowerCase();
+    if (!aptId) return true; // linked yok → hâlâ açık (henüz hizmet verilmedi sayılır)
+    return !completedAptIds.has(aptId);
 }
 
 /** Satış ↔ randevu eşlemesi (linked_appointment_id / notes / aynı gün+tutar+hizmet). */
@@ -671,6 +700,11 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             // dolu ve tamamlanmamış randevuya bağlı ana satışlar Geçmiş'ten elenir.
             // Aksi halde 30.000 "veresiye" + 20.000 "nakit" aynı randevuda çift satır
             // olarak görünür ve cari hareketler yanlış izlenim verir (KPI ile uyumlu).
+            // Bug 28 follow-up: rezervasyon peşinatı Geçmiş listesinde **hiç
+            // gösterilmez** — tamamlanmış randevuya bağlı olsa bile ana satış
+            // zaten aynı tutarı içeriyor. KPI'ya katkı `isMainBeautySale`
+            // tarafından zaten sağlanıyor.
+            if (isReservationDepositSale(s)) continue;
             if (!isMainBeautySale(s, completedAppointmentIds)) continue;
             primaries.push({ key: `sale-${s.id}`, kind: 'sale', sortMs: saleSortMs(s), sale: s });
         }
@@ -824,10 +858,15 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         [activeSalesHistory, completedAppointmentIds],
     );
 
-    /** Bug 28 — Rezervasyona bağlı peşinat fişleri (henüz hizmet verilmemiş). */
+    /**
+     * Bug 28 follow-up — Rezervasyon peşinatları. Yalnızca **henüz
+     * tamamlanmamış** randevuya bağlı peşinatlar gösterilir. Tamamlanmış
+     * randevuya bağlı peşinat artık `mainSalesHistory` üzerinden Toplam
+     * Harcama / Alınan Tutar alanlarına yansır, depositLabel'da gösterilmez.
+     */
     const depositSalesHistory = useMemo(
-        () => activeSalesHistory.filter((s) => isReservationDepositSale(s)),
-        [activeSalesHistory],
+        () => activeSalesHistory.filter((s) => isOpenReservationDeposit(s, completedAppointmentIds)),
+        [activeSalesHistory, completedAppointmentIds],
     );
 
     const historyDataSummary = useMemo(

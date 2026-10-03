@@ -181,3 +181,103 @@ describe('Bug 28 — isReservationDepositSale (rezervasyon peşinatı tespiti)',
         expect(isReservationDepositSale(iptal)).toBe(false);
     });
 });
+
+// ===========================================================
+// BUG 28 follow-up — Rezervasyon peşinatı tamamlanmış randevuya
+// bağlıysa artık "henüz hizmet verilmemiş avans" değil; Toplam
+// Harcama + Alınan Tutar alanlarına YANSIMALI, depositLabel'dan
+// ÇIKARILMALI.
+// ===========================================================
+describe('Bug 28 follow-up — Peşinat tamamlanmış randevuya bağlıysa ana satışa katılır', () => {
+    it('is_deposit=true + linked_appointment_id tamamlanmış → DAHİL (Toplam Harcama\'ya yansır)', () => {
+        const sale = makeSale({
+            id: 'sale-pesinat-20k-completed',
+            is_deposit: true,
+            linked_appointment_id: 'apt-roza-1',
+            total: 20000,
+            payment_method: 'cash',
+            payment_status: 'paid',
+        });
+        const completedAptIds = new Set<string>(['apt-roza-1']);
+        expect(isMainBeautySale(sale, completedAptIds)).toBe(true);
+    });
+
+    it('is_deposit=true + linked_appointment_id tamamlanmamış → HARIÇ (henüz avans)', () => {
+        const sale = makeSale({
+            id: 'sale-pesinat-20k-open',
+            is_deposit: true,
+            linked_appointment_id: 'apt-roza-1',
+            total: 20000,
+            payment_method: 'cash',
+            payment_status: 'paid',
+        });
+        const completedAptIds = new Set<string>(); // tamamlanmamış
+        expect(isMainBeautySale(sale, completedAptIds)).toBe(false);
+    });
+
+    it('is_deposit=true + linked_appointment_id yok → HARIÇ (eşleşme yapılamaz)', () => {
+        const sale = makeSale({
+            id: 'sale-pesinat-no-link',
+            is_deposit: true,
+            total: 20000,
+        });
+        expect(isMainBeautySale(sale, new Set())).toBe(false);
+    });
+
+    it('notes "deposit:1" + linked_appointment_id tamamlanmış → DAHİL', () => {
+        const sale = makeSale({
+            id: 'sale-notes-deposit-completed',
+            linked_appointment_id: 'apt-roza-1',
+            total: 20000,
+            payment_method: 'cash',
+            payment_status: 'paid',
+            notes: 'deposit:1|peşinat',
+        });
+        const completedAptIds = new Set<string>(['apt-roza-1']);
+        expect(isMainBeautySale(sale, completedAptIds)).toBe(true);
+    });
+
+    it('ROZA akışı: randevu tamamlanmadan önce 2 satış → Toplam Harcama 0', () => {
+        const completedAptIds = new Set<string>();
+        const pesinat = makeSale({
+            id: 'sale-pesinat-20k',
+            is_deposit: true,
+            linked_appointment_id: 'apt-roza-1',
+            total: 20000,
+            payment_method: 'cash',
+            payment_status: 'paid',
+        });
+        const anaSatis = makeSale({
+            id: 'sale-ana-30k',
+            linked_appointment_id: 'apt-roza-1',
+            total: 30000,
+            payment_method: 'veresiye',
+            payment_status: 'pending',
+        });
+        // Henüz tamamlanmamış → her ikisi de Hariç
+        expect(isMainBeautySale(pesinat, completedAptIds)).toBe(false);
+        expect(isMainBeautySale(anaSatis, completedAptIds)).toBe(false);
+    });
+
+    it('ROZA akışı: randevu tamamlandıktan sonra aynı 2 satış → Toplam Harcama 50.000 (20k + 30k)', () => {
+        const completedAptIds = new Set<string>(['apt-roza-1']);
+        const pesinat = makeSale({
+            id: 'sale-pesinat-20k',
+            is_deposit: true,
+            linked_appointment_id: 'apt-roza-1',
+            total: 20000,
+            payment_method: 'cash',
+            payment_status: 'paid',
+        });
+        const anaSatis = makeSale({
+            id: 'sale-ana-30k',
+            linked_appointment_id: 'apt-roza-1',
+            total: 30000,
+            payment_method: 'veresiye',
+            payment_status: 'pending',
+        });
+        // Tamamlandı → her ikisi de DAHİL (peşinat artık ana satışın parçası)
+        expect(isMainBeautySale(pesinat, completedAptIds)).toBe(true);
+        expect(isMainBeautySale(anaSatis, completedAptIds)).toBe(true);
+    });
+});
