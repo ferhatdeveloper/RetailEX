@@ -752,8 +752,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             '—'
           ),
       },
-      // Bug 28 — Rezervasyon peşinatı (klon, varsayılan GIZLI). Veresiye
-      // kolonunun yanında yer alır; kullanıcı kolon menüsünden açabilir.
+      // Bug 28 — Rezervasyon peşinatı (varsayılan AÇIK). Veresiye
+      // kolonunun yanında yer alır; alt toplam satırında ayın toplamı görünür.
       {
         key: 'deposit',
         header: `${tm('dailyDepositCollected') || 'Peşinat'} (${currency})`,
@@ -779,7 +779,6 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ) : (
             '—'
           ),
-        meta: { defaultHidden: true },
       },
       {
         key: 'discount',
