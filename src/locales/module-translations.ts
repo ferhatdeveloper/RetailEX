@@ -10569,6 +10569,12 @@ export const excelModuleTranslations = {
   gunlukRapor: { tr: 'Günlük Rapor', en: 'Daily Report', ar: 'تقرير يومي', ku: 'ڕاپۆرتی ڕۆژانە' },
   dailyDepositCollected: { tr: 'Peşinat (Avans)', en: 'Deposit (Advance)', ar: 'عربون (مقدم)', ku: 'پاشەی پێشوەختە' },
   dailyDepositCountShort: { tr: 'Adet', en: 'Count', ar: 'العدد', ku: 'ژمارە' },
+  avansPesinatPayments: {
+    tr: 'Avans Peşinat Ödemeleri',
+    en: 'Advance Deposit Payments',
+    ar: 'دفعات عربون الحجز',
+    ku: 'پارەدانی نۆرەی پێشوەختە',
+  },
   aylikGunOzeti: { tr: 'Aylık Gün Özeti', en: 'Monthly Day Summary', ar: 'ملخص أيام الشهر', ku: 'پوختەی ڕۆژەکانی مانگ' },
   aylikGunOzetiDesc: {
     tr: 'Ayın tüm günleri — Günlük Rapor ile aynı: ciro, masraf (gider + cari/kasa çıkış), net (ciro − masraf), ortak payları',

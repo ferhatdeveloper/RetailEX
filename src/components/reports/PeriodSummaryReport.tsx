@@ -823,9 +823,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         footerSum: true,
         footerFormat: (n) =>
           n > 0 ? (
-            <span className="text-cyan-700" title={`${tm('dailyDepositCountShort') || 'adet'}: ${Math.round(n)}`}>
-              {money(n)}
-            </span>
+            <span className="text-cyan-700">{money(n)}</span>
           ) : (
             '—'
           ),
@@ -837,6 +835,29 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             >
               {money(row.depositAmount)}
             </span>
+          ) : (
+            '—'
+          ),
+        meta: { defaultVisible: true },
+      },
+      // Bug 28 follow-up — Avans/Peşinat Ödemeleri (adet) kolonu.
+      // Tutarın yanında kaç adet peşinat alındığını gösterir; alt toplam
+      // satırında ayın toplam adedi görünür.
+      {
+        key: 'depositCount',
+        header: tm('avansPesinatPayments') || 'Avans Peşinat Ödemeleri',
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) =>
+          n > 0 ? (
+            <span className="text-cyan-700">{Math.round(n)}</span>
+          ) : (
+            '—'
+          ),
+        cell: (row) =>
+          row.depositCount > 0 ? (
+            <span className="text-cyan-700 font-medium">{row.depositCount}</span>
           ) : (
             '—'
           ),
