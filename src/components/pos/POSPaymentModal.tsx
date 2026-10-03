@@ -947,36 +947,43 @@ const handleCollectCustomerDebt = async () => {
     if (remainingAfter > CARI_REMAINING_THRESHOLD) {
       // Peşinatlı modda kalan cariye yazılmaz — kullanıcı randevu
       // tamamlanırken ayrıca tahsil edecek. Bu blok yalnızca Peşinatlı
-      // dışı akışlarda (nakit + veresiye, kart + veresiye vb.) devreye girer.
+      // dışı akışlarda devreye girer.
       if (currentMethod === 'pesinatli') {
         // Peşinatlı: kalan alanı boş bırakılır, hata yok.
         // remainingAfter > 0 olabilir; kullanıcı randevu tamamlanırken
         // veya sonraki gelişinde ayrıca ödeme alacak.
-      } else {
+      } else if (currentMethod === 'veresiye') {
+        // Veresiye bilinçli seçildi → mevcut davranış.
         if (!selectedCustomer) {
           alert(selectCustomerForCariMessage);
           return;
         }
-        // Peşinatlı seçili ve taksit planı belirli ise kalan tutar
-        // taksit metadata'sı ile cariye yazılır; değilse düz veresiye.
-        // Yeni akışta: handleAddPayment zaten iki satır üretir (peşinat +
-        // veresiye) → remainingAfter = 0 olur ve bu blok atlanır. Buradaki
-        // yalnızca fallback — kullanıcı eski usul "peşinat ekle + Kalanı
-        // cariye yaz" akışını kullandıysa devreye girer.
-        const veresiyeRow =
-          (currentMethod as 'cash' | 'card' | 'veresiye' | 'pesinatli') === 'pesinatli' &&
-          isValidPesinatliInstallments(pesinatInstallments)
-            ? buildPesinatliVeresiye({
-                amount: remainingAfter,
-                installments: pesinatInstallments as 3 | 6 | 9 | 12,
-                currency: baseCurrency,
-              })
-            : buildVeresiyeForRemaining(remainingAfter);
+        const veresiyeRow = buildVeresiyeForRemaining(remainingAfter);
         paymentsToSubmit = [...paymentsToSubmit, veresiyeRow as Payment];
-        const amountInBase = (veresiyeRow as any).amount * (exchangeRates[(veresiyeRow as any).currency] ?? 1);
-        totalPaidAfter = roundPosMoneyAmount(totalPaidAfter + amountInBase, baseCurrency);
+        const amountInBase =
+          (veresiyeRow as any).amount *
+          (exchangeRates[(veresiyeRow as any).currency] ?? 1);
+        totalPaidAfter = roundPosMoneyAmount(
+          totalPaidAfter + amountInBase,
+          baseCurrency,
+        );
         remainingAfter = 0;
         changeAfter = 0;
+      } else {
+        // Nakit veya Kart: kalan cariye YAZILMAZ (eski davranış).
+        // Kullanıcı bilinçli olarak "Veresiye (Cari)" seçmediyse cari
+        // borç oluşturmamalı. Kalan tutarı "Tam Tutar" veya yeterli
+        // miktar girişi ile kapatması gerekir; aksi halde uyarı
+        // gösterilir ve satış tamamlanmaz.
+        const msg =
+          tm('collectRemainingAmount') ||
+          tm('collectPaymentFirst') ||
+          'Lütfen tam tutarı girin. Kalan tutarı ödemek için "Tam Tutar" butonunu kullanın veya manuel olarak tam miktarı girin. Veresiye sadece bilinçli olarak "Veresiye (Cari)" seçildiğinde uygulanır.';
+        if (typeof window !== 'undefined') {
+          window.alert(msg);
+        }
+        setIsLoading(false);
+        return;
       }
     }
 
