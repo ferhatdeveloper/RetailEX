@@ -16,7 +16,9 @@ export function displayUserCashierName(user?: LoginCashierUser | null): string {
   if (!user) return '';
   const full = String(user.fullName ?? user.full_name ?? '').trim();
   const username = String(user.username ?? '').trim();
-  return full || username;
+  // Tercih: önce kullanıcı adı (Market POS + fatura kaydı tutarlılığı).
+  // full_name boşsa username düşer; username boşsa full_name düşer.
+  return username || full;
 }
 
 export function isPlaceholderCashierName(raw: unknown): boolean {

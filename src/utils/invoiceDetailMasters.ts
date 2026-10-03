@@ -15,12 +15,58 @@ export type InvoicePickerMaster = {
   email?: string;
   address?: string;
   /**
+   * Kullanıcı adı (yalnızca cashier kaynağında). Dedupe anahtarına
+   * `name|phone|username` üçlüsünün parçası olarak girer; aynı kişinin
+   * farklı `id` ile birden fazla `public.users` kaydı olabilir (test
+   * kullanıcıları, admin'in kasiyer ekleme formundan gelen yinelenen
+   * kayıtlar) — bu durumda UI tek satırda birleştirir.
+   */
+  username?: string;
+  /**
    * Liste kaynağı: 'salesperson' (sales_reps tablosu) veya 'cashier'
    * (auth.users / public.users role=cashier). UI rozet rengi için kullanılır.
    * Belirlenmezse 'salesperson' varsayılır (geriye dönük uyumlu).
    */
   source?: 'salesperson' | 'cashier';
 };
+
+/**
+ * Kişi adı / telefonu / kullanıcı adı için ortak normalizasyon.
+ * - `İ → i`, `I → ı` (Türkçe `toLocaleLowerCase('tr-TR')`)
+ * - whitespace (boşluk + NBSP) tek boşluğa indirilir
+ * - yaygın noktalama temizlenir
+ * - baş/son boşluk kırpılır
+ *
+ * Aynı kişinin farklı DB kayıtlarından gelen satırları tekilleştirmek
+ * için `personDedupKey(name|phone|username)` ile birlikte kullanılır.
+ */
+export function normalizePersonKey(value: unknown): string {
+  return String(value ?? '')
+    .toLocaleLowerCase('tr-TR')
+    .replace(/[\s\u00A0]+/g, ' ')
+    .replace(/[.,;:'"`!?()\[\]{}<>/\\|@#&*+=~^%$]/g, '')
+    .trim();
+}
+
+/**
+ * Bir kişinin birden fazla gösterimini (`sales_reps` + `public.users`
+ * veya aynı tablodaki yinelenen kayıtlar) tek satıra indirgemek için
+ * ortak anahtar üretir. `name`, `phone` veya `username` alanlarından
+ * herhangi biri eşleşirse aynı kişi sayılır.
+ */
+export function personDedupKey(p: {
+  name?: string;
+  phone?: string;
+  username?: string;
+}): string {
+  const name = normalizePersonKey(p.name);
+  const phone = normalizePersonKey(p.phone);
+  const username = normalizePersonKey(p.username);
+  // İlk boş olmayan alanı anahtar yap; yoksa code tabanlı fallback
+  // InvoiceSalespersonModal'da hallediliyor (kayıtların code'u farklı
+  // olabilir ama kişi aynı).
+  return [name, phone, username].find((v) => v.length > 0) || '';
+}
 
 /** InvoiceSalespersonModal eski mock listesi — 001_demo_data.sql değil. */
 const DEMO_SALESPERSON_CODES = new Set(['SAT001', 'SAT002', 'SAT003', 'SAT004']);
@@ -135,6 +181,7 @@ export async function listCashierRoleUsers(): Promise<InvoicePickerMaster[]> {
       name: string;
       phone?: string | null;
       email?: string | null;
+      username?: string | null;
     }>(
       `SELECT
          id::text AS code,
@@ -145,7 +192,8 @@ export async function listCashierRoleUsers(): Promise<InvoicePickerMaster[]> {
            'Kullanıcı-' || SUBSTRING(id::text, 1, 8)
          ) AS name,
          phone,
-         email
+         email,
+         username
        FROM public.users
        WHERE COALESCE(role, 'cashier') IN ('cashier', 'kasiyer', 'sales', 'satis', '')
          AND COALESCE(is_active, true) = true
@@ -161,6 +209,7 @@ export async function listCashierRoleUsers(): Promise<InvoicePickerMaster[]> {
         name: String(r.name || '').trim(),
         phone: r.phone ? String(r.phone) : undefined,
         email: r.email ? String(r.email) : undefined,
+        username: r.username ? String(r.username) : undefined,
         source: 'cashier' as const,
       }));
   } catch {

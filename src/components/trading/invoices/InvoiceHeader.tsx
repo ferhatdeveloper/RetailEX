@@ -6,7 +6,7 @@ import { isInvoicePurchaseSide } from '../../../utils/invoiceLineType';
 import { CodeFormatFieldButton } from '../../shared/CodeFormatFieldButton';
 import type { InvoiceCariItem } from './InvoiceCariSelectModal';
 import { InvoiceSalespersonModal } from './InvoiceSalespersonModal';
-import { listCashierRoleUsers, listInvoiceSalespersons, type InvoicePickerMaster } from '../../../utils/invoiceDetailMasters';
+import { listCashierRoleUsers, listInvoiceSalespersons, personDedupKey, type InvoicePickerMaster } from '../../../utils/invoiceDetailMasters';
 
 interface InvoiceType {
     code: number;
@@ -221,6 +221,55 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
      */
     const [showCashierModal, setShowCashierModal] = useState(false);
     const [cashierList, setCashierList] = useState<InvoicePickerMaster[]>([]);
+
+    /**
+     * sales_reps + public.users(role=cashier) birleştirme + dedupe.
+     * Modalın liste mantığıyla birebir aynı (InvoiceSalespersonModal).
+     * Burada da `personDedupKey` kullanıyoruz: aynı kişinin farklı DB
+     * kayıtları tek satırda birleşir; sales_reps öncelik kazanır,
+     * eksik alanlar (phone, username) cashier kaydından doldurulur.
+     */
+    const mergeSalespersonAndCashier = (
+        reps: InvoicePickerMaster[],
+        users: InvoicePickerMaster[],
+    ): InvoicePickerMaster[] => {
+        const map = new Map<string, InvoicePickerMaster>();
+        for (const p of reps) {
+            if (!String(p.code || '').trim()) continue;
+            const key = personDedupKey(p) || `code:${String(p.code).trim()}`;
+            if (map.has(key)) continue;
+            map.set(key, { ...p, source: 'salesperson' });
+        }
+        for (const u of users) {
+            if (!String(u.code || '').trim()) continue;
+            if (!String(u.name || '').trim()) continue;
+            const key = personDedupKey(u) || `code:${String(u.code).trim()}`;
+            const existing = map.get(key);
+            if (existing) {
+                map.set(key, {
+                    ...existing,
+                    phone: existing.phone || u.phone,
+                    email: existing.email || u.email,
+                    username: existing.username || u.username,
+                });
+            } else {
+                map.set(key, { ...u, source: 'cashier' });
+            }
+        }
+        return Array.from(map.values())
+            .filter(
+                (p) =>
+                    String(p.name || '').trim().length > 0 &&
+                    String(p.code || '').trim().length > 0,
+            )
+            .sort((a, b) => {
+                const aIsSp = a.source !== 'cashier';
+                const bIsSp = b.source !== 'cashier';
+                if (aIsSp !== bIsSp) return aIsSp ? -1 : 1;
+                return a.name.localeCompare(b.name, 'tr-TR', { sensitivity: 'base' });
+            });
+    };
+
     useEffect(() => {
         if (!showCashierModal) return;
         let cancelled = false;
@@ -230,16 +279,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 listCashierRoleUsers(),
             ]);
             if (cancelled) return;
-            const map = new Map<string, InvoicePickerMaster>();
-            for (const p of reps) {
-                if (p.code) map.set(p.code, { ...p, source: 'salesperson' });
-            }
-            for (const u of users) {
-                if (u.code && !map.has(u.code)) {
-                    map.set(u.code, { ...u, source: 'cashier' });
-                }
-            }
-            setCashierList(Array.from(map.values()));
+            setCashierList(mergeSalespersonAndCashier(reps, users));
         })();
         return () => {
             cancelled = true;
@@ -268,16 +308,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     listCashierRoleUsers(),
                 ]);
                 if (cancelled) return;
-                const map = new Map<string, InvoicePickerMaster>();
-                for (const p of reps) {
-                    if (p.code) map.set(p.code, { ...p, source: 'salesperson' });
-                }
-                for (const u of users) {
-                    if (u.code && !map.has(u.code)) {
-                        map.set(u.code, { ...u, source: 'cashier' });
-                    }
-                }
-                const list = Array.from(map.values());
+                const list = mergeSalespersonAndCashier(reps, users);
                 setCashierList(list);
                 const m = list.find((c) => c.code === code);
                 if (m?.name) onCashierNameChange?.(m.name);

@@ -174,7 +174,7 @@ export default function MarketPOS({
       ...(invoiceSearch?.trim() ? { invoiceSearch: invoiceSearch.trim() } : {}),
       posSalesReturn: {
         editData: {
-          cashier: resolveWriteCashierName(currentStaff || currentUser.full_name || currentUser.username),
+          cashier: resolveWriteCashierName(currentStaff || currentUser.username || currentUser.full_name),
           created_by_user_id: currentUser.id,
           store_id: currentUser.storeId && !isPlaceholderDeviceName(currentUser.storeId) ? currentUser.storeId : undefined,
           source: 'pos',
@@ -1649,7 +1649,7 @@ export default function MarketPOS({
       // placeholder/boşsa login user'ı döner). Aksi halde DB'ye boş yazılır
       // ve fatura listesinde kasiyer kolonu boş kalır.
       cashier: resolveWriteCashierName(
-        currentStaff || currentUser.full_name || currentUser.username,
+        currentStaff || currentUser.username || currentUser.full_name,
       ),
       firmNr: selectedFirm?.firm_nr,
       periodNr: selectedPeriod?.nr.toString().padStart(2, '0'),

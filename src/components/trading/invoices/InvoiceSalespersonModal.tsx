@@ -8,6 +8,8 @@ import {
   createInvoiceSalesperson,
   listInvoiceSalespersons,
   listCashierRoleUsers,
+  normalizePersonKey,
+  personDedupKey,
   type InvoicePickerMaster,
 } from '../../../utils/invoiceDetailMasters';
 import { suggestQuickAddCode } from '../../../utils/masterDataQuickAdd';
@@ -75,38 +77,84 @@ export function InvoiceSalespersonModal({
 
   /**
    * İki kaynağı birleştir: sales_reps (varsa) + public.users role='cashier'
-   * (boş ise). Aynı code iki listede de varsa öncelik sales_reps'tedir (tek
-   * satır + salesperson rozeti); aksi halde cashier rozeti ile gösterilir.
+   * (boş ise). Öncelik: aynı kişi hem `sales_reps` hem `public.users`'da
+   * varsa → **sales_reps** (indigo rozet) kazansın, ama `public.users`'dan
+   * gelen ek bilgi (telefon, username) birleşik satıra eklenir.
    *
-   * Dedupe anahtarı: `code` (her iki kaynaktan da benzersiz UUID/code).
-   * İkincil dedupe: `name.localeCompare('tr-TR')` ile büyük/küçük harf
-   * ve Türkçe karakter farkı yok sayılır.
+   * Dedupe anahtarı: `personDedupKey(name|phone|username)`. Eğer
+   * `sales_reps` satırında name/phone/username boşsa ve `code` daha önce
+   * eklenmemişse, aynı `code` ile gelen cashier satırını da kabul ederiz
+   * (geriye dönük uyumlu).
+   *
+   * Boş/placeholder (—, null, undefined) `name` veya geçersiz `code`
+   * içeren kayıtlar listeden çıkarılır.
    */
   const combinedSalespersons = useMemo(() => {
+    // 1) sales_reps: anahtar olarak önce personDedupKey, yoksa code
     const map = new Map<string, InvoicePickerMaster>();
     for (const p of salespersons) {
-      if (p.code) map.set(p.code, { ...p, source: 'salesperson' });
+      if (!String(p.code || '').trim()) continue;
+      const key = personDedupKey(p) || `code:${String(p.code).trim()}`;
+      if (map.has(key)) continue;
+      map.set(key, { ...p, source: 'salesperson' });
     }
+    // 2) cashier: aynı kişi sales_reps'ta varsa bilgi birleştir
     for (const u of cashierUsers) {
-      if (u.code && !map.has(u.code)) {
-        map.set(u.code, { ...u, source: 'cashier' });
+      if (!String(u.code || '').trim()) continue;
+      if (!String(u.name || '').trim()) continue;
+      const key = personDedupKey(u) || `code:${String(u.code).trim()}`;
+      const existing = map.get(key);
+      if (existing) {
+        // sales_reps kazanır; sadece eksik alanları doldur
+        map.set(key, {
+          ...existing,
+          phone: existing.phone || u.phone,
+          email: existing.email || u.email,
+          username: existing.username || u.username,
+        });
+      } else {
+        map.set(key, { ...u, source: 'cashier' });
       }
     }
-    return Array.from(map.values()).sort((a, b) =>
-      a.name.localeCompare(b.name, 'tr-TR'),
+    // 3) Boş/placeholder name'leri listeden çıkar
+    const cleaned = Array.from(map.values()).filter(
+      (p) => String(p.name || '').trim().length > 0 && String(p.code || '').trim().length > 0,
     );
+    // 4) Sırala: önce salesperson (indigo rozet), sonra cashier; her grup
+    //    içinde Türkçe locale alfabetik.
+    return cleaned.sort((a, b) => {
+      const aIsSp = a.source !== 'cashier';
+      const bIsSp = b.source !== 'cashier';
+      if (aIsSp !== bIsSp) return aIsSp ? -1 : 1;
+      return a.name.localeCompare(b.name, 'tr-TR', { sensitivity: 'base' });
+    });
   }, [salespersons, cashierUsers]);
+
+  // Footer sayaç için
+  const salespersonCount = useMemo(
+    () => combinedSalespersons.filter((p) => p.source !== 'cashier').length,
+    [combinedSalespersons],
+  );
+  const cashierCount = useMemo(
+    () => combinedSalespersons.filter((p) => p.source === 'cashier').length,
+    [combinedSalespersons],
+  );
 
   const filteredSalespersons = useMemo(() => {
     if (!searchTerm.trim()) return combinedSalespersons;
-    const term = searchTerm.toLocaleLowerCase('tr-TR');
-    return combinedSalespersons.filter(
-      (person) =>
-        person.code.toLocaleLowerCase('tr-TR').includes(term) ||
-        person.name.toLocaleLowerCase('tr-TR').includes(term) ||
-        person.phone?.toLocaleLowerCase('tr-TR').includes(term) ||
-        person.email?.toLocaleLowerCase('tr-TR').includes(term),
-    );
+    const term = normalizePersonKey(searchTerm);
+    return combinedSalespersons.filter((person) => {
+      const fields = [
+        person.code,
+        person.name,
+        person.phone,
+        person.email,
+        person.username,
+      ]
+        .map((v) => normalizePersonKey(v))
+        .filter(Boolean);
+      return fields.some((f) => f.includes(term));
+    });
   }, [searchTerm, combinedSalespersons]);
 
   const handleSelect = (code: string) => {
@@ -242,9 +290,9 @@ export function InvoiceSalespersonModal({
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className={`font-medium ${cardTitle}`}>{person.name}</p>
+                        <p className={`font-medium truncate ${cardTitle}`}>{person.name}</p>
                         <span
                           data-testid={`invoice-salesperson-badge-${isCashier ? 'cashier' : 'salesperson'}`}
                           className={
@@ -265,10 +313,16 @@ export function InvoiceSalespersonModal({
                       <p className={`text-sm ${cardSub}`}>
                         {tm('code')}: {person.code}
                       </p>
-                      {person.phone && <p className={`text-xs mt-1 ${cardMuted}`}>{person.phone}</p>}
+                      {(person.phone || person.username) && (
+                        <p className={`text-xs mt-1 truncate ${cardMuted}`}>
+                          {person.phone ? person.phone : null}
+                          {person.phone && person.username ? ' · ' : null}
+                          {person.username ? `@${person.username}` : null}
+                        </p>
+                      )}
                     </div>
                     {isSelected && (
-                      <div className="w-5 h-5 rounded-full border-2 border-blue-600 flex items-center justify-center">
+                      <div className="w-5 h-5 rounded-full border-2 border-blue-600 flex items-center justify-center shrink-0 ml-2">
                         <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
                       </div>
                     )}
@@ -348,6 +402,14 @@ export function InvoiceSalespersonModal({
       <div
         className={`p-4 border-t shrink-0 ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}`}
       >
+        <div
+          className={`mb-2 text-[11px] text-center tabular-nums ${
+            darkMode ? 'text-gray-400' : 'text-gray-500'
+          }`}
+          aria-live="polite"
+        >
+          {`Toplam ${combinedSalespersons.length} kayıt · ${salespersonCount} satış elemanı · ${cashierCount} kasiyer`}
+        </div>
         <button
           type="button"
           onClick={onClose}
