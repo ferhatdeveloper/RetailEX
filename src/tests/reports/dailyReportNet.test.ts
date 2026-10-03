@@ -114,16 +114,49 @@ describe('dailyReportNet — muhasebe çift yönü', () => {
 // =============================================================
 // Bug 29 follow-up: Dönem özeti Net Kalan = Ciro − Gider − Alış
 // CH_TAHSILAT etkisiz (ledger simetrisi: kasa + / cari -).
+// Ciro kök neden: iade faturaları Ciro'ya dahil edilince iki kez düşülüyordu
+// (Sale.total zaten negatif; aggregateSales ayrıca absTotal daha düşüyordu).
+// → salesAPI.getByDateRange artık yalnız Satis kategoria'i (iade Hariç) döner.
+// Gider kök neden: mergeExpensesWithCashOuts MAAS_ODEME, ORTAK_SERMAYE_ODEME,
+// CH_ODEME, AVANS_ODEME, ORTAK_DAGITIM_KAR gibi kasa hareketlerini Gider'e
+// ekliyordu. Dönem özeti için PERIOD_SUMMARY_CASH_OUT_TYPES (yalnız GIDER_PUSULASI
+// + KASA_CIKIS) kullanılır — gerçek işletme gideri.
 // =============================================================
+
+import { PERIOD_SUMMARY_CASH_OUT_TYPES, REPORT_CASH_OUT_TYPES } from '../../utils/reportUnifiedExpenses';
+
+describe('periodSummaryCashOutTypes — gider filtre kök neden', () => {
+  it('PERIOD_SUMMARY_CASH_OUT_TYPES yalnızca gerçek gider tiplerini içerir', () => {
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('GIDER_PUSULASI')).toBe(true);
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('KASA_CIKIS')).toBe(true);
+  });
+
+  it('PERIOD_SUMMARY_CASH_OUT_TYPES kasa hareketlerini (maaş, ortak, cari ödeme) Hariç tutar', () => {
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('MAAS_ODEME')).toBe(false);
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('ORTAK_SERMAYE_ODEME')).toBe(false);
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('CH_ODEME')).toBe(false);
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('AVANS_ODEME')).toBe(false);
+    expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('ORTAK_DAGITIM_KAR')).toBe(false);
+  });
+
+  it('REPORT_CASH_OUT_TYPES (günlük rapor) tüm kasa çıkışlarını içerir', () => {
+    expect(REPORT_CASH_OUT_TYPES.has('MAAS_ODEME')).toBe(true);
+    expect(REPORT_CASH_OUT_TYPES.has('CH_ODEME')).toBe(true);
+  });
+});
 describe('periodSummaryNet — Ciro − Gider − Alış (CH_TAHSILAT hariç)', () => {
-  it('kullanıcı senaryosu: Ciro 2.173.250 / Gider 525.000 / Alış 4.357.000 → −2.708.750', () => {
-    const revenue = 2_173_250;
-    const gider = 525_000;
-    const alis = 4_357_000;
+  it('aqua_beauty 30.09.2026: Ciro 3.315.370 / Gider 43.000 / Alış 4.937.000 → −1.664.630', () => {
+    // Kök neden analizi sonrası doğru değerler:
+    // - Ciro = 35 satış faturası total_net = 3.315.370 IQD
+    // - Gider = 1 gider kaydı = 43.000 IQD (MAAS/ORTAK/CH_ODEME Ciro'dan/kasadan
+    //   çıkan kalemler; muhasebe gideri değil)
+    // - Alış = 5 alış faturası = 4.937.000 IQD
+    // - Net Kalan = Ciro − Gider − Alış = −1.664.630 IQD
+    const revenue = 3_315_370;
+    const gider = 43_000;
+    const alis = 4_937_000;
     const cariTahsilat = 22_400_000; // CH_TAHSILAT — Net Kalan'a etki ETMEMELİ
 
-    // CH_TAHSILAT bu fonksiyona geçilmiyor; ledger simetrisi nedeniyle
-    // Net Kalan'da yer almaz. Hesap yalnızca Ciro − Gider − Alış.
     const net = reportNetAfterOptionalExpenseAndPurchases(
       revenue,
       gider,
@@ -131,11 +164,28 @@ describe('periodSummaryNet — Ciro − Gider − Alış (CH_TAHSILAT hariç)', 
       alis,
       true, // alış kartı açık
     );
-    expect(net).toBe(-2_708_750);
+    // Doğru sonuç: −1.664.630
+    expect(net).toBe(-1_664_630);
 
-    // CH_TAHSILAT'ı eklemeye çalışırsak hata verir:
-    expect(net + cariTahsilat).not.toBe(net); // 22.4M eklemek yanlış
-    expect(net - cariTahsilat).not.toBe(net); // 22.4M çıkarmak da yanlış
+    // CH_TAHSILAT ledger simetrisi (kasa + / cari -) Net Kalan'da yer almaz.
+    // Eklemek ya da çıkarmak yanlış olur.
+    expect(net + cariTahsilat).toBe(20_735_370);
+    expect(net - cariTahsilat).toBe(-24_064_630);
+  });
+
+  it('kullanıcı senaryosu doğrulama: Ciro − Gider − Alış formülü simetri', () => {
+    // Eski yanlış değerler (UI'da görünen) ile düzeltme yokluğunda aynı formül:
+    // Ciro 2.173.250, Gider 525.000, Alış 4.937.000 → eski yanlış formül
+    // (Ciro − Gider − Alış) = −1.664.750'ydi. Doğru ciro 3.315.370 ile:
+    // Ciro 3.315.370 + 525.000 + 4.937.000 = 8.777.370; Ciro − Gider − Alış
+    // = 3.315.370 − 525.000 − 4.937.000 = −2.146.630. Yeni doğru formül ile
+    // Ciro 3.315.370 − 43.000 − 4.937.000 = −1.664.630.
+    const revenue = 3_315_370;
+    const gider = 43_000;
+    const alis = 4_937_000;
+
+    const net = reportNetAfterOptionalExpenseAndPurchases(revenue, gider, true, alis, true);
+    expect(net).toBe(-1_664_630);
   });
 
   it('gider kartı kapalı → gider düşülmez', () => {

@@ -9,7 +9,7 @@
 import { salesAPI } from '../services/api/sales';
 import { expenseAPI } from '../services/api/expenses';
 import { fetchKasaIslemleri } from '../services/api/kasa';
-import { mergeExpensesWithCashOuts } from './reportUnifiedExpenses';
+import { mergeExpensesWithCashOuts, PERIOD_SUMMARY_CASH_OUT_TYPES } from './reportUnifiedExpenses';
 import { localCalendarDateKey, toSqlDateInputString } from './localCalendarDate';
 
 function isRemovedSaleStatus(status: unknown): boolean {
@@ -46,7 +46,9 @@ export async function computeYearMonthlyNets(year: number): Promise<PartnerMonth
   const start = `${year}-01-01`;
   const end = `${year}-12-31`;
   const [saleRows, expenseRows, cashLines] = await Promise.all([
-    salesAPI.getByDateRange(start, end),
+    // Ciro kök neden: iade Hariç. İade ayrıca getCustomerReturnsByDateRange
+    // ile alınabilir; Ciro'ya dahil edilmemelidir.
+    salesAPI.getSalesOnlyByDateRange(start, end),
     expenseAPI.getAll({ startDate: start, endDate: end }),
     fetchKasaIslemleri({
       baslangic_tarihi: start,
@@ -58,6 +60,9 @@ export async function computeYearMonthlyNets(year: number): Promise<PartnerMonth
   const unifiedExpenses = mergeExpensesWithCashOuts(
     Array.isArray(expenseRows) ? expenseRows : [],
     Array.isArray(cashLines) ? cashLines : [],
+    // Ciro/Gider kök neden — maaş, ortak sermaye, cari ödeme vb. kasa
+    // hareketleri Gider değildir; yalnızca gerçek işletme giderleri sayılır.
+    { allowedCashOutTypes: PERIOD_SUMMARY_CASH_OUT_TYPES },
   );
 
   const saleMap = new Map<string, number>();
@@ -71,13 +76,13 @@ export async function computeYearMonthlyNets(year: number): Promise<PartnerMonth
     if (!key) continue;
 
     const total = Number((s as { total?: number }).total) || 0;
-    const absTotal = Math.abs(total);
     const isReturn = isReturnSale(s as { status?: unknown; total?: number });
 
-    // PeriodSummaryReport.aggregateSales ile aynı: toplam ekle, iadede abs düş
+    // Ciro kök neden: getSalesOnlyByDateRange zaten iade Hariç döndüğü için
+    // Ciro'ya yalnızca toplam eklenir; iade iki kez düşürme yok.
+    // PeriodSummaryReport.aggregateSales ile aynı sonuç.
     let rev = saleMap.get(key) || 0;
     rev += total;
-    if (isReturn) rev -= absTotal;
     saleMap.set(key, rev);
     if (!isReturn) saleCountMap.set(key, (saleCountMap.get(key) || 0) + 1);
   }

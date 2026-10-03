@@ -24,6 +24,25 @@ export const REPORT_CASH_OUT_TYPES = new Set([
   'ORTAK_SERMAYE_ODEME',
 ]);
 
+/**
+ * Dönem özeti "Gider" kolonuna dahil edilecek kasa çıkış tipleri.
+ *
+ * Bug 29 follow-up — Ciro/Gider/Alış kök neden analizi:
+ * - Dönem özetinin Net Kalan'ı = Ciro − Gider − Alış.
+ * - MAAS_ODEME, ORTAK_SERMAYE_ODEME, CH_ODEME, AVANS_ODEME, ORTAK_DAGITIM_KAR
+ *   gibi kalemler Ciro'dan/kasadan çıkan hareketlerdir; muhasebe açısından
+ *   Gider DEĞİLDİR (gider = işletme gideri, maaş değil).
+ * - Dönem özeti "Gider" kolonuna yalnızca Expense tablosundaki (Gider Yönetimi)
+ *   gerçek giderler + bağlanmamış GIDER_PUSULASI / KASA_CIKIS (işletme gideri
+ *   olarak nitelenen manuel kasa çıkışları) dahil edilir.
+ * - CH_TAHSILAT (ledger simetrisi: kasa + / cari -) Ciro'ya DEĞİL; Net
+ *   Kalan'a da dahil değildir.
+ */
+export const PERIOD_SUMMARY_CASH_OUT_TYPES = new Set([
+  'GIDER_PUSULASI',
+  'KASA_CIKIS',
+]);
+
 /** Günlük/Dönem raporu için kasa para GİRİŞİ tipleri (sign=+1). */
 export const REPORT_CASH_IN_TYPES = new Set([
   'KASA_GIRIS',
@@ -61,6 +80,7 @@ export function reportCashOutCategory(typeCode: string): string {
 export function mergeExpensesWithCashOuts(
   expenses: Expense[],
   cashLines: KasaIslemi[],
+  options?: { allowedCashOutTypes?: Set<string> },
 ): Expense[] {
   const allExpenses = Array.isArray(expenses) ? expenses : [];
   const linkedCashIds = new Set(
@@ -78,11 +98,13 @@ export function mergeExpensesWithCashOuts(
       .filter(Boolean),
   );
 
+  const allowedTypes = options?.allowedCashOutTypes ?? REPORT_CASH_OUT_TYPES;
+
   const unified: Expense[] = allExpenses.map((e) => ({ ...e }));
 
   for (const cl of Array.isArray(cashLines) ? cashLines : []) {
     const type = String(cl.islem_tipi || '').trim().toUpperCase();
-    if (!REPORT_CASH_OUT_TYPES.has(type)) continue;
+    if (!allowedTypes.has(type)) continue;
     if (cl.id && linkedCashIds.has(String(cl.id))) continue;
     const amt = Math.abs(Number(cl.tutar) || 0);
     if (!amt) continue;

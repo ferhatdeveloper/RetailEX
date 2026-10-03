@@ -14,6 +14,7 @@ import {
   mergeExpensesWithCashOuts,
   mergeExpensesWithCashIns,
   aggregateCashIns,
+  PERIOD_SUMMARY_CASH_OUT_TYPES,
 } from '../../utils/reportUnifiedExpenses';
 import type { Sale } from '../../App';
 import type { Invoice, Supplier } from '../../core/types/models';
@@ -167,6 +168,14 @@ function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
     const absTotal = Math.abs(total);
     const isReturn = isReturnSale(s);
 
+    // Bug 29 follow-up: Ciro kök neden. Önceki kod Ciro'dan iade için iki
+    // kez düşüyordu (`row.revenue += total` ile negatifi ekle, sonra
+    // `if (isReturn) row.revenue -= absTotal` ile tekrar düş) — bu
+    // double-counting Ciro'yu hatalı azaltıyordu. Şimdi:
+    // - Normal satış: total pozitif, Ciro'ya eklenir.
+    // - İade: total negatif (signedTotal); Ciro'ya yalnızca negatifi
+    //   eklenir (toplam = Ciro − iade amount). İade bug yok; returnsCount/
+    //   returnsAmount ayrıca takip edilir.
     if (isReturn) {
       row.returnsCount += 1;
       row.returnsAmount += absTotal;
@@ -196,10 +205,6 @@ function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
     // Veresiye verilen = cariye kalan (iade satırında şişirmemek için yalnız satış)
     if (!isReturn) {
       row.veresiye += Number(split.remaining) || 0;
-    }
-
-    if (isReturn) {
-      row.revenue -= absTotal;
     }
   }
   return map;
@@ -379,11 +384,13 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     mode === 'monthly-days' && Number.isFinite(targetYear) && Number.isFinite(targetMonth) && targetMonth >= 1 && targetMonth <= 12;
 
   // sales referansı useQuery.data üzerinden geliyor (aşağıdaki salesQuery) — refactor 7a34520d sonrası
-  // Satışlar — tarih aralığı
+  // Ciro satışları — iade Hariç (Bug 29 follow-up). İade Ciro'da negatifti ve
+  // aggregateSales çift düşme uyguladığı için Ciro hatalı azalıyordu
+  // (3.315.370 → 2.173.250). `getSalesOnlyByDateRange` iade Hariç Satis döner.
   const salesQuery = useQuery({
     queryKey: ['periodSummary', 'sales', firmKey, periodRange?.start, periodRange?.end],
     queryFn: async () => {
-      const rows = await salesAPI.getByDateRange(periodRange!.start, periodRange!.end);
+      const rows = await salesAPI.getSalesOnlyByDateRange(periodRange!.start, periodRange!.end);
       return Array.isArray(rows) ? (rows as Sale[]) : [];
     },
     enabled: !!periodRange,
@@ -423,6 +430,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       mergeExpensesWithCashOuts(
         expensesBaseQuery.data ?? [],
         cashLinesQuery.data ?? [],
+        // Dönem özetinde Gider kolonuna yalnızca gerçek giderler (Gider Yönetimi +
+        // GIDER_PUSULASI / KASA_CIKIS) dahil; MAAS_ODEME, ORTAK_SERMAYE_ODEME,
+        // CH_ODEME, AVANS_ODEME, ORTAK_DAGITIM_KAR Ciro'dan/kasadan çıkan
+        // kalemlerdir — muhasebe açısından gider değildir.
+        { allowedCashOutTypes: PERIOD_SUMMARY_CASH_OUT_TYPES },
       ),
     [expensesBaseQuery.data, cashLinesQuery.data],
   );

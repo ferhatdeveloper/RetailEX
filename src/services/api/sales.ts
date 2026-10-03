@@ -585,6 +585,84 @@ export const salesAPI = {
     }
   },
 
+  /**
+   * Ciro için sadece satış faturaları (iade Hariç).
+   *
+   * Bug 29 follow-up — Ciro kök neden:
+   * - `getByDateRange` iade satırlarını döner (negatif `Sale.total`)
+   * - PeriodSummaryReport.aggregateSales ise iade için Ciro'dan iki kez
+   *   düşüyordu (önce negatifi topla, sonra absTotal düş). Bu double-counting
+   *   Ciro'yu hatalı azaltıyordu (örn. 3.315.370 → 2.173.250).
+   * - Ciro raporları (period summary, partner period net, hizmet bazlı rapor)
+   *   için **yalnızca Satis kategorisi** döndürülür; iade ayrıca
+   *   `getCustomerReturnsByDateRange` üzerinden alınabilir.
+   * - POS Z raporu, katalog, müşteri bazlı raporlar **mevcut** iade-dahil
+   *   davranışa bağlıdır — bu yüzden `getByDateRange` korunur.
+   */
+  async getSalesOnlyByDateRange(
+    startDate: string,
+    endDate: string,
+  ): Promise<Sale[]> {
+    try {
+      const pageSize = 5000;
+      const all: Sale[] = [];
+      let page = 1;
+      let totalPages = 1;
+      while (page <= totalPages) {
+        const result = await invoicesAPI.getPaginated({
+          page,
+          startDate,
+          endDate,
+          invoiceCategory: 'Satis',
+          pageSize,
+        });
+        all.push(...result.data.map(mapInvoiceToSale));
+        totalPages = Math.max(1, result.totalPages || 1);
+        if (!result.data.length) break;
+        page += 1;
+      }
+      return enrichSalesWithLineItems(all);
+    } catch (error) {
+      console.error('[SalesAPI] getSalesOnlyByDateRange failed:', error);
+      return [];
+    }
+  },
+
+  /** Müşteri satış iadeleri (trcode 3) — ayrı analiz / Z raporu. */
+  async getCustomerReturnsByDateRange(
+    startDate: string,
+    endDate: string,
+  ): Promise<Sale[]> {
+    try {
+      const pageSize = 5000;
+      const all: Sale[] = [];
+      let page = 1;
+      let totalPages = 1;
+      while (page <= totalPages) {
+        const result = await invoicesAPI.getPaginated({
+          page,
+          startDate,
+          endDate,
+          invoiceCategory: 'Iade',
+          invoiceType: 3,
+          pageSize,
+        });
+        all.push(
+          ...result.data
+            .filter((inv) => !isPurchaseReturnInvoice(inv))
+            .map(mapInvoiceToSale),
+        );
+        totalPages = Math.max(1, result.totalPages || 1);
+        if (!result.data.length) break;
+        page += 1;
+      }
+      return enrichSalesWithLineItems(all);
+    } catch (error) {
+      console.error('[SalesAPI] getCustomerReturnsByDateRange failed:', error);
+      return [];
+    }
+  },
+
   /** Hizmet Bazlı Rapor — perakende / market / restoran: satış + hizmet faturaları */
   async getServiceBreakdownSource(
     startDate: string,
