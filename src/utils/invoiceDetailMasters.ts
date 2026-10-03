@@ -101,6 +101,52 @@ export async function listInvoiceSalespersons(): Promise<InvoicePickerMaster[]> 
   }
 }
 
+/**
+ * auth.users tablosundan role='cashier' (veya boş) olan kullanıcıları
+ * InvoicePickerMaster formatında getirir. sales_reps tablosu boş olduğunda
+ * kasiyer seçimi için fallback kaynak olarak kullanılır.
+ *
+ * Yalnızca gerekli kolonlar seçilir (auth.users tablosunda PII olabilir);
+ * `raw_user_meta_data->>'full_name'` veya `username` ad alanı olarak tercih edilir.
+ */
+export async function listCashierRoleUsers(): Promise<InvoicePickerMaster[]> {
+  try {
+    // cashier rolü + boş/yer tutucu roller; 'admin' gibi üst düzey rolleri
+    // kasıtlı olarak DAHİL ETMİYORUZ — kasiyer listesi operasyonel kullanıcılar.
+    const { rows } = await postgres.query<{
+      code: string;
+      name: string;
+      phone?: string | null;
+      email?: string | null;
+    }>(
+      `SELECT
+         id::text AS code,
+         COALESCE(
+           NULLIF(TRIM(raw_user_meta_data->>'full_name'), ''),
+           NULLIF(TRIM(username), ''),
+           NULLIF(TRIM(email), ''),
+           'Kullanıcı-' || SUBSTRING(id::text, 1, 8)
+         ) AS name,
+         raw_user_meta_data->>'phone' AS phone,
+         email
+       FROM auth.users
+       WHERE COALESCE(role, 'cashier') IN ('cashier', 'kasiyer', 'sales', 'satis', '')
+         AND COALESCE(is_active, true) = true
+       ORDER BY name ASC`,
+    );
+    return (rows || [])
+      .filter((r) => keepMaster(r))
+      .map((r) => ({
+        code: String(r.code || '').trim(),
+        name: String(r.name || '').trim(),
+        phone: r.phone ? String(r.phone) : undefined,
+        email: r.email ? String(r.email) : undefined,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 /** Satış elemanı hızlı ekleme (fatura seçim modalı). */
 export async function createInvoiceSalesperson(input: {
   code: string;

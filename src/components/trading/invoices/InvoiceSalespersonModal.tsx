@@ -7,6 +7,7 @@ import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/Perce
 import {
   createInvoiceSalesperson,
   listInvoiceSalespersons,
+  listCashierRoleUsers,
   type InvoicePickerMaster,
 } from '../../../utils/invoiceDetailMasters';
 import { suggestQuickAddCode } from '../../../utils/masterDataQuickAdd';
@@ -36,6 +37,7 @@ export function InvoiceSalespersonModal({
   const { darkMode } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
   const [salespersons, setSalespersons] = useState<InvoicePickerMaster[]>([]);
+  const [cashierUsers, setCashierUsers] = useState<InvoicePickerMaster[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [quickCode, setQuickCode] = useState('');
@@ -44,17 +46,25 @@ export function InvoiceSalespersonModal({
   const [creating, setCreating] = useState(false);
 
   const reload = async () => {
-    const rows = await listInvoiceSalespersons();
-    setSalespersons(rows);
+    const [reps, users] = await Promise.all([
+      listInvoiceSalespersons(),
+      listCashierRoleUsers(),
+    ]);
+    setSalespersons(reps);
+    setCashierUsers(users);
     setLoaded(true);
   };
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const rows = await listInvoiceSalespersons();
+      const [reps, users] = await Promise.all([
+        listInvoiceSalespersons(),
+        listCashierRoleUsers(),
+      ]);
       if (!cancelled) {
-        setSalespersons(rows);
+        setSalespersons(reps);
+        setCashierUsers(users);
         setLoaded(true);
       }
     })();
@@ -63,17 +73,35 @@ export function InvoiceSalespersonModal({
     };
   }, []);
 
+  /**
+   * İki kaynağı birleştir: sales_reps (varsa) + role='cashier' auth.users
+   * (boş ise). Aynı code iki listede de varsa tek satırda gösterilir;
+   * yalnızca users'dan gelenler ad sonuna " (kullanıcı)" rozeti alır.
+   */
+  const combinedSalespersons = useMemo(() => {
+    const map = new Map<string, InvoicePickerMaster>();
+    for (const p of salespersons) {
+      if (p.code) map.set(p.code, p);
+    }
+    for (const u of cashierUsers) {
+      if (u.code && !map.has(u.code)) {
+        map.set(u.code, { ...u, name: `${u.name} (kullanıcı)` });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  }, [salespersons, cashierUsers]);
+
   const filteredSalespersons = useMemo(() => {
-    if (!searchTerm.trim()) return salespersons;
+    if (!searchTerm.trim()) return combinedSalespersons;
     const term = searchTerm.toLocaleLowerCase('tr-TR');
-    return salespersons.filter(
+    return combinedSalespersons.filter(
       (person) =>
         person.code.toLocaleLowerCase('tr-TR').includes(term) ||
         person.name.toLocaleLowerCase('tr-TR').includes(term) ||
         person.phone?.toLocaleLowerCase('tr-TR').includes(term) ||
         person.email?.toLocaleLowerCase('tr-TR').includes(term),
     );
-  }, [searchTerm, salespersons]);
+  }, [searchTerm, combinedSalespersons]);
 
   const handleSelect = (code: string) => {
     onSelect(code);
