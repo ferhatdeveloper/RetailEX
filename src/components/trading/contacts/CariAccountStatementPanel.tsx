@@ -202,6 +202,29 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
         ),
       },
       {
+        id: 'reservationDeposit',
+        accessorKey: 'reservationDeposit',
+        header: tm('reservationDepositCollected') || 'Alınan Rezervasyon Tutarı',
+        size: 170,
+        minSize: 130,
+        meta: { align: 'right' },
+        cell: ({ row }) => {
+          const amt = Number(row.original.reservationDeposit ?? 0);
+          if (!(amt > 0)) return null;
+          const d = fmtEkstreAmount(amt);
+          return (
+            <div className="flex flex-col items-end whitespace-nowrap font-bold text-cyan-700">
+              <span title={tm('reservationDepositNote') || 'Henüz hizmet verilmemiş rezervasyon avansı'}>
+                {d.primary} {d.code}
+              </span>
+              {d.secondary ? (
+                <span className="text-[10px] font-normal opacity-50">{d.secondary}</span>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
         id: 'borc',
         accessorKey: 'borcAmount',
         header: tm('debtor'),

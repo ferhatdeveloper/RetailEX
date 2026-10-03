@@ -293,6 +293,10 @@ export type EkstreRow = {
   borcAmount: number;
   alacakAmount: number;
   balance: number;
+  /** Rezervasyon avansı (henüz hizmet verilmemiş peşinat) — bilgi amaçlı. */
+  reservationDeposit?: number;
+  /** Rezervasyon avansı mı? (sales.is_deposit=true / notes: parent_sale:) */
+  isReservationDeposit?: boolean;
 };
 
 /** `payment_status` iptal/iade seti (müşteri/peşin satışlar için). */
@@ -425,11 +429,22 @@ export function buildEkstreRows(
       }
     }
     runningBalance += delta;
+    // Rezervasyon avansı (is_deposit=true / notes: parent_sale:) — borç/alacak/bakiye
+    // satırını kirletmeden bilgi amaçlı tutarı taşı. Hizmet tamamlanınca ana satışa
+    // mahsup edilir; burada yalnızca "Alınan Rezervasyon Tutarı" olarak gösterilir.
+    const isReservationDeposit = !cancelled &&
+      !isSupplierAccount &&
+      (row.is_deposit === true ||
+        /parent_sale:|sale_group:/.test(String(row.notes ?? ''))) &&
+      absAmt > 0 &&
+      (ftLower === 'sales_invoice' || ftLower === 'service' || ftLower === 'hizmet');
     return {
       ...row,
       borcAmount,
       alacakAmount,
       balance: runningBalance,
+      reservationDeposit: isReservationDeposit ? absAmt : 0,
+      isReservationDeposit,
     } as EkstreRow;
   });
 }

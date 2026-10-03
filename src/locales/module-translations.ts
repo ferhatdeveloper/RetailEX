@@ -10575,6 +10575,18 @@ export const excelModuleTranslations = {
     ar: 'دفعات عربون الحجز',
     ku: 'پارەدانی نۆرەی پێشوەختە',
   },
+  reservationDepositCollected: {
+    tr: 'Alınan Rezervasyon Tutarı',
+    en: 'Reservation Deposit Collected',
+    ar: 'عربون الحجز المحصّل',
+    ku: 'نۆرەی گیراوە',
+  },
+  reservationDepositNote: {
+    tr: 'Henüz hizmet verilmemiş rezervasyon avansı',
+    en: 'Reservation advance — service not yet delivered',
+    ar: 'عربون الحجز — الخدمة لم تقدم بعد',
+    ku: 'پارەی نۆرە — خزمەتگوزاری نەدراوە',
+  },
   aylikGunOzeti: { tr: 'Aylık Gün Özeti', en: 'Monthly Day Summary', ar: 'ملخص أيام الشهر', ku: 'پوختەی ڕۆژەکانی مانگ' },
   aylikGunOzetiDesc: {
     tr: 'Ayın tüm günleri — Günlük Rapor ile aynı: ciro, masraf (gider + cari/kasa çıkış), net (ciro − masraf), ortak payları',
