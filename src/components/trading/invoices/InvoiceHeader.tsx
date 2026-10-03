@@ -167,7 +167,9 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     workplace,
     salespersonCode,
     cashierName = '',
+    cashierCode = '',
     onCashierNameChange,
+    onCashierCodeChange,
     cashierReadOnly = false,
     showCashierField = false,
     cashierFieldLabel,
@@ -207,6 +209,95 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     const { tm } = useLanguage();
     const cashierLabel = cashierFieldLabel || tm('cashier');
     const invoiceNoEditable = typeof setInvoiceNo === 'function';
+
+    /**
+     * Kasiyer (İşlem Yapan) seçimi için InvoiceSalespersonModal entegrasyonu.
+     * Modal açılınca `sales_reps` + `auth.users(role=cashier)` listesi gelir;
+     * seçilen `code`'a karşılık gelen `name` `onCashierNameChange` üzerinden
+     * parent state'e yazılır, aynı anda `onCashierCodeChange` (opsiyonel) ile
+     * kod da saklanır — iade/fatura başlığında denetim için kullanılabilir.
+     *
+     * Mevcut input/text-only davranışı bozulmasın: read-only ise modal açılmaz.
+     */
+    const [showCashierModal, setShowCashierModal] = useState(false);
+    const [cashierList, setCashierList] = useState<InvoicePickerMaster[]>([]);
+    useEffect(() => {
+        if (!showCashierModal) return;
+        let cancelled = false;
+        (async () => {
+            const [reps, users] = await Promise.all([
+                listInvoiceSalespersons(),
+                listCashierRoleUsers(),
+            ]);
+            if (cancelled) return;
+            const map = new Map<string, InvoicePickerMaster>();
+            for (const p of reps) {
+                if (p.code) map.set(p.code, p);
+            }
+            for (const u of users) {
+                if (u.code && !map.has(u.code)) {
+                    map.set(u.code, { ...u, name: `${u.name} (kullanıcı)` });
+                }
+            }
+            setCashierList(Array.from(map.values()));
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [showCashierModal]);
+
+    /**
+     * Seçilen `cashierCode` değiştiğinde adı listeden çöz. Liste henüz
+     * yüklenmemişse kısa bir fetch tetikle ki "kod adı gibi" göstermeyelim.
+     * Liste boş + kod boş ise hiçbir şey yapma — manuel metin girişi modunda
+     * kullanıcının girdiği ad (varsa) korunur.
+     */
+    useEffect(() => {
+        const code = String(cashierCode || '').trim();
+        if (!code) return;
+        const found = cashierList.find((c) => c.code === code);
+        if (found?.name && found.name !== cashierName) {
+            onCashierNameChange?.(found.name);
+            return;
+        }
+        if (!cashierList.length) {
+            let cancelled = false;
+            (async () => {
+                const [reps, users] = await Promise.all([
+                    listInvoiceSalespersons(),
+                    listCashierRoleUsers(),
+                ]);
+                if (cancelled) return;
+                const map = new Map<string, InvoicePickerMaster>();
+                for (const p of reps) {
+                    if (p.code) map.set(p.code, p);
+                }
+                for (const u of users) {
+                    if (u.code && !map.has(u.code)) {
+                        map.set(u.code, { ...u, name: `${u.name} (kullanıcı)` });
+                    }
+                }
+                const list = Array.from(map.values());
+                setCashierList(list);
+                const m = list.find((c) => c.code === code);
+                if (m?.name) onCashierNameChange?.(m.name);
+            })();
+            return () => {
+                cancelled = true;
+            };
+        }
+    }, [cashierCode, cashierList, cashierName, onCashierNameChange]);
+
+    const cashierDisplayLabel = (() => {
+        const code = String(cashierCode || '').trim();
+        const name = String(cashierName || '').trim();
+        if (code) {
+            const found = cashierList.find((c) => c.code === code);
+            if (found?.name) return found.name;
+        }
+        return name;
+    })();
+    const cashierHasValue = Boolean(String(cashierDisplayLabel || '').trim());
     // iade yönüne göre cari tarafı (Alış + Alış İade + Alınan Hizmet → tedarikçi)
     const isPurchaseSide = isInvoicePurchaseSide(invoiceType);
     const cariTitle = isPurchaseSide ? supplierTitle : customerTitle;
@@ -895,17 +986,56 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                         </div>
 
                         {showCashierField && (
-                            <div>
-                                <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{cashierLabel}</label>
-                                <input
-                                    type="text"
-                                    value={cashierName}
-                                    readOnly={cashierReadOnly}
-                                    onChange={(e) => onCashierNameChange?.(e.target.value)}
-                                    className={`w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm ${cashierReadOnly ? 'bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200' : 'bg-white dark:bg-gray-800'}`}
-                                    placeholder={tm('cashierNamePlaceholder')}
-                                />
+                            <div data-testid="invoice-form-cashier-select">
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="block text-gray-700 dark:text-gray-200 text-xs">
+                                        {cashierLabel || tm('cashier')}
+                                    </label>
+                                    {cashierHasValue ? (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                                            {cashierDisplayLabel}
+                                        </span>
+                                    ) : (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                            {tm('cashierNotSelected') || 'Seçilmedi'}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex gap-1">
+                                    <input
+                                        type="text"
+                                        value={cashierDisplayLabel}
+                                        readOnly
+                                        onClick={() => {
+                                            if (!cashierReadOnly) setShowCashierModal(true);
+                                        }}
+                                        className={`flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm ${cashierReadOnly ? 'bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200' : 'bg-white dark:bg-gray-800 cursor-pointer'}`}
+                                        placeholder={tm('cashierNamePlaceholder')}
+                                    />
+                                    <button
+                                        type="button"
+                                        disabled={cashierReadOnly}
+                                        onClick={() => setShowCashierModal(true)}
+                                        className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                                        title={tm('selectSalesperson')}
+                                    >
+                                        <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                                    </button>
+                                </div>
                             </div>
+                        )}
+                        {showCashierModal && (
+                            <InvoiceSalespersonModal
+                                currentSalesperson={cashierCode || cashierName}
+                                onSelect={(code) => {
+                                    // Kodu parent state'e yaz; adı listeden çözmeyi ayrı bir
+                                    // useEffect içinde async yap ki liste henüz boşken
+                                    // seçilen kodu yanlışlıkla adı gibi göstermeyelim.
+                                    onCashierCodeChange?.(code);
+                                    setShowCashierModal(false);
+                                }}
+                                onClose={() => setShowCashierModal(false)}
+                            />
                         )}
                     </div>
                 </div>

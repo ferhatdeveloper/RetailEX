@@ -4038,6 +4038,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   supplierHistoryTitle: { tr: 'Tedarikçi Geçmişi', en: 'Supplier History', ar: 'سجل المورد', ku: 'مێژووی دابینکەر' },
   balanceShort: { tr: 'Bakiye', en: 'Balance', ar: 'الرصيد', ku: 'باڵانس' },
   cashierNamePlaceholder: { tr: 'Kasiyer adı...', en: 'Cashier name...', ar: 'اسم الصراف...', ku: 'ناوی سندوقدار...' },
+  cashierNotSelected: { tr: 'Seçilmedi', en: 'Not selected', ar: 'لم يتم الاختيار', ku: 'هەڵنەبژێردراوە' },
 
   // Invoice modals & actions
   selectAuthorityCode: { tr: 'Yetki Kodu Seç', en: 'Select Authorization Code', ar: 'اختر رمز الصلاحية', ku: 'کۆدی دەسەڵات هەڵبژێرە' },

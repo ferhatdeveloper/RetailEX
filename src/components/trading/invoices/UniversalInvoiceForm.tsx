@@ -654,6 +654,9 @@ export function UniversalInvoiceForm({
     return 'ACIK_CARI';
   }); // Form kodu: NAKIT, KREDIKARTI, ACIK_CARI, …
   const [cashierName, setCashierName] = useState(() => editData?.cashier || ''); // Kasiyer / iade yapan
+    // Kasiyer kodu (sales_reps.code / auth.users). Edit modda gelen cashier alanı
+    // bir ad olabilir; koddan bağımsız tutulur — operasyonel alan, zorunlu değil.
+    const [cashierCode, setCashierCode] = useState<string>('');
   const [cashRegisterId, setCashRegisterId] = useState<string>(() => {
     const v = (editData as any)?.cash_register_id;
     return typeof v === 'string' ? v : '';
@@ -744,6 +747,10 @@ export function UniversalInvoiceForm({
     }
   }, [paymentMethod, cashRegisters, cashRegisterId]);
   const isSalesReturnForm = invoiceType.code === 3;
+  // İşlem Yapan / Kasiyer alanı sadece müşteri tarafı (Satış + Satış İade) için anlamlı.
+  // Tedarikçi tarafı (Alış/Alış İade) ve irsaliyelerde kasaya yazılan "kasiyer" audit alanı değil,
+  // depo/personel hareketidir; alan gizli kalır — mevcut davranışla uyumlu.
+  const isSalesSideInvoice = invoiceType.category === 'Satis' || invoiceType.category === 'Iade';
   const isPosRetail = useMemo(
     () =>
       invoiceType.code === RETAIL_SALES_INVOICE_TRCODE ||
@@ -3064,6 +3071,22 @@ export function UniversalInvoiceForm({
     if (authName) setCashierName(authName);
   }, [isSalesReturnForm, editData, cashierName, resolveAuthUserDisplayName]);
 
+  /**
+   * Perakende / Toptan / Satış (İade hariç) yeni fatura: oturum kullanıcısını
+   * varsayılan kasiyer olarak doldur. İade için ayrı useEffect yukarıda zaten çalışır.
+   * Edit modunda (`editData.id` dolu) veya POS'tan gelen taslakta dokunma — mevcut
+   * cashier (audit/operasyonel alan) korunur.
+   */
+  useEffect(() => {
+    if (isSalesReturnForm) return; // iade için yukarıdaki effect geçerli
+    if (!isSalesSideInvoice) return;
+    if ((editData as any)?.id) return;
+    if ((editData as any)?.source === 'pos') return;
+    if (cashierName.trim()) return;
+    const authName = resolveAuthUserDisplayName();
+    if (authName) setCashierName(authName);
+  }, [isSalesSideInvoice, isSalesReturnForm, editData, cashierName, resolveAuthUserDisplayName]);
+
   /** Yeni fatura: Ambar / İşyeri — oturum veya ilk aktif mağaza/depo */
   useEffect(() => {
     if ((editData as any)?.id) return;
@@ -4669,10 +4692,12 @@ export function UniversalInvoiceForm({
                   workplace={workplace}
                   salespersonCode={salespersonCode}
                   cashierName={cashierName}
+                  cashierCode={cashierCode}
                   onCashierNameChange={setCashierName}
+                  onCashierCodeChange={setCashierCode}
                   cashierReadOnly={(editData as any)?.source === 'pos'}
-                  showCashierField={isSalesReturnForm}
-                  cashierFieldLabel={tm('salesReturnProcessedBy')}
+                  showCashierField={isSalesSideInvoice}
+                  cashierFieldLabel={isSalesReturnForm ? tm('salesReturnProcessedBy') : tm('cashier')}
                   cashRegisters={cashRegisters}
                   cashRegistersLoading={cashRegistersLoading}
                   cashRegisterId={cashRegisterId}
