@@ -813,26 +813,29 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
             <div className="mx-auto w-full max-w-4xl space-y-5">
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                    <span>{tm('category')} *</span>
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    {tm('category')} *
+                  </label>
+                  <div className="flex items-stretch gap-2">
+                    <select
+                      value={formData.category}
+                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      className="flex-1 min-w-0 px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium bg-white"
+                    >
+                      <option value="">{tm('expenseCategoryPlaceholder')}</option>
+                      {expenseCategories.map(cat => (
+                        <option key={cat.id} value={cat.code}>{cat.name}</option>
+                      ))}
+                    </select>
                     <button
                       type="button"
                       onClick={() => setShowCategoryManager(true)}
-                      className="text-[10px] text-blue-600 hover:text-blue-700 font-medium normal-case tracking-normal"
+                      className="shrink-0 px-3 py-3 text-[11px] text-blue-600 hover:text-blue-700 font-semibold normal-case tracking-normal border border-blue-200 hover:border-blue-300 bg-blue-50/50 hover:bg-blue-50 rounded-2xl transition-colors"
+                      title={tm('manage') || 'Yönet'}
                     >
                       ⚙ {tm('manage') || 'Yönet'}
                     </button>
-                  </label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium bg-white"
-                  >
-                    <option value="">{tm('expenseCategoryPlaceholder')}</option>
-                    {expenseCategories.map(cat => (
-                      <option key={cat.id} value={cat.code}>{cat.name}</option>
-                    ))}
-                  </select>
+                  </div>
                   <datalist id="expense-category-options">
                     {expenseCategories.map(cat => (
                       <option key={cat.id} value={cat.name} />
