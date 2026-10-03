@@ -21,7 +21,7 @@ import { useAuthStore } from '../../../store/useAuthStore';
 import { getOpenAdvances } from '../../../services/avansService';
 import type { AvansRecord } from '../../../core/types/avans';
 import { formatAvansReference } from '../../../utils/avansFormatting';
-import { resolveWriteCashierName, displayUserCashierName } from '../../../utils/loginCashierName';
+import { displayUserCashierName, ensureWriteCashierName } from '../../../utils/loginCashierName';
 
 // Ödeme Tipi (cash/card/transfer/pesinatli/avans). POS'tan gelen satışlarda
 // `header_fields.payment_type` veya `sales.payment_method` üzerinden auto-set
@@ -93,7 +93,7 @@ export function SalesInvoiceModule({ customers, products, onCreateInvoice, onSwi
   // useAuth bazı contextlerde user döndürmeyebilir; fallback olarak useAuthStore kullan
   const authStoreUser = useAuthStore((s) => s.user);
   const loginUser = authUser || authStoreUser;
-  const defaultCashierName = resolveWriteCashierName(
+  const defaultCashierName = ensureWriteCashierName(
     displayUserCashierName(loginUser) || (loginUser as any)?.username || '',
   );
   // Satış Elemanı (salesperson) seçimi: Fatura başlığında gösterilir, kayda yazılır.

@@ -60,9 +60,44 @@ export function currentLoginCashierName(): string {
   return displayUserCashierName(useAuthStore.getState().user);
 }
 
-/** Fişe yazılacak kasiyer: placeholder yok; yoksa giriş yapan kullanıcı. */
+/**
+ * Fişe yazılacak kasiyer:
+ * 1) Placeholder olmayan ham değer (currentStaff / useAuthStore.user.username vb.)
+ * 2) Yoksa oturum açan kullanıcı (authStore.user)
+ * 3) Yoksa hardcoded 'Bilinmeyen Kasiyer' — Cashier Performance raporu
+ *    bu placeholder'ı "Bilinmeyen Kasiyer" satırı olarak yakalar; ileride
+ *    backfill migration'ı (örn. 197) bu satırları gerçek kullanıcıya güncelleyebilir.
+ *
+ * Edge case (token expire / localStorage boş / login'den hemen sonra store set
+ * edilmeden POS satışı) için sabit fallback tercih edildi; böylece cashier alanı
+ * asla boş yazılmaz ve fatura listesinde kasiyer kolonu boş kalmaz.
+ */
+export const UNKNOWN_CASHIER_PLACEHOLDER = 'Bilinmeyen Kasiyer';
+
 export function resolveWriteCashierName(raw?: unknown): string {
-  return sanitizeStoredCashierName(raw) || currentLoginCashierName();
+  const cleaned = sanitizeStoredCashierName(raw);
+  if (cleaned) return cleaned;
+  const fromLogin = currentLoginCashierName();
+  if (fromLogin) return fromLogin;
+  return UNKNOWN_CASHIER_PLACEHOLDER;
+}
+
+/**
+ * Servis katmanında cashier yazımı için: resolveWriteCashierName ile çöz,
+ * eğer hardcoded 'Bilinmeyen' fallback kullanıldıysa console.warn ile uyar.
+ * Geliştirici console'unda görünür; production'da silent.
+ */
+export function ensureWriteCashierName(raw?: unknown): string {
+  const w = resolveWriteCashierName(raw);
+  if (w === UNKNOWN_CASHIER_PLACEHOLDER) {
+    if (typeof console !== 'undefined') {
+      console.warn(
+        '[ensureWriteCashierName] login kullanıcısı yok, hardcoded "Bilinmeyen Kasiyer" fallback kullanıldı',
+        { raw, cashier: w },
+      );
+    }
+  }
+  return w;
 }
 
 export function currentLoginUserId(): string | undefined {

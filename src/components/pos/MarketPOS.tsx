@@ -76,7 +76,7 @@ import { recordAdvance } from '../../services/avansService';
 import { finalizeSale } from '../../services/saleFinalizeService';
 import { formatNumber } from '../../utils/formatNumber';
 import { formatAvansReference } from '../../utils/avansFormatting';
-import { isPlaceholderDeviceName, resolveWriteCashierName } from '../../utils/loginCashierName';
+import { ensureWriteCashierName, isPlaceholderDeviceName } from '../../utils/loginCashierName';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import type { KeyboardShortcut } from '../../hooks/useKeyboardShortcuts';
 import { useProductStore, useSaleStore } from '../../store';
@@ -174,7 +174,7 @@ export default function MarketPOS({
       ...(invoiceSearch?.trim() ? { invoiceSearch: invoiceSearch.trim() } : {}),
       posSalesReturn: {
         editData: {
-          cashier: resolveWriteCashierName(currentStaff || currentUser.username || currentUser.full_name),
+          cashier: ensureWriteCashierName(currentStaff || currentUser.username || currentUser.full_name),
           created_by_user_id: currentUser.id,
           store_id: currentUser.storeId && !isPlaceholderDeviceName(currentUser.storeId) ? currentUser.storeId : undefined,
           source: 'pos',
@@ -1644,11 +1644,13 @@ export default function MarketPOS({
       campaignId: selectedCampaign?.id,
       campaignName: selectedCampaign?.name,
       campaignDiscount: campaignDiscount,
-      // Kasiyer fallback: personel modalıyla seçilmiş currentStaff öncelikli;
-      // boşsa oturum açan kullanıcının adını yaz (resolveWriteCashierName
-      // placeholder/boşsa login user'ı döner). Aksi halde DB'ye boş yazılır
-      // ve fatura listesinde kasiyer kolonu boş kalır.
-      cashier: resolveWriteCashierName(
+      // Kasiyer fallback zinciri:
+      // 1) Satış Elemanı modalı ile seçilmiş currentStaff
+      // 2) Login kullanıcının kullanıcı adı (username)
+      // 3) Login kullanıcının tam adı (full_name)
+      // 4) ensureWriteCashierName → useAuthStore.user fallback
+      // 5) Yoksa "Bilinmeyen Kasiyer" hardcoded placeholder (DB'ye BOŞ yazılmaz)
+      cashier: ensureWriteCashierName(
         currentStaff || currentUser.username || currentUser.full_name,
       ),
       firmNr: selectedFirm?.firm_nr,

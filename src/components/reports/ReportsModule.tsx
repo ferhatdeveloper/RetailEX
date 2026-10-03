@@ -40,10 +40,10 @@ import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentB
 import { DailyCashFlowModal } from './DailyCashFlowModal';
 import {
   displayUserCashierName,
+  ensureWriteCashierName,
   isPlaceholderCashierName,
   isPlaceholderDeviceName,
   resolveCashierDisplayName,
-  resolveWriteCashierName,
 } from '../../utils/loginCashierName';
 import { mergeExpensesWithCashOuts, mergeExpensesWithCashIns, REPORT_CASH_IN_TYPES, reportCashInCategory } from '../../utils/reportUnifiedExpenses';
 import { productCardUnitCost } from '../../utils/productCardUnitCost';
@@ -3513,7 +3513,7 @@ export function ReportsModule({
         currency_rate: src?.currency_rate ?? 1,
         document_no: receiptNo || undefined,
         notes: receiptNo ? `Satış iade — Fiş: ${receiptNo}` : 'Satış iade',
-        cashier: resolveWriteCashierName(
+        cashier: ensureWriteCashierName(
           (src as any)?.cashier || sale.cashier || '',
         ),
         store_id:

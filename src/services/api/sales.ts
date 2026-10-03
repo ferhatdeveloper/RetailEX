@@ -16,8 +16,8 @@ import { normalizePaymentMethodBucket, paymentMethodImpliesCustomerDebt } from '
 import { dbItemTypeToInvoiceLine } from '../../utils/invoiceLineType';
 import {
   currentLoginUserId,
+  ensureWriteCashierName,
   isPlaceholderDeviceName,
-  resolveWriteCashierName,
   sanitizeStoredCashierName,
 } from '../../utils/loginCashierName';
 import {
@@ -167,7 +167,7 @@ export const salesAPI = {
         donem_id: periodNr,
 
         payment_method: sale.paymentMethod || 'Nakit',
-        cashier: resolveWriteCashierName(sale.cashier),
+        cashier: ensureWriteCashierName(sale.cashier),
         created_by_user_id: sale.userId || currentLoginUserId(),
         status: 'completed', // POS sales are completed immediately
         notes: sale.notes || 'MarketPOS Satışı',
@@ -415,7 +415,7 @@ export const salesAPI = {
         firma_id: firmNr,
         donem_id: periodNr,
         payment_method: params.paymentMethod || 'Nakit',
-        cashier: resolveWriteCashierName(params.cashier),
+        cashier: ensureWriteCashierName(params.cashier),
         created_by_user_id: currentLoginUserId(),
         status: 'completed',
         notes: reasonNote,
@@ -479,7 +479,7 @@ export const salesAPI = {
         paymentMethod: params.paymentMethod || 'cash',
         status: 'return',
         notes: reasonNote,
-        cashier: resolveWriteCashierName(params.cashier),
+        cashier: ensureWriteCashierName(params.cashier),
         userId: currentLoginUserId(),
         firmNr: String(firmNr),
         periodNr: String(periodNr),
