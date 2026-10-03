@@ -71,11 +71,9 @@ interface PeriodSummaryRow {
   depositAmount: number;
   expenses: number;
   cashIn: number;
-  /** Bug 29 — CH_TAHSILAT (cari tahsilatları). Kasa Para Girişi sütunundan ayrı
-   * izlenir; ledger'da müşteri alacağını azaltır, kasa etkisi modal'da ayrı
-   * bölümde gösterilir (PeriodCashInDetailModal). Bu kolon kullanıcının 22.4M
-   * IQD CH_TAHSILAT kayıtlarını raporda da görmesini sağlar. */
-  cariTahsilat: number;
+  // cariTahsilat alanı kullanıcı talebi ile 2026-10-03'te rapordan kaldırıldı.
+  // Ciro/Gider/Alış formülü ve CH_TAHSILAT modal bağlantısı (PeriodCashInDetailModal)
+  // korunuyor; yalnızca grid'de ayrı kolon gösterimi iptal edildi.
   purchases: number;
   netRemaining: number;
   partnerShares: Record<string, number>;
@@ -465,23 +463,23 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     return aggregateCashIns(cashInsRows, mode === 'monthly-days' ? 'day' : 'month');
   }, [cashInsRows, mode]);
 
-  /** Bug 29 — CH_TAHSILAT (cari tahsilatları) gün/ay bazında toplam.
-   * Modal ile aynı kaynak (`cariTahsilatRows`); raporda ayrı kolon olarak
-   * kullanıcıya açılır. Kasa Para Girişi sütununa dahil edilmez — cari alacağı
-   * azaltıcı, kasa etkisi (modal'daki) ile birlikte görünür. */
-  const cariTahsilatMap = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const cl of Array.isArray(cariTahsilatRows) ? cariTahsilatRows : []) {
-      const day =
-        toSqlDateInputString(cl.islem_tarihi || '') ||
-        localCalendarDateKey(cl.islem_tarihi) ||
-        '';
-      if (!day) continue;
-      const key = mode === 'monthly-days' ? day : day.slice(0, 7);
-      map.set(key, (map.get(key) || 0) + (Number(cl.tutar) || 0));
-    }
-    return map;
-  }, [cariTahsilatRows, mode]);
+  // cariTahsilatMap (gün/ay bazında CH_TAHSILAT toplamı) kullanıcı talebi ile
+  // 2026-10-03'te rapor grid'inden kaldırıldı. Modal bağlantısı için
+  // cariTahsilatRows hâlâ PeriodCashInDetailModal'a geçiriliyor; sadece
+  // tablo kolonu + satır toplamı iptal edildi.
+  // const cariTahsilatMap = useMemo(() => {
+  //   const map = new Map<string, number>();
+  //   for (const cl of Array.isArray(cariTahsilatRows) ? cariTahsilatRows : []) {
+  //     const day =
+  //       toSqlDateInputString(cl.islem_tarihi || '') ||
+  //       localCalendarDateKey(cl.islem_tarihi) ||
+  //       '';
+  //     if (!day) continue;
+  //     const key = mode === 'monthly-days' ? day : day.slice(0, 7);
+  //     map.set(key, (map.get(key) || 0) + (Number(cl.tutar) || 0));
+  //   }
+  //   return map;
+  // }, [cariTahsilatRows, mode]);
 
   // Alış faturaları — sayfalı, hepsi birleştirilir
   const purchasesQuery = useQuery({
@@ -592,7 +590,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       };
       const exp = expenseMap.get(periodKey) || 0;
       const cashIn = cashInMap.get(periodKey) || 0;
-      const cariTahsilat = cariTahsilatMap.get(periodKey) || 0;
+      // cariTahsilat satır başına toplamı 2026-10-03 kullanıcı talebi ile kaldırıldı
+      // (grid'de Cari Tahsilat kolonu yok). Modal bağlantısı korunuyor.
       const purch = purchaseMap.get(periodKey) || 0;
       const periodLabel =
         mode === 'monthly-days'
@@ -602,8 +601,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // Dönem özeti neti: ciro − gider − alışlar.
       // Gider kartı/parametresi kapalıysa gider düşülmez; alış kartı/parametresi
       // kapalıysa alış düşülmez. CH_TAHSILAT (cari tahsilatları) **hariç** —
-      // ledger simetrisi (kasa + / cari -) Net Kalan'da nötrdür; raporun ayrı
-      // kolonunda izlenir.
+      // ledger simetrisi (kasa + / cari -) Net Kalan'da nötrdür; PeriodCashInDetailModal
+      // alt bölümünde izlenir.
       const netRemaining = reportNetAfterOptionalExpenseAndPurchases(
         sale.revenue,
         exp,
@@ -636,7 +635,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         depositAmount: sale.depositAmount,
         expenses: exp,
         cashIn,
-        cariTahsilat,
+        // cariTahsilat satır alanı 2026-10-03 kullanıcı talebi ile kaldırıldı.
         purchases: purch,
         netRemaining,
         partnerShares: partnerShareMap,
@@ -650,7 +649,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     expenses,
     purchases,
     cashInMap,
-    cariTahsilatMap,
+    // cariTahsilatMap 2026-10-03 kullanıcı talebi ile kaldırıldı.
     selectedMonth,
     selectedYear,
     tm,
@@ -674,7 +673,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         depositAmount: acc.depositAmount + r.depositAmount,
         expenses: acc.expenses + r.expenses,
         cashIn: acc.cashIn + r.cashIn,
-        cariTahsilat: acc.cariTahsilat + r.cariTahsilat,
+        // cariTahsilat toplamı 2026-10-03 kullanıcı talebi ile kaldırıldı.
         purchases: acc.purchases + r.purchases,
         netRemaining: acc.netRemaining + r.netRemaining,
       }),
@@ -682,7 +681,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
         returnsCount: 0, returnsAmount: 0,
         depositCount: 0, depositAmount: 0,
-        expenses: 0, cashIn: 0, cariTahsilat: 0, purchases: 0, netRemaining: 0,
+        expenses: 0, cashIn: 0, purchases: 0, netRemaining: 0,
       }
     );
     const shareList = splitAmountByPartners(base.netRemaining, partnerSlices);
@@ -934,33 +933,31 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           );
         },
       },
-      // Bug 29 — Cari Tahsilat (CH_TAHSILAT). Kasa Para Girişi sütununa
-      // dahil edilmemiş cari tahsilatlar burada ayrıca gösterilir; modal
-      // hâlâ her iki listeyi (Kasa Para Girişi + Cari Tahsilatlar) birlikte
-      // açar. Modal butonu Cari Tahsilat kolonundaki değil, Kasa Para Girişi
-      // kolonundaki butona bağlıdır — kullanıcı tek tıkla tüm liste.
-      {
-        key: 'cariTahsilat',
-        header: `${tm('rptPeriodColCariTahsilat') || 'Cari Tahsilat'} (${currency})`,
-        type: 'number',
-        align: 'right',
-        footerSum: true,
-        footerFormat: (n) =>
-          n > 0 ? (
-            <span className="text-cyan-700">{money(n)}</span>
-          ) : (
-            '—'
-          ),
-        cell: (row) =>
-          row.cariTahsilat > 0 ? (
-            <span className="text-cyan-700 font-medium" title={tm('rptPeriodCashInCariTahsilatTitle')}>
-              {money(row.cariTahsilat)}
-            </span>
-          ) : (
-            '—'
-          ),
-        meta: { defaultVisible: true },
-      },
+      // Bug 29 — Cari Tahsilat (CH_TAHSILAT) kolonu kullanıcı talebi ile
+      // 2026-10-03'te grid'den kaldırıldı. Modal bağlantısı (PeriodCashInDetailModal
+      // alt bölümü) ve CH_TAHSILAT veri akışı korunuyor; sadece grid kolonu iptal.
+      // {
+      //   key: 'cariTahsilat',
+      //   header: `${tm('rptPeriodColCariTahsilat') || 'Cari Tahsilat'} (${currency})`,
+      //   type: 'number',
+      //   align: 'right',
+      //   footerSum: true,
+      //   footerFormat: (n) =>
+      //     n > 0 ? (
+      //       <span className="text-cyan-700">{money(n)}</span>
+      //     ) : (
+      //       '—'
+      //     ),
+      //   cell: (row) =>
+      //     row.cariTahsilat > 0 ? (
+      //       <span className="text-cyan-700 font-medium" title={tm('rptPeriodCashInCariTahsilatTitle')}>
+      //         {money(row.cariTahsilat)}
+      //       </span>
+      //     ) : (
+      //       '—'
+      //     ),
+      //   meta: { defaultVisible: true },
+      // },
       {
         key: 'purchases',
         header: `${tm('rptPeriodColPurchases')} (${currency})`,
@@ -980,28 +977,18 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         align: 'right',
         footerSum: true,
         // Bug 29 follow-up — Footer Net Kalan = Ciro − Gider − Alış.
-        // CH_TAHSILAT Hariç (ledger simetrisi: kasa + / cari - → net 0).
-        // Kullanıcı "dip footer toplamında cari hesap tekrar yansıtma"
-        // demişti; alt etiket ile formülü görsel olarak netleştiriyoruz.
+        // 2026-10-03 kullanıcı talebi: footer etiketi ("Cari Tahsilat Hariç")
+        // ve tooltip kaldırıldı; sadece düz Ciro − Gider − Alış sonucu görünür.
         footerFormat: (n) => (
-          <span
-            className="inline-flex flex-col items-end leading-tight"
-            title={`${tm('rptPeriodColNet')} = Ciro − Gider − Alış (${tm('rptPeriodNetFooterNote')})`}
-          >
-            <span className={n >= 0 ? 'text-emerald-700' : 'text-red-600'}>{money(n)}</span>
-            <span className="text-[9px] font-medium text-slate-500 dark:text-slate-400">
-              {tm('rptPeriodNetFooterNote')}
-            </span>
+          <span className={n >= 0 ? 'text-emerald-700' : 'text-red-600'}>
+            {money(n)}
           </span>
         ),
         cell: (row) => {
           if (!hasPeriodActivity(row)) return '—';
           const cls = row.netRemaining >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold';
           return (
-            <span
-              className={cls}
-              title={`${tm('rptPeriodColNet')} = Ciro − Gider − Alış (${tm('rptPeriodNetFooterNote')})`}
-            >
+            <span className={cls}>
               {money(row.netRemaining)}
             </span>
           );
