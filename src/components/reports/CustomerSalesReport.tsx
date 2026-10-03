@@ -98,6 +98,12 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
       ]);
       const linkedAppt = (sale as Sale).linkedAppointmentId;
       const isLinkedOpen = Boolean(linkedAppt) && !COMPLETED_STATUSES.has(st);
+      // Bug 28 follow-up (tamamlanmış randevuya bağlı deposit) — eğer bu
+      // deposit satırı tamamlanmış bir randevuya bağlıysa, ana hizmet
+      // satışı zaten serviceRevenue'ya yazılmıştır (avans + kalan birleşik
+      // olarak merge edilmiştir). Bu durumda deposit'i tekrar
+      // depositRevenue'ya yazmak çift kayıt olur; atlanır.
+      const isDepositOfCompletedApt = isDeposit && linkedAppt && COMPLETED_STATUSES.has(st);
 
       const customerId = sale.customerId || sale.customerName || 'unknown';
       const customer = customers?.find((c) => c.id === customerId) || null;
@@ -115,10 +121,10 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
         if (existing) {
         if (isReturn) {
           existing.returnsRevenue += serviceContribution;
-        } else if (isDeposit) {
+        } else if (isDeposit && !isDepositOfCompletedApt) {
           existing.depositRevenue += absTotal;
           existing.depositCount += 1;
-        } else if (!isPending && !isLinkedOpen) {
+        } else if (!isDeposit && !isPending && !isLinkedOpen) {
           existing.serviceRevenue += absTotal;
           existing.serviceCount += 1;
         }
@@ -139,10 +145,12 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
         }
       } else {
         const serviceInit = isReturn ? 0 : absTotal;
-        const depositInit = isReturn ? 0 : absTotal;
+        // Tamamlanmış randevuya bağlı deposit'i depositRevenue'ya yazma —
+        // ana hizmet satışı zaten serviceInit'te birleşik olarak gelecek.
+        const depositInit = isReturn || isDepositOfCompletedApt ? 0 : absTotal;
         const returnsInit = isReturn ? serviceContribution : 0;
         const serviceCountInit = !isReturn && !isDeposit && !isPending && !isLinkedOpen ? 1 : 0;
-        const depositCountInit = !isReturn && isDeposit ? 1 : 0;
+        const depositCountInit = !isReturn && isDeposit && !isDepositOfCompletedApt ? 1 : 0;
         customerMap.set(customerId, {
           customer: {
             ...(customer || { id: customerId, name: customerName }),
