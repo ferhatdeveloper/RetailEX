@@ -14,6 +14,12 @@ export type InvoicePickerMaster = {
   phone?: string;
   email?: string;
   address?: string;
+  /**
+   * Liste kaynağı: 'salesperson' (sales_reps tablosu) veya 'cashier'
+   * (auth.users / public.users role=cashier). UI rozet rengi için kullanılır.
+   * Belirlenmezse 'salesperson' varsayılır (geriye dönük uyumlu).
+   */
+  source?: 'salesperson' | 'cashier';
 };
 
 /** InvoiceSalespersonModal eski mock listesi — 001_demo_data.sql değil. */
@@ -95,24 +101,35 @@ export async function listInvoiceSalespersons(): Promise<InvoicePickerMaster[]> 
        WHERE COALESCE(is_active, true) = true
        ORDER BY name ASC`,
     );
-    return (rows || []).filter(keepMaster).filter((r) => !isHardcodedDemoSalespersonRow(r));
+    return (rows || [])
+      .filter(keepMaster)
+      .filter((r) => !isHardcodedDemoSalespersonRow(r))
+      .map((r) => ({ ...r, source: 'salesperson' as const }));
   } catch {
     return [];
   }
 }
 
 /**
- * auth.users tablosundan role='cashier' (veya boş) olan kullanıcıları
+ * `public.users` tablosundan role='cashier' (veya eş anlamlı) kullanıcıları
  * InvoicePickerMaster formatında getirir. sales_reps tablosu boş olduğunda
  * kasiyer seçimi için fallback kaynak olarak kullanılır.
  *
- * Yalnızca gerekli kolonlar seçilir (auth.users tablosunda PII olabilir);
- * `raw_user_meta_data->>'full_name'` veya `username` ad alanı olarak tercih edilir.
+ * Neden `public.users`:
+ *   - Master şemada `auth.users` SADECE `id UUID` kolonuna sahiptir; `username`,
+ *     `full_name`, `role` kolonları yoktur (`reset-guzel-db.mjs` yalnızca web
+ *     login için `raw_user_meta_data` ekler). Bu yüzden önceki `auth.users`
+ *     sorgusu her zaman hata verip boş dönüyordu.
+ *   - Tüm `src/services/*` kullanıcı listeleme sorguları `public.users`
+ *     üzerinden gider (`firm_nr`, `is_active`, `role` burada).
+ *
+ * Multi-tenant: aktif firma filtresi (ERP_SETTINGS.firmNr) uygulanır.
  */
 export async function listCashierRoleUsers(): Promise<InvoicePickerMaster[]> {
   try {
     // cashier rolü + boş/yer tutucu roller; 'admin' gibi üst düzey rolleri
     // kasıtlı olarak DAHİL ETMİYORUZ — kasiyer listesi operasyonel kullanıcılar.
+    const firmNr = String(ERP_SETTINGS.firmNr || '').trim();
     const { rows } = await postgres.query<{
       code: string;
       name: string;
@@ -122,17 +139,20 @@ export async function listCashierRoleUsers(): Promise<InvoicePickerMaster[]> {
       `SELECT
          id::text AS code,
          COALESCE(
-           NULLIF(TRIM(raw_user_meta_data->>'full_name'), ''),
+           NULLIF(TRIM(full_name), ''),
            NULLIF(TRIM(username), ''),
            NULLIF(TRIM(email), ''),
            'Kullanıcı-' || SUBSTRING(id::text, 1, 8)
          ) AS name,
-         raw_user_meta_data->>'phone' AS phone,
+         phone,
          email
-       FROM auth.users
+       FROM public.users
        WHERE COALESCE(role, 'cashier') IN ('cashier', 'kasiyer', 'sales', 'satis', '')
          AND COALESCE(is_active, true) = true
+         AND ($1 = '' OR LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0')
+              = LPAD(TRIM($1), 3, '0'))
        ORDER BY name ASC`,
+      [firmNr],
     );
     return (rows || [])
       .filter((r) => keepMaster(r))
@@ -141,6 +161,7 @@ export async function listCashierRoleUsers(): Promise<InvoicePickerMaster[]> {
         name: String(r.name || '').trim(),
         phone: r.phone ? String(r.phone) : undefined,
         email: r.email ? String(r.email) : undefined,
+        source: 'cashier' as const,
       }));
   } catch {
     return [];

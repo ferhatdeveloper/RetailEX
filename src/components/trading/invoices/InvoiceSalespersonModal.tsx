@@ -74,21 +74,27 @@ export function InvoiceSalespersonModal({
   }, []);
 
   /**
-   * İki kaynağı birleştir: sales_reps (varsa) + role='cashier' auth.users
-   * (boş ise). Aynı code iki listede de varsa tek satırda gösterilir;
-   * yalnızca users'dan gelenler ad sonuna " (kullanıcı)" rozeti alır.
+   * İki kaynağı birleştir: sales_reps (varsa) + public.users role='cashier'
+   * (boş ise). Aynı code iki listede de varsa öncelik sales_reps'tedir (tek
+   * satır + salesperson rozeti); aksi halde cashier rozeti ile gösterilir.
+   *
+   * Dedupe anahtarı: `code` (her iki kaynaktan da benzersiz UUID/code).
+   * İkincil dedupe: `name.localeCompare('tr-TR')` ile büyük/küçük harf
+   * ve Türkçe karakter farkı yok sayılır.
    */
   const combinedSalespersons = useMemo(() => {
     const map = new Map<string, InvoicePickerMaster>();
     for (const p of salespersons) {
-      if (p.code) map.set(p.code, p);
+      if (p.code) map.set(p.code, { ...p, source: 'salesperson' });
     }
     for (const u of cashierUsers) {
       if (u.code && !map.has(u.code)) {
-        map.set(u.code, { ...u, name: `${u.name} (kullanıcı)` });
+        map.set(u.code, { ...u, source: 'cashier' });
       }
     }
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+    return Array.from(map.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, 'tr-TR'),
+    );
   }, [salespersons, cashierUsers]);
 
   const filteredSalespersons = useMemo(() => {
@@ -225,6 +231,7 @@ export function InvoiceSalespersonModal({
           <div className="space-y-2">
             {filteredSalespersons.map((person) => {
               const isSelected = currentSalesperson === person.code || currentSalesperson.includes(person.code);
+              const isCashier = person.source === 'cashier';
               return (
                 <button
                   key={person.code}
@@ -236,7 +243,25 @@ export function InvoiceSalespersonModal({
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className={`font-medium ${cardTitle}`}>{person.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className={`font-medium ${cardTitle}`}>{person.name}</p>
+                        <span
+                          data-testid={`invoice-salesperson-badge-${isCashier ? 'cashier' : 'salesperson'}`}
+                          className={
+                            isCashier
+                              ? darkMode
+                                ? 'text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-900/40 text-emerald-300 border border-emerald-700/60'
+                                : 'text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : darkMode
+                              ? 'text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-900/40 text-indigo-300 border border-indigo-700/60'
+                              : 'text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          }
+                        >
+                          {isCashier
+                            ? tm('cashierLabel') || 'Kasiyer'
+                            : tm('salespersonLabel') || 'Satış Elemanı'}
+                        </span>
+                      </div>
                       <p className={`text-sm ${cardSub}`}>
                         {tm('code')}: {person.code}
                       </p>

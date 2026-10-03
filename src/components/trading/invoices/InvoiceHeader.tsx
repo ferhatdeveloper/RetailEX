@@ -232,11 +232,11 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
             if (cancelled) return;
             const map = new Map<string, InvoicePickerMaster>();
             for (const p of reps) {
-                if (p.code) map.set(p.code, p);
+                if (p.code) map.set(p.code, { ...p, source: 'salesperson' });
             }
             for (const u of users) {
                 if (u.code && !map.has(u.code)) {
-                    map.set(u.code, { ...u, name: `${u.name} (kullanıcı)` });
+                    map.set(u.code, { ...u, source: 'cashier' });
                 }
             }
             setCashierList(Array.from(map.values()));
@@ -270,11 +270,11 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 if (cancelled) return;
                 const map = new Map<string, InvoicePickerMaster>();
                 for (const p of reps) {
-                    if (p.code) map.set(p.code, p);
+                    if (p.code) map.set(p.code, { ...p, source: 'salesperson' });
                 }
                 for (const u of users) {
                     if (u.code && !map.has(u.code)) {
-                        map.set(u.code, { ...u, name: `${u.name} (kullanıcı)` });
+                        map.set(u.code, { ...u, source: 'cashier' });
                     }
                 }
                 const list = Array.from(map.values());
