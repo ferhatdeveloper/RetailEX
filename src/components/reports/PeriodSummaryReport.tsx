@@ -740,7 +740,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       partnerShares,
       expenseShares,
     };
-  }, [rows, partnerSlices]);
+  }, [rows, partnerSlices, showPeriodCardExpenses, showPeriodCardPurchases]);
 
   const supplierPayables = useMemo(() => {
     const payable = suppliers.reduce((s, r) => s + Math.max(Number(r.balance) || 0, 0), 0);
