@@ -174,7 +174,13 @@ export function resolvePaymentType(
           ).trim()
         : '';
     const upper = txn.toUpperCase();
-    if (upper === 'SATIS_FATURASI' || upper === 'HIZMET_FATURASI' || upper === 'ALIS_FATURASI') {
+    if (
+      upper === 'SATIS_FATURASI' ||
+      upper === 'HIZMET_FATURASI' ||
+      upper === 'ALIS_FATURASI' ||
+      upper === 'KASA_GIRIS' ||
+      upper === 'KASA_CIKIS'
+    ) {
       return {
         code: 'document',
         labelKey: 'cashLinePaymentTypeDocument',
