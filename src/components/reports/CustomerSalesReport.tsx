@@ -112,7 +112,7 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
       const absTotal = Math.abs(Number(sale.total) || 0);
       const serviceContribution = isReturn ? -absTotal : absTotal;
 
-      if (existing) {
+        if (existing) {
         if (isReturn) {
           existing.returnsRevenue += serviceContribution;
         } else if (isDeposit) {
@@ -122,12 +122,16 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
           existing.serviceRevenue += absTotal;
           existing.serviceCount += 1;
         }
-        existing.salesCount = existing.serviceCount + existing.depositCount;
+        // Bug 28 follow-up — Müşteri kartında "Satış Sayısı" sadece ana
+        // (tamamlanmış) hizmet satışlarını sayar; rezervasyon peşinatı
+        // ayrı bir kolon olarak gösterilir. "Toplam Ciro" = hizmet + rezervasyon
+        // toplamıdır, "Alınan Tutar" = hizmetten tahsil edilen (peşinat Hariç).
+        existing.salesCount = existing.serviceCount;
         existing.totalRevenue =
           existing.serviceRevenue + existing.depositRevenue + existing.returnsRevenue;
         existing.avgSale =
-          existing.serviceCount + existing.depositCount > 0
-            ? existing.totalRevenue / Math.max(1, existing.serviceCount + existing.depositCount)
+          existing.serviceCount > 0
+            ? existing.serviceRevenue / existing.serviceCount
             : 0;
         const saleDate = localCalendarDateKey(sale.date);
         if (saleDate && saleDate > existing.lastSaleDate) {
@@ -148,14 +152,14 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
             phone: customerPhone || customer?.phone || '',
             phone2: customerPhone2 || customer?.phone2,
           } as Customer,
-          salesCount: serviceCountInit + depositCountInit,
+          salesCount: serviceCountInit,
           serviceRevenue: serviceInit,
           depositRevenue: depositInit,
           returnsRevenue: returnsInit,
           totalRevenue: serviceInit + depositInit + returnsInit,
           serviceCount: serviceCountInit,
           depositCount: depositCountInit,
-          avgSale: serviceInit + depositInit,
+          avgSale: serviceCountInit > 0 ? serviceInit : 0,
           lastSaleDate: localCalendarDateKey(sale.date),
         });
       }
@@ -182,9 +186,11 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
     () =>
       filteredCustomerSales.map((item, index) => {
         const customerName = item.customer?.name || unknownCustomerLabel;
-        // Bug 28 follow-up — Alınan Tutar = Hizmet + Rezervasyon toplamı.
-        // Müşteri henüz ödenmemişse (veresiye) Hizmet > Alınan Tutar olabilir.
-        const collectedAmount = item.serviceRevenue + item.depositRevenue;
+        // Bug 28 follow-up — "Alınan Tutar" yalnızca hizmet satışından
+        // (tamamlanmış ana fiş) tahsil edilen kısmı gösterir. Rezervasyon
+        // peşinatı zaten ayrı bir kolonda gösterildiği için buraya katılmaz;
+        // aksi halde "Hizmet + Rezervasyon" çift sayımı olur.
+        const collectedAmount = item.serviceRevenue;
         return {
           id: String(item.customer?.id ?? index),
           customerName,
