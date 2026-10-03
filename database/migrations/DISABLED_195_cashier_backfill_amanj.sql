@@ -1,3 +1,10 @@
+-- ⚠️⚠️⚠️ DISABLED — DO NOT RUN ⚠️⚠️⚠️
+-- Tarih: 2026-10-03
+-- Neden: Kullanıcı bu migration'ı iptal etti. Hiçbir DB'de
+-- (lokal/uzak/kiracı) çalıştırılmayacak.
+-- Karar: cashier backfill iptal; kasiyer seçimi UI tarafında
+-- (SalesInvoiceModule / Perakende Satış formu) çözülecek.
+-- Bu dosya Git geçmişinde kalır (referans), ama uygulanmaz.
 -- ============================================================================
 -- Migration 195: kasap datası kasiyer backfill (amanj)
 -- ----------------------------------------------------------------------------

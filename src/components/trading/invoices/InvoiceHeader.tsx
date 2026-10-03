@@ -5,6 +5,8 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { isInvoicePurchaseSide } from '../../../utils/invoiceLineType';
 import { CodeFormatFieldButton } from '../../shared/CodeFormatFieldButton';
 import type { InvoiceCariItem } from './InvoiceCariSelectModal';
+import { InvoiceSalespersonModal } from './InvoiceSalespersonModal';
+import { listCashierRoleUsers, listInvoiceSalespersons, type InvoicePickerMaster } from '../../../utils/invoiceDetailMasters';
 
 interface InvoiceType {
     code: number;
@@ -62,7 +64,15 @@ interface InvoiceHeaderProps {
     workplace: string;
     salespersonCode: string;
     cashierName?: string;
+    /**
+     * Kasiyerin kodu (InvoiceSalespersonModal listesinden seçilir).
+     * Verilirse modal seçiminden dönen `code` buraya yazılır ve
+     * listeden eşleşen kaydın `name`'i de `onCashierNameChange` ile parent'a
+     * iletilir. Verilmezse sadece ad yazılır (geriye dönük uyumlu).
+     */
+    cashierCode?: string;
     onCashierNameChange?: (val: string) => void;
+    onCashierCodeChange?: (val: string) => void;
     cashierReadOnly?: boolean;
     showCashierField?: boolean;
     cashierFieldLabel?: string;
