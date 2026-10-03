@@ -3451,6 +3451,190 @@ export const beautyService = {
     },
 
     /**
+     * Bug 28 follow-up — Randevu tamamlanınca rezervasyon avansını ana hizmet
+     * satışına yansıt. Kullanıcı isteği: complete sonrası alınan rezervasyon
+     * tutarı Toplam Harcama / Alınan Tutar'a eklenir ve `bReservationDeposit`
+     * alanından çıkarılır.
+     *
+     * Mantık (90 yıllık muhasebeci gözüyle):
+     *   1) Bu randevuya bağlı deposit satış(lar)ı bul (`linked_appointment_id = aptId`
+     *      + `is_deposit = true` veya notes'ta `parent_sale:...`/`sale_group:...`).
+     *   2) Aynı randevuya bağlı **ana hizmet satışı** bul (`linked_appointment_id
+     *      = aptId`, `is_deposit = false`, total > 0). Eğer yoksa deposit satışı
+     *      **ana satışa dönüştürülür** (is_deposit=false, deposit etiketleri
+     *      notes'tan çıkarılır, total olduğu gibi kalır). Eğer varsa deposit
+     *     tutarı ana satışın `total` ve `paid_amount` değerine eklenir, deposit
+     *     satışı silinir (çift kayıt olmasın).
+     *   3) Appointment → `deposit_amount=0`, `deposit_sale_id=NULL` (temiz).
+     */
+    async mergeReservationDepositIntoMainSaleForAppointment(appointmentId: string): Promise<void> {
+        const aid = String(appointmentId ?? '').trim();
+        if (!aid) return;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            // 1) Deposit satışları çek
+            const deposits = await postgrest.get<Array<{
+                id: string;
+                total?: number | string;
+                paid_amount?: number | string;
+                notes?: string;
+            }>>(
+                `/rex_${fn}_${pn}_beauty_sales`,
+                {
+                    select: 'id,total,paid_amount,notes',
+                    or: '(is_deposit.eq.true,notes.like.*parent_sale:*,notes.like.*sale_group:*,notes.like.*deposit:1*)',
+                    notes: `like.*rex_appt:${aid}*`,
+                    limit: 50,
+                },
+                { schema: 'beauty' }
+            );
+            if (!Array.isArray(deposits) || deposits.length === 0) return;
+            // 2) Ana hizmet satışını bul (is_deposit=false olmayan, deposit etiketleri olmayan)
+            const mainRows = await postgrest.get<Array<{
+                id: string;
+                total?: number | string;
+                paid_amount?: number | string;
+            }>>(
+                `/rex_${fn}_${pn}_beauty_sales`,
+                {
+                    select: 'id,total,paid_amount',
+                    notes: `like.*rex_appt:${aid}*`,
+                    is_deposit: 'eq.false',
+                    limit: 50,
+                },
+                { schema: 'beauty' }
+            );
+            const mainRow = Array.isArray(mainRows) && mainRows.length > 0 ? mainRows[0] : null;
+            for (const dep of deposits) {
+                if (!dep?.id) continue;
+                const depTotal = Math.abs(Number(dep.total ?? 0));
+                if (depTotal <= 0) {
+                    await postgrest.delete(
+                        `/rex_${fn}_${pn}_beauty_sales?id=eq.${encodeURIComponent(String(dep.id))}`,
+                        { schema: 'beauty', prefer: 'return=minimal' }
+                    );
+                    continue;
+                }
+                if (mainRow && mainRow.id) {
+                    // Ana satışa ekle, deposit satışını sil
+                    const curTotal = Math.abs(Number(mainRow.total ?? 0));
+                    const curPaid = Math.abs(Number(mainRow.paid_amount ?? 0));
+                    await postgrest.patch(
+                        `/rex_${fn}_${pn}_beauty_sales?id=eq.${encodeURIComponent(String(mainRow.id))}`,
+                        {
+                            total: curTotal + depTotal,
+                            paid_amount: curPaid + depTotal,
+                            updated_at: new Date().toISOString(),
+                        },
+                        { schema: 'beauty', prefer: 'return=minimal' }
+                    );
+                    await postgrest.delete(
+                        `/rex_${fn}_${pn}_beauty_sales?id=eq.${encodeURIComponent(String(dep.id))}`,
+                        { schema: 'beauty', prefer: 'return=minimal' }
+                    );
+                } else {
+                    // Ana satış yok → deposit satışını ana satışa dönüştür
+                    const cleanedNotes = String(dep.notes ?? '')
+                        .replace(/\bparent_sale:[^\s]+/g, '')
+                        .replace(/\bsale_group:[^\s]+/g, '')
+                        .replace(/\bdeposit:1\b/g, '')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+                    await postgrest.patch(
+                        `/rex_${fn}_${pn}_beauty_sales?id=eq.${encodeURIComponent(String(dep.id))}`,
+                        {
+                            is_deposit: false,
+                            notes: cleanedNotes,
+                            updated_at: new Date().toISOString(),
+                        },
+                        { schema: 'beauty', prefer: 'return=minimal' }
+                    );
+                }
+            }
+            // 3) Appointment'tan deposit alanlarını temizle
+            try {
+                await postgrest.patch(
+                    `/rex_${fn}_${pn}_beauty_appointments?id=eq.${encodeURIComponent(aid)}`,
+                    {
+                        deposit_amount: 0,
+                        deposit_sale_id: null,
+                        updated_at: new Date().toISOString(),
+                    },
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            } catch (e) {
+                console.warn('[beautyService] deposit merge: appointment patch:', e);
+            }
+            return;
+        }
+        // Direct SQL fallback
+        const salesT = postgres.getMovementTableName('beauty_sales', 'beauty');
+        const aptT = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const aptNeedle = `%rex_appt:${aid}%`;
+        try {
+            // Deposit satışları çek
+            const { rows: deposits } = await postgres.query(
+                `SELECT id, total, paid_amount, notes
+                   FROM ${salesT}
+                  WHERE COALESCE(notes, '') LIKE $1
+                    AND (is_deposit = true
+                      OR COALESCE(notes, '') ~* $2)`,
+                [aptNeedle, 'parent_sale:|sale_group:|deposit:1']
+            );
+            if (!Array.isArray(deposits) || deposits.length === 0) return;
+            // Ana hizmet satışı
+            const { rows: mainRows } = await postgres.query(
+                `SELECT id, total, paid_amount
+                   FROM ${salesT}
+                  WHERE COALESCE(notes, '') LIKE $1
+                    AND COALESCE(is_deposit, false) = false`,
+                [aptNeedle]
+            );
+            const mainRow = Array.isArray(mainRows) && mainRows.length > 0 ? mainRows[0] as { id: string; total?: number | string; paid_amount?: number | string } : null;
+            for (const dep of deposits as Array<{ id: string; total?: number | string; paid_amount?: number | string; notes?: string }>) {
+                if (!dep?.id) continue;
+                const depTotal = Math.abs(Number(dep.total ?? 0));
+                if (depTotal <= 0) {
+                    await postgres.query(`DELETE FROM ${salesT} WHERE id = $1`, [dep.id]);
+                    continue;
+                }
+                if (mainRow?.id) {
+                    const curTotal = Math.abs(Number(mainRow.total ?? 0));
+                    const curPaid = Math.abs(Number(mainRow.paid_amount ?? 0));
+                    await postgres.query(
+                        `UPDATE ${salesT} SET total = $1, paid_amount = $2, updated_at = NOW() WHERE id = $3`,
+                        [curTotal + depTotal, curPaid + depTotal, mainRow.id]
+                    );
+                    await postgres.query(`DELETE FROM ${salesT} WHERE id = $1`, [dep.id]);
+                } else {
+                    const cleanedNotes = String(dep.notes ?? '')
+                        .replace(/\bparent_sale:[^\s]+/g, '')
+                        .replace(/\bsale_group:[^\s]+/g, '')
+                        .replace(/\bdeposit:1\b/g, '')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+                    await postgres.query(
+                        `UPDATE ${salesT} SET is_deposit = false, notes = $1, updated_at = NOW() WHERE id = $2`,
+                        [cleanedNotes, dep.id]
+                    );
+                }
+            }
+            try {
+                await postgres.query(
+                    `UPDATE ${aptT} SET deposit_amount = 0, deposit_sale_id = NULL, updated_at = NOW() WHERE id = $1`,
+                    [aid]
+                );
+            } catch (e) {
+                console.warn('[beautyService] deposit merge: appointment update:', e);
+            }
+        } catch (e) {
+            console.warn('[beautyService] deposit merge: SQL', e);
+        }
+    },
+
+    /**
      * Randevu iptali sırasında bağlı reservation / peşinat satış fiş(ler)i ve
      * ana satış fiş(ler)ini ciro dışı işaretler; appointment'tan deposit_* alanlarını
      * NULL'lar; bağlı ERP `sales` fişlerini `is_cancelled = true` yapar; cari
@@ -4259,6 +4443,17 @@ export const beautyService = {
                 await beautyService.applyConsumableDeductionForAppointment(id);
             } catch {
                 /* stok/sarf yoksa sessizce geç */
+            }
+            // Bug 28 follow-up — Randevu tamamlanınca rezervasyon avansını ana
+            // hizmet satışına yansıt. O appointment'a bağlı deposit satışları
+            // bulunur; ana hizmet satışı varsa deposit tutarı ana satışın
+            // total/paid_amount'ına eklenir ve deposit etiketleri (parent_sale:,
+            // sale_group:, deposit:1) notes'tan çıkarılır. Ana hizmet satışı
+            // yoksa deposit satışı ana satışa dönüştürülür.
+            try {
+                await beautyService.mergeReservationDepositIntoMainSaleForAppointment(id);
+            } catch (e) {
+                console.warn('[updateAppointmentStatus] deposit merge failed:', e);
             }
             // Paket seans tüketimi — D2 kök sebep düzeltmesi
             if (packagePurchaseId) {
