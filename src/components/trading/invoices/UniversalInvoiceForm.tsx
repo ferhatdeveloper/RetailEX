@@ -772,9 +772,12 @@ export function UniversalInvoiceForm({
     [paymentMethod, isPosRetail],
   );
   const resolveAuthUserDisplayName = useCallback(() => {
-    const name = String(user?.full_name || user?.username || '').trim();
-    return name;
-  }, [user?.full_name, user?.username]);
+    // Tercih: önce kullanıcı adı (Market POS + cari seçici kasiyer tutarlılığı).
+    // full_name boşsa username düşer; username boşsa full_name düşer.
+    const username = String(user?.username || '').trim();
+    const fullName = String(user?.full_name || '').trim();
+    return username || fullName;
+  }, [user?.username, user?.full_name]);
   const [warehouse, setWarehouse] = useState(''); // Depo (Ambar) — sistem varsayılanı useEffect ile
   const [fromWarehouse, setFromWarehouse] = useState(''); // Çıkış deposu (Transfer)
   const [toWarehouse, setToWarehouse] = useState(''); // Giriş deposu (Transfer)
