@@ -168,7 +168,7 @@ function isActiveBeautySale(s: BeautySale): boolean {
  * yazılan `deposit:1` ve `parent_sale:<uuid>` tag'leri yedek tanımlayıcıdır;
  * sütun değerleriyle birlikte değerlendirilir (Bug ARAM-collected-2x).
  */
-function isMainBeautySale(s: BeautySale, completedAptIds: Set<string>): boolean {
+export function isMainBeautySale(s: BeautySale, completedAptIds: Set<string>): boolean {
     if (!isActiveBeautySale(s)) return false;
     const sale = s as BeautySale & {
         is_deposit?: boolean | null;
@@ -591,6 +591,33 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         return k ? tm(k) : status;
     }, [tm]);
 
+    /**
+     * Aktif satışlar (iptal/iptal edilen/void edilmiş fişler dışı).
+     * Geçmiş sekmesi ve KPI hesabı için ortak ön filtre.
+     */
+    const activeSalesHistory = useMemo(
+        () =>
+            salesHistory.filter((s) => {
+                const st = String(s.payment_status || 'paid').toLowerCase();
+                return st !== 'cancelled' && st !== 'canceled' && st !== 'void';
+            }),
+        [salesHistory],
+    );
+
+    /**
+     * Tamamlanmış randevu id'leri — ana hizmet satışları filtresi (Bug 3/4/6) ve
+     * "henüz gerçekleşmemiş randevuya bağlı satış" elemesi için kullanılır.
+     */
+    const completedAppointmentIds = useMemo(() => {
+        const set = new Set<string>();
+        for (const a of pastAppointments) {
+            if (!isCompletedBeautyAppointment(a)) continue;
+            const id = String(a.id ?? '').trim().toLowerCase();
+            if (id) set.add(id);
+        }
+        return set;
+    }, [pastAppointments]);
+
     const unifiedCustomerHistory = useMemo((): UnifiedHistoryRow[] => {
         const appointmentWhenStr = (a: BeautyAppointment) => {
             const d = a.appointment_date ?? a.date;
@@ -626,6 +653,11 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         }
         for (const s of salesHistory) {
             if (!isActiveBeautySale(s)) continue;
+            // Bug ARAM-history-prepaid: peşinat (`is_deposit=true`), parent_sale_id
+            // dolu ve tamamlanmamış randevuya bağlı ana satışlar Geçmiş'ten elenir.
+            // Aksi halde 30.000 "veresiye" + 20.000 "nakit" aynı randevuda çift satır
+            // olarak görünür ve cari hareketler yanlış izlenim verir (KPI ile uyumlu).
+            if (!isMainBeautySale(s, completedAppointmentIds)) continue;
             primaries.push({ key: `sale-${s.id}`, kind: 'sale', sortMs: saleSortMs(s), sale: s });
         }
         for (const p of customerPackages) {
@@ -739,6 +771,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         pastAppointments,
         salesHistory,
         customerPackages,
+        completedAppointmentIds,
         tm,
         dateLocale,
         beautyTimeFormat,
@@ -765,29 +798,6 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
 
     const showLoader = !selected && (isLoading || !erpAccountsLoaded);
     const showMissing = !selected && erpAccountsLoaded && !isLoading;
-
-    const activeSalesHistory = useMemo(
-        () =>
-            salesHistory.filter((s) => {
-                const st = String(s.payment_status || 'paid').toLowerCase();
-                return st !== 'cancelled' && st !== 'canceled' && st !== 'void';
-            }),
-        [salesHistory],
-    );
-
-    /**
-     * Tamamlanmış randevu id'leri — ana hizmet satışları filtresi (Bug 3/4/6) ve
-     * "henüz gerçekleşmemiş randevuya bağlı satış" elemesi için kullanılır.
-     */
-    const completedAppointmentIds = useMemo(() => {
-        const set = new Set<string>();
-        for (const a of pastAppointments) {
-            if (!isCompletedBeautyAppointment(a)) continue;
-            const id = String(a.id ?? '').trim().toLowerCase();
-            if (id) set.add(id);
-        }
-        return set;
-    }, [pastAppointments]);
 
     /**
      * Ana hizmet satışları — KPI ve bakiye hesabında deposit + parent_sale_id
