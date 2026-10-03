@@ -3688,6 +3688,12 @@ export function ReportsModule({
   const getCashierPerformance = () => {
     const cashierMap = new Map<string, any>();
     dailyActiveRows.forEach((row) => {
+      // Rezervasyon avansı (henüz hizmet verilmemiş peşinat) Ciro/işlem
+      // sayacına katılmamalı — kullanıcı isteği: "işlem sayısı 1 ama
+      // buradaya rezervasyonu da işlem gibi almış".
+      if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) {
+        return;
+      }
       const rawName = String(row.cashier || '').trim();
       const name = rawName && !isPlaceholderCashierName(rawName) ? rawName : '—';
       const existing = cashierMap.get(name) || { name, salesCount: 0, totalRevenue: 0, avgSale: 0, cashSales: 0, cardSales: 0 };
