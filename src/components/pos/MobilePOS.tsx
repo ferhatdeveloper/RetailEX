@@ -18,6 +18,7 @@ import {
   isStockExemptFromSaleGuard,
 } from '../../utils/stockSaleGuard';
 import { getPosNow, notifyPosSaleSuccess } from '../../store/usePosDateOverrideStore';
+import { resolveWriteCashierName } from '../../utils/loginCashierName';
 import { isPosPaymentBackToSaleAllowed } from '../../utils/posPaymentBackGuard';
 import {
   loadReportMenuParams,
@@ -588,7 +589,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
             discount: totalDiscount,
             total,
             paymentMethod: 'Nakit',
-            cashier: 'Admin'
+            cashier: resolveWriteCashierName(undefined)
           };
 
           onSaleComplete(sale);
@@ -668,7 +669,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       discount: totalDiscount,
       total,
       paymentMethod,
-      cashier: 'Admin',
+      cashier: resolveWriteCashierName(undefined),
       autoPrint: autoPrint,
       language: receiptLanguage
     };

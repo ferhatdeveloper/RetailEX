@@ -3920,6 +3920,8 @@ export function UniversalInvoiceForm({
     if (isSalesReturnInvoice && !customerTitle) {
       toast.warning('⚠️ ' + tm('salesReturnCustomerOptionalWarning'));
     }
+    // Satış İade'de de kasiyer artık zorunlu değil — fallback her zaman dolu
+    // (resolveAuthUserDisplayName → login user → 'Bilinmeyen Kasiyer').
     if (isSalesReturnInvoice && !cashierName.trim()) {
       const fallbackCashier = resolveAuthUserDisplayName();
       if (fallbackCashier) {
@@ -3927,10 +3929,6 @@ export function UniversalInvoiceForm({
       }
     }
     const effectiveCashierName = cashierName.trim() || resolveAuthUserDisplayName();
-    if (isSalesReturnInvoice && !effectiveCashierName) {
-      toast.error('❌ ' + tm('salesReturnCashierRequired'));
-      return;
-    }
 
     // Kalem kontrolü — sayım fazlası taslağında birim fiyat 0 olabilir; alışta yine de kayda izin verilir
     const validItems = items.filter((item) => {

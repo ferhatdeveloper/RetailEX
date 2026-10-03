@@ -83,21 +83,21 @@ export function currentLoginCashierName(): string {
 /**
  * Fişe yazılacak kasiyer:
  * 1) Placeholder olmayan ham değer (currentStaff / useAuthStore.user.username vb.)
- * 2) Yoksa oturum açan kullanıcı (authStore.user)
- * 3) Yoksa boş string — MarketPOS bu durumda Personel Değiştir modali
- *    zorla açar ve ödeme tamamlanmasını engeller. Servis katmanı (sales.ts)
- *    boş cashier ile fiş yazımını kabul etmez.
+ * 2) Yoksa oturum açan kullanıcı (authStore.user.username/full_name)
+ * 3) Yoksa 'Bilinmeyen Kasiyer' placeholder — fatura HER DURUMDA kaydedilir,
+ *    kasiyer seçimi artık zorunlu değil. Raporlar placeholder olarak gruplanır;
+ *    UI'da küçük uyarı banner'ı gösterilir (Personel Değiştir'e yönlendirilir).
  *
- * Hardcoded 'Bilinmeyen Kasiyer' fallback KALDIRILDI — placeholder satır
- * Cashier Performance raporunu kirletiyordu; artık kasiyer seçimi
- * kullanıcı tarafında zorunlu kılınıyor (show-stopper).
+ * Eski davranış (show-stopper): cashier boşsa Personel Değiştir zorla açılırdı
+ * ve ödeme modalı açılmazdı. Kullanıcı talebi: "Kasiyer bilgisi olmayınca fatura
+ * oluşturabilsin" — bu yüzden fallback eklendi, UI guard'ları zayıflatıldı.
  */
 export function resolveWriteCashierName(raw?: unknown): string {
   const cleaned = sanitizeStoredCashierName(raw);
   if (cleaned) return cleaned;
   const fromLogin = currentLoginCashierName();
   if (fromLogin) return fromLogin;
-  return '';
+  return 'Bilinmeyen Kasiyer';
 }
 
 /**

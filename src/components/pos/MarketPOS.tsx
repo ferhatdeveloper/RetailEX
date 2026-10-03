@@ -1469,15 +1469,16 @@ export default function MarketPOS({
       return;
     }
 
-    // Kasiyer guard — boşsa Personel Değiştir modali zorla açılır,
-    // ödeme modalı AÇILMAZ (show-stopper).
+    // Kasiyer uyarısı — boşsa ödeme modalı yine de açılır (fatura HER DURUMDA
+    // kaydedilebilir). Cashier resolve fallback ile otomatik dolar (login user
+    // → 'Bilinmeyen Kasiyer'). Personel Değiştir artık zorla açılmıyor;
+    // banner içinde bilgi gösterilir.
     if (!String(currentStaff || '').trim()) {
       showNotif(
-        tm('salespersonNotSelected') || 'Lütfen önce kasiyer seçin',
-        'warning',
+        tm('cashierFallbackNotice') ||
+          'Kasiyer seçilmedi — fiş oturum açan kullanıcı adına kaydedilecek',
+        'info',
       );
-      window.dispatchEvent(new Event('openStaffModal'));
-      return;
     }
 
     if (isBlockNegativeStockSaleEnabled()) {

@@ -286,14 +286,10 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     }
 
     // ===== 7. FATURA OBJESI OLUŞTUR =====
-    // Kasiyer/Satış Elemanı: modal ile seçilmediyse oturum açan kullanıcıya düş (zorunlu).
+    // Kasiyer/Satış Elemanı: modal ile seçilmediyse oturum açan kullanıcıya düş.
+    // Show-stopper kaldırıldı — fallback her zaman dolu olur
+    // (resolveWriteCashierName: login user.username/fullName → 'Bilinmeyen Kasiyer').
     const cashierName = String(salespersonName || defaultCashierName || '').trim();
-    if (!cashierName) {
-      toast.error(tm('salespersonNotSelected') || 'Satış Elemanı Seçilmedi', {
-        duration: 4000,
-      });
-      return;
-    }
     const newInvoice = {
       id: invoiceNo || `SAT-${Date.now()}`,
       customer: customerTitle,

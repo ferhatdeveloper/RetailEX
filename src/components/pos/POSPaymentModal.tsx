@@ -213,12 +213,14 @@ interface POSPaymentModalProps {
    * için) parent'a iletilir. Verilmezse rezervasyon yapılmaz.
    */
   cartItems?: Array<{ productId: string; quantity: number; name?: string; total?: number }>;
-  /** Kasiyer adı (MainLayout.currentStaff). Tamamla butonu buna göre pasifleşir. */
+  /** Kasiyer adı (MainLayout.currentStaff). Boşsa fallback uygulanır. */
   currentStaff?: string;
   /**
    * Satış tamamlanmadan önce kasiyer seçilmiş olması zorunlu mu?
-   * Varsayılan: true. POS tarafında kasiyer otomatik set edilir; boşsa
-   * "Ödemeyi Tamamla" butonu pasif olur ve fiş yazılmaz.
+   * Varsayılan: false. POS tarafında kasiyer otomatik set edilir; boşsa
+   * resolveWriteCashierName fallback (login user → 'Bilinmeyen Kasiyer')
+   * uygulanır ve fiş YİNE DE kaydedilir. Banner ile bilgi gösterilir.
+   * (Eski davranış: buton pasif + show-stopper — kaldırıldı.)
    */
   requireCashier?: boolean;
 }
@@ -265,7 +267,7 @@ export function POSPaymentModal({
   appointmentContext,
   cartItems,
   currentStaff = '',
-  requireCashier = true,
+  requireCashier = false,
 }: POSPaymentModalProps) {
   const { t, tm, language: uiLanguage } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
@@ -1974,21 +1976,21 @@ const handleCollectCustomerDebt = async () => {
           </div>
         </div>
 
-        {/* Footer */}
-        {requireCashier && !String(currentStaff || '').trim() ? (
+        {/* Footer — bilgi banner (artık blocker değil) */}
+        {!String(currentStaff || '').trim() ? (
           <div
-            role="alert"
-            data-testid="pos-cashier-required-banner"
-            className={`px-4 py-2 border-t flex items-center gap-2 text-sm font-medium ${
+            role="status"
+            data-testid="pos-cashier-info-banner"
+            className={`px-4 py-2 border-t flex items-center gap-2 text-sm ${
               darkMode
-                ? 'border-amber-700 bg-amber-950/40 text-amber-200'
-                : 'border-amber-200 bg-amber-50 text-amber-800'
+                ? 'border-blue-700 bg-blue-950/40 text-blue-200'
+                : 'border-blue-200 bg-blue-50 text-blue-800'
             }`}
           >
             <User className="w-4 h-4 shrink-0" />
             <span>
-              {tm('salespersonNotSelected') || 'Satış Elemanı Seçilmedi'} —{' '}
-              {tm('cashierNamePlaceholder') || 'Kasiyer adı...'}
+              {tm('cashierFallbackNotice') ||
+                'Kasiyer seçilmedi — fiş oturum açan kullanıcı adına kaydedilecek.'}
             </span>
           </div>
         ) : null}
@@ -2050,17 +2052,16 @@ const handleCollectCustomerDebt = async () => {
               draftPrintLoading ||
               (hasCariRemainder && !selectedCustomer) ||
               totalPaid <= 0 ||
-              payments.length === 0 ||
-              (requireCashier && !String(currentStaff || '').trim())
+              payments.length === 0
+              // requireCashier guard kaldırıldı: fiş HER DURUMDA kaydedilebilir,
+              // cashier boşsa resolveWriteCashierName fallback (login user → Bilinmeyen Kasiyer) uygulanır.
             }
             title={
-              requireCashier && !String(currentStaff || '').trim()
-                ? (tm('salespersonNotSelected') || 'Satış Elemanı Seçilmedi')
-                : totalPaid <= 0 || payments.length === 0
-                  ? (tm('collectPaymentFirst') || 'Önce Tam Tutar veya + Ödeme Ekle ile ödeme alın.')
-                  : hasCariRemainder && !selectedCustomer
-                    ? selectCustomerForCariMessage
-                    : undefined
+              totalPaid <= 0 || payments.length === 0
+                ? (tm('collectPaymentFirst') || 'Önce Tam Tutar veya + Ödeme Ekle ile ödeme alın.')
+                : hasCariRemainder && !selectedCustomer
+                  ? selectCustomerForCariMessage
+                  : undefined
             }
             className={`flex-1 px-4 py-3 bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 sm:min-w-[11rem]`}
           >
