@@ -979,13 +979,32 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         type: 'number',
         align: 'right',
         footerSum: true,
+        // Bug 29 follow-up — Footer Net Kalan = Ciro − Gider − Alış.
+        // CH_TAHSILAT Hariç (ledger simetrisi: kasa + / cari - → net 0).
+        // Kullanıcı "dip footer toplamında cari hesap tekrar yansıtma"
+        // demişti; alt etiket ile formülü görsel olarak netleştiriyoruz.
         footerFormat: (n) => (
-          <span className={n >= 0 ? 'text-emerald-700' : 'text-red-600'}>{money(n)}</span>
+          <span
+            className="inline-flex flex-col items-end leading-tight"
+            title={`${tm('rptPeriodColNet')} = Ciro − Gider − Alış (${tm('rptPeriodNetFooterNote')})`}
+          >
+            <span className={n >= 0 ? 'text-emerald-700' : 'text-red-600'}>{money(n)}</span>
+            <span className="text-[9px] font-medium text-slate-500 dark:text-slate-400">
+              {tm('rptPeriodNetFooterNote')}
+            </span>
+          </span>
         ),
         cell: (row) => {
           if (!hasPeriodActivity(row)) return '—';
           const cls = row.netRemaining >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold';
-          return <span className={cls}>{money(row.netRemaining)}</span>;
+          return (
+            <span
+              className={cls}
+              title={`${tm('rptPeriodColNet')} = Ciro − Gider − Alış (${tm('rptPeriodNetFooterNote')})`}
+            >
+              {money(row.netRemaining)}
+            </span>
+          );
         },
       },
     ];

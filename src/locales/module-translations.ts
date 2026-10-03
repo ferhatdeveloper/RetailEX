@@ -10762,6 +10762,17 @@ export const excelModuleTranslations = {
     ar: 'إجمالي تحصيل العملاء',
     ku: 'کۆی وەرگرتنەوەی کڕیار',
   },
+  /**
+   * Bug 29 follow-up — Dönem özeti "Net Kalan" footer etiketi.
+   * Ciro − Gider − Alış formülü; Cari Tahsilat Hariç (ledger simetrisi:
+   * kasa + / cari - → dönem netine etkisi sıfır).
+   */
+  rptPeriodNetFooterNote: {
+    tr: 'Cari Tahsilat Hariç',
+    en: 'Excl. customer collections',
+    ar: 'باستثناء تحصيل العملاء',
+    ku: 'بێ وەرگرتنەوەی کڕیار',
+  },
   // Bug 29 — Aylık/Yıllık özet tablosunda yeni "Cari Tahsilat" kolon başlığı.
   rptPeriodColCariTahsilat: {
     tr: 'Cari Tahsilat',
