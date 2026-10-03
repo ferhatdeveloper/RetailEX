@@ -559,12 +559,15 @@ export function MainLayout({
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [currentStaff, setCurrentStaff] = useState(currentUser.username || '');
 
-  // Oturum kullanıcısı değişince kasiyer etiketi kullanıcı adı ile senkron
+  // Oturum kullanıcısı değişince kasiyer etiketi kullanıcı adı ile senkron —
+  // YALNIZCA kasiyer boşken set edilir. Personel Değiştir'den seçim yapıldıktan
+  // sonra currentStaff korunmalı; auth refresh'te login user geri dönse bile
+  // kasiyer seçimi ezilmez. Boş bırakılırsa POS'ta cashier guard ödemeyi durdurur.
   useEffect(() => {
-    if (currentUser.username) {
+    if (currentUser.username && !currentStaff) {
       setCurrentStaff(currentUser.username);
     }
-  }, [currentUser.username]);
+  }, [currentUser.username, currentStaff]);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [customerModalInitialQuery, setCustomerModalInitialQuery] = useState('');
   const [showStaffModal, setShowStaffModal] = useState(false);

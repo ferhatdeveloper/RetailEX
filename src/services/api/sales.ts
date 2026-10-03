@@ -73,6 +73,16 @@ export const salesAPI = {
         console.log('[SalesAPI] Creating sale via invoicesAPI...', sale?.receiptNumber);
       }
 
+      // Boş cashier guard — loginCashierName artık hardcoded fallback döndürmüyor.
+      // MarketPOS ödeme tıklamasında kasiyer boşsa Personel Değiştir modali açıp
+      // ödemeyi durduruyor; burada da boş cashier ile fiş yazılmasını engelle.
+      const resolvedCashier = ensureWriteCashierName(sale.cashier);
+      if (!resolvedCashier.trim()) {
+        const msg = '[SalesAPI] cashier boş — fiş yazılmadı. Kasiyer seçilmeden ödeme tamamlanamaz.';
+        console.error(msg, { receiptNumber: sale?.receiptNumber });
+        throw new Error('Kasiyer seçilmeden satış tamamlanamaz');
+      }
+
       const firmNr = sale.firmNr || ERP_SETTINGS.firmNr;
       const periodNr = sale.periodNr || ERP_SETTINGS.periodNr;
 
@@ -167,7 +177,7 @@ export const salesAPI = {
         donem_id: periodNr,
 
         payment_method: sale.paymentMethod || 'Nakit',
-        cashier: ensureWriteCashierName(sale.cashier),
+        cashier: resolvedCashier,
         created_by_user_id: sale.userId || currentLoginUserId(),
         status: 'completed', // POS sales are completed immediately
         notes: sale.notes || 'MarketPOS Satışı',
@@ -368,6 +378,14 @@ export const salesAPI = {
       const firmNr = params.firmNr || ERP_SETTINGS.firmNr;
       const periodNr = params.periodNr || ERP_SETTINGS.periodNr;
 
+      // Boş cashier guard (iade için) — fiş yazılmamalı.
+      const resolvedReturnCashier = ensureWriteCashierName(params.cashier);
+      if (!resolvedReturnCashier.trim()) {
+        const msg = '[SalesAPI] createReturn cashier boş — iade fişi yazılmadı.';
+        console.error(msg, { returnNumber: params?.returnNumber });
+        throw new Error('Kasiyer seçilmeden iade tamamlanamaz');
+      }
+
       const invoiceItems = params.items.map((item) => {
         const unit = item.unit || 'Adet';
         const multiplier = item.multiplier || 1;
@@ -415,7 +433,7 @@ export const salesAPI = {
         firma_id: firmNr,
         donem_id: periodNr,
         payment_method: params.paymentMethod || 'Nakit',
-        cashier: ensureWriteCashierName(params.cashier),
+        cashier: resolvedReturnCashier,
         created_by_user_id: currentLoginUserId(),
         status: 'completed',
         notes: reasonNote,

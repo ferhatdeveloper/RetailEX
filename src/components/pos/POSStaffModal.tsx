@@ -154,12 +154,36 @@ export function POSStaffModal({ currentStaff, onSelect, onClose }: POSStaffModal
                 })}
               </div>
 
+              {selectedUser && (
+                <button
+                  type="button"
+                  data-testid="pos-staff-quick-select"
+                  onClick={() => {
+                    // PIN'siz hızlı seçim: sadece kasiyer etiketini günceller,
+                    // login() çağırmaz. Yönetim modülü veya yetki gerektiren
+                    // işlemler için PIN'li "Giriş Yap" yolu kullanılmalı.
+                    onSelect(selectedUser.username);
+                    toast.success(
+                      `${t.welcome || 'Hoş geldiniz'}, ${selectedUser.username}`,
+                    );
+                    onClose();
+                  }}
+                  className="w-full mb-2 px-3 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold uppercase tracking-wider shadow-sm shadow-emerald-200 hover:bg-emerald-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                  <User className="w-4 h-4" />
+                  Kasiyer olarak seç (PIN'siz)
+                </button>
+              )}
+
               <div
                 className={cn(
                   'transition-opacity',
                   selectedUser ? '' : 'opacity-60 pointer-events-none'
                 )}
               >
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 text-center">
+                  ya da PIN ile tam giriş
+                </div>
                 <PinNumpadInput
                   value={password}
                   onChange={(v) => {

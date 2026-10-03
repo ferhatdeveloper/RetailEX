@@ -1476,6 +1476,17 @@ export default function MarketPOS({
       return;
     }
 
+    // Kasiyer guard — boşsa Personel Değiştir modali zorla açılır,
+    // ödeme modalı AÇILMAZ (show-stopper).
+    if (!String(currentStaff || '').trim()) {
+      showNotif(
+        tm('salespersonNotSelected') || 'Lütfen önce kasiyer seçin',
+        'warning',
+      );
+      window.dispatchEvent(new Event('openStaffModal'));
+      return;
+    }
+
     if (isBlockNegativeStockSaleEnabled()) {
       const demand = cart.map((item) => {
         const unit = item.unit || item.product.unit || t.pcs;
