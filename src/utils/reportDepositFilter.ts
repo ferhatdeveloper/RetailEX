@@ -85,9 +85,25 @@ export function isPendingPaymentStatus(paymentStatus: unknown): boolean {
  * Bu satış bir randevuya bağlı peşinat fişi mi?
  * DB'de `sales.is_deposit = true` yazılır (Migration 182).
  * Frontend `Sale.isDeposit` alanı `mapInvoiceToSale` tarafından set edilir.
+ *
+ * Geriye dönük uyumluluk: Backend tarafında eski fişlerde `is_deposit`
+ * kolonu set edilmemiş olabilir; bu durumda `parent_sale_id` doluysa
+ * veya `notes` içinde `deposit:1` tag'i varsa da peşinat kabul edilir
+ * (Migration 182 öncesi dönemde `parent_sale` notes içine yazılmıştı).
  */
 export function isDepositSale(sale: Partial<Sale> | null | undefined): boolean {
-  return Boolean((sale as { isDeposit?: boolean | null } | null | undefined)?.isDeposit === true);
+    if (!sale) return false;
+    if ((sale as { isDeposit?: boolean | null }).isDeposit === true) return true;
+    const notes = String((sale as { notes?: string | null }).notes ?? '');
+    if (/deposit:1(?:[|]|$)/i.test(notes)) return true;
+    // Backend bazı dönemlerde `parent_sale_id` / `sale_group_id` kolonlarını
+    // set etmeden, sadece notes içine `parent_sale:<uuid>` veya
+    // `sale_group:<uuid>` tag'i yazmıştır (geriye dönük uyumluluk).
+    // Bu fişler de peşinat sayılır. `parent_sale` peşinat fişinde, ana
+    // satışta değil; ana satışta `rex_appt:` vardır ama `parent_sale` yoktur.
+    if (/(?:^|\|)parent_sale:[A-Za-z0-9-]+(?:[|]|$)/i.test(notes)) return true;
+    if (/(?:^|\|)sale_group:[A-Za-z0-9-]+(?:[|]|$)/i.test(notes)) return true;
+    return false;
 }
 
 /**

@@ -51,6 +51,25 @@ describe('reportDepositFilter — Bug 24 (peşinat Hariç)', () => {
       expect(isDepositSale({ isDeposit: null } as Sale)).toBe(false);
       expect(isDepositSale({} as Sale)).toBe(false);
     });
+    it('notes içinde parent_sale/sale_group tag\'i olan fişi peşinat sayar (geriye dönük uyumluluk)', () => {
+      // Peşinat fiş: notes'ta parent_sale + sale_group var
+      expect(
+        isDepositSale({
+          isDeposit: false,
+          notes: 'GüzellikPOS|beauty_sale_id:x|rex_appt:y|parent_sale:z|sale_group:z',
+        } as Sale),
+      ).toBe(true);
+      // Ana satış: notes'ta sadece rex_appt var
+      expect(
+        isDepositSale({
+          isDeposit: false,
+          notes: 'GüzellikPOS|beauty_sale_id:x|rex_appt:y',
+        } as Sale),
+      ).toBe(false);
+    });
+    it('notes içinde deposit:1 tag\'i olan fişi peşinat sayar', () => {
+      expect(isDepositSale({ isDeposit: false, notes: 'GüzellikPOS|rex_appt:abc|deposit:1' } as Sale)).toBe(true);
+    });
   });
 
   describe('isPendingPaymentStatus', () => {
@@ -280,8 +299,8 @@ describe('reportDepositFilter — Bug 24 (peşinat Hariç)', () => {
       total: 60_000,
       payment_status: 'paid',
       isDeposit: false,
-      parentSaleId: 'BEAUTY-PESINAT-apt-roza-001',
       linkedAppointmentId: 'apt-roza-001',
+      notes: 'GüzellikPOS|beauty_sale_id:abc|rex_appt:apt-roza-001',
       customerId: 'roza-id',
       customerName: 'ROZA',
       paymentMethod: 'cash',
