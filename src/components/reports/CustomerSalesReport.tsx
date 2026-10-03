@@ -86,6 +86,15 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
       // rezervasyon peşinatı sütununa yaz.
       const isDeposit = isDepositSale(sale);
       const isPending = ps === 'pending' || ps === 'awaiting_service' || ps === 'partial';
+      // Bug 26 follow-up — randevuya bağlı ana satış fişi `status` completed
+      // değilse hizmet ciroya dahil edilmez (henüz hizmet verilmedi). Bu
+      // sayede ROZA gibi "30.000 veresiye + 20.000 peşinat" senaryosunda
+      // tamamlanmış ana satış doğru toplama katılır.
+      const COMPLETED_STATUSES = new Set([
+        'completed', 'complete', 'done', 'finished', 'tamamlandi', 'tamamlandı', 'paid', 'closed',
+      ]);
+      const linkedAppt = (sale as Sale).linkedAppointmentId;
+      const isLinkedOpen = Boolean(linkedAppt) && !COMPLETED_STATUSES.has(st);
 
       const customerId = sale.customerId || sale.customerName || 'unknown';
       const customer = customers?.find((c) => c.id === customerId) || null;
@@ -106,7 +115,7 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
         } else if (isDeposit) {
           existing.depositRevenue += absTotal;
           existing.depositCount += 1;
-        } else if (!isPending) {
+        } else if (!isPending && !isLinkedOpen) {
           existing.serviceRevenue += absTotal;
           existing.serviceCount += 1;
         }
@@ -125,7 +134,7 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
         const serviceInit = isReturn ? 0 : absTotal;
         const depositInit = isReturn ? 0 : absTotal;
         const returnsInit = isReturn ? serviceContribution : 0;
-        const serviceCountInit = !isReturn && !isDeposit && !isPending ? 1 : 0;
+        const serviceCountInit = !isReturn && !isDeposit && !isPending && !isLinkedOpen ? 1 : 0;
         const depositCountInit = !isReturn && isDeposit ? 1 : 0;
         customerMap.set(customerId, {
           customer: {
@@ -170,6 +179,9 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
     () =>
       filteredCustomerSales.map((item, index) => {
         const customerName = item.customer?.name || unknownCustomerLabel;
+        // Bug 28 follow-up — Alınan Tutar = Hizmet + Rezervasyon toplamı.
+        // Müşteri henüz ödenmemişse (veresiye) Hizmet > Alınan Tutar olabilir.
+        const collectedAmount = item.serviceRevenue + item.depositRevenue;
         return {
           id: String(item.customer?.id ?? index),
           customerName,
@@ -180,6 +192,7 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
           depositCount: item.depositCount,
           serviceRevenue: item.serviceRevenue,
           depositRevenue: item.depositRevenue,
+          collectedAmount,
           returnsRevenue: item.returnsRevenue,
           totalRevenue: item.totalRevenue,
           avgSale: item.avgSale,
@@ -315,6 +328,25 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
                   row.depositRevenue > 0 ? (
                     <span className="text-cyan-700 font-semibold">
                       {formatLedgerAmount(row.depositRevenue, currency)}
+                    </span>
+                  ) : (
+                    '—'
+                  ),
+              },
+              {
+                // Bug 28 follow-up — Alınan Tutar = Hizmet + Rezervasyon.
+                // Müşterinin şu ana kadar ödediği toplam tutar.
+                key: 'collectedAmount',
+                header: `${tm('rptCustColCollected') || 'Alınan Tutar'} (${currency})`,
+                type: 'number',
+                align: 'right',
+                size: 150,
+                footerSum: true,
+                footerFormat: (n) => formatLedgerAmount(n, currency),
+                cell: (row) =>
+                  row.collectedAmount > 0 ? (
+                    <span className="text-emerald-700 font-semibold">
+                      {formatLedgerAmount(row.collectedAmount, currency)}
                     </span>
                   ) : (
                     '—'
