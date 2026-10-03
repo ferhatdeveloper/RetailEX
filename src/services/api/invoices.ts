@@ -1107,11 +1107,14 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
   );
   const ficheNo = String(inv.invoice_no || '').trim() || `INV-${String(inv.id || '').slice(0, 8)}`;
   // Form UI tarihi dd.MM.yyyy olabilir — TIMESTAMPTZ için YYYY-MM-DD zorunlu
-  const ymd =
-    toSqlDateInputString(inv.invoice_date) ||
-    toSqlDateInputString(inv.created_at) ||
-    toSqlDateInputString(new Date());
-  const tarih = ymd ? `${ymd}T12:00:00` : new Date().toISOString();
+  // Tarih: Postgres `Etc/UTC`'de; kullanıcının local takvim gününü UTC'ye
+  // birebir yansıtmak için created_at'i ISO olarak geçiriyoruz. Eski
+  // `${ymd}T12:00:00` fallback'i UTC 12:00 olarak parse edildiği için
+  // yereldeki tarihi bir önceki güne kaydırıyordu.
+  const tarih =
+    (typeof inv.created_at === 'string' && inv.created_at) ||
+    (typeof inv.invoice_date === 'string' && inv.invoice_date) ||
+    new Date().toISOString();
   const accountId = inv.customer_id && isValidUuid(inv.customer_id)
     ? inv.customer_id
     : (inv.supplier_id && isValidUuid(inv.supplier_id) ? inv.supplier_id : null);
@@ -1657,13 +1660,13 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
     firm_nr: String(opts.firmNr),
     period_nr: String(opts.periodNr),
     fiche_no: String(invoice.invoice_no),
-    date: (() => {
-      const ymd =
-        toSqlDateInputString(invoice.invoice_date) ||
-        toSqlDateInputString(invoice.created_at) ||
-        toSqlDateInputString(new Date());
-      return ymd ? `${ymd}T12:00:00` : new Date().toISOString();
-    })(),
+    // Tarih: Postgres `Etc/UTC`'de; kullanıcının local takvim gününü UTC'ye
+    // birebir yansıtmak için `new Date().toISOString()` kullanıyoruz (aynı
+    // anın created_at'i ile aynı timestamp). `T12:00:00` fallback'i UTC 12:00
+    // olduğu için yereldeki tarihi bir önceki güne kaydırıyordu.
+    date:
+      (typeof invoice.created_at === 'string' && invoice.created_at) ||
+      new Date().toISOString(),
     fiche_type: opts.ficheType,
     trcode: Number(opts.trcode),
     customer_id: customerId,
@@ -1726,13 +1729,13 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
     period_nr: String(opts.periodNr),
     fiche_no: String(invoice.invoice_no),
     document_no: String((invoice as any).document_no || invoice.invoice_no || ''),
-    date: (() => {
-      const ymd =
-        toSqlDateInputString(invoice.invoice_date) ||
-        toSqlDateInputString(invoice.created_at) ||
-        toSqlDateInputString(new Date());
-      return ymd ? `${ymd}T12:00:00` : new Date().toISOString();
-    })(),
+    // Tarih: Postgres `Etc/UTC`'de; kullanıcının local takvim gününü UTC'ye
+    // birebir yansıtmak için `new Date().toISOString()` kullanıyoruz (aynı
+    // anın created_at'i ile aynı timestamp). `T12:00:00` fallback'i UTC 12:00
+    // olduğu için yereldeki tarihi bir önceki güne kaydırıyordu.
+    date:
+      (typeof invoice.created_at === 'string' && invoice.created_at) ||
+      new Date().toISOString(),
     fiche_type: opts.ficheType,
     trcode: Number(opts.trcode),
     customer_id: customerId,
@@ -2376,13 +2379,12 @@ export const invoicesAPI = {
             String(firmNr),
             String(periodNr),
             String(invoice.invoice_no),
-            (() => {
-              const ymd =
-                toSqlDateInputString(invoice.invoice_date) ||
-                toSqlDateInputString(invoice.created_at) ||
-                toSqlDateInputString(new Date());
-              return ymd ? `${ymd}T12:00:00` : new Date().toISOString();
-            })(),
+            // Tarih: created_at ISO'su tercih edilir; `T12:00:00` UTC 12:00
+            // olarak Postgres'e yazıldığı için yereldeki tarihi bir önceki güne
+            // kaydırıyordu.
+            (typeof invoice.created_at === 'string' && invoice.created_at) ||
+              (typeof invoice.invoice_date === 'string' && invoice.invoice_date) ||
+              new Date().toISOString(),
             ficheType,
             Number(trcode),
             // customer_id yoksa supplier_id'yi kullan (alış faturalarında tedarikçi UUID buraya yazılır)
