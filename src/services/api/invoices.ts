@@ -9,7 +9,7 @@ import { customerAPI } from './customers';
 import { supplierAPI } from './suppliers';
 import { productAPI } from './products';
 import { hydrateWeightLineFromDb, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
-import { toSqlDateInputString } from '../../utils/localCalendarDate';
+import { toSqlDateInputString, localCalendarDateKey } from '../../utils/localCalendarDate';
 import {
   canonicalInvoiceLineType,
   invoiceLineTypeToDb,
@@ -2859,9 +2859,11 @@ export const invoicesAPI = {
             r?.is_cancelled === true || isInvoiceCancelledStatus(String(r?.status || ''));
           if (cancelledOnly && !cancelled) return false;
           if (!includeCancelled && !cancelledOnly && cancelled) return false;
-          const d = String(r?.date || '').substring(0, 10);
-          if (startDate && d < String(startDate).substring(0, 10)) return false;
-          if (endDate && d > String(endDate).substring(0, 10)) return false;
+          // Postgres `Etc/UTC`; kullanıcı local takvim gününe göre filtre uygulamalı
+          // (örn. TR UTC+3'te gece 01:00 yapılan satış → local bugün, UTC dün).
+          const dLocal = localCalendarDateKey(r?.date);
+          if (startDate && dLocal && dLocal < String(startDate).substring(0, 10)) return false;
+          if (endDate && dLocal && dLocal > String(endDate).substring(0, 10)) return false;
           // PostgREST or/and sözdizimi zayıf olabilir — kardeş iade trcode savunması
           if (
             invoiceType !== undefined &&
