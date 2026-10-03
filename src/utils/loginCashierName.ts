@@ -68,11 +68,18 @@ export function resolveCashierDisplayName(
   createdByUserId: unknown,
   userNameById: Map<string, string>,
 ): string {
+  // Öncelik sırası:
+  // 1) DB'de yazılı `cashier` alanı (Personel Değiştir ile seçilmiş gerçek ad).
+  //    Placeholder olmayan bir değer varsa onu kullan — created_by_user_id
+  //    çoğunlukla login user (admin) olduğu için userNameById override'ı
+  //    yanlış eşleşmeye neden oluyordu.
+  // 2) Yoksa created_by_user_id'den username (login user fallback).
+  // 3) Yoksa '—'.
+  const stored = sanitizeStoredCashierName(storedCashier);
+  if (stored) return stored;
   const uid = String(createdByUserId ?? '').trim();
   const fromUser = uid ? String(userNameById.get(uid) ?? '').trim() : '';
   if (fromUser && !isPlaceholderCashierName(fromUser)) return fromUser;
-  const stored = sanitizeStoredCashierName(storedCashier);
-  if (stored) return stored;
   return '—';
 }
 
