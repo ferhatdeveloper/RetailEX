@@ -76,7 +76,7 @@ import { recordAdvance } from '../../services/avansService';
 import { finalizeSale } from '../../services/saleFinalizeService';
 import { formatNumber } from '../../utils/formatNumber';
 import { formatAvansReference } from '../../utils/avansFormatting';
-import { ensureWriteCashierName, isPlaceholderDeviceName } from '../../utils/loginCashierName';
+import { ensureWriteCashierName, isPlaceholderDeviceName, resolvePosCashierCandidate } from '../../utils/loginCashierName';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import type { KeyboardShortcut } from '../../hooks/useKeyboardShortcuts';
 import { useProductStore, useSaleStore } from '../../store';
@@ -174,7 +174,16 @@ export default function MarketPOS({
       ...(invoiceSearch?.trim() ? { invoiceSearch: invoiceSearch.trim() } : {}),
       posSalesReturn: {
         editData: {
-          cashier: ensureWriteCashierName(currentStaff || currentUser.username || currentUser.full_name),
+          cashier: ensureWriteCashierName(
+            resolvePosCashierCandidate({
+              currentStaff,
+              currentUser: {
+                username: currentUser.username,
+                fullName: currentUser.fullName,
+                full_name: (currentUser as { full_name?: string | null }).full_name,
+              },
+            }),
+          ),
           created_by_user_id: currentUser.id,
           store_id: currentUser.storeId && !isPlaceholderDeviceName(currentUser.storeId) ? currentUser.storeId : undefined,
           source: 'pos',
@@ -1644,14 +1653,22 @@ export default function MarketPOS({
       campaignId: selectedCampaign?.id,
       campaignName: selectedCampaign?.name,
       campaignDiscount: campaignDiscount,
-      // Kasiyer fallback zinciri:
+      // Kasiyer fallback zinciri (resolvePosCashierCandidate ile):
       // 1) Satış Elemanı modalı ile seçilmiş currentStaff
-      // 2) Login kullanıcının kullanıcı adı (username)
-      // 3) Login kullanıcının tam adı (full_name)
-      // 4) ensureWriteCashierName → useAuthStore.user fallback
-      // 5) Yoksa "Bilinmeyen Kasiyer" hardcoded placeholder (DB'ye BOŞ yazılmaz)
+      // 2) MarketPOS prop currentUser.username / full_name
+      // 3) useAuthStore.user.username / full_name (auth context fallback)
+      // 4) ensureWriteCashierName: admin/root/superadmin vb. placeholder
+      //    yönetici adlarını eler; gerçek login user yoksa
+      //    "Bilinmeyen Kasiyer" hardcoded placeholder yazılır.
       cashier: ensureWriteCashierName(
-        currentStaff || currentUser.username || currentUser.full_name,
+        resolvePosCashierCandidate({
+          currentStaff,
+          currentUser: {
+            username: currentUser.username,
+            fullName: currentUser.fullName,
+            full_name: (currentUser as { full_name?: string | null }).full_name,
+          },
+        }),
       ),
       firmNr: selectedFirm?.firm_nr,
       periodNr: selectedPeriod?.nr.toString().padStart(2, '0'),

@@ -21,12 +21,40 @@ export function displayUserCashierName(user?: LoginCashierUser | null): string {
   return username || full;
 }
 
+/**
+ * Placeholder / default kasiyer adları:
+ * - Generic: 'default', 'unknown', '—', '-'
+ * - Modül adı: 'Güzellik'
+ * - Sistem yönetici / default kullanıcı: 'admin', 'administrator', 'system',
+ *   'system administrator', 'root', 'superadmin', 'super admin',
+ *   'site admin', 'site administrator'
+ *   Bunlar gerçek bir kasiyer (Market POS) adı değildir; cashier yazımında
+ *   sanitize aşamasında ele yakalanır ve ensureWriteCashierName fallback
+ *   zinciri tetiklenir (currentLoginCashierName → 'Bilinmeyen Kasiyer').
+ */
+const PLACEHOLDER_CASHIER_LABELS: string[] = [
+  'default',
+  'unknown',
+  '—',
+  '-',
+  'güzellik',
+  'guzellik',
+  'admin',
+  'administrator',
+  'system',
+  'system administrator',
+  'root',
+  'superadmin',
+  'super admin',
+  'site admin',
+  'site administrator',
+];
+
 export function isPlaceholderCashierName(raw: unknown): boolean {
   const s = String(raw ?? '').trim();
   if (!s) return true;
   const lower = s.toLocaleLowerCase('tr-TR');
-  if (lower === 'default' || lower === 'unknown' || lower === '—' || lower === '-') return true;
-  if (s === 'Güzellik' || lower === 'güzellik' || lower === 'guzellik') return true;
+  if (PLACEHOLDER_CASHIER_LABELS.includes(lower)) return true;
   return false;
 }
 
@@ -111,4 +139,47 @@ export function currentLoginStoreId(): string | undefined {
   const s = String(id ?? '').trim();
   if (!s || isPlaceholderDeviceName(s)) return undefined;
   return s;
+}
+
+/**
+ * Cashier yazımı için POS prop'larından sağlam bir aday çıkar.
+ *
+ * Sıra:
+ *  1) currentStaff (Satış Elemanı modalı ile seçilmiş)
+ *  2) currentUser.username / full_name (MarketPOS prop)
+ *  3) useAuthStore.user.username / full_name (auth context fallback)
+ *
+ * Not: ensureWriteCashierName çağrısı ayrıca placeholder / default
+ * yönetici adlarını ('admin' vb.) ele yakalar; burada yalnızca
+ * "ham değer" hazırlanır. Hiçbir şey bulunamazsa '' döner ve
+ * ensureWriteCashierName fallback zinciri 'Bilinmeyen Kasiyer'e düşer.
+ */
+export function resolvePosCashierCandidate(args: {
+  currentStaff?: unknown;
+  currentUser?: {
+    username?: string | null;
+    fullName?: string | null;
+    full_name?: string | null;
+  } | null;
+}): string {
+  const cs = String(args.currentStaff ?? '').trim();
+  if (cs) return cs;
+  const u = args.currentUser;
+  if (u) {
+    const uname = String(u.username ?? '').trim();
+    if (uname) return uname;
+    const full = String(u.fullName ?? u.full_name ?? '').trim();
+    if (full) return full;
+  }
+  const authUser = useAuthStore.getState().user as
+    | (LoginCashierUser & { fullName?: string | null })
+    | null
+    | undefined;
+  if (authUser) {
+    const uname = String(authUser.username ?? '').trim();
+    if (uname) return uname;
+    const full = String(authUser.fullName ?? authUser.full_name ?? '').trim();
+    if (full) return full;
+  }
+  return '';
 }
