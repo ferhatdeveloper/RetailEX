@@ -195,6 +195,20 @@ function isCompletedBeautyAppointment(a: BeautyAppointment): boolean {
     return String(a.status ?? '').toLowerCase() === 'completed';
 }
 
+/** Bug 28 — Rezervasyona bağlı peşinat fişi mi? (Henüz hizmet verilmemiş avans) */
+export function isReservationDepositSale(s: BeautySale): boolean {
+    if (!isActiveBeautySale(s)) return false;
+    const sale = s as BeautySale & {
+        is_deposit?: boolean | null;
+        linked_appointment_id?: string | null;
+        parent_sale_id?: string | null;
+    };
+    if (sale.is_deposit === true) return true;
+    const notes = String(sale.notes ?? '');
+    if (beautyService.parseDepositFlagFromNotes(notes)) return true;
+    return false;
+}
+
 /** Satış ↔ randevu eşlemesi (linked_appointment_id / notes / aynı gün+tutar+hizmet). */
 function collectAppointmentIdsLinkedToSales(
     sales: BeautySale[],
@@ -810,6 +824,12 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         [activeSalesHistory, completedAppointmentIds],
     );
 
+    /** Bug 28 — Rezervasyona bağlı peşinat fişleri (henüz hizmet verilmemiş). */
+    const depositSalesHistory = useMemo(
+        () => activeSalesHistory.filter((s) => isReservationDepositSale(s)),
+        [activeSalesHistory],
+    );
+
     const historyDataSummary = useMemo(
         () => ({
             appointments: pastAppointments.length,
@@ -860,6 +880,8 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 totalSpent: 0,
                 collectedAmount: 0,
                 veresiyeCari: 0,
+                depositTotal: 0,
+                depositCount: 0,
                 appointmentCount: 0,
                 appointmentCountDetail: '',
                 lastVisitLabel: '-',
@@ -869,6 +891,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             };
         }
         const mainSales = mainSalesHistory;
+        const depositSales = depositSalesHistory;
         const sumDocument = mainSales.reduce((acc, s) => acc + Math.max(0, Number(s.total) || 0), 0);
         const collectedAmount = mainSales.reduce((acc, s) => acc + beautySalePocketCollected(s), 0);
         const veresiyeCari = mainSales.reduce((acc, s) => acc + beautySaleRemainingCari(s), 0);
@@ -943,6 +966,12 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             totalSpent,
             collectedAmount,
             veresiyeCari,
+            // Bug 28 — Rezervasyon peşinat tutarı (henüz hizmet verilmemiş avanslar)
+            depositTotal: depositSales.reduce(
+                (acc, s) => acc + Math.max(0, Number(s.total) || 0),
+                0,
+            ),
+            depositCount: depositSales.length,
             appointmentCount: receiptBasedCount,
             appointmentCountDetail,
             lastVisitLabel,
@@ -950,7 +979,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             lastSaleCollected,
             lastSaleRemaining,
         };
-    }, [selected, mainSalesHistory, pastAppointments, dateLocale, tm]);
+    }, [selected, mainSalesHistory, depositSalesHistory, pastAppointments, dateLocale, tm]);
 
     const historyColumns: ColumnsType<UnifiedHistoryRow> = useMemo(
         () => [
@@ -1564,6 +1593,18 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                           {formatCurrency(profileStats.veresiyeCari)}
                                       </Typography.Text>
                                   </Typography.Text>
+                                  {/* Bug 28 — Rezervasyon peşinatı (henüz hizmet verilmemiş avanslar) */}
+                                  {profileStats.depositCount > 0 && (
+                                      <Typography.Text type="secondary">
+                                          {tm('bReservationDepositLabel') || 'Rezervasyon Peşinatı'}:{' '}
+                                          <Typography.Text strong className="!text-cyan-700">
+                                              {formatCurrency(profileStats.depositTotal)}
+                                          </Typography.Text>
+                                          <span className="text-xs text-slate-500 ml-1">
+                                              ({profileStats.depositCount} {tm('bDepositCountShort') || 'adet'})
+                                          </span>
+                                      </Typography.Text>
+                                  )}
                               </div>
                           ) : null}
                           <Table<BeautySale>
@@ -1897,6 +1938,35 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                                 value={formatCurrency(profileStats.veresiyeCari)}
                                                 prefix={<CurrencyBadge code={currency} className="text-orange-500" />}
                                             />
+                                        </Card>
+                                    </Col>
+                                    {/* Bug 28 — Rezervasyon peşinatı (henüz hizmet verilmemiş avanslar) */}
+                                    <Col xs={24} sm={12} lg={8} xl={4}>
+                                        <Card
+                                            size="small"
+                                            bordered
+                                            className="!shadow-none h-full border-cyan-200"
+                                            data-testid="customer-deposit-card"
+                                        >
+                                            <Statistic
+                                                title={
+                                                    <span className="text-cyan-700">
+                                                        {tm('bReservationDepositLabel') || 'Rezervasyon Peşinatı'}
+                                                    </span>
+                                                }
+                                                value={formatCurrency(profileStats.depositTotal)}
+                                                valueStyle={{ color: '#0e7490', fontSize: '20px' }}
+                                                prefix={
+                                                    <CalendarOutlined
+                                                        className="text-cyan-600"
+                                                        aria-hidden
+                                                    />
+                                                }
+                                            />
+                                            <div className="mt-1 text-[10px] font-medium text-cyan-700 leading-tight">
+                                                {(tm('bDepositCountShort') || 'adet')}:{' '}
+                                                {profileStats.depositCount}
+                                            </div>
                                         </Card>
                                     </Col>
                                     <Col xs={24} sm={12} lg={8} xl={4}>

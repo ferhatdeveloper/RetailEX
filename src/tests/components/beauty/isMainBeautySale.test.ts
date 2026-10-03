@@ -11,7 +11,7 @@
  * doğrular.
  */
 import { describe, expect, it } from 'vitest';
-import { isMainBeautySale } from '../../../components/beauty/components/ClientCustomerDetailPage';
+import { isMainBeautySale, isReservationDepositSale } from '../../../components/beauty/components/ClientCustomerDetailPage';
 import type { BeautySale } from '../../../services/beautyService';
 
 function makeSale(overrides: Partial<BeautySale> = {}): BeautySale {
@@ -143,5 +143,41 @@ describe('isMainBeautySale — Geçmiş sekmesi / KPI ana hizmet satışı filtr
         // (20.000) cari ekstrede görünür.
         expect(isMainBeautySale(pesinat, completedAptIds)).toBe(false);
         expect(isMainBeautySale(anaSatis, completedAptIds)).toBe(false);
+    });
+});
+
+// ===========================================================
+// BUG 28 — Rezervasyon peşinatı (henüz hizmet verilmemiş avanslar)
+// ===========================================================
+describe('Bug 28 — isReservationDepositSale (rezervasyon peşinatı tespiti)', () => {
+    it('is_deposit=true olan satış peşinranır', () => {
+        const peşinat = makeSale({ is_deposit: true, total: 20000 });
+        expect(isReservationDepositSale(peşinat)).toBe(true);
+    });
+
+    it('notes içinde "deposit:1" tag olan fiş peşinranır', () => {
+        const peşinat = makeSale({
+            is_deposit: false,
+            notes: 'randevu avansı deposit:1',
+            total: 10000,
+        });
+        expect(isReservationDepositSale(peşinat)).toBe(true);
+    });
+
+    it('ana hizmet satışı peşinat değildir', () => {
+        const anaSatış = makeSale({
+            is_deposit: false,
+            payment_status: 'paid',
+            total: 55000,
+        });
+        expect(isReservationDepositSale(anaSatış)).toBe(false);
+    });
+
+    it('iptal/iade satışı peşinat değildir', () => {
+        const iptal = makeSale({
+            is_deposit: true,
+            payment_status: 'cancelled',
+        });
+        expect(isReservationDepositSale(iptal)).toBe(false);
     });
 });
