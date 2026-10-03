@@ -779,6 +779,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ) : (
             '—'
           ),
+        meta: { defaultVisible: true },
       },
       {
         key: 'discount',

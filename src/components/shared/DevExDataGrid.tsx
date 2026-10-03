@@ -115,13 +115,20 @@ export function mergeDevExDefaultColumnVisibility(
     if (col.id) id = String(col.id);
     else if ('accessorKey' in col && col.accessorKey != null) id = String(col.accessorKey);
     if (!id || id === 'select') continue;
-    // (a) Bilinen ID set'i
+    const meta = (col as { meta?: { defaultHidden?: boolean; defaultVisible?: boolean } }).meta;
+    // (a) `meta.defaultVisible === true` — kolon varsayılan AÇIK; storage'da
+    //     kullanıcı daha önce gizlediyse bile geri açılır (snapshot kirliliğini
+    //     temizler; kullanıcı sonra yine kapatabilir).
+    if (meta && meta.defaultVisible === true) {
+      next[id] = true;
+      continue;
+    }
+    // (b) Bilinen ID set'i
     if (isDevExDefaultHiddenColumnId(id) && next[id] === undefined) {
       next[id] = false;
       continue;
     }
-    // (b) Kolon `meta.defaultHidden === true` ile işaretlenmişse
-    const meta = (col as { meta?: { defaultHidden?: boolean } }).meta;
+    // (c) Kolon `meta.defaultHidden === true` ile işaretlenmişse
     if (meta && meta.defaultHidden === true && next[id] === undefined) {
       next[id] = false;
     }

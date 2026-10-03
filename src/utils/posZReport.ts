@@ -2,6 +2,7 @@ import type { Sale } from '../core/types';
 import { formatNumber } from './formatNumber';
 import { localCalendarDateKey } from './localCalendarDate';
 import { saleCollectedSplit } from './saleCollectedAmounts';
+import { isDepositSale } from './reportDepositFilter';
 
 export interface PosPaymentBreakdown {
   cash: number;
@@ -96,6 +97,10 @@ export function aggregatePosPayments(sales: Sale[]): PosPaymentBreakdown {
     if (isReturnSale(sale) || isCanceledSale(sale)) continue;
     const total = Math.abs(Number(sale.total) || 0);
     if (!(total > 0)) continue;
+    // Bug 28 — Rezervasyon peşinatı (is_deposit=true) açık hesap (credit) veya
+    // diğer ödeme kırılımlarına YAZILMAZ. Bu satış zaten kasa tahsilinde ayrı
+    // bir "Peşinat" kovasında toplanıyor; cari bakiye ise peşinat kabul edilmez.
+    if (isDepositSale(sale)) continue;
     addSplitToBreakdown(result, sale);
   }
 
