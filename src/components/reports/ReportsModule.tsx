@@ -2703,8 +2703,27 @@ export function ReportsModule({
   };
 
   const dailySales = getDailySales();
+  /**
+   * Bug 23: Rezervasyon peşinatları (payment_status='pending') günlük satış
+   * toplamlarına (ciro, kâr, veresiye) DAHİL EDİLMEMELİ. Henüz hizmet
+   * verilmemiş bir avanstır; kasa para girişi ayrı bir cash_lines tabanlı
+   * hesaplamadadır (TAHSİL EDİLEN). `dailyCollected` ve `dailyCash` aşağıda
+   * `saleCollectedSplit` üzerinden hesaplanıyor; pending fişlerde
+   * `payments`/split her şeyi sıfır döndürüyor — yine de ciro'dan
+   * (total) Hariç tutulmaları için burada filtreliyoruz.
+   * - isRemovedSaleStatus: cancelled/refunded (Bug 12 devamı)
+   * - payment_status === 'pending' | 'awaiting_service' | 'partial' Hariç
+   *   (kısmi ödeme zaten hizmet verilmiş bir fiş; orada sıfır döner)
+   */
   const dailySalesActive = useMemo(
-    () => dailySales.filter((s) => !isRemovedSaleStatus(s.status)),
+    () => dailySales.filter((s) => {
+      if (isRemovedSaleStatus(s.status)) return false;
+      const ps = String(
+        (s as Sale & { payment_status?: string }).payment_status ?? ''
+      ).toLowerCase().trim();
+      if (ps === 'pending' || ps === 'awaiting_service') return false;
+      return true;
+    }),
     [dailySales]
   );
 

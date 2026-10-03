@@ -157,12 +157,17 @@ export function DashboardModule({
   // bellekte tutulur), bu nedenle client-side filtre zorunlu.
   // Notlar içinde "[İPTAL]" prefix'i de cancelAppointmentWithRevert tarafından
   // yazılıyor; çift güvenlik olarak kontrol ediyoruz.
+  // Bug 23: Rezervasyon peşinatları (payment_status='pending') "Bugünkü Satış"
+  // KPI'larına dahil EDİLMEMELİ. Henüz hizmet verilmemiş; kasa para girişi ayrı
+  // KPI'da (cash_lines tabanlı) raporlanır. Kısmi ödeme (partial) dahil edilir
+  // çünkü hizmet tamamlanmış + bir kısmı tahsil edilmiş demektir.
   const isActiveSale = (s: Sale): boolean => {
-    const ps = String((s as any).paymentStatus ?? '').toLowerCase().trim();
+    const ps = String((s as any).paymentStatus ?? (s as any).payment_status ?? '').toLowerCase().trim();
     const st = String((s as any).status ?? '').toLowerCase().trim();
     const notes = String((s as any).notes ?? '');
     if (ps === 'cancelled' || ps === 'canceled' || ps === 'void') return false;
     if (st === 'cancelled' || st === 'canceled' || st === 'void') return false;
+    if (ps === 'pending') return false;
     if (/^\s*\[İPTAL\]/i.test(notes) || /\[İPTAL\]/i.test(notes)) return false;
     return true;
   };
