@@ -1717,11 +1717,15 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
     },
   };
 
+  // Legacy payload — enhanced payload kabul edilmediğinde fallback. Tüm kritik
+  // kolonları (payment_method, cashier, store_id, created_by_user_id, header_fields)
+  // birebir aktar yoksa bu alanlar DB'ye NULL gider ve Rapor / Kasiyer Performansı bozulur.
   const legacyPayload: Record<string, unknown> = {
     id: invoiceId,
     firm_nr: String(opts.firmNr),
     period_nr: String(opts.periodNr),
     fiche_no: String(invoice.invoice_no),
+    document_no: String((invoice as any).document_no || invoice.invoice_no || ''),
     date: (() => {
       const ymd =
         toSqlDateInputString(invoice.invoice_date) ||
@@ -1744,11 +1748,46 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
     currency_rate: Number(invoice.currency_rate || 1),
     status: String((invoice as any).status || 'completed'),
     notes: String(invoice.notes || ''),
+    // Kritik alanlar — null gitmesin:
+    payment_method: String((invoice as any).payment_method || 'Nakit'),
+    cashier: String((invoice as any).cashier || ''),
+    store_id: isValidUuid((invoice as any).store_id) ? (invoice as any).store_id : null,
+    created_by_user_id: isValidUuid((invoice as any).created_by_user_id) ? (invoice as any).created_by_user_id : null,
+    header_fields: (() => {
+      const base = (((invoice as any).header_fields as Record<string, unknown>) ?? {}) as Record<string, unknown>;
+      const extra: Record<string, unknown> = {};
+      if ((invoice as any).cash_register_id) extra.cash_register_id = String((invoice as any).cash_register_id);
+      if ((invoice as any).cash_register_name) extra.cash_register_name = String((invoice as any).cash_register_name);
+      return { ...base, ...extra };
+    })(),
+    insertion_at: (() => {
+      const hf = ((invoice as any).header_fields as Record<string, unknown>) ?? {};
+      return String(hf.insertion_at || new Date().toISOString());
+    })(),
+    is_back_dated: (() => {
+      const hf = ((invoice as any).header_fields as Record<string, unknown>) ?? {};
+      return Boolean(hf.is_back_dated);
+    })(),
+    back_dated_at: (() => {
+      const hf = ((invoice as any).header_fields as Record<string, unknown>) ?? {};
+      return hf.back_dated_at ? String(hf.back_dated_at) : null;
+    })(),
+    back_dated_by_user_id: (() => {
+      const hf = ((invoice as any).header_fields as Record<string, unknown>) ?? {};
+      const id = hf.back_dated_by_user_id;
+      return isValidUuid(id) ? String(id) : null;
+    })(),
   };
 
   try {
     await postgrest.post<any>(salesTable, enhancedPayload, { schema: 'public' });
-  } catch {
+  } catch (err) {
+    // Enhanced payload reddedildi (yeni kolonlar DB'de yoksa / RLS / vb.) — legacy fallback.
+    // Legacy payload kritik alanları (payment_method/cashier/store_id/header_fields) korur.
+    console.warn(
+      '[InvoicesAPI] Enhanced PostgREST payload reddedildi, legacy fallback kullanılıyor:',
+      (err as Error)?.message || String(err),
+    );
     await postgrest.post<any>(salesTable, legacyPayload, { schema: 'public' });
   }
 
