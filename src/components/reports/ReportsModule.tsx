@@ -3058,11 +3058,10 @@ export function ReportsModule({
         paymentLabelText = tm('dailyPaymentCreditOnly');
       }
       // Rezervasyon peşinatı (is_deposit=true veya notes'ta parent_sale/sale_group):
-      // "Nakit/Peşin" yerine "Rezervasyon Tutarı" göster. Kullanıcı
-      // isteği — ödeme kolonunda fişin türü net olmalı.
-      if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit) {
-        paymentLabelText = tm('paymentLabelReservationDeposit') || 'Rezervasyon Tutarı';
-      }
+      // "Rezervasyon Tutarı" özel label'ı kaldırıldı — kullanıcı isteği: ödeme
+      // kolonunda Nakit/Peşin yazsın (gerçek ödeme tipi). İndirim Öncesi
+      // kolonu da deposit satırlarda boş bırakılır (henüz hizmet verilmemiş,
+      // belge karşılığı yok).
       return {
         ...row,
         hour,
@@ -6336,7 +6335,15 @@ export function ReportsModule({
                           size: 120,
                           footerSum: true,
                           footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
-                          cell: (row) => formatNumber(row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0)), 2, false),
+                          cell: (row) => {
+                            // Rezervasyon avansı (henüz hizmet verilmemiş peşinat):
+                            // belge karşılığı yok, "İndirim Öncesi" boş bırakılır —
+                            // aksi halde iki kez yazılmış gibi görünür.
+                            if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) {
+                              return '—';
+                            }
+                            return formatNumber(row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0)), 2, false);
+                          },
                         },
                         {
                           key: 'discount',
