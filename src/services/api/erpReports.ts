@@ -1594,7 +1594,7 @@ export const erpReportsAPI = {
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_sales`,
             {
-              select: 'id,date,fiche_type,is_cancelled,status,trcode,created_at,net_amount',
+              select: 'id,date,fiche_type,is_cancelled,status,trcode,created_at,net_amount,is_deposit,linked_appointment_id',
               order: 'date.desc',
               limit: '8000',
             },
@@ -1737,7 +1737,21 @@ export const erpReportsAPI = {
             if (!(st === 'completed' || st === 'approved' || !s.status)) return false;
             if (!isPlSalesOrReturnFiche(s)) return false;
             const d = String(s.date || '').slice(0, 10);
-            return d >= start && d <= end;
+            if (d < start || d > end) return false;
+            // Bug 28 follow-up — Rezervasyon peşinatı Hariç (henüz
+            // hizmet verilmemiş avanslar Brüt Kâr'a katılmaz).
+            if (s.is_deposit === true || s.is_deposit === 'true') return false;
+            // Bug 26 follow-up — Randevuya bağlı fiş hizmet tamamlanmamışsa
+            // Hariç (status completed/paid/tamamlandı dışındakiler).
+            const linkedAppt = String(s.linked_appointment_id || '').trim();
+            if (linkedAppt) {
+              const completed = new Set([
+                'completed', 'complete', 'done', 'finished',
+                'tamamlandi', 'tamamlandı', 'paid', 'closed',
+              ]);
+              if (!completed.has(st)) return false;
+            }
+            return true;
           })
           .map((s) => String(s.id)),
       );
