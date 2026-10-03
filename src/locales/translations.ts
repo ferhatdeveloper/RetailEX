@@ -501,6 +501,7 @@ export interface Translations {
   confirmItemDelete: string;
   confirmMove: string;
   confirmPaymentText: string;
+  collectPaymentFirst: string;
   confirmReturn: string;
   connectionSettings: string;
   consignment: string;
@@ -1632,6 +1633,7 @@ export const translations: any = {
     confirmItemDelete: 'Bu öğeyi silmek istediğinize emin misiniz?',
     confirmMove: 'TAŞIMAYI ONAYLA',
     confirmPaymentText: 'Ödemeyi onaylayın',
+    collectPaymentFirst: 'Önce Tam Tutar veya + Ödeme Ekle ile ödeme alın.',
     confirmReturn: 'İadeyi Onayla',
     connectionSettings: 'Bağlantı Ayarları',
     consignment: 'Konsinyasyon',
@@ -3440,6 +3442,7 @@ export const translations: any = {
     confirmItemDelete: 'Are you sure you want to delete this item?',
     confirmMove: 'CONFIRM MOVE',
     confirmPaymentText: 'Confirm payment',
+    collectPaymentFirst: 'Collect payment first via Full Amount or + Add Payment.',
     confirmReturn: 'Confirm Return',
     connectionSettings: 'Connection Settings',
     consignment: 'Konsinyasyon',
@@ -5131,6 +5134,7 @@ export const translations: any = {
     confirmItemDelete: 'هل أنت متأكد من حذف هذا العنصر؟',
     confirmMove: 'تأكيد النقل',
     confirmPaymentText: 'تأكيد الدفع',
+    collectPaymentFirst: 'تحصيل الدفعة أولاً عبر المبلغ الكامل أو + إضافة دفعة.',
     confirmReturn: 'تأكيد الإرجاع',
     connectionSettings: 'إعدادات الاتصال',
     consignment: 'Konsinyasyon',
@@ -6808,6 +6812,7 @@ export const translations: any = {
     confirmItemDelete: 'ئایا دڵنیایت لە سڕینەوە؟',
     confirmMove: 'پشتڕاستکردنەوەی گواستنەوە',
     confirmPaymentText: 'پشتڕاستکردنەوەی پارەدان',
+    collectPaymentFirst: 'پێشتر بڕەی تەواو یان + زیادکردنی پارەدان پارە وەربگرە.',
     confirmReturn: 'İadeyi Onayla',
     connectionSettings: 'ڕێکخستنی پەیوەندی',
     consignment: 'Konsinyasyon',

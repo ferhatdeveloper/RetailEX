@@ -229,6 +229,7 @@ export const translations = {
   amountLabel: { tr: 'Miktar', en: 'Amount', ar: 'المبلغ', ku: 'بڕی پارە' },
   fullAmount: { tr: 'Tam Tutar', en: 'Full Amount', ar: 'المبلغ الكامل', ku: 'تەواوی بڕەکە' },
   addPaymentLabel: { tr: 'Ödeme Ekle', en: 'Add Payment', ar: 'إضافة دفع', ku: 'زیادکردنی پارەدان' },
+  collectPaymentFirst: { tr: 'Önce Tam Tutar veya + Ödeme Ekle ile ödeme alın.', en: 'Collect payment first via Full Amount or + Add Payment.', ar: 'تحصيل الدفعة أولاً عبر المبلغ الكامل أو + إضافة دفعة.', ku: 'پێشتر بڕەی تەواو یان + زیادکردنی پارەدان پارە وەربگرە.' },
   numpad: { tr: 'Numpad', en: 'Numpad', ar: 'لوحة الأرقام', ku: 'تەختەی ژمارەکان' },
   priceLabel: { tr: 'Fiyat', en: 'Price', ar: 'السعر', ku: 'نرخ' },
   okLabel: { tr: 'Tamam', en: 'OK', ar: 'موافق', ku: 'باشە' },

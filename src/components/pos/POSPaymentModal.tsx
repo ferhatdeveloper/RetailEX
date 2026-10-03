@@ -867,6 +867,18 @@ const handleCollectCustomerDebt = async () => {
   const handleConfirmPayment = async () => {
     if (isLoading) return;
 
+    // Bug fix — Complete Payment butonuna tıklanmadan önce en az bir
+    // ödeme alınmış olmalı. Aksi halde boş veresiye/cari fiş oluşur veya
+    // kasa hareketi yazılmadan tamamlama tetiklenir (ciroya yansımaz ama
+    // cari/cash bakiyesinde sessiz hatalar oluşur).
+    if (totalPaid <= 0 || payments.length === 0) {
+      const msg = tm('collectPaymentFirst') || 'Önce Tam Tutar veya + Ödeme Ekle ile ödeme alın.';
+      if (typeof window !== 'undefined') {
+        window.alert(msg);
+      }
+      return;
+    }
+
     let paymentsToSubmit = payments.map((p) => ({ ...p }));
     let totalPaidAfter = totalPaid;
     let remainingAfter = remaining;
@@ -1904,8 +1916,14 @@ const handleCollectCustomerDebt = async () => {
           <button
             type="button"
             onClick={handleConfirmPayment}
-            disabled={isLoading || draftPrintLoading || (hasCariRemainder && !selectedCustomer)}
-            title={hasCariRemainder && !selectedCustomer ? selectCustomerForCariMessage : undefined}
+            disabled={isLoading || draftPrintLoading || (hasCariRemainder && !selectedCustomer) || totalPaid <= 0 || payments.length === 0}
+            title={
+              totalPaid <= 0 || payments.length === 0
+                ? (tm('collectPaymentFirst') || 'Önce Tam Tutar veya + Ödeme Ekle ile ödeme alın.')
+                : hasCariRemainder && !selectedCustomer
+                  ? selectCustomerForCariMessage
+                  : undefined
+            }
             className={`flex-1 px-4 py-3 bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 sm:min-w-[11rem]`}
           >
             {isLoading ? (
