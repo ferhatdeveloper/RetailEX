@@ -105,9 +105,7 @@ export function resolveWriteCashierName(raw?: unknown): string {
  * Artık hardcoded fallback yok; boş string dönerse çağıran katman
  * (sales.ts) throw ile fiş yazımını engeller.
  */
-export function ensureWriteCashierName(raw?: unknown): string {
-  return resolveWriteCashierName(raw);
-}
+// (ensureWriteCashierName kaldırıldı — doğrudan resolveWriteCashierName kullanılır)
 
 export function currentLoginUserId(): string | undefined {
   const id = useAuthStore.getState().user?.id;
@@ -137,32 +135,4 @@ export function currentLoginStoreId(): string | undefined {
  * döner ve MarketPOS Personel Değiştir modali ile kasiyer seçimi
  * zorlar; service katmanı boş cashier ile fiş yazmaz.
  */
-export function resolvePosCashierCandidate(args: {
-  currentStaff?: unknown;
-  currentUser?: {
-    username?: string | null;
-    fullName?: string | null;
-    full_name?: string | null;
-  } | null;
-}): string {
-  const cs = String(args.currentStaff ?? '').trim();
-  if (cs) return cs;
-  const u = args.currentUser;
-  if (u) {
-    const uname = String(u.username ?? '').trim();
-    if (uname) return uname;
-    const full = String(u.fullName ?? u.full_name ?? '').trim();
-    if (full) return full;
-  }
-  const authUser = useAuthStore.getState().user as
-    | (LoginCashierUser & { fullName?: string | null })
-    | null
-    | undefined;
-  if (authUser) {
-    const uname = String(authUser.username ?? '').trim();
-    if (uname) return uname;
-    const full = String(authUser.fullName ?? authUser.full_name ?? '').trim();
-    if (full) return full;
-  }
-  return '';
-}
+// (resolvePosCashierCandidate kaldırıldı — tek doğruluk kaynağı: resolveWriteCashierName)

@@ -16,8 +16,8 @@ import { normalizePaymentMethodBucket, paymentMethodImpliesCustomerDebt } from '
 import { dbItemTypeToInvoiceLine } from '../../utils/invoiceLineType';
 import {
   currentLoginUserId,
-  ensureWriteCashierName,
   isPlaceholderDeviceName,
+  resolveWriteCashierName,
   sanitizeStoredCashierName,
 } from '../../utils/loginCashierName';
 import {
@@ -76,7 +76,7 @@ export const salesAPI = {
       // Boş cashier guard — loginCashierName artık hardcoded fallback döndürmüyor.
       // MarketPOS ödeme tıklamasında kasiyer boşsa Personel Değiştir modali açıp
       // ödemeyi durduruyor; burada da boş cashier ile fiş yazılmasını engelle.
-      const resolvedCashier = ensureWriteCashierName(sale.cashier);
+      const resolvedCashier = resolveWriteCashierName(sale.cashier);
       if (!resolvedCashier.trim()) {
         const msg = '[SalesAPI] cashier boş — fiş yazılmadı. Kasiyer seçilmeden ödeme tamamlanamaz.';
         console.error(msg, { receiptNumber: sale?.receiptNumber });
@@ -379,7 +379,7 @@ export const salesAPI = {
       const periodNr = params.periodNr || ERP_SETTINGS.periodNr;
 
       // Boş cashier guard (iade için) — fiş yazılmamalı.
-      const resolvedReturnCashier = ensureWriteCashierName(params.cashier);
+      const resolvedReturnCashier = resolveWriteCashierName(params.cashier);
       if (!resolvedReturnCashier.trim()) {
         const msg = '[SalesAPI] createReturn cashier boş — iade fişi yazılmadı.';
         console.error(msg, { returnNumber: params?.returnNumber });
@@ -497,7 +497,7 @@ export const salesAPI = {
         paymentMethod: params.paymentMethod || 'cash',
         status: 'return',
         notes: reasonNote,
-        cashier: ensureWriteCashierName(params.cashier),
+        cashier: resolveWriteCashierName(params.cashier),
         userId: currentLoginUserId(),
         firmNr: String(firmNr),
         periodNr: String(periodNr),
