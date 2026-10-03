@@ -3058,10 +3058,11 @@ export function ReportsModule({
         paymentLabelText = tm('dailyPaymentCreditOnly');
       }
       // Rezervasyon peşinatı (is_deposit=true veya notes'ta parent_sale/sale_group):
-      // "Rezervasyon Tutarı" özel label'ı kaldırıldı — kullanıcı isteği: ödeme
-      // kolonunda Nakit/Peşin yazsın (gerçek ödeme tipi). İndirim Öncesi
-      // kolonu da deposit satırlarda boş bırakılır (henüz hizmet verilmemiş,
-      // belge karşılığı yok).
+      // "Nakit/Peşin" yerine "Rezervasyon Tutarı" göster. Kullanıcı
+      // isteği — ödeme kolonunda fişin türü net olmalı.
+      if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit) {
+        paymentLabelText = tm('paymentLabelReservationDeposit') || 'Rezervasyon Tutarı';
+      }
       return {
         ...row,
         hour,

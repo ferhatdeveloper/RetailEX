@@ -11623,7 +11623,7 @@ export const excelModuleTranslations = {
     ku: 'پارەدانی تێکەڵ: وەرگیراو + ماوەی هەژمار',
   },
   dailyPaymentCashOnly: {
-    tr: 'Peşin',
+    tr: 'Nakit',
     en: 'Cash',
     ar: 'نقدي',
     ku: 'نەقد',
