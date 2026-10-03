@@ -13,7 +13,7 @@ import { localCalendarDateKey, localTodayDateKey } from '../../utils/localCalend
 import { formatReportDateCell } from '../../utils/dateLocale';
 import { ReportYmdDatePicker } from '../shared/ReportDateRangePresets';
 import { ReportColumnTable } from './shared/ReportDataGrid';
-import { isCiroyaDahilSale } from '../../utils/reportDepositFilter';
+import { isDepositSale } from '../../utils/reportDepositFilter';
 
 interface CustomerSalesReportProps {
   sales: Sale[];
@@ -63,7 +63,13 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
       {
         customer: Customer | null;
         salesCount: number;
-        totalRevenue: number;
+        // Bug 28 — hizmet ve rezervasyon tutarı ayrıştırma (güzellik)
+        serviceRevenue: number; // tamamlanmış hizmet satışı (ana ciro)
+        depositRevenue: number; // rezervasyon peşinatı (henüz hizmet verilmemiş)
+        returnsRevenue: number; // iade tutarı (negatif)
+        totalRevenue: number; // service + deposit + returns (net brüt ciro)
+        serviceCount: number;
+        depositCount: number;
         avgSale: number;
         lastSaleDate: string;
       }
@@ -71,8 +77,15 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
 
     sales.forEach((sale) => {
       if (!isSaleInDateRange(sale, dateRange.start, dateRange.end)) return;
-      // Bug 24: peşinat (is_deposit=true) / pending / iptal Hariç
-      if (!isCiroyaDahilSale(sale)) return;
+      // iptal edilmiş kayıtları tamamen Hariç tut
+      const ps = (sale as Sale & { payment_status?: string }).payment_status;
+      const st = String(sale.status ?? '').toLowerCase();
+      if (st === 'cancelled' || st === 'canceled' || st === 'silindi' || st === 'iptal' || st === 'refunded') return;
+      if (ps === 'cancelled' || ps === 'canceled') return;
+      // Bug 28 — pending (hizmet verilmedi) ana ciroya dahil etme, ama
+      // rezervasyon peşinatı sütununa yaz.
+      const isDeposit = isDepositSale(sale);
+      const isPending = ps === 'pending' || ps === 'awaiting_service' || ps === 'partial';
 
       const customerId = sale.customerId || sale.customerName || 'unknown';
       const customer = customers?.find((c) => c.id === customerId) || null;
@@ -84,19 +97,36 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
 
       // B1: Müşteri cirosu net (brüt − iade)
       const isReturn = isReturnSale(sale);
-      const saleContribution = isReturn
-        ? -Math.abs(Number(sale.total) || 0)
-        : Number(sale.total) || 0;
+      const absTotal = Math.abs(Number(sale.total) || 0);
+      const serviceContribution = isReturn ? -absTotal : absTotal;
 
       if (existing) {
-        if (!isReturn) existing.salesCount += 1;
-        existing.totalRevenue += saleContribution;
-        existing.avgSale = existing.totalRevenue / Math.max(1, existing.salesCount);
+        if (isReturn) {
+          existing.returnsRevenue += serviceContribution;
+        } else if (isDeposit) {
+          existing.depositRevenue += absTotal;
+          existing.depositCount += 1;
+        } else if (!isPending) {
+          existing.serviceRevenue += absTotal;
+          existing.serviceCount += 1;
+        }
+        existing.salesCount = existing.serviceCount + existing.depositCount;
+        existing.totalRevenue =
+          existing.serviceRevenue + existing.depositRevenue + existing.returnsRevenue;
+        existing.avgSale =
+          existing.serviceCount + existing.depositCount > 0
+            ? existing.totalRevenue / Math.max(1, existing.serviceCount + existing.depositCount)
+            : 0;
         const saleDate = localCalendarDateKey(sale.date);
         if (saleDate && saleDate > existing.lastSaleDate) {
           existing.lastSaleDate = saleDate;
         }
       } else {
+        const serviceInit = isReturn ? 0 : absTotal;
+        const depositInit = isReturn ? 0 : absTotal;
+        const returnsInit = isReturn ? serviceContribution : 0;
+        const serviceCountInit = !isReturn && !isDeposit && !isPending ? 1 : 0;
+        const depositCountInit = !isReturn && isDeposit ? 1 : 0;
         customerMap.set(customerId, {
           customer: {
             ...(customer || { id: customerId, name: customerName }),
@@ -106,9 +136,14 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
             phone: customerPhone || customer?.phone || '',
             phone2: customerPhone2 || customer?.phone2,
           } as Customer,
-          salesCount: isReturn ? 0 : 1,
-          totalRevenue: saleContribution,
-          avgSale: saleContribution,
+          salesCount: serviceCountInit + depositCountInit,
+          serviceRevenue: serviceInit,
+          depositRevenue: depositInit,
+          returnsRevenue: returnsInit,
+          totalRevenue: serviceInit + depositInit + returnsInit,
+          serviceCount: serviceCountInit,
+          depositCount: depositCountInit,
+          avgSale: serviceInit + depositInit,
           lastSaleDate: localCalendarDateKey(sale.date),
         });
       }
@@ -140,6 +175,12 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
           customerName,
           customerInitial: (item.customer?.name || unknownShort).charAt(0).toUpperCase(),
           salesCount: item.salesCount,
+          // Bug 28 — hizmet ve rezervasyon ayrı kolonlar
+          serviceCount: item.serviceCount,
+          depositCount: item.depositCount,
+          serviceRevenue: item.serviceRevenue,
+          depositRevenue: item.depositRevenue,
+          returnsRevenue: item.returnsRevenue,
           totalRevenue: item.totalRevenue,
           avgSale: item.avgSale,
           lastSaleDate: item.lastSaleDate,
@@ -244,15 +285,51 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
                 ),
               },
               {
+                // Bug 28 — hizmet tutarı (ana ciro, tamamlanmış satışlar)
+                key: 'serviceRevenue',
+                header: `${tm('rptCustColService') || 'Hizmet Tutarı'} (${currency})`,
+                type: 'number',
+                align: 'right',
+                size: 150,
+                footerSum: true,
+                footerFormat: (n) => formatLedgerAmount(n, currency),
+                cell: (row) =>
+                  row.serviceRevenue > 0 ? (
+                    <span className="text-green-600 font-semibold">
+                      {formatLedgerAmount(row.serviceRevenue, currency)}
+                    </span>
+                  ) : (
+                    '—'
+                  ),
+              },
+              {
+                // Bug 28 — rezervasyon peşinatı (hizmet verilmemiş avanslar)
+                key: 'depositRevenue',
+                header: `${tm('rptCustColDeposit') || 'Rezervasyon Tutarı'} (${currency})`,
+                type: 'number',
+                align: 'right',
+                size: 160,
+                footerSum: true,
+                footerFormat: (n) => formatLedgerAmount(n, currency),
+                cell: (row) =>
+                  row.depositRevenue > 0 ? (
+                    <span className="text-cyan-700 font-semibold">
+                      {formatLedgerAmount(row.depositRevenue, currency)}
+                    </span>
+                  ) : (
+                    '—'
+                  ),
+              },
+              {
                 key: 'totalRevenue',
-                header: legendRevenue,
+                header: `${legendRevenue} (${currency})`,
                 type: 'number',
                 align: 'right',
                 size: 150,
                 footerSum: true,
                 footerFormat: (n) => formatLedgerAmount(n, currency),
                 cell: (row) => (
-                  <span className="text-green-600 font-semibold">
+                  <span className="text-slate-800 font-semibold">
                     {formatLedgerAmount(row.totalRevenue, currency)}
                   </span>
                 ),

@@ -12616,6 +12616,8 @@ export const excelModuleTranslations = {
   },
   rptCustDetailsSection: { tr: 'Müşteri Satış Detayları', en: 'Customer sales details', ar: 'تفاصيل مبيعات العملاء', ku: 'وردەکاری فرۆشتنی کڕیار' },
   rptCustLastSale: { tr: 'Son Satış', en: 'Last sale', ar: 'آخر بيع', ku: 'دوایین فرۆشتن' },
+  rptCustColService: { tr: 'Hizmet Tutarı', en: 'Service amount', ar: 'مبلغ الخدمة', ku: 'بڕی خزمەتگوزاری' },
+  rptCustColDeposit: { tr: 'Rezervasyon Tutarı', en: 'Reservation amount', ar: 'مبلغ الحجز', ku: 'بڕی نۆرە' },
   rptCustUnknown: { tr: 'Bilinmeyen Müşteri', en: 'Unknown customer', ar: 'عميل غير معروف', ku: 'کڕیاری نەناسراو' },
   rptCustUnknownShort: { tr: 'Bilinmeyen', en: 'Unknown', ar: 'غير معروف', ku: 'نەناسراو' },
   rptSalesCount: { tr: 'Satış Sayısı', en: 'Sales count', ar: 'عدد المبيعات', ku: 'ژمارەی فرۆشتن' },
