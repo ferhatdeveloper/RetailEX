@@ -284,4 +284,48 @@ describe('reportDepositFilter — Bug 24 (peşinat Hariç)', () => {
       expect(isCiroyaDahilSale(legacy)).toBe(true);
     });
   });
+
+  // ===========================================================
+  // BUG 26 — Tamamlanmamış randevular raporlara yansımasın
+  // ===========================================================
+  describe('Bug 26 — Randevu status filtresi (tamamlanmamış Hariç)', () => {
+    it('isCompletedAppointmentStatus: completed/done/tamamlandı → true', async () => {
+      const { isCompletedAppointmentStatus } = await import('../../utils/reportDepositFilter');
+      expect(isCompletedAppointmentStatus('completed')).toBe(true);
+      expect(isCompletedAppointmentStatus('COMPLETED')).toBe(true);
+      expect(isCompletedAppointmentStatus('done')).toBe(true);
+      expect(isCompletedAppointmentStatus('finished')).toBe(true);
+      expect(isCompletedAppointmentStatus('tamamlandı')).toBe(true);
+      expect(isCompletedAppointmentStatus('tamamlandi')).toBe(true);
+    });
+
+    it('isCompletedAppointmentStatus: scheduled/confirmed/pre_paid/in_progress → false', async () => {
+      const { isCompletedAppointmentStatus } = await import('../../utils/reportDepositFilter');
+      expect(isCompletedAppointmentStatus('scheduled')).toBe(false);
+      expect(isCompletedAppointmentStatus('confirmed')).toBe(false);
+      expect(isCompletedAppointmentStatus('pre_paid')).toBe(false);
+      expect(isCompletedAppointmentStatus('in_progress')).toBe(false);
+      expect(isCompletedAppointmentStatus('')).toBe(false);
+      expect(isCompletedAppointmentStatus(undefined)).toBe(false);
+      expect(isCompletedAppointmentStatus(null)).toBe(false);
+    });
+
+    it('appointmentStatusIsCompleted: randevu objesi ile çalışır', async () => {
+      const { appointmentStatusIsCompleted } = await import('../../utils/reportDepositFilter');
+      expect(appointmentStatusIsCompleted({ status: 'completed' })).toBe(true);
+      expect(appointmentStatusIsCompleted({ status: 'scheduled' })).toBe(false);
+      expect(appointmentStatusIsCompleted(null)).toBe(false);
+      expect(appointmentStatusIsCompleted(undefined)).toBe(false);
+    });
+
+    it('isOpenAppointmentStatus: scheduled/confirmed/pre_paid → true (henüz hizmet verilmemiş)', async () => {
+      const { isOpenAppointmentStatus } = await import('../../utils/reportDepositFilter');
+      expect(isOpenAppointmentStatus('scheduled')).toBe(true);
+      expect(isOpenAppointmentStatus('confirmed')).toBe(true);
+      expect(isOpenAppointmentStatus('pre_paid')).toBe(true);
+      expect(isOpenAppointmentStatus('in_progress')).toBe(true);
+      expect(isOpenAppointmentStatus('completed')).toBe(false);
+      expect(isOpenAppointmentStatus('')).toBe(true); // boş → tamamlanmamış sayılır
+    });
+  });
 });

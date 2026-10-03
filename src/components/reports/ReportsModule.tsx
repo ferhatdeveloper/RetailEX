@@ -77,7 +77,7 @@ import {
 import { applyExtraCashCollections, buildPosZReportForRange, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
 import { extraCustomerCollectionsNotOnSales, saleCollectedSplit, dailyPaymentKind } from '../../utils/saleCollectedAmounts';
-import { filterForRevenue, filterForCash } from '../../utils/reportDepositFilter';
+import { filterForRevenue, filterForCash, isCompletedAppointmentStatus } from '../../utils/reportDepositFilter';
 import {
   buildPaymentTypeDistribution,
   buildPaymentTypeMovements,
@@ -2165,8 +2165,10 @@ export function ReportsModule({
 
   const beautyServiceGrouped = useMemo(() => {
     const rows = beautyServiceAppointments.filter((a) => {
-      const st = String(a.status ?? '').toLowerCase();
-      if (st === 'cancelled' || st === 'no_show') return false;
+      // Bug 26 — Yalnızca tamamlanmış randevular raporlara yansır.
+      // Tamamlanmamış (scheduled/confirmed/pre_paid/in_progress/cancelled/no_show)
+      // satırlar ciro/performans verisinden Hariç.
+      if (!isCompletedAppointmentStatus(a.status)) return false;
       if (beautyMainCategoryFilter && !appointmentMatchesMainCategory(a)) return false;
       return true;
     });

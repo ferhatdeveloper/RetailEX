@@ -130,5 +130,64 @@ export function filterForRevenue<T extends Partial<Sale>>(sales: readonly T[]): 
  * Liste filtresi — Kasa / TAHSİL EDİLEN.
  */
 export function filterForCash<T extends Partial<Sale>>(sales: readonly T[]): T[] {
-  return (Array.isArray(sales) ? sales : []).filter(isKasaTahsilatiSale);
+    return (Array.isArray(sales) ? sales : []).filter(isKasaTahsilatiSale);
+}
+
+/* =========================================================================
+ *  BUG 26 — Randevu status filtresi (tamamlanmamış raporlara yansımasın)
+ *  - Hizmet Bazlı Rapor, Personel Shot/Derece raporu ve diğer
+ *    appointment-bazlı raporlar yalnızca `status = 'completed'` olanları
+ *    raporlar; tamamlanmamış (scheduled/confirmed/pre_paid/in_progress)
+ *    satırlar ciro/performans verisine dahil edilmez.
+ *  - `beautyService.getAppointmentsInRange` zaten server-side
+ *    `status = 'completed'` filtresi uygular; bu fonksiyon client-side
+ *    savunma katmanı + veri paylaşan diğer modüllerde (CRM, dashboard
+ *    beklenti) tek doğruluk noktasıdır.
+ *  ========================================================================= */
+
+const COMPLETED_APPOINTMENT_STATUSES = new Set(['completed', 'done', 'finished', 'tamamlandi', 'tamamlandı']);
+
+const OPEN_APPOINTMENT_STATUSES = new Set([
+    'scheduled',
+    'confirmed',
+    'pre_paid',
+    'in_progress',
+    'pending',
+    'awaiting_service',
+    'no_show',
+    'cancelled',
+    'canceled',
+    'refunded',
+    'void',
+]);
+
+/**
+ * Randevu hizmet verilmiş mi? (`status` completed/done/tamamlandı vb.)
+ * Boş status → false (geriye dönük uyum).
+ */
+export function isCompletedAppointmentStatus(status: unknown): boolean {
+    const st = String(status ?? '').trim().toLowerCase();
+    if (!st) return false;
+    return COMPLETED_APPOINTMENT_STATUSES.has(st);
+}
+
+/**
+ * Randevu henüz tamamlanmamış mı? (scheduled/confirmed/pre_paid/in_progress
+ * ve iptal/no_show). `cancelled` zaten rapora girmiyor; buradaki yardımcı
+ * fonksiyon ciro + performans raporları için "açık iş" filtresidir.
+ */
+export function isOpenAppointmentStatus(status: unknown): boolean {
+    const st = String(status ?? '').trim().toLowerCase();
+    if (!st) return true; // boş status → tamamlanmamış kabul et
+    if (COMPLETED_APPOINTMENT_STATUSES.has(st)) return false;
+    return OPEN_APPOINTMENT_STATUSES.has(st) || true; // bilinmeyen status → açık iş
+}
+
+/**
+ * Generic randevu objesinden status çekip `isCompletedAppointmentStatus`
+ * ile karşılaştırır. Tüm `BeautyAppointment` benzeri objelere uyar.
+ */
+export function appointmentStatusIsCompleted(appointment: { status?: string | null } | null | undefined): boolean {
+    if (!appointment) return false;
+    return isCompletedAppointmentStatus(appointment.status);
 }
