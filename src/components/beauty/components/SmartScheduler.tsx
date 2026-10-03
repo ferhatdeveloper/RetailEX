@@ -37,6 +37,7 @@ import {
     formatLocalYmd,
     getWeekRangeLocal,
     getMonthRangeLocal,
+    getWorkWeekRangeLocal,
     getAgendaRangeLocal,
 } from '../../../utils/dateLocal';
 import {
@@ -72,7 +73,7 @@ import type { WhatsAppBulkPreviewItem } from '../../../utils/whatsappBulkSend';
 import { toast } from 'sonner';
 import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
 import { useResponsive } from '../../../hooks/useResponsive';
-type ViewType = 'day' | 'week' | 'month' | 'agenda' | 'timeline' | 'device' | 'list' | 'svcboard';
+type ViewType = 'day' | 'workweek' | 'week' | 'month' | 'agenda' | 'timeline' | 'device' | 'list' | 'svcboard';
 type GroupMode = 'none' | 'staff' | 'device';
 const SERVICE_BOARD_MAX_DAYS = 90;
 const SLOT_INTERVAL_OPTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60] as const;
@@ -464,6 +465,9 @@ export function SmartScheduler() {
         if (view === 'week') {
             const { start, end } = getWeekRangeLocal(currentDate);
             void loadAppointmentsInRange(start, end);
+        } else if (view === 'workweek') {
+            const { start, end } = getWorkWeekRangeLocal(currentDate);
+            void loadAppointmentsInRange(start, end);
         } else if (view === 'month') {
             const { start, end } = getMonthRangeLocal(currentDate);
             void loadAppointmentsInRange(start, end);
@@ -748,7 +752,7 @@ export function SmartScheduler() {
         }
         const d = new Date(currentDate);
         if (view === 'day') d.setDate(d.getDate() - 1);
-        else if (view === 'week') d.setDate(d.getDate() - 7);
+        else if (view === 'week' || view === 'workweek') d.setDate(d.getDate() - 7);
         else if (view === 'month') d.setMonth(d.getMonth() - 1);
         else if (view === 'agenda') d.setDate(d.getDate() - 7);
         else d.setDate(d.getDate() - 1);
@@ -769,7 +773,7 @@ export function SmartScheduler() {
         }
         const d = new Date(currentDate);
         if (view === 'day') d.setDate(d.getDate() + 1);
-        else if (view === 'week') d.setDate(d.getDate() + 7);
+        else if (view === 'week' || view === 'workweek') d.setDate(d.getDate() + 7);
         else if (view === 'month') d.setMonth(d.getMonth() + 1);
         else if (view === 'agenda') d.setDate(d.getDate() + 7);
         else d.setDate(d.getDate() + 1);
@@ -1087,8 +1091,8 @@ export function SmartScheduler() {
             const b = formatMediumDate(end, loc);
             return `${a} – ${b}`;
         }
-        if (view === 'week') {
-            const { start, end } = getWeekRangeLocal(currentDate);
+        if (view === 'workweek') {
+            const { start, end } = getWorkWeekRangeLocal(currentDate);
             const [ys, ms, ds] = start.split('-').map(Number);
             const [ye, me, de] = end.split('-').map(Number);
             const da = new Date(ys, ms - 1, ds);
@@ -1417,7 +1421,7 @@ export function SmartScheduler() {
         );
     }
 
-    const showGroupBar = view === 'day' || view === 'week';
+    const showGroupBar = view === 'day' || view === 'week' || view === 'workweek';
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f7f6fb', overflow: 'hidden' }}>
@@ -1548,6 +1552,7 @@ export function SmartScheduler() {
                 >
                     {([
                         { id: 'day',      label: tm('bDay') },
+                        { id: 'workweek', label: tm('bWorkWeek') },
                         { id: 'week',     label: tm('bWeek') },
                         { id: 'month',    label: tm('bMonth') },
                         { id: 'agenda',   label: tm('bAgendaView') },
@@ -1996,7 +2001,78 @@ export function SmartScheduler() {
                             />
                         )}
 
+                        {view === 'workweek' && groupMode === 'none' && (
+                            <WeekView
+                                currentDate={currentDate}
+                                timeSlots={timeSlots}
+                                workWeekOnly
+                                queueMode={beautyQueueMode}
+                                queueSnapMinutes={schedulerSlotMin}
+                                appointmentsOverride={visibleAppointments}
+                                onAppointmentClick={handleAppointmentPrimaryClick}
+                                onNewAppointment={(t, d) => {
+                                    if (d) {
+                                        const [y, mo, day] = d.split('-').map(Number);
+                                        setCurrentDate(new Date(y, mo - 1, day));
+                                    }
+                                    openNewApt(t, d);
+                                }}
+                            />
+                        )}
+                        {view === 'workweek' && groupMode !== 'none' && (
+                            <ResourceGroupedWeekMatrix
+                                currentDate={currentDate}
+                                appointments={visibleAppointments}
+                                specialists={specialists}
+                                devices={devices}
+                                mode={groupMode}
+                                workWeekOnly
+                                queueMode={beautyQueueMode}
+                                unassignedLabel={tm('bUnassignedResource')}
+                                resourceColumnLabel={tm('bSchedulerResourceColumn')}
+                                emptyResourcesMessage={tm('bNoResourcesForGroup')}
+                                onAppointmentClick={handleAppointmentPrimaryClick}
+                                resourceDragKind={groupMode}
+                                dragResourceTitle={tm('bBeautyDragToResourceColumnTitle')}
+                                onResourceCellDrop={(ids, colId, dateYmd) => {
+                                    void applyBeautyResourceDrop(ids, groupMode, colId, dateYmd);
+                                }}
+                                onCellNew={(dateYmd, resourceColumnId) => {
+                                    const [y, mo, day] = dateYmd.split('-').map(Number);
+                                    setCurrentDate(new Date(y, mo - 1, day));
+                                    const t = beautyQueueMode
+                                        ? suggestQueuePrefillTime(visibleAppointments, dateYmd, {
+                                            resource:
+                                                groupMode === 'staff'
+                                                    ? { kind: 'staff', id: resourceColumnId === '__unassigned__' ? null : String(resourceColumnId) }
+                                                    : { kind: 'device', id: resourceColumnId === '__unassigned__' ? null : String(resourceColumnId) },
+                                            snapMinutes: schedulerSlotMin,
+                                        })
+                                        : undefined;
+                                    openNewApt(t, dateYmd, groupMode === 'staff'
+                                        ? { staffId: resourceColumnId }
+                                        : { deviceId: resourceColumnId });
+                                }}
+                            />
+                        )}
 
+                        {view === 'week' && groupMode === 'none' && (
+                            <WeekView
+                                currentDate={currentDate}
+                                timeSlots={timeSlots}
+                                queueMode={beautyQueueMode}
+                                queueSnapMinutes={schedulerSlotMin}
+                                appointmentsOverride={visibleAppointments}
+                                onAppointmentClick={handleAppointmentPrimaryClick}
+                                onNewAppointment={(t, d) => {
+                                    if (d) {
+                                        const [y, mo, day] = d.split('-').map(Number);
+                                        setCurrentDate(new Date(y, mo - 1, day));
+                                    }
+                                    openNewApt(t, d);
+                                }}
+                            />
+                        )}
                         {view === 'week' && groupMode !== 'none' && (
                             <ResourceGroupedWeekMatrix
                                 currentDate={currentDate}
@@ -2004,6 +2080,7 @@ export function SmartScheduler() {
                                 specialists={specialists}
                                 devices={devices}
                                 mode={groupMode}
+                                workWeekOnly={false}
                                 queueMode={beautyQueueMode}
                                 unassignedLabel={tm('bUnassignedResource')}
                                 resourceColumnLabel={tm('bSchedulerResourceColumn')}
