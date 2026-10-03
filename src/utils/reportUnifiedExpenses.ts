@@ -41,6 +41,8 @@ export const REPORT_CASH_OUT_TYPES = new Set([
 export const PERIOD_SUMMARY_CASH_OUT_TYPES = new Set([
   'GIDER_PUSULASI',
   'KASA_CIKIS',
+  'MAAS_ODEME',
+  'ORTAK_SERMAYE_ODEME',
 ]);
 
 /** Günlük/Dönem raporu için kasa para GİRİŞİ tipleri (sign=+1). */
