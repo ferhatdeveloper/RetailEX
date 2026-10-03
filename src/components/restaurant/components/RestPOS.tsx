@@ -92,6 +92,7 @@ import { parsePosQuantityForProduct } from '../../../utils/numberFormatter';
 import { formatPosQuantityDisplay } from '../../../utils/productUnits';
 import { MainCategoryIcon, SubCategoryIcon } from '../utils/restaurantCategoryIcons';
 import { ModalLayer } from '../../shared/FullscreenBodyPortal';
+import { ensureWriteCashierName } from '../../../utils/loginCashierName';
 
 interface RestPOSProps {
     products: Product[];
@@ -1474,7 +1475,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                     amount: Number(p.amount) || 0,
                     currency: p.currency,
                 })),
-                cashier: typeof currentStaff === 'object' ? (currentStaff as any)?.name : (currentStaff || tmR('resPosWaiterDefault')),
+                cashier: ensureWriteCashierName(typeof currentStaff === 'object' ? (currentStaff as any)?.name : currentStaff),
                 table: table?.number !== undefined ? String(table.number) : undefined,
                 notes: orderNote || undefined,
             };
@@ -1618,7 +1619,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 discount: (discountAmount || 0) + ctx.discount,
                 total: ctx.finalTotal,
                 paymentMethod,
-                cashier: typeof currentStaff === 'object' ? (currentStaff as any)?.name : (currentStaff || tmR('resPosWaiterDefault')),
+                cashier: ensureWriteCashierName(typeof currentStaff === 'object' ? (currentStaff as any)?.name : currentStaff),
                 table: table?.number !== undefined ? String(table.number) : undefined,
                 notes:
                     lang === 'en'
@@ -2987,7 +2988,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         subtotal: subtotal,
                         discount: discountAmount,
                         total: grandTotal,
-                        cashier: typeof currentStaff === 'object' ? (currentStaff as any)?.name : (currentStaff || waiter || ''),
+                        cashier: ensureWriteCashierName(typeof currentStaff === 'object' ? (currentStaff as any)?.name : currentStaff),
                         table: resolveTableLabelForPrint(),
                     }}
                     paymentData={{ payments: [], totalPaid: 0, change: 0 }}

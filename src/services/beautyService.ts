@@ -6,7 +6,7 @@ import { postgres, ERP_SETTINGS } from './postgres';
 import { useSaleStore } from '../store/useSaleStore';
 import { useCustomerStore } from '../store/useCustomerStore';
 import { cariCashStoredBalanceDelta } from './api/accountBalance';
-import { currentLoginCashierName, currentLoginStoreId, currentLoginUserId } from '../utils/loginCashierName';
+import { currentLoginCashierName, currentLoginStoreId, currentLoginUserId, ensureWriteCashierName } from '../utils/loginCashierName';
 import {
     buildReminderText,
     sendAtakSms,
@@ -1374,7 +1374,7 @@ async function runBeautySaleErpAndLoyalty(
             paymentStatus: 'paid',
             status: 'completed',
             notes: erpNotes,
-            cashier: currentLoginCashierName(),
+            cashier: ensureWriteCashierName(currentLoginCashierName()),
             userId: currentLoginUserId(),
             storeId: currentLoginStoreId(),
             firmNr: ERP_SETTINGS.firmNr,

@@ -33,7 +33,7 @@ import { useProductStore } from '../../../store/useProductStore';
 import type { Product } from '../../../core/types';
 import type { Sale, SaleItem } from '../../../core/types/models';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
-import { currentLoginCashierName } from '../../../utils/loginCashierName';
+import { currentLoginCashierName, ensureWriteCashierName } from '../../../utils/loginCashierName';
 import { salesAPI } from '../../../services/api/sales';
 import {
     findInsufficientStockHits,
@@ -2114,7 +2114,7 @@ export function AppointmentPOS({
         }
     }, [existingAppointment, aptNotes, updateAppointment, tm, aptDate]);
 
-    const resolveBeautyCashierName = () => currentLoginCashierName() || '—';
+    const resolveBeautyCashierName = () => ensureWriteCashierName(currentLoginCashierName());
 
     const handleBookOnly = async () => {
         if (isExistingPaidComplete) {
