@@ -693,7 +693,13 @@ export const supplierAPI = {
           select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,currency_rate,notes,is_cancelled,customer_id,customer_name,payment_method,status',
           customer_id: `eq.${accountId}`,
           is_cancelled: 'eq.false',
-          order: 'date.asc',
+          // Deterministic order + yeterli limit — MUS-018 (kasap DB) 12/12 satır
+          // dahil olur; ledger 35.895.000 doğru hesaplanır. Tedarikçi tarafında
+          // aynı kök neden: yalnız `date.asc` nondeterministik + limitsiz
+          // → 11k+ satırlı tenant'ta satır kesilir, bakiye yanlış hesaplanır
+          // (müşteri tarafı customers.ts'de zaten düzeltilmişti).
+          order: 'date.asc,id.asc',
+          limit: '50000',
         };
         if (startDate && endDate) {
           salesByIdQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
@@ -708,7 +714,9 @@ export const supplierAPI = {
           // Tedarikçi ödemeleri party_id ile yazılır; eski müşteri tarafı verileri için customer_id fallback.
           or: `(customer_id.eq.${accountId},party_id.eq.${accountId})`,
           transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
-          order: 'date.asc',
+          // Deterministic order + yeterli limit (MUS-018 ile aynı kök neden).
+          order: 'date.asc,id.asc',
+          limit: '50000',
         };
         if (startDate && endDate) {
           cashByIdQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
@@ -723,8 +731,10 @@ export const supplierAPI = {
           ? {
               select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,currency_rate,notes,customer_id,customer_name,is_cancelled,payment_method',
               customer_name: `not.is.null`,
-              order: 'date.asc',
-              limit: '5000',
+              // Deterministic order + 50.000 limit (önceki 5.000 limit kasap DB
+              // 12/12 satırın kesilmesine neden oluyordu; MUS-018 kök neden).
+              order: 'date.asc,id.asc',
+              limit: '50000',
             }
           : null;
         if (nameSalesQuery) {
@@ -774,7 +784,14 @@ export const supplierAPI = {
           .map(mapSalesRowToEkstre);
         const fromCash = (Array.isArray(cashRows) ? cashRows : []).map(mapCashRowToEkstre);
         return dedupeEkstreRows([...byIdSales, ...byNameSales, ...fromCash]).sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+          (a, b) => {
+            // MUS-018 kök neden: yalnız date.asc aynı tarihte birden fazla
+            // satır varsa nondeterministik sıralama üretir → bakiye yanlış
+            // hesaplanabilir. Deterministik ikinci anahtar: fiche_no.
+            const dt = new Date(a.date).getTime() - new Date(b.date).getTime();
+            if (dt !== 0) return dt;
+            return String(a.fiche_no || '').localeCompare(String(b.fiche_no || ''));
+          },
         );
       }
 
@@ -826,7 +843,10 @@ export const supplierAPI = {
         FROM cash_lines t
         WHERE (t.customer_id::text = $1::text OR t.party_id::text = $1::text)${dateFilter}
           AND UPPER(TRIM(t.transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
-        ORDER BY date ASC`;
+        -- MUS-018 kök neden: yalnız date.asc aynı tarihte birden fazla
+        -- satır varsa nondeterministik sıralama üretir → bakiye yanlış
+        -- hesaplanır. Deterministik ikinci anahtar: fiche_no.
+        ORDER BY date ASC, fiche_no ASC`;
 
       const { rows } = await postgres.query(sql, values);
       return dedupeEkstreRows(rows);
