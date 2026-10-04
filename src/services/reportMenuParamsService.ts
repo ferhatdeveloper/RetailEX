@@ -206,12 +206,11 @@ export function reportNetAfterOptionalExpense(
 
 /**
  * Net (ciro − gider − alış): gider/alış kartlarından hangisi açıksa o düşülür.
- * Ciro = satış cirosu + kasa para girişi (CH_TAHSILAT dahil, Ciro genişletmesi
- * 2026-10-04). Parametre olarak gelen `revenue` Ciro toplamıdır; burada yeniden
- * CH_TAHSILAT eklenmez — PeriodSummaryReport `ciroTotal = sale.revenue + cashIn`
- * formülünü zaten uygulamış olur. Dönem özeti (Aylık/Yıllık) "Net Kalan"
- * kolonu için kullanılır; alışlar ayrı kolonda raporlanır ama muhasebeci
- * gözüyle Net'e yansıması gerekir.
+ * Ciro = yalnızca satış cirosu (CH_TAHSILAT Hariç). CH_TAHSILAT (cari
+ * tahsilatları) bu hesaba dahil edilmez; ledger simetrisi nedeniyle Net
+ * Kalan'da etkisi sıfırdır. Dönem özeti (Aylık/Yıllık) "Net Kalan" kolonu
+ * için kullanılır; alışlar ayrı kolonda raporlanır ama muhasebeci gözüyle
+ * Net'e yansıması gerekir.
  */
 export function reportNetAfterOptionalExpenseAndPurchases(
   revenue: number,
