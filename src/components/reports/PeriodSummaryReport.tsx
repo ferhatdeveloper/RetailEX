@@ -8,6 +8,7 @@ import { beautyService } from '../../services/beautyService';
 import { invoicesAPI } from '../../services/api/invoices';
 import { supplierAPI } from '../../services/api/suppliers';
 import { fetchKasaIslemleri, type KasaIslemi } from '../../services/api/kasa';
+import { postgres, ERP_SETTINGS } from '../../services/postgres';
 import { isReturnSale } from '../../utils/posZReport';
 import { isDepositSale } from '../../utils/reportDepositFilter';
 import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
@@ -458,6 +459,42 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     ...queryCommon,
   });
 
+  // AVANS → FATURA (Basit Model): skipInvoice modunda avans `cari_avans`
+  // tablosuna yazılır (sales fişi yok). Dönem özeti "Peşinat" kolonu
+  // yalnızca `sales.is_deposit=true` filtreliyordu → skipInvoice avansları
+  // 0 görünüyordu. `cari_avans.status='open'` + `created_at` tarih
+  // aralığında çekilen tutarlar `avansDepositsMap`'e eklenir;
+  // `aggregateSales` çıktısındaki depositAmount + avansDepositsMap
+  // toplamı = "Peşinat" kolonu.
+  const avansDepositsQuery = useQuery({
+    queryKey: ['periodSummary', 'avansDeposits', firmKey, periodRange?.start, periodRange?.end],
+    queryFn: async () => {
+      try {
+        const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
+        const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
+        const table = `rex_${firm}_${period}_cari_avans`;
+        const { rows } = await postgres.query<{
+          amount: number | string;
+          created_at: string;
+        }>(
+          `SELECT amount, created_at FROM ${table}
+            WHERE status = 'open'
+              AND created_at >= $1
+              AND created_at <  $2`,
+          [`${periodRange!.start}T00:00:00`, `${periodRange!.end}T23:59:59`],
+        );
+        return Array.isArray(rows) ? rows : [];
+      } catch (e) {
+        // Tablo yoksa veya kolon eksikse rapor bozulmasın — boş döner.
+        console.warn('[PeriodSummaryReport] cari_avans skipInvoice deposit fetch failed:', e);
+        return [];
+      }
+    },
+    enabled: !!periodRange,
+    ...queryCommon,
+  });
+  const avansDepositsRaw = avansDepositsQuery.data ?? [];
+
   const expenses = useMemo(
     () =>
       mergeExpensesWithCashOuts(
@@ -615,6 +652,26 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         ? aggregateSales(sales, (s) => localCalendarDateKey(s.date), completedAppointmentIds)
         : aggregateSales(sales, (s) => saleMonthKey(s.date), completedAppointmentIds);
 
+    // AVANS → FATURA (Basit Model): skipInvoice avansları (`cari_avans`,
+    // status='open') tarih (YYYY-MM-DD) veya ay (YYYY-MM) bazında
+    // `saleMap` anahtar yapısıyla eşleşir. `aggregateSales` çıktısındaki
+    // depositAmount'a eklenir → Peşinat kolonu skipInvoice modunda da
+    // doğru toplam verir.
+    const avansDepositsMap = new Map<string, { count: number; amount: number }>();
+    for (const row of avansDepositsRaw) {
+      const created = String(row.created_at || '').trim();
+      if (!created) continue;
+      const dayKey = created.slice(0, 10); // YYYY-MM-DD
+      const key =
+        mode === 'monthly-days' ? dayKey : dayKey.slice(0, 7); // YYYY-MM
+      const amt = Math.max(0, Number(row.amount) || 0);
+      if (!(amt > 0)) continue;
+      const cur = avansDepositsMap.get(key) || { count: 0, amount: 0 };
+      cur.count += 1;
+      cur.amount += amt;
+      avansDepositsMap.set(key, cur);
+    }
+
     const expenseMap =
       mode === 'monthly-days'
         ? aggregateExpenses(expenses, (e) => expenseDayKey(e.expense_date))
@@ -637,7 +694,12 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       const sale = saleMap.get(periodKey) || {
         saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
         returnsCount: 0, returnsAmount: 0,
+        depositCount: 0, depositAmount: 0,
       };
+      // AVANS → FATURA (Basit Model): cari_avans'tan gelen skipInvoice
+      // avansları `sale.depositAmount` üzerine eklenir (satış cirosu
+      // veya iade toplamına dokunmaz; sadece Peşinat kolonunu büyütür).
+      const skipInvoiceAvans = avansDepositsMap.get(periodKey) || { count: 0, amount: 0 };
       const exp = expenseMap.get(periodKey) || 0;
       const cashIn = cashInMap.get(periodKey) || 0;
       // cariTahsilat satır başına toplamı 2026-10-03 kullanıcı talebi ile kaldırıldı
@@ -683,8 +745,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         returnsCount: sale.returnsCount,
         returnsAmount: sale.returnsAmount,
         // Bug 28 — Rezervasyon peşinat (klon kolon olarak grid'de gösterilecek)
-        depositCount: sale.depositCount,
-        depositAmount: sale.depositAmount,
+        depositCount: sale.depositCount + skipInvoiceAvans.count,
+        depositAmount: sale.depositAmount + skipInvoiceAvans.amount,
         expenses: exp,
         cashIn,
         // cariTahsilat satır alanı 2026-10-03 kullanıcı talebi ile kaldırıldı.
@@ -708,6 +770,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     partnerSlices,
     showPeriodCardExpenses,
     showPeriodCardPurchases,
+    // AVANS → FATURA (Basit Model): skipInvoice avansları cari_avans'tan
+    // okunur; periodKey başına toplam eklenir (depositAmount + depositCount).
+    avansDepositsRaw,
   ]);
 
   const totals = useMemo(() => {
