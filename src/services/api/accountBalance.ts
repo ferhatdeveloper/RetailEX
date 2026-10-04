@@ -190,8 +190,23 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
 
 /** Tedarikçi bakiye CTE — peşin alış hariç alış / alış iade + cari ödeme/tahsilat
  *  debt_sum: brüt borç toplamı (alış + alış iade + açılış; mutlak değer).
- *  paid_sum: CH_TAHSILAT mutlak toplamı (bizim tedarikçiye ödediğimiz). */
-export function sqlSupplierAccountBalancesCte(suppTable: string): string {
+ *  paid_sum: CH_TAHSILAT mutlak toplamı (bizim tedarikçiye ödediğimiz).
+ *
+ *  Kök neden düzeltmesi (önceki commit'ler 5x katlama üretiyordu):
+ *  - 2. UNION parçası (name fallback JOIN) `firm_nr` filtresi olmadan
+ *    tüm firmalardaki tedarikçi kartlarına eşleşiyordu → aynı MEGAL
+ *    COMPANY ünvanı 5 ayrı firmada kayıtlıysa, aynı sales satırı 5 kez
+ *    katlanıyordu (MEGAL COMPANY: brüt 89M → ekranda 417M).
+ *  - Çözüm: 2. UNION parçasında `s.firm_nr` filtresi (müşteri CTE ile
+ *    simetrik `sqlFirmScopedCardMatch`) uygulanır. id '1'/'001'/boş
+ *    varyasyonlarını yakalar; 5x katlama ortadan kalkar.
+ *  - 1. UNION (customer_id) zaten sales tablosunda customer_id ile
+ *    eşleşen tek bir supplier.id üretir; firma filtresi gerekmez
+ *    (sales satırı zaten mevcut firm/dönem tablosundadır).
+ *  - 3./4. UNION (cash_lines): cash_lines satırı zaten tek bir kart
+ *    id'si taşır; UNION parçasının kendisi zaten mevcut firm/dönem
+ *    kapsamındadır. */
+export function sqlSupplierAccountBalancesCte(suppTable: string, firmNrBind: string): string {
   return `
     supplier_balances AS (
       SELECT id,
@@ -238,7 +253,8 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
           END,
           0::numeric
         FROM sales sl
-        INNER JOIN ${suppTable} s ON TRIM(LOWER(COALESCE(sl.customer_name, ''))) = TRIM(LOWER(s.name))
+        INNER JOIN ${suppTable} s ON ${sqlFirmScopedCardMatch('s', firmNrBind)}
+          AND TRIM(LOWER(COALESCE(sl.customer_name, ''))) = TRIM(LOWER(s.name))
         WHERE (sl.customer_id IS NULL OR sl.customer_id::text <> s.id::text)
           AND COALESCE(sl.is_cancelled, false) = false
           AND TRIM(COALESCE(sl.customer_name, '')) <> ''

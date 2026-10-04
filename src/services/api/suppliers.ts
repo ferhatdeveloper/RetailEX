@@ -220,7 +220,7 @@ export const supplierAPI = {
 
       const sql = `
         WITH ${sqlCustomerAccountBalancesCte(custTable, '$1::text')},
-        ${sqlSupplierAccountBalancesCte(suppTable)}
+        ${sqlSupplierAccountBalancesCte(suppTable, '$1::text')}
         SELECT
           c.id, c.ref_id, c.code, c.name, c.phone, c.phone2, c.email,
           c.address, c.city, c.district, c.neighborhood, c.postal_code,

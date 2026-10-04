@@ -281,7 +281,7 @@ describe('CTE SQL ifadeleri söz dizimi (regresyon)', () => {
   });
 
   it('tedarikçi CTE cash_lines ifadesinde yeni helper kullanılıyor', () => {
-    const cte = sqlSupplierAccountBalancesCte('rex_001_suppliers');
+    const cte = sqlSupplierAccountBalancesCte('rex_001_suppliers', '$1::text');
     expect(cte).toContain('CH_TAHSILAT');
     expect(cte).toContain('CH_ODEME');
     expect(cte).not.toMatch(/THEN -ABS\(amount\) ELSE 0 END/);
