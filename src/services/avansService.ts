@@ -62,6 +62,13 @@ function getAccountMovementsTable(): string {
   return `rex_${firm}_account_movements`;
 }
 
+/** Beauty randevu tablosu — `beauty.rex_<firmNr>_<periodNr>_beauty_appointments`. */
+function getBeautyAppointmentsTable(): string {
+  const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
+  const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
+  return `beauty.rex_${firm}_${period}_beauty_appointments`;
+}
+
 /* ------------------------------------------------------------------ */
 /* DB row → TypeScript dönüşümü                                        */
 /* ------------------------------------------------------------------ */
@@ -119,6 +126,11 @@ function rowToReservation(row: Record<string, unknown>): InventoryReservation {
  *   3. account_movements yaz (müşteri alacak +)
  *   4. cari_avans satırını cash_line_id + cari_movement_id ile güncelle
  *   5. items varsa: her satır için inventory_reservations yaz (status=reserved)
+ *   6. appointmentId verilmişse `beauty.rex_*_beauty_appointments` tablosunda
+ *      `deposit_amount`, `deposit_date`, `deposit_provider='pos'` alanlarını
+ *      yaz ki sonraki girişte kalan doğru hesaplansın. Fişsiz avans modunda
+ *      (skipInvoice=true) bu güncelleme appointmentPOS updateAppointment
+ *      yerine burada yapılır — randevu yine de caride yansır.
  *
  * Döndürür: avans + rezervasyonlar + kasa/cari id'leri
  */
@@ -177,11 +189,50 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
 
   // 2) cash_lines CH_TAHSILAT (kasa +)
   let cashLineId: string | null = null;
-  if (input.cashRegisterId) {
+  // skipInvoice modunda Kasa İşlemleri listesinde avansın görünmesi için
+  // cash_lines satırı ZORUNLU. Caller POSPaymentModal `selectedCashRegister`'ı
+  // payload'a ekliyor; yine de caller boş bırakırsa DB'den ilk aktif
+  // kasayı bul — yoksa skipInvoice avansı cari_avans + account_movements
+  // yazılır ama kasaya yansımaz (muhasebe simetrisi bozulur + Kasa
+  // İşlemleri listesinde görünmez).
+  let effectiveCashRegisterId = input.cashRegisterId || null;
+  let effectiveCashRegisterCode = input.cashRegisterCode || null;
+  let effectiveCashRegisterName = input.cashRegisterName || null;
+  if (!effectiveCashRegisterId) {
+    try {
+      const { rows: kasaRows } = await postgres.query<{
+        id: string;
+        kasa_kodu?: string;
+        kasa_adi?: string;
+      }>(
+        `SELECT id, kasa_kodu, kasa_adi
+           FROM cash_registers
+          WHERE firm_nr = $1 AND is_active = TRUE
+          ORDER BY created_at ASC
+          LIMIT 1`,
+        [firm],
+      );
+      if (kasaRows && kasaRows[0]?.id) {
+        effectiveCashRegisterId = String(kasaRows[0].id);
+        effectiveCashRegisterCode = kasaRows[0].kasa_kodu
+          ? String(kasaRows[0].kasa_kodu)
+          : null;
+        effectiveCashRegisterName = kasaRows[0].kasa_adi
+          ? String(kasaRows[0].kasa_adi)
+          : null;
+      }
+    } catch (kasaErr) {
+      console.warn(
+        '[avansService] default kasa aranamadı (cash_lines yazımı atlanır):',
+        kasaErr instanceof Error ? kasaErr.message : String(kasaErr),
+      );
+    }
+  }
+  if (effectiveCashRegisterId) {
     const kasaIslem = await createKasaIslemi({
       firma_id: firm,
       donem_id: period,
-      kasa_id: input.cashRegisterId,
+      kasa_id: effectiveCashRegisterId,
       islem_tarihi: new Date().toISOString(),
       islem_tipi: 'CH_TAHSILAT',
       tutar: amount,
@@ -190,6 +241,10 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
       doviz_kodu: input.currency ?? 'IQD',
       payment_method: input.paymentMethod,
       ozel_kod: 'AVANS',
+      // skipInvoice → cari_avans üzerinden bağlantı kuracak ek bağlam notu.
+      // Kasa İşlemleri listesinde `special_code='AVANS'` filtresi
+      // `is_reservation_deposit` badge'i için kullanılacak
+      // (fetchKasaIslemleri tarafında işaretlenir).
     } as any);
     cashLineId = kasaIslem?.id ? String(kasaIslem.id) : null;
   }
@@ -263,6 +318,35 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
         ],
       );
       if (resRows?.[0]) reservations.push(rowToReservation(resRows[0]));
+    }
+  }
+
+  // 6) Beauty randevu bağlantısı — fişsiz avans modunda randevuya yansıt.
+  // appointmentId verilmişse `beauty_appointments.deposit_amount` +
+  // `deposit_date` + `deposit_provider='pos'` alanlarını yaz ki sonraki
+  // girişte kalan doğru hesaplansın ve randevu paneli "Ön Ödenen" satırı
+  // güncellensin. Randevu panelinde "Rezervasyon Tutarı" girilmemiş olsa
+  // bile POS'ta fiilen ödenen peşinat randevuya yansır.
+  if (input.appointmentId) {
+    const aptTable = getBeautyAppointmentsTable();
+    try {
+      await postgres.query(
+        `UPDATE ${aptTable}
+            SET deposit_amount = $2,
+                deposit_date = NOW(),
+                deposit_provider = COALESCE(deposit_provider, 'pos')
+          WHERE id = $1`,
+        [input.appointmentId, amount],
+      );
+    } catch (aptErr) {
+      // Randevu güncellemesi başarısız olursa avans kaydını GERİ ALMA — kasa +
+      // cari bakiye yazıldı, bunlar zaten müşterinin alacağı. Randevu
+      // güncellemesi tek başına başarısız olursa logla ve devam et; parent
+      // state'inde yine de `setReservationAmount` ile input senkronize edilebilir.
+      console.warn(
+        '[avansService] appointment deposit_amount güncellenemedi:',
+        aptErr instanceof Error ? aptErr.message : String(aptErr),
+      );
     }
   }
 

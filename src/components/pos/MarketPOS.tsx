@@ -1526,6 +1526,14 @@ export default function MarketPOS({
     customerId: string;
     customerName?: string;
     paymentMethod: string;
+    /**
+     * Kasa bağlantısı (nakit/kart/transfer). POSPaymentModal kendi
+     * `selectedCashRegister` context'inden iletir. Boşsa `recordAdvance`
+     * DB'den default kasayı bulur (avansService fallback).
+     */
+    cashRegisterId?: string | null;
+    cashRegisterCode?: string | null;
+    cashRegisterName?: string | null;
     items: Array<{ productId: string; quantity: number }>;
   }) => {
     if (!selectedCustomer) {
@@ -1537,17 +1545,20 @@ export default function MarketPOS({
       return;
     }
     try {
-      const cashRegister =
-        (cart?.[0] && (cart[0] as any).cashRegister) || undefined;
+      // Öncelik: POSPaymentModal'dan gelen kasa bilgisi (güvenilir).
+      // Sepet içindeki `cart[0].cashRegister` eski fallback'i
+      // güvenilir değildi — sepet boşken veya ürün cashRegister
+      // taşımazken kasa satırı yazılmıyordu (skipInvoice modunda
+      // Kasa İşlemleri listesinde avansın görünmemesine yol açıyordu).
       const result = await recordAdvance({
         customerId: selectedCustomer.id,
         amount: avans.amount,
         paymentMethod: (avans.paymentMethod as any) || 'cash',
         currency: 'IQD',
         items: avans.items || [],
-        cashRegisterId: cashRegister?.id,
-        cashRegisterCode: cashRegister?.kasa_kodu,
-        cashRegisterName: cashRegister?.kasa_adi,
+        cashRegisterId: avans.cashRegisterId ?? undefined,
+        cashRegisterCode: avans.cashRegisterCode ?? undefined,
+        cashRegisterName: avans.cashRegisterName ?? undefined,
         userId: currentUser?.id,
         userName: currentStaff,
         notes: `Avans alındı (${selectedCustomer.name || ''}) — Sepet: ${cart.length} kalem`,

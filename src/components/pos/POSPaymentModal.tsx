@@ -182,6 +182,20 @@ interface POSPaymentModalProps {
     customerId: string;
     customerName?: string;
     paymentMethod: string;
+    /**
+     * Kasa bağlantısı (nakit/kart/transfer için). Boşsa parent default
+     * kasayı kullanır; `recordAdvance` de DB'den ilk aktif kasayı bulur.
+     * skipInvoice modunda `recordAdvance` cash_lines yazabilsin diye
+     * POSPaymentModal `selectedCashRegister`'ı buraya iletir.
+     */
+    cashRegisterId?: string | null;
+    cashRegisterCode?: string | null;
+    cashRegisterName?: string | null;
+    /** Beauty randevu bağlantısı (opsiyonel). `appointmentContext.appointmentId`
+     *  üzerinden otomatik iletilir; `recordAdvance` randevuya deposit_amount
+     *  yansıtır. (04.10.2026 Bug 17 düzeltmesi — fişsiz avans modunda
+     *  randevuya yansımayı garanti eder.) */
+    appointmentId?: string | null;
     items: Array<{ productId: string; quantity: number }>;
   }) => void | Promise<void>;
   /**
@@ -1112,6 +1126,15 @@ const handleCollectCustomerDebt = async () => {
               paymentMethod: (pesinatRow?.installments
                 ? 'pesinatli'
                 : pesinatPayments[0]?.method ?? 'cash') as string,
+              // Kasa bağlantısı — recordAdvance cash_lines yazabilsin.
+              // Parent POS'ta `selectedCashRegister` POS context'inden alınır.
+              cashRegisterId: selectedCashRegister?.id ?? null,
+              cashRegisterCode: selectedCashRegister?.kasa_kodu ?? null,
+              cashRegisterName: selectedCashRegister?.kasa_adi ?? null,
+              // Beauty randevu bağlantısı — `recordAdvance` bu id ile
+              // beauty_appointments.deposit_amount + deposit_date +
+              // deposit_provider='pos' alanlarını yazar.
+              appointmentId: appointmentContext?.appointmentId ?? null,
               items: (cartItems || []).map((it) => ({
                 productId: it.productId,
                 quantity: it.quantity,
@@ -1123,6 +1146,23 @@ const handleCollectCustomerDebt = async () => {
         }
       } catch (avErr) {
         console.error('[POSPaymentModal] onAvansRecorded failed:', avErr);
+        // Fişsiz avans modunda (skipInvoice=true) avans kaydı KRİTİK —
+        // başarısızsa `onComplete`'i çağırma; modal parent tarafından zaten
+        // açık, kullanıcı düzeltebilsin. Standart akışta (skipInvoice=false)
+        // geriye dönük uyum için normal onComplete'e düşülür.
+        if (currentMethod === 'pesinatli' && !createInvoiceWithDeposit) {
+          setIsLoading(false);
+          const msg = avErr instanceof Error ? avErr.message : String(avErr);
+          try {
+            toast.error(
+              tm('bAvansFailed') || `Avans kaydı başarısız: ${msg}`,
+              { duration: 5000 },
+            );
+          } catch {
+            /* toast bağımlılığı yoksa yoksay */
+          }
+          return;
+        }
         // Hata olursa normal onComplete akışına düş (mevcut davranış)
       }
     }

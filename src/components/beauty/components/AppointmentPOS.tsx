@@ -2403,6 +2403,35 @@ export function AppointmentPOS({
              */
             const skipInvoice = paymentData?.skipInvoice === true;
             /**
+             * Fişsiz avans modunda randevuya yansıyacak deposit tutarı.
+             * Standart yol: randevu panelindeki "Rezervasyon Tutarı" inputu
+             * (`reservationAmount`). Ancak kullanıcı bu inputu doldurmadan
+             * doğrudan POS modal'a geçip peşinat öderse, fiilen ödenen tutar
+             * POS `paymentData.payments` içinde — bu durumda deposit
+             * `reservationAmt=0` kalır ve randevuya yansımaz (Bug 17,
+             * 04.10.2026).
+             *
+             * skipInvoice=true ise (avans + cari + kasa + randevuya yansıt,
+             * satış fişi YOK): `effectiveDepositAmt` = POS'ta ödenen peşinat
+             * (veresiye hariç, pesinatli satır hariç — sadece cash/card/
+             * transfer). Bu, `recordAdvance` randevu güncellemesi yapmasa
+             * bile burada `updateAppointment`'a yazılır.
+             */
+            const payRowsForDeposit = Array.isArray(paymentData?.payments)
+                ? paymentData.payments
+                : [];
+            const paidNowInBase = payRowsForDeposit.reduce(
+                (s: number, p: { method?: string; amount?: number }) => {
+                    const m = String(p?.method ?? '');
+                    if (m === 'veresiye' || m === 'pesinatli') return s;
+                    return s + Math.max(0, Number(p?.amount) || 0);
+                },
+                0,
+            );
+            const effectiveDepositAmt = isPesinatliPrePayment && skipInvoice
+                ? Math.max(0, paidNowInBase)
+                : Math.max(0, reservationAmount || 0);
+            /**
              * Bug 2 düzeltmesi — gelecekteki randevu tarihi için status her
              * zaman SCHEDULED kalmalı; hizmet henüz verilmedi, "başladı"
              * anlamına gelmez. Örnek: 02.10.2026'da 05.10.2026 için randevu
@@ -2438,6 +2467,10 @@ export function AppointmentPOS({
             let reservationSaleId: string | null = null;
             let reservationSaleFicheNo: string | null = null;
             const reservationAmt = Math.max(0, reservationAmount || 0);
+            // skipInvoice modunda (fatura oluşturma) deposit tutarı
+            // POS'ta fiilen ödenen peşinat olur (reservationAmount inputu
+            // boş olsa bile); aksi durumda randevu panelindeki rezervasyon
+            // tutarı kullanılır. effectiveDepositAmt yukarıda hesaplandı.
             const shouldRecordReservation =
                 isPesinatliPrePayment && !skipInvoice && reservationAmt > 0 && !!customer?.id;
             if (shouldRecordReservation) {
@@ -2576,9 +2609,16 @@ export function AppointmentPOS({
                     // sonraki girişte kalan doğru hesaplansın; deposit fiş
                     // bağlantı alanları (fiche_no, sale_id) BOŞ kalır çünkü
                     // fiziksel bir satış fişi yok.
-                    ...(isPesinatliPrePayment && reservationAmt > 0
+                    //
+                    // skipInvoice=true durumunda deposit tutarı
+                    // `effectiveDepositAmt`'tan gelir (POS'ta fiilen ödenen
+                    // peşinat — `reservationAmount` inputu boş olsa bile);
+                    // aksi durumda `reservationAmt > 0` şartı aranır.
+                    ...(isPesinatliPrePayment && (
+                        skipInvoice ? effectiveDepositAmt > 0 : reservationAmt > 0
+                    )
                             ? {
-                                deposit_amount: reservationAmt,
+                                deposit_amount: skipInvoice ? effectiveDepositAmt : reservationAmt,
                                 deposit_date: new Date().toISOString(),
                                 deposit_provider: 'pos',
                                 ...(shouldRecordReservation && reservationSaleFicheNo
@@ -2637,14 +2677,18 @@ export function AppointmentPOS({
                 // oluşturulmaz (avans caride); sadece deposit_amount +
                 // deposit_date + deposit_provider yazılır, fiş bağlantı
                 // alanları (fiche_no, sale_id) boş kalır.
+                //
+                // skipInvoice modunda deposit tutarı `effectiveDepositAmt`
+                // (POS'ta fiilen ödenen peşinat) kullanılır — randevu panelinde
+                // "Rezervasyon Tutarı" girilmemiş olsa bile.
                 if (
                     isPesinatliPrePayment &&
-                    reservationAmt > 0 &&
+                    (skipInvoice ? effectiveDepositAmt > 0 : reservationAmt > 0) &&
                     createdAppointmentIds.length > 0
                 ) {
                     try {
                         await updateAppointment(createdAppointmentIds[0], {
-                            deposit_amount: reservationAmt,
+                            deposit_amount: skipInvoice ? effectiveDepositAmt : reservationAmt,
                             deposit_date: new Date().toISOString(),
                             deposit_provider: 'pos',
                             // Rezervasyon fişi appointment oluşturulduktan sonra
@@ -5349,16 +5393,36 @@ export function AppointmentPOS({
                                     quantity: it.quantity,
                                 })),
                                 notes: `Avans (randevu) — ${customer.name || ''}`,
+                                // Fişsiz avans modunda randevuya deposit_amount
+                                // yansısın. recordAdvance bu opsiyonel parametre
+                                // ile beauty_appointments.deposit_amount +
+                                // deposit_date + deposit_provider='pos' alanlarını
+                                // yazar — randevu panelinde rezervasyon tutarı
+                                // girilmemiş olsa bile.
+                                appointmentId: existingAppointment?.id || undefined,
                             });
                             toast.success(
                                 tm('bAvansRecorded') ||
                                 `Avans alındı (${avans.amount.toLocaleString('tr-TR')} IQD). Fatura oluşturulmadı; kalan ödeme hizmet verildiğinde alınır.`,
                             );
+                            // Sepetteki rezervasyon tutarı input'unu da güncelle ki
+                            // sonraki girişte Toplam = brüt − peşinat doğru hesaplansın.
+                            setReservationAmount((prev) => Math.max(prev || 0, avans.amount || 0));
                             setShowPay(false);
+                            // Randevu listesini tazele ki deposit_amount panelde anında görünsün.
+                            try {
+                                const todayYmd = new Date().toISOString().slice(0, 10);
+                                await loadAppointmentsInRange(todayYmd, todayYmd);
+                            } catch (refreshErr) {
+                                logger.warn('AppointmentPOS', 'appointment refresh failed after avans', refreshErr);
+                            }
                         } catch (err) {
                             logger.error('AppointmentPOS', 'onAvansRecorded failed', err);
                             const msg = err instanceof Error ? err.message : String(err);
                             toast.error(tm('bAvansFailed') || `Avans kaydı başarısız: ${msg}`);
+                            // Hata durumunda `onComplete`'i çağırma — modal parent
+                            // tarafından zaten açık; kullanıcı düzeltebilsin.
+                            throw err;
                         }
                     }}
                     // Beauty POS: Peşinatlı seçildiğinde randevu hizmet
@@ -5375,11 +5439,13 @@ export function AppointmentPOS({
                     // girilmişse aynı bilgi kartı gösterilir.
                     appointmentContext={aptCtx}
                     // Peşinatlı modda "fatura oluşturulsun mu?" checkbox default'u.
-                    // Beauty POS'ta mevcut davranış: avans + fatura birlikte
-                    // (rezervasyon tutarı için sales fişi açılıyor). Kullanıcı
-                    // isterse checkbox'ı kaldırarak sadece avans + cari bakiye
-                    // yansıtma yolunu seçebilir.
-                    defaultCreateInvoiceWithDeposit={true}
+                    // 04.10.2026 güncel karar: Beauty POS'ta kullanıcının son
+                    // kararı "skipInvoice=true → fatura YOK ama kasaya/carie/
+                    // randevuya YANSIMALI". Bu yüzden default `false` (fatura
+                    // oluşturma, sadece carie/kasa/deposit yansıt). Kullanıcı
+                    // isterse checkbox'ı işaretleyerek eski davranışa
+                    // (avans + rezervasyon sales fişi) dönebilir.
+                    defaultCreateInvoiceWithDeposit={false}
                 />
                 );
             })()}

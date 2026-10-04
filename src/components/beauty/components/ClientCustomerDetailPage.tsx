@@ -42,6 +42,7 @@ import {
 } from '@ant-design/icons';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { beautyService, type BeautyCustomerProfileQueryOpts } from '../../../services/beautyService';
+import { getOpenAdvances } from '../../../services/avansService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
@@ -327,6 +328,15 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     const [healthForm, setHealthForm] = useState<Partial<BeautyCustomerHealth>>({});
     const [healthSaving, setHealthSaving] = useState(false);
     const [pastAppointments, setPastAppointments] = useState<BeautyAppointment[]>([]);
+    /**
+     * AVANS → FATURA (Basit Model): skipInvoice modunda avans `cari_avans`
+     * tablosuna yazılır (sales fişi yok). Müşteri Detay ekranındaki
+     * "Rezervasyon Peşinatı" tutarı bu avansları da içermeli; aksi halde
+     * `depositTotal = 0 IQD` görünür (Kasa İşlemleri'nde de avans
+     * görünmez). `getOpenAdvances` ile paralel fetch yapılır.
+     */
+    const [openAdvanceTotal, setOpenAdvanceTotal] = useState(0);
+    const [openAdvanceCount, setOpenAdvanceCount] = useState(0);
     const [leadRecords, setLeadRecords] = useState<BeautyLead[]>([]);
     const [feedbacks, setFeedbacks] = useState<BeautyCustomerFeedback[]>([]);
     const [salesHistory, setSalesHistory] = useState<BeautySale[]>([]);
@@ -422,6 +432,8 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             setLeadRecords([]);
             setFeedbacks([]);
             setSalesHistory([]);
+            setOpenAdvanceTotal(0);
+            setOpenAdvanceCount(0);
             setDetailTab('overview');
             return;
         }
@@ -433,8 +445,15 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 beautyService.getLeadsLinkedToCustomer(selected.id, selected.phone, selected.email),
                 beautyService.getFeedbackByCustomer(selected.id, profileQueryOpts),
                 beautyService.getSalesByCustomer(selected.id, profileQueryOpts),
+                // AVANS → FATURA (Basit Model): skipInvoice avansları
+                // `cari_avans` tablosunda `status='open'` olarak durur.
+                // Müşteri Detay ekranındaki "Rezervasyon Peşinatı" tutarına
+                // dahil etmek için `getOpenAdvances` çağrılır; başarısız
+                // olursa sessizce 0 kalır (depositSales zaten ana hizmet
+                // fişlerinden gelir, geriye dönük uyumlu).
+                getOpenAdvances(selected.id).catch(() => []),
             ]);
-            const [rApt, rLead, rFb, rSale] = settled;
+            const [rApt, rLead, rFb, rSale, rAdv] = settled;
             if (rApt.status === 'fulfilled') setPastAppointments(rApt.value);
             else {
                 logger.error('ClientCustomerDetailPage', 'getAppointmentsByCustomer failed', rApt.reason);
@@ -454,6 +473,19 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             else {
                 logger.error('ClientCustomerDetailPage', 'getSalesByCustomer failed', rSale.reason);
                 setSalesHistory([]);
+            }
+            if (rAdv.status === 'fulfilled' && Array.isArray(rAdv.value)) {
+                const openList = rAdv.value;
+                setOpenAdvanceCount(openList.length);
+                setOpenAdvanceTotal(
+                    openList.reduce(
+                        (acc, a) => acc + Math.max(0, Number(a.amount) || 0),
+                        0,
+                    ),
+                );
+            } else {
+                setOpenAdvanceCount(0);
+                setOpenAdvanceTotal(0);
             }
             setHistLoading(false);
         })();
@@ -1005,12 +1037,19 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             totalSpent,
             collectedAmount,
             veresiyeCari,
-            // Bug 28 — Rezervasyon peşinat tutarı (henüz hizmet verilmemiş avanslar)
-            depositTotal: depositSales.reduce(
-                (acc, s) => acc + Math.max(0, Number(s.total) || 0),
-                0,
-            ),
-            depositCount: depositSales.length,
+            // Bug 28 — Rezervasyon peşinat tutarı (henüz hizmet verilmemiş avanslar).
+            // Bug 28 follow-up: skipInvoice modunda `sales.is_deposit=true`
+            // fiş YAZILMAZ (avans doğrudan `cari_avans` tablosuna yazılır);
+            // `depositSales` bu yüzden 0 döner. Müşteri Detay ekranındaki
+            // "Rezervasyon Peşinatı" tutarı + `cari_avans.status='open'`
+            // toplamı olarak genişletildi. setOpenAdvanceTotal üst useEffect'te
+            // `getOpenAdvances` ile doldurulur.
+            depositTotal:
+                depositSales.reduce(
+                    (acc, s) => acc + Math.max(0, Number(s.total) || 0),
+                    0,
+                ) + openAdvanceTotal,
+            depositCount: depositSales.length + openAdvanceCount,
             appointmentCount: receiptBasedCount,
             appointmentCountDetail,
             lastVisitLabel,
@@ -1018,7 +1057,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             lastSaleCollected,
             lastSaleRemaining,
         };
-    }, [selected, mainSalesHistory, depositSalesHistory, pastAppointments, dateLocale, tm]);
+    }, [selected, mainSalesHistory, depositSalesHistory, pastAppointments, openAdvanceTotal, openAdvanceCount, dateLocale, tm]);
 
     const historyColumns: ColumnsType<UnifiedHistoryRow> = useMemo(
         () => [
@@ -1635,12 +1674,12 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                   {/* Bug 28 — Rezervasyon peşinatı (henüz hizmet verilmemiş avanslar) */}
                                   {profileStats.depositCount > 0 && (
                                       <Typography.Text type="secondary">
-                                          {tm('bReservationDepositLabel') || 'Rezervasyon Peşinatı'}:{' '}
+                                          {tm('bReservationDepositLabel')}:{' '}
                                           <Typography.Text strong className="!text-cyan-700">
                                               {formatCurrency(profileStats.depositTotal)}
                                           </Typography.Text>
                                           <span className="text-xs text-slate-500 ml-1">
-                                              ({profileStats.depositCount} {tm('bDepositCountShort') || 'adet'})
+                                              ({profileStats.depositCount} {tm('bDepositCountShort')})
                                           </span>
                                       </Typography.Text>
                                   )}
@@ -1979,35 +2018,40 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                             />
                                         </Card>
                                     </Col>
-                                    {/* Bug 28 — Rezervasyon peşinatı (henüz hizmet verilmemiş avanslar) */}
-                                    <Col xs={24} sm={12} lg={8} xl={4}>
-                                        <Card
-                                            size="small"
-                                            bordered
-                                            className="!shadow-none h-full border-cyan-200"
-                                            data-testid="customer-deposit-card"
-                                        >
-                                            <Statistic
-                                                title={
-                                                    <span className="text-cyan-700">
-                                                        {tm('bReservationDepositLabel') || 'Rezervasyon Peşinatı'}
-                                                    </span>
-                                                }
-                                                value={formatCurrency(profileStats.depositTotal)}
-                                                valueStyle={{ color: '#0e7490', fontSize: '20px' }}
-                                                prefix={
-                                                    <CalendarOutlined
-                                                        className="text-cyan-600"
-                                                        aria-hidden
-                                                    />
-                                                }
-                                            />
-                                            <div className="mt-1 text-[10px] font-medium text-cyan-700 leading-tight">
-                                                {(tm('bDepositCountShort') || 'adet')}:{' '}
-                                                {profileStats.depositCount}
-                                            </div>
-                                        </Card>
-                                    </Col>
+                                    {/* Bug 28 — Rezervasyon peşinatı (henüz hizmet verilmemiş avanslar).
+                                        * DB'de gerçek bir peşinat fişi yokken 0 IQD gösterip kafa
+                                        * karıştırmasın diye yalnızca depositCount > 0 iken kart render
+                                        * edilir; pre_paid statüsünde ama henüz fiş yazılmamış
+                                        * randevularda kullanıcıyı yanıltmaz. */}
+                                    {profileStats.depositCount > 0 ? (
+                                        <Col xs={24} sm={12} lg={8} xl={4}>
+                                            <Card
+                                                size="small"
+                                                bordered
+                                                className="!shadow-none h-full border-cyan-200"
+                                                data-testid="customer-deposit-card"
+                                            >
+                                                <Statistic
+                                                    title={
+                                                        <span className="text-cyan-700">
+                                                            {tm('bReservationDepositLabel')}
+                                                        </span>
+                                                    }
+                                                    value={formatCurrency(profileStats.depositTotal)}
+                                                    valueStyle={{ color: '#0e7490', fontSize: '20px' }}
+                                                    prefix={
+                                                        <CalendarOutlined
+                                                            className="text-cyan-600"
+                                                            aria-hidden
+                                                        />
+                                                    }
+                                                />
+                                                <div className="mt-1 text-[10px] font-medium text-cyan-700 leading-tight">
+                                                    {tm('bDepositCountShort')}: {profileStats.depositCount}
+                                                </div>
+                                            </Card>
+                                        </Col>
+                                    ) : null}
                                     <Col xs={24} sm={12} lg={8} xl={4}>
                                         <Card size="small" bordered className="!shadow-none h-full">
                                             <Statistic

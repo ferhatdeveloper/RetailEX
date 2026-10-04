@@ -99,6 +99,15 @@ export interface RecordAdvanceInput {
    * atlanır. Alan geriye uyumlu tutulur.
    */
   skipInvoice?: boolean;
+  /**
+   * Beauty randevu bağlantısı (opsiyonel). Verildiğinde
+   * `beauty.rex_<firmNr>_<periodNr>_beauty_appointments` tablosunda
+   * `deposit_amount`, `deposit_date`, `deposit_provider='pos'` alanları
+   * yazılır — fişsiz avans modunda randevuya yansıtmayı garanti eder.
+   * Randevu panelinde "Rezervasyon Tutarı" girilmemiş olsa bile POS
+   * ödemesinin tamamı randevuya deposit olarak yansır.
+   */
+  appointmentId?: string;
 }
 
 /** `recordAdvance` çıktısı */

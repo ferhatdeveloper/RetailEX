@@ -7428,6 +7428,27 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'الآجل المفتوح (الكل)',
     ku: 'قەرزی کراوە (هەموو)',
   },
+  /** Müşteri Detay — Rezervasyon peşinat kartı başlığı (henüz hizmet verilmemiş avanslar) */
+  bReservationDepositLabel: {
+    tr: 'Rezervasyon Peşinatı',
+    en: 'Reservation Deposit',
+    ar: 'عربون الحجز',
+    ku: 'پارەی دەسبەشکراوی نۆرە',
+  },
+  /** Müşteri Detay — Rezervasyon kartı altında "adet" kısa etiket */
+  bDepositCountShort: {
+    tr: 'adet',
+    en: 'items',
+    ar: 'عناصر',
+    ku: 'دانە',
+  },
+  /** Müşteri Detay — Rezervasyon kartı boş durum mesajı (henüz peşinat fişi yok) */
+  bReservationDepositEmpty: {
+    tr: 'Henüz açık rezervasyon peşinatı yok',
+    en: 'No open reservation deposits',
+    ar: 'لا توجد عربونات حجز مفتوحة',
+    ku: 'هیچ پارەی نۆرەی کراوە نییە',
+  },
   /** Özet KPI altında: kümülatif açıklama + son satış kırılımı */
   bCustomerKpiCumulativeHint: {
     tr: 'Kart KPI’ları tüm satışların toplamıdır (son satış değil). Son satış: peşin {paid}, cari {credit}.',
