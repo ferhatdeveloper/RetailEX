@@ -6357,6 +6357,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   posCreditDetailAmountCol: { tr: 'Veresiye Tutarı', en: 'Credit Amount', ar: 'مبلغ الآجل', ku: 'بڕی قەرز' },
   posCreditDetailReceiptCount: { tr: 'Fiş', en: 'Receipt', ar: 'إيصال', ku: 'پسوڵە' },
   posCreditDetailEmpty: { tr: 'Bu kasiyer için veresiye satışı bulunamadı.', en: 'No credit sales for this cashier.', ar: 'لا توجد مبيعات آجلة لهذا الصراف.', ku: 'هیچ فرۆشتنی قەرز بۆ ئەم سندوقدارە نییە.' },
+  posCreditDetailProductCol: { tr: 'Ürün', en: 'Product', ar: 'المنتج', ku: 'بەرهەم' },
+  posCreditDetailQuantityCol: { tr: 'Miktar', en: 'Quantity', ar: 'الكمية', ku: 'بڕ' },
+  posCreditDetailUnitPriceCol: { tr: 'Birim Fiyat', en: 'Unit Price', ar: 'سعر الوحدة', ku: 'نرخی یەکە' },
+  posCreditDetailItemCount: { tr: 'Kalem', en: 'Items', ar: 'عناصر', ku: 'کاڵا' },
   posOpeningShort: { tr: 'Açılış:', en: 'Opening:', ar: 'افتتاح:', ku: 'کردنەوە:' },
   posCashSaleShort: { tr: 'Nakit Satış:', en: 'Cash Sale:', ar: 'بيع نقدي:', ku: 'فرۆشتنی نەقد:' },
   posReceiptDataLoadFailed: {
