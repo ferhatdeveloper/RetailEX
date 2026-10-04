@@ -164,12 +164,12 @@ async function repairCariBalancesRestApi(firmNr: string): Promise<void> {
     safeGet(salesPath, {
       select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled,payment_method',
       is_cancelled: 'eq.false',
-      limit: '50000',
+      limit: '200000',
     }),
     safeGet(cashPath, {
       select: 'customer_id,amount,transaction_type',
       transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
-      limit: '50000',
+      limit: '200000',
     }),
   ]);
 

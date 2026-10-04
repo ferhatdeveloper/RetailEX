@@ -142,16 +142,18 @@ export const supplierAPI = {
             select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled,payment_method',
             is_cancelled: 'eq.false',
             // Deterministic order + yeterli limit — MUS-018 (kasap DB) 12/12 satır
-            // dahil olur; ledger 35.895.000 doğru hesaplanır.
+            // dahil olur; ledger 35.895.000 doğru hesaplanır. 200.000 limit
+            // 11k-100k satırlı tenant'ları kapsar (TED-006 backdated 385M ödemesi
+            // 50k limit ile kesiliyordu).
             order: 'created_at.asc,id.asc',
-            limit: '50000',
+            limit: '200000',
           }),
           safeGet(cashPath, {
             select: 'customer_id,party_id,amount,transaction_type',
             transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
-            // Deterministic order — 50000 limit'i ile bile keyfi sıralama riski.
+            // Deterministic order + 200000 limit (müşteri tarafıyla simetrik).
             order: 'created_at.asc,id.asc',
-            limit: '50000',
+            limit: '200000',
           }),
         ]);
         const sales = Array.isArray(salesRows) ? salesRows : [];
@@ -697,9 +699,10 @@ export const supplierAPI = {
           // dahil olur; ledger 35.895.000 doğru hesaplanır. Tedarikçi tarafında
           // aynı kök neden: yalnız `date.asc` nondeterministik + limitsiz
           // → 11k+ satırlı tenant'ta satır kesilir, bakiye yanlış hesaplanır
-          // (müşteri tarafı customers.ts'de zaten düzeltilmişti).
+          // (müşteri tarafı customers.ts'de zaten düzeltilmişti). 200.000 limit
+          // 11k-100k satırlı tenant'ları kapsar (TED-006 385M ödemesi dahil).
           order: 'date.asc,id.asc',
-          limit: '50000',
+          limit: '200000',
         };
         if (startDate && endDate) {
           salesByIdQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
@@ -714,9 +717,10 @@ export const supplierAPI = {
           // Tedarikçi ödemeleri party_id ile yazılır; eski müşteri tarafı verileri için customer_id fallback.
           or: `(customer_id.eq.${accountId},party_id.eq.${accountId})`,
           transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
-          // Deterministic order + yeterli limit (MUS-018 ile aynı kök neden).
+          // Deterministic order + 200.000 limit (müşteri tarafıyla simetrik;
+          // MUS-018 kök neden + TED-006 385M ödeme kapsamı).
           order: 'date.asc,id.asc',
-          limit: '50000',
+          limit: '200000',
         };
         if (startDate && endDate) {
           cashByIdQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
@@ -731,10 +735,10 @@ export const supplierAPI = {
           ? {
               select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,currency_rate,notes,customer_id,customer_name,is_cancelled,payment_method',
               customer_name: `not.is.null`,
-              // Deterministic order + 50.000 limit (önceki 5.000 limit kasap DB
-              // 12/12 satırın kesilmesine neden oluyordu; MUS-018 kök neden).
+              // Deterministic order + 200.000 limit (önceki 5.000 → 50.000 →
+              // 200.000 kademesi; kasap DB 12/12 + TED-006 385M ödeme dahil).
               order: 'date.asc,id.asc',
-              limit: '50000',
+              limit: '200000',
             }
           : null;
         if (nameSalesQuery) {

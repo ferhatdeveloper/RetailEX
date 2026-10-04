@@ -54,9 +54,11 @@ export const customerAPI = {
                 // Deterministic order — ORDER BY olmadan LIMIT keyfi sıralamaya bağlı
                 // kalır; cari ledger'ı yanlış hesaplar (MUS-018: 25.026.000 yerine 35.895.000).
                 order: 'created_at.asc,id.asc',
-                // 50.000 limit 11k-30k satırlı dönemleri kapsar; daha büyük tenant'ta
-                // aşağıdaki aggregate fallback (computeBalanceWithAggregateFallback) devreye girer.
-                limit: '50000',
+                // 200.000 limit 11k-100k satırlı dönemleri kapsar (kasap 11k-30k,
+                // daha büyük tenant'ta aşağıdaki aggregate fallback devreye girer);
+                // 50k limit TED-006 (MEGAL COMPANY) backdated 385M ödemesi gibi
+                // büyük tenant'larda yetersiz kalıyordu.
+                limit: '200000',
               },
               { schema: 'public' }
             )
@@ -67,9 +69,9 @@ export const customerAPI = {
               {
                 select: 'customer_id,amount,transaction_type',
                 transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
-                // Deterministic order — 50000 limit'i ile bile keyfi sıralama riski.
+                // Deterministic order — 200000 limit ile keyfi sıralama riski yok.
                 order: 'created_at.asc,id.asc',
-                limit: '50000',
+                limit: '200000',
               },
               { schema: 'public' }
             )
