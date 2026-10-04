@@ -73,6 +73,41 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Hover'da lazy yüklenen ledger Σ cache (supplier ID → ledger net toplamı).
+   * Tedarikçi listesi için DB cache ile ledger farkını tooltip'te göstermek
+   * için kullanılır; her supplier için ayrı sorgu olduğundan hover ile
+   * tetiklenir (performans). undefined = henüz yüklenmedi, null = sorgu
+   * hata verdi. */
+  const [ledgerCache, setLedgerCache] = useState<Record<string, number | null | undefined>>({});
+  const ledgerFetchInFlight = useMemo(() => new Set<string>(), []);
+  const fetchLedgerFor = async (supplierId: string) => {
+    if (ledgerFetchInFlight.has(supplierId)) return;
+    if (ledgerCache[supplierId] !== undefined) return;
+    ledgerFetchInFlight.add(supplierId);
+    try {
+      const rows = await supplierAPI.getAccountStatement(supplierId);
+      // Tedarikçi Σ: alacak − borç
+      // purchase_invoice → borç (+) ; return_invoice / CH_ODEME → alacak (−)
+      // CH_TAHSILAT → borç (+) ; opening_balance → total_amount işareti
+      let sum = 0;
+      for (const r of rows) {
+        const ft = String(r?.fiche_type || '').toLowerCase();
+        const amount = Math.abs(Number(r?.total_amount ?? 0));
+        if (ft === 'purchase_invoice' || ft === 'ch_tahsilat') {
+          sum += amount; // borç (+)
+        } else if (ft === 'return_invoice' || ft === 'ch_odeme') {
+          sum -= amount; // alacak (−)
+        } else if (ft === 'opening_balance') {
+          sum += Number(r?.total_amount ?? 0); // yön korunur
+        }
+      }
+      setLedgerCache(prev => ({ ...prev, [supplierId]: sum }));
+    } catch {
+      setLedgerCache(prev => ({ ...prev, [supplierId]: null }));
+    } finally {
+      ledgerFetchInFlight.delete(supplierId);
+    }
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
@@ -797,14 +832,30 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
           header: tm('crmBalance'),
           cell: info => {
             const val = info.getValue() || 0;
+            const sup = info.row.original;
             const rep = reportingCurrency !== mainCurrency ? toReporting(Math.abs(val)) : null;
             const { side, sideLabel, hint } = getCariBalanceDirection(info.row.original.cardType, val, tm);
             const colorClass = side === 'B' ? 'text-red-600' : 'text-orange-600';
             const badgeClass = side === 'B' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
+            const ledgerEntry = ledgerCache[sup.id];
+            let tooltipExtra = '';
+            if (ledgerEntry === undefined) {
+              tooltipExtra = `\n⏳ Σ ledger yükleniyor (hover'da)...`;
+            } else if (ledgerEntry === null) {
+              tooltipExtra = `\n⚠ Σ ledger hesaplanamadı (sorgu hata verdi)`;
+            } else {
+              const diff = Math.abs(Math.abs(val) - Math.abs(ledgerEntry));
+              if (diff < 0.5) {
+                tooltipExtra = `\n✓ Σ ledger = ${formatNumber(Math.abs(ledgerEntry), mainDec, mainShowDec)} ${mainCurrency} (DB cache ile eşleşiyor)`;
+              } else {
+                tooltipExtra = `\nΣ ledger = ${formatNumber(Math.abs(ledgerEntry), mainDec, mainShowDec)} ${mainCurrency}\n⚠ fark = ${formatNumber(diff, mainDec, mainShowDec)} ${mainCurrency} (DB cache ≠ ledger — orphan CH_ODEME veya limit kesilmesi olabilir)`;
+              }
+            }
             return (
               <div
                 className="flex flex-col items-end gap-0.5 font-bold"
-                title={hint || undefined}
+                title={(hint || '') + tooltipExtra || undefined}
+                onMouseEnter={() => fetchLedgerFor(sup.id)}
               >
                 <div className="flex items-center gap-1.5 flex-wrap justify-end">
                   <span className={colorClass}>
