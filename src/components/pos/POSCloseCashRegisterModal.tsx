@@ -427,7 +427,8 @@ export function POSCloseCashRegisterModal({
                       <th className="py-2 pr-3 text-right">İade</th>
                       <th className="py-2 pr-3 text-right">Net Ciro</th>
                       <th className="py-2 pr-3 text-right">Nakit</th>
-                      <th className="py-2 text-right">Kart</th>
+                      <th className="py-2 pr-3 text-right">Kart</th>
+                      <th className="py-2 text-right">Veresiye</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -439,7 +440,8 @@ export function POSCloseCashRegisterModal({
                         <td className="py-2 pr-3 text-right tabular-nums text-red-700">{row.returnTotal > 0 ? `-${formatCurrency(row.returnTotal)}` : '—'}</td>
                         <td className="py-2 pr-3 text-right tabular-nums font-bold text-indigo-900">{formatCurrency(row.netRevenue)}</td>
                         <td className="py-2 pr-3 text-right tabular-nums text-gray-800">{formatCurrency(row.cashTotal)}</td>
-                        <td className="py-2 text-right tabular-nums text-gray-800">{formatCurrency(row.cardTotal)}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-gray-800">{formatCurrency(row.cardTotal)}</td>
+                        <td className="py-2 text-right tabular-nums text-gray-800">{formatCurrency(row.creditTotal)}</td>
                       </tr>
                     ))}
                   </tbody>

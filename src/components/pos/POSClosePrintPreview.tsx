@@ -207,6 +207,12 @@ export function POSClosePrintPreview({
                                 <span>{tm('posCashCard')}</span>
                                 <span>{formatNumber(c.cashTotal, 2, false)} / {formatNumber(c.cardTotal, 2, false)}</span>
                               </div>
+                              {c.creditTotal > 0 && (
+                                <div className="flex justify-between text-gray-600 text-[10px]">
+                                  <span>{t.veresiyeLabel}</span>
+                                  <span>{formatNumber(c.creditTotal, 2, false)}</span>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -364,7 +370,8 @@ export function POSClosePrintPreview({
                               <th className="py-1 pr-2 text-right">{tm('posReceiptCountCol')}</th>
                               <th className="py-1 pr-2 text-right">{tm('posNetTurnoverCol')}</th>
                               <th className="py-1 pr-2 text-right">{t.cashLabel}</th>
-                              <th className="py-1 text-right">{t.cardLabel}</th>
+                              <th className="py-1 pr-2 text-right">{t.cardLabel}</th>
+                              <th className="py-1 text-right">{t.veresiyeLabel}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -374,7 +381,8 @@ export function POSClosePrintPreview({
                                 <td className="py-1.5 pr-2 text-right tabular-nums">{c.salesCount}</td>
                                 <td className="py-1.5 pr-2 text-right tabular-nums font-bold">{formatNumber(c.netRevenue, 2, false)}</td>
                                 <td className="py-1.5 pr-2 text-right tabular-nums">{formatNumber(c.cashTotal, 2, false)}</td>
-                                <td className="py-1.5 text-right tabular-nums">{formatNumber(c.cardTotal, 2, false)}</td>
+                                <td className="py-1.5 pr-2 text-right tabular-nums">{formatNumber(c.cardTotal, 2, false)}</td>
+                                <td className="py-1.5 text-right tabular-nums">{formatNumber(c.creditTotal, 2, false)}</td>
                               </tr>
                             ))}
                           </tbody>
