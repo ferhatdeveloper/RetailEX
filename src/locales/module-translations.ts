@@ -4206,6 +4206,23 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'فاتورة مقدم',
     ku: 'فیشەی پێشەکی',
   },
+  // POSPaymentModal — peşinatlı ödeme modunda kullanıcıya sorulan
+  // "Peşinatlı ödemelerde satış faturası oluşturulsun mu?" checkbox etiketi.
+  // Default işaretli DEĞİL (sadece kasaya + cari bakiyeye yansır,
+  // satış faturası oluşmaz). İşaretlenirse mevcut davranış (avans + fatura).
+  createInvoiceWithDeposit: {
+    tr: 'Peşinatlı ödemede satış faturası oluşturulsun',
+    en: 'Create sales invoice with deposit',
+    ar: 'إنشاء فاتورة بيع مع الدفعة الأولى',
+    ku: 'لەگەڵ پێشەکیدا فاکتەی فرۆشتن دروستبکرێت',
+  },
+  // Checkbox altında yardım metni.
+  createInvoiceWithDepositHelp: {
+    tr: 'İşaretli değilse: peşinat yalnızca kasaya ve cari bakiyeye yansır, satış faturası oluşmaz. İşaretliyse: avans ile birlikte satış faturası da kesilir.',
+    en: 'Unchecked: deposit is only posted to cash and customer balance, no sales invoice is created. Checked: a sales invoice is also issued together with the advance.',
+    ar: 'بدون تحديد: يتم ترحيل الدفعة الأولى فقط إلى الصندوق ورصيد العميل، دون إنشاء فاتورة بيع. مع التحديد: يتم إصدار فاتورة بيع بالإضافة إلى الدفعة.',
+    ku: 'نەنیشاندراو: تەنها پێشەکی دەچێتە سندوق و باڵانسی کڕیارەوە، هیچ فاکتەیەک دروست ناکرێت. نیشاندراو: لەگەڵ پێشەکیدا فاکتەی فرۆشتنیش دەردەچێت.',
+  },
   // Plan §6 Adım 8 — Peşinat tutar + fiş no birleşik metin (örn. "Peşinat: BEAUTY-PESINAT-… · 30 IQD")
   prePaymentAmountWithInvoice: {
     tr: 'Peşinat: {fiche} · {amount}',

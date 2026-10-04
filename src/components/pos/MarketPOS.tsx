@@ -2967,6 +2967,11 @@ export default function MarketPOS({
           onClose={() => setShowPaymentModal(false)}
           onComplete={handlePaymentComplete}
           onAvansRecorded={handleAvansRecorded}
+          // Peşinatlı modda "fatura oluşturulsun mu?" checkbox default'u.
+          // MarketPOS'ta mevcut davranış: avans + fatura birlikte (geriye
+          // dönük uyum). Kullanıcı isterse checkbox'ı kaldırarak sadece
+          // avans + cari bakiye yansıtma yolunu seçebilir.
+          defaultCreateInvoiceWithDeposit={true}
           cartItems={cart.map((it) => ({
             productId: it.product.id,
             quantity: it.quantity,

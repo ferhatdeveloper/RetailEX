@@ -35,6 +35,10 @@ import type { Sale, SaleItem } from '../../../core/types/models';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { currentLoginCashierName, resolveWriteCashierName } from '../../../utils/loginCashierName';
 import { salesAPI } from '../../../services/api/sales';
+// POSPaymentModal'dan gelen "peşinatlı ödemede sadece avans kaydet" callback'i
+// için `recordAdvance` (avans + cari bakiye + kasa hareketi + stok rezervasyonu).
+// Fatura oluşturmaz; müşteri sonraki gelişinde kalan ödemeyi yapar.
+import { recordAdvance } from '../../../services/avansService';
 import {
     findInsufficientStockHits,
     formatInsufficientStockMessage,
@@ -5232,6 +5236,40 @@ export function AppointmentPOS({
                     onCloseForSilentPrint={() => setShowPay(false)}
                     onClose={() => setShowPay(false)}
                     onComplete={handlePayComplete}
+                    // Peşinatlı modda kullanıcının "fatura oluşturulsun mu?"
+                    // checkbox'ını unchecked bırakması durumunda: sadece
+                    // avans + cari bakiye + kasa hareketi yaz, sales/invoice
+                    // oluşturma. Bu callback POSPaymentModal tarafından
+                    // (createInvoiceWithDeposit=false ise) çağrılır; sonrasında
+                    // `onComplete` atlanır.
+                    onAvansRecorded={async (avans) => {
+                        if (!customer?.id) {
+                            toast.error(tm('bAvansNeedCustomer') || 'Avans için müşteri seçilmelidir.');
+                            return;
+                        }
+                        try {
+                            await recordAdvance({
+                                customerId: customer.id,
+                                amount: avans.amount,
+                                paymentMethod: (avans.paymentMethod as any) || 'cash',
+                                currency: 'IQD',
+                                items: (avans.items || []).map((it) => ({
+                                    productId: it.productId,
+                                    quantity: it.quantity,
+                                })),
+                                notes: `Avans (randevu) — ${customer.name || ''}`,
+                            });
+                            toast.success(
+                                tm('bAvansRecorded') ||
+                                `Avans alındı (${avans.amount.toLocaleString('tr-TR')} IQD). Fatura oluşturulmadı; kalan ödeme hizmet verildiğinde alınır.`,
+                            );
+                            setShowPay(false);
+                        } catch (err) {
+                            logger.error('AppointmentPOS', 'onAvansRecorded failed', err);
+                            const msg = err instanceof Error ? err.message : String(err);
+                            toast.error(tm('bAvansFailed') || `Avans kaydı başarısız: ${msg}`);
+                        }
+                    }}
                     // Beauty POS: Peşinatlı seçildiğinde randevu hizmet
                     // verilmeden "başladı" durumuna alınır; hizmet verildiğinde
                     // ayrıca "Hizmet Tamamlandı" akışı çalışır.
@@ -5245,6 +5283,12 @@ export function AppointmentPOS({
                     // bilgi kartı görünür. Yeni randevuda rezervasyon tutarı
                     // girilmişse aynı bilgi kartı gösterilir.
                     appointmentContext={aptCtx}
+                    // Peşinatlı modda "fatura oluşturulsun mu?" checkbox default'u.
+                    // Beauty POS'ta mevcut davranış: avans + fatura birlikte
+                    // (rezervasyon tutarı için sales fişi açılıyor). Kullanıcı
+                    // isterse checkbox'ı kaldırarak sadece avans + cari bakiye
+                    // yansıtma yolunu seçebilir.
+                    defaultCreateInvoiceWithDeposit={true}
                 />
                 );
             })()}

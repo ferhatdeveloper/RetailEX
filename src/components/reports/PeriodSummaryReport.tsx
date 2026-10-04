@@ -867,8 +867,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       },
       // Bug 28 — Rezervasyon peşinatı (varsayılan AÇIK). Veresiye
       // kolonunun yanında yer alır; alt toplam satırında ayın toplamı görünür.
+      // key=`depositAmount` satırdaki alan adıyla aynı → footer accessor
+      // otomatik `row.depositAmount` okur (önce `deposit` kullanıyordu,
+      // undefined→0 yüzünden dip toplam BOŞ kalıyordu).
       {
-        key: 'deposit',
+        key: 'depositAmount',
         header: `${tm('dailyDepositCollected') || 'Peşinat'} (${currency})`,
         type: 'number',
         align: 'right',
