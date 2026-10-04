@@ -870,18 +870,19 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // key=`depositAmount` satırdaki alan adıyla aynı → footer accessor
       // otomatik `row.depositAmount` okur (önce `deposit` kullanıyordu,
       // undefined→0 yüzünden dip toplam BOŞ kalıyordu).
+      // Footer 0 olduğunda bile somut değer basılır (`0 IQD (yok)`); `—`
+      // yazılırsa kullanıcı "toplam satırı yok" sanıyor — DIP TOPLAM hep belirgin olsun.
       {
         key: 'depositAmount',
         header: `${tm('dailyDepositCollected') || 'Peşinat'} (${currency})`,
         type: 'number',
         align: 'right',
         footerSum: true,
-        footerFormat: (n) =>
-          n > 0 ? (
-            <span className="text-cyan-700">{money(n)}</span>
-          ) : (
-            '—'
-          ),
+        footerFormat: (n) => (
+          <span className={n > 0 ? 'text-cyan-700' : 'text-cyan-900/60'}>
+            {n > 0 ? money(n) : `${money(0)} ${tm('rptPeriodFooterZeroHint') || '(yok)'}`}
+          </span>
+        ),
         cell: (row) =>
           row.depositAmount > 0 ? (
             <span
@@ -904,12 +905,13 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         type: 'number',
         align: 'right',
         footerSum: true,
-        footerFormat: (n) =>
-          n > 0 ? (
-            <span className="text-cyan-700">{Math.round(n)}</span>
-          ) : (
-            '—'
-          ),
+        footerFormat: (n) => (
+          <span className={n > 0 ? 'text-cyan-700' : 'text-cyan-900/60'}>
+            {n > 0
+              ? Math.round(n)
+              : `${Math.round(n)} ${tm('rptPeriodFooterZeroHint') || '(yok)'}`}
+          </span>
+        ),
         cell: (row) =>
           row.depositCount > 0 ? (
             <span className="text-cyan-700 font-medium">{row.depositCount}</span>

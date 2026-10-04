@@ -10703,6 +10703,9 @@ export const excelModuleTranslations = {
     ku: 'ئەم مانگە هیچ دابەشکردنێک نییە',
   },
   rptPeriodTotalRow: { tr: 'TOPLAM', en: 'TOTAL', ar: 'الإجمالي', ku: 'کۆی گشتی' },
+  // Dip toplam satırında bir sayısal alan 0 ise `0 (yok)` gibi belirgin
+  // gösterilir; kullanıcı "toplam yok" sanıp footer satırını kaçırmasın.
+  rptPeriodFooterZeroHint: { tr: '(yok)', en: '(none)', ar: '(لا يوجد)', ku: '(هیچ)' },
   rptPeriodColPartner75: { tr: 'Ortak %75', en: 'Partner 75%', ar: 'شريك ٧٥٪', ku: 'هاوبەش %75' },
   rptPeriodColPartner25: { tr: 'Ortak %25', en: 'Partner 25%', ar: 'شريك ٢٥٪', ku: 'هاوبەش %25' },
   rptPeriodColPartnerShare: {

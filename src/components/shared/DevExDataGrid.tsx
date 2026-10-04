@@ -3245,9 +3245,22 @@ export function DevExDataGrid<T>({
                         {sumNode != null ? (
                           sumNode
                         ) : col.id === labelColId && resolvedFooterLabel != null ? (
-                          <span className={darkMode ? 'text-blue-100' : 'text-blue-800'}>
-                            {resolvedFooterLabel}
-                            <span className={`ml-1 font-semibold ${darkMode ? 'text-gray-400' : 'text-blue-600/80'}`}>
+                          // Dip toplam başlığı: TOPLAM etiketi kalın + uppercase,
+                          // yanındaki kayıt sayısı yarı saydam — kullanıcı
+                          // "footer satırı yok" demesin, görsel ağırlık artsın.
+                          <span
+                            className={`inline-flex items-baseline gap-1.5 ${
+                              darkMode ? 'text-blue-100' : 'text-blue-900'
+                            }`}
+                          >
+                            <span className="uppercase tracking-wider font-extrabold">
+                              {resolvedFooterLabel}
+                            </span>
+                            <span
+                              className={`text-xs font-bold ${
+                                darkMode ? 'text-blue-300/80' : 'text-blue-700/80'
+                              }`}
+                            >
                               ({detailRowsForFooter.length})
                             </span>
                           </span>
