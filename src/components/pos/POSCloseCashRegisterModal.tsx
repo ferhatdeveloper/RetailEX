@@ -13,6 +13,7 @@ import type { PosCashSession } from '../../utils/posCashSession';
 import { buildSessionCashBreakdown, filterSalesForCashSession } from '../../utils/posCashSession';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
+import { POSCreditSaleDetailModal } from './POSCreditSaleDetailModal';
 
 interface POSCloseCashRegisterModalProps {
   onClose: () => void;
@@ -37,6 +38,8 @@ interface CreditDetailLine {
   receiptNumber: string;
   customer: string;
   amount: number;
+  /** Fatura detayı açmak için tam satış objesi */
+  sale: Sale;
 }
 
 
@@ -66,6 +69,9 @@ export function POSCloseCashRegisterModal({
     receiptCount: number;
     total: number;
   } | null>(null);
+  /** Veresiye detayındaki bir fişin kodu tıklanınca açılan
+   *  fatura detay modalı. */
+  const [detailSale, setDetailSale] = useState<Sale | null>(null);
   
   // Banknot/madeni para sayımı
   const [denominations, setDenominations] = useState<DenominationCount[]>([
@@ -168,6 +174,7 @@ export function POSCloseCashRegisterModal({
         receiptNumber: sale.receiptNumber || sale.id,
         customer: sale.customerName || sale.customerCompany || '—',
         amount: credit,
+        sale,
       });
       grandTotal += credit;
       receiptCount += 1;
@@ -681,7 +688,14 @@ export function POSCloseCashRegisterModal({
                         {new Date(line.date).toLocaleString()}
                       </td>
                       <td className="py-2 px-4 text-gray-700 dark:text-gray-200 font-mono">
-                        {line.receiptNumber}
+                        <button
+                          type="button"
+                          onClick={() => setDetailSale(line.sale)}
+                          className="text-indigo-700 hover:text-indigo-900 hover:underline font-mono cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 rounded px-1"
+                          title={tm('posCreditDetailViewInvoice')}
+                        >
+                          {line.receiptNumber}
+                        </button>
                       </td>
                       <td className="py-2 px-4 text-gray-700 dark:text-gray-200">
                         {line.customer}
@@ -717,6 +731,12 @@ export function POSCloseCashRegisterModal({
           </div>
         </PercentBodyModal>
       )}
+
+      {/* Veresiye detayındaki bir fişin kodu tıklanınca açılan fatura detayı */}
+      <POSCreditSaleDetailModal
+        sale={detailSale}
+        onClose={() => setDetailSale(null)}
+      />
     </ModalLayer>
   );
 }
