@@ -109,8 +109,18 @@ const getIcon = (iconName: string) => {
 const LONG_PRESS_MS = 480;
 const LONG_PRESS_MOVE_PX = 14;
 
-/** Sunucu sayfalama (getPaginated) — satır başına kayıt seçenekleri */
-const INVOICE_LIST_PAGE_SIZES = [200, 300, 400, 500, 1000, 2000] as const;
+/** Sunucu sayfalama (getPaginated) — satır başına kayıt seçenekleri.
+ *  -1 = "Tümünü Göster" — tek sayfada tüm kayıtları getirir (sayfalama devre dışı). */
+const INVOICE_LIST_PAGE_SIZE_ALL = -1;
+const INVOICE_LIST_PAGE_SIZES = [
+  200,
+  300,
+  400,
+  500,
+  1000,
+  2000,
+  INVOICE_LIST_PAGE_SIZE_ALL,
+] as const;
 
 export function InvoiceListModule({
   customers = [],
@@ -685,7 +695,9 @@ export function InvoiceListModule({
 
       const result = await invoicesAPI.getPaginated({
         page: currentPage,
-        pageSize: pageSize,
+        // "Tümünü Göster" seçildiğinde tek seferde tüm kayıtları çek
+        // (sunucu tarafı limit - backend büyük limiti kabul eder).
+        pageSize: pageSize === INVOICE_LIST_PAGE_SIZE_ALL ? 50000 : pageSize,
         search: debouncedSearch || undefined,
         status: statusFilter !== 'all' && !statusCancelled ? statusFilter : undefined,
         startDate: dateRange.start ? String(dateRange.start) : undefined,
@@ -1579,7 +1591,9 @@ export function InvoiceListModule({
                 >
                   {INVOICE_LIST_PAGE_SIZES.map((n) => (
                     <option key={n} value={n}>
-                      {tm('show')} {n}
+                      {n === INVOICE_LIST_PAGE_SIZE_ALL
+                        ? tm('showAllColumns')
+                        : `${tm('show')} ${n}`}
                     </option>
                   ))}
                 </select>
@@ -1626,7 +1640,9 @@ export function InvoiceListModule({
                 >
                   {INVOICE_LIST_PAGE_SIZES.map((n) => (
                     <option key={n} value={n}>
-                      {tm('show')} {n}
+                      {n === INVOICE_LIST_PAGE_SIZE_ALL
+                        ? tm('showAllColumns')
+                        : `${tm('show')} ${n}`}
                     </option>
                   ))}
                 </select>
