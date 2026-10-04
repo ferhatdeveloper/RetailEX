@@ -164,17 +164,17 @@ describe('periodSummaryCashOutTypes — gider filtre (Ferhat 72M)', () => {
   });
 });
 
-describe('periodSummaryCashInTypes — Ciro = satış cirosu (CH_TAHSILAT Hariç)', () => {
+describe('periodSummaryCashInTypes — Ciro = satış cirosu, Kasa Para Girişi CH_TAHSILAT dahil', () => {
   it('REPORT_CASH_IN_TYPES KASA_GIRIS + ortak sermaye + ortak para girişi içerir', () => {
     expect(REPORT_CASH_IN_TYPES.has('KASA_GIRIS')).toBe(true);
     expect(REPORT_CASH_IN_TYPES.has('ORTAK_SERMAYE_TAHSILAT')).toBe(true);
     expect(REPORT_CASH_IN_TYPES.has('ORTAK_PARA_GIRIS')).toBe(true);
   });
 
-  it('REPORT_CASH_IN_TYPES CH_TAHSILAT Hariç (Ciro geri-çevrimi 2026-10-04)', () => {
-    // Ciro = yalnızca satış cirosu; CH_TAHSILAT Ciro'ya yansımaz, ayrı
-    // "Cari Tahsilatlar" modal bölümünde izlenir.
-    expect(REPORT_CASH_IN_TYPES.has('CH_TAHSILAT')).toBe(false);
+  it('REPORT_CASH_IN_TYPES CH_TAHSILAT içerir (Kasa Para Girişi kolonunda gösterilir; Ciro Hariç)', () => {
+    // Ciro = yalnızca satış cirosu; CH_TAHSILAT Ciro'ya yansımaz,
+    // ancak "Kasa Para Girişi" kolonuna + modal ana tablosuna yansır.
+    expect(REPORT_CASH_IN_TYPES.has('CH_TAHSILAT')).toBe(true);
   });
 });
 describe('periodSummaryNet — Ciro − Gider − Alış (CH_TAHSILAT Hariç)', () => {
