@@ -6350,6 +6350,13 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   posNetTurnoverCol: { tr: 'Net Ciro', en: 'Net Turnover', ar: 'صافي الإيراد', ku: 'سووڕی پوخت' },
   posGrossTurnoverCol: { tr: 'Brüt Ciro', en: 'Gross Turnover', ar: 'إجمالي الإيراد', ku: 'کۆی سووڕ' },
   posCashierPerformanceDaily: { tr: 'Kasiyer / Personel Cirosu (Bugün)', en: 'Cashier / Staff Performance (Today)', ar: 'أداء الصراف / الموظفين (اليوم)', ku: 'ئەدای سندوقدار / کارمەند (ئەمڕۆ)' },
+  posCreditDetailTitle: { tr: 'Veresiye Detayı', en: 'Credit Detail', ar: 'تفاصيل الدفع الآجل', ku: 'وردەکاری قەرز' },
+  posCreditDetailDateCol: { tr: 'Tarih', en: 'Date', ar: 'التاريخ', ku: 'بەروار' },
+  posCreditDetailReceiptCol: { tr: 'Fiş No', en: 'Receipt No', ar: 'رقم الإيصال', ku: 'ژمارەی پسوڵە' },
+  posCreditDetailCustomerCol: { tr: 'Müşteri', en: 'Customer', ar: 'العميل', ku: 'کڕیار' },
+  posCreditDetailAmountCol: { tr: 'Veresiye Tutarı', en: 'Credit Amount', ar: 'مبلغ الآجل', ku: 'بڕی قەرز' },
+  posCreditDetailReceiptCount: { tr: 'Fiş', en: 'Receipt', ar: 'إيصال', ku: 'پسوڵە' },
+  posCreditDetailEmpty: { tr: 'Bu kasiyer için veresiye satışı bulunamadı.', en: 'No credit sales for this cashier.', ar: 'لا توجد مبيعات آجلة لهذا الصراف.', ku: 'هیچ فرۆشتنی قەرز بۆ ئەم سندوقدارە نییە.' },
   posOpeningShort: { tr: 'Açılış:', en: 'Opening:', ar: 'افتتاح:', ku: 'کردنەوە:' },
   posCashSaleShort: { tr: 'Nakit Satış:', en: 'Cash Sale:', ar: 'بيع نقدي:', ku: 'فرۆشتنی نەقد:' },
   posReceiptDataLoadFailed: {

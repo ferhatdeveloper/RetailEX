@@ -8,9 +8,11 @@ import { POSNumpad } from './POSNumpad';
 import { POSCashHandoverModal } from './POSCashHandoverModal';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { aggregatePosPayments, aggregateReturnPayments, buildPosZReport, isReturnSale, printPosZReport } from '../../utils/posZReport';
+import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
 import type { PosCashSession } from '../../utils/posCashSession';
 import { buildSessionCashBreakdown, filterSalesForCashSession } from '../../utils/posCashSession';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 
 interface POSCloseCashRegisterModalProps {
   onClose: () => void;
@@ -45,6 +47,13 @@ export function POSCloseCashRegisterModal({
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [note, setNote] = useState('');
   const [printFormat, setPrintFormat] = useState<'80mm' | 'a4'>('80mm');
+  /** Kasiyer ciro tablosunda Veresiye hücresine tıklandığında açılan
+   *  detay modalı state — seçili kasiyer adı + veresiye satışları + toplam. */
+  const [creditDetailFor, setCreditDetailFor] = useState<{
+    cashierName: string;
+    sales: Sale[];
+    total: number;
+  } | null>(null);
   
   // Banknot/madeni para sayımı
   const [denominations, setDenominations] = useState<DenominationCount[]>([
@@ -116,6 +125,28 @@ export function POSCloseCashRegisterModal({
   const handleActualPrint = () => {
     // Yazdırma işlemi
     window.print();
+  };
+
+  /** Kasiyer ciro tablosunda Veresiye hücresine tıklayınca:
+   *  Seçilen kasiyerin, bu kasa oturumundaki (veya bugün) veresiye
+   *  satışlarını filtrele ve detay modalını aç. */
+  const openCreditDetailFor = (row: typeof zReport.cashierStats[number]) => {
+    if (row.creditTotal <= 0) return;
+    const cashierKey = String(row.name || '').trim();
+    const rows = positiveSales
+      .filter((sale) => String(sale.cashier || '').trim() === cashierKey)
+      .map((sale) => ({ sale, credit: Number(saleCollectedSplit(sale).credit) || 0 }))
+      .filter((r) => r.credit > 0)
+      .sort((a, b) => {
+        const ta = new Date(a.sale.date).getTime();
+        const tb = new Date(b.sale.date).getTime();
+        return tb - ta;
+      });
+    setCreditDetailFor({
+      cashierName: cashierKey,
+      sales: rows.map((r) => r.sale),
+      total: rows.reduce((sum, r) => sum + r.credit, 0),
+    });
   };
 
   const handleCloseCashRegister = () => {
@@ -441,7 +472,20 @@ export function POSCloseCashRegisterModal({
                         <td className="py-2 pr-3 text-right tabular-nums font-bold text-indigo-900">{formatCurrency(row.netRevenue)}</td>
                         <td className="py-2 pr-3 text-right tabular-nums text-gray-800">{formatCurrency(row.cashTotal)}</td>
                         <td className="py-2 pr-3 text-right tabular-nums text-gray-800">{formatCurrency(row.cardTotal)}</td>
-                        <td className="py-2 text-right tabular-nums text-gray-800">{formatCurrency(row.creditTotal)}</td>
+                        <td className="py-2 text-right tabular-nums">
+                          {row.creditTotal > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => openCreditDetailFor(row)}
+                              className="text-indigo-700 hover:text-indigo-900 hover:underline font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 rounded px-1"
+                              title={t.veresiyeLabel}
+                            >
+                              {formatCurrency(row.creditTotal)}
+                            </button>
+                          ) : (
+                            <span className="text-gray-800">{formatCurrency(row.creditTotal)}</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -555,6 +599,94 @@ export function POSCloseCashRegisterModal({
           amount={actualCash}
           note={note}
         />
+      )}
+
+      {/* Veresiye detay modalı — kasiyer ciro tablosundan tıklanınca açılır */}
+      {creditDetailFor && (
+        <PercentBodyModal
+          onClose={() => setCreditDetailFor(null)}
+          size="wide"
+          ariaLabel={`${creditDetailFor.cashierName} — ${tm('posCreditDetailTitle')}`}
+        >
+          <div className="flex items-center justify-between px-5 py-2.5 border-b border-gray-200 dark:border-gray-700 shrink-0">
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">
+                {creditDetailFor.cashierName} — {tm('posCreditDetailTitle')}
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {creditDetailFor.sales.length} {tm('posCreditDetailReceiptCount')} · {formatCurrency(creditDetailFor.total)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCreditDetailFor(null)}
+              className="text-gray-400 hover:text-gray-600 p-1"
+              aria-label="close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <PercentBodyModalScrollBody className="p-0">
+            {creditDetailFor.sales.length === 0 ? (
+              <div className="px-5 py-10 text-center text-sm text-gray-500">
+                {tm('posCreditDetailEmpty')}
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 text-xs uppercase text-gray-600 dark:text-gray-300">
+                  <tr>
+                    <th className="text-left py-2 px-4 font-semibold">{tm('posCreditDetailDateCol')}</th>
+                    <th className="text-left py-2 px-4 font-semibold">{tm('posCreditDetailReceiptCol')}</th>
+                    <th className="text-left py-2 px-4 font-semibold">{tm('posCreditDetailCustomerCol')}</th>
+                    <th className="text-right py-2 px-4 font-semibold">{tm('posCreditDetailAmountCol')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {creditDetailFor.sales.map((sale) => {
+                    const creditAmount = Number(saleCollectedSplit(sale).credit) || 0;
+                    return (
+                      <tr key={sale.id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        <td className="py-2 px-4 text-gray-700 dark:text-gray-200 whitespace-nowrap">
+                          {new Date(sale.date).toLocaleString()}
+                        </td>
+                        <td className="py-2 px-4 text-gray-700 dark:text-gray-200 font-mono">
+                          {sale.receiptNumber || sale.id}
+                        </td>
+                        <td className="py-2 px-4 text-gray-700 dark:text-gray-200">
+                          {sale.customerName || sale.customerCompany || '—'}
+                        </td>
+                        <td className="py-2 px-4 text-right tabular-nums font-medium text-indigo-700">
+                          {formatCurrency(creditAmount)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-50 dark:bg-gray-800 border-t-2 border-gray-200 dark:border-gray-700">
+                    <td colSpan={3} className="py-2.5 px-4 text-right font-semibold text-gray-900">
+                      {t.total}
+                    </td>
+                    <td className="py-2.5 px-4 text-right tabular-nums font-bold text-indigo-900">
+                      {formatCurrency(creditDetailFor.total)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+          </PercentBodyModalScrollBody>
+
+          <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 shrink-0 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setCreditDetailFor(null)}
+              className="px-4 py-2 text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-md"
+            >
+              {t.close}
+            </button>
+          </div>
+        </PercentBodyModal>
       )}
     </ModalLayer>
   );
