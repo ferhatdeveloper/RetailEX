@@ -110,13 +110,29 @@ export function PeriodCashInDetailModal({
   // Cari tahsilat alt bölümü — CH_TAHSILAT ana tabloda Ciro Hariç "Kasa
   // Para Girişi" içinde zaten gösteriliyor (REPORT_CASH_IN_TYPES içinde);
   // çift sayımı önlemek için burada sadece bilgi amaçlı toplam verilir,
-  // ayrı tablo basılmaz. Parent `cariTahsilatlar` prop'u boş olabilir →
-  // ana tablodaki CH_TAHSILAT satırlarının Ciro Hariç toplamı.
-  const cariTahsilatTotal = useMemo(() => {
-    return rows
-      .filter((r) => String(r.type || '').trim().toUpperCase() === 'CH_TAHSILAT')
-      .reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  }, [rows]);
+  // ayrı tablo basılmaz. Parent `cariTahsilatlar` prop'undan CH_TAHSILAT
+  // satırlarını alıp Ciro Hariç toplamı çıkarıyoruz.
+  // canlı site hatası (2026-10-04 cariTahsilatRows is not defined):
+  // useMemo'yu geri ekledik — JSX referansları yeniden çalışıyor.
+  const cariTahsilatRows = useMemo<CashInDetailRow[]>(() => {
+    const list = Array.isArray(cariTahsilatlar) ? cariTahsilatlar : [];
+    const out: CashInDetailRow[] = [];
+    for (const cl of list) {
+      const type = String(cl.islem_tipi || '').trim().toUpperCase();
+      if (type !== 'CH_TAHSILAT') continue;
+      const row = toRow(cl, out.length, type);
+      if (!row) continue;
+      if (!inPeriod(row.date, periodKey)) continue;
+      out.push(row);
+    }
+    out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    return out;
+  }, [cariTahsilatlar, periodKey]);
+
+  const cariTahsilatTotal = useMemo(
+    () => cariTahsilatRows.reduce((s, r) => s + (Number(r.amount) || 0), 0),
+    [cariTahsilatRows],
+  );
 
   const total = useMemo(
     () => rows.reduce((s, r) => s + (Number(r.amount) || 0), 0),
@@ -124,7 +140,7 @@ export function PeriodCashInDetailModal({
   );
   const money = (v: number) => `${formatNumber(v, 0, false)} ${currency}`;
 
-  const showCariTahsilatSection = false; // Ciro Hariç 2026-10-04
+  const showCariTahsilatSection = cariTahsilatRows.length > 0; // Ciro Hariç 2026-10-04
 
   return (
     <PercentBodyModal onClose={onClose} size="wide" ariaLabel={title}>
@@ -146,8 +162,8 @@ export function PeriodCashInDetailModal({
       <div className="px-6 py-3 border-b border-slate-100 bg-emerald-50/60 dark:border-slate-700 dark:bg-emerald-950/20 flex items-center justify-between gap-3 shrink-0">
         <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-200 flex items-center gap-2">
           <span>{tm('rptPeriodTotalCashIn')}</span>
-          <span className="text-[9px] font-normal normal-case tracking-normal px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
-            Ciro Hariç
+          <span className="text-[9px] font-normal normal-case tracking-normal px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            CH_TAHSILAT Hariç
           </span>
         </div>
         <div className="font-mono font-extrabold text-emerald-700 dark:text-emerald-300 text-lg">
@@ -218,7 +234,11 @@ export function PeriodCashInDetailModal({
           </div>
         )}
 
-        {/* Cari Tahsilatlar alt bölümü — CH_TAHSILAT (ayrı sorgudan) */}
+        {/* Ciro Hariç 2026-10-04: Cari Tahsilat ayrı bölüm olarak da
+            gösteriliyor. Ana tabloda Ciro Hariç 4 tip içinde (CH_TAHSILAT
+            dahil) + burada ayrı bölüm — kullanıcı "daha uygun alana taşı"
+            isteği: parent tarafta cariTahsilatlar prop'u geldiği sürece
+            ayrı tablo görünür; gelmediğinde sadece ana tablo. */}
         {showCariTahsilatSection ? (
           <section className="border-t-2 border-slate-200 dark:border-slate-700 mt-2">
             <div className="px-6 py-3 flex items-center justify-between gap-3 bg-cyan-50/60 dark:bg-cyan-950/20">

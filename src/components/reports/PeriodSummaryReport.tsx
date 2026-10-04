@@ -988,13 +988,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           <span className="text-emerald-700">{money(n)}</span>
         ),
         // Ciro = yalnızca satış cirosu (CH_TAHSILAT Hariç). Kasa Para
-        // Girişi kolonu CH_TAHSILAT dahil 24,5M tahsilatı içerir.
+        // Girişi kolonu yalnız KASA_GIRIS / ORTAK_SERMAYE_TAHSILAT /
+        // ORTAK_PARA_GIRIS satırlarını içerir; CH_TAHSILAT ayrı bölümde
+        // (modal Cari Tahsilatlar) gösterilir.
         cell: (row) => {
           if (!hasPeriodActivity(row) || !(row.cashIn > 0)) return '—';
           return (
             <button
               type="button"
-              title="Ciro Hariç — Kasa Para Girişi (CH_TAHSILAT dahil)"
+              title="Kasa Para Girişi (CH_TAHSILAT Hariç — Cari Tahsilat ayrı bölümde)"
               className="text-emerald-700 font-semibold underline-offset-2 hover:underline"
               onClick={(e) => {
                 e.stopPropagation();
@@ -1010,10 +1012,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         },
       },
       // Bug 29 — Cari Tahsilat (CH_TAHSILAT) kolonu kullanıcı talebi ile
-      // 2026-10-03'te grid'den kaldırıldı. Ciro = yalnızca satış cirosu;
-      // CH_TAHSILAT ayrı "Kasa Para Girişi" kolonuna yansır (Ciro Hariç).
-      // 2026-10-04 Ferhat datası 24,5M tahsilat "Kasa Para Girişi" kolonu
-      // içinde gösterilir; çift sayım önlemek için Ciro'ya eklenmez.
+      // 2026-10-03'te grid'den kaldırıldı. Ciro = yalnızca satış cirosu.
+      // 2026-10-04 Ferhat datası: CH_TAHSILAT ana "Kasa Para Girişi"
+      // kolonundan da çıkarıldı; sadece PeriodCashInDetailModal
+      // "Cari Tahsilatlar" alt bölümünde gösterilir (24,5M).
       // {
       //   key: 'cariTahsilat',
       //   header: `${tm('rptPeriodColCariTahsilat') || 'Cari Tahsilat'} (${currency})`,

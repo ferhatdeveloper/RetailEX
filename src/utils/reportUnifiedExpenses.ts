@@ -57,24 +57,22 @@ export const PERIOD_SUMMARY_CASH_OUT_TYPES = new Set([
 /** Günlük/Dönem raporu için kasa para GİRİŞİ tipleri (sign=+1).
  *
  * Ciro tanımı: Ciro = yalnızca satış cirosu (CH_TAHSILAT Hariç).
- * CH_TAHSILAT (cari tahsilatları) Ciro'ya yansımaz; ayrı "Kasa Para Girişi"
- * kolonu + PeriodCashInDetailModal "Cari Tahsilatlar" alt bölümünde
- * izlenir. Ciro formülü `sale.revenue` (cashIn'e bağlı değil); bu yüzden
- * CH_TAHSILAT'ın set'e dahil edilmesi Ciro'yu etkilemez — sadece "Kasa
- * Para Girişi" kolonu/alt toplamı doğru gösterir (Ferhat datası 24,5M).
+ * CH_TAHSILAT (cari tahsilatları) Ciro'ya YANSIMAZ; ayrıca ana "Kasa Para
+ * Girişi" kolonundan da Hariç tutulur — sadece PeriodCashInDetailModal
+ * "Cari Tahsilatlar" alt bölümünde gösterilir (kullanıcı isteği 2026-10-04:
+ * "bir önceki yerden kaldırıp buraya taşı"). CH_TAHSILAT kasaya giren
+ * paradır; Ciro'ya değil, ayrı bölüme yansır.
  */
 export const REPORT_CASH_IN_TYPES = new Set([
   'KASA_GIRIS',
   'ORTAK_SERMAYE_TAHSILAT',
   'ORTAK_PARA_GIRIS',
-  'CH_TAHSILAT',
 ]);
 
 const CASH_IN_CATEGORY_TR: Record<string, string> = {
   KASA_GIRIS: 'Kasa giriş',
   ORTAK_SERMAYE_TAHSILAT: 'Ortak sermaye tahsilatı',
   ORTAK_PARA_GIRIS: 'Ortak para girişi',
-  CH_TAHSILAT: 'Cari tahsilat',
 };
 
 export function reportCashInCategory(typeCode: string): string {
