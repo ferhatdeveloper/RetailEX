@@ -318,6 +318,10 @@ function isColumnReorderable(columnId: string): boolean {
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
 
+/** "Tümünü Göster" sayfa boyutu sentinel değeri — dropdown'da özel etiket
+ *  gösterirken pagination.pageSize hâlâ pozitif (data.length) kalır. */
+const PAGE_SIZE_ALL = -1;
+
 /** Huni / kolon menüsü — body portal; GRID_POPOVER_Z modal overlay üstünde (Analiz drill-down). */
 const FILTER_MENU_Z_INDEX = GRID_POPOVER_Z;
 /** Sticky dip toplam / sayfalama — yalnızca tablo kaydırma kutusunun içinde */
@@ -2345,14 +2349,14 @@ export function DevExDataGrid<T>({
     [persistColumnSizing],
   );
 
+  /** DevEx sayfa boyutu seçenekleri: kullanıcı tarafından verilen
+   *  pageSizeOptions (negatif olmayan sayılar). "Tümünü Göster" seçeneği
+   *  ayrıca PAGE_SIZE_ALL sentinel'i ile JSX'te eklenir. */
   const resolvedPageSizeOptions = useMemo(() => {
-    const total = data.length;
-    const merged = [...pageSizeOptions];
-    if (total > 0 && total > Math.max(...merged, 0) && !merged.includes(total)) {
-      merged.push(total);
-    }
-    return [...new Set(merged.filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b);
-  }, [pageSizeOptions, data.length]);
+    return [...new Set(pageSizeOptions.filter((n) => Number.isFinite(n) && n > 0))].sort(
+      (a, b) => a - b,
+    );
+  }, [pageSizeOptions]);
 
   const resolvedColumnVisibility = useMemo(
     () =>
@@ -3424,21 +3428,30 @@ export function DevExDataGrid<T>({
             </button>
 
             <select
-              value={pagination.pageSize}
+              value={
+                data.length > 0 && pagination.pageSize >= data.length
+                  ? PAGE_SIZE_ALL
+                  : pagination.pageSize
+              }
               onChange={(e) => {
-                const nextSize = Number(e.target.value);
-                if (!Number.isFinite(nextSize) || nextSize <= 0) return;
-                setPagination({ pageIndex: 0, pageSize: nextSize });
+                const raw = Number(e.target.value);
+                if (!Number.isFinite(raw)) return;
+                if (raw === PAGE_SIZE_ALL) {
+                  // Tümünü Göster: tüm veriyi tek sayfaya sığdır
+                  setPagination({ pageIndex: 0, pageSize: Math.max(data.length, 1) });
+                  return;
+                }
+                if (raw <= 0) return;
+                setPagination({ pageIndex: 0, pageSize: raw });
               }}
               className="px-3 py-1.5 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             >
               {resolvedPageSizeOptions.map((size) => (
                 <option key={size} value={size}>
-                  {size === data.length && size === maxPageSizeOption && size > 100
-                    ? `${tm('showAllColumns')} (${size})`
-                    : `${tm('show')} ${size}`}
+                  {`${tm('show')} ${size}`}
                 </option>
               ))}
+              <option value={PAGE_SIZE_ALL}>{tm('showAllColumns')}</option>
             </select>
           </div>
         </div>
