@@ -533,6 +533,8 @@ export interface Translations {
   crmBalance: string;
   crmManagementConsole: string;
   currency: string;
+  partyDebtHeader: string;
+  partyPaidHeader: string;
   currencyAndRates: string;
   currentAccountPersonel: string;
   currentAccountTitle: string;
@@ -1669,6 +1671,8 @@ export const translations: any = {
     crmBalance: 'BAKİYE',
     crmManagementConsole: 'Müşteri ve Tedarikçi Yönetim Konsolu',
     currency: 'IQD',
+    partyDebtHeader: 'Brüt Borç',
+    partyPaidHeader: 'Ödenen',
     currencyAndRates: 'Para Birimi & Kurlar',
     currentAccountPersonel: 'Cari Hesap / Personel',
     currentAccountTitle: 'CARİ HESAP ÜNVANI',
@@ -3217,6 +3221,8 @@ export const translations: any = {
         type: 'Tip',
         phone: 'Telefon',
         salary: 'Maaş',
+        debt: 'Brüt Borç',
+        paid: 'Ödenen',
         balance: 'Bakiye',
         share: 'Pay',
         actions: 'İşlem',
@@ -3478,6 +3484,8 @@ export const translations: any = {
     crmBalance: 'BALANCE',
     crmManagementConsole: 'Customer and Supplier Management Console',
     currency: 'IQD',
+    partyDebtHeader: 'Gross Debt',
+    partyPaidHeader: 'Paid',
     currencyAndRates: 'Currency & Rates',
     currentAccountPersonel: 'Current Account / Personnel',
     currentAccountTitle: 'CURRENT ACCOUNT TITLE',
@@ -4908,6 +4916,8 @@ export const translations: any = {
         type: 'Type',
         phone: 'Phone',
         salary: 'Salary',
+        debt: 'Gross Debt',
+        paid: 'Paid',
         balance: 'Balance',
         share: 'Share',
         actions: 'Actions',
@@ -5170,6 +5180,8 @@ export const translations: any = {
     crmBalance: 'رصيد',
     crmManagementConsole: 'وحدة إدارة العملاء والموردين',
     currency: 'دينار',
+    partyDebtHeader: 'إجمالي الدين',
+    partyPaidHeader: 'المدفوع',
     currencyAndRates: 'العملة وأسعار الصرف',
     currentAccountPersonel: 'الحساب الجاري / الموظفين',
     currentAccountTitle: 'عنوان الحساب الجاري',
@@ -6587,6 +6599,8 @@ export const translations: any = {
         type: 'النوع',
         phone: 'الهاتف',
         salary: 'الراتب',
+        debt: 'إجمالي الدين',
+        paid: 'المدفوع',
         balance: 'الرصيد',
         share: 'الحصة',
         actions: 'إجراءات',
@@ -6848,6 +6862,8 @@ export const translations: any = {
     crmBalance: 'BAKİYE',
     crmManagementConsole: 'وحدة إدارة العملاء والموردين',
     currency: 'دينار',
+    partyDebtHeader: 'قەرزی کۆ',
+    partyPaidHeader: 'دراوە',
     currencyAndRates: 'دراو و نرخەکان',
     currentAccountPersonel: 'هەژماری جاری / کارمەندان',
     currentAccountTitle: 'CARİ HESAP ÜNVANI',
@@ -8316,6 +8332,8 @@ export const translations: any = {
         type: 'جۆر',
         phone: 'تەلەفۆن',
         salary: 'مووچە',
+        debt: 'قەرزی کۆ',
+        paid: 'دراوە',
         balance: 'باڵانس',
         share: 'پشک',
         actions: 'کردارەکان',

@@ -60,6 +60,32 @@ const supplierDebtPmSql = sqlPaymentMethodImpliesSupplierDebtExpr();
 const supplierDebtPmSqlSl = sqlPaymentMethodImpliesSupplierDebtExpr('sl');
 
 /**
+ * cash_lines satırı için cari türüne göre **işaretsiz (mutlak)** ödenen tutar.
+ * `line_contrib` işaretli hesap; bu fonksiyon yalnızca "Ödenen" rapor kolonu
+ * için kullanılır — kullanıcı tarafında her zaman pozitif (mutlak) gösterilir.
+ *
+ *   customer + CH_ODEME    → +ABS (müşteri bize ödedi)
+ *   supplier + CH_TAHSILAT → +ABS (biz tedarikçiye ödedik)
+ *   diğer kombinasyonlar   → 0
+ *
+ * İade/iptal/avans/VIRMAN/BANKA_* satırları CH_ODEME/CH_TAHSILAT filtresi
+ * sayesinde zaten dışlanır (bkz. CTE kullanımı).
+ */
+export function sqlCashLinePaidAmountExpr(
+  cariSide: 'customer' | 'supplier',
+  alias = '',
+): string {
+  const tt = alias
+    ? `UPPER(TRIM(COALESCE(${alias}.transaction_type, '')))`
+    : `UPPER(TRIM(COALESCE(transaction_type, '')))`;
+  const amt = alias ? `COALESCE(${alias}.amount, 0)` : `COALESCE(amount, 0)`;
+  if (cariSide === 'customer') {
+    return `(CASE WHEN ${tt} = 'CH_ODEME' THEN ABS(${amt}) ELSE 0 END)`;
+  }
+  return `(CASE WHEN ${tt} = 'CH_TAHSILAT' THEN ABS(${amt}) ELSE 0 END)`;
+}
+
+/**
  * cash_lines satırı için cari türüne göre işaretli line_contrib.
  * `cariCashLineLedgerContrib` ile aynı muhasebe kuralları:
  *   customer + CH_TAHSILAT → -ABS
@@ -101,14 +127,22 @@ export function sqlCashLineLedgerContribExpr(
   )`;
 }
 
-/** Liste/ekstre ile uyumlu müşteri bakiye CTE (postgres.query içinde sales/cash_lines otomatik prefixlenir) */
+/** Liste/ekstre ile uyumlu müşteri bakiye CTE (postgres.query içinde sales/cash_lines otomatik prefixlenir)
+ *  debt_sum: brüt borç toplamı (faturalar + iade ters + açılış; mutlak değer) — UI'da ayrı kolon.
+ *  paid_sum: CH_ODEME mutlak toplamı (müşterinin bize ödediği) — UI'da ayrı kolon. */
 export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: string): string {
   return `
     account_balances AS (
-      SELECT id, SUM(line_contrib) AS calculated_balance, COUNT(*)::int AS txn_count
+      SELECT id,
+        SUM(line_contrib) AS calculated_balance,
+        COUNT(*)::int AS txn_count,
+        SUM(debt_contrib) AS debt_sum,
+        SUM(paid_contrib) AS paid_sum
       FROM (
         SELECT customer_id AS id,
-          CASE WHEN fiche_type = 'return_invoice' THEN -net_amount ELSE net_amount END AS line_contrib
+          CASE WHEN fiche_type = 'return_invoice' THEN -net_amount ELSE net_amount END AS line_contrib,
+          ABS(CASE WHEN fiche_type = 'return_invoice' THEN -net_amount ELSE net_amount END) AS debt_contrib,
+          0::numeric AS paid_contrib
         FROM sales
         WHERE customer_id IS NOT NULL AND COALESCE(is_cancelled, false) = false
           AND (
@@ -117,7 +151,9 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
           )
         UNION ALL
         SELECT c.id,
-          CASE WHEN s.fiche_type = 'return_invoice' THEN -s.net_amount ELSE s.net_amount END
+          CASE WHEN s.fiche_type = 'return_invoice' THEN -s.net_amount ELSE s.net_amount END,
+          ABS(CASE WHEN s.fiche_type = 'return_invoice' THEN -s.net_amount ELSE s.net_amount END),
+          0::numeric
         FROM sales s
         INNER JOIN ${custTable} c ON ${sqlFirmScopedCardMatch('c', firmNrBind)}
           AND TRIM(LOWER(COALESCE(s.customer_name, ''))) = TRIM(LOWER(c.name))
@@ -130,7 +166,9 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
           )
         UNION ALL
         SELECT customer_id AS id,
-          ${sqlCashLineLedgerContribExpr('customer')}
+          ${sqlCashLineLedgerContribExpr('customer')},
+          0::numeric,
+          ${sqlCashLinePaidAmountExpr('customer')}
         FROM cash_lines
         WHERE customer_id IS NOT NULL
           AND UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
@@ -138,7 +176,9 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
         -- Tedarikçi ödemeleri party_id ile yazılır; müşteri kartına düşmesin diye
         -- COALESCE ile customer_id'ye taşı, ancak sadece customer_id boşsa
         SELECT party_id AS id,
-          ${sqlCashLineLedgerContribExpr('customer')}
+          ${sqlCashLineLedgerContribExpr('customer')},
+          0::numeric,
+          ${sqlCashLinePaidAmountExpr('customer')}
         FROM cash_lines
         WHERE party_id IS NOT NULL
           AND customer_id IS NULL
@@ -148,11 +188,17 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
     )`;
 }
 
-/** Tedarikçi bakiye CTE — peşin alış hariç alış / alış iade + cari ödeme/tahsilat */
+/** Tedarikçi bakiye CTE — peşin alış hariç alış / alış iade + cari ödeme/tahsilat
+ *  debt_sum: brüt borç toplamı (alış + alış iade + açılış; mutlak değer).
+ *  paid_sum: CH_TAHSILAT mutlak toplamı (bizim tedarikçiye ödediğimiz). */
 export function sqlSupplierAccountBalancesCte(suppTable: string): string {
   return `
     supplier_balances AS (
-      SELECT id, SUM(line_contrib) AS calculated_balance, COUNT(*)::int AS txn_count
+      SELECT id,
+        SUM(line_contrib) AS calculated_balance,
+        COUNT(*)::int AS txn_count,
+        SUM(debt_contrib) AS debt_sum,
+        SUM(paid_contrib) AS paid_sum
       FROM (
         SELECT customer_id AS id,
           CASE
@@ -160,7 +206,14 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
             WHEN fiche_type = 'return_invoice' THEN -net_amount
             WHEN fiche_type = 'opening_balance' THEN net_amount
             ELSE 0
-          END AS line_contrib
+          END AS line_contrib,
+          CASE
+            WHEN fiche_type = 'purchase_invoice' THEN ABS(net_amount)
+            WHEN fiche_type = 'return_invoice' THEN ABS(net_amount)
+            WHEN fiche_type = 'opening_balance' THEN ABS(net_amount)
+            ELSE 0
+          END AS debt_contrib,
+          0::numeric AS paid_contrib
         FROM sales
         WHERE customer_id IS NOT NULL
           AND COALESCE(is_cancelled, false) = false
@@ -176,7 +229,14 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
             WHEN sl.fiche_type = 'return_invoice' THEN -sl.net_amount
             WHEN sl.fiche_type = 'opening_balance' THEN sl.net_amount
             ELSE 0
-          END AS line_contrib
+          END,
+          CASE
+            WHEN sl.fiche_type = 'purchase_invoice' THEN ABS(sl.net_amount)
+            WHEN sl.fiche_type = 'return_invoice' THEN ABS(sl.net_amount)
+            WHEN sl.fiche_type = 'opening_balance' THEN ABS(sl.net_amount)
+            ELSE 0
+          END,
+          0::numeric
         FROM sales sl
         INNER JOIN ${suppTable} s ON TRIM(LOWER(COALESCE(sl.customer_name, ''))) = TRIM(LOWER(s.name))
         WHERE (sl.customer_id IS NULL OR sl.customer_id::text <> s.id::text)
@@ -189,14 +249,18 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
           )
         UNION ALL
         SELECT customer_id AS id,
-          ${sqlCashLineLedgerContribExpr('supplier')}
+          ${sqlCashLineLedgerContribExpr('supplier')},
+          0::numeric,
+          ${sqlCashLinePaidAmountExpr('supplier')}
         FROM cash_lines
         WHERE customer_id IS NOT NULL
           AND UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
         UNION ALL
         -- Tedarikçi ödemeleri cash_lines.party_id ile yazılır
         SELECT party_id AS id,
-          ${sqlCashLineLedgerContribExpr('supplier')}
+          ${sqlCashLineLedgerContribExpr('supplier')},
+          0::numeric,
+          ${sqlCashLinePaidAmountExpr('supplier')}
         FROM cash_lines
         WHERE party_id IS NOT NULL
           AND customer_id IS NULL
@@ -247,6 +311,45 @@ function cashLineMatchesParty(cl: LedgerCashRow, idStr: string): boolean {
   if (cid && cid === idStr) return true;
   if (pid && pid === idStr) return true;
   return false;
+}
+
+/**
+ * Müşteri (customer) için ödenen tutar — CH_ODEME mutlak toplamı.
+ * CH_TAHSILAT müşteriden para almak (avans/alacak); ödeme değil.
+ * VIRMAN/BANKA_* tipleri CH_ODEME/CH_TAHSILAT filtresiyle zaten dışlanır.
+ */
+export function computeCustomerPaidAmountFromCashLines(
+  accountId: string,
+  cashLines: LedgerCashRow[],
+): number {
+  const idStr = String(accountId || '');
+  let sum = 0;
+  for (const cl of cashLines) {
+    const tt = String(cl.transaction_type || '').trim().toUpperCase();
+    if (tt !== 'CH_ODEME') continue;
+    if (!cashLineMatchesParty(cl, idStr)) continue;
+    sum += Math.abs(parseFloat(String(cl.amount ?? 0)) || 0);
+  }
+  return sum;
+}
+
+/**
+ * Tedarikçi (supplier) için ödenen tutar — CH_TAHSILAT mutlak toplamı.
+ * CH_ODEME bizden para çıkışı (avans/erken ödeme simetrisi); ödeme değil.
+ */
+export function computeSupplierPaidAmountFromCashLines(
+  accountId: string,
+  cashLines: LedgerCashRow[],
+): number {
+  const idStr = String(accountId || '');
+  let sum = 0;
+  for (const cl of cashLines) {
+    const tt = String(cl.transaction_type || '').trim().toUpperCase();
+    if (tt !== 'CH_TAHSILAT') continue;
+    if (!cashLineMatchesParty(cl, idStr)) continue;
+    sum += Math.abs(parseFloat(String(cl.amount ?? 0)) || 0);
+  }
+  return sum;
 }
 
 /**

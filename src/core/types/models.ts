@@ -199,6 +199,10 @@ export interface Supplier {
   payment_terms?: number | string; // Ödeme vadesi (gün veya metin)
   credit_limit?: number;
   balance?: number;
+  /** Brüt borç toplamı (faturalar + iade ters + açılış). Mutlak değer; UI'da gösterilebilir. */
+  debt_total?: number;
+  /** Ödenen toplam (cash_lines CH_ODEME/CH_TAHSILAT mutlak). UI'da ayrı kolon olarak gösterilir. */
+  paid_total?: number;
   points?: number;
   total_spent?: number;
   age?: number | null;
