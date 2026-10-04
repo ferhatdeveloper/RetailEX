@@ -6348,6 +6348,8 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   posCashRegister1: { tr: 'KASA #1', en: 'REGISTER #1', ar: 'صندوق #1', ku: 'سندووق #1' },
   posReceiptCountCol: { tr: 'Fiş', en: 'Rcpt', ar: 'إيصال', ku: 'پسوڵە' },
   posNetTurnoverCol: { tr: 'Net Ciro', en: 'Net Turnover', ar: 'صافي الإيراد', ku: 'سووڕی پوخت' },
+  posGrossTurnoverCol: { tr: 'Brüt Ciro', en: 'Gross Turnover', ar: 'إجمالي الإيراد', ku: 'کۆی سووڕ' },
+  posCashierPerformanceDaily: { tr: 'Kasiyer / Personel Cirosu (Bugün)', en: 'Cashier / Staff Performance (Today)', ar: 'أداء الصراف / الموظفين (اليوم)', ku: 'ئەدای سندوقدار / کارمەند (ئەمڕۆ)' },
   posOpeningShort: { tr: 'Açılış:', en: 'Opening:', ar: 'افتتاح:', ku: 'کردنەوە:' },
   posCashSaleShort: { tr: 'Nakit Satış:', en: 'Cash Sale:', ar: 'بيع نقدي:', ku: 'فرۆشتنی نەقد:' },
   posReceiptDataLoadFailed: {

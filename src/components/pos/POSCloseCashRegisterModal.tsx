@@ -37,7 +37,7 @@ export function POSCloseCashRegisterModal({
   onCashRegisterClosed,
   onCashHandover
 }: POSCloseCashRegisterModalProps) {
-  const { t } = useLanguage();
+  const { t, tm } = useLanguage();
   const [countedCash, setCountedCash] = useState('');
   const [showDenominationCounter, setShowDenominationCounter] = useState(false);
   const [showNumpad, setShowNumpad] = useState(false);
@@ -213,7 +213,7 @@ export function POSCloseCashRegisterModal({
                     <span className="font-medium text-gray-900">{formatCurrency(cardTotal)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Veresiye / Cari ({paymentBreakdown.creditCount}):</span>
+                    <span className="text-gray-600">{tm('posCreditAccount')} ({paymentBreakdown.creditCount}):</span>
                     <span className="font-medium text-gray-900">{formatCurrency(creditTotal)}</span>
                   </div>
                   <div className="flex justify-between">
@@ -415,20 +415,20 @@ export function POSCloseCashRegisterModal({
           {zReport.cashierStats.length > 0 && (
             <div className="mt-4 bg-indigo-50 border border-indigo-200 p-4">
               <h4 className="text-sm font-semibold text-indigo-900 mb-3">
-                {cashSession ? t.sessionCashierPerformance : 'Kasiyer / Personel Cirosu (Bugün)'}
+                {cashSession ? t.sessionCashierPerformance : tm('posCashierPerformanceDaily')}
               </h4>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs font-semibold text-indigo-800 border-b border-indigo-200">
-                      <th className="py-2 pr-3">Kasiyer</th>
-                      <th className="py-2 pr-3 text-right">Fiş</th>
-                      <th className="py-2 pr-3 text-right">Brüt Ciro</th>
-                      <th className="py-2 pr-3 text-right">İade</th>
-                      <th className="py-2 pr-3 text-right">Net Ciro</th>
-                      <th className="py-2 pr-3 text-right">Nakit</th>
-                      <th className="py-2 pr-3 text-right">Kart</th>
-                      <th className="py-2 text-right">Veresiye</th>
+                      <th className="py-2 pr-3">{t.cashier}</th>
+                      <th className="py-2 pr-3 text-right">{tm('posReceiptCountCol')}</th>
+                      <th className="py-2 pr-3 text-right">{tm('posGrossTurnoverCol')}</th>
+                      <th className="py-2 pr-3 text-right">{t.return}</th>
+                      <th className="py-2 pr-3 text-right">{tm('posNetTurnoverCol')}</th>
+                      <th className="py-2 pr-3 text-right">{t.cash}</th>
+                      <th className="py-2 pr-3 text-right">{t.card}</th>
+                      <th className="py-2 text-right">{t.veresiyeLabel}</th>
                     </tr>
                   </thead>
                   <tbody>
