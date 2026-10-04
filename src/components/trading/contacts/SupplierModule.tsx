@@ -77,7 +77,13 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
    * Tedarikçi listesi için DB cache ile ledger farkını tooltip'te göstermek
    * için kullanılır; her supplier için ayrı sorgu olduğundan hover ile
    * tetiklenir (performans). undefined = henüz yüklenmedi, null = sorgu
-   * hata verdi. */
+   * hata verdi.
+   *
+   * NOT: Liste yüklendikten sonra `useEffect` ile her supplier için eager
+   * fetch tetiklenir (chunk'lı, paralel). Cell renderer ledger değeri
+   * hazırsa onu gösterir; değilse DB cache fallback (ilk frame). Bu sayede
+   * "DB cache eski, ledger doğru" senaryolarında liste de doğruyu gösterir
+   * (MEGAL COMPANY 30.09.2026 385M backdated CH_ODEME gibi vakalarda). */
   const [ledgerCache, setLedgerCache] = useState<Record<string, number | null | undefined>>({});
   const ledgerFetchInFlight = useMemo(() => new Set<string>(), []);
   const fetchLedgerFor = async (supplierId: string) => {
@@ -108,6 +114,25 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
       ledgerFetchInFlight.delete(supplierId);
     }
   };
+
+  /** Liste yüklendikten sonra tüm tedarikçilerin ledger Σ'sını eager
+   * yükle. 4'lü paralel batch (çok büyük listede backend'i boğmamak
+   * için). DB cache yanlış olan tedarikçiler hemen doğru değerle
+   * gösterilir (ödemeler düşer). Hover'daki fetch hala fallback. */
+  useEffect(() => {
+    const list = suppliers.filter(s => s.cardType === 'supplier');
+    if (list.length === 0) return;
+    const CONCURRENCY = 4;
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < list.length; i += CONCURRENCY) {
+        if (cancelled) return;
+        const batch = list.slice(i, i + CONCURRENCY);
+        await Promise.all(batch.map(s => fetchLedgerFor(s.id)));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [suppliers]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
@@ -831,24 +856,30 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
         columnHelper.accessor('balance', {
           header: tm('crmBalance'),
           cell: info => {
-            const val = info.getValue() || 0;
+            const cacheVal = info.getValue() || 0;
             const sup = info.row.original;
-            const rep = reportingCurrency !== mainCurrency ? toReporting(Math.abs(val)) : null;
-            const { side, sideLabel, hint } = getCariBalanceDirection(info.row.original.cardType, val, tm);
+            const ledgerEntry = ledgerCache[sup.id];
+            // Ledger hazırsa onu göster (doğru); yoksa DB cache fallback (ilk frame).
+            // DB cache ile ledger farklıysa ledger gösterilir + tooltip'te fark
+            // uyarısı görünür → kullanıcı yanlış DB cache'i fark eder.
+            const useLedger = typeof ledgerEntry === 'number';
+            const displayVal = useLedger ? ledgerEntry : cacheVal;
+            const isLedgerFallback = !useLedger && ledgerEntry === null;
+            const rep = reportingCurrency !== mainCurrency ? toReporting(Math.abs(displayVal)) : null;
+            const { side, sideLabel, hint } = getCariBalanceDirection(info.row.original.cardType, displayVal, tm);
             const colorClass = side === 'B' ? 'text-red-600' : 'text-orange-600';
             const badgeClass = side === 'B' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
-            const ledgerEntry = ledgerCache[sup.id];
             let tooltipExtra = '';
             if (ledgerEntry === undefined) {
-              tooltipExtra = `\n⏳ Σ ledger yükleniyor (hover'da)...`;
-            } else if (ledgerEntry === null) {
+              tooltipExtra = `\n⏳ Σ ledger yükleniyor (DB cache fallback gösteriliyor)`;
+            } else if (isLedgerFallback) {
               tooltipExtra = `\n⚠ Σ ledger hesaplanamadı (sorgu hata verdi)`;
-            } else {
-              const diff = Math.abs(Math.abs(val) - Math.abs(ledgerEntry));
+            } else if (useLedger) {
+              const diff = Math.abs(Math.abs(cacheVal) - Math.abs(ledgerEntry));
               if (diff < 0.5) {
-                tooltipExtra = `\n✓ Σ ledger = ${formatNumber(Math.abs(ledgerEntry), mainDec, mainShowDec)} ${mainCurrency} (DB cache ile eşleşiyor)`;
+                tooltipExtra = `\n✓ Ledger = DB cache (${formatNumber(Math.abs(ledgerEntry), mainDec, mainShowDec)} ${mainCurrency})`;
               } else {
-                tooltipExtra = `\nΣ ledger = ${formatNumber(Math.abs(ledgerEntry), mainDec, mainShowDec)} ${mainCurrency}\n⚠ fark = ${formatNumber(diff, mainDec, mainShowDec)} ${mainCurrency} (DB cache ≠ ledger — orphan CH_ODEME veya limit kesilmesi olabilir)`;
+                tooltipExtra = `\nLedger (gösterilen) = ${formatNumber(Math.abs(ledgerEntry), mainDec, mainShowDec)} ${mainCurrency}\nDB cache = ${formatNumber(Math.abs(cacheVal), mainDec, mainShowDec)} ${mainCurrency} (güncellenmemiş olabilir)\n⚠ fark = ${formatNumber(diff, mainDec, mainShowDec)} ${mainCurrency}`;
               }
             }
             return (
@@ -859,7 +890,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               >
                 <div className="flex items-center gap-1.5 flex-wrap justify-end">
                   <span className={colorClass}>
-                    {formatNumber(Math.abs(val), mainDec, mainShowDec)} {mainCurrency}
+                    {formatNumber(Math.abs(displayVal), mainDec, mainShowDec)} {mainCurrency}
                   </span>
                   {sideLabel && (
                     <span className={`text-[8px] px-1.5 py-0.5 rounded font-black whitespace-nowrap ${badgeClass}`}>
@@ -1252,7 +1283,12 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               footerSumColumns={[
                 {
                   columnId: 'balance',
-                  getValue: (r: Supplier) => Number(r.balance) || 0,
+                  // Ledger Σ hazırsa onu, yoksa DB cache fallback (ilk frame).
+                  // Bu sayede footer da gerçek toplamı yansıtır (ödemeler dahil).
+                  getValue: (r: Supplier) => {
+                    const ledger = ledgerCache[r.id];
+                    return typeof ledger === 'number' ? ledger : Number(r.balance) || 0;
+                  },
                   format: (sum: number) => (
                     <span className="tabular-nums font-bold">
                       {formatNumber(sum, 2)} {mainCurrency}
