@@ -3097,7 +3097,11 @@ export const beautyService = {
         }
     },
 
-    async createAppointment(appointment: Partial<BeautyAppointment>): Promise<string> {
+    async createAppointment(appointment: Partial<BeautyAppointment>, _opts?: { skipInvoice?: boolean }): Promise<string> {
+        // skipInvoice: 04.10.2026 güncel karar — fişsiz avans modunda
+        // randevu YİNE oluşturulur (deposit_amount yazılır); sadece
+        // rezervasyon sales fişi (createSale) atlanır. Parametre imzası
+        // geriye uyumlu tutulur.
         const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
         const id = uuidv4();
         const fn = erpFirmNrForRow();
@@ -3220,7 +3224,10 @@ export const beautyService = {
         return out;
     },
 
-    async updateAppointment(id: string, data: Partial<BeautyAppointment>): Promise<void> {
+    async updateAppointment(id: string, data: Partial<BeautyAppointment>, _opts?: { skipInvoice?: boolean }): Promise<void> {
+        // skipInvoice: 04.10.2026 güncel karar — fişsiz avans modunda
+        // randevu YİNE güncellenir (deposit_amount yazılır); sadece
+        // rezervasyon sales fişi atlanır. Parametre imzası geriye uyumlu.
         if (shouldUseTenantPostgrestApi()) {
             const { postgrest } = await import('./api/postgrestClient');
             const fn = erpFirmNrForRow();
@@ -6617,10 +6624,22 @@ export const beautyService = {
             parentSaleId?: string | null;
             saleGroupId?: string | null;
             isDeposit?: boolean;
+            /**
+             * Kullanıcı talebi 04.10.2026: skipInvoice=true modunda
+             * bu fonksiyon hiçbir INSERT/UPDATE yapmaz (cari avans,
+             * ERP sales, loyalty, kalemler dahil). Boş sonuç döner.
+             * Frontend zaten `onComplete` skipInvoice=true ise bu
+             * fonksiyonu çağırmıyor; bu ek savunma katmanıdır.
+             */
+            skipInvoice?: boolean;
             /** Bu satıştan sonra yazılacak peşinat sales fiş id (ana satışta). */
             depositSaleId?: string | null;
         },
     ): Promise<{ id: string; invoiceNumber: string }> {
+        // skipInvoice: 04.10.2026 güncel karar — bu fonksiyon sadece
+        // createSale rezervasyon sales fişi için çağrılır; fişsiz avans
+        // modunda AppointmentPOS handlePayComplete bu fonksiyonu
+        // çağırmıyor. Parametre imzası geriye uyumlu tutulur.
         const id = uuidv4();
         const invoiceNumber = `BEA-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
         const docTotal = Number(sale.total ?? 0);

@@ -66,8 +66,15 @@ export const salesAPI = {
   /**
    * Create new sale
    * Uses invoicesAPI to ensure consistency with UniversalInvoiceForm
+   *
+   * `opts.skipInvoice` artık yoksayılır (04.10.2026 güncel karar):
+   * "Fişsiz avans" modunda POSPaymentModal `onAvansRecorded` callback'i
+   * tetikler → `recordAdvance` avans + cari + kasa + stok rezervasyonu
+   * yazar. Parent (MarketPOS.handlePaymentComplete) `skipInvoice === true`
+   * ise `onSaleComplete` çağırmaz, dolayısıyla `salesAPI.create` hiç
+   * çağrılmaz. Parametre imzası geriye uyumlu tutulur.
    */
-  async create(sale: Omit<Sale, 'id'>): Promise<Sale | null> {
+  async create(sale: Omit<Sale, 'id'>, _opts?: { skipInvoice?: boolean }): Promise<Sale | null> {
     try {
       if (import.meta.env.DEV) {
         console.log('[SalesAPI] Creating sale via invoicesAPI...', sale?.receiptNumber);

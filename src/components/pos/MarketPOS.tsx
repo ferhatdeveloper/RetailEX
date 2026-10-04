@@ -1587,12 +1587,29 @@ export default function MarketPOS({
 
     // AVANS → FATURA (Basit Model) — Peşinatlı modda kullanıcı
     // "Satış faturası oluşturulsun mu?" checkbox'ını kaldırdıysa
-    // `paymentData.skipInvoice === true` gelir. Bu durumda avans + cari
-    // bakiye zaten `handleAvansRecorded` içinde `recordAdvance` ile yazıldı;
-    // burada `onSaleComplete(sale)` çağırırsak çift yazım + çift stok düşümü
-    // olur. Sepet temizliği ve modal kapatma da orada yapıldı; sadece ref'i
-    // serbest bırakıp çıkıyoruz.
+    // `paymentData.skipInvoice === true` gelir. Fişsiz avans modu
+    // (04.10.2026 güncel karar):
+    //   POSPaymentModal `onAvansRecorded` callback'ini ÇAĞIRDI
+    //   → `recordAdvance` (avans + cari hareketi + kasa hareketi +
+    //   stok rezervasyonu) tetiklendi. Burada `onSaleComplete(sale)`
+    //   çağrılMAZ — DB'ye satış fişi / invoice yazılmaz. Sadece sepet
+    //   temizlenir, modal kapatılır ve bilgilendirme toast'ı gösterilir.
     if (paymentData?.skipInvoice === true) {
+      setCart([]);
+      setSelectedCampaign(null);
+      clearPosCartSession(selectedFirm?.firm_nr, currentUser.storeId, currentUser.id);
+      generateNewReceiptNumber();
+      setShowPaymentModal(false);
+      if (selectedCustomer) {
+        const event = new CustomEvent('clearCustomer');
+        window.dispatchEvent(event);
+      }
+      notifyPosSaleSuccess();
+      showNotif(
+        tm('depositRecordedWithoutInvoice') ||
+          'Avans kaydedildi (fatura yok). Cari bakiye ve kasa hareketi yazıldı.',
+        'success',
+      );
       paymentSubmitRef.current = false;
       return;
     }

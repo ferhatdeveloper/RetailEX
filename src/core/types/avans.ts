@@ -90,6 +90,15 @@ export interface RecordAdvanceInput {
   userName?: string;
   /** Not (opsiyonel) */
   notes?: string;
+  /**
+   * Kullanıcı POSPaymentModal'da "Satış faturası oluşturulsun mu?" checkbox'ını
+   * kaldırdığında `true` gelir (04.10.2026 güncel karar — fişsiz avans modu).
+   * Bu durumda `recordAdvance` yine çalışır: avans + cari bakiye + kasa
+   * hareketi + stok rezervasyonu DB'ye yazılır. Sadece ana satış fişi
+   * (`salesAPI.create` / `beautyService.createSale`) parent tarafında
+   * atlanır. Alan geriye uyumlu tutulur.
+   */
+  skipInvoice?: boolean;
 }
 
 /** `recordAdvance` çıktısı */

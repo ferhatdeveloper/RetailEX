@@ -9157,6 +9157,27 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'تم تسجيل الدفعة الأولى وحفظ الموعد. لم يتم إصدار فاتورة بيع — يتم تحصيل المبلغ المتبقي عند تنفيذ الخدمة.',
     ku: 'پێشەکی تۆمارکرا و ژماون پاشەکەوتکرا. هیچ فاکتەیەک دەرنەچوو — بڕی ماوە لەکاتی ئەنجامدانی خزمەتگوزاریدا وەردەگیرێت.',
   },
+  // POSPaymentModal — peşinatlı modda kullanıcı "Satış faturası oluşturulsun
+  // mu?" checkbox'ını kaldırdığında gösterilen bilgilendirme. Yeni davranış
+  // (04.10.2026): bu modda HİÇBİR yere kayıt yazılmaz (avans, cari, kasa,
+  // satış, randevu); sadece modal kapanır + bu mesaj gösterilir.
+  bAvansNotRecordedNoInvoice: {
+    tr: 'Avans kaydedilmedi (fatura yok). Hiçbir cari/kasa/randevu kaydı oluşturulmadı.',
+    en: 'Advance not recorded (no invoice). No customer/cash/appointment entry was created.',
+    ar: 'لم يتم تسجيل الدفعة الأولى (لا توجد فاتورة). لم يتم إنشاء أي سجل عميل/صندوق/موعد.',
+    ku: 'پێشەکی تۆمار نەکرا (هیچ فاکتەیەک نییە). هیچ تۆمارێکی کڕیار/سندوق/ژماون دروست نەکرا.',
+  },
+  // POSPaymentModal + MarketPOS + AppointmentPOS — peşinatlı modda kullanıcı
+  // "Satış faturası oluşturulsun mu?" checkbox'ını kaldırdığında (`skipInvoice=true`)
+  // gösterilen bilgilendirme. Fişsiz avans modu: avans + cari bakiye + kasa
+  // hareketi (ve varsa randevu deposit alanları) yazılır; satış faturası
+  // oluşturulmaz. Hizmet verildiğinde kalan + avans birleşip tek fiş yazılır.
+  depositRecordedWithoutInvoice: {
+    tr: 'Avans kaydedildi (fatura yok). Cari bakiye ve kasa hareketi yazıldı.',
+    en: 'Advance recorded (no invoice). Customer balance and cash movement have been posted.',
+    ar: 'تم تسجيل الدفعة الأولى (بدون فاتورة). تم ترحيل رصيد العميل وحركة الصندوق.',
+    ku: 'پێشەکی تۆمارکرا (هیچ فاکتەیەک نییە). باڵانسی کڕیار و جووڵەی سندوق تۆمارکران.',
+  },
   bPrePaymentReceived: {
     tr: 'Ön ödeme alındı — randevu başladı. Hizmet verildiğinde tamamlayın.',
     en: 'Advance received — appointment started. Complete it when the service is delivered.',

@@ -1049,24 +1049,43 @@ const handleCollectCustomerDebt = async () => {
         currentMethod === 'pesinatli' ? !createInvoiceWithDeposit : false,
     };
 
-    // AVANS → FATURA (Basit Model) — peşinatlı modda avans kaydı
-    // tetikle. Mevcut `onComplete` akışı KORUNUR (geriye dönük uyumlu);
-    // yeni davranışta parent avansı yazar, fatura oluşturmaz.
+    // AVANS → FATURA (Basit Model) — peşinatlı modda avans kaydı.
     //
-    // Yeni davranış (createInvoiceWithDeposit checkbox'ı):
-    //   - checkbox işaretli DEĞİL (default): `onAvansRecorded` çağrılarak
-    //     sadece avans + cari bakiye + kasa hareketi yazılır. `onComplete`
-    //     payload'ında `skipInvoice: true` → parent fatura oluşturmaz.
-    //   - checkbox işaretli: `onAvansRecorded` çağrılmaz (avans + fatura
-    //     tek bir kayıt olarak parent tarafından yazılır). `onComplete`
-    //     payload'ında `skipInvoice: false` → parent normal satış + fatura
-    //     akışını yürütür.
+    // Kullanıcı talebi (04.10.2026 güncel karar):
+    //   - "Satış faturası oluşturulsun mu?" checkbox'ı İŞARETLİ DEĞİLSE
+    //     (`createInvoiceWithDeposit=false`, `skipInvoice=true`):
+    //       FİŞSİZ AVANS KAYDI. `onAvansRecorded` çağrılarak avans +
+    //       cari bakiye + kasa hareketi yazılır (`recordAdvance`); randevu
+    //       varsa deposit alanları güncellenir. Ancak `onComplete` payload'ında
+    //       `skipInvoice: true` parent'a iletilir → MarketPOS satış
+    //       fişini (`onSaleComplete`) yazmaz, AppointmentPOS
+    //       `beautyService.createSale` / ana satış fişini atlar.
+    //   - checkbox İŞARETLİYSE (`createInvoiceWithDeposit=true`,
+    //     `skipInvoice=false`): mevcut davranış — `onAvansRecorded`
+    //     çağrılarak avans + cari + kasa hareketi yazılır ve parent
+    //     satış + fatura akışını yürütür.
+    const skipInvoice = currentMethod === 'pesinatli' && !createInvoiceWithDeposit;
+    if (skipInvoice) {
+      // Kullanıcıya kısa bilgilendirme — fişsiz avans modu.
+      try {
+        toast.info(
+          tm('depositRecordedWithoutInvoice') ||
+            'Avans kaydedildi (fatura yok). Cari bakiye ve kasa hareketi yazıldı.',
+          { duration: 3000 },
+        );
+      } catch {
+        /* toast bağımlılığı yoksa yoksay */
+      }
+    }
     if (
       currentMethod === 'pesinatli' &&
       onAvansRecorded &&
-      selectedCustomer &&
-      !createInvoiceWithDeposit
+      selectedCustomer
     ) {
+      // Hem skipInvoice=true hem skipInvoice=false durumlarında
+      // avans + cari bakiye + kasa hareketi yazılır. Sadece
+      // satış faturası oluşturma (parent tarafında) skipInvoice'a
+      // göre koşulludur.
       try {
         // Toplam peşinat tutarı (cash + card + transfer satırları)
         const pesinatPayments = paymentsToSubmit.filter(
@@ -1108,18 +1127,20 @@ const handleCollectCustomerDebt = async () => {
       }
     }
     const PAYMENT_TIMEOUT_MS = 45_000;
-    // Skip-invoice (sadece avans + cari bakiye, fatura oluşturma) akışı:
-    // `onAvansRecorded` zaten parent tarafından işlendi ve orada `recordAdvance`
-    // çağrıldı. Yine de `onComplete`'i `skipInvoice: true` ile çağırıyoruz;
-    // sebebi: Beauty POS'ta (AppointmentPOS) randevu oluşturma / güncelleme
-    // işlemleri `onComplete` (`handlePayComplete`) içinde yapılıyor —
-    // `onAvansRecorded` sadece avans/cari yazıyor, randevu kaydını o
-    // oluşturmuyor. `onComplete`'i atlayacak olursak yeni randevu DB'ye
-    // hiç yazılmaz ve randevuya `deposit_amount` / `deposit_sale_id` alanları
-    // bağlanmaz (Bug — `paymentData.skipInvoice=true` modunda randevu
-    // sessizce oluşmadan işlem bitiyordu). MarketPOS'ta randevu olmadığı
-    // için `handlePaymentComplete` `skipInvoice === true` ise erken return
-    // ediyor; orada çift yazım yok.
+    // Fişsiz avans modu (`skipInvoice === true`, `createInvoiceWithDeposit`
+    // checkbox'ı kaldırıldı):
+    //   - `onAvansRecorded` çağrıldı (yukarıda) → avans + cari bakiye +
+    //     kasa hareketi yazıldı (`recordAdvance`).
+    //   - `onComplete` payload'ında `skipInvoice: true` parent'a iletilir.
+    //     MarketPOS `handlePaymentComplete` `skipInvoice === true` ise
+    //     `onSaleComplete(sale)` çağırmaz (sepet temizler, modal kapatır,
+    //     cari bakiye avans olarak kalır). AppointmentPOS
+    //     `handlePayComplete` `skipInvoice === true` ise randevuyu YİNE
+    //     oluşturur/günceller (deposit_amount alanları yazılır) ama
+    //     `beautyService.createSale` ile ayrı rezervasyon sales fişi
+    //     kesmez.
+    // Böylece `createInvoiceWithDeposit=false` → DB'de avans + cari + kasa +
+    // randevu deposit kayıtları oluşur; sales/invoice YAZILMAZ.
     try {
       await Promise.race([
         Promise.resolve(onComplete(paymentPayload)),

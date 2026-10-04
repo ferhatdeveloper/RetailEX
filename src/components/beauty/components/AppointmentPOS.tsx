@@ -2380,21 +2380,26 @@ export function AppointmentPOS({
             );
             /**
              * skipInvoice — POSPaymentModal'daki "Satış faturası oluşturulsun mu?"
-             * checkbox'ı kaldırıldığında `true` gelir. Bu modda:
-             *   - Avans + cari bakiye `onAvansRecorded` callback'i içinde
-             *     zaten `recordAdvance` ile yazıldı.
-             *   - Burada `rex_*_sales` tablosuna ayrı bir "rezervasyon" sales
-             *     fişi YAZILMAZ (kullanıcı bilinçli olarak kasaya avans olarak
-             *     yansıtmak istedi; çift fiş istemiyor).
-             *   - Randevu DB kaydı HER ZAMAN oluşturulur / güncellenir —
-             *     randevuya deposit_amount=0 yazılır (avans caride duruyor;
-             *     randevu panelinde "Ön Ödenen" carideki bakiyeden görülebilir).
-             *   - Ana satış fişi (separateLineInvoices / createSale) ve ERP sync
-             *     tamamen atlanır — `beautyService.collectAppointmentRemainder`
-             *     hizmet verildiğinde kalan + avansı birleştirir.
-             *   - Receipt80mm modalı gösterilmez (fiziksel fiş yok).
-             * Aksi halde bug: skipInvoice=true olunca `onComplete` atlanıyor →
-             * randevu DB'ye hiç yazılmıyor, deposit_amount 0 kalıyor.
+             * checkbox'ı kaldırıldığında (`createInvoiceWithDeposit=false`)
+             * `true` gelir. Fişsiz avans modu (04.10.2026 güncel karar):
+             *   - POSPaymentModal `onAvansRecorded` callback'ini ÇAĞIRDI
+             *     → avans + cari bakiye + kasa hareketi yazıldı
+             *     (`recordAdvance`).
+             *   - Burada `updateAppointment` / `createAppointment` YİNE
+             *     ÇALIŞIR → randevu DB'ye yazılır; mevcut randevuda
+             *     `deposit_amount` (avans tutarı) alanı `recordAdvance`
+             *     tarafından ayrıca güncellenebilir olsa da rezervasyon
+             *     sales fişi oluşturulmadığı için `deposit_sale_fiche_no`
+             *     / `deposit_sale_id` BOŞ kalır.
+             *   - `rex_*_sales` tablosuna ayrı rezervasyon sales fişi
+             *     YAZILMAZ (aşağıdaki `shouldRecordReservation` ve ana
+             *     `if (!skipInvoice)` scope'ları tarafından koşullu).
+             *   - Ana satış fişi (services/salesAPI.createSale) ve ERP
+             *     sync atlanır, Receipt80mm modalı gösterilmez.
+             * Sonuç: DB'de avans + cari + kasa + randevu deposit kayıtları
+             * oluşur; sales/invoice fişi YAZILMAZ. Hizmet verildiğinde
+             * `beautyService.collectAppointmentRemainder` kalan + avansı
+             * birleştirip tek fiş yazar.
              */
             const skipInvoice = paymentData?.skipInvoice === true;
             /**
@@ -2562,13 +2567,26 @@ export function AppointmentPOS({
                     // Plan §6 — appointment'a deposit_sale_id (UUID), deposit_date
                     // ve deposit_provider (peşinatı alan: 'pos') yazılır ki sonraki
                     // girişte kalan doğru hesaplansın ve fiş geri izlenebilsin.
-                    ...(shouldRecordReservation && reservationSaleFicheNo
+                    //
+                    // skipInvoice=true durumunda ayrı bir rezervasyon sales
+                    // fişi oluşturulmaz (kullanıcı "fatura oluşturulsun mu?"
+                    // checkbox'ını kaldırdı) ama avans POSPaymentModal →
+                    // `onAvansRecorded` → `recordAdvance` ile caride yazıldı.
+                    // Randevu yine de `deposit_amount` ile işaretlenir ki
+                    // sonraki girişte kalan doğru hesaplansın; deposit fiş
+                    // bağlantı alanları (fiche_no, sale_id) BOŞ kalır çünkü
+                    // fiziksel bir satış fişi yok.
+                    ...(isPesinatliPrePayment && reservationAmt > 0
                             ? {
                                 deposit_amount: reservationAmt,
-                                deposit_sale_fiche_no: reservationSaleFicheNo,
-                                deposit_sale_id: reservationSaleId,
                                 deposit_date: new Date().toISOString(),
                                 deposit_provider: 'pos',
+                                ...(shouldRecordReservation && reservationSaleFicheNo
+                                    ? {
+                                        deposit_sale_fiche_no: reservationSaleFicheNo,
+                                        deposit_sale_id: reservationSaleId,
+                                    }
+                                    : {}),
                             }
                             : {}),
                 });
@@ -2615,22 +2633,30 @@ export function AppointmentPOS({
 
                 // Rezervasyon ön ödeme kaydı → oluşturulan ilk randevuya yaz.
                 // Sadece peşinatlı modda ve rezervasyon tutarı > 0 ise.
+                // skipInvoice=true durumunda ayrı bir rezervasyon sales fişi
+                // oluşturulmaz (avans caride); sadece deposit_amount +
+                // deposit_date + deposit_provider yazılır, fiş bağlantı
+                // alanları (fiche_no, sale_id) boş kalır.
                 if (
-                    shouldRecordReservation &&
+                    isPesinatliPrePayment &&
                     reservationAmt > 0 &&
-                    reservationSaleFicheNo &&
                     createdAppointmentIds.length > 0
                 ) {
                     try {
                         await updateAppointment(createdAppointmentIds[0], {
                             deposit_amount: reservationAmt,
-                            deposit_sale_fiche_no: reservationSaleFicheNo,
+                            deposit_date: new Date().toISOString(),
+                            deposit_provider: 'pos',
                             // Rezervasyon fişi appointment oluşturulduktan sonra
                             // yazıldığı için deposit_sale_id (UUID) burada geri
                             // bağlanıyor; sonraki girişte bu bağlantı korunur.
-                            deposit_sale_id: reservationSaleId,
-                            deposit_date: new Date().toISOString(),
-                            deposit_provider: 'pos',
+                            // skipInvoice=true ise fiche_no/sale_id BOŞ kalır.
+                            ...(shouldRecordReservation && reservationSaleFicheNo
+                                ? {
+                                    deposit_sale_fiche_no: reservationSaleFicheNo,
+                                    deposit_sale_id: reservationSaleId,
+                                }
+                                : {}),
                         });
                     } catch (depErr: unknown) {
                         logger.warn('AppointmentPOS', 'deposit update yazılamadı', depErr);
@@ -2639,10 +2665,12 @@ export function AppointmentPOS({
             }
 
             // skipInvoice=true → satış fişi (rex_*_sales) ve ERP sync atlanır.
-            // Avans `onAvansRecorded` → `recordAdvance` ile zaten caride; hizmet
-            // verildiğinde `beautyService.collectAppointmentRemainder` kalan + avansı
-            // birleştirip tek fiş yazar. Randevu DB kaydı yukarıda zaten oluştu /
-            // güncellendi; stok düşümü de sıfır (hizmet verilmedi).
+            // Avans `onAvansRecorded` → `recordAdvance` ile caride + kasa + cari
+            // bakiye yazıldı; hizmet verildiğinde `beautyService.collectAppointmentRemainder`
+            // kalan + avansı birleştirip tek fiş yazar. Randevu DB kaydı yukarıda
+            // zaten oluştu / güncellendi (deposit_amount alanları boş — sales
+            // fişi olmadığı için fiche_no / sale_id yazılmadı); stok düşümü de
+            // sıfır (hizmet verilmedi).
             //
             // separateLineInvoices scope dışında tanımlanıyor; aşağıdaki
             // `splitInvoiceCount` toast dalı tarafından okunuyor. skipInvoice
@@ -2911,16 +2939,20 @@ export function AppointmentPOS({
             }
             notifyPosSaleSuccess();
             } // if (!skipInvoice) — satış + receipt + cleanup bloğu sonu
-            else {
-                // skipInvoice modu: avans + cari bakiye yazıldı (onAvansRecorded
-                // → recordAdvance), fatura oluşturulmadı, randevu DB'ye yazıldı /
-                // güncellendi (yukarıdaki updateAppointment / createAppointment).
+            // skipInvoice modunda yukarıdaki `if (!skipInvoice)` scope'una
+            // girilmedi → ana satış fişi + ERP sync + Receipt80mm atlandı.
+            // Randevu yine de createAppointment / updateAppointment ile
+            // yazıldı; avans + cari bakiye + kasa hareketi POSPaymentModal
+            // `onAvansRecorded` tarafından yazıldı. Sepet + modal kapatılır
+            // ve bilgilendirme toast'ı gösterilir.
+            if (skipInvoice) {
                 clearCart();
                 void generateNewReceiptNumber();
                 setShowPay(false);
                 toast.success(
-                    tm('bAdvanceRecordedNoInvoice') ||
-                        'Ön ödeme alındı ve randevu kaydedildi. Satış faturası kesilmedi — kalan ödeme hizmet verildiğinde alınır.',
+                    tm('depositRecordedWithoutInvoice') ||
+                        'Avans kaydedildi (fatura yok). Cari bakiye, kasa hareketi ve randevu deposit alanları yazıldı.',
+                    { duration: 4000 },
                 );
                 notifyPosSaleSuccess();
             }
