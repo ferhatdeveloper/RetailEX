@@ -1585,6 +1585,18 @@ export default function MarketPOS({
     if (paymentSubmitRef.current) return;
     paymentSubmitRef.current = true;
 
+    // AVANS → FATURA (Basit Model) — Peşinatlı modda kullanıcı
+    // "Satış faturası oluşturulsun mu?" checkbox'ını kaldırdıysa
+    // `paymentData.skipInvoice === true` gelir. Bu durumda avans + cari
+    // bakiye zaten `handleAvansRecorded` içinde `recordAdvance` ile yazıldı;
+    // burada `onSaleComplete(sale)` çağırırsak çift yazım + çift stok düşümü
+    // olur. Sepet temizliği ve modal kapatma da orada yapıldı; sadece ref'i
+    // serbest bırakıp çıkıyoruz.
+    if (paymentData?.skipInvoice === true) {
+      paymentSubmitRef.current = false;
+      return;
+    }
+
     if (isBlockNegativeStockSaleEnabled()) {
       const demand = cart.map((item) => {
         const unit = item.unit || item.product.unit || t.pcs;

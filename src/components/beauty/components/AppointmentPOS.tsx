@@ -2379,6 +2379,25 @@ export function AppointmentPOS({
                 paymentData && paymentData.mode === 'prePayment' && paymentData.hasPesinatli === true,
             );
             /**
+             * skipInvoice — POSPaymentModal'daki "Satış faturası oluşturulsun mu?"
+             * checkbox'ı kaldırıldığında `true` gelir. Bu modda:
+             *   - Avans + cari bakiye `onAvansRecorded` callback'i içinde
+             *     zaten `recordAdvance` ile yazıldı.
+             *   - Burada `rex_*_sales` tablosuna ayrı bir "rezervasyon" sales
+             *     fişi YAZILMAZ (kullanıcı bilinçli olarak kasaya avans olarak
+             *     yansıtmak istedi; çift fiş istemiyor).
+             *   - Randevu DB kaydı HER ZAMAN oluşturulur / güncellenir —
+             *     randevuya deposit_amount=0 yazılır (avans caride duruyor;
+             *     randevu panelinde "Ön Ödenen" carideki bakiyeden görülebilir).
+             *   - Ana satış fişi (separateLineInvoices / createSale) ve ERP sync
+             *     tamamen atlanır — `beautyService.collectAppointmentRemainder`
+             *     hizmet verildiğinde kalan + avansı birleştirir.
+             *   - Receipt80mm modalı gösterilmez (fiziksel fiş yok).
+             * Aksi halde bug: skipInvoice=true olunca `onComplete` atlanıyor →
+             * randevu DB'ye hiç yazılmıyor, deposit_amount 0 kalıyor.
+             */
+            const skipInvoice = paymentData?.skipInvoice === true;
+            /**
              * Bug 2 düzeltmesi — gelecekteki randevu tarihi için status her
              * zaman SCHEDULED kalmalı; hizmet henüz verilmedi, "başladı"
              * anlamına gelmez. Örnek: 02.10.2026'da 05.10.2026 için randevu
@@ -2407,11 +2426,15 @@ export function AppointmentPOS({
             // → sadece rezervasyon tutarı kadar ayrı bir sales fiş oluşturulur,
             // bu fiş appointment.deposit_amount + deposit_sale_fiche_no alanlarına
             // yazılır. Stok/sarf düşümü YOK (hizmet henüz verilmedi).
+            //
+            // skipInvoice=true ise ayrı bir rezervasyon sales fişi YAZILMAZ —
+            // kullanıcı "fatura oluşturulsun mu?"yu kaldırdı, avans zaten
+            // `onAvansRecorded` → `recordAdvance` ile caride. Çift fiş olmaz.
             let reservationSaleId: string | null = null;
             let reservationSaleFicheNo: string | null = null;
             const reservationAmt = Math.max(0, reservationAmount || 0);
             const shouldRecordReservation =
-                isPesinatliPrePayment && reservationAmt > 0 && !!customer?.id;
+                isPesinatliPrePayment && !skipInvoice && reservationAmt > 0 && !!customer?.id;
             if (shouldRecordReservation) {
                 try {
                     const resPayRows = Array.isArray(paymentData.payments)
@@ -2615,6 +2638,18 @@ export function AppointmentPOS({
                 }
             }
 
+            // skipInvoice=true → satış fişi (rex_*_sales) ve ERP sync atlanır.
+            // Avans `onAvansRecorded` → `recordAdvance` ile zaten caride; hizmet
+            // verildiğinde `beautyService.collectAppointmentRemainder` kalan + avansı
+            // birleştirip tek fiş yazar. Randevu DB kaydı yukarıda zaten oluştu /
+            // güncellendi; stok düşümü de sıfır (hizmet verilmedi).
+            //
+            // separateLineInvoices scope dışında tanımlanıyor; aşağıdaki
+            // `splitInvoiceCount` toast dalı tarafından okunuyor. skipInvoice
+            // durumunda atanmadığı için `false` kalır ve toast `> 1` dalına
+            // düşmez (zaten skipInvoice dalına düşüyor).
+            let separateLineInvoices = false;
+            if (!skipInvoice) {
             const settlement = resolvePosCheckoutSettlement(
                 finalTotalSale,
                 Array.isArray(paymentData.payments) ? paymentData.payments : [],
@@ -2623,6 +2658,7 @@ export function AppointmentPOS({
             const payRows = settlement.payments;
             const paidNow = settlement.collected;
             const remainingNow = settlement.remaining;
+            // separateLineInvoices yukarıda scope dışında tanımlandı; burada atanıyor.
 
             const lineGrosses = cart.map((l) => l.unit_price * l.qty);
             const lineSplits = splitProportionalLineDiscount(lineGrosses, headerDiscount);
@@ -2682,7 +2718,7 @@ export function AppointmentPOS({
                 ),
             }));
 
-            let separateLineInvoices = false;
+            // separateLineInvoices yukarıda scope dışında tanımlandı; burada atanıyor.
             try {
                 const cfg: any = await safeInvoke('get_app_config');
                 separateLineInvoices =
@@ -2810,12 +2846,21 @@ export function AppointmentPOS({
                 }, saleItems, parentOpts);
             }
 
-            const splitInvoiceCount =
-                separateLineInvoices && cart.length > 1 ? cart.length : 0;
+            // skipInvoice modunda ayrı bir ana satış fişi yazılmadı; fiş adedi 0.
+            // separateLineInvoices / splitInvoiceCount yalnızca !skipInvoice scope'unda
+            // hesaplanır; skipInvoice ise toast'taki fiş-adedi dalına düşmez.
+            // splitInvoiceCount'u scope dışında tutmak için koşullu atama yapıyoruz.
+            const splitInvoiceCount: number =
+                !skipInvoice && separateLineInvoices && cart.length > 1 ? cart.length : 0;
 
             // Stok: yalnızca ERP fatura oluşturma (salesAPI → invoicesAPI.create) düşer.
             // Burada tekrar updateStock yapılırsa çift düşüm + silmede tek reverse → hayalet stok.
 
+            // skipInvoice modunda fiziksel fiş yok (avans caride yazıldı, hizmet
+            // verildiğinde kalan + avans birleşip tek fiş oluşacak). Bu yüzden
+            // Receipt80mm modalı gösterilmez. (Aşağıdaki `if (skipInvoice)`
+            // dalında zaten bu blok atlanıyor — yukarıdaki ana `if (!skipInvoice)`
+            // scope'unun içindeyiz.)
             const receiptSettings = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
             const payLang: KitchenReceiptLocale = isKitchenReceiptLocale(paymentData?.language) ? paymentData.language : 'tr';
 
@@ -2865,6 +2910,20 @@ export function AppointmentPOS({
                 toast.success(tm('bPaymentCompleted'));
             }
             notifyPosSaleSuccess();
+            } // if (!skipInvoice) — satış + receipt + cleanup bloğu sonu
+            else {
+                // skipInvoice modu: avans + cari bakiye yazıldı (onAvansRecorded
+                // → recordAdvance), fatura oluşturulmadı, randevu DB'ye yazıldı /
+                // güncellendi (yukarıdaki updateAppointment / createAppointment).
+                clearCart();
+                void generateNewReceiptNumber();
+                setShowPay(false);
+                toast.success(
+                    tm('bAdvanceRecordedNoInvoice') ||
+                        'Ön ödeme alındı ve randevu kaydedildi. Satış faturası kesilmedi — kalan ödeme hizmet verildiğinde alınır.',
+                );
+                notifyPosSaleSuccess();
+            }
         } catch (e: unknown) {
             setShowPay(false);
             logger.crudError('AppointmentPOS', 'payAndBook', e);

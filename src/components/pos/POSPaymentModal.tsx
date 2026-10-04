@@ -1110,22 +1110,16 @@ const handleCollectCustomerDebt = async () => {
     const PAYMENT_TIMEOUT_MS = 45_000;
     // Skip-invoice (sadece avans + cari bakiye, fatura oluşturma) akışı:
     // `onAvansRecorded` zaten parent tarafından işlendi ve orada `recordAdvance`
-    // çağrıldı. `onComplete` (faturalı satış) akışına düşmemeliyiz; aksi halde
-    // peşinat + satış faturası çift yazılır. Bu nedenle payload.skipInvoice
-    // true ise `onComplete` çağrısını atlıyoruz; parent (MarketPOS) bu bayrakla
-    // modalı zaten kapatmış olmalı, biz sadece yüklemeyi bırakıyoruz.
-    const onlyAdvanceRecorded =
-      currentMethod === 'pesinatli' &&
-      onAvansRecorded &&
-      selectedCustomer &&
-      !createInvoiceWithDeposit;
-    if (onlyAdvanceRecorded) {
-      // Sadece avans kaydedildi, fatura yazılmayacak. PaymentPayload'ı
-      // parent'a bildirmeden işlemi tamamla. Sepet temizliği vb. parent'ta
-      // zaten `handleAvansRecorded` içinde yapıldı.
-      setIsLoading(false);
-      return;
-    }
+    // çağrıldı. Yine de `onComplete`'i `skipInvoice: true` ile çağırıyoruz;
+    // sebebi: Beauty POS'ta (AppointmentPOS) randevu oluşturma / güncelleme
+    // işlemleri `onComplete` (`handlePayComplete`) içinde yapılıyor —
+    // `onAvansRecorded` sadece avans/cari yazıyor, randevu kaydını o
+    // oluşturmuyor. `onComplete`'i atlayacak olursak yeni randevu DB'ye
+    // hiç yazılmaz ve randevuya `deposit_amount` / `deposit_sale_id` alanları
+    // bağlanmaz (Bug — `paymentData.skipInvoice=true` modunda randevu
+    // sessizce oluşmadan işlem bitiyordu). MarketPOS'ta randevu olmadığı
+    // için `handlePaymentComplete` `skipInvoice === true` ise erken return
+    // ediyor; orada çift yazım yok.
     try {
       await Promise.race([
         Promise.resolve(onComplete(paymentPayload)),

@@ -9151,6 +9151,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   bCatDentalImplant: { tr: 'İmplant', en: 'Implant', ar: 'زرع', ku: 'ئیمپڵانت' },
   bCatDentalRestorative: { tr: 'Restoratif', en: 'Restorative', ar: 'ترميمي', ku: 'نوێکردنەوە' },
   bPaymentCompleted: { tr: 'Randevu & Ödeme tamamlandı!', en: 'Appointment & Payment completed!', ar: 'تم إكمال الموعد والدفع!', ku: 'ژماون و پارەدان تەواو بوو!' },
+  bAdvanceRecordedNoInvoice: {
+    tr: 'Ön ödeme alındı ve randevu kaydedildi. Satış faturası kesilmedi — kalan ödeme hizmet verildiğinde alınır.',
+    en: 'Advance recorded and appointment saved. No sales invoice issued — the remaining payment is collected when the service is performed.',
+    ar: 'تم تسجيل الدفعة الأولى وحفظ الموعد. لم يتم إصدار فاتورة بيع — يتم تحصيل المبلغ المتبقي عند تنفيذ الخدمة.',
+    ku: 'پێشەکی تۆمارکرا و ژماون پاشەکەوتکرا. هیچ فاکتەیەک دەرنەچوو — بڕی ماوە لەکاتی ئەنجامدانی خزمەتگوزاریدا وەردەگیرێت.',
+  },
+  bPrePaymentReceived: {
+    tr: 'Ön ödeme alındı — randevu başladı. Hizmet verildiğinde tamamlayın.',
+    en: 'Advance received — appointment started. Complete it when the service is delivered.',
+    ar: 'تم استلام الدفعة الأولى — بدأ الموعد. أكمله عند تنفيذ الخدمة.',
+    ku: 'پێشەکی وەرگیرا — ژماون دەستیپێکرد. لەکاتی ئەنجامدانی خزمەتگوزاریدا تەواوی بکە.',
+  },
   bAppointmentCreated: { tr: 'Randevu oluşturuldu!', en: 'Appointment created!', ar: 'تم إنشاء الموعد!', ku: 'ژماون دروست کرا!' },
   bAppointmentUpdate: { tr: 'Güncelle', en: 'Update', ar: 'تحديث', ku: 'نوێکردنەوە' },
   bAppointmentUpdateSaving: { tr: 'Kaydediliyor…', en: 'Saving…', ar: 'جارٍ الحفظ…', ku: 'پاشەکەوت…' },
