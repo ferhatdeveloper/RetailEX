@@ -334,6 +334,74 @@ export function computeCustomerPaidAmountFromCashLines(
 }
 
 /**
+ * Tedarikçi (supplier) için **brüt borç** toplamı (fatura + iade + açılış;
+ * mutlak değer). UI'da ayrı "Brüt Borç" kolonu olarak gösterilir.
+ *   purchase_invoice   → +ABS(net_amount)
+ *   return_invoice     → +ABS(net_amount)  (iade ters, brüt hareket)
+ *   opening_balance    → +ABS(net_amount)
+ * İptal / cancelled = true satırlar dışlanır.
+ * id veya ünvan eşleşmesi kabul edilir (müşteri CTE'si ile simetrik).
+ */
+export function computeSupplierDebtTotalFromSales(
+  accountId: string,
+  accountName: string,
+  sales: LedgerSaleRow[],
+): number {
+  const idStr = String(accountId || '');
+  const nameKey = normalizeAccountName(accountName);
+  let sum = 0;
+  for (const s of sales) {
+    const ft = String(s.fiche_type || '').toLowerCase();
+    if (ft !== 'purchase_invoice' && ft !== 'return_invoice' && ft !== 'opening_balance') continue;
+    if (s.is_cancelled === true) continue;
+    if (!saleCountsTowardSupplierDebt(s)) continue;
+    const rawAmt = parseFloat(String(s.net_amount ?? 0)) || 0;
+    if (!rawAmt) continue;
+    const cid = s.customer_id ? String(s.customer_id) : '';
+    const matchesId = cid && cid === idStr;
+    const matchesName =
+      nameKey &&
+      normalizeAccountName(s.customer_name) === nameKey &&
+      (!cid || cid !== idStr);
+    if (!matchesId && !matchesName) continue;
+    sum += Math.abs(rawAmt);
+  }
+  return sum;
+}
+
+/**
+ * Müşteri (customer) için **brüt borç** toplamı (veresiye satış + iade +
+ * açılış; mutlak değer). UI'da ayrı "Brüt Borç" kolonu.
+ *   sales_invoice / service / hizmet (peşin hariç) → +ABS
+ *   return_invoice → +ABS
+ *   opening_balance → +ABS
+ */
+export function computeCustomerDebtTotalFromSales(
+  accountId: string,
+  accountName: string,
+  sales: LedgerSaleRow[],
+): number {
+  const idStr = String(accountId || '');
+  const nameKey = normalizeAccountName(accountName);
+  let sum = 0;
+  for (const s of sales) {
+    if (s.is_cancelled === true || String(s.fiche_type || '').toLowerCase() === 'cancelled') continue;
+    if (!saleCountsTowardCustomerDebt(s)) continue;
+    const amt = parseFloat(String(s.net_amount ?? 0)) || 0;
+    if (!amt) continue;
+    const cid = s.customer_id ? String(s.customer_id) : '';
+    const matchesId = cid && cid === idStr;
+    const matchesName =
+      nameKey &&
+      normalizeAccountName(s.customer_name) === nameKey &&
+      (!cid || cid !== idStr);
+    if (!matchesId && !matchesName) continue;
+    sum += Math.abs(amt);
+  }
+  return sum;
+}
+
+/**
  * Tedarikçi (supplier) için ödenen tutar — CH_TAHSILAT mutlak toplamı.
  * CH_ODEME bizden para çıkışı (avans/erken ödeme simetrisi); ödeme değil.
  */

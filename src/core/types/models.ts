@@ -153,6 +153,10 @@ export interface Customer {
   postal_code?: string; // Posta kodu
   country?: string;     // Ülke
   balance?: number;     // Bakiye
+  /** Brüt borç toplamı (veresiye satış + iade + açılış). Mutlak değer; UI'da ayrı kolon. */
+  debt_total?: number;
+  /** Ödenen toplam (cash_lines CH_ODEME mutlak). UI'da ayrı kolon. */
+  paid_total?: number;
   totalPurchases: number;
   lastPurchase?: string;
   points?: number;

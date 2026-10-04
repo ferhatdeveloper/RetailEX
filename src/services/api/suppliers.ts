@@ -15,6 +15,10 @@ import {
   sqlResolvedSupplierBalanceExpr,
   computeCustomerBalanceFromLedger,
   computeSupplierBalanceFromLedger,
+  computeCustomerPaidAmountFromCashLines,
+  computeSupplierPaidAmountFromCashLines,
+  computeCustomerDebtTotalFromSales,
+  computeSupplierDebtTotalFromSales,
   normalizeFirmTableNr,
   accountLedgerNameMatch,
   cardFirmNrMatches,
@@ -175,6 +179,15 @@ export const supplierAPI = {
             cash,
             parseFloat(String(r.balance ?? 0)) || 0,
           ),
+          debt_total: computeCustomerDebtTotalFromSales(
+            String(r.id),
+            String(r.name || ''),
+            sales,
+          ),
+          paid_total: computeCustomerPaidAmountFromCashLines(
+            String(r.id),
+            cash,
+          ),
         }));
         const supplierRows = supplierList.map((r) => ({
           ...r,
@@ -185,6 +198,15 @@ export const supplierAPI = {
             sales,
             cash,
             parseFloat(String(r.balance ?? 0)) || 0,
+          ),
+          debt_total: computeSupplierDebtTotalFromSales(
+            String(r.id),
+            String(r.name || ''),
+            sales,
+          ),
+          paid_total: computeSupplierPaidAmountFromCashLines(
+            String(r.id),
+            cash,
           ),
         }));
         return [...customerRows, ...supplierRows]
@@ -211,6 +233,8 @@ export const supplierAPI = {
           c.call_plan_caller_user_id, c.call_plan_caller_name, c.call_plan_time,
           c.call_last_status, c.call_last_note, c.call_last_at,
           ${sqlResolvedCustomerBalanceExpr('c')} as balance,
+          COALESCE(b.debt_sum, 0)::numeric AS debt_total,
+          COALESCE(b.paid_sum, 0)::numeric AS paid_total,
           c.is_active, c.created_at, 'customer' as card_type
         FROM ${custTable} c
         LEFT JOIN account_balances b ON c.id = b.id
@@ -232,6 +256,8 @@ export const supplierAPI = {
           NULL::uuid AS call_plan_caller_user_id, NULL::text AS call_plan_caller_name, NULL::time AS call_plan_time,
           NULL::varchar AS call_last_status, NULL::text AS call_last_note, NULL::timestamptz AS call_last_at,
           ${sqlResolvedSupplierBalanceExpr('s')} as balance,
+          COALESCE(b.debt_sum, 0)::numeric AS debt_total,
+          COALESCE(b.paid_sum, 0)::numeric AS paid_total,
           s.is_active, s.created_at, 'supplier' as card_type
         FROM ${suppTable} s
         LEFT JOIN supplier_balances b ON s.id = b.id
@@ -1098,6 +1124,8 @@ function mapDatabaseSupplierToSupplier(dbSupplier: any): Supplier {
     payment_terms: Number.isFinite(paymentNum) ? paymentNum : (paymentRaw ?? 30),
     credit_limit: parseFloat(dbSupplier.credit_limit || 0),
     balance: parseFloat(dbSupplier.balance || 0),
+    debt_total: dbSupplier.debt_total != null ? parseFloat(String(dbSupplier.debt_total)) || 0 : undefined,
+    paid_total: dbSupplier.paid_total != null ? parseFloat(String(dbSupplier.paid_total)) || 0 : undefined,
     points: dbSupplier.points != null ? parseFloat(String(dbSupplier.points)) || 0 : undefined,
     total_spent: dbSupplier.total_spent != null ? parseFloat(String(dbSupplier.total_spent)) || 0 : undefined,
     age: dbSupplier.age != null && dbSupplier.age !== '' ? Number(dbSupplier.age) : null,
