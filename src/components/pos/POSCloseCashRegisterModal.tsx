@@ -29,20 +29,18 @@ interface DenominationCount {
   count: number;
 }
 
-/** Veresiye detay modalı — kalem bazlı satır. Her `sale.items[]` kalemi
- *  (veya item yoksa satış özeti) için bir satır. Karma ödemede item
- *  tutarı satış içi veresiye oranı ile oranlanır. */
+/** Veresiye detay modalı — fatura bazlı satır. 1 satır = 1 fiş.
+ *  `quantity` = o fişteki toplam ürün adedi (`items[].quantity` toplamı).
+ *  Karma ödemede (peşin + veresiye) bu fişin veresiye payı `amount`'a yazılır;
+ *  adet toplamı ödeme oranıyla oranlanmaz — fişin fiziksel satır sayısıdır. */
 interface CreditDetailLine {
   key: string;
   saleId: string;
   date: string;
   receiptNumber: string;
   customer: string;
-  productName: string;
-  unit: string;
-  quantity: number;
-  unitPrice: number;
-  /** Bu kalemden düşen veresiye payı (oranlanmış) */
+  /** Bu fişteki ürün adetlerinin toplamı (birim etiketleri gizli) */
+  itemCount: number;
   amount: number;
 }
 
@@ -65,12 +63,13 @@ export function POSCloseCashRegisterModal({
   const [note, setNote] = useState('');
   const [printFormat, setPrintFormat] = useState<'80mm' | 'a4'>('80mm');
   /** Kasiyer ciro tablosunda Veresiye hücresine tıklandığında açılan
-   *  detay modalı state — seçili kasiyer adı + kalem-bazlı veresiye
-   *  satırları + fiş sayısı + toplam. */
+   *  detay modalı state — seçili kasiyer adı + fatura-bazlı veresiye
+   *  satırları + fiş sayısı + toplam ürün adedi + toplam tutar. */
   const [creditDetailFor, setCreditDetailFor] = useState<{
     cashierName: string;
     lines: CreditDetailLine[];
     receiptCount: number;
+    totalItemCount: number;
     total: number;
   } | null>(null);
   
@@ -149,14 +148,14 @@ export function POSCloseCashRegisterModal({
   /** Kasiyer ciro tablosunda Veresiye hücresine tıklayınca:
    *  Seçilen kasiyerin, bu kasa oturumundaki (veya bugün) veresiye
    *  satışlarını filtrele ve detay modalını aç.
-   *  Kalem-bazlı görünüm: her `sale.items[]` satırı = 1 tablo satırı.
-   *  Karma ödemede (peşin + veresiye) item tutarı, satış içindeki
-   *  veresiye oranı (`credit / saleTotal`) ile oranlanır. */
+   *  Fatura-bazlı görünüm: 1 satır = 1 fiş; Miktar sütunu = o fişteki
+   *  toplam ürün adedi; Tutar = o fişin veresiye payı. */
   const openCreditDetailFor = (row: typeof zReport.cashierStats[number]) => {
     if (row.creditTotal <= 0) return;
     const cashierKey = String(row.name || '').trim();
     const lines: CreditDetailLine[] = [];
     let grandTotal = 0;
+    let totalItemCount = 0;
     let receiptCount = 0;
 
     const matched = positiveSales
@@ -171,52 +170,30 @@ export function POSCloseCashRegisterModal({
 
     for (const { sale, credit } of matched) {
       const items = Array.isArray(sale.items) ? sale.items : [];
-      const saleTotal = Math.abs(Number(sale.total) || 0);
-      // Satış tamamen veresiye ise oran = 1, aksi halde veresiye/total
-      const ratio = saleTotal > 0 ? Math.min(1, credit / saleTotal) : 1;
+      // Bu fişteki toplam ürün adedi — birim etiketleri gizli, sadece sayı
+      const itemCount = items.reduce(
+        (sum, it) => sum + (Number(it.quantity) || 0),
+        0,
+      );
+      lines.push({
+        key: sale.id,
+        saleId: sale.id,
+        date: sale.date,
+        receiptNumber: sale.receiptNumber || sale.id,
+        customer: sale.customerName || sale.customerCompany || '—',
+        itemCount,
+        amount: credit,
+      });
+      grandTotal += credit;
+      totalItemCount += itemCount;
       receiptCount += 1;
-      if (items.length === 0) {
-        // items yoksa fişin tamamını tek satır olarak göster
-        const lineAmount = credit;
-        lines.push({
-          key: `${sale.id}::receipt`,
-          saleId: sale.id,
-          date: sale.date,
-          receiptNumber: sale.receiptNumber || sale.id,
-          customer: sale.customerName || sale.customerCompany || '—',
-          productName: '—',
-          unit: '',
-          quantity: 0,
-          unitPrice: 0,
-          amount: lineAmount,
-        });
-        grandTotal += lineAmount;
-        continue;
-      }
-      for (const it of items) {
-        const itemTotal = Math.abs(Number(it.total) || 0);
-        const lineAmount = itemTotal * ratio;
-        if (lineAmount <= 1e-9) continue; // veresiye kapsamında yer almayan kalem
-        lines.push({
-          key: `${sale.id}::${it.productId}::${String(it.productName)}`,
-          saleId: sale.id,
-          date: sale.date,
-          receiptNumber: sale.receiptNumber || sale.id,
-          customer: sale.customerName || sale.customerCompany || '—',
-          productName: it.productName || it.product_name || '—',
-          unit: it.unit || '',
-          quantity: Number(it.quantity) || 0,
-          unitPrice: Number(it.price) || 0,
-          amount: lineAmount,
-        });
-        grandTotal += lineAmount;
-      }
     }
 
     setCreditDetailFor({
       cashierName: cashierKey,
       lines,
       receiptCount,
+      totalItemCount,
       total: grandTotal,
     });
   };
@@ -686,7 +663,7 @@ export function POSCloseCashRegisterModal({
                 {creditDetailFor.cashierName} — {tm('posCreditDetailTitle')}
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                {creditDetailFor.receiptCount} {tm('posCreditDetailReceiptCount')} · {creditDetailFor.lines.length} {tm('posCreditDetailItemCount')} · {formatCurrency(creditDetailFor.total)}
+                {creditDetailFor.receiptCount} {tm('posCreditDetailReceiptCount')} · {creditDetailFor.totalItemCount} {tm('posCreditDetailItemCount')} · {formatCurrency(creditDetailFor.total)}
               </p>
             </div>
             <button
@@ -708,37 +685,29 @@ export function POSCloseCashRegisterModal({
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 text-xs uppercase text-gray-600 dark:text-gray-300">
                   <tr>
-                    <th className="text-left py-2 px-3 font-semibold">{tm('posCreditDetailDateCol')}</th>
-                    <th className="text-left py-2 px-3 font-semibold">{tm('posCreditDetailReceiptCol')}</th>
-                    <th className="text-left py-2 px-3 font-semibold">{tm('posCreditDetailCustomerCol')}</th>
-                    <th className="text-left py-2 px-3 font-semibold">{tm('posCreditDetailProductCol')}</th>
-                    <th className="text-right py-2 px-3 font-semibold">{tm('posCreditDetailQuantityCol')}</th>
-                    <th className="text-right py-2 px-3 font-semibold">{tm('posCreditDetailUnitPriceCol')}</th>
-                    <th className="text-right py-2 px-3 font-semibold">{tm('posCreditDetailAmountCol')}</th>
+                    <th className="text-left py-2 px-4 font-semibold">{tm('posCreditDetailDateCol')}</th>
+                    <th className="text-left py-2 px-4 font-semibold">{tm('posCreditDetailReceiptCol')}</th>
+                    <th className="text-left py-2 px-4 font-semibold">{tm('posCreditDetailCustomerCol')}</th>
+                    <th className="text-right py-2 px-4 font-semibold">{tm('posCreditDetailQuantityCol')}</th>
+                    <th className="text-right py-2 px-4 font-semibold">{tm('posCreditDetailAmountCol')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {creditDetailFor.lines.map((line) => (
                     <tr key={line.key} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                      <td className="py-1.5 px-3 text-gray-700 dark:text-gray-200 whitespace-nowrap text-xs">
+                      <td className="py-2 px-4 text-gray-700 dark:text-gray-200 whitespace-nowrap">
                         {new Date(line.date).toLocaleString()}
                       </td>
-                      <td className="py-1.5 px-3 text-gray-700 dark:text-gray-200 font-mono text-xs">
+                      <td className="py-2 px-4 text-gray-700 dark:text-gray-200 font-mono">
                         {line.receiptNumber}
                       </td>
-                      <td className="py-1.5 px-3 text-gray-700 dark:text-gray-200">
+                      <td className="py-2 px-4 text-gray-700 dark:text-gray-200">
                         {line.customer}
                       </td>
-                      <td className="py-1.5 px-3 text-gray-900 dark:text-gray-100 font-medium">
-                        {line.productName}
+                      <td className="py-2 px-4 text-right tabular-nums text-gray-700 dark:text-gray-200 font-medium">
+                        {formatNumber(line.itemCount)}
                       </td>
-                      <td className="py-1.5 px-3 text-right tabular-nums text-gray-700 dark:text-gray-200 whitespace-nowrap">
-                        {formatNumber(line.quantity)}{line.unit ? ` ${line.unit}` : ''}
-                      </td>
-                      <td className="py-1.5 px-3 text-right tabular-nums text-gray-700 dark:text-gray-200 whitespace-nowrap">
-                        {line.unitPrice > 0 ? formatCurrency(line.unitPrice) : '—'}
-                      </td>
-                      <td className="py-1.5 px-3 text-right tabular-nums font-medium text-indigo-700">
+                      <td className="py-2 px-4 text-right tabular-nums font-medium text-indigo-700">
                         {formatCurrency(line.amount)}
                       </td>
                     </tr>
@@ -746,10 +715,13 @@ export function POSCloseCashRegisterModal({
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-50 dark:bg-gray-800 border-t-2 border-gray-200 dark:border-gray-700">
-                    <td colSpan={6} className="py-2.5 px-3 text-right font-semibold text-gray-900">
-                      {t.total}
+                    <td colSpan={3} className="py-2.5 px-4 text-right font-semibold text-gray-900">
+                      {t.total} ({creditDetailFor.receiptCount} {tm('posCreditDetailReceiptCount')} · {formatNumber(creditDetailFor.totalItemCount)} {tm('posCreditDetailItemCount')})
                     </td>
-                    <td className="py-2.5 px-3 text-right tabular-nums font-bold text-indigo-900">
+                    <td className="py-2.5 px-4 text-right tabular-nums font-bold text-gray-900">
+                      {formatNumber(creditDetailFor.totalItemCount)}
+                    </td>
+                    <td className="py-2.5 px-4 text-right tabular-nums font-bold text-indigo-900">
                       {formatCurrency(creditDetailFor.total)}
                     </td>
                   </tr>
