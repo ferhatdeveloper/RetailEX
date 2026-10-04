@@ -10,7 +10,10 @@ import { getInvoiceHeaderField } from '../../../utils/invoiceHeaderFields';
 import { formatInvoiceDualAmountLines } from '../../../utils/invoiceFxDisplay';
 import { Eye, Edit, FileText } from 'lucide-react';
 
-/** v3: Durum/İşlem varsayılan gizli — eski v2 tercihlerinde status:true kalmasın */
+/** v3: Durum/İşlem varsayılan gizli — eski v2 tercihlerinde status:true kalmasın
+ *  Not: Özel Kod, Ticari Grubu, Yetki, Ambar, İşyeri, Satış Elemanı alanları
+ *  loadInvoiceListColumnVisibility() içinde force-hidden — kullanıcı kolon
+ *  görünürlük menüsünden istediğinde açabilir. */
 export const INVOICE_LIST_COLUMN_VISIBILITY_KEY = 'retailex_invoiceList_columnVisibility_v3';
 /** Kolon sürükle-bırak sırası — görünürlük key kalıbı ile uyumlu */
 export const INVOICE_LIST_COLUMN_ORDER_KEY = 'retailex_invoiceList_columnOrder_v1';
@@ -98,15 +101,30 @@ export function defaultInvoiceListColumnVisibility(): Record<string, boolean> {
 
 export function loadInvoiceListColumnVisibility(): Record<string, boolean> {
   const defaults = defaultInvoiceListColumnVisibility();
+  // Fatura başlığı ek alanları: kullanıcı isteği üzerine varsayılan kapalı.
+  // localStorage'da açık olsa bile her oturum başında zorla gizle; kullanıcı
+  // kolon görünürlük menüsünden elle açabilir.
+  const FORCE_HIDDEN: InvoiceListColumnId[] = [
+    'special_code',
+    'trading_group',
+    'authorization',
+    'warehouse',
+    'workplace',
+    'salesperson',
+  ];
+  const forced = Object.fromEntries(FORCE_HIDDEN.map((id) => [id, false])) as Record<string, boolean>;
   try {
     const raw = localStorage.getItem(INVOICE_LIST_COLUMN_VISIBILITY_KEY);
-    if (!raw) return defaults;
+    if (!raw) return { ...defaults, ...forced };
     const parsed = JSON.parse(raw) as Record<string, boolean>;
     return Object.fromEntries(
-      INVOICE_LIST_COLUMN_ORDER.map((id) => [id, parsed[id] ?? defaults[id]]),
+      INVOICE_LIST_COLUMN_ORDER.map((id) => [
+        id,
+        id in forced ? false : (parsed[id] ?? defaults[id]),
+      ]),
     );
   } catch {
-    return defaults;
+    return { ...defaults, ...forced };
   }
 }
 
