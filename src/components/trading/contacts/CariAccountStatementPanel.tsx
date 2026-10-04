@@ -393,10 +393,21 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
 
   /** Cari bakiye chip'i her zaman DB'deki `account.balance`'ten alınır —
    * cari kartındaki tutar tek doğruluk kaynağıdır. Σ borç − Σ alacak
-   * ile bu değer eşit olmalı; ayrıştığında (örn. ledger henüz
-   * yazılmamış satırlar) cari.balance chip'i doğruyu gösterir. */
+   * (ledger toplamı) ile bu değer eşit olmalı; ayrıştığında (örn.
+   * ledger henüz yazılmamış satırlar) cari.balance chip'i doğruyu
+   * gösterir. Tedarikçi MUS-018/TED-006 skandalı: 50k limit yüzünden
+   * kesilen CH_ODEME satırı nedeniyle Σ ile DB cache farklı
+   * görünebilir — bu yüzden Σ chip'i de görünür kılındı. */
   const currentBalanceHdr = fmtEkstreAmount(Math.abs(account.balance || 0));
   const currentBalanceDir = getCariBalanceDirection(account.cardType, account.balance || 0, tm);
+
+  /** Ledger toplamı (Σ borç − Σ alacak) — ekstre satırlarından
+   * hesaplanır. DB cache ile karşılaştırılır; fark varsa uyarı. */
+  const ledgerNetHdr = fmtEkstreSignedNet();
+  const cacheVsLedgerDiff = Math.abs(
+    Math.abs(account.balance || 0) - Math.abs(netBalance),
+  );
+  const cacheMatchesLedger = cacheVsLedgerDiff < 0.5;
 
   return (
     <FullscreenBodyPortal
@@ -417,19 +428,34 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
             <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${account.cardType === 'customer' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
               {account.cardType === 'customer' ? tm('customer') : tm('supplierLabel')}
             </span>
+<span
+              className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs font-black ${
+                currentBalanceDir.side === 'B'
+                  ? 'bg-red-50 border-red-200 text-red-700'
+                  : currentBalanceDir.side === 'A'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                    : 'bg-gray-50 border-gray-200 text-gray-500'
+              }`}
+              title={currentBalanceDir.hint}
+            >
+              {tm('custColBalance')}: {currentBalanceHdr.primary} {currentBalanceHdr.code}
+              {currentBalanceDir.sideLabel ? ` · ${currentBalanceDir.sideLabel}` : ''}
+            </span>
             <span
-                className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs font-black ${
-                  currentBalanceDir.side === 'B'
-                    ? 'bg-red-50 border-red-200 text-red-700'
-                    : currentBalanceDir.side === 'A'
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                      : 'bg-gray-50 border-gray-200 text-gray-500'
-                }`}
-                title={currentBalanceDir.hint}
-              >
-                {tm('custColBalance')}: {currentBalanceHdr.primary} {currentBalanceHdr.code}
-                {currentBalanceDir.sideLabel ? ` · ${currentBalanceDir.sideLabel}` : ''}
-              </span>
+              className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs font-black ${
+                cacheMatchesLedger
+                  ? 'bg-blue-50 border-blue-200 text-blue-700'
+                  : 'bg-amber-50 border-amber-300 text-amber-800'
+              }`}
+              title={
+                cacheMatchesLedger
+                  ? `Σ ledger = DB cache (borç − alacak farkı eşleşiyor)`
+                  : `Σ ledger (${ledgerNetHdr.primary} ${ledgerNetHdr.code}) ≠ DB cache (${currentBalanceHdr.primary} ${currentBalanceHdr.code}). Fark = ${formatNumber(cacheVsLedgerDiff, mainDec, mainShowDec)} ${mainCurrency}. Olası neden: limit yetersiz (kesilen satır), orphan CH_ODEME veya henüz ledger'a yansımamış hareket.`
+              }
+            >
+              Σ: {ledgerNetHdr.primary} {ledgerNetHdr.code}
+              {!cacheMatchesLedger && ` · ⚠ fark ${formatNumber(cacheVsLedgerDiff, mainDec, mainShowDec)}`}
+            </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input
