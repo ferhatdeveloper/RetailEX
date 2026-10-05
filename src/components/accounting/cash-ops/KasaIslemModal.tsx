@@ -393,16 +393,44 @@ export function KasaIslemModal({
         await updateKasaIslemi(editingIslem.id, submitFormData);
         toast.success(tm('operationUpdatedSuccessfully') || 'İşlem güncellendi');
       } else {
-        await createKasaIslemi(submitFormData);
+        const result = await createKasaIslemi(submitFormData);
+        if (result == null) {
+          throw new Error(tm('operationSaveFailed') || 'İşlem kaydedilemedi');
+        }
         toast.success(t['operationSavedSuccessfully']);
       }
       onSuccess();
     } catch (error: any) {
       const msg = String(error?.message || '');
-      if (/duplicate|unique|fiche_no|23505/i.test(msg)) {
+      const errCode = String((error as any)?.code || '');
+      // 1) Dönem kapalı — assertPeriodOpen PERIOD_CLOSED (önce toast, sonra setError)
+      if (errCode === 'PERIOD_CLOSED' || /PERIOD_CLOSED.*?kapal|Dönem.*?kapalı.*?Yeni hareket/i.test(msg)) {
+        const periodMatch = msg.match(/Dönem\s+(\S+)\s+kapalı/);
+        const period = periodMatch?.[1] || selectedDonem?.name || '';
+        const friendly =
+          tm('cashModalPeriodClosedError')?.replace('{period}', period) ||
+          `Dönem ${period} kapalı. İşlem kaydedilemedi. Dönem açma ekranına gidin.`;
+        toast.error(friendly, { duration: 8000 });
+      } else if (errCode === 'PERIOD_BEFORE_START') {
+        const m = msg.match(/(\d{4}-\d{2}-\d{2})/g);
+        const friendly =
+          tm('cashModalPeriodBeforeStartError')
+            ?.replace('{date}', m?.[0] || '')
+            ?.replace('{beg}', m?.[1] || '') ||
+          'İşlem tarihi dönem başlangıcından önce. Dönem açma ekranından kontrol edin.';
+        toast.error(friendly, { duration: 8000 });
+      } else if (errCode === 'PERIOD_AFTER_END') {
+        const m = msg.match(/(\d{4}-\d{2}-\d{2})/g);
+        const friendly =
+          tm('cashModalPeriodAfterEndError')
+            ?.replace('{date}', m?.[0] || '')
+            ?.replace('{end}', m?.[1] || '') ||
+          'İşlem tarihi dönem bitişinden sonra. Dönem açma ekranından kontrol edin.';
+        toast.error(friendly, { duration: 8000 });
+      } else if (/duplicate|unique|fiche_no|23505/i.test(msg)) {
         toast.error(tm('cashInvoiceAlreadyPosted'));
       } else {
-        toast.error(error.message || t['operationSaveFailed']);
+        toast.error(msg || t['operationSaveFailed']);
       }
     } finally {
       setLoading(false);

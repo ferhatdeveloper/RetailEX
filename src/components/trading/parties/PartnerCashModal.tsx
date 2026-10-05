@@ -134,6 +134,9 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
             definition: definition || undefined,
             date: dateIso,
           });
+      if (!result || typeof result.balance !== 'number') {
+        throw new Error(t('party.partnerCash.saveFailed')?.replace('{message}', 'Boş yanıt'));
+      }
       setBalance(result.balance);
       toast.success(t('party.partnerCash.saveSuccess'));
       await loadRecent();
@@ -144,7 +147,26 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
       setIsBackDated(false);
       onSaved();
     } catch (err: any) {
-      setError(err?.message || String(err));
+      const msg = String(err?.message || err || '');
+      const errCode = String((err as any)?.code || '');
+      // Dönem kapalı — kullanıcı kapatırsa hatayı kaçırmasın, toast ile göster.
+      if (errCode === 'PERIOD_CLOSED' || /PERIOD_CLOSED.*?kapal|Dönem.*?kapalı.*?Yeni hareket/i.test(msg)) {
+        const periodMatch = msg.match(/Dönem\s+(\S+)\s+kapalı/);
+        const period = periodMatch?.[1] || '';
+        const friendly =
+          t('party.partnerCash.periodClosedError')?.replace('{period}', period) ||
+          `Dönem ${period} kapalı. İşlem kaydedilemedi. Dönem açma ekranına gidin.`;
+        toast.error(friendly, { duration: 8000 });
+        setError(friendly);
+      } else {
+        const friendly =
+          t('party.partnerCash.saveFailed')?.replace('{message}', msg) ||
+          msg ||
+          'Ortak kasa işlemi kaydedilemedi';
+        toast.error(friendly);
+        setError(friendly);
+      }
+      // Hata durumunda setIsBackDated(false) reset'ini KORUMA — kullanıcı niyetini bilsin
     } finally {
       setLoading(false);
     }

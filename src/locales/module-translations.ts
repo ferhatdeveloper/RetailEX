@@ -11048,6 +11048,24 @@ export const excelModuleTranslations = {
     ar: 'العملية بتاريخ سابق تتطلب خانة التأكيد.',
     ku: 'کارپێکردن بە بەرواری پێشووتر پێویستی بە چاککردنی خانەی پشتڕاستکردنەوە هەیە.',
   },
+  cashModalPeriodClosedError: {
+    tr: 'Dönem {period} kapalı. İşlem kaydedilemedi. Dönem açma ekranına gidin.',
+    en: 'Period {period} is closed. Transaction could not be saved. Please open the period first.',
+    ar: 'الفترة {period} مغلقة. تعذّر حفظ الحركة. يرجى فتح الفترة من شاشة إدارة الفترات.',
+    ku: 'ماوەی {period} داخراوە. مامەڵەکە پاشەکەوت نەکرا. تکایە سەرەتا ماوەکە بکەرەوە.',
+  },
+  cashModalPeriodBeforeStartError: {
+    tr: 'İşlem tarihi {date} dönem başlangıcından ({beg}) önce. Dönem açma ekranından kontrol edin.',
+    en: 'Transaction date {date} is before period start ({beg}). Please check the period settings.',
+    ar: 'تاريخ الحركة {date} قبل بداية الفترة ({beg}). يرجى التحقق من إعدادات الفترة.',
+    ku: 'بەرواری مامەڵە {date} پێش دەستپێکی ماوەکە ({beg}). تکایە ڕێکخستنەکانی ماوە بپشکنە.',
+  },
+  cashModalPeriodAfterEndError: {
+    tr: 'İşlem tarihi {date} dönem bitişinden ({end}) sonra. Dönem açma ekranından kontrol edin.',
+    en: 'Transaction date {date} is after period end ({end}). Please check the period settings.',
+    ar: 'تاريخ الحركة {date} بعد نهاية الفترة ({end}). يرجى التحقق من إعدادات الفترة.',
+    ku: 'بەرواری مامەڵە {date} دوای کۆتایی ماوەکە ({end}). تکایە ڕێکخستنەکانی ماوە بپشکنە.',
+  },
   // Migration 190 — Fatura back-dated audit
   invoiceInsertionAt: {
     tr: 'Ekleme Tarihi',
