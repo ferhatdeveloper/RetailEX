@@ -7137,7 +7137,7 @@ export const beautyService = {
     // =========================================================================
     // REPORT STATS  (aggregated analytics)
     // =========================================================================
-    async getReportStats(): Promise<{
+    async getReportStats(opts?: { includeDeposit?: boolean }): Promise<{
         monthlyRevenue: number;
         transactionCount: number;
         newCustomers: number;
@@ -7148,6 +7148,10 @@ export const beautyService = {
         serviceDistribution: { category: string; count: number; revenue: number }[];
         staffPerformance: { specialist_id: string; name: string; commission_rate: number; transactions: number; revenue: number; commission: number }[];
         productStaffPerformance: { specialist_id: string; name: string; commission_rate: number; transactions: number; revenue: number; commission: number }[];
+        /** includeDeposit=true iken dolar; aksi halde 0. (migration 181 VIEW'i) */
+        totalDeposit?: number;
+        /** includeDeposit=true iken dolar; aksi halde 0. */
+        depositOnlyCount?: number;
     }> {
         const st  = postgres.getMovementTableName('beauty_sales', 'beauty');
         const it  = postgres.getMovementTableName('beauty_sale_items', 'beauty');
@@ -7173,7 +7177,7 @@ export const beautyService = {
                 THEN 0
               ELSE COALESCE(total, 0)
             END`;
-        const [monthlyRes, prevRes, newCustRes, trendRes, svcRes, staffRes, productStaffRes] = await Promise.all([
+        const [monthlyRes, prevRes, newCustRes, trendRes, svcRes, staffRes, productStaffRes, depositRes] = await Promise.all([
             // Current month stats — cebe giren (paid_amount), belge tutarı değil
             postgres.query(`
                 SELECT
@@ -7284,6 +7288,21 @@ export const beautyService = {
                 ORDER BY revenue DESC
                 LIMIT 20
             `, [erpFirmNrForRow()]),
+            // Rezervasyon deposit / peşinatlı sayısı (migration 181 VIEW'i).
+            // Not: VIEW şu an tek firmaya sabit (rex_001_01_beauty_appointments);
+            // multi-tenant iyileştirmesi ileride view'ı firm parametrize ederek yapılacak.
+            // Mevcut ay filtresi `appointment_date` üzerinden — randevu tarihi.
+            // includeDeposit=false ise sorguyu atla, 0 döndür.
+            opts?.includeDeposit
+                ? postgres.query(`
+                    SELECT
+                        COALESCE(SUM(pas.deposit_amount), 0)::float AS total_deposit,
+                        COUNT(*) FILTER (WHERE pas.payment_state = 'deposit_only')::int AS deposit_only_count
+                    FROM beauty.beauty_appointment_payment_status pas
+                    WHERE pas.appointment_date >= date_trunc('month', CURRENT_DATE)
+                      AND pas.appointment_date <  date_trunc('month', CURRENT_DATE + INTERVAL '1 month')
+                `)
+                : Promise.resolve({ rows: [{ total_deposit: 0, deposit_only_count: 0 }] } as any),
         ]);
 
         const trend = (trendRes.rows as any[]).map(r => ({
@@ -7292,6 +7311,8 @@ export const beautyService = {
             revenue: r.revenue,
             transactions: r.transactions,
         }));
+
+        const depositRow = (depositRes as any)?.rows?.[0] ?? { total_deposit: 0, deposit_only_count: 0 };
 
         return {
             monthlyRevenue:       monthlyRes.rows[0]?.revenue      ?? 0,
@@ -7304,10 +7325,16 @@ export const beautyService = {
             serviceDistribution:  svcRes.rows  as any[],
             staffPerformance:     staffRes.rows as any[],
             productStaffPerformance: productStaffRes.rows as any[],
+            totalDeposit:         Number(depositRow.total_deposit)    || 0,
+            depositOnlyCount:     Number(depositRow.deposit_only_count) || 0,
         };
     },
 
-    async getCommissionReport(startYmd: string, endYmd: string): Promise<{
+    async getCommissionReport(
+        startYmd: string,
+        endYmd: string,
+        opts?: { includeDeposit?: boolean },
+    ): Promise<{
         rows: Array<{
             specialist_id: string;
             name: string;
@@ -7320,6 +7347,10 @@ export const beautyService = {
             total_revenue: number;
             total_commission: number;
             total_transactions: number;
+            /** includeDeposit=true iken dolar; aksi halde 0. */
+            total_deposit?: number;
+            /** includeDeposit=true iken dolar; aksi halde 0. */
+            total_outstanding?: number;
         }>;
         history_rows: Array<{
             date_ymd: string;
@@ -7337,6 +7368,10 @@ export const beautyService = {
             total_revenue: number;
             total_commission: number;
             total_transactions: number;
+            /** includeDeposit=true iken dolar; aksi halde 0. */
+            total_deposit?: number;
+            /** includeDeposit=true iken dolar; aksi halde 0. */
+            total_outstanding?: number;
         };
     }> {
         const st = postgres.getMovementTableName('beauty_sales', 'beauty');
@@ -7356,6 +7391,8 @@ export const beautyService = {
                     total_revenue: 0,
                     total_commission: 0,
                     total_transactions: 0,
+                    total_deposit: 0,
+                    total_outstanding: 0,
                 },
             };
         }
@@ -7372,17 +7409,49 @@ export const beautyService = {
                 COALESCE(SUM(CASE WHEN si.item_type = 'product' THEN si.commission_amount ELSE 0 END), 0)::float AS product_commission,
                 COALESCE(SUM(si.total), 0)::float AS total_revenue,
                 COALESCE(SUM(si.commission_amount), 0)::float AS total_commission,
-                COUNT(si.id)::int AS total_transactions
+                COUNT(si.id)::int AS total_transactions,
+                ${
+                    // includeDeposit=true ise randevu VIEW'i ile LEFT JOIN — uzman başına
+                    // deposit/remainder toplamı. Not: VIEW tek firmaya sabit (migration 181).
+                    opts?.includeDeposit
+                        ? `
+                COALESCE(dps.total_deposit, 0)::float    AS total_deposit,
+                COALESCE(dps.total_outstanding, 0)::float AS total_outstanding
+                          `
+                        : `
+                0::float AS total_deposit,
+                0::float AS total_outstanding
+                          `
+                }
             FROM ${it} si
             JOIN ${st} s ON s.id = si.sale_id
             LEFT JOIN ${spt} sp ON si.staff_id = sp.id
             LEFT JOIN public.users u ON si.staff_id = u.id
               AND lpad(trim(u.firm_nr::text), 3, '0') = $3
+            ${
+                opts?.includeDeposit
+                    ? `
+            LEFT JOIN (
+                SELECT
+                    a.staff_id,
+                    COALESCE(SUM(a.deposit_amount), 0)::float      AS total_deposit,
+                    COALESCE(SUM(GREATEST(0, ROUND((a.total_price - a.deposit_amount - a.remainder_paid_amount)::numeric, 2))), 0)::float AS total_outstanding
+                FROM beauty.rex_001_01_beauty_appointments a
+                WHERE a.staff_id IS NOT NULL
+                  AND a.appointment_date >= ($1::date)
+                  AND a.appointment_date <  (($2::date) + INTERVAL '1 day')
+                GROUP BY a.staff_id
+            ) dps ON dps.staff_id = si.staff_id
+            `
+                    : ''
+            }
             WHERE si.staff_id IS NOT NULL
               AND COALESCE(s.payment_status, 'paid') = 'paid'
               AND s.created_at >= ($1::date)
               AND s.created_at < (($2::date) + INTERVAL '1 day')
-            GROUP BY si.staff_id, COALESCE(sp.name, u.full_name, u.username, '—')
+            GROUP BY si.staff_id, COALESCE(sp.name, u.full_name, u.username, '—')${
+                opts?.includeDeposit ? ', dps.total_deposit, dps.total_outstanding' : ''
+            }
             ORDER BY total_commission DESC, total_revenue DESC
             `,
             [start, end, erpFirmNrForRow()],
@@ -7430,6 +7499,10 @@ export const beautyService = {
                 total_revenue: Number(r.total_revenue) || 0,
                 total_commission: Number(r.total_commission) || 0,
                 total_transactions: Number(r.total_transactions) || 0,
+                // includeDeposit=true ise SQL'den dolar; aksi halde 0. VIEW'de GREATEST(0,...)
+                // floor uygulandığı için negatif gelmez; burada Math.max güvenlik.
+                total_deposit: opts?.includeDeposit ? Math.max(0, Number(r.total_deposit) || 0) : 0,
+                total_outstanding: opts?.includeDeposit ? Math.max(0, Number(r.total_outstanding) || 0) : 0,
             };
         });
 
@@ -7442,6 +7515,10 @@ export const beautyService = {
                 acc.total_revenue += row.total_revenue;
                 acc.total_commission += row.total_commission;
                 acc.total_transactions += row.total_transactions;
+                if (opts?.includeDeposit) {
+                    acc.total_deposit += row.total_deposit ?? 0;
+                    acc.total_outstanding += row.total_outstanding ?? 0;
+                }
                 return acc;
             },
             {
@@ -7452,6 +7529,8 @@ export const beautyService = {
                 total_revenue: 0,
                 total_commission: 0,
                 total_transactions: 0,
+                total_deposit: 0,
+                total_outstanding: 0,
             },
         );
 
@@ -7484,6 +7563,8 @@ export const beautyService = {
                     total_revenue: 0,
                     total_commission: 0,
                     total_transactions: 0,
+                    total_deposit: 0,
+                    total_outstanding: 0,
                 };
                 normalized.push(zero);
                 byId.set(id, zero);
@@ -7497,6 +7578,154 @@ export const beautyService = {
         }
 
         return { rows: normalized, history_rows: historyRows, totals };
+    },
+
+    // =========================================================================
+    // DEPOSIT / PRE-PAYMENT REPORT (Rezervasyon / Ön Ödeme Raporu)
+    // -------------------------------------------------------------------------
+    // 181 migration VIEW `beauty.beauty_appointment_payment_status` randevu
+    // ödeme özetini (total_price, deposit_amount, remainder_paid_amount,
+    // outstanding_amount, payment_state) zaten hesaplı veriyor. Müşteri/
+    // uzman/hizmet/fiş no adları için firma-özgün `beauty_appointments`
+    // tablosuna JOIN atıyoruz.
+    // =========================================================================
+    async getDepositPrePaymentReport(
+        startYmd: string,
+        endYmd: string,
+        opts: {
+            specialistId?: string;
+            serviceId?: string;
+            paymentState?: string;
+            customerId?: string;
+        } = {},
+    ): Promise<Array<{
+        appointment_id: string;
+        appointment_date: string;
+        appointment_time: string;
+        customer_id: string | null;
+        customer_name: string;
+        specialist_id: string | null;
+        specialist_name: string | null;
+        service_id: string | null;
+        service_name: string | null;
+        total_price: number;
+        deposit_amount: number;
+        remainder_paid_amount: number;
+        outstanding_amount: number;
+        payment_state: 'no_amount' | 'unpaid' | 'deposit_only' | 'partial' | 'paid';
+        currency: string;
+        deposit_provider: string | null;
+        deposit_sale_fiche_no: string | null;
+    }>> {
+        const start = String(startYmd || '').trim();
+        const end = String(endYmd || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+            return [];
+        }
+        const fn = erpFirmNrForRow();
+        const aptTbl = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const custTbl = postgres.getCardTableName('customers');
+        const specTbl = postgres.getCardTableName('beauty_specialists', 'beauty');
+        const svcTbl = postgres.getCardTableName('beauty_services', 'beauty');
+        const svcPublicTbl = postgres.getCardTableName('services');
+        const prodTbl = postgres.getCardTableName('products');
+
+        // Parametre sırası: $1=start, $2=end, sonra opsiyonel filtreler,
+        // sonda $N=fn (firm filtresi) JOIN'ler için tek seferlik kullanılır.
+        const params: unknown[] = [start, end];
+        const where: string[] = [
+            `pas.appointment_date >= ($1)::date`,
+            `pas.appointment_date <= ($2)::date`,
+        ];
+        if (opts.specialistId && String(opts.specialistId).trim()) {
+            params.push(String(opts.specialistId).trim());
+            where.push(`a.specialist_id = ($${params.length})::uuid`);
+        }
+        if (opts.serviceId && String(opts.serviceId).trim()) {
+            params.push(String(opts.serviceId).trim());
+            where.push(`a.service_id = ($${params.length})::uuid`);
+        }
+        if (opts.customerId && String(opts.customerId).trim()) {
+            params.push(String(opts.customerId).trim());
+            where.push(`a.client_id = ($${params.length})::uuid`);
+        }
+        if (opts.paymentState && String(opts.paymentState).trim()) {
+            params.push(String(opts.paymentState).trim());
+            where.push(`pas.payment_state = $${params.length}`);
+        }
+
+        const sql = `
+            SELECT
+                pas.appointment_id::text                       AS appointment_id,
+                to_char(pas.appointment_date, 'YYYY-MM-DD')   AS appointment_date,
+                COALESCE(to_char(a.appointment_time, 'HH24:MI'), '') AS appointment_time,
+                pas.customer_id::text                          AS customer_id,
+                COALESCE(c.name, '—')                          AS customer_name,
+                a.specialist_id::text                          AS specialist_id,
+                COALESCE(sp.name, u.full_name, u.username, '—') AS specialist_name,
+                a.service_id::text                             AS service_id,
+                COALESCE(bs.name, rs.name, pr.name, '—')       AS service_name,
+                pas.total_price::float                         AS total_price,
+                pas.deposit_amount::float                      AS deposit_amount,
+                pas.remainder_paid_amount::float               AS remainder_paid_amount,
+                pas.outstanding_amount::float                  AS outstanding_amount,
+                pas.payment_state                              AS payment_state,
+                NULLIF(pas.deposit_provider, '')               AS deposit_provider,
+                a.deposit_sale_fiche_no                        AS deposit_sale_fiche_no
+            FROM beauty.beauty_appointment_payment_status pas
+            JOIN ${aptTbl} a ON a.id = pas.appointment_id
+            LEFT JOIN ${custTbl} c
+                   ON c.id = pas.customer_id
+                  AND lpad(trim(c.firm_nr::text), 3, '0') = $${params.length + 1}
+            LEFT JOIN ${specTbl} sp
+                   ON sp.id = a.specialist_id
+            LEFT JOIN public.users u
+                   ON u.id = a.specialist_id
+                  AND lpad(trim(u.firm_nr::text), 3, '0') = $${params.length + 1}
+            LEFT JOIN ${svcTbl} bs
+                   ON bs.id = a.service_id
+            LEFT JOIN ${svcPublicTbl} rs
+                   ON rs.id = a.service_id
+                  AND lpad(trim(rs.firm_nr::text), 3, '0') = $${params.length + 1}
+            LEFT JOIN ${prodTbl} pr
+                   ON pr.id = a.service_id
+                  AND lpad(trim(pr.firm_nr::text), 3, '0') = $${params.length + 1}
+                  AND (
+                    LOWER(TRIM(COALESCE(pr.material_type, ''))) = 'service'
+                    OR LOWER(TRIM(COALESCE(pr.materialtype, ''))) = 'service'
+                  )
+            WHERE ${where.join(' AND ')}
+            ORDER BY pas.appointment_date DESC,
+                     a.appointment_time DESC NULLS LAST,
+                     a.created_at DESC NULLS LAST
+            LIMIT 1000
+        `;
+        try {
+            const { rows } = await postgres.query(sql, [...params, fn]);
+            return (rows as any[]).map((r) => ({
+                appointment_id: String(r.appointment_id ?? ''),
+                appointment_date: String(r.appointment_date ?? '').slice(0, 10),
+                appointment_time: String(r.appointment_time ?? '').slice(0, 5),
+                customer_id: r.customer_id ? String(r.customer_id) : null,
+                customer_name: String(r.customer_name ?? '—'),
+                specialist_id: r.specialist_id ? String(r.specialist_id) : null,
+                specialist_name: r.specialist_name ? String(r.specialist_name) : null,
+                service_id: r.service_id ? String(r.service_id) : null,
+                service_name: r.service_name ? String(r.service_name) : null,
+                total_price: Number(r.total_price) || 0,
+                deposit_amount: Number(r.deposit_amount) || 0,
+                remainder_paid_amount: Number(r.remainder_paid_amount) || 0,
+                outstanding_amount: Number(r.outstanding_amount) || 0,
+                payment_state: (String(r.payment_state ?? 'no_amount') as
+                    | 'no_amount' | 'unpaid' | 'deposit_only' | 'partial' | 'paid'),
+                currency: 'IQD',
+                deposit_provider: r.deposit_provider ? String(r.deposit_provider) : null,
+                deposit_sale_fiche_no: r.deposit_sale_fiche_no ? String(r.deposit_sale_fiche_no) : null,
+            }));
+        } catch (e) {
+            console.warn('[beautyService] getDepositPrePaymentReport:', e);
+            return [];
+        }
     },
 
     // =========================================================================

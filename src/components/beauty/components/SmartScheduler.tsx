@@ -1197,9 +1197,14 @@ export function SmartScheduler() {
         const lastTreat = custId ? lastCustomerTreatments.get(custId) : undefined;
         const lastShots = String(lastTreat?.treatment_shots ?? '').trim();
         const lastDegree = String(lastTreat?.treatment_degree ?? '').trim();
+        const depositAmount = Number(apt.deposit_amount ?? 0);
+        const hasDeposit = Number.isFinite(depositAmount) && depositAmount > 0;
         const cardBg = earlyDone ? '#fef3c7' : done ? cfg.bg : hasNote ? '#fffbeb' : '#fff';
         const cardBorder = earlyDone ? '#f59e0b88' : done ? cfg.color + '55' : hasNote ? '#fde68a' : '#e8e4f0';
-        const cardBorderLeft = earlyDone ? '#d97706' : done ? cfg.color : hasNote ? '#d97706' : color;
+        // Deposit > 0 ise sol kenar mor (#7c3aed) — pre_paid statüsünden bağımsız, eski randevularda da görünür.
+        const cardBorderLeft = hasDeposit
+            ? CLINIC.depositAccent
+            : earlyDone ? '#d97706' : done ? cfg.color : hasNote ? '#d97706' : color;
         const statusBg = earlyDone ? '#fde68a' : cfg.bg;
         const statusColor = earlyDone ? '#92400e' : cfg.color;
         const statusLabel = earlyDone ? 'Erken geldi' : cfg.label;
@@ -1309,6 +1314,28 @@ export function SmartScheduler() {
                         ) : null}
                     </div>
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: statusBg, color: statusColor, flexShrink: 0 }}>{statusLabel}</span>
+                    {hasDeposit ? (
+                        <span
+                            data-testid="appointment-card-deposit-badge"
+                            title={`${tm('bReservationAmount')}: ${formatMoneyAmount(depositAmount, { minFrac: 0, maxFrac: 0 })}`}
+                            style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                padding: '1px 6px',
+                                borderRadius: 3,
+                                background: CLINIC.depositAccentBg,
+                                color: '#ffffff',
+                                flexShrink: 0,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 2,
+                                fontFamily: 'monospace',
+                                letterSpacing: '0.02em',
+                            }}
+                        >
+                            💰 {formatMoneyAmount(depositAmount, { minFrac: 0, maxFrac: 0 })}
+                        </span>
+                    ) : null}
                 </div>
                 <div
                     style={{
@@ -2746,8 +2773,10 @@ export function SmartScheduler() {
                                             </p>
                                         </div>
                                         <div
+                                            data-testid="appointment-detail-remaining-box"
+                                            title={remaining > 0 ? undefined : (tm('appointmentFullyPaid') || 'Tamamı ödendi')}
                                             style={{
-                                                background: remaining > 0 ? '#fef2f2' : '#f0fdf4',
+                                                background: remaining > 0 ? '#fee2e2' : '#d1fae5',
                                                 border: `1px solid ${remaining > 0 ? '#fecaca' : '#bbf7d0'}`,
                                                 borderRadius: 8,
                                                 padding: '10px 12px',
@@ -2757,7 +2786,7 @@ export function SmartScheduler() {
                                                 style={{
                                                     fontSize: 10,
                                                     fontWeight: 700,
-                                                    color: remaining > 0 ? '#991b1b' : '#166534',
+                                                    color: remaining > 0 ? '#dc2626' : '#059669',
                                                     textTransform: 'uppercase',
                                                     letterSpacing: '0.08em',
                                                     marginBottom: 4,
@@ -2770,13 +2799,13 @@ export function SmartScheduler() {
                                                 style={{
                                                     fontSize: 14,
                                                     fontWeight: 700,
-                                                    color: remaining > 0 ? '#b91c1c' : '#15803d',
+                                                    color: remaining > 0 ? '#dc2626' : '#059669',
                                                     fontFamily: 'monospace',
                                                 }}
                                             >
                                                 {formatMoneyAmount(remaining, { minFrac: 0, maxFrac: 0 })}
                                             </p>
-                                            <p style={{ fontSize: 10, color: remaining > 0 ? '#b91c1c' : '#15803d', marginTop: 2 }}>
+                                            <p style={{ fontSize: 10, color: remaining > 0 ? '#dc2626' : '#059669', marginTop: 2 }}>
                                                 {remaining > 0
                                                     ? tm('pesinatPartialNotCari') || 'Cariye yazılmaz, randevu tamamlanırken tahsil edilir.'
                                                     : tm('appointmentFullyPaid') || 'Tamamı ödendi'}

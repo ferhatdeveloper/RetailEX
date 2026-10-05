@@ -17,6 +17,9 @@ export const CLINIC = {
     violetHover: '#6d28d9',
     violetLight: '#ede9fe',
     violetSurface: '#f5f3ff',
+    /** Rezervasyon peşinatı vurgu rengi (event kartı sol kenarı + tutar rozeti) */
+    depositAccent: '#7c3aed',
+    depositAccentBg: '#7c3aed',
     /** Saat sütunu / ikincil yüzey */
     surfaceMuted: '#faf9fd',
     gridLine: '#f3f4f6',

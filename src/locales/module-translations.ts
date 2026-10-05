@@ -7485,6 +7485,20 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'لا توجد عربونات حجز مفتوحة',
     ku: 'هیچ پارەی نۆرەی کراوە نییە',
   },
+  /** CommissionReport kolon başlığı — uzman başına rezervasyon (deposit) toplamı */
+  bStaffReservationTotal: {
+    tr: 'Rezervasyon Tutarı',
+    en: 'Reservation Amount',
+    ar: 'مبلغ الحجز',
+    ku: 'بڕی نۆڕەی',
+  },
+  /** CommissionReport kolon başlığı — uzman başına kalan ödeme (outstanding) */
+  bStaffOutstandingTotal: {
+    tr: 'Kalan Tutar',
+    en: 'Outstanding Amount',
+    ar: 'المبلغ المتبقي',
+    ku: 'بڕی ماوە',
+  },
   /** Özet KPI altında: kümülatif açıklama + son satış kırılımı */
   bCustomerKpiCumulativeHint: {
     tr: 'Kart KPI’ları tüm satışların toplamıdır (son satış değil). Son satış: peşin {paid}, cari {credit}.',
@@ -9243,6 +9257,60 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   },
   bAppointmentCreated: { tr: 'Randevu oluşturuldu!', en: 'Appointment created!', ar: 'تم إنشاء الموعد!', ku: 'ژماون دروست کرا!' },
   bAppointmentUpdate: { tr: 'Güncelle', en: 'Update', ar: 'تحديث', ku: 'نوێکردنەوە' },
+  // Rezervasyon / ön ödeme (deposit) alanı — yeni randevu oluşturma ekranı.
+  // `bReservationAmount` paneldeki input başlığı; `bReservationLockedHint` ön ödeme
+  // daha önce alınmışsa readonly bilgi satırı başlığı. Diğer anahtarlar validasyon
+  // ve submit sonrası toast'lar içindir. (tr/en/ar/ku)
+  bReservationAmount: { tr: 'Rezervasyon Tutarı', en: 'Reservation Amount', ar: 'مبلغ الحجز', ku: 'بڕی نۆرە' },
+  bReservationLockedHint: {
+    tr: 'Bu randevu için daha önce ön ödeme alındı',
+    en: 'A deposit was already collected for this appointment',
+    ar: 'تم تحصيل عربون مسبقاً لهذا الموعد',
+    ku: 'بۆ ئەم ژماونە پێشتر پارەی دەسبەشکراو وەرگیراوە',
+  },
+  bReservationFeeNote: {
+    tr: 'Müşteriden randevu için peşin alınan tutar (0 = sadece randevu kaydı, ödeme hizmet sırasında).',
+    en: 'Amount collected up-front for this appointment (0 = booking only, payment on service).',
+    ar: 'المبلغ المحصل مسبقاً للموعد (0 = حجز فقط، الدفع عند الخدمة).',
+    ku: 'بڕی پارەی پێشوەختە بۆ ئەم ژماونە (0 = تەنها نۆرە، پارەدان لە کاتی خزمەت).',
+  },
+  bReservationAmountRequired: {
+    tr: 'Rezervasyon tutarı 0 ile toplam arasında olmalı.',
+    en: 'Reservation amount must be between 0 and the total.',
+    ar: 'يجب أن يكون مبلغ الحجز بين 0 والإجمالي.',
+    ku: 'بڕی نۆرە دەبێت لە نێوان 0 و کۆی گشتیدا بێت.',
+  },
+  bReservationAmountExceedsTotal: {
+    tr: 'Rezervasyon tutarı toplamı aşamaz.',
+    en: 'Reservation amount cannot exceed the total.',
+    ar: 'لا يمكن أن يتجاوز مبلغ الحجز الإجمالي.',
+    ku: 'بڕی نۆرە نابێت لە کۆی گشتی تێبپەڕێت.',
+  },
+  bReservationAmountInvalid: {
+    tr: 'Geçersiz tutar. Sadece sayısal değer girin.',
+    en: 'Invalid amount. Enter a numeric value only.',
+    ar: 'مبلغ غير صالح. أدخل قيمة رقمية فقط.',
+    ku: 'بڕی نادروست. تەنها بڕی ژمارەیی بنووسە.',
+  },
+  bReservationRecordedToast: {
+    tr: 'Ön ödeme ({amount} {currency}) kaydedildi.',
+    en: 'Deposit recorded ({amount} {currency}).',
+    ar: 'تم تسجيل العرنون ({amount} {currency}).',
+    ku: 'پارەی دەسبەشکراو تۆمار کرا ({amount} {currency}).',
+  },
+  bReservationCreateReceipt: {
+    tr: 'Peşinat fişi kes',
+    en: 'Issue deposit receipt',
+    ar: 'إصدار إيصال العرنون',
+    ku: 'وەسڵی دەسبەشکراو دەربکە',
+  },
+  bReservationCreateReceiptHint: {
+    tr: 'İşaretliyse ayrıca BEAUTY-PESINAT-* satış fişi kesilir. İşareti kaldırırsanız yalnızca cari avans + kasa hareketi yazılır.',
+    en: 'When checked, an additional BEAUTY-PESINAT-* sales receipt is issued. Uncheck to write only the customer advance + cash movement.',
+    ar: 'عند التفعيل، يتم إصدار إيصال بيع BEAUTY-PESINAT-* إضافي. ألغِ العلامة لكتابة السلفة فقط.',
+    ku: 'کاتێک چالاکە، وەسڵی فرۆشتنی BEAUTY-PESINAT-* دەردەچێت. لابەری بۆ تەنها نوسینی پارەی پێشەکی + جووڵەی نەقد.',
+  },
+  bAppointmentNo: { tr: 'Randevu No', en: 'Appointment No', ar: 'رقم الموعد', ku: 'ژمارەی ژماون' },
   bAppointmentUpdateSaving: { tr: 'Kaydediliyor…', en: 'Saving…', ar: 'جارٍ الحفظ…', ku: 'پاشەکەوت…' },
   bAppointmentUpdatedOk: { tr: 'Randevu güncellendi.', en: 'Appointment updated.', ar: 'تم تحديث الموعد.', ku: 'ژماون نوێکرایەوە.' },
   bAptCancelToolbarBtn: {
@@ -12192,6 +12260,16 @@ export const excelModuleTranslations = {
   bKpiInProgressSub: { tr: '{n} devam ediyor', en: '{n} in progress', ar: '{n} قيد التنفيذ', ku: '{n} لە بەردەوامیدا' },
   bKpiExpectedRevenue: { tr: 'Beklenen Ciro', en: 'Expected Revenue', ar: 'الإيراد المتوقع', ku: 'داهاتی چاوەڕوانکراو' },
   bKpiRemainingAppointmentsSub: { tr: '{n} randevu kaldı', en: '{n} remaining', ar: '{n} مواعيد متبقية', ku: '{n} ئامادەبوون ماوە' },
+  bDepositPrePaymentReport: { tr: 'Rezervasyon / Ön Ödeme Raporu', en: 'Reservation / Pre-Payment Report', ar: 'تقرير الحجز / الدفعة المقدمة', ku: 'ڕاپۆرتی نۆڕەی / پارەی پێشەکی' },
+  bKpiTotalReservation: { tr: 'Toplam Rezervasyon', en: 'Total Reservation', ar: 'إجمالي الحجز', ku: 'کۆی نۆڕەکە' },
+  bKpiTotalOutstanding: { tr: 'Toplam Kalan', en: 'Total Outstanding', ar: 'إجمالي المتبقي', ku: 'کۆی ماوە' },
+  bKpiPaidAppointments: { tr: 'Tamamlanan Randevu', en: 'Completed Appointments', ar: 'المواعيد المكتملة', ku: 'نۆڕەی تەواوبوو' },
+  bKpiDepositOnly: { tr: 'Sadece Peşinat', en: 'Deposit Only', ar: 'دفعة مقدمة فقط', ku: 'تەنها پارەی پێشەکی' },
+  bPaymentStateUnpaid: { tr: 'Ödenmedi', en: 'Unpaid', ar: 'غير مدفوع', ku: 'نەدراوە' },
+  bPaymentStateDepositOnly: { tr: 'Sadece Peşinat', en: 'Deposit Only', ar: 'دفعة مقدمة فقط', ku: 'تەنها پارەی پێشەکی' },
+  bPaymentStatePartial: { tr: 'Kısmi Ödeme', en: 'Partial', ar: 'جزئي', ku: 'بەشێک' },
+  bPaymentStatePaid: { tr: 'Tamamlandı', en: 'Paid', ar: 'مدفوع', ku: 'دراوە' },
+  bPaymentStateNoAmount: { tr: 'Tutar Yok', en: 'No Amount', ar: 'لا يوجد مبلغ', ku: 'بڕی نییە' },
   bTodayAppointmentsTitle: { tr: 'Bugünün Randevuları', en: 'Today\'s Appointments', ar: 'مواعيد اليوم', ku: 'ئامادەبوونەکانی ئەمڕۆ' },
   bRegisteredAppointmentsSub: { tr: '{n} kayıtlı randevu', en: '{n} scheduled', ar: '{n} موعد مسجل', ku: '{n} ئامادەبوونی تۆمارکراو' },
   bDashboardColAmount: { tr: 'Tutar', en: 'Amount', ar: 'المبلغ', ku: 'بڕ' },

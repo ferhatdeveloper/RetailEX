@@ -34,12 +34,18 @@ import { useProductStore } from '../../../store/useProductStore';
 import type { Product } from '../../../core/types';
 import type { Sale, SaleItem } from '../../../core/types/models';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
-import { currentLoginCashierName, resolveWriteCashierName } from '../../../utils/loginCashierName';
+import { currentLoginCashierName, currentLoginUserId, resolveWriteCashierName } from '../../../utils/loginCashierName';
 import { salesAPI } from '../../../services/api/sales';
 // POSPaymentModal'dan gelen "peşinatlı ödemede sadece avans kaydet" callback'i
 // için `recordAdvance` (avans + cari bakiye + kasa hareketi + stok rezervasyonu).
 // Fatura oluşturmaz; müşteri sonraki gelişinde kalan ödemeyi yapar.
 import { recordAdvance } from '../../../services/avansService';
+// Randevu ön ödeme (deposit) yaz: `createAppointmentDeposit` opsiyonel olarak
+// BEAUTY-PESINAT-* sales fişi keser; cari avans + kasa hareketi her durumda
+// `recordAdvance` ile yazılır.
+import { appointmentPaymentService } from '../../../services/appointmentPaymentService';
+// Rezervasyon tutarı para birimi (firma ana parabirimi) için uygulama varsayılanı.
+import { getAppDefaultCurrency } from '../../../services/postgres';
 import {
     findInsufficientStockHits,
     formatInsufficientStockMessage,
@@ -437,6 +443,10 @@ export function AppointmentPOS({
     const [discount, setDiscount] = useState(0);
     // Rezervasyon tutarı (müşteriden peşin alınan tutar; toplamdan düşer)
     const [reservationAmount, setReservationAmount] = useState(0);
+    // Yeni randevuda rezervasyon tutarı girildiğinde ayrıca BEAUTY-PESINAT-*
+    // satış fişi kesilsin mi? Varsayılan true — kullanıcı isteğe bağlı kapatır
+    // (yalnızca cari avans + kasa hareketi yazılır, sales fişi kesilmez).
+    const [reservationCreateReceipt, setReservationCreateReceipt] = useState(true);
 
     // ── Customer ─────────────────────────────────────────────────────────
     const [customer, setCustomer] = useState<BeautyCustomer | null>(null);
@@ -1541,6 +1551,7 @@ export function AppointmentPOS({
         setCustomer(null);
         setDiscount(0);
         setReservationAmount(0);
+        setReservationCreateReceipt(true);
         setReceiptTreatmentDegree('');
         setReceiptTreatmentShots('');
     };
@@ -1584,6 +1595,42 @@ export function AppointmentPOS({
     const allBookLinesStaffed =
         appointmentBookLines.length === 0 || appointmentBookLines.every((l) => !!l.staff_id?.trim());
     const canBookApt = appointmentBookLines.length > 0 && allBookLinesStaffed;
+
+    // ── Rezervasyon tutarı validasyonu (yeni randevu, henüz deposit alınmamış) ──
+    // 0 serbest; >0 ise: sayısal, (0, grossAfterDiscount] aralığında. Döviz IQD
+    // ise ondalık yok; aksi halde 2 hane. Para birimi `selectedFirm.ana_para_birimi`
+    // veya uygulama varsayılanı (`getAppDefaultCurrency`). Mevcut randevuda bu
+    // alan readonly/ kilitli olduğundan validasyon çalışmaz.
+    const reservationCurrency = useMemo(() => {
+        const f = selectedFirm as { ana_para_birimi?: string | null } | null | undefined;
+        const fromFirm = String(f?.ana_para_birimi ?? '').trim();
+        return (fromFirm || getAppDefaultCurrency() || 'IQD').toUpperCase();
+    }, [selectedFirm]);
+    const reservationMaxFractionDigits = reservationCurrency === 'IQD' ? 0 : 2;
+    const reservationValidation = useMemo<
+        | { ok: true }
+        | { ok: false; key: 'bReservationAmountRequired' | 'bReservationAmountExceedsTotal' | 'bReservationAmountInvalid' }
+    >(() => {
+        // Mevcut randevuda bu alan kilitli → hata yok.
+        if (existingAppointment?.id) return { ok: true };
+        const raw = Number(reservationAmount);
+        if (!Number.isFinite(raw) || raw < 0) {
+            return { ok: false, key: 'bReservationAmountInvalid' };
+        }
+        if (raw === 0) return { ok: true };
+        if (raw > 0 && grossAfterDiscount > 0 && raw > grossAfterDiscount + 0.0001) {
+            return { ok: false, key: 'bReservationAmountExceedsTotal' };
+        }
+        if (raw > 0 && grossAfterDiscount <= 0) {
+            return { ok: false, key: 'bReservationAmountRequired' };
+        }
+        return { ok: true };
+    }, [existingAppointment?.id, reservationAmount, grossAfterDiscount]);
+    // Sepet boşken rezervasyon alanı gizlenir (yalnızca dolu sepet senaryosu).
+    const showReservationAmountField = !existingAppointment?.id && grossAfterDiscount > 0;
+    // Submit (Randevu Oluştur) için ek gating: rezervasyon validasyonu geçerli olmalı.
+    const canBookAptWithReservation =
+        canBookApt && (reservationValidation.ok || !showReservationAmountField);
 
     /** Kayıt / slot için satır başı dakika; tek satırda doğrudan gerçek süre, çoklu satırda plana orantılı bölünür. */
     const lineBookingDurations = useMemo(() => {
@@ -2126,15 +2173,103 @@ export function AppointmentPOS({
             toast.info(tm('bPaymentAlreadyReceived'));
             return;
         }
-        if (!canSave || !canBookApt) return;
+        if (!canSave || !canBookAptWithReservation) return;
         if (bookingSubmitRef.current) return;
         bookingSubmitRef.current = true;
         setBookingBusy(true);
         try {
-            const planned = buildServiceAppointmentPayloads(aptStatus);
+            // Rezervasyon tutarı > 0 ise randevuyu PRE_PAID olarak oluştur
+            // (deposit_amount + deposit_date + deposit_provider='pos' alanları
+            // createAppointment INSERT'ine yazılır → randevu paneli sonraki
+            // girişte kalan tutarı doğru hesaplar). Aksi halde normal SCHEDULED.
+            const reservationForSubmit = Math.max(0, Number(reservationAmount) || 0);
+            const hasReservation = reservationForSubmit > 0 && reservationValidation.ok;
+            const statusForCreate = hasReservation
+                ? AppointmentStatus.PRE_PAID
+                : (aptStatus ?? AppointmentStatus.SCHEDULED);
+            const planned = buildServiceAppointmentPayloads(statusForCreate).map((p) => {
+                if (!hasReservation) return p;
+                // Yalnızca ilk satıra deposit tutarını yaz; sonraki satırlar
+                // paket seansı vb. için 0 kalır (toplam zaten ilk satırda).
+                return {
+                    ...p,
+                    deposit_amount: reservationForSubmit,
+                    deposit_date: new Date().toISOString(),
+                    deposit_provider: 'pos' as const,
+                };
+            });
             const createdIds: string[] = [];
             for (const p of planned) {
                 createdIds.push(await createAppointment(p));
+            }
+            // Rezervasyon/ön ödeme: cari avans + kasa hareketi YAZ.
+            // recordAdvance `appointmentId` opsiyonel parametresiyle
+            // beauty_appointments.deposit_amount alanını da günceller (ek
+            // güvenlik katmanı — INSERT sırasında yazılsa bile). Ayrıca
+            // kullanıcı "Peşinat fişi kes"i işaretlediyse createAppointmentDeposit
+            // ile BEAUTY-PESINAT-* sales fişi kesilir; carideki avans zaten
+            // recordAdvance ile yazıldığı için sales fişi sadece muhasebe
+            // defterine audit trail düşer.
+            if (hasReservation && customer?.id && createdIds[0]) {
+                try {
+                    await recordAdvance({
+                        customerId: customer.id,
+                        amount: reservationForSubmit,
+                        paymentMethod: 'cash',
+                        currency: reservationCurrency,
+                        notes:
+                            `${tm('bReservationAmount')} · ${tm('bAppointmentNo') || 'Randevu'} ${createdIds[0]}`.slice(
+                                0,
+                                250,
+                            ),
+                        userId: currentLoginUserId?.() ?? undefined,
+                        userName: currentLoginCashierName() || undefined,
+                        appointmentId: createdIds[0],
+                    });
+                    if (reservationCreateReceipt) {
+                        try {
+                            await appointmentPaymentService.createAppointmentDeposit({
+                                appointmentId: createdIds[0],
+                                customerId: customer.id,
+                                amount: reservationForSubmit,
+                                provider: 'cash',
+                                currency: reservationCurrency,
+                                notes:
+                                    `${tm('bReservationAmount')} · ${createdIds[0]}`.slice(
+                                        0,
+                                        250,
+                                    ),
+                                createdBy: currentLoginCashierName() || undefined,
+                            });
+                        } catch (ficheErr) {
+                            // Sales fişi kesilemedi; cari avans + kasa hareketi
+                            // zaten yazıldı. Kullanıcıyı uyar ama akışı kırma.
+                            logger.warn(
+                                'AppointmentPOS',
+                                'reservation sales fişi kesilemedi (avans yazıldı)',
+                                ficheErr,
+                            );
+                            toast.warning(
+                                tm('bReservationRecordedToast')
+                                    .replace('{amount}', fmt(reservationForSubmit))
+                                    .replace('{currency}', reservationCurrency),
+                                { duration: 5000 },
+                            );
+                        }
+                    }
+                    toast.success(
+                        tm('bReservationRecordedToast')
+                            .replace('{amount}', fmt(reservationForSubmit))
+                            .replace('{currency}', reservationCurrency),
+                        { duration: 5000 },
+                    );
+                } catch (avansErr) {
+                    // Avans yazılamadı → randevu DB'ye yazıldı ama deposit
+                    // eksik. Kullanıcıya bildir; parent state'i temizlenmeden
+                    // catch'e düşüp ekrana hata modalı açılır.
+                    logger.error('AppointmentPOS', 'recordAdvance failed (handleBookOnly)', avansErr);
+                    throw avansErr;
+                }
             }
             const productLines = cart.filter((l) => l.type === 'product');
             if (productLines.length > 0 && createdIds[0]) {
@@ -4881,30 +5016,114 @@ export function AppointmentPOS({
                         {/* Totals + Checkout */}
                         <div style={{ padding: '12px 14px' }}>
                             {/* Rezervasyon Tutarı (ön ödeme / kaparo)
-                                Yeni randevuda: kullanıcı tutarı girer.
-                                Mevcut randevuda (ön ödeme daha önce alınmışsa): readonly bilgi. */}
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                                <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{tm('bReservationAmount') || 'Rezervasyon Tutarı'}</span>
-                                {existingAppointment?.id && existingDeposit > 0 ? (
+                                Yeni randevuda (henüz deposit alınmamış, sepet dolu):
+                                  kullanıcı tutarı girer; 0 = sadece randevu kaydı.
+                                Mevcut randevuda (ön ödeme daha önce alınmışsa):
+                                  readonly bilgi (input kilitli).
+                                Sepet boşken (grossAfterDiscount === 0) alan gizli —
+                                  yalnızca dolu sepet senaryosu görünür. */}
+                            {showReservationAmountField && (
+                                <div style={{ marginBottom: 8 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{tm('bReservationAmount')}</span>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            step={reservationMaxFractionDigits === 0 ? 1 : 0.01}
+                                            value={reservationAmount || ''}
+                                            onChange={e => {
+                                                const raw = e.target.value;
+                                                if (raw === '') {
+                                                    setReservationAmount(0);
+                                                    return;
+                                                }
+                                                // Para birimi ondalık kuralı: IQD tam sayı,
+                                                // diğerleri en fazla 2 hane. Geçersiz giriş
+                                                // kullanıcıya kırmızı uyarı ile gösterilir.
+                                                const cleaned = raw.replace(',', '.');
+                                                const num = Number(cleaned);
+                                                if (!Number.isFinite(num) || num < 0) {
+                                                    setReservationAmount(0);
+                                                    return;
+                                                }
+                                                const fixed =
+                                                    reservationMaxFractionDigits === 0
+                                                        ? Math.round(num)
+                                                        : Math.round(num * 100) / 100;
+                                                setReservationAmount(fixed);
+                                            }}
+                                            placeholder="0"
+                                            data-testid="appointment-reservation-amount"
+                                            aria-invalid={!reservationValidation.ok}
+                                            title={tm('bReservationFeeNote')}
+                                            style={{
+                                                width: 110,
+                                                height: 26,
+                                                textAlign: 'right',
+                                                border: reservationValidation.ok
+                                                    ? '1px solid #e5e7eb'
+                                                    : '1px solid #dc2626',
+                                                borderRadius: 4,
+                                                fontSize: 12,
+                                                fontWeight: 700,
+                                                paddingRight: 5,
+                                                outline: 'none',
+                                                background: reservationValidation.ok ? '#fff' : '#fef2f2',
+                                                color: reservationValidation.ok ? '#111827' : '#991b1b',
+                                            }}
+                                        />
+                                    </div>
+                                    {!reservationValidation.ok && (
+                                        <div
+                                            data-testid="appointment-reservation-amount-error"
+                                            style={{ fontSize: 9, fontWeight: 700, color: '#dc2626', marginTop: 3, lineHeight: 1.3 }}
+                                        >
+                                            {tm(reservationValidation.key)}
+                                        </div>
+                                    )}
+                                    {/* Onay kutusu: rezervasyon tutarı > 0 ise ve
+                                        validasyon geçerliyse göster; kullanıcı isterse
+                                        yalnızca cari avans + kasa yazılsın, sales fişi
+                                        kesilmesin. Varsayılan: işaretli. */}
+                                    {reservationAmount > 0 && reservationValidation.ok && (
+                                        <label
+                                            data-testid="appointment-reservation-create-receipt"
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 5,
+                                                marginTop: 6,
+                                                fontSize: 10,
+                                                color: '#374151',
+                                                cursor: 'pointer',
+                                                userSelect: 'none',
+                                            }}
+                                            title={tm('bReservationCreateReceiptHint')}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={reservationCreateReceipt}
+                                                onChange={e => setReservationCreateReceipt(e.target.checked)}
+                                                style={{ width: 12, height: 12, cursor: 'pointer' }}
+                                            />
+                                            <span style={{ fontWeight: 600 }}>{tm('bReservationCreateReceipt')}</span>
+                                        </label>
+                                    )}
+                                </div>
+                            )}
+                            {/* Mevcut randevuda (ön ödeme daha önce alınmış) readonly bilgi. */}
+                            {existingAppointment?.id && existingDeposit > 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                    <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{tm('bReservationAmount')}</span>
                                     <span
                                         data-testid="appointment-reservation-amount-readonly"
-                                        title={tm('bReservationLockedHint') || 'Bu randevu için daha önce ön ödeme alındı'}
+                                        title={tm('bReservationLockedHint')}
                                         style={{ width: 90, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', border: '1px dashed #bbf7d0', borderRadius: 4, fontSize: 12, fontWeight: 800, paddingRight: 6, color: '#15803d', background: '#f0fdf4' }}
                                     >
                                         {fmt(existingDeposit)}
                                     </span>
-                                ) : (
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        value={reservationAmount || ''}
-                                        onChange={e => setReservationAmount(Math.max(0, Number(e.target.value) || 0))}
-                                        placeholder="0"
-                                        data-testid="appointment-reservation-amount"
-                                        style={{ width: 90, height: 26, textAlign: 'right', border: '1px solid #e5e7eb', borderRadius: 4, fontSize: 12, fontWeight: 700, paddingRight: 5, outline: 'none' }}
-                                    />
-                                )}
-                            </div>
+                                </div>
+                            )}
                             {/* Discount */}
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                                 <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{tm('bDiscountPercentShort')}</span>
@@ -5041,14 +5260,18 @@ export function AppointmentPOS({
                                 {!isStandaloneProductSales && !existingAppointment ? (
                                     <button
                                         type="button"
-                                        disabled={bookingBusy || !(canSave && canBookApt)}
+                                        disabled={bookingBusy || !(canSave && canBookAptWithReservation)}
                                         onClick={tryBookAppointment}
-                                        title={tm('bBookingHintTitle')}
+                                        title={
+                                            !reservationValidation.ok && showReservationAmountField
+                                                ? tm(reservationValidation.key)
+                                                : tm('bBookingHintTitle')
+                                        }
                                         style={{
-                                            height: 38, borderRadius: 5, border: (canSave && canBookApt && !bookingBusy) ? '2px solid #7c3aed' : '1px solid #e5e7eb',
-                                            background: (canSave && canBookApt && !bookingBusy) ? '#fff' : '#f9fafb',
-                                            color: (canSave && canBookApt && !bookingBusy) ? '#7c3aed' : '#9ca3af',
-                                            fontSize: 11, fontWeight: 800, cursor: (bookingBusy || !(canSave && canBookApt)) ? 'not-allowed' : 'pointer',
+                                            height: 38, borderRadius: 5, border: (canSave && canBookAptWithReservation && !bookingBusy) ? '2px solid #7c3aed' : '1px solid #e5e7eb',
+                                            background: (canSave && canBookAptWithReservation && !bookingBusy) ? '#fff' : '#f9fafb',
+                                            color: (canSave && canBookAptWithReservation && !bookingBusy) ? '#7c3aed' : '#9ca3af',
+                                            fontSize: 11, fontWeight: 800, cursor: (bookingBusy || !(canSave && canBookAptWithReservation)) ? 'not-allowed' : 'pointer',
                                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                                         }}
                                     >

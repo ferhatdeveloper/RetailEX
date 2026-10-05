@@ -3,7 +3,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
     BarChart3, TrendingUp, TrendingDown, Banknote,
     Users, Activity, Download, Calendar, ArrowUpRight,
-    ArrowDownRight, PieChart, ShoppingBag, Star, Loader2
+    ArrowDownRight, PieChart, ShoppingBag, Star, Loader2,
+    Wallet, CircleDollarSign
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { beautyService } from '../../../services/beautyService';
@@ -165,7 +166,7 @@ export function ReportDashboard() {
 
     useEffect(() => {
         setLoading(true);
-        beautyService.getReportStats()
+        beautyService.getReportStats({ includeDeposit: true })
             .then(setStats)
             .catch(e => setError(e?.message || String(e)))
             .finally(() => setLoading(false));
@@ -183,7 +184,7 @@ export function ReportDashboard() {
             <BarChart3 size={32} />
             <p className="text-sm font-bold">{tm('bReportLoadFailed')}</p>
             <p className="text-xs text-slate-400">{error}</p>
-            <Button onClick={() => { setLoading(true); setError(null); beautyService.getReportStats().then(setStats).catch(e => setError(String(e))).finally(() => setLoading(false)); }}
+            <Button onClick={() => { setLoading(true); setError(null); beautyService.getReportStats({ includeDeposit: true }).then(setStats).catch(e => setError(String(e))).finally(() => setLoading(false)); }}
                 className="mt-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-4 h-9 text-xs font-bold">
                 {tm('bRetry')}
             </Button>
@@ -203,6 +204,9 @@ export function ReportDashboard() {
         { label: tm('bAvgCart'),          value: fmt(stats!.avgCartValue),           pct: '—', up: true, icon: ShoppingBag, color: 'orange' },
         { label: tm('bServiceSalesKpi') || 'Hizmet satışı', value: fmt(serviceRevenue), pct: '—', up: true, icon: Star, color: 'purple' },
         { label: tm('bProductSalesKpi') || 'Ürün satışı', value: fmt(productRevenue), pct: '—', up: true, icon: ShoppingBag, color: 'blue' },
+        // Rezervasyon / deposit (migration 181 VIEW'i — dönem içi toplam)
+        { label: tm('bKpiTotalReservation') || 'Toplam Rezervasyon', value: fmt(stats!.totalDeposit ?? 0), pct: '—', up: true, icon: Wallet, color: 'purple' },
+        { label: tm('bKpiDepositOnly') || 'Sadece Peşinat', value: (stats!.depositOnlyCount ?? 0).toString(), pct: '—', up: true, icon: CircleDollarSign, color: 'blue' },
     ];
 
     // Pad trend to always show 6 bars

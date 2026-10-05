@@ -118,6 +118,7 @@ import {
 
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
 import { CommissionReport } from '../beauty/components/CommissionReport';
+import { DepositPrePaymentReport } from '../beauty/components/DepositPrePaymentReport';
 import { SurveyResultsReport } from '../beauty/components/SurveyResultsReport';
 import {
   SurveyTrendReport,
@@ -882,7 +883,7 @@ type ReportTab =
   // Ödeme & İşlem
   'payment-distribution' | 'discount-report' | 'cash-status' | 'commission' |
   // Güzellik özel
-  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-staff-treatment-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report' | 'beauty-overdue-uncalled-report';
+  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-staff-treatment-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report' | 'beauty-overdue-uncalled-report' | 'beauty-deposit-prepayment-report';
 
 /** Sol menüde gösterilmez: ekranı yok, gizlenen rapor veya yalnızca “yakında” placeholder idi. */
 const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
@@ -930,6 +931,7 @@ const BEAUTY_ONLY_REPORT_KEYS = new Set<string>([
   'beauty-survey-nps-report',
   'beauty-survey-comments-report',
   'beauty-overdue-uncalled-report',
+  'beauty-deposit-prepayment-report',
 ]);
 
 function beautyReportMenuItems(tm: (key: string) => string, reportMenuParams: ReportMenuParams) {
@@ -938,6 +940,7 @@ function beautyReportMenuItems(tm: (key: string) => string, reportMenuParams: Re
     { key: 'beauty-cancelled-report', label: tm('beautyCancelledOnlyReport'), icon: <AlertTriangle /> },
     { key: 'beauty-appointment-product-report', label: tm('beautyAppointmentProductSalesReport'), icon: <ShoppingCart className="w-4 h-4" /> },
     { key: 'beauty-commission-report', label: tm('bShellNavCommissionReport'), icon: <SafetyCertificateOutlined /> },
+    { key: 'beauty-deposit-prepayment-report', label: tm('bDepositPrePaymentReport'), icon: <Banknote className="w-4 h-4" /> },
     { key: 'beauty-staff-treatment-report', label: tm('beautyStaffTreatmentReport'), icon: <Users className="w-4 h-4" /> },
     { key: 'beauty-overdue-uncalled-report', label: tm('bOverdueUncalledReportMenu'), icon: <PhoneMissed className="w-4 h-4" /> },
     { key: 'beauty-survey-report', label: tm('bShellNavSurveyReport'), icon: <ClipboardList className="w-4 h-4" /> },
@@ -5894,6 +5897,7 @@ export function ReportsModule({
   const isBeautyCancelledReportTab = selectedTab === 'beauty-cancelled-report';
   const isBeautyAppointmentProductReportTab = selectedTab === 'beauty-appointment-product-report';
   const isBeautyCommissionReportTab = selectedTab === 'beauty-commission-report';
+  const isBeautyDepositPrePaymentReportTab = selectedTab === 'beauty-deposit-prepayment-report';
   const isBeautyStaffTreatmentReportTab = selectedTab === 'beauty-staff-treatment-report';
   const isBeautySurveyReportTab = selectedTab === 'beauty-survey-report';
   const isBeautySurveyTrendReportTab = selectedTab === 'beauty-survey-trend-report';
@@ -9502,6 +9506,10 @@ export function ReportsModule({
 
             {isBeautyCommissionReportTab && (
               <CommissionReport />
+            )}
+
+            {isBeautyDepositPrePaymentReportTab && (
+              <DepositPrePaymentReport />
             )}
 
             {isBeautyOverdueUncalledReportTab && (

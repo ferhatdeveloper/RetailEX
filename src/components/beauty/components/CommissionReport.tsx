@@ -31,7 +31,7 @@ export function CommissionReport() {
         setLoading(true);
         setError(null);
         try {
-            const res = await beautyService.getCommissionReport(startYmd, endYmd);
+            const res = await beautyService.getCommissionReport(startYmd, endYmd, { includeDeposit: true });
             setData(res);
         } catch (e: any) {
             setError(e?.message || String(e));
@@ -135,6 +135,33 @@ export function CommissionReport() {
                 footerSum: true,
                 footerFormat: (n) => fmt(n),
                 cell: (r) => <span className="font-black text-gray-900">{fmt(r.total_commission)}</span>,
+            },
+            {
+                key: 'total_deposit',
+                header: tm('bStaffReservationTotal'),
+                type: 'number',
+                align: 'right',
+                size: 150,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (r) => <span className="font-semibold text-amber-700">{fmt(r.total_deposit ?? 0)}</span>,
+            },
+            {
+                key: 'total_outstanding',
+                header: tm('bStaffOutstandingTotal'),
+                type: 'number',
+                align: 'right',
+                size: 140,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (r) => {
+                    const v = Math.max(0, Number(r.total_outstanding) || 0);
+                    return (
+                        <span className={v > 0 ? 'font-bold text-red-600' : 'font-semibold text-green-600'}>
+                            {fmt(v)}
+                        </span>
+                    );
+                },
             },
         ],
         [tm],
