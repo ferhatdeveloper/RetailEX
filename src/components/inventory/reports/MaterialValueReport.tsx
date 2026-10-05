@@ -195,14 +195,17 @@ export function MaterialValueReport() {
         columnHelper.accessor('unit', { header: tm('unit'), size: 80 }),
         columnHelper.accessor('quantity', {
             header: tm('quantity'),
+            meta: { filterKind: 'number', align: 'right' },
             cell: info => formatNumber(Number(info.getValue()) || 0, 2),
         }),
         columnHelper.accessor('average_unit_cost', {
             header: tm('avgUnitCost') || 'Ortalama Birim Maliyet',
+            meta: { filterKind: 'number', align: 'right' },
             cell: info => formatLedgerAmount(Number(info.getValue()) || 0, currency),
         }),
         columnHelper.accessor('total_cost', {
             header: tm('totalValue') || 'Toplam Değer',
+            meta: { filterKind: 'number', align: 'right' },
             cell: info => (
                 <span className="font-bold text-blue-600">
                     {formatLedgerAmount(Number(info.getValue()) || 0, currency)}
