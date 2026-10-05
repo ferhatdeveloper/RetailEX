@@ -69,6 +69,8 @@ export const PRODUCT_GRID_COLUMN_META: Record<string, ColumnMeta> = {
   priceList6: { id: 'priceList6', label: 'Fiyat Listesi 6', defaultVisible: false, size: 110, format: 'currency' },
   totalSales: { id: 'totalSales', label: 'Satış Toplam', defaultVisible: true, size: 140, format: 'currency' },
   totalPurchased: { id: 'totalPurchased', label: 'Alış Toplam', defaultVisible: true, purchaseOnly: true, size: 140, format: 'currency' },
+  average_unit_cost: { id: 'average_unit_cost', label: 'Alış Ortalaması', defaultVisible: true, purchaseOnly: true, size: 140, format: 'currency' },
+  average_unit_sales_price: { id: 'average_unit_sales_price', label: 'Satış Ortalaması', defaultVisible: true, size: 140, format: 'currency' },
   hasVariants: { id: 'hasVariants', label: 'Varyantlı', defaultVisible: false, size: 90, format: 'bool' },
   isScaleProduct: { id: 'isScaleProduct', label: 'Tartılı Ürün', defaultVisible: false, size: 100, format: 'bool' },
   followUpReminderDays: { id: 'followUpReminderDays', label: 'Takip Günü', defaultVisible: false, size: 100, format: 'number' },
@@ -195,6 +197,8 @@ export function getProductGridColumnLabels(tm: (key: string) => string): Record<
     priceList6: priceList(6),
     totalSales: tm('salesTotal'),
     totalPurchased: tm('purchaseTotal'),
+    average_unit_cost: tm('avgUnitCost'),
+    average_unit_sales_price: tm('avgUnitSalesPrice'),
     hasVariants: tm('productGridColHasVariants'),
     isScaleProduct: tm('scaleProduct'),
     followUpReminderDays: tm('productGridColFollowUpDays'),
@@ -262,6 +266,20 @@ export function buildProductGridColumns(options: {
         if (id === 'totalPurchased') {
           return (
             <span className="text-blue-600 font-medium font-bold">
+              {formatCurrency(Number(raw) || 0, 2, false)}
+            </span>
+          );
+        }
+        if (id === 'average_unit_cost') {
+          return (
+            <span className="text-blue-700 font-medium tabular-nums">
+              {formatCurrency(Number(raw) || 0, 2, false)}
+            </span>
+          );
+        }
+        if (id === 'average_unit_sales_price') {
+          return (
+            <span className="text-emerald-700 font-medium tabular-nums">
               {formatCurrency(Number(raw) || 0, 2, false)}
             </span>
           );

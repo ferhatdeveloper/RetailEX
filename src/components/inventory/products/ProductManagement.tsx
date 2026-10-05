@@ -99,7 +99,7 @@ const PRODUCT_STOCK_REFRESH_MS = 120000;
 
 export function ProductManagement({ products, setProducts }: ProductManagementProps) {
   const { t, tm } = useLanguage();
-  const { selectedFirm } = useFirmaDonem();
+  const { selectedFirm, selectedPeriod } = useFirmaDonem();
   const { canViewPurchasePricing, canViewProductListSalesPurchaseTotals } = usePermission();
   const showPurchasePricing = canViewPurchasePricing();
   const [reportMenuParams, setReportMenuParams] = useState<ReportMenuParams>(() =>
@@ -117,22 +117,45 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const isLoading = useProductStore((state) => state.isLoading);
   const [hasLoadedFromStore, setHasLoadedFromStore] = useState(false);
   const [docTotals, setDocTotals] = useState<Record<string, { totalSales: number; totalPurchased: number }>>({});
+  // Ürün ağırlıklı ortalama alış/satış fiyatları (grid için: Alış Ort. / Satış Ort. sütunları)
+  const [weightedAvgTick, setWeightedAvgTick] = useState(0);
+  const [weightedAvg, setWeightedAvg] = useState<{
+    purchaseById: Map<string, number>;
+    purchaseByCode: Map<string, number>;
+    salesById: Map<string, number>;
+    salesByCode: Map<string, number>;
+  }>({
+    purchaseById: new Map(),
+    purchaseByCode: new Map(),
+    salesById: new Map(),
+    salesByCode: new Map(),
+  });
 
   // Store'dan ürünleri kullan (stok güncellemeleri otomatik yansır)
   const displayProducts = useMemo(() => {
     const base = hasLoadedFromStore ? storeProducts : products;
     return base.map((p) => {
       const tot = docTotals[String(p.id || '').trim()];
-      if (!tot) {
-        return {
-          ...p,
-          totalSales: Number(p.totalSales ?? 0) || 0,
-          totalPurchased: Number(p.totalPurchased ?? 0) || 0,
-        };
-      }
-      return { ...p, totalSales: tot.totalSales, totalPurchased: tot.totalPurchased };
+      const id = String(p.id || '').trim();
+      const code = String(p.code || '').trim();
+      const purchaseAvg =
+        weightedAvg.purchaseById.get(id) ||
+        (code ? weightedAvg.purchaseByCode.get(code) : undefined) ||
+        0;
+      const salesAvg =
+        weightedAvg.salesById.get(id) ||
+        (code ? weightedAvg.salesByCode.get(code) : undefined) ||
+        0;
+      const baseRow = {
+        ...p,
+        totalSales: tot ? tot.totalSales : Number(p.totalSales ?? 0) || 0,
+        totalPurchased: tot ? tot.totalPurchased : Number(p.totalPurchased ?? 0) || 0,
+        average_unit_cost: purchaseAvg > 0 ? purchaseAvg : Number(p.average_unit_cost ?? 0) || 0,
+        average_unit_sales_price: salesAvg > 0 ? salesAvg : Number(p.average_unit_sales_price ?? 0) || 0,
+      };
+      return baseRow;
     });
-  }, [hasLoadedFromStore, storeProducts, products, docTotals]);
+  }, [hasLoadedFromStore, storeProducts, products, docTotals, weightedAvg]);
 
   // Mount: store dolu olsa bile DB’den sessiz çek (alış silme sonrası stale cache kalmasın)
   useEffect(() => {
@@ -155,6 +178,8 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     void loadProducts(true);
     setDocTotals({});
     void productAPI.getListDocumentTotals().then(setDocTotals);
+    // Alış/Satış ortalamaları satış/alış iptalinde değişir — manuel tick
+    setWeightedAvgTick((v) => v + 1);
   });
 
   useEffect(() => {
@@ -166,6 +191,41 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       alive = false;
     };
   }, [lastSync]);
+
+  // Ağırlıklı ortalama alış / satış birim fiyatları (alış trcode 1/4/5/13/26/41/42, satış 7/8, iadeler düşülmüş)
+  useEffect(() => {
+    let alive = true;
+    const loadWeightedAverages = async () => {
+      try {
+        const { fetchWeightedAverageUnitCosts, fetchWeightedAverageSalesPrices } = await import(
+          '../../../services/weightedAverageUnitCost'
+        );
+        const [purchase, sales] = await Promise.all([
+          fetchWeightedAverageUnitCosts({
+            firmNr: selectedFirm?.firm_nr,
+            periodNr: selectedPeriod?.nr,
+          }).catch(() => ({ byProductId: new Map<string, number>(), byCode: new Map<string, number>() })),
+          fetchWeightedAverageSalesPrices({
+            firmNr: selectedFirm?.firm_nr,
+            periodNr: selectedPeriod?.nr,
+          }).catch(() => ({ byProductId: new Map<string, number>(), byCode: new Map<string, number>() })),
+        ]);
+        if (!alive) return;
+        setWeightedAvg({
+          purchaseById: purchase.byProductId,
+          purchaseByCode: purchase.byCode,
+          salesById: sales.byProductId,
+          salesByCode: sales.byCode,
+        });
+      } catch (err) {
+        console.error('[ProductManagement] weighted averages load failed', err);
+      }
+    };
+    void loadWeightedAverages();
+    return () => {
+      alive = false;
+    };
+  }, [lastSync, selectedFirm?.firm_nr, selectedPeriod?.nr, weightedAvgTick]);
 
   useEffect(() => subscribeReportMenuParams(setReportMenuParams), []);
 

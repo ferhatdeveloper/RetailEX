@@ -41,6 +41,10 @@ export interface Product {
   hasVariants?: boolean;
   totalPurchased?: number;
   totalSales?: number;
+  /** Ağırlıklı ortalama alış birim maliyeti (purchase trcode'ları, iadeler düşülmüş) */
+  average_unit_cost?: number;
+  /** Ağırlıklı ortalama satış birim fiyatı (sales trcode 7/8, satış iadeleri düşülmüş) */
+  average_unit_sales_price?: number;
   // Missing fields fixed for linting
   code?: string;
   minStock?: number;
@@ -153,10 +157,6 @@ export interface Customer {
   postal_code?: string; // Posta kodu
   country?: string;     // Ülke
   balance?: number;     // Bakiye
-  /** Brüt borç toplamı (veresiye satış + iade + açılış). Mutlak değer; UI'da ayrı kolon. */
-  debt_total?: number;
-  /** Ödenen toplam (cash_lines CH_ODEME mutlak). UI'da ayrı kolon. */
-  paid_total?: number;
   totalPurchases: number;
   lastPurchase?: string;
   points?: number;
@@ -203,10 +203,6 @@ export interface Supplier {
   payment_terms?: number | string; // Ödeme vadesi (gün veya metin)
   credit_limit?: number;
   balance?: number;
-  /** Brüt borç toplamı (faturalar + iade ters + açılış). Mutlak değer; UI'da gösterilebilir. */
-  debt_total?: number;
-  /** Ödenen toplam (cash_lines CH_ODEME/CH_TAHSILAT mutlak). UI'da ayrı kolon olarak gösterilir. */
-  paid_total?: number;
   points?: number;
   total_spent?: number;
   age?: number | null;
