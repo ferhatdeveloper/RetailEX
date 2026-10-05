@@ -39,6 +39,7 @@ interface ValuationRow {
     unit: string;
     quantity: number;
     average_unit_cost: number;
+    average_unit_sales_price: number;
     total_cost: number;
 }
 
@@ -54,6 +55,8 @@ export function MaterialValueReport() {
     const [products, setProducts] = useState<Product[]>([]);
     const [avgByProduct, setAvgByProduct] = useState<Map<string, number>>(new Map());
     const [avgByCode, setAvgByCode] = useState<Map<string, number>>(new Map());
+    const [avgSalesByProduct, setAvgSalesByProduct] = useState<Map<string, number>>(new Map());
+    const [avgSalesByCode, setAvgSalesByCode] = useState<Map<string, number>>(new Map());
     const [loading, setLoading] = useState(true);
     const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
         () => ({ ...DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY_SNAKE }),
@@ -71,6 +74,8 @@ export function MaterialValueReport() {
         setProducts([]);
         setAvgByProduct(new Map());
         setAvgByCode(new Map());
+        setAvgSalesByProduct(new Map());
+        setAvgSalesByCode(new Map());
         try {
             if (doRecompute) {
                 // Yenile = Ctrl+R: store temizle + kart stoğu hizala + DB (emit yok → invalidate döngüsü yok)
@@ -78,18 +83,29 @@ export function MaterialValueReport() {
             }
             const data = await productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr });
             setProducts(data);
-            const { fetchWeightedAverageUnitCosts } = await import(
+            const { fetchWeightedAverageUnitCosts, fetchWeightedAverageSalesPrices } = await import(
                 '../../../services/weightedAverageUnitCost'
             );
-            const maps = await fetchWeightedAverageUnitCosts({
-                firmNr: selectedFirm?.firm_nr,
-                periodNr: selectedPeriod?.nr,
-            }).catch((err) => {
-                console.error('[MaterialValueReport] weighted avg failed', err);
-                return { byProductId: new Map<string, number>(), byCode: new Map<string, number>() };
-            });
+            const [maps, salesMaps] = await Promise.all([
+                fetchWeightedAverageUnitCosts({
+                    firmNr: selectedFirm?.firm_nr,
+                    periodNr: selectedPeriod?.nr,
+                }).catch((err) => {
+                    console.error('[MaterialValueReport] weighted purchase avg failed', err);
+                    return { byProductId: new Map<string, number>(), byCode: new Map<string, number>() };
+                }),
+                fetchWeightedAverageSalesPrices({
+                    firmNr: selectedFirm?.firm_nr,
+                    periodNr: selectedPeriod?.nr,
+                }).catch((err) => {
+                    console.error('[MaterialValueReport] weighted sales avg failed', err);
+                    return { byProductId: new Map<string, number>(), byCode: new Map<string, number>() };
+                }),
+            ]);
             setAvgByProduct(maps.byProductId);
             setAvgByCode(maps.byCode);
+            setAvgSalesByProduct(salesMaps.byProductId);
+            setAvgSalesByCode(salesMaps.byCode);
         } catch (err) {
             console.error('[MaterialValueReport] load failed', err);
         } finally {
@@ -124,6 +140,10 @@ export function MaterialValueReport() {
                         p as Product & { cost?: number; purchase_price?: number },
                     );
                 }
+                const average_unit_sales_price =
+                    (id && avgSalesByProduct.get(id)) ||
+                    (code && avgSalesByCode.get(code)) ||
+                    0;
                 const total_cost = qty * average_unit_cost;
                 const card = productCardReportFields(p);
                 const codes = productCardCodesSnake(card);
@@ -138,10 +158,11 @@ export function MaterialValueReport() {
                     unit: p.unit || '',
                     quantity: qty,
                     average_unit_cost,
+                    average_unit_sales_price,
                     total_cost,
                 };
             });
-    }, [products, avgByProduct, avgByCode]);
+    }, [products, avgByProduct, avgByCode, avgSalesByProduct, avgSalesByCode]);
 
     const columnHelper = createColumnHelper<ValuationRow>();
     const specialCodeCell = (value: unknown) =>
@@ -199,7 +220,12 @@ export function MaterialValueReport() {
             cell: info => formatNumber(Number(info.getValue()) || 0, 2),
         }),
         columnHelper.accessor('average_unit_cost', {
-            header: tm('avgUnitCost') || 'Ortalama Birim Maliyet',
+            header: tm('avgUnitCost') || 'Alış Ortalaması',
+            meta: { filterKind: 'number', align: 'right' },
+            cell: info => formatLedgerAmount(Number(info.getValue()) || 0, currency),
+        }),
+        columnHelper.accessor('average_unit_sales_price', {
+            header: tm('avgUnitSalesPrice') || 'Satış Ortalaması',
             meta: { filterKind: 'number', align: 'right' },
             cell: info => formatLedgerAmount(Number(info.getValue()) || 0, currency),
         }),

@@ -213,3 +213,184 @@ export function lookupWeightedAvgUnitCost(
   if (barcode && maps.byCode.has(barcode)) return maps.byCode.get(barcode) || 0;
   return 0;
 }
+
+/* ============================================================================
+ *  SATIŞ AĞIRLIKLI ORTALAMA BİRİM FİYAT
+ *  --------------------------------------------------------------------------
+ *  Alış (purchase) için olan `fetchWeightedAverageUnitCosts` ile simetrik;
+ *  burada veri kaynağı **satış faturaları** (trcode 7 perakende, 8 toptan) +
+ *  satış iadeleri (trcode 2, 3) düşülerek. Hizmet / promosyon hariç.
+ *  Sonuç: "ürünü ortalama kaçtan sattık?" sorusuna cevap.
+ *  ============================================================================
+ */
+
+function isSalesFiche(row: { fiche_type?: unknown; trcode?: unknown }): boolean {
+  const ft = String(row.fiche_type || '').trim().toLowerCase();
+  const tc = Number(row.trcode ?? 0);
+  if (tc === 2 || tc === 3) return false; // satış iadesi
+  if (ft === 'return_invoice') return false;
+  // sales_invoice, hizmet faturaları, perakende (7), toptan (8) ve diğer satış türleri
+  if (ft === 'sales_invoice' || ft === 'service' || ft === 'hizmet') return true;
+  if (tc === 7 || tc === 8) return true;
+  return false;
+}
+
+function isSalesReturnRow(row: { fiche_type?: unknown; trcode?: unknown }): boolean {
+  const tc = Number(row.trcode ?? 0);
+  const ft = String(row.fiche_type || '').trim().toLowerCase();
+  if (tc === 2 || tc === 3) return true;
+  // return_invoice + belirsiz trcode: alış iadesi değilse satış iadesi sayılır
+  if (ft === 'return_invoice' && tc !== 6) return true;
+  return false;
+}
+
+function ingestSalesLine(
+  inv: { fiche_type?: unknown; trcode?: unknown; date?: unknown; is_cancelled?: unknown; status?: unknown },
+  it: Record<string, unknown>,
+  accById: Map<string, WeightedAvgAccumulator>,
+  accByCode: Map<string, WeightedAvgAccumulator>,
+  productIdByCode?: Map<string, string>,
+) {
+  if (inv.is_cancelled === true || inv.is_cancelled === 'true') return;
+  const st = String(inv.status || '').toLowerCase().trim();
+  if (['iptal', 'silindi', 'cancelled', 'canceled', 'deleted'].includes(st)) return;
+  if (!isSalesFiche(inv)) return;
+  const itemType = String(it.item_type || 'Malzeme');
+  if (itemType === 'Promosyon' || itemType === 'İndirim' || itemType === 'Hizmet' || itemType === 'Service') return;
+
+  const qty = Number(it.quantity ?? 0) || 0;
+  // unit_price: sales kaleminde birim fiyat (alışta unit_cost kullandık; burada unit_price)
+  const unitPrice = Number(it.unit_price ?? 0) || 0;
+  const netAmount = Math.abs(Number(it.net_amount ?? 0)) || unitPrice * Math.abs(qty);
+  const amount = netAmount;
+  const isReturn = isSalesReturnRow(inv);
+  const pid =
+    (it.product_id ? String(it.product_id) : '') ||
+    (String(it.item_code || '').trim() && productIdByCode?.get(String(it.item_code || '').trim())) ||
+    '';
+  const code = String(it.item_code || '').trim();
+  const line = { quantity: qty, unitCost: unitPrice, amount, isReturn };
+  if (pid) mergeWeightedAvgMaps(accById, pid, line);
+  if (code) mergeWeightedAvgMaps(accByCode, code, line);
+}
+
+/**
+ * Satış (perakende + toptan) satırlarından ağırlıklı ortalama birim satış fiyatı.
+ * Satış iadeleri (trcode 2, 3) düşülerek hesaplanır.
+ */
+export async function fetchWeightedAverageSalesPrices(opts?: {
+  firmNr?: string | number | null;
+  periodNr?: string | number | null;
+  asOfDate?: string | null;
+}): Promise<{ byProductId: Map<string, number>; byCode: Map<string, number> }> {
+  const firmNr = padFirm(opts?.firmNr);
+  const periodNr = padPeriod(opts?.periodNr);
+  const asOf = String(opts?.asOfDate || '').slice(0, 10);
+  const empty = { byProductId: new Map<string, number>(), byCode: new Map<string, number>() };
+
+  const accById = new Map<string, WeightedAvgAccumulator>();
+  const accByCode = new Map<string, WeightedAvgAccumulator>();
+
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./api/postgrestClient');
+    const fn = firmNr;
+    const pn = periodNr;
+    const [sales, items, products] = await Promise.all([
+      postgrest
+        .get<Record<string, unknown>[]>(
+          `/rex_${fn}_${pn}_sales`,
+          {
+            select: 'id,date,fiche_type,is_cancelled,status,trcode',
+            order: 'date.asc',
+            limit: '12000',
+          },
+          { schema: 'public' },
+        )
+        .catch(() => [] as Record<string, unknown>[]),
+      postgrest
+        .get<Record<string, unknown>[]>(
+          `/rex_${fn}_${pn}_sale_items`,
+          {
+            select: 'invoice_id,product_id,item_code,item_type,quantity,net_amount,unit_price,unit_cost',
+            limit: '20000',
+          },
+          { schema: 'public' },
+        )
+        .catch(() => [] as Record<string, unknown>[]),
+      postgrest
+        .get<Record<string, unknown>[]>(
+          `/rex_${fn}_products`,
+          { select: 'id,code,barcode', limit: '8000' },
+          { schema: 'public' },
+        )
+        .catch(() => [] as Record<string, unknown>[]),
+    ]);
+
+    const salesById = new Map((sales || []).map((s) => [String(s.id), s]));
+    const productIdByCode = new Map<string, string>();
+    for (const p of products || []) {
+      const code = String(p.code || '').trim();
+      const barcode = String(p.barcode || '').trim();
+      if (code) productIdByCode.set(code, String(p.id));
+      if (barcode) productIdByCode.set(barcode, String(p.id));
+    }
+    for (const it of items || []) {
+      const inv = salesById.get(String(it.invoice_id));
+      if (!inv) continue;
+      ingestSalesLine(inv, it, accById, accByCode, productIdByCode);
+    }
+  } else {
+    const asOfClause = asOf
+      ? `AND (s.date::timestamptz AT TIME ZONE 'UTC')::date <= $2::date`
+      : '';
+    const params: unknown[] = [firmNr];
+    if (asOf) params.push(asOf);
+    const { rows } = await postgres.query(
+      `
+      SELECT
+        s.fiche_type,
+        s.trcode,
+        s.date,
+        s.is_cancelled,
+        s.status,
+        si.product_id,
+        si.item_code,
+        si.item_type,
+        si.quantity,
+        si.net_amount,
+        si.unit_price,
+        si.unit_cost
+      FROM sale_items si
+      INNER JOIN sales s ON s.id = si.invoice_id
+      WHERE s.firm_nr = $1
+        AND COALESCE(s.is_cancelled, false) = false
+        AND LOWER(TRIM(COALESCE(s.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')
+        AND (
+          s.fiche_type IN ('sales_invoice', 'service', 'hizmet')
+          OR COALESCE(s.trcode, 0) IN (7, 8)
+          OR COALESCE(s.trcode, 0) IN (2, 3)
+          OR (s.fiche_type = 'return_invoice' AND COALESCE(s.trcode, 0) IN (2, 3))
+        )
+        AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim', 'Hizmet', 'Service')
+        ${asOfClause}
+      `,
+      params,
+    );
+
+    for (const r of rows || []) {
+      ingestSalesLine(r as any, r as any, accById, accByCode);
+    }
+  }
+
+  return {
+    byProductId: finalizeMap(accById),
+    byCode: finalizeMap(accByCode),
+  };
+}
+
+export function lookupWeightedAvgSalesPrice(
+  maps: { byProductId: Map<string, number>; byCode: Map<string, number> } | null | undefined,
+  product: { id?: string | null; code?: string | null; barcode?: string | null },
+): number {
+  return lookupWeightedAvgUnitCost(maps, product);
+}

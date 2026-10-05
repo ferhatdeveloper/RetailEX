@@ -5525,7 +5525,8 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   materialValueReport: { tr: 'Malzeme Değer Raporu', en: 'Material Value Report', ar: 'تقرير قيمة المواد', ku: 'ڕاپۆرتی بەهای مادە' },
   totalInventoryValue: { tr: 'Toplam Envanter Değeri', en: 'Total Inventory Value', ar: 'إجمالي قيمة المخزون', ku: 'کۆی بەهای کۆگا' },
   totalValue: { tr: 'Toplam Değer', en: 'Total Value', ar: 'القيمة الإجمالية', ku: 'کۆی بەها' },
-  avgUnitCost: { tr: 'Ortalama Birim Maliyet', en: 'Avg. Unit Cost', ar: 'متوسط تكلفة الوحدة', ku: 'تێچووی مامناوەندی یەکە' },
+  avgUnitCost: { tr: 'Alış Ortalaması', en: 'Avg. Purchase Price', ar: 'متوسط سعر الشراء', ku: 'تێچووی مامناوەندی کڕین' },
+  avgUnitSalesPrice: { tr: 'Satış Ortalaması', en: 'Avg. Sales Price', ar: 'متوسط سعر البيع', ku: 'نرخی مامناوەندی فرۆشتن' },
 
   materialDescription: { tr: 'Malzeme Açıklaması', en: 'Material Description', ar: 'وصف المادة', ku: 'وەسفی مادە' },
 
