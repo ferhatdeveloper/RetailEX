@@ -1229,15 +1229,15 @@ const handleCollectCustomerDebt = async () => {
     onClose();
   };
 
+  // Peşinatlı Satış — UI'dan gizlendi (2026-10-05 kullanıcı kararı: Senaryo A).
+  // Hesap planına bağlı taksit yapısına dönüşüm planı notlarda; fresh-start.
+  // Tip tanımı (`'cash' | 'card' | 'veresiye' | 'pesinatli'`) geriye dönük uyum için
+  // union'da kalır; DB'deki eski `payment_method='pesinatli'` / `is_deposit=true`
+  // kayıtları okuma yoluyla hâlâ doğru işlenir.
   const paymentMethods = [
     { id: 'cash', name: t.cashLabel || 'Nakit', icon: Wallet },
     { id: 'card', name: t.cardLabel || 'Kart (POS)', icon: CreditCard },
     { id: 'veresiye', name: t.veresiyeLabel || 'Veresiye (Cari)', icon: Wallet, disabled: !selectedCustomer },
-    {
-      id: 'pesinatli',
-      name: tm('paymentMethodPesinatli') || t.pesinatliLabel || 'Peşinatlı Satış',
-      icon: Calendar,
-    },
   ];
 
   return (
