@@ -7,7 +7,7 @@
  *
  * Kolonlar:
  *   Brüt satış adedi | Brüt tutar | İade adedi | İade tutarı | Net tutar |
- *   Toplam miktar (kg/adet) | Ödenen | Kalan borç | Son satış tarihi
+ *   Toplam miktar (kg/adet) | Son satış tarihi
  *
  * Altta 4 KPI strip:
  *   Brüt satış adedi | Brüt tutar | Net tutar | Kalan borç
@@ -15,6 +15,9 @@
  * Borç yönü (muhasebe denetimi):
  *   - Müşteri: credit_amount − paid_amount (kalan borç)
  *   - Tedarikçi: aynı formül; cari kart.balance ile çapraz referans
+ *
+ * Not: Grid'de Ödenen / Kalan Borç kolonları kaldırıldı (KPI strip'te tutulur);
+ * aynı borç/alacak yönü korunur.
  *
  * "ABS + her zaman +1" kısayolu YASAK; işaret korunur.
  */
@@ -292,38 +295,6 @@ export function PartySalesPeriodReport({ mode }: { mode: PartySalesPeriodMode })
           ),
         },
         {
-          id: 'paidAmount',
-          header: tm('partyPeriodSalesPaidAmount') || 'Ödenen',
-          type: 'currency',
-          align: 'right',
-          size: 140,
-          cell: (r) => formatLedgerAmount(r.paidAmount, currency),
-        },
-        {
-          id: 'remainingDebt',
-          header: tm('partyPeriodSalesRemainingDebt') || 'Kalan Borç',
-          type: 'currency',
-          align: 'right',
-          size: 150,
-          cell: (r) => {
-            const debt = r.remainingDebt;
-            const isCustomerDebt = isCustomer ? debt > 0 : debt < 0;
-            return (
-              <span
-                className={`font-semibold ${
-                  Math.abs(debt) > 0.009
-                    ? isCustomerDebt
-                      ? 'text-rose-600'
-                      : 'text-emerald-600'
-                    : 'text-gray-400'
-                }`}
-              >
-                {formatLedgerAmount(debt, currency)}
-              </span>
-            );
-          },
-        },
-        {
           id: 'lastSaleDate',
           header: tm('rptCustLastSale') || 'Son Satış',
           type: 'date',
@@ -419,8 +390,6 @@ export function PartySalesPeriodReport({ mode }: { mode: PartySalesPeriodMode })
                     tm('partyPeriodSalesGrossAmount') || 'Brüt',
                     tm('partyPeriodSalesReturnAmount') || 'İade',
                     tm('partyPeriodSalesNetAmount') || 'Net',
-                    tm('partyPeriodSalesPaidAmount') || 'Ödenen',
-                    tm('partyPeriodSalesRemainingDebt') || 'Kalan Borç',
                     tm('rptCustLastSale') || 'Son Satış',
                   ],
                   gridRows.map((r) => [
@@ -432,8 +401,6 @@ export function PartySalesPeriodReport({ mode }: { mode: PartySalesPeriodMode })
                     String(r.grossAmount),
                     String(r.returnAmount),
                     String(r.netAmount),
-                    String(r.paidAmount),
-                    String(r.remainingDebt),
                     r.lastSaleDate,
                   ]),
                 )
@@ -517,16 +484,6 @@ export function PartySalesPeriodReport({ mode }: { mode: PartySalesPeriodMode })
             {
               columnId: 'netAmount',
               getValue: (r: GridRow) => Number(r.netAmount) || 0,
-              format: (n: number) => formatLedgerAmount(n, currency),
-            },
-            {
-              columnId: 'paidAmount',
-              getValue: (r: GridRow) => Number(r.paidAmount) || 0,
-              format: (n: number) => formatLedgerAmount(n, currency),
-            },
-            {
-              columnId: 'remainingDebt',
-              getValue: (r: GridRow) => Number(r.remainingDebt) || 0,
               format: (n: number) => formatLedgerAmount(n, currency),
             },
           ]}
