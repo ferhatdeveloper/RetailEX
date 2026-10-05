@@ -16,6 +16,7 @@ import {
     CalendarDays, Clock, Cpu, Activity, AlertTriangle, CheckCircle2, Scissors, Package,
     Sparkles, Receipt, ChevronDown, ChevronUp, MoreHorizontal, ShoppingBag, RefreshCw,
     PanelLeft, Repeat, Percent, ChevronRight, CheckCircle, Wallet, CreditCard,
+    Printer,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus, appointmentStatusMatches } from '../../../types/beauty';
@@ -2356,6 +2357,82 @@ export function AppointmentPOS({
         }
     };
 
+    /**
+     * Sekme çubuğundaki "Yazdır" butonu: sepette en az 1 satır varsa DB/ödeme
+     * yazmadan yalnızca taslak (ara) fişi yazıcıya gönderir. Restaurant POS'taki
+     * `printDraft` davranışıyla aynı semantik — müşteri ödemeyi henüz tamamlamadı.
+     */
+    const handlePrintDraftFromTabbar = useCallback(async () => {
+        if (cart.length === 0) {
+            toast.error(tm('bEmptyCartHint') || 'Sepet boş');
+            return;
+        }
+        try {
+            invalidateReceiptSettingsCache();
+            const receiptSettings = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
+            const lang: KitchenReceiptLocale = isKitchenReceiptLocale(uiLanguage) ? uiLanguage : 'tr';
+
+            const sale: Sale = {
+                id: `DRAFT-TABBAR-${Date.now()}`,
+                receiptNumber,
+                date: getPosNow().toISOString(),
+                customerId: customer?.id,
+                customerName: customer?.name,
+                items: beautyLinesToReceiptItems(cart, lang, receiptSettings, products, specialists),
+                subtotal,
+                discount: discAmt,
+                total,
+                paymentMethod: 'cash',
+                cashier: resolveBeautyCashierName(),
+                beautyDeviceName: resolveBeautyDeviceLabel(aptDevice, devices) || undefined,
+                beautyTreatmentDegree: receiptTreatmentDegree.trim() || undefined,
+                beautyTreatmentShots: receiptTreatmentShots.trim() || undefined,
+                notes:
+                    lang === 'en'
+                        ? 'Interim bill'
+                        : lang === 'ar'
+                          ? 'حساب مبدئي'
+                          : lang === 'ku'
+                            ? 'وەسڵی پێشووەختە'
+                            : 'Ön hesap',
+            };
+
+            const companyName =
+                receiptSettings.companyName?.trim()
+                || selectedFirm?.title?.trim()
+                || selectedFirm?.name?.trim()
+                || 'RetailEX';
+            const html = buildRestaurantAdisyonHtml({
+                sale,
+                ctx: {
+                    payments: [],
+                    totalPaid: 0,
+                    change: 0,
+                    remaining: total,
+                    finalTotal: total,
+                    discount: discAmt,
+                },
+                companyName,
+                logoDataUrl: receiptSettings.logoDataUrl,
+                companyAddress: receiptSettings.companyAddress,
+                companyPhone: receiptSettings.companyPhone,
+                companyTaxOffice: receiptSettings.companyTaxOffice,
+                companyTaxNumber: receiptSettings.companyTaxNumber,
+                firmTitle: selectedFirm?.title?.trim() || selectedFirm?.name?.trim() || '',
+                locale: lang,
+            });
+            await printRestaurantHtmlNoPreview(html);
+            toast.success(tm('toastPrintSent') || 'Yazıcıya gönderildi');
+        } catch (e: unknown) {
+            logger.crudError('AppointmentPOS', 'tabbarDraftPrint', e);
+            toast.error(tm('printFailed') || 'Yazdırma başarısız');
+        }
+    }, [
+        cart, customer, subtotal, discAmt, total, receiptNumber, products, specialists,
+        aptDevice, devices, receiptTreatmentDegree, receiptTreatmentShots, uiLanguage,
+        receiptFirmNr, selectedFirm, tm,
+    ]);
+
     const handlePayComplete = async (paymentData: any) => {
         if (isExistingPaidComplete) {
             setShowPay(false);
@@ -3517,6 +3594,41 @@ export function AppointmentPOS({
                                         <PanelLeft size={20} strokeWidth={2.25} />
                                     </button>
                                 )}
+                                {/* Yazdır (taslak fiş) — DB yazmadan yalnızca ön fiş */}
+                                <button
+                                    type="button"
+                                    onClick={handlePrintDraftFromTabbar}
+                                    disabled={cart.length === 0}
+                                    title={tm('bPrintDraftTabbar')}
+                                    aria-label={tm('bPrintDraftTabbar')}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 6,
+                                        padding: '8px 14px',
+                                        borderRadius: 8,
+                                        border: '1px solid #7c3aed',
+                                        background: cart.length === 0 ? '#f3f4f6' : '#ede9fe',
+                                        color: cart.length === 0 ? '#9ca3af' : '#5b21b6',
+                                        fontSize: 13,
+                                        fontWeight: 700,
+                                        cursor: cart.length === 0 ? 'not-allowed' : 'pointer',
+                                        minHeight: 44,
+                                        touchAction: 'manipulation',
+                                        flexShrink: 0,
+                                        whiteSpace: 'nowrap',
+                                        transition: 'background 0.12s, color 0.12s',
+                                    }}
+                                    onMouseEnter={e => {
+                                        if (cart.length > 0) e.currentTarget.style.background = '#ddd6fe';
+                                    }}
+                                    onMouseLeave={e => {
+                                        if (cart.length > 0) e.currentTarget.style.background = '#ede9fe';
+                                    }}
+                                >
+                                    <Printer size={18} strokeWidth={2.25} />
+                                    {tm('bPrintDraftTabbar')}
+                                </button>
                             </div>
                         </div>
                         {tab === 'services' && !useCategorySidebar && (

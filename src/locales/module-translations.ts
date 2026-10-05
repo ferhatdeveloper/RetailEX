@@ -12031,6 +12031,7 @@ export const excelModuleTranslations = {
   bPOSTabServices: { tr: 'Hizmetler', en: 'Services', ar: 'الخدمات', ku: 'خزمەتەکان' },
   bPOSTabPackages: { tr: 'Paketler', en: 'Packages', ar: 'الباقات', ku: 'پاکەیجەکان' },
   bPOSTabProducts: { tr: 'Ürünler', en: 'Products', ar: 'المنتجات', ku: 'بەرهەمەکان' },
+  bPrintDraftTabbar: { tr: 'Yazdır', en: 'Print', ar: 'طباعة', ku: 'چاپکردن' },
   bSearchProductsPlaceholder: { tr: 'Ürün, barkod ara...', en: 'Search product, barcode...', ar: 'بحث منتج أو باركود...', ku: 'بەرهەم، بارکۆد بگەڕێ...' },
   bSearchPackagesPlaceholder: { tr: 'Paket ara...', en: 'Search package...', ar: 'بحث باقة...', ku: 'پاکەیج بگەڕێ...' },
   bSearchServicesPlaceholder: { tr: 'Hizmet ara...', en: 'Search service...', ar: 'بحث خدمة...', ku: 'خزمەت بگەڕێ...' },
