@@ -448,6 +448,20 @@ export function PartiesModule({
                     {p.card_type === 'employee' && Number(p.balance) < 0 ? (
                       <div className="text-[9px] font-bold uppercase text-amber-700">{t('party.employee.balanceLabelAdvance')}</div>
                     ) : null}
+                    {/* Tedarikçi: + = A (alacaklı, biz borçluyuz), − = B (borçlu, tedarikçi bize borçlu) */}
+                    {p.card_type === 'supplier' && Number(p.balance) > 0 ? (
+                      <div className="text-[9px] font-bold uppercase text-amber-700">{t('balanceSideCreditor')}</div>
+                    ) : null}
+                    {p.card_type === 'supplier' && Number(p.balance) < 0 ? (
+                      <div className="text-[9px] font-bold uppercase text-emerald-700">{t('balanceSideDebtor')}</div>
+                    ) : null}
+                    {/* Müşteri: + = B (borçlu, müşteri bize borçlu), − = A (alacaklı) */}
+                    {p.card_type === 'customer' && Number(p.balance) > 0 ? (
+                      <div className="text-[9px] font-bold uppercase text-emerald-700">{t('balanceSideDebtor')}</div>
+                    ) : null}
+                    {p.card_type === 'customer' && Number(p.balance) < 0 ? (
+                      <div className="text-[9px] font-bold uppercase text-amber-700">{t('balanceSideCreditor')}</div>
+                    ) : null}
                     {p.card_type === 'partner' && Number(p.balance) > 0 ? (
                       <div className="text-[9px] font-bold uppercase text-emerald-700">{t('party.partner.balanceLabel')}</div>
                     ) : null}

@@ -14,24 +14,57 @@
 --   ile aynı UNION (purchase/return/opening, customer_id + name fallback,
 --   cash_lines customer_id + cash_lines party_id).
 --
+--   ZORUNLU: Bu migration'dan ÖNCE `205_supplier_balance_snapshot.sql`
+--   çalıştırılmış olmalı (yedek snapshot). Snapshot kontrolü aşağıda
+--   bulunmazsa migration ABORT eder.
+--
+--   Dry-run için: `206_dryrun_supplier_balance_recompute.sql` (UPDATE yok).
+--
 --   Muhasebeci denetimi:
 --     - Yalnız değişen satırlar yazılır (fark != 0)
 --     - Her yazım `supplier_balance_audit` tablosuna loglanır (eski/yeni/fark)
 --     - Geri alma notu `suppliers.notes`'a eklenir ([2026-10-05 recompute])
 --     - Idempotent: yeniden çalıştırılırsa fark=0 olanlar atlanır
+--     - Pre-flight: snapshot tablosu (196) boşsa HATA
 --
 --   Çalıştırma (kasap DB):
 --     PGPASSWORD=Yq7xwQpt6c psql -h srv1253122.hstgr.cloud -U postgres \
+--       -d kasap -f database/migrations/205_supplier_balance_snapshot.sql
+--     PGPASSWORD=Yq7xwQpt6c psql -h srv1253122.hstgr.cloud -U postgres \
+--       -d kasap -f database/migrations/206_dryrun_supplier_balance_recompute.sql  -- opsiyonel
+--     PGPASSWORD=Yq7xwQpt6c psql -h srv1253122.hstgr.cloud -U postgres \
 --       -d kasap -f database/migrations/195_recompute_supplier_balances_kasap.sql
---
---   Dry-run (UPDATE yapmadan yalnız rapor):
---     ... aynı + dry_run_only=true yerine dry-run-only parametresi yok,
---     en sonda \$body\$ içinde dry_run_all=true davranışı için block var.
 --
 --   Kapsam:
 --     - Yalnız `rex_001_suppliers` (kasap firm 001 period 01)
 --     - firm_nr filtresi CTE içinde (sqlSupplierAccountBalancesCte formülü)
 -- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 0) Pre-flight: 196 snapshot var mı?
+-- ----------------------------------------------------------------------------
+DO $$
+DECLARE
+    snap_count INTEGER;
+    sup_count  INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO snap_count
+    FROM rex_001_supplier_balance_snapshot
+    WHERE source = '205_supplier_balance_snapshot';
+
+    SELECT COUNT(*) INTO sup_count
+    FROM rex_001_suppliers WHERE is_active = true;
+
+    IF snap_count = 0 THEN
+        RAISE EXCEPTION '195 ABORT: 205_supplier_balance_snapshot henüz çalıştırılmamış veya boş. Önce: psql ... -f database/migrations/205_supplier_balance_snapshot.sql';
+    END IF;
+
+    IF snap_count < sup_count THEN
+        RAISE WARNING '195 UYARI: snapshot (%) < aktif tedarikçi (%). Yine de devam ediliyor.', snap_count, sup_count;
+    ELSE
+        RAISE NOTICE '195 OK: snapshot=% satır, aktif tedarikçi=% — yedek mevcut, devam ediliyor.', snap_count, sup_count;
+    END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 1) Audit tablosu — henüz yoksa oluştur (idempotent)
@@ -61,6 +94,8 @@ CREATE INDEX IF NOT EXISTS rex_001_supplier_balance_audit_run_idx
 -- ----------------------------------------------------------------------------
 -- Bu adımı UPDATE'den önce yapıyoruz ki geri alma (rollback) durumunda not da
 -- eski haline döndürülebilir.
+-- NOT: Asıl yedek migration 205'teki rex_001_supplier_balance_snapshot
+-- tablosundadır. Buradaki JSONB kolonu ek bir "memo" amaçlıdır.
 ALTER TABLE rex_001_suppliers
   ADD COLUMN IF NOT EXISTS pre_2026_10_balance_restore JSONB;
 

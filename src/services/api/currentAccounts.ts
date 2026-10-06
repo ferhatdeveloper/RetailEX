@@ -78,7 +78,14 @@ function mapCustomerToCurrentAccount(c: any): CurrentAccount {
 }
 
 function mapSupplierToCurrentAccount(s: any): CurrentAccount {
+  // Supplier simetrisi: + = alacaklı (A, biz tedarikçiye borçluyuz),
+  //                   − = borçlu (B, tedarikçi bize borçlu).
+  // (cariAccountStatement.ts:resolveCariBalanceSide / muhasebe denetimi)
+  // Önceki hali `bakiye: -(s.balance)` ile işaret ters çevriliyordu; bu da
+  // Cari Listesi'nde tedarikçi bakiyesinin A/B yönü ile tutarsız
+  // görünmesine yol açıyordu. İşaret korunur; + = A, − = B.
   const rawBal = parseFloat(String(s.balance ?? 0)) || 0;
+  const supBal = parseFloat(String(s.balance ?? 0)) || 0;
   return {
     id: s.id,
     firma_id: s.firma_id || ERP_SETTINGS.firmNr,
@@ -94,9 +101,9 @@ function mapSupplierToCurrentAccount(s: any): CurrentAccount {
     email: s.email,
     kredi_limiti: s.credit_limit || 0,
     vade_suresi: s.payment_terms || 30,
-    borc_bakiye: 0,
-    alacak_bakiye: s.balance || 0,
-    bakiye: -(s.balance || 0),
+    borc_bakiye: supBal < 0 ? Math.abs(supBal) : 0,
+    alacak_bakiye: supBal > 0 ? supBal : 0,
+    bakiye: supBal,
     aktif: s.is_active ?? true,
     created_at: s.created_at || new Date().toISOString()
   };
