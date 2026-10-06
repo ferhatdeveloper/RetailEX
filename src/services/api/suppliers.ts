@@ -15,10 +15,6 @@ import {
   sqlResolvedSupplierBalanceExpr,
   computeCustomerBalanceFromLedger,
   computeSupplierBalanceFromLedger,
-  computeCustomerPaidAmountFromCashLines,
-  computeSupplierPaidAmountFromCashLines,
-  computeCustomerDebtTotalFromSales,
-  computeSupplierDebtTotalFromSales,
   normalizeFirmTableNr,
   accountLedgerNameMatch,
   cardFirmNrMatches,
@@ -146,18 +142,16 @@ export const supplierAPI = {
             select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled,payment_method',
             is_cancelled: 'eq.false',
             // Deterministic order + yeterli limit — MUS-018 (kasap DB) 12/12 satır
-            // dahil olur; ledger 35.895.000 doğru hesaplanır. 200.000 limit
-            // 11k-100k satırlı tenant'ları kapsar (TED-006 backdated 385M ödemesi
-            // 50k limit ile kesiliyordu).
+            // dahil olur; ledger 35.895.000 doğru hesaplanır.
             order: 'created_at.asc,id.asc',
-            limit: '200000',
+            limit: '50000',
           }),
           safeGet(cashPath, {
             select: 'customer_id,party_id,amount,transaction_type',
             transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
-            // Deterministic order + 200000 limit (müşteri tarafıyla simetrik).
+            // Deterministic order — 50000 limit'i ile bile keyfi sıralama riski.
             order: 'created_at.asc,id.asc',
-            limit: '200000',
+            limit: '50000',
           }),
         ]);
         const sales = Array.isArray(salesRows) ? salesRows : [];
@@ -179,15 +173,6 @@ export const supplierAPI = {
             cash,
             parseFloat(String(r.balance ?? 0)) || 0,
           ),
-          debt_total: computeCustomerDebtTotalFromSales(
-            String(r.id),
-            String(r.name || ''),
-            sales,
-          ),
-          paid_total: computeCustomerPaidAmountFromCashLines(
-            String(r.id),
-            cash,
-          ),
         }));
         const supplierRows = supplierList.map((r) => ({
           ...r,
@@ -198,15 +183,6 @@ export const supplierAPI = {
             sales,
             cash,
             parseFloat(String(r.balance ?? 0)) || 0,
-          ),
-          debt_total: computeSupplierDebtTotalFromSales(
-            String(r.id),
-            String(r.name || ''),
-            sales,
-          ),
-          paid_total: computeSupplierPaidAmountFromCashLines(
-            String(r.id),
-            cash,
           ),
         }));
         return [...customerRows, ...supplierRows]
@@ -220,7 +196,7 @@ export const supplierAPI = {
 
       const sql = `
         WITH ${sqlCustomerAccountBalancesCte(custTable, '$1::text')},
-        ${sqlSupplierAccountBalancesCte(suppTable, '$1::text')}
+        ${sqlSupplierAccountBalancesCte(suppTable)}
         SELECT
           c.id, c.ref_id, c.code, c.name, c.phone, c.phone2, c.email,
           c.address, c.city, c.district, c.neighborhood, c.postal_code,
@@ -233,8 +209,6 @@ export const supplierAPI = {
           c.call_plan_caller_user_id, c.call_plan_caller_name, c.call_plan_time,
           c.call_last_status, c.call_last_note, c.call_last_at,
           ${sqlResolvedCustomerBalanceExpr('c')} as balance,
-          COALESCE(b.debt_sum, 0)::numeric AS debt_total,
-          COALESCE(b.paid_sum, 0)::numeric AS paid_total,
           c.is_active, c.created_at, 'customer' as card_type
         FROM ${custTable} c
         LEFT JOIN account_balances b ON c.id = b.id
@@ -256,8 +230,6 @@ export const supplierAPI = {
           NULL::uuid AS call_plan_caller_user_id, NULL::text AS call_plan_caller_name, NULL::time AS call_plan_time,
           NULL::varchar AS call_last_status, NULL::text AS call_last_note, NULL::timestamptz AS call_last_at,
           ${sqlResolvedSupplierBalanceExpr('s')} as balance,
-          COALESCE(b.debt_sum, 0)::numeric AS debt_total,
-          COALESCE(b.paid_sum, 0)::numeric AS paid_total,
           s.is_active, s.created_at, 'supplier' as card_type
         FROM ${suppTable} s
         LEFT JOIN supplier_balances b ON s.id = b.id
@@ -721,14 +693,7 @@ export const supplierAPI = {
           select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,currency_rate,notes,is_cancelled,customer_id,customer_name,payment_method,status',
           customer_id: `eq.${accountId}`,
           is_cancelled: 'eq.false',
-          // Deterministic order + yeterli limit — MUS-018 (kasap DB) 12/12 satır
-          // dahil olur; ledger 35.895.000 doğru hesaplanır. Tedarikçi tarafında
-          // aynı kök neden: yalnız `date.asc` nondeterministik + limitsiz
-          // → 11k+ satırlı tenant'ta satır kesilir, bakiye yanlış hesaplanır
-          // (müşteri tarafı customers.ts'de zaten düzeltilmişti). 200.000 limit
-          // 11k-100k satırlı tenant'ları kapsar (TED-006 385M ödemesi dahil).
-          order: 'date.asc,id.asc',
-          limit: '200000',
+          order: 'date.asc',
         };
         if (startDate && endDate) {
           salesByIdQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
@@ -743,10 +708,7 @@ export const supplierAPI = {
           // Tedarikçi ödemeleri party_id ile yazılır; eski müşteri tarafı verileri için customer_id fallback.
           or: `(customer_id.eq.${accountId},party_id.eq.${accountId})`,
           transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
-          // Deterministic order + 200.000 limit (müşteri tarafıyla simetrik;
-          // MUS-018 kök neden + TED-006 385M ödeme kapsamı).
-          order: 'date.asc,id.asc',
-          limit: '200000',
+          order: 'date.asc',
         };
         if (startDate && endDate) {
           cashByIdQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
@@ -761,10 +723,8 @@ export const supplierAPI = {
           ? {
               select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,currency_rate,notes,customer_id,customer_name,is_cancelled,payment_method',
               customer_name: `not.is.null`,
-              // Deterministic order + 200.000 limit (önceki 5.000 → 50.000 →
-              // 200.000 kademesi; kasap DB 12/12 + TED-006 385M ödeme dahil).
-              order: 'date.asc,id.asc',
-              limit: '200000',
+              order: 'date.asc',
+              limit: '5000',
             }
           : null;
         if (nameSalesQuery) {
@@ -814,14 +774,7 @@ export const supplierAPI = {
           .map(mapSalesRowToEkstre);
         const fromCash = (Array.isArray(cashRows) ? cashRows : []).map(mapCashRowToEkstre);
         return dedupeEkstreRows([...byIdSales, ...byNameSales, ...fromCash]).sort(
-          (a, b) => {
-            // MUS-018 kök neden: yalnız date.asc aynı tarihte birden fazla
-            // satır varsa nondeterministik sıralama üretir → bakiye yanlış
-            // hesaplanabilir. Deterministik ikinci anahtar: fiche_no.
-            const dt = new Date(a.date).getTime() - new Date(b.date).getTime();
-            if (dt !== 0) return dt;
-            return String(a.fiche_no || '').localeCompare(String(b.fiche_no || ''));
-          },
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
         );
       }
 
@@ -873,10 +826,7 @@ export const supplierAPI = {
         FROM cash_lines t
         WHERE (t.customer_id::text = $1::text OR t.party_id::text = $1::text)${dateFilter}
           AND UPPER(TRIM(t.transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
-        -- MUS-018 kök neden: yalnız date.asc aynı tarihte birden fazla
-        -- satır varsa nondeterministik sıralama üretir → bakiye yanlış
-        -- hesaplanır. Deterministik ikinci anahtar: fiche_no.
-        ORDER BY date ASC, fiche_no ASC`;
+        ORDER BY date ASC`;
 
       const { rows } = await postgres.query(sql, values);
       return dedupeEkstreRows(rows);
@@ -1124,8 +1074,6 @@ function mapDatabaseSupplierToSupplier(dbSupplier: any): Supplier {
     payment_terms: Number.isFinite(paymentNum) ? paymentNum : (paymentRaw ?? 30),
     credit_limit: parseFloat(dbSupplier.credit_limit || 0),
     balance: parseFloat(dbSupplier.balance || 0),
-    debt_total: dbSupplier.debt_total != null ? parseFloat(String(dbSupplier.debt_total)) || 0 : undefined,
-    paid_total: dbSupplier.paid_total != null ? parseFloat(String(dbSupplier.paid_total)) || 0 : undefined,
     points: dbSupplier.points != null ? parseFloat(String(dbSupplier.points)) || 0 : undefined,
     total_spent: dbSupplier.total_spent != null ? parseFloat(String(dbSupplier.total_spent)) || 0 : undefined,
     age: dbSupplier.age != null && dbSupplier.age !== '' ? Number(dbSupplier.age) : null,

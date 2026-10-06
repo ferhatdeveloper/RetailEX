@@ -379,12 +379,6 @@ export function PartiesModule({
                 {(tab === 'employee' || tab === 'all') && (
                   <th className="text-right px-4 py-3">{t('party.table.salary')}</th>
                 )}
-                {(tab === 'customer' || tab === 'supplier' || tab === 'all') && (
-                  <>
-                    <th className="text-right px-4 py-3">{t('party.table.debt')}</th>
-                    <th className="text-right px-4 py-3">{t('party.table.paid')}</th>
-                  </>
-                )}
                 <th className="text-right px-4 py-3">{t('party.table.balance')}</th>
                 <th className="text-left px-4 py-3">{t('party.table.share')}</th>
                 <th className="text-right px-4 py-3">{t('party.table.actions')}</th>
@@ -443,18 +437,6 @@ export function PartiesModule({
                     <td className="px-4 py-3 text-right font-mono">
                       {p.card_type === 'employee' ? formatMoney(p.salary_base) : '—'}
                     </td>
-                  )}
-                  {(tab === 'customer' || tab === 'supplier' || tab === 'all') && (
-                    <>
-                      <td className="px-4 py-3 text-right font-mono text-gray-800">
-                        {/* party tablosunda henüz brüt borç ayrıştırması yok — supplierAPI tarafından
-                            hesaplanan `debt_total` burada yansımaz, 0/— gösterilir. */}
-                        {p.card_type === 'customer' || p.card_type === 'supplier' ? '—' : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-emerald-700">
-                        {p.card_type === 'customer' || p.card_type === 'supplier' ? '—' : '—'}
-                      </td>
-                    </>
                   )}
                   <td className="px-4 py-3 text-right font-mono">
                     <div className={Number(p.balance) > 0 ? 'text-emerald-700 font-bold' : Number(p.balance) < 0 ? 'text-amber-700 font-bold' : ''}>
@@ -535,22 +517,12 @@ export function PartiesModule({
             <tfoot className="sticky bottom-0 z-[2] border-t-2 border-blue-300 bg-blue-50">
               <tr>
                 <td
-                  colSpan={
-                    // colSpan = sol blok (seçim + code + id + name + type + phone [+ salary]) + debt + paid = 6/7 + 2
-                    (tab === 'employee' || tab === 'all' ? 7 : 6) +
-                    (tab === 'customer' || tab === 'supplier' || tab === 'all' ? 2 : 0)
-                  }
+                  colSpan={tab === 'employee' || tab === 'all' ? 7 : 6}
                   className="px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-blue-800"
                 >
                   {tm('invoiceListDipTotal')}
                   <span className="ml-1 font-semibold text-blue-600/80">({listDip.count})</span>
                 </td>
-                {(tab === 'customer' || tab === 'supplier' || tab === 'all') && (
-                  <>
-                    <td className="px-4 py-2.5 text-right font-bold tabular-nums text-gray-700">—</td>
-                    <td className="px-4 py-2.5 text-right font-bold tabular-nums text-emerald-700">—</td>
-                  </>
-                )}
                 <td className="px-4 py-2.5 text-right font-bold tabular-nums text-blue-900">
                   {formatMoney(listDip.balance)}
                 </td>

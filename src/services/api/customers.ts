@@ -11,8 +11,6 @@ import {
   sqlCustomerAccountBalancesCte,
   sqlResolvedCustomerBalanceExpr,
   computeCustomerBalanceFromLedger,
-  computeCustomerPaidAmountFromCashLines,
-  computeCustomerDebtTotalFromSales,
   normalizeFirmTableNr,
   cardFirmNrMatches,
   sqlFirmScopedCardMatch,
@@ -94,25 +92,13 @@ export const customerAPI = {
                 cash,
                 parseFloat(String(r.balance ?? 0)) || 0,
               ),
-              debt_total: computeCustomerDebtTotalFromSales(
-                String(r.id),
-                String(r.name || ''),
-                sales,
-              ),
-              paid_total: computeCustomerPaidAmountFromCashLines(
-                String(r.id),
-                cash,
-              ),
             }),
           ),
         );
       }
       const { rows } = await postgres.query(
         `WITH ${sqlCustomerAccountBalancesCte(tableName, '$1::text')}
-        SELECT c.*,
-               ${sqlResolvedCustomerBalanceExpr('c')} AS balance,
-               COALESCE(b.debt_sum, 0)::numeric AS debt_total,
-               COALESCE(b.paid_sum, 0)::numeric AS paid_total
+        SELECT c.*, ${sqlResolvedCustomerBalanceExpr('c')} AS balance
         FROM ${tableName} c
         LEFT JOIN account_balances b ON c.id = b.id
         WHERE ${sqlFirmScopedCardMatch('c', '$1')}
@@ -738,8 +724,6 @@ function mapDatabaseCustomerToCustomer(dbCustomer: any): Customer {
     points: dbCustomer.points || 0,
     totalSpent: parseFloat(dbCustomer.total_spent || 0),
     balance: parseFloat(dbCustomer.balance || 0),
-    debt_total: dbCustomer.debt_total != null ? parseFloat(String(dbCustomer.debt_total)) || 0 : undefined,
-    paid_total: dbCustomer.paid_total != null ? parseFloat(String(dbCustomer.paid_total)) || 0 : undefined,
     taxNumber: dbCustomer.tax_nr || dbCustomer.tax_number,
     taxOffice: dbCustomer.tax_office,
     company: dbCustomer.company,

@@ -2,8 +2,7 @@
 
 /** v3: Benzersiz ID (UUID) varsayılan gizli; eski v2 tercihlerinden UUID açık taşıma. */
 /** v5: Durum/İşlem (isActive/actions) varsayılan gizli — eski v4 tercihlerini sıfırla */
-/** v6: Brüt Borç / Ödenen kolonları eklendi (debt_total/paid_total); eski v5 tercihleri korunur. */
-export const SUPPLIER_LIST_COLUMN_VISIBILITY_KEY = 'retailex_supplierList_columnVisibility_v6';
+export const SUPPLIER_LIST_COLUMN_VISIBILITY_KEY = 'retailex_supplierList_columnVisibility_v5';
 export const SUPPLIER_LIST_COLUMN_ORDER_KEY = 'retailex_supplierList_columnOrder_v1';
 
 /**
@@ -44,8 +43,6 @@ export type SupplierListColumnId =
   | 'callLastStatus'
   | 'callLastNote'
   | 'callLastAt'
-  | 'debt'
-  | 'paid'
   | 'balance'
   | 'isActive'
   | 'createdAt'
@@ -92,8 +89,6 @@ export const SUPPLIER_LIST_COLUMN_META: Record<SupplierListColumnId, ColumnMeta>
   callLastStatus: { id: 'callLastStatus', labelKey: 'callPlanLastStatus', defaultVisible: false },
   callLastNote: { id: 'callLastNote', labelKey: 'callPlanLastStatusNote', defaultVisible: false },
   callLastAt: { id: 'callLastAt', labelKey: 'cariColCallLastAt', defaultVisible: false },
-  debt: { id: 'debt', labelKey: 'partyDebtHeader', defaultVisible: true },
-  paid: { id: 'paid', labelKey: 'partyPaidHeader', defaultVisible: true },
   balance: { id: 'balance', labelKey: 'crmBalance', defaultVisible: true },
   isActive: { id: 'isActive', labelKey: 'active', defaultVisible: false },
   createdAt: { id: 'createdAt', labelKey: 'createdAt', defaultVisible: false },

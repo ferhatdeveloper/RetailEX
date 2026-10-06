@@ -13,12 +13,12 @@ import {
   sqlSupplierAccountBalancesCte,
   type LedgerSaleRow,
   type LedgerCashRow,
-} from '../../services/api/accountBalance';
+} from './accountBalance';
 
 describe('accountBalance.supplierDebtPaid', () => {
   describe('sqlSupplierAccountBalancesCte', () => {
     it('produces CTE with debt_sum and paid_sum aggregates', () => {
-      const sql = sqlSupplierAccountBalancesCte('rex_001_suppliers', '$1::text');
+      const sql = sqlSupplierAccountBalancesCte('rex_001_suppliers');
       // CTE alias doğru
       expect(sql).toMatch(/supplier_balances\s+AS/i);
       // debt_sum ve paid_sum agregat kolonları içeriyor

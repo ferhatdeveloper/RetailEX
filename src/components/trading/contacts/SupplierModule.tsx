@@ -827,61 +827,6 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
       }));
     }
     if (isColumnVisible('balance')) {
-      // Brüt borç ve ödenen kolonları — balance kolonundan önce gösterilir.
-      // Her ikisi de mutlak değerdir; mutlak değer gerektiği için negatifse bile
-      // pozitif gösterilir (muhasebe denetimi: işaret ayrı sütunda).
-      if (isColumnVisible('debt')) {
-        cols.push(
-          columnHelper.accessor(row => row.debt_total, {
-            id: 'debt',
-            header: tm('partyDebtHeader') || 'Brüt Borç',
-            cell: info => {
-              const val = Math.abs(Number(info.getValue() ?? 0)) || 0;
-              const rep = reportingCurrency !== mainCurrency ? toReporting(val) : null;
-              return (
-                <div className="flex flex-col items-end gap-0.5">
-                  <span className="text-xs font-semibold tabular-nums text-gray-800">
-                    {formatNumber(val, mainDec, mainShowDec)} {mainCurrency}
-                  </span>
-                  {rep != null && (
-                    <span className="text-[10px] text-gray-400 font-medium">
-                      ({formatNumber(rep, repDec, repShowDec)} {reportingCurrency})
-                    </span>
-                  )}
-                </div>
-              );
-            },
-            meta: { align: 'right' },
-            size: 130,
-          })
-        );
-      }
-      if (isColumnVisible('paid')) {
-        cols.push(
-          columnHelper.accessor(row => row.paid_total, {
-            id: 'paid',
-            header: tm('partyPaidHeader') || 'Ödenen',
-            cell: info => {
-              const val = Math.abs(Number(info.getValue() ?? 0)) || 0;
-              const rep = reportingCurrency !== mainCurrency ? toReporting(val) : null;
-              return (
-                <div className="flex flex-col items-end gap-0.5">
-                  <span className="text-xs font-semibold tabular-nums text-emerald-700">
-                    {formatNumber(val, mainDec, mainShowDec)} {mainCurrency}
-                  </span>
-                  {rep != null && (
-                    <span className="text-[10px] text-gray-400 font-medium">
-                      ({formatNumber(rep, repDec, repShowDec)} {reportingCurrency})
-                    </span>
-                  )}
-                </div>
-              );
-            },
-            meta: { align: 'right' },
-            size: 130,
-          })
-        );
-      }
       cols.push(
         columnHelper.accessor('balance', {
           header: tm('crmBalance'),
@@ -1305,24 +1250,6 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               pageSize={50}
               height="100%"
               footerSumColumns={[
-                {
-                  columnId: 'debt',
-                  getValue: (r: Supplier) => Math.abs(Number(r.debt_total ?? 0)) || 0,
-                  format: (sum: number) => (
-                    <span className="tabular-nums font-bold text-gray-800">
-                      {formatNumber(sum, 2)} {mainCurrency}
-                    </span>
-                  ),
-                },
-                {
-                  columnId: 'paid',
-                  getValue: (r: Supplier) => Math.abs(Number(r.paid_total ?? 0)) || 0,
-                  format: (sum: number) => (
-                    <span className="tabular-nums font-bold text-emerald-700">
-                      {formatNumber(sum, 2)} {mainCurrency}
-                    </span>
-                  ),
-                },
                 {
                   columnId: 'balance',
                   getValue: (r: Supplier) => Number(r.balance) || 0,

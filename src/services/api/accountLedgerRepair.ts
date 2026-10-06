@@ -250,13 +250,13 @@ export async function repairCariLedgerConsistency(): Promise<void> {
   );
 
   await postgres.query(
-    `WITH ${sqlSupplierAccountBalancesCte(suppTable, '$1::text')}
+    `WITH ${sqlSupplierAccountBalancesCte(suppTable)}
      UPDATE ${suppTable} s
      SET balance = COALESCE(
        (SELECT b.calculated_balance FROM supplier_balances b WHERE b.id = s.id),
        0
      )`,
-    [firmNr],
+    [],
     queryOpts,
   );
 }

@@ -115,9 +115,11 @@ export default defineConfig({
     assetsInlineLimit: 4096,
   },
   server: {
-    host: 'localhost',
+    host: '0.0.0.0',
     port: 6173,
     open: false,
+    allowedHosts: true, // tünel/host başlıklarına izin ver (cloudflared, ngrok vb.)
+    cors: true,
     proxy: {
       /** pg_bridge — Vite proxy üzerinden köprüye yönlendir.
        *  Port: BRIDGE_PORT env (varsayılan 3001). 3001 Colima/ssh tarafından

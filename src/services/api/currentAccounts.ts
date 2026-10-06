@@ -16,8 +16,6 @@ export interface CurrentAccount {
   cardType?: 'customer' | 'supplier';
   /** Defter bakiyesi (B/A yönü için ham değer) */
   ledgerBalance?: number;
-  /** Ödenen toplam (cash_lines CH_ODEME/CH_TAHSILAT mutlak). UI'da ayrı kolon. */
-  odenen_bakiye?: number;
   vergi_no?: string;
   vergi_dairesi?: string;
   adres?: string;
@@ -56,7 +54,6 @@ export async function fetchCurrentAccounts(_firmaId: string, tip?: string): Prom
 
 function mapCustomerToCurrentAccount(c: any): CurrentAccount {
   const rawBal = parseFloat(String(c.balance ?? 0)) || 0;
-  const paid = parseFloat(String(c.paid_total ?? 0)) || 0;
   return {
     id: c.id,
     firma_id: c.firma_id || ERP_SETTINGS.firmNr,
@@ -75,7 +72,6 @@ function mapCustomerToCurrentAccount(c: any): CurrentAccount {
     borc_bakiye: (c.balance || 0) > 0 ? (c.balance || 0) : 0,
     alacak_bakiye: (c.balance || 0) < 0 ? Math.abs(c.balance || 0) : 0,
     bakiye: c.balance || 0,
-    odenen_bakiye: paid,
     aktif: c.is_active ?? true,
     created_at: c.created_at || new Date().toISOString()
   };
@@ -83,7 +79,6 @@ function mapCustomerToCurrentAccount(c: any): CurrentAccount {
 
 function mapSupplierToCurrentAccount(s: any): CurrentAccount {
   const rawBal = parseFloat(String(s.balance ?? 0)) || 0;
-  const paid = parseFloat(String(s.paid_total ?? 0)) || 0;
   return {
     id: s.id,
     firma_id: s.firma_id || ERP_SETTINGS.firmNr,
@@ -102,7 +97,6 @@ function mapSupplierToCurrentAccount(s: any): CurrentAccount {
     borc_bakiye: 0,
     alacak_bakiye: s.balance || 0,
     bakiye: -(s.balance || 0),
-    odenen_bakiye: paid,
     aktif: s.is_active ?? true,
     created_at: s.created_at || new Date().toISOString()
   };
