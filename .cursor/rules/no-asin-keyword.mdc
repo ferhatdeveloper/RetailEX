@@ -1,0 +1,88 @@
+---
+description: RetailEX workspace'inde "asin" kelimesinin tüm türevleri (Asin, ASIN, asin, AsinERP, asin-portable, asin.exe vb.) hiçbir yerde yazılmaz — kod, doküman, commit mesajı, release adı, tag, asset, UI etiketi, i18n anahtarı, yorum, log mesajı dahil.
+alwaysApply: true
+---
+
+# "asin" kelimesi yasak (tüm türevleri)
+
+Bu workspace **RetailEX**'tir. **"asin" kelimesinin tüm türevleri** hiçbir yerde yazılmaz; sadece ve sadece **RetailEX** markası kullanılır.
+
+## Yasaklı türevler (kapsamlı, örnek)
+
+Aşağıdaki kelime/ifadeler **hiçbir bağlamda** kullanılmaz:
+
+- `asin`, `Asin`, `ASIN`
+- `AsinERP`, `asin-erp`, `asin_erp`, `ASIN-ERP`
+- `AsinRepo`, `asin-repo`, `asin_repo`
+- `AsinPortable`, `asin-portable`, `Asin-Portable-Setup`
+- `AsinDesktop`, `Asin-Desktop-Setup`
+- `AsinAndroid`, `Asin-Android`
+- `Asin.exe`, `asin.exe`, `Asin-Setup.exe`, `Asin-*.exe`
+- `Asin.Portable`, `Asin.PortableManager`
+- `asin_tenant`, `asin_period`, `asin_db`
+- Tüm path'ler, dosya adları, fonksiyon adları, değişken adları, sınıf adları, kolon adları, enum değerleri, i18n anahtarları, CSS sınıfları, log mesajları, commit mesajları, PR başlıkları, release title/body, tag adları, workflow adları, asset adları.
+
+## Neden
+
+- **Marka karışıklığı:** AsinERP ayrı bir ürün / ayrı bir repo (`ferhatdeveloper/asin`); bu workspace onun değil. Tek bir kelime türevi bile release asset adında, log'ta, UI'da görünürse müşteri / destek / CI tarafında karışıklık yaratır.
+- **Yasal / marka:** RetailEX kendi markasıdır; diğer ürün adlarını taşımak marka ihlali sayılır.
+- **CI / release guard:** zaten `retailex-desktop-portable-release-guard.mdc` Asset adında `AsinERP-*` yasak; bu kural onu **en üst düzeye** çıkarır: kelimenin tüm türevleri dahil.
+
+## Zorunlu kurallar
+
+### 1) Kod
+- Değişken / fonksiyon / sınıf / tip / kolon / enum / i18n anahtarı adlarında `asin` geçmez.
+- `git remote -v` → `origin` her zaman `RetailEX` olmalı; `asin` ise **iş durdurulur** ve kullanıcı bilgilendirilir.
+- Branch adlarında `asin` geçmez.
+- Test, fixture, mock veri, demo veri, seed script'te `asin` geçmez (örn. `seed-*-demo-data.sql` dosya adında, INSERT'lerde, örnek müşteri/ürün adlarında).
+
+### 2) Doküman / yorum
+- Markdown, JSDoc, inline yorum, ADR, README, runbook, CI log mesajı → `asin` türevi yasak.
+- Başka üründen bahsetmek gerekirse tam adla ve tırnakla: `"AsinERP (ayrı repo, ferhatdeveloper/asin)"` — ama **bu workspace'te böyle bir bağlam olmamalı**; sadece marka ayrımı kuralı referans verilebilir.
+
+### 3) Git
+- Commit mesajı, PR başlık/açıklaması, tag açıklaması, release title/body → `asin` türevi yasak.
+- Branch adı → `asin` türevi yasak (bu repo `main` only, ama yine de).
+
+### 4) CI / release / asset
+- GitHub Actions workflow adı, job adı, artifact adı → `asin` türevi yasak.
+- Release asset adı → `RetailEX-...` (Asin türevi yok).
+- Workflow dosya adı → `desktop-portable-release.yml` (Asin türevi yok).
+
+### 5) UI
+- Sayfa başlığı, buton, etiket, hata mesajı, toast, i18n anahtarı (tr/en/ar/ku) → `asin` türevi yasak.
+- Müşteri / cari / ürün / paket / fiş / makbuz adlarında demo veri bile olsa `asin` türevi yasak.
+
+## Kontrol listesi (her commit öncesi)
+
+Bir commit/push öncesinde ajan şunu doğrular:
+
+- [ ] `git diff --stat` çıktısında **eklenen** satırlarda `asin` (case-insensitive) geçmiyor mu? (`rg -ni "asin" $(git diff --name-only --diff-filter=AM) | head` ile bak)
+- [ ] Yeni dosya adlarında `asin` yok mu? (`git status --porcelain | awk '{print $2}'` ile bak)
+- [ ] Commit mesajında `asin` yok mu?
+- [ ] Tag adında `asin` yok mu?
+- [ ] Varsa UI/dokümanda geçen eski `asin` kalıntısı temizlenmiş mi?
+
+Geçiyorsa → **düzelt**, sonra commit.
+
+## Referans kurallar
+
+- `asin-retailex-product-separation.mdc` — AsinERP / RetailEX ayrı ürün; **bu kural onu sıkılaştırır**: ayrı tutmanın ötesinde kelime hiç yazılmaz.
+- `retailex-desktop-portable-release-guard.mdc` — asset / release adında AsinERP yasak (bu kural türevleri de kapsar).
+- `database-non-retailex-exclude.mdc` — Asin DB adları hariç (bu kural kod/doküman tarafında kelimeyi yasaklar).
+
+## Yapma
+
+- Kodda, dokümanda, commit'te, release'te, UI'da, log'da, yorumda, fixture'da, demo veride, i18n anahtarında `asin` türevi yazma.
+- "Eski kalıntı" diyerek bırakma; temizle.
+- Müşteri demosunda örnek müşteri adı olarak `Asin Test Müşteri` gibi bir şey yazma.
+- "Bu sadece yorum" diyerek yazma; **hiçbir yerde yok**.
+
+## Acil çıkış (escape hatch)
+
+Eğer teknik olarak `asin` kelimesinin **kodun işleyişi** için zorunlu olduğu bir durum olursa (ör. başka bir sistemin API'sinde kelime sabit, dış entegrasyon adı vb.):
+
+1. Yapma; önce sor.
+2. Kullanıcıya `AskQuestion` ile sor: **"Teknik zorunluluk: 'asin' kelimesi [dosya/satır] içinde [sebep] yazılmak zorunda. Onay veriyor musun? 1 — Evet, yaz 2 — Hayır, alternatif bul"**
+3. Onay gelirse bile açık yorum bırak: `// Dış API zorunluluğu — kullanıcı onayı (tarih): <sebep>`.
+4. Onay gelmezse alternatif bul (örn. `externalErpKey`, `partnerCode` vb.).

@@ -34,18 +34,18 @@ DECLARE
   period_arr TEXT[] := ARRAY['01','02','03','04','05','06','07','08','09','10','11','12'];
   f TEXT;
   p TEXT;
-  table_name TEXT;
+  tbl_name TEXT;
   cashier_fixed INT := 0;
   pm_fixed INT := 0;
 BEGIN
   FOREACH f IN ARRAY firm_arr LOOP
     FOREACH p IN ARRAY period_arr LOOP
-      table_name := 'rex_' || f || '_' || p || '_sales';
+      tbl_name := 'rex_' || f || '_' || p || '_sales';
 
       -- Tablo mevcut mu? (yoksa hata vermesin)
       IF NOT EXISTS (
         SELECT 1 FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = table_name
+        WHERE table_schema = 'public' AND table_name = tbl_name
       ) THEN
         CONTINUE;
       END IF;
@@ -57,19 +57,19 @@ BEGIN
       --    raporlarda filtrelenebilir olur.
       EXECUTE format(
         'UPDATE %I SET cashier = '''' WHERE cashier IS NULL AND is_cancelled = false',
-        table_name
+        tbl_name
       );
       GET DIAGNOSTICS cashier_fixed = ROW_COUNT;
 
       -- 2) payment_method NULL → 'Nakit'
       EXECUTE format(
         'UPDATE %I SET payment_method = ''Nakit'' WHERE payment_method IS NULL AND is_cancelled = false',
-        table_name
+        tbl_name
       );
       GET DIAGNOSTICS pm_fixed = ROW_COUNT;
 
       IF cashier_fixed > 0 OR pm_fixed > 0 THEN
-        RAISE NOTICE '  %: cashier+%, payment_method+%', table_name, cashier_fixed, pm_fixed;
+        RAISE NOTICE '  %: cashier+%, payment_method+%', tbl_name, cashier_fixed, pm_fixed;
       END IF;
     END LOOP;
   END LOOP;
@@ -80,22 +80,22 @@ DO $$
 DECLARE
   firm_arr TEXT[] := ARRAY['001','002','003'];
   period_arr TEXT[] := ARRAY['01','02','03','04','05','06','07','08','09','10','11','12'];
-  f TEXT; p TEXT; table_name TEXT;
+  f TEXT; p TEXT; tbl_name TEXT;
   total_cashier_null BIGINT := 0;
   total_pm_null BIGINT := 0;
   cnt BIGINT;
 BEGIN
   FOREACH f IN ARRAY firm_arr LOOP
     FOREACH p IN ARRAY period_arr LOOP
-      table_name := 'rex_' || f || '_' || p || '_sales';
+      tbl_name := 'rex_' || f || '_' || p || '_sales';
       IF NOT EXISTS (
         SELECT 1 FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = table_name
+        WHERE table_schema = 'public' AND table_name = tbl_name
       ) THEN CONTINUE; END IF;
 
-      EXECUTE format('SELECT COUNT(*) FROM %I WHERE cashier IS NULL AND is_cancelled = false', table_name) INTO cnt;
+      EXECUTE format('SELECT COUNT(*) FROM %I WHERE cashier IS NULL AND is_cancelled = false', tbl_name) INTO cnt;
       total_cashier_null := total_cashier_null + COALESCE(cnt, 0);
-      EXECUTE format('SELECT COUNT(*) FROM %I WHERE payment_method IS NULL AND is_cancelled = false', table_name) INTO cnt;
+      EXECUTE format('SELECT COUNT(*) FROM %I WHERE payment_method IS NULL AND is_cancelled = false', tbl_name) INTO cnt;
       total_pm_null := total_pm_null + COALESCE(cnt, 0);
     END LOOP;
   END LOOP;
