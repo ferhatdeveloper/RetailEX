@@ -428,18 +428,15 @@ export function computeCustomerBalanceFromLedger(
   // ledger boşalırsa kullanıcı −40k gibi saçma orphan değerler görmez.
   // Açılış bakiyesi de defter kaynaklarında (satış/kasa) yoksa 0; SQL repair CTE ile aynı.
   if (txnCount > 0) {
-    const ledger = salesSum + cashSum;
-    // Limit aşımı koruması: ledger ile DB saklı bakiye arasında büyük fark varsa
-    // (örn. 50k+ satırlı tenant, satır kesildi, MUS-018 10.869k fark) DB balance'a
-    // güven. Fatura silme sonrası orphan'a düşmemek için küçük farklar (≤ 10%) korunur.
-    if (Number.isFinite(_storedBalance) && _storedBalance !== 0) {
-      const diff = Math.abs(ledger - _storedBalance);
-      const rel = Math.max(Math.abs(ledger), Math.abs(_storedBalance), 1);
-      if (diff / rel > 0.1 && Math.abs(ledger) < Math.abs(_storedBalance)) {
-        return _storedBalance;
-      }
-    }
-    return ledger;
+    // Ledger her zaman öncelikli kaynaktır: sales + cash_lines CTE birebir
+    // doğru hesaplar. DB `customers.balance` kolonu yedek olup fatura
+    // silme / merge geçişleri sırasında geri kalabilir (kasap DB örneği:
+    // DB +9.973.363, ledger +7.666.363 → %23 fark; eski "limit aşımı
+    // koruması" bu durumda ledger'ı eziyordu → liste yanlış bakiye
+    // gösteriyordu). Migration 195 ile DB düzeltmesi uygulandıktan sonra
+    // bile ledger ile DB eşit olmalı; yine de DB'ye güvenmek yanlış.
+    // Orphan koruma: txnCount === 0 iken DB'ye fallback zaten aşağıda.
+    return salesSum + cashSum;
   }
   return Number.isFinite(_storedBalance) ? _storedBalance : 0;
 }
@@ -478,15 +475,10 @@ export function computeSupplierBalanceFromLedger(
       return (tt === 'CH_ODEME' || tt === 'CH_TAHSILAT') && cashLineMatchesParty(cl, idStr);
     });
   if (hasSupplierActivity) {
-    // Limit aşımı koruması (müşteri ile simetrik): ledger ile DB saklı bakiye
-    // arasında > %10 fark varsa DB balance'a güven.
-    if (Number.isFinite(_storedBalance) && _storedBalance !== 0) {
-      const diff = Math.abs(sum - _storedBalance);
-      const rel = Math.max(Math.abs(sum), Math.abs(_storedBalance), 1);
-      if (diff / rel > 0.1 && Math.abs(sum) < Math.abs(_storedBalance)) {
-        return _storedBalance;
-      }
-    }
+    // Ledger her zaman öncelikli kaynaktır (müşteri ile simetrik).
+    // DB `suppliers.balance` yedek olup geri kalabilir; migration 195
+    // düzeltmesinden sonra bile DB'ye güvenmek yanlış. Orphan koruma:
+    // hasSupplierActivity === false iken DB'ye fallback zaten aşağıda.
     return sum;
   }
   return Number.isFinite(_storedBalance) ? _storedBalance : 0;
