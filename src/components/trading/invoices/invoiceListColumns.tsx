@@ -24,6 +24,8 @@ export type ListInvoice = Invoice & {
   document_no?: string;
   header_fields?: Record<string, unknown>;
   line_mix?: InvoiceLineMix;
+  /** Açılış/devir fişleri için `opening_balance`; hard-delete butonu kontrolü */
+  fiche_type?: string;
 };
 
 export type InvoiceListColumnId =

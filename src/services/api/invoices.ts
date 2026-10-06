@@ -5072,6 +5072,128 @@ export const invoicesAPI = {
       return [];
     }
   },
+
+  /**
+   * Açılış/devir fişini (fiche_type='opening_balance') DB'den kalıcı olarak sil.
+   *
+   * Muhasebeci uyarısı: Bu HARD DELETE — geri alınamaz. Ledger'dan silinir,
+   * ilgili cari balance değerini yeniden hesaplamak için migration 195 / 205
+   * recompute mantığına güvenilir. Yalnız `fiche_type='opening_balance'`
+   * olan satırlar silinebilir; diğer fatura tipleri için delete() (soft)
+   * kullanılmalıdır.
+   *
+   * Onay mekanizması UI tarafında (InvoiceListModule):
+   * 1) "Emin misin?" diyaloğu
+   * 2) Tutarı yazma (1.500.000 vb.) → eşleşirse sil
+   *
+   * @returns Silinen satır sayısı (0/1) veya hata
+   */
+  async hardDeleteOpeningBalance(
+    id: string,
+    expectedAmount: number,
+    expectedCurrency: string,
+  ): Promise<{ ok: boolean; deleted: number; reason?: string }> {
+    try {
+      if (!id) return { ok: false, deleted: 0, reason: 'id eksik' };
+      const firmNr = ERP_SETTINGS.firmNr;
+      const fn = String(firmNr ?? '001').padStart(3, '0');
+      const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+      const salesPath = `/rex_${fn}_${pn}_sales`;
+
+      // 1) Önce satırı çek — fiche_type kontrolü
+      let row: any = null;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          salesPath,
+          {
+            select: 'id,fiche_no,fiche_type,net_amount,currency,currency_code,is_cancelled,notes',
+            id: `eq.${String(id).trim()}`,
+            limit: 1,
+          },
+          { schema: 'public' },
+        );
+        row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+      } else {
+        const { rows } = await postgres.query(
+          `SELECT id, fiche_no, fiche_type, net_amount, currency, currency_code, is_cancelled, notes
+           FROM sales WHERE id::text = $1::text LIMIT 1`,
+          [String(id).trim()],
+        );
+        row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+      }
+
+      if (!row) return { ok: false, deleted: 0, reason: 'Satır bulunamadı' };
+      if (String(row.fiche_type || '').toLowerCase() !== 'opening_balance') {
+        return {
+          ok: false,
+          deleted: 0,
+          reason: `Yalnız opening_balance silinebilir (bu: ${row.fiche_type || '—'})`,
+        };
+      }
+      if (row.is_cancelled === true) {
+        return {
+          ok: false,
+          deleted: 0,
+          reason: 'Bu fiş zaten iptal edilmiş (soft delete). HARD DELETE gerekmez.',
+        };
+      }
+
+      // 2) Tutar + döviz doğrulaması (UI onayından sonra çağrıldığı için burada da kontrol ediyoruz)
+      const rowAmt = Math.abs(parseFloat(String(row.net_amount ?? 0)) || 0);
+      const expAmt = Math.abs(Number(expectedAmount) || 0);
+      if (rowAmt !== expAmt) {
+        return {
+          ok: false,
+          deleted: 0,
+          reason: `Tutar uyuşmuyor (satır: ${rowAmt}, onaylanan: ${expAmt})`,
+        };
+      }
+      const rowCur = String(row.currency_code || row.currency || 'IQD').trim().toUpperCase();
+      const expCur = String(expectedCurrency || '').trim().toUpperCase();
+      if (rowCur !== expCur) {
+        return {
+          ok: false,
+          deleted: 0,
+          reason: `Döviz uyuşmuyor (satır: ${rowCur}, onaylanan: ${expCur})`,
+        };
+      }
+
+      // 3) HARD DELETE
+      let deleted = 0;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const result = await postgrest.delete<any[]>(
+          `${salesPath}?id=eq.${encodeURIComponent(String(id).trim())}&fiche_type=eq.opening_balance`,
+          { schema: 'public', prefer: 'return=representation' },
+        );
+        deleted = Array.isArray(result) ? result.length : 0;
+      } else {
+        const { rowCount } = await postgres.query(
+          `DELETE FROM sales
+           WHERE id::text = $1::text
+             AND LOWER(TRIM(COALESCE(fiche_type, ''))) = 'opening_balance'`,
+          [String(id).trim()],
+        );
+        deleted = typeof rowCount === 'number' ? rowCount : 0;
+      }
+
+      if (deleted > 0) {
+        // 4) Cari ledger tutarlılığı (defter yeniden hesaplaması için)
+        try {
+          const { repairCariLedgerConsistency } = await import('./accountLedgerRepair');
+          await repairCariLedgerConsistency();
+        } catch (e) {
+          console.warn('[InvoicesAPI] hardDeleteOpeningBalance cari onarım atlandı:', e);
+        }
+        broadcastInvoiceMutation({ detail: { id, deleted: true, hardDelete: true } });
+      }
+      return { ok: deleted > 0, deleted };
+    } catch (error: any) {
+      console.error('[InvoicesAPI] hardDeleteOpeningBalance failed:', error);
+      return { ok: false, deleted: 0, reason: error?.message || 'Bilinmeyen hata' };
+    }
+  },
 };
 
 /**

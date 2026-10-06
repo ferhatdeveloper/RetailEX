@@ -232,6 +232,68 @@ export function InvoiceListModule({
     }
   };
 
+  /**
+   * Açılış/devir fişini (fiche_type='opening_balance') HARD DELETE — DB'den
+   * kalıcı olarak siler. Çift onay:
+   *  1) "Emin misiniz?" diyaloğu
+   *  2) Tutarı (1.650.000 vb.) yazma → birebir eşleşirse sil
+   *
+   * Muhasebeci uyarısı: Bu geri alınamaz. Ledger'dan silinir, cari balance
+   * recompute tetiklenir (repairCariLedgerConsistency).
+   */
+  const [hardDeletingId, setHardDeletingId] = useState<string | null>(null);
+  const handleHardDeleteOpeningBalance = async (invoice: ListInvoice) => {
+    if (!invoice?.id) return;
+    const ficheType = String(invoice.fiche_type || '').toLowerCase();
+    if (ficheType !== 'opening_balance') {
+      toast.error('Bu işlem yalnızca açılış/devir fişleri için kullanılabilir.');
+      return;
+    }
+    const inv = invoice as Invoice;
+    const amount = Number(inv.total_amount ?? inv.total ?? inv.subtotal ?? 0);
+    const currency = String(inv.currency || 'IQD').trim().toUpperCase() || 'IQD';
+
+    // 1. onay
+    if (!confirm(
+      `Bu açılış/devir fişi kalıcı olarak silinecek (geri alınamaz).\n\n` +
+      `Fiş No: ${invoice.invoice_no || invoice.id}\n` +
+      `Tutar: ${amount.toLocaleString('tr-TR')} ${currency}\n` +
+      `Tarih: ${invoice.invoice_date || invoice.date || '—'}\n\n` +
+      `Devam etmek istiyor musunuz?`,
+    )) {
+      return;
+    }
+
+    // 2. onay: tutarı yazma
+    const typed = window.prompt(
+      `Onay için fiş tutarını (${amount.toLocaleString('tr-TR')} ${currency}) aynen yazın:`,
+    );
+    if (typed == null) return;
+    const typedAbs = Math.abs(parseFloat(typed.replace(/[^\d.,-]/g, '').replace(',', '.')) || 0);
+    if (typedAbs !== Math.abs(amount)) {
+      toast.error(`Tutar uyuşmuyor. Beklenen: ${Math.abs(amount).toLocaleString('tr-TR')}, yazılan: ${typedAbs.toLocaleString('tr-TR')}`);
+      return;
+    }
+
+    setHardDeletingId(invoice.id);
+    setContextMenu(null);
+    try {
+      const { invoicesAPI } = await import('../../../services/api/invoices');
+      const result = await invoicesAPI.hardDeleteOpeningBalance(invoice.id, amount, currency);
+      if (!result.ok) {
+        toast.error(result.reason || 'Açılış fişi silinemedi');
+        return;
+      }
+      toast.success(`Açılış fişi silindi (${result.deleted} satır)`);
+      await loadInvoices();
+    } catch (error: any) {
+      console.error('Hard delete failed:', error);
+      toast.error('Silme hatası: ' + (error?.message || 'Bilinmeyen'));
+    } finally {
+      setHardDeletingId(null);
+    }
+  };
+
   // Helper for printing
   const handlePrintInvoice = async (invoice: ListInvoice) => {
     // Determine label based on invoice type
@@ -1888,7 +1950,25 @@ export function InvoiceListModule({
                 }
               },
               variant: 'danger'
-            }
+            },
+            ...(String(contextMenu.invoice?.fiche_type || '').toLowerCase() === 'opening_balance'
+              ? [
+                  {
+                    id: 'hard-delete-opening',
+                    label: hardDeletingId
+                      ? (tm('deleting') || 'Siliniyor...')
+                      : 'Açılış Fişini SİL (kalıcı)',
+                    icon: Trash2,
+                    onClick: () => {
+                      if (hardDeletingId) return;
+                      if (contextMenu.invoice) {
+                        void handleHardDeleteOpeningBalance(contextMenu.invoice);
+                      }
+                    },
+                    variant: 'danger' as const,
+                  },
+                ]
+              : []),
           ]}
         />
       )}
