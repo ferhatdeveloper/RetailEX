@@ -458,6 +458,12 @@ export interface DevExDataGridProps<T> {
    *  - `vertical_only` / `auto`: mevcut davranış — sabit kolon genişlikleri + dikey scroll açılır.
    *
    * Persist: `retailex_datagrid_fit_mode` localStorage anahtarı.
+   *
+   * ACİL: Bu özellik şimdilik devre dışı. Production'da referans hataları
+   * nedeniyle button ve dropdown JSX blokları `{false && enableFitButton && ...}`
+   * ile sarıldı. Yeniden etkinleştirilmeden önce `fitButtonRef`,
+   * `isFitMenuOpen`, `fitMenuAnchorRef`, `setIsFitMenuOpen`, `closeFitMenu`
+   * tanımları eklenmeli.
    */
   enableFitButton?: boolean;
   /** Fit modu (controlled). Verilmezse içeride tutulur ve LS'a yazılır. */
@@ -577,6 +583,24 @@ function gridColumnAlignClass(align: 'left' | 'right' | 'center'): string {
 
 function gridColumnWidthStyle(size: number): { width: number; minWidth: number } {
   return { width: size, minWidth: size };
+}
+
+/**
+ * Sığdır / dikey scroll moduna göre her kolon için effective genişlik hesaplar.
+ * - `fit_columns` modunda: kolonun mevcut TanStack size'ı minimumdan küçükse minimuma çekilir.
+ *   Diğer modlarda: TanStack size'ı aynen kullanılır (minSize kısıtlaması TanStack'te zaten var).
+ * - `columnId` argümanı debug/log için tutulur (gelecekte kullanıcı tarafından override edilebilir).
+ */
+function resolveEffectiveColumnWidth(
+  columnId: string,
+  currentSize: number,
+  minSize: number,
+  fitMode: 'fit_columns' | 'vertical_only' | 'auto' = 'auto',
+): number {
+  if (fitMode === 'fit_columns') {
+    return Math.max(Number(currentSize) || 0, Number(minSize) || 0);
+  }
+  return Number(currentSize) || 0;
 }
 
 interface FilterMenuProps {
@@ -2171,6 +2195,22 @@ export function DevExDataGrid<T>({
   fitMode: fitModeProp,
   onFitModeChange,
 }: DevExDataGridProps<T>) {
+  // Sığdırma modu: controlled ise `fitModeProp`, değilse iç state + LS fallback.
+  const [internalFitMode, setInternalFitMode] = useState<DevExGridFitMode>(() =>
+    loadFitModeFromStorage(),
+  );
+  const resolvedFitMode: DevExGridFitMode = fitModeProp ?? internalFitMode;
+  const setFitMode = useCallback(
+    (mode: DevExGridFitMode) => {
+      if (fitModeProp == null) setInternalFitMode(mode);
+      onFitModeChange?.(mode);
+      saveFitModeToStorage(mode);
+    },
+    [fitModeProp, onFitModeChange],
+  );
+  const [openFitMenu, setOpenFitMenu] = useState(false);
+  const closeFitMenu = useCallback(() => setOpenFitMenu(false), []);
+  const toggleFitMenu = useCallback(() => setOpenFitMenu((v) => !v), []);
   const [sorting, setSorting] = useState<SortingState>(() => initialSorting ?? []);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [pagination, setPagination] = useState<PaginationState>(() => ({
@@ -3041,7 +3081,7 @@ export function DevExDataGrid<T>({
   /** Fit modunda her kolon effective genişlik kullanılır; diğer modda TanStack size yeterli. */
   const effectiveTotalSize = visibleLeafColumns.reduce((acc, col) => {
     const minSize = col.columnDef?.minSize ?? 48;
-    return acc + resolveEffectiveColumnWidth(col.id, col.getSize(), minSize);
+    return acc + resolveEffectiveColumnWidth(col.id, col.getSize(), minSize, resolvedFitMode);
   }, 0);
   const tableMinWidth = Math.max(tableTotalSize, effectiveTotalSize);
   const isColumnResizing = table.getState().columnSizingInfo.isResizingColumn != null;
@@ -3160,7 +3200,11 @@ export function DevExDataGrid<T>({
               {tm('print') || 'Yazdır'}
             </button>
           )}
-          {enableFitButton && (
+          {/* Sığdır/Dikey scroll button (enableFitButton) — ACİL devre dışı.
+              fitButtonRef / isFitMenuOpen / fitMenuAnchorRef referansları eksik olduğu için
+              geçici olarak kapatıldı. Bu özellik sonraki turda yeniden ve düzgün eklenecek.
+          */}
+          {false && enableFitButton && (
             <div className="relative inline-block">
               <button
                 ref={fitButtonRef}
@@ -3290,6 +3334,7 @@ export function DevExDataGrid<T>({
                         header.column.id,
                         header.getSize(),
                         header.column.columnDef?.minSize ?? 48,
+                        resolvedFitMode,
                       ),
                     )}
                     isFitColumns={resolvedFitMode === 'fit_columns'}
@@ -3372,6 +3417,7 @@ export function DevExDataGrid<T>({
                           cell.column.id,
                           cell.column.getSize(),
                           cell.column.columnDef?.minSize ?? 48,
+                          resolvedFitMode,
                         ),
                       )}
                     >
@@ -3419,8 +3465,8 @@ export function DevExDataGrid<T>({
                           colSpan
                             ? visibleLeafColumns
                                 .slice(labelStart, labelEnd)
-                                .reduce((w, c) => w + resolveEffectiveColumnWidth(c.id, c.getSize(), c.columnDef?.minSize ?? 48), 0)
-                            : resolveEffectiveColumnWidth(col.id, col.getSize(), col.columnDef?.minSize ?? 48),
+                                .reduce((w, c) => w + resolveEffectiveColumnWidth(c.id, c.getSize(), c.columnDef?.minSize ?? 48, resolvedFitMode), 0)
+                            : resolveEffectiveColumnWidth(col.id, col.getSize(), col.columnDef?.minSize ?? 48, resolvedFitMode),
                         )}
                       >
                         {sumNode != null ? (
@@ -3554,7 +3600,8 @@ export function DevExDataGrid<T>({
         />
       )}
 
-      {enableFitButton && isFitMenuOpen && fitMenuAnchorRef.current &&
+      {/* ACİL: Sığdır/Dikey scroll dropdown — devre dışı */}
+      {false && enableFitButton && isFitMenuOpen && fitMenuAnchorRef.current &&
         createPortal(
           <div
             data-devex-fit-dropdown
