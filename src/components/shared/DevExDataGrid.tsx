@@ -2260,6 +2260,8 @@ export function DevExDataGrid<T>({
   } | null>(null);
   const [groupPivotOpen, setGroupPivotOpen] = useState(false);
   const filterColumnsRef = useRef<Map<string, Column<any, unknown>>>(new Map());
+  /** Kök <table> elemanına ref — print/measure/external kullanımlar için. */
+  const tableRef = useRef<HTMLTableElement | null>(null);
   const { isMobile, isTablet } = useResponsive();
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
@@ -3200,51 +3202,11 @@ export function DevExDataGrid<T>({
               {tm('print') || 'Yazdır'}
             </button>
           )}
-          {/* Sığdır/Dikey scroll button (enableFitButton) — ACİL devre dışı.
+          {/* Sığdır/Dikey scroll button (enableFitButton) — production build'den kaldırıldı.
               fitButtonRef / isFitMenuOpen / fitMenuAnchorRef referansları eksik olduğu için
-              geçici olarak kapatıldı. Bu özellik sonraki turda yeniden ve düzgün eklenecek.
+              "{false && ...}" koşulu Vite SWC optimizasyonu sırasında parse edildi ve runtime
+              ReferenceError üretti. Bu özellik sonraki turda yeniden ve düzgün şekilde eklenecek.
           */}
-          {false && enableFitButton && (
-            <div className="relative inline-block">
-              <button
-                ref={fitButtonRef}
-                type="button"
-                onClick={() => {
-                  if (!fitButtonRef.current) return;
-                  const rect = fitButtonRef.current.getBoundingClientRect();
-                  fitMenuAnchorRef.current = {
-                    top: rect.bottom + 4,
-                    left: Math.max(8, rect.right - 220),
-                  };
-                  setIsFitMenuOpen((v) => !v);
-                }}
-                aria-haspopup="menu"
-                aria-expanded={isFitMenuOpen}
-                className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border ${
-                  resolvedFitMode === 'fit_columns'
-                    ? darkMode
-                      ? 'text-emerald-300 bg-emerald-900/40 border-emerald-700'
-                      : 'text-emerald-800 bg-emerald-50 border-emerald-300'
-                    : darkMode
-                      ? 'text-slate-200 bg-slate-800 border-slate-600 hover:bg-slate-700'
-                      : 'text-slate-700 bg-white border-slate-300 hover:bg-slate-100'
-                }`}
-                title={
-                  resolvedFitMode === 'fit_columns'
-                    ? tm('gridDensityFitTitle') || 'Sığdır — sütunlar içeriğe göre'
-                    : tm('gridDensityVerticalTitle') || 'Dikey scroll — sabit yükseklik'
-                }
-              >
-                <span aria-hidden className="font-bold">
-                  {resolvedFitMode === 'fit_columns' ? '⤢' : '↕'}
-                </span>
-                {resolvedFitMode === 'fit_columns'
-                  ? tm('bFit') || 'Sığdır'
-                  : tm('bVerticalScroll') || 'Dikey scroll'}
-                <ChevronDown className="w-2.5 h-2.5" aria-hidden />
-              </button>
-            </div>
-          )}
           {enableColumnVisibility && showColumnVisibilityToolbar && (
           <ColumnVisibilityMenu
             variant="grid"
@@ -3601,79 +3563,9 @@ export function DevExDataGrid<T>({
       )}
 
       {/* ACİL: Sığdır/Dikey scroll dropdown — devre dışı */}
-      {false && enableFitButton && isFitMenuOpen && fitMenuAnchorRef.current &&
-        createPortal(
-          <div
-            data-devex-fit-dropdown
-            role="menu"
-            aria-label={tm('fitModeMenuAria') || 'Sığdırma modu'}
-            className={`absolute min-w-[15rem] rounded-md border shadow-lg py-1 text-[11px] ${
-              darkMode ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-gray-200 text-gray-800'
-            }`}
-            style={{
-              top: fitMenuAnchorRef.current.top,
-              left: fitMenuAnchorRef.current.left,
-              zIndex: GRID_POPOVER_Z,
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className={`px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              {tm('fitModeMenuTitle') || 'Sığdırma modu'}
-            </div>
-            <button
-              type="button"
-              role="menuitemradio"
-              aria-checked={resolvedFitMode === 'fit_columns'}
-              className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${
-                darkMode ? 'hover:bg-gray-700' : 'hover:bg-sky-50'
-              } ${resolvedFitMode === 'fit_columns' ? (darkMode ? 'bg-emerald-900/40 text-emerald-200' : 'bg-emerald-50 text-emerald-800') : ''}`}
-              onClick={() => {
-                setFitMode('fit_columns');
-                closeFitMenu();
-              }}
-            >
-              <span className="w-3 h-3 inline-flex items-center justify-center" aria-hidden>
-                {resolvedFitMode === 'fit_columns' ? '●' : '○'}
-              </span>
-              <span className="font-medium">{tm('bFit') || 'Sütunları sığdır'}</span>
-            </button>
-            <button
-              type="button"
-              role="menuitemradio"
-              aria-checked={resolvedFitMode === 'vertical_only'}
-              className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${
-                darkMode ? 'hover:bg-gray-700' : 'hover:bg-sky-50'
-              } ${resolvedFitMode === 'vertical_only' ? (darkMode ? 'bg-sky-900/40 text-sky-200' : 'bg-sky-50 text-sky-800') : ''}`}
-              onClick={() => {
-                setFitMode('vertical_only');
-                closeFitMenu();
-              }}
-            >
-              <span className="w-3 h-3 inline-flex items-center justify-center" aria-hidden>
-                {resolvedFitMode === 'vertical_only' ? '●' : '○'}
-              </span>
-              <span className="font-medium">{tm('fitModeManual') || 'Sığdırmadan devam et'}</span>
-            </button>
-            <button
-              type="button"
-              role="menuitemradio"
-              aria-checked={resolvedFitMode === 'auto'}
-              className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${
-                darkMode ? 'hover:bg-gray-700' : 'hover:bg-sky-50'
-              } ${resolvedFitMode === 'auto' ? (darkMode ? 'bg-sky-900/40 text-sky-200' : 'bg-sky-50 text-sky-800') : ''}`}
-              onClick={() => {
-                setFitMode('auto');
-                closeFitMenu();
-              }}
-            >
-              <span className="w-3 h-3 inline-flex items-center justify-center" aria-hidden>
-                {resolvedFitMode === 'auto' ? '●' : '○'}
-              </span>
-              <span className="font-medium">{tm('bVerticalScroll') || 'Yalnızca dikey scrollbar'}</span>
-            </button>
-          </div>,
-          document.body,
-        )}
+      {/* Sığdır/Dikey scroll dropdown — production build'den kaldırıldı.
+          Referansları (isFitMenuOpen, fitMenuAnchorRef, setIsFitMode...) eksik.
+          Sonraki turda yeniden eklenecek. */}
 
       {/* Pagination */}
       {enablePagination && (
