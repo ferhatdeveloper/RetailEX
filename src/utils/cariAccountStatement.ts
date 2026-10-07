@@ -404,14 +404,25 @@ export function buildEkstreRows(
         borcAmount = 0;
         alacakAmount = 0;
       } else if (isAvansRow) {
-        // Avans: müşteri bize para verdi (alacaklanır), supplier ise tersi.
+        // Avans: müşteri bize para verdi (alacaklanır → borç B sütununa),
+        // supplier ise tersi (bize para verdi → alacak A sütununa).
         delta = cashLineLedgerDelta(amount, 'CH_TAHSILAT', cardType);
         if (delta > 0) {
           borcAmount = absAmt;
         } else if (delta < 0) {
           alacakAmount = absAmt;
         }
+      } else if (isSupplierAccount && ficheType === 'CH_ODEME') {
+        // Tedarikçi bize peşin ödedi → bizim alacağımız azalır (delta −) → B (borç) sütununa.
+        // Müşterinin tersi: müşteri tahsilatı B'ye, supplier ödemesi B'ye yazılır.
+        delta = -absAmt;
+        borcAmount = absAmt;
+      } else if (isSupplierAccount && ficheType === 'CH_TAHSILAT') {
+        // Tedarikçi bizden para çekti (nadir ama mümkün) → alacağımız artar (delta +) → A sütununa.
+        delta = absAmt;
+        alacakAmount = absAmt;
       } else if (ficheType === 'CH_TAHSILAT' || ficheType === 'CH_ODEME') {
+        // Müşteri tarafı standart mantık
         delta = cashLineLedgerDelta(amount, ficheType, cardType);
         if (delta > 0) {
           borcAmount = absAmt;
@@ -431,10 +442,12 @@ export function buildEkstreRows(
         borcAmount = 0;
         alacakAmount = 0;
       } else if (isSupplierAccount) {
-        // Tedarikçi alışı borç artırır (Debit), iade borç azaltır (Credit) — müşteriyle aynı mantık.
+        // Tedarikçi alışı alacak artırır (A, bizim borcumuz), iade alacak azaltır.
+        // Müşterinin TERS yönü — cari simetrisi gereği.
+        // Borç (B) sütunu = bize peşin ödeme / alacak kaydı.
         delta = isReturn ? -absAmt : absAmt;
-        if (isReturn) alacakAmount = absAmt;
-        else borcAmount = absAmt;
+        if (isReturn) borcAmount = absAmt;
+        else alacakAmount = absAmt;
       } else {
         // Müşteri veresiye satış: borç artar (kalan veresiye olarak).
         // Eğer satır içi `payments` verilmişse kalan = saleSplit.remaining
