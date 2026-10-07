@@ -2239,7 +2239,7 @@ export function AppointmentPOS({
                                         0,
                                         250,
                                     ),
-                                createdBy: currentLoginCashierName() || undefined,
+                                createdBy: currentLoginUserId?.() ?? undefined,
                             });
                         } catch (ficheErr) {
                             // Sales fişi kesilemedi; cari avans + kasa hareketi

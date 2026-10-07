@@ -176,8 +176,8 @@ class AppointmentPaymentService {
                FROM ${aptTable} a
                LEFT JOIN rex_${fn}_customers c
                       ON c.id::text = a.client_id::text
-              WHERE a.id = $1 AND a.firm_nr = $2`,
-            [input.appointmentId, fn],
+              WHERE a.id = $1`,
+            [input.appointmentId],
         );
         const apt = extractRows<{
             id: string;
@@ -196,9 +196,13 @@ class AppointmentPaymentService {
             // 2. appointments üzerinde deposit kolonlarını güncelle
             // Status: scheduled/confirmed → pre_paid (hizmet henüz başlamadı)
             // pre_paid / in_progress / completed → status değişmez (zaten peşinatlı)
+            // NOT: `recordAdvance` zaten bu randevuya GREATEST ile deposit_amount
+            // yazmış olabilir (AppointmentPOS akışı). Burada GREATEST ile
+            // eklemiyoruz; mevcut deposit_amount değerini KORU (cari tarafta
+            // zaten ayrı bir `cari_avans` satırı ile bakiye ayrı tutuluyor).
             await postgres.query(
                 `UPDATE ${aptTable}
-                    SET deposit_amount    = COALESCE(deposit_amount, 0) + $2,
+                    SET deposit_amount    = GREATEST(COALESCE(deposit_amount, 0), $2),
                         deposit_provider  = COALESCE($3, deposit_provider),
                         deposit_date      = COALESCE(deposit_date, $4),
                         status            = CASE
@@ -206,13 +210,12 @@ class AppointmentPaymentService {
                                                 ELSE status
                                             END,
                         updated_at        = NOW()
-                  WHERE id = $1 AND firm_nr = $5`,
+                  WHERE id = $1`,
                 [
                     input.appointmentId,
                     input.amount,
                     input.provider,
                     now,
-                    fn,
                 ],
             );
 
@@ -296,16 +299,31 @@ class AppointmentPaymentService {
                 const insertedRows = extractRows<{ id: string; fiche_no: string }>(salesInsert);
                 if (insertedRows[0]?.id) {
                     saleId = insertedRows[0].id;
-                    // sale_items: tek satır — hizmet kalemi (stok düşmez; sadece fiş bilgisi)
-                    await postgres.query(
-                        `INSERT INTO ${saleItemsTable}
-                            (id, invoice_id, product_id, quantity, unit_price, vat_rate,
-                             discount_rate, discount_amount, total_amount, unit_cost, item_type, name)
-                         VALUES
-                            (gen_random_uuid(), $1::text::uuid, NULL, 1, $2::numeric, 0,
-                             0, 0, $2::numeric, 0, 'service'::text, $3::text)`,
-                        [saleId, input.amount, 'Ön Ödeme Peşinatı'],
-                    );
+                    // sale_items: tek satır — hizmet kalemi (stok düşmez; sadece fiş bilgisi).
+                    // `item_name` kolonu (schema: public.rex_*_*_sale_items) ve `item_type`
+                    // schema defaultu 'Malzeme' olduğu için 'Hizmet' olarak override edilir.
+                    try {
+                        await postgres.query(
+                            `INSERT INTO ${saleItemsTable}
+                                (id, invoice_id, product_id, quantity, unit_price, vat_rate,
+                                 discount_rate, discount_amount, total_amount, unit_cost,
+                                 item_type, item_name, net_amount)
+                             VALUES
+                                (gen_random_uuid(), $1::text::uuid, NULL, 1, $2::numeric, 0,
+                                 0, 0, $2::numeric, 0,
+                                 'Hizmet'::text, $3::text, $2::numeric)`,
+                            [saleId, input.amount, 'Ön Ödeme Peşinatı'],
+                        );
+                    } catch (itemErr) {
+                        // sale_items INSERT başarısız olsa bile sales INSERT başarılı;
+                        // sadece logla, ana akışı bozma. Randevuya deposit_sale_id
+                        // geri yazımı (aşağıdaki UPDATE) yine de çalışsın.
+                        logger.warn(
+                            'appointmentPaymentService',
+                            'sale_items INSERT failed (sales fişi yazıldı, kalem atlandı)',
+                            { saleId, ficheNo, error: itemErr instanceof Error ? itemErr.message : String(itemErr) },
+                        );
+                    }
                     // randevuya deposit_sale_id + fiche_no geri yaz
                     await postgres.query(
                         `UPDATE ${aptTable}
@@ -313,8 +331,8 @@ class AppointmentPaymentService {
                                 deposit_sale_fiche_no = $3::text,
                                 sale_group_id = $4::text,
                                 updated_at = NOW()
-                          WHERE id = $1::text::uuid AND firm_nr = $5::text`,
-                        [input.appointmentId, saleId, ficheNo, saleGroupId, fn],
+                          WHERE id = $1::text::uuid`,
+                        [input.appointmentId, saleId, ficheNo, saleGroupId],
                     );
                 }
             } catch (salesErr) {
@@ -379,8 +397,8 @@ class AppointmentPaymentService {
                     COALESCE(deposit_amount, 0)          AS deposit_amount,
                     COALESCE(remainder_paid_amount, 0)   AS remainder_paid_amount
                FROM ${aptTable}
-              WHERE id = $1 AND firm_nr = $2`,
-            [appointmentId, fn],
+              WHERE id = $1`,
+            [appointmentId],
         );
         const apt = extractRows<{ id: string; total_price: number; deposit_amount: number; remainder_paid_amount: number }>(aptRows)[0];
         if (!apt) {

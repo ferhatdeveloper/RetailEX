@@ -59,7 +59,8 @@ function getInventoryReservationsTable(): string {
 
 function getAccountMovementsTable(): string {
   const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
-  return `rex_${firm}_account_movements`;
+  const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
+  return `rex_${firm}_${period}_account_movements`;
 }
 
 /** Beauty randevu tablosu — `beauty.rex_<firmNr>_<periodNr>_beauty_appointments`. */
@@ -202,11 +203,11 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
     try {
       const { rows: kasaRows } = await postgres.query<{
         id: string;
-        kasa_kodu?: string;
-        kasa_adi?: string;
+        code?: string;
+        name?: string;
       }>(
-        `SELECT id, kasa_kodu, kasa_adi
-           FROM cash_registers
+        `SELECT id, code, name
+           FROM rex_${firm}_cash_registers
           WHERE firm_nr = $1 AND is_active = TRUE
           ORDER BY created_at ASC
           LIMIT 1`,
@@ -214,11 +215,11 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
       );
       if (kasaRows && kasaRows[0]?.id) {
         effectiveCashRegisterId = String(kasaRows[0].id);
-        effectiveCashRegisterCode = kasaRows[0].kasa_kodu
-          ? String(kasaRows[0].kasa_kodu)
+        effectiveCashRegisterCode = kasaRows[0].code
+          ? String(kasaRows[0].code)
           : null;
-        effectiveCashRegisterName = kasaRows[0].kasa_adi
-          ? String(kasaRows[0].kasa_adi)
+        effectiveCashRegisterName = kasaRows[0].name
+          ? String(kasaRows[0].name)
           : null;
       }
     } catch (kasaErr) {
@@ -330,10 +331,13 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
   if (input.appointmentId) {
     const aptTable = getBeautyAppointmentsTable();
     try {
+      // `GREATEST` ile: zaten yazılmış deposit varsa KORU (AppointmentPOS
+      // createAppointment INSERT'te deposit_amount=reservationForSubmit yazar);
+      // burada sıfırsa veya eksikse bu avansın tutarını set et.
       await postgres.query(
         `UPDATE ${aptTable}
-            SET deposit_amount = $2,
-                deposit_date = NOW(),
+            SET deposit_amount = GREATEST(COALESCE(deposit_amount, 0), $2),
+                deposit_date = COALESCE(deposit_date, NOW()),
                 deposit_provider = COALESCE(deposit_provider, 'pos')
           WHERE id = $1`,
         [input.appointmentId, amount],
