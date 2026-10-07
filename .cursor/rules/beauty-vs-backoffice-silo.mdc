@@ -1,0 +1,83 @@
+# Beauty Suite ↔ BackOffice (Yönetim) — Bilinçli Silo Mimari
+
+## Özet
+
+RetailEX'te **Beauty Suite** (güzellik merkezi modülü) ve **BackOffice / Yönetim**
+ürün/müşteri/hizmet yönetimi **bilinçli olarak ayrı veri silosu**'dur. Köprü senkron,
+UNION view veya otomatik replikasyon **yoktur** (tasarım kararı). Bu kural, niçin
+ayrı tutulduğunu, nelerin ayrı olduğunu ve yeni özelliklerde nelere dikkat edilmesi
+gerektiğini açıklar.
+
+## Tablo yapısı — iki silo
+
+| Silo | Şema | Tablo kalıbı | Örnek tablolar |
+|---|---|---|---|
+| **BackOffice / Yönetim** | `public` | `rex_<firmNr>_<periodNr>_*` (hareket) ve `rex_<firmNr>_*` (kart) | `products`, `customers`, `services`, `sales`, `sale_items`, `cari_avans`, `cash_lines`, `account_movements`, `invoices`, `cash_registers`, `parties` |
+| **Beauty Suite** | `beauty` | `beauty.rex_<firmNr>_<periodNr>_*` (hareket) ve kartlar genelde `public` (ortak) | `beauty_appointments`, `beauty_appointment_payments`, `beauty_sales`, `beauty_sale_items`, `beauty_services`, `beauty_packages`, `beauty_specialists`, `beauty_devices` |
+
+**Kart tabloları** (`products`, `customers`, `services`) **paylaşılır** (public şemada) — böylece
+müşteri/ürün tüm modüllerden tek noktadan yönetilir. **Hareket tabloları** ise
+her modülün kendi şemasında periyodik (firmNr+periodNr) tutulur.
+
+## Neden ayrı silo?
+
+1. **Farklı veri modeli**: Beauty randevusu (süre, uzman, cihaz slot, paket seansı) Yönetim
+   satışından (ürün, miktar, KDV) farklıdır. Beauty'de randevu birincil, satış türetilmiştir.
+2. **Farklı UX/akış**: BeautySuite Suite'te randevu oluşturma → hizmet verildiğinde tek fiş;
+   MarketPOS'ta anlık satış. Aynı tabloyu paylaşırlarsa UX ve raporlar birbirine girer.
+3. **Performans**: Beauty raporları (günlük, paket kullanımı, uzman performansı) sadece
+   `beauty.*` tablolarını okur; Yönetim genel tablolarına UNION yük getirmez.
+4. **Sahiplik**: Beauty Suite kendi başına bir ürün (güzellik merkezi dükkanı)
+   olarak da satılabilir; Yönetim modülü olmadan çalışabilmelidir.
+
+## Köprü senkron (yok)
+
+- `beauty_sales` ↔ `public.sales`: **yok**. Hizmet verildiğinde `beauty_sales`
+  tek fiş olarak yazılır; Yönetim `public.sales` tablosuna otomatik INSERT yok.
+- `beauty_sale_items` ↔ `public.sale_items`: **yok**.
+- `beauty_appointment_payments` ↔ `public.cari_avans` / `cash_lines`: **doğrudan
+  değil**; cari tarafı `recordAdvance` ile `cari_avans + cash_lines +
+  account_movements` olarak yazılır, `beauty_appointment_payments` ise yalnızca
+  audit trail (hizmet tarihçesi) içindir.
+
+## Yönetim'de Malzeme/Cari listesi neden beauty hizmetlerini göstermez?
+
+- `public.rex_<firmNr>_<periodNr>_products` ve `public.rex_<firmNr>_customers`
+  → Yönetim Malzeme / Cari modülleri **yalnızca bu tablolardan** okur.
+- Beauty Suite'in hizmet/cihaz/paket katalogları `beauty.*` şemasında
+  (ör. `beauty_services`, `beauty_packages`, `beauty_devices`) tutulur.
+- **Bilinçli ayrım**: BeautySuite'in veri modeli Yönetim ürün modelinden farklı
+  (uzman ataması, cihaz slot, süre, paket seansı). Yönetim'de görünmemeleri
+  **beklenen davranış**, hata değil.
+
+## Cari (müşteri) tarafı
+
+- Müşteri **kartı** `public.rex_<firmNr>_customers` → **ortak** (iki silo da buradan okur).
+- Müşteri **hareketleri** (avans, tahsilat, fiş) → `public.rex_<firmNr>_<periodNr>_*` → **ortak**.
+- Beauty randevusundan gelen cari hareketi `recordAdvance` (avansService) ile
+  `public.cari_avans` + `public.cash_lines` + `public.account_movements` tablolarına
+  yazılır; Yönetim cari ekstresi bu satırları görür.
+
+## Yeni özellik eklerken kontrol listesi
+
+| Konu | Yapılacak |
+|---|---|
+| Beauty tarafında yeni hareket tablosu | `beauty.rex_<firmNr>_<periodNr>_<name>` (period düzeyinde, sales pattern'i) |
+| Yönetim tarafında yeni hareket tablosu | `public.rex_<firmNr>_<periodNr>_<name>` |
+| Yeni kart tablosu | `public.rex_<firmNr>_<name>` (ortak; her iki silo kullanır) |
+| Köprü senkron / UNION view | **YAPMA**. Gerekirse ayrı task olarak planla; bu kuralı bozmadan değiştirme. |
+| Beauty → Yönetim fiş yansıması | `beautyService.createSale` içinde `runBeautySaleErpAndLoyalty` çağrısı zaten Yönetim `sales` tablosuna yazar (MarketPOS ile aynı formatta). Hizmet verildiğinde bu tetiklenir. |
+| Cari tarafı (avans, tahsilat) | `recordAdvance` (avansService) ve `applyAdvanceToSale` ortak; Yönetim cari ekstresi bunları görür. |
+
+## İlgili kurallar
+
+- `retailex-project-context.mdc` — şema/tablo genel kuralları
+- `agent-multi-and-accounting-review.mdc` — muhasebe denetimi (cari simetrisi her iki siloda da geçerli)
+- `database-non-retailex-exclude.mdc` — RetailEX dışı DB'ler (bu silo kuralıyla karıştırma)
+
+## Yapma
+
+- `beauty_*` tablosundan `public.*`'a otomatik kopyalama / trigger / replication ekleme.
+- `public.products` listesine beauty hizmetlerini "görünsün" diye UNION ile ekleme.
+- Beauty Suite'i Yönetim olmadan çalıştırmayı zorlaştıracak JOIN/foreign key kurma.
+- Köprü senkronu "küçük bir değişiklik" diye bu kuralı ihlal ederek ekleme.

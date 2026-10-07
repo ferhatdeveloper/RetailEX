@@ -1001,19 +1001,22 @@ export async function fetchKasaIslemleri(params?: {
       }
     }
 
-    // 4b) `special_code='AVANS'` + `transaction_type='CH_TAHSILAT'` →
-    // fişsiz avans (skipInvoice modu). `recordAdvance` (`avansService`)
-    // bu kodu nakit/kart/transfer avans kayıtlarında set eder;
+    // 4b) `special_code='REZERVASYON'` + `transaction_type='CH_TAHSILAT'` →
+    // fişsiz rezervasyon tahsilatı (skipInvoice modu). `recordAdvance`
+    // (`avansService`) bu kodu nakit/kart/transfer kayıtlarında set eder;
     // skipInvoice modunda sales fişi yazılmadığı için yukarıdaki
-    // `sales.is_deposit` tespitine düşmez. Bu blok avansın Kasa
+    // `sales.is_deposit` tespitine düşmez. Bu blok tutarın Kasa
     // İşlemleri listesinde 🗓 Rezervasyon Peşinatı badge'i ile
     // görünmesini sağlar (CH_TAHSILAT Ciro'dan Hariç, ayrı bölümde
     // gösterilir — kullanıcı datası korunur; sadece etiket/badge eklenir).
+    // 07.10.2026 — UI rename: 'AVANS' → 'REZERVASYON'. `transaction_type`
+    // hâlâ 'CH_TAHSILAT' (muhasebe semantiği); `special_code` serbest
+    // string — UI etiket değişikliği için yeterli.
     rows = rows.map((r) => {
       if ((r as { is_reservation_deposit?: boolean }).is_reservation_deposit === true) return r;
       const code = String((r as { special_code?: string | null }).special_code ?? '').trim().toUpperCase();
       const txType = String((r as { transaction_type?: string | null }).transaction_type ?? '').trim().toUpperCase();
-      if (code === 'AVANS' && txType === 'CH_TAHSILAT') {
+      if (code === 'REZERVASYON' && txType === 'CH_TAHSILAT') {
         return { ...r, is_reservation_deposit: true };
       }
       return r;

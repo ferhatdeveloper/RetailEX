@@ -40,10 +40,11 @@ import { salesAPI } from '../../../services/api/sales';
 // için `recordAdvance` (avans + cari bakiye + kasa hareketi + stok rezervasyonu).
 // Fatura oluşturmaz; müşteri sonraki gelişinde kalan ödemeyi yapar.
 import { recordAdvance } from '../../../services/avansService';
-// Randevu ön ödeme (deposit) yaz: `createAppointmentDeposit` opsiyonel olarak
-// BEAUTY-PESINAT-* sales fişi keser; cari avans + kasa hareketi her durumda
-// `recordAdvance` ile yazılır.
-import { appointmentPaymentService } from '../../../services/appointmentPaymentService';
+// 07.10.2026 — `createAppointmentDeposit` import'u kaldırıldı.
+// Artık BEAUTY-PESINAT-* sales fişi kesilmiyor (çift fiş düzeltmesi). Cari
+// tarafı yalnızca `recordAdvance` ile yazılır; hizmet verildiğinde
+// `beautyService.createSale` TEK beauty_sales fişi (BEA-2026-...) keser.
+// import { appointmentPaymentService } from '../../../services/appointmentPaymentService';
 // Rezervasyon tutarı para birimi (firma ana parabirimi) için uygulama varsayılanı.
 import { getAppDefaultCurrency } from '../../../services/postgres';
 import {
@@ -443,9 +444,12 @@ export function AppointmentPOS({
     const [discount, setDiscount] = useState(0);
     // Rezervasyon tutarı (müşteriden peşin alınan tutar; toplamdan düşer)
     const [reservationAmount, setReservationAmount] = useState(0);
-    // Yeni randevuda rezervasyon tutarı girildiğinde ayrıca BEAUTY-PESINAT-*
-    // satış fişi kesilsin mi? Varsayılan true — kullanıcı isteğe bağlı kapatır
-    // (yalnızca cari avans + kasa hareketi yazılır, sales fişi kesilmez).
+    // 07.10.2026 — `reservationCreateReceipt` kaldırıldı: artık
+    // BEAUTY-PESINAT-* sales fişi kesilmiyor (çift fiş düzeltmesi). Cari
+    // tarafı yalnızca `recordAdvance` ile yazılır; hizmet verildiğinde
+    // beautyService.createSale TEK beauty_sales fişi (BEA-2026-...) keser.
+    // (state referansı başka yerlerde kalmış olabilir; typecheck sırasında
+    // görülecek ve temizlenecek.)
     const [reservationCreateReceipt, setReservationCreateReceipt] = useState(true);
 
     // ── Customer ─────────────────────────────────────────────────────────
@@ -2226,37 +2230,13 @@ export function AppointmentPOS({
                         userName: currentLoginCashierName() || undefined,
                         appointmentId: createdIds[0],
                     });
-                    if (reservationCreateReceipt) {
-                        try {
-                            await appointmentPaymentService.createAppointmentDeposit({
-                                appointmentId: createdIds[0],
-                                customerId: customer.id,
-                                amount: reservationForSubmit,
-                                provider: 'cash',
-                                currency: reservationCurrency,
-                                notes:
-                                    `${tm('bReservationAmount')} · ${createdIds[0]}`.slice(
-                                        0,
-                                        250,
-                                    ),
-                                createdBy: currentLoginUserId?.() ?? undefined,
-                            });
-                        } catch (ficheErr) {
-                            // Sales fişi kesilemedi; cari avans + kasa hareketi
-                            // zaten yazıldı. Kullanıcıyı uyar ama akışı kırma.
-                            logger.warn(
-                                'AppointmentPOS',
-                                'reservation sales fişi kesilemedi (avans yazıldı)',
-                                ficheErr,
-                            );
-                            toast.warning(
-                                tm('bReservationRecordedToast')
-                                    .replace('{amount}', fmt(reservationForSubmit))
-                                    .replace('{currency}', reservationCurrency),
-                                { duration: 5000 },
-                            );
-                        }
-                    }
+                    // 07.10.2026 — sales fişi kesme bloğu kaldırıldı.
+                    // `createAppointmentDeposit` artık yalnızca audit trail
+                    // yazıyor (beauty_appointment_payments). Cari tarafı
+                    // (cari_avans + cash_lines + account_movements) zaten
+                    // yukarıdaki `recordAdvance` ile yazıldı. Hizmet
+                    // verildiğinde beautyService.createSale TEK beauty_sales
+                    // fişi keser (BEA-2026-...).
                     toast.success(
                         tm('bReservationRecordedToast')
                             .replace('{amount}', fmt(reservationForSubmit))
@@ -5754,7 +5734,9 @@ export function AppointmentPOS({
                         } catch (err) {
                             logger.error('AppointmentPOS', 'onAvansRecorded failed', err);
                             const msg = err instanceof Error ? err.message : String(err);
-                            toast.error(tm('bAvansFailed') || `Avans kaydı başarısız: ${msg}`);
+                            toast.error(
+                                (tm('bAvansFailed') || 'Rezervasyon tutarı kaydı başarısız').replace('{message}', msg),
+                            );
                             // Hata durumunda `onComplete`'i çağırma — modal parent
                             // tarafından zaten açık; kullanıcı düzeltebilsin.
                             throw err;

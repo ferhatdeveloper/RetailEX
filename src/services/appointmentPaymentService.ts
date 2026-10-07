@@ -67,14 +67,13 @@ export interface AppointmentPaymentRow {
 }
 
 /**
- * `createAppointmentDeposit` dönüş tipi — Plan §6 Adım 3.
+ * `createAppointmentDeposit` dönüş tipi.
  * - `paymentId`: `beauty_appointment_payments` audit trail satırı id'si.
- * - `saleId`: `sales` tablosuna yazılan peşinat fişinin id'si (yoksa null).
- * - `ficheNo`: `BEAUTY-PESINAT-{aptId}-{YYYYMMDDHHMMSS}` formatlı fiş no.
- *
- * Muhasebe notu: Peşinat artık `sales` tablosunda gerçek bir fiş; cari tarafı
- * `customerDebtCollection.getCustomerOutstandingInvoices` üzerinden **outstanding**
- * olarak görünür. Kullanıcı "daha önce ne ödendi" sorusunu fiş no ile yanıtlar.
+ * - `saleId`: artık her zaman `null` — bu fonksiyon `sales` fişi kesmez
+ *   (kullanıcı kararı 07.10.2026 — çift fiş düzeltmesi). Sadece audit trail.
+ * - `ficheNo`: geriye uyumluluk için alan adı korunur; değer artık
+ *   `BEAUTY-PESINAT-*` fiş no değil, `paymentId` UUID prefix'li bir referans.
+ *   Hâlâ UI/log'ta görünebilir.
  */
 export interface CreateDepositResult {
     paymentId: string;
@@ -140,18 +139,18 @@ class AppointmentPaymentService {
     }
 
     /**
-     * Ön ödeme (deposit) kaydeder. Cari avans ekstresi + kasa +. Stok etkilenmez.
+     * Ön ödeme (deposit) kaydeder. Cari tarafı (avans + kasa + cari bakiye)
+     * `recordAdvance` ile zaten yazılmıştır; bu fonksiyon **yalnızca audit trail**
+     * olarak `beauty_appointment_payments` tablosuna satır ekler. Sales fişi
+     * KESİLMEZ (07.10.2026 kullanıcı kararı A1 — çift fiş düzeltmesi).
      *
-     * Plan §6 Adım 3 — peşinat artık `sales` tablosunda **gerçek bir fiş** olur.
-     * Sorgu sırası (4 adım):
+     * Sorgu sırası (3 adım):
      *   1) SELECT randevu (total_price / client_id kontrolü)
      *   2) UPDATE beauty_appointments (deposit_amount, deposit_date)
      *   3) INSERT INTO beauty_appointment_payments (audit trail)
-     *   4) INSERT INTO rex_*_*_sales (BEAUTY-PESINAT-{aptId}-{ts}) + sale_items
      *
-     * Not (2026-09-29): Veresiye provider için artık `cash_lines` / `account_movements`
-     * yazılmaz — cari hareketi fatura kaydında (cash_lines + sales) zaten yansır.
-     * Kalan ödeme (remainder) akışı kaldırıldı.
+     * Not: Veresiye provider için cari hareketi fatura kaydında (cash_lines + sales)
+     * zaten yansır. Kalan ödeme (remainder) akışı kaldırıldı.
      */
     async createAppointmentDeposit(input: CreateDepositInput): Promise<CreateDepositResult> {
         if (!input.appointmentId) throw new Error('appointmentId zorunlu');
@@ -162,7 +161,6 @@ class AppointmentPaymentService {
         const id = uuidv4();
         const now = new Date().toISOString();
         const fn = this.getFirmNr();
-        const pn = this.getPeriodNr();
 
         // 1. Randevunun mevcut total_price'ını oku (deposit_amount > total_price engeli)
         const aptResult = await postgres.query<{
@@ -240,125 +238,28 @@ class AppointmentPaymentService {
                 ],
             );
 
-            // 4. Plan §6 Adım 3 — peşinat sales fişi INSERT.
-            //    `sales.fiche_no` UNIQUE → idempotent: aynı saniyede tekrarı `DO NOTHING`.
-            //    Migration 182 ile `linked_appointment_id`, `is_deposit`, `sale_group_id`
-            //    kolonları eklendi. Tauri uyumu: ham SQL, `DO $$` YOK.
-            const salesTable = `rex_${fn}_${pn}_sales`;
-            const saleItemsTable = `rex_${fn}_${pn}_sale_items`;
-            const ficheNo = nextPesinatFicheNo(input.appointmentId);
-            const saleGroupId = buildSaleGroupId(input.appointmentId);
-            const trcode = 7; // retail hizmet
-            const ficheType = 'sales_invoice';
-            const providerLabel =
-                input.provider === 'cash'
-                    ? 'cash'
-                    : input.provider === 'card'
-                      ? 'card'
-                      : input.provider === 'veresiye'
-                        ? 'veresiye'
-                        : String(input.provider ?? 'cash');
-
-            let saleId: string | null = null;
-            try {
-                const salesInsert = await postgres.query<{ id: string; fiche_no: string }>(
-                    `INSERT INTO ${salesTable}
-                        (id, firm_nr, period_nr, fiche_no, document_no, trcode, fiche_type,
-                         customer_id, customer_name, total_net, total_vat, total_gross,
-                         total_discount, net_amount, currency, currency_rate,
-                         status, payment_method, notes, header_fields,
-                         linked_appointment_id, is_deposit, sale_group_id,
-                         created_at, updated_at)
-                     VALUES
-                        (gen_random_uuid(), $1::text, $2::text,
-                         $3::text, $4::text, $5::int, $6::text,
-                         $7::text::uuid, $8::text, $9::numeric, 0::numeric, $9::numeric,
-                         0::numeric, $9::numeric, $10::text, 1::numeric,
-                         'completed'::text, $11::text, $12::text, '{}'::jsonb,
-                         $13::text::uuid, true::boolean, $14::text,
-                         NOW(), NOW())
-                     ON CONFLICT (fiche_no) DO NOTHING
-                     RETURNING id, fiche_no`,
-                    [
-                        fn,
-                        pn,
-                        ficheNo,
-                        ficheNo, // document_no = fiche_no (peşinat)
-                        trcode,
-                        ficheType,
-                        custId,
-                        custName ?? '',
-                        input.amount,
-                        currency,
-                        providerLabel,
-                        notes ?? `Peşinat (Beauty) — ${input.appointmentId}`,
-                        input.appointmentId,
-                        saleGroupId,
-                    ],
-                );
-                const insertedRows = extractRows<{ id: string; fiche_no: string }>(salesInsert);
-                if (insertedRows[0]?.id) {
-                    saleId = insertedRows[0].id;
-                    // sale_items: tek satır — hizmet kalemi (stok düşmez; sadece fiş bilgisi).
-                    // `item_name` kolonu (schema: public.rex_*_*_sale_items) ve `item_type`
-                    // schema defaultu 'Malzeme' olduğu için 'Hizmet' olarak override edilir.
-                    try {
-                        await postgres.query(
-                            `INSERT INTO ${saleItemsTable}
-                                (id, invoice_id, product_id, quantity, unit_price, vat_rate,
-                                 discount_rate, discount_amount, total_amount, unit_cost,
-                                 item_type, item_name, net_amount)
-                             VALUES
-                                (gen_random_uuid(), $1::text::uuid, NULL, 1, $2::numeric, 0,
-                                 0, 0, $2::numeric, 0,
-                                 'Hizmet'::text, $3::text, $2::numeric)`,
-                            [saleId, input.amount, 'Ön Ödeme Peşinatı'],
-                        );
-                    } catch (itemErr) {
-                        // sale_items INSERT başarısız olsa bile sales INSERT başarılı;
-                        // sadece logla, ana akışı bozma. Randevuya deposit_sale_id
-                        // geri yazımı (aşağıdaki UPDATE) yine de çalışsın.
-                        logger.warn(
-                            'appointmentPaymentService',
-                            'sale_items INSERT failed (sales fişi yazıldı, kalem atlandı)',
-                            { saleId, ficheNo, error: itemErr instanceof Error ? itemErr.message : String(itemErr) },
-                        );
-                    }
-                    // randevuya deposit_sale_id + fiche_no geri yaz
-                    await postgres.query(
-                        `UPDATE ${aptTable}
-                            SET deposit_sale_id = $2::text::uuid,
-                                deposit_sale_fiche_no = $3::text,
-                                sale_group_id = $4::text,
-                                updated_at = NOW()
-                          WHERE id = $1::text::uuid`,
-                        [input.appointmentId, saleId, ficheNo, saleGroupId],
-                    );
-                }
-            } catch (salesErr) {
-                // sales INSERT başarısız olursa audit trail + appointment UPDATE
-                // yine de yazıldı — ana akışı bozma, sadece logla.
-                const detail = salesErr instanceof Error ? salesErr.message : String(salesErr);
-                logger.warn(
-                    'appointmentPaymentService',
-                    'deposit sale INSERT failed (audit trail yazıldı)',
-                    { ficheNo, error: detail },
-                );
-            }
+            // 07.10.2026 — Plan revize: artık sales fişi KESILMIYOR. Cari tarafı
+            // (`cari_avans` + `cash_lines` + `account_movements`) zaten
+            // `recordAdvance` tarafından yazıldı; bu fonksiyon yalnızca
+            // `beauty_appointment_payments` audit trail'ine satır ekler.
+            // Hizmet verildiğinde `beautyService.createSale` TEK beauty_sales
+            // fişi (BEA-2026-...) keser; ödenen avans cari bakiyesinde
+            // (müşteri alacak) kalır.
+            const ficheNo = `AV-AUDIT-${id.slice(0, 8)}`;
 
             logger.info(
                 'appointmentPaymentService',
-                'deposit created',
+                'deposit created (audit trail only — sales fişi kesilmiyor)',
                 {
                     paymentId: id,
-                    saleId,
+                    saleId: null,
                     ficheNo,
                     appointmentId: input.appointmentId,
                     amount: input.amount,
                     provider: input.provider,
                 },
             );
-            return { paymentId: id, saleId, ficheNo };
+            return { paymentId: id, saleId: null, ficheNo };
         } catch (err) {
             logger.error('appointmentPaymentService', 'createAppointmentDeposit failed', err as Error);
             throw err;

@@ -1080,11 +1080,11 @@ const handleCollectCustomerDebt = async () => {
     //     satış + fatura akışını yürütür.
     const skipInvoice = currentMethod === 'pesinatli' && !createInvoiceWithDeposit;
     if (skipInvoice) {
-      // Kullanıcıya kısa bilgilendirme — fişsiz avans modu.
+      // Kullanıcıya kısa bilgilendirme — fişsiz rezervasyon modu.
       try {
         toast.info(
           tm('depositRecordedWithoutInvoice') ||
-            'Avans kaydedildi (fatura yok). Cari bakiye ve kasa hareketi yazıldı.',
+            'Rezervasyon tutarı kaydedildi (fatura yok). Cari bakiye ve kasa hareketi yazıldı.',
           { duration: 3000 },
         );
       } catch {
@@ -1654,7 +1654,7 @@ const handleCollectCustomerDebt = async () => {
                 {/* Peşinatlı modda: "Peşinatlı ödemede satış faturası oluşturulsun mu?"
                     checkbox. Default işaretli DEĞİL → sadece kasa + cari bakiye
                     yansır, sales.invoices / rex_*_01_sales kaydı oluşmaz.
-                    İşaretlenirse mevcut davranış (avans + fatura birlikte) korunur.
+                    İşaretlenirse mevcut davranış (rezervasyon tutarı + fatura birlikte) korunur.
                     Yalnızca peşinatlı modda görünür. */}
                 {currentMethod === 'pesinatli' && (
                   <label
@@ -1686,7 +1686,7 @@ const handleCollectCustomerDebt = async () => {
                         }`}
                       >
                         {tm('createInvoiceWithDepositHelp') ||
-                          'İşaretli değilse: peşinat yalnızca kasaya ve cari bakiyeye yansır, satış faturası oluşmaz. İşaretliyse: avans ile birlikte satış faturası da kesilir.'}
+                          'İşaretli değilse: peşinat yalnızca kasaya ve cari bakiyeye yansır, satış faturası oluşmaz. İşaretliyse: rezervasyon tutarı ile birlikte satış faturası da kesilir.'}
                       </span>
                     </span>
                   </label>

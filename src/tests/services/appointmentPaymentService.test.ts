@@ -59,6 +59,8 @@ describe('appointmentPaymentService — deposit (ön ödeme)', () => {
     });
 
     it('createAppointmentDeposit: deposit satırı doğru tablo ve parametrelerle yazılır', async () => {
+        // 07.10.2026 düzeltmesi: artık sales fişi kesilmiyor. Yalnızca
+        // appointment UPDATE + appointment_payments INSERT. Toplam 3 sorgu.
         // 1. çağrı → SELECT randevu (Plan §6 Adım 3: customer_name JOIN'i eklendi)
         queryMock.mockResolvedValueOnce({
             rows: [{ id: 'apt-1', total_price: 100, client_id: 'cust-9', customer_name: 'Test Müşteri' }],
@@ -67,15 +69,6 @@ describe('appointmentPaymentService — deposit (ön ödeme)', () => {
         // 2) UPDATE appointments
         queryMock.mockResolvedValueOnce({ rows: [], rowCount: 1 });
         // 3) INSERT payment
-        queryMock.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-        // 4) sales INSERT → RETURNING id, fiche_no
-        queryMock.mockResolvedValueOnce({
-            rows: [{ id: 'sale-pep-1', fiche_no: 'BEAUTY-PESINAT-apt-1-20260930120000' }],
-            rowCount: 1,
-        });
-        // 5) sale_items INSERT
-        queryMock.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-        // 6) appointment geri yaz UPDATE (deposit_sale_id + fiche_no)
         queryMock.mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
         const result = await appointmentPaymentService.createAppointmentDeposit({
@@ -89,26 +82,27 @@ describe('appointmentPaymentService — deposit (ön ödeme)', () => {
             notes: 'test deposit',
         });
 
-        // Plan §6 Adım 3 — dönüş tipi { paymentId, saleId, ficheNo }
+        // Dönüş tipi: saleId her zaman null (sales fişi kesilmiyor)
         expect(typeof result.paymentId).toBe('string');
         expect(result.paymentId.length).toBeGreaterThan(0);
-        expect(result.ficheNo).toMatch(/^BEAUTY-PESINAT-apt-1-\d{14}$/);
+        expect(result.saleId).toBeNull();
+        // ficheNo artık UUID prefix'li referans no
+        expect(result.ficheNo).toMatch(/^AV-AUDIT-[0-9a-f]{8}$/);
 
-        // Plan §6 Adım 3 — toplam 4 ana sorgu (sales INSERT mock'ta hata fırlatırsa 5 olur):
-        //  1) SELECT randevu (JOIN customers)
-        //  2) UPDATE appointments (deposit_amount)
-        //  3) INSERT appointment_payments
-        //  4) INSERT sales (BEAUTY-PESINAT-{aptId}-{ts}) + INSERT sale_items + UPDATE appointment(geri yaz)
-        // Mock'lar başarılı döndüğünde ek 2 sorgu daha (sale_items INSERT + appointment geri yaz UPDATE)
-        // → toplam 6 sorgu bekleniyor. Burada SELECT'i 2.mock ile cevaplıyoruz.
-        expect(queryMock.mock.calls.length).toBeGreaterThanOrEqual(6);
+        // Toplam 3 sorgu: SELECT + UPDATE appointments + INSERT payment
+        expect(queryMock).toHaveBeenCalledTimes(3);
 
         // İlk sorgu SELECT — JOIN ile customer_name
         const firstCall = queryMock.mock.calls[0];
         const firstSql = String(firstCall[0]);
-        // Çok satırlı SQL — `s` flag ile newline dahil et
         expect(firstSql).toMatch(/SELECT[\s\S]*total_price[\s\S]*client_id[\s\S]*customer_name[\s\S]*FROM/i);
         expect(firstSql).toMatch(/LEFT JOIN rex_001_customers/i);
+
+        // 2. sorgu UPDATE appointments
+        const updCall = queryMock.mock.calls[1];
+        const updSql = String(updCall[0]);
+        expect(updSql).toMatch(/UPDATE beauty[\s\S]*SET deposit_amount/i);
+        expect(updSql).toMatch(/status\s+= CASE/i);
 
         // 3. sorgu INSERT deposit
         const insertCall = queryMock.mock.calls[2];
@@ -122,50 +116,21 @@ describe('appointmentPaymentService — deposit (ön ödeme)', () => {
         expect(insertCall[1][5]).toBe('cash');    // provider
         expect(insertCall[1][6]).toBe('k-1');     // cash_register_id
 
-        // 4. sorgu INSERT sales — peşinat fişi
-        const salesCall = queryMock.mock.calls[3];
-        const salesSql = String(salesCall[0]);
-        expect(salesSql).toMatch(/INSERT INTO rex_001_01_sales/i);
-        expect(salesSql).toMatch(/is_deposit/);
-        expect(salesSql).toMatch(/sale_group_id/);
-        expect(salesSql).toMatch(/linked_appointment_id/);
-        expect(salesSql).toMatch(/ON CONFLICT \(fiche_no\) DO NOTHING/i);
-        // Parametreler: [fn, pn, ficheNo, ficheNo, trcode, ficheType, custId, custName, amount, currency, providerLabel, notes, aptId, saleGroupId]
-        expect(salesCall[1][2]).toMatch(/^BEAUTY-PESINAT-apt-1-\d{14}$/);
-        expect(salesCall[1][6]).toBe('cust-9');   // customer_id
-        expect(salesCall[1][7]).toBe('Test Müşteri'); // customer_name (JOIN'den)
-        expect(salesCall[1][8]).toBe(30);         // amount
-        expect(salesCall[1][12]).toBe('apt-1');   // linked_appointment_id
-        expect(salesCall[1][13]).toBe('apt-apt-1'); // sale_group_id = buildSaleGroupId('apt-1')
-
-        // 5. sorgu INSERT sale_items (hizmet kalemi)
-        const itemCall = queryMock.mock.calls[4];
-        const itemSql = String(itemCall[0]);
-        expect(itemSql).toMatch(/INSERT INTO rex_001_01_sale_items/i);
-        expect(itemSql).toMatch(/item_type/);
-        // saleId (sale_items INSERT'in $1'i), amount ($2), name 'Ön Ödeme Peşinatı' ($3)
-        expect(itemCall[1][1]).toBe(30);          // amount
-        expect(itemCall[1][2]).toBe('Ön Ödeme Peşinatı'); // name
-
-        // 6. sorgu UPDATE appointment — deposit_sale_id + fiche_no geri yaz
-        const updCall = queryMock.mock.calls[5];
-        const updSql = String(updCall[0]);
-        expect(updSql).toMatch(/UPDATE beauty[\s\S]*SET deposit_sale_id/i);
-        expect(updSql).toMatch(/deposit_sale_fiche_no/i);
+        // Önemli: sales fişi KESILMIYOR. SQL'lerde rex_*_*_sales INSERT olmamalı.
+        const allSqls = queryMock.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(allSqls).not.toMatch(/INSERT INTO rex_\d+_\d+_sales/i);
+        expect(allSqls).not.toMatch(/INSERT INTO rex_\d+_\d+_sale_items/i);
     });
 
-    it('createAppointmentDeposit: sales INSERT hata verirse ana akış bozulmaz, saleId=null döner', async () => {
-        // 1) SELECT randevu
+    it('createAppointmentDeposit: sales INSERT hata testi kaldırıldı (artık sales fişi kesilmiyor)', async () => {
+        // 07.10.2026 — sales fişi bloğu kaldırıldığı için bu test artık geçerli değil.
+        // Yerine basit başarı senaryosu: tek sorgu (SELECT), payment INSERT, dönüş.
         queryMock.mockResolvedValueOnce({
             rows: [{ id: 'apt-1', total_price: 100, client_id: 'cust-9', customer_name: null }],
             rowCount: 1,
         });
-        // 2) UPDATE
         queryMock.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-        // 3) INSERT payment
         queryMock.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-        // 4) sales INSERT hata fırlatır → ana akış yine de tamamlanır (best-effort)
-        queryMock.mockRejectedValueOnce(new Error('FK violation'));
 
         const result = await appointmentPaymentService.createAppointmentDeposit({
             appointmentId: 'apt-1',
@@ -175,9 +140,9 @@ describe('appointmentPaymentService — deposit (ön ödeme)', () => {
         });
 
         expect(result.paymentId).toBeTruthy();
-        // sales INSERT başarısız → saleId null (best-effort), ficheNo her zaman üretilir.
         expect(result.saleId).toBeNull();
-        expect(result.ficheNo).toMatch(/^BEAUTY-PESINAT-apt-1-\d{14}$/);
+        expect(result.ficheNo).toMatch(/^AV-AUDIT-[0-9a-f]{8}$/);
+        expect(queryMock).toHaveBeenCalledTimes(3);
     });
 
     it('createAppointmentDeposit: miktar <= 0 hata fırlatır', async () => {
@@ -201,15 +166,6 @@ describe('appointmentPaymentService — deposit (ön ödeme)', () => {
         queryMock.mockResolvedValueOnce({ rows: [], rowCount: 1 });
         // 3) INSERT payment
         queryMock.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-        // 4) sales INSERT → başarılı (veresiye provider'da da peşinat sales fişi yazılır)
-        queryMock.mockResolvedValueOnce({
-            rows: [{ id: 'sale-pep-2', fiche_no: 'BEAUTY-PESINAT-apt-1-20260930120100' }],
-            rowCount: 1,
-        });
-        // 5) sale_items INSERT
-        queryMock.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-        // 6) appointment geri yaz UPDATE
-        queryMock.mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
         const result = await appointmentPaymentService.createAppointmentDeposit({
             appointmentId: 'apt-1',
@@ -220,14 +176,16 @@ describe('appointmentPaymentService — deposit (ön ödeme)', () => {
         });
 
         expect(typeof result.paymentId).toBe('string');
-        expect(result.ficheNo).toMatch(/^BEAUTY-PESINAT-apt-1-\d{14}$/);
+        expect(result.saleId).toBeNull();
+        expect(result.ficheNo).toMatch(/^AV-AUDIT-[0-9a-f]{8}$/);
 
-        // Plan §6 — toplam 6 sorgu (SELECT + UPDATE apt + INSERT payment + INSERT sales + INSERT sale_items + UPDATE apt geri)
-        // Önemli olan cash_lines / account_movements YAZILMAMASı.
-        expect(queryMock).toHaveBeenCalledTimes(6);
+        // Toplam 3 sorgu (SELECT + UPDATE + INSERT payment)
+        expect(queryMock).toHaveBeenCalledTimes(3);
         const allSqls = queryMock.mock.calls.map((c) => String(c[0])).join('\n');
+        // Önemli: cash_lines / account_movements / sales YAZILMIYOR (bu fonksiyon yalnızca audit trail).
         expect(allSqls).not.toMatch(/INSERT INTO.*cash_lines/i);
         expect(allSqls).not.toMatch(/INSERT INTO.*account_movements/i);
+        expect(allSqls).not.toMatch(/INSERT INTO rex_\d+_\d+_sales/i);
     });
 
     it('listPayments: randevuya göre artan sırada döner', async () => {

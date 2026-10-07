@@ -163,6 +163,7 @@ export function ReportColumnTable<T extends object>({
   enableFiltering,
   columnVisibility,
   onColumnVisibilityChange,
+  groupFooterSumColumns,
 }: {
   data: T[];
   columns: ReportColumnTableCol<T>[];
@@ -182,6 +183,16 @@ export function ReportColumnTable<T extends object>({
   enableFiltering?: boolean;
   columnVisibility?: Record<string, boolean>;
   onColumnVisibilityChange?: (visibility: Record<string, boolean>) => void;
+  /**
+   * 07.10.2026 — Otomatik grup alt toplamı için kolon listesi. Verilirse
+   * `DevExDataGrid`'in grup subtotal satırı bu kolonlar üzerinden toplam
+   * gösterir. Verilmezse global `footerSumColumns` kullanılır.
+   */
+  groupFooterSumColumns?: Array<{
+    columnId: string;
+    getValue: (row: T) => number;
+    format?: (sum: number, rows: T[]) => ReactNode;
+  }>;
 }) {
   const { selectedFirm } = useFirmaDonem();
   const footerCurrency = useMemo(
@@ -244,6 +255,7 @@ export function ReportColumnTable<T extends object>({
         enableFiltering={enableFiltering}
         columnVisibility={columnVisibility}
         onColumnVisibilityChange={onColumnVisibilityChange}
+        groupFooterSumColumns={groupFooterSumColumns}
         height="100%"
       />
     </div>

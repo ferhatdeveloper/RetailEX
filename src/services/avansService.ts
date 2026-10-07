@@ -57,12 +57,6 @@ function getInventoryReservationsTable(): string {
   return `rex_${firm}_${period}_inventory_reservations`;
 }
 
-function getAccountMovementsTable(): string {
-  const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
-  const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
-  return `rex_${firm}_${period}_account_movements`;
-}
-
 /** Beauty randevu tablosu — `beauty.rex_<firmNr>_<periodNr>_beauty_appointments`. */
 function getBeautyAppointmentsTable(): string {
   const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
@@ -138,7 +132,6 @@ function rowToReservation(row: Record<string, unknown>): InventoryReservation {
 export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAdvanceResult> {
   const table = getCariAvansTable();
   const invTable = getInventoryReservationsTable();
-  const amtMovTable = getAccountMovementsTable();
   const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
   const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
 
@@ -238,48 +231,52 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
       islem_tipi: 'CH_TAHSILAT',
       tutar: amount,
       cari_hesap_id: input.customerId,
-      islem_aciklamasi: `AVANS tahsilatı · ${avans.referenceNo ?? avans.id}`,
+      islem_aciklamasi: `Rezervasyon tahsilatı · ${avans.referenceNo ?? avans.id}`,
       doviz_kodu: input.currency ?? 'IQD',
       payment_method: input.paymentMethod,
-      ozel_kod: 'AVANS',
+      ozel_kod: 'REZERVASYON',
       // skipInvoice → cari_avans üzerinden bağlantı kuracak ek bağlam notu.
-      // Kasa İşlemleri listesinde `special_code='AVANS'` filtresi
+      // Kasa İşlemleri listesinde `special_code='REZERVASYON'` filtresi
       // `is_reservation_deposit` badge'i için kullanılacak
       // (fetchKasaIslemleri tarafında işaretlenir).
+      // 07.10.2026 — UI rename: 'AVANS' → 'REZERVASYON' (DB serbest string,
+      // migration gerekmez). DB kolon adı (cari_avans) ve transaction_type
+      // ('AVANS') KORUNUR — muhasebe terminolojisi gereği.
     } as any);
     cashLineId = kasaIslem?.id ? String(kasaIslem.id) : null;
   }
 
   // 3) account_movements (cari alacak +)
+  //
+  // 07.10.2026 düzeltmesi (B1 — çift account_movements): `createKasaIslemi`
+  // CH_TAHSILAT için zaten `account_movements` (kasa tarafı, sign=+1) +
+  // `party_ledger_movements` (cari tarafı, sign=-1) yazıyor (kasa.ts).
+  // Bu INSERT avans başına 2. account_movements satırına yol açıyordu.
+  // Düzeltme: buradaki INSERT kaldırıldı; `cariMovementId` createKasaIslemi'nin
+  // yazdığı `party_ledger_movements.cash_line_id` üzerinden takip edilir
+  // veya null kalır (geriye uyumluluk).
+  //
+  // createKasaIslemi'nin yazdığı party_ledger_movements + account_movements
+  // satırları cari tarafı + kasa tarafı simetrisini zaten sağlıyor. Yine
+  // de `cariMovementId` alanını doldurmak için createKasaIslemi sonrası
+  // party_ledger_movements'tan cash_line_id eşleşmesi ile id alınabilir.
   let cariMovementId: string | null = null;
-  try {
-    const { rows: amRows } = await postgres.query(
-      `INSERT INTO ${amtMovTable} (
-         firm_nr, period_nr, customer_id, supplier_id,
-         amount, sign, trcode, module_nr, definition, transaction_type
-       ) VALUES ($1, $2, $3, NULL, $4, $5, 0, 0, $6, 'AVANS')
-       RETURNING id`,
-      [
-        firm,
-        period,
-        input.customerId,
-        amount,
-        // sign=+1: müşteri bakiyesi azalır (işletmenin borcu artar — müşteri alacaklı olur)
-        // Ancak fatura henüz yok; bu hareket "müşterinin bize verdiği peşin para"dır.
-        +1,
-        `Avans tahsilatı · ${avans.referenceNo ?? avans.id}`,
-      ],
-    );
-    cariMovementId = amRows?.[0]?.id ? String(amRows[0].id) : null;
-  } catch (amErr) {
-    // account_movements INSERT başarısız olursa avans kaydını geri al
-    // (kullanıcıya hata göster; yarım kayıt oluşmamalı)
-    console.error('[avansService] account_movements INSERT failed:', amErr);
-    await postgres.query(`DELETE FROM ${table} WHERE id = $1`, [avansId]);
-    throw new Error(
-      'Avans cari hareketi yazılamadı: ' +
-        (amErr instanceof Error ? amErr.message : String(amErr)),
-    );
+  if (cashLineId) {
+    try {
+      const { rows: partyRows } = await postgres.query(
+        `SELECT id FROM rex_${firm}_${period}_party_ledger_movements
+          WHERE cash_line_id = $1::text::uuid
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [cashLineId],
+      );
+      cariMovementId = partyRows?.[0]?.id ? String(partyRows[0].id) : null;
+    } catch (plErr) {
+      console.warn(
+        '[avansService] party_ledger_movements sorgusu başarısız (cariMovementId null kalır):',
+        plErr instanceof Error ? plErr.message : String(plErr),
+      );
+    }
   }
 
   // 4) cari_avans güncelle (cash_line_id + cari_movement_id)

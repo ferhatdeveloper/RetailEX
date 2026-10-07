@@ -9232,22 +9232,24 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   // mu?" checkbox'ını kaldırdığında gösterilen bilgilendirme. Yeni davranış
   // (04.10.2026): bu modda HİÇBİR yere kayıt yazılmaz (avans, cari, kasa,
   // satış, randevu); sadece modal kapanır + bu mesaj gösterilir.
+  // 07.10.2026 — UI: "Avans" → "Rezervasyon Tutarı".
   bAvansNotRecordedNoInvoice: {
-    tr: 'Avans kaydedilmedi (fatura yok). Hiçbir cari/kasa/randevu kaydı oluşturulmadı.',
-    en: 'Advance not recorded (no invoice). No customer/cash/appointment entry was created.',
-    ar: 'لم يتم تسجيل الدفعة الأولى (لا توجد فاتورة). لم يتم إنشاء أي سجل عميل/صندوق/موعد.',
-    ku: 'پێشەکی تۆمار نەکرا (هیچ فاکتەیەک نییە). هیچ تۆمارێکی کڕیار/سندوق/ژماون دروست نەکرا.',
+    tr: 'Rezervasyon tutarı kaydedilmedi (fatura yok). Hiçbir cari/kasa/randevu kaydı oluşturulmadı.',
+    en: 'Reservation amount not recorded (no invoice). No customer/cash/appointment entry was created.',
+    ar: 'لم يتم تسجيل مبلغ الحجز (لا توجد فاتورة). لم يتم إنشاء أي سجل عميل/صندوق/موعد.',
+    ku: 'بڕی نۆرە تۆمار نەکرا (هیچ فاکتەیەک نییە). هیچ تۆمارێکی کڕیار/سندوق/ژماون دروست نەکرا.',
   },
   // POSPaymentModal + MarketPOS + AppointmentPOS — peşinatlı modda kullanıcı
   // "Satış faturası oluşturulsun mu?" checkbox'ını kaldırdığında (`skipInvoice=true`)
   // gösterilen bilgilendirme. Fişsiz avans modu: avans + cari bakiye + kasa
   // hareketi (ve varsa randevu deposit alanları) yazılır; satış faturası
   // oluşturulmaz. Hizmet verildiğinde kalan + avans birleşip tek fiş yazılır.
+  // 07.10.2026 — UI: "Avans" → "Rezervasyon Tutarı".
   depositRecordedWithoutInvoice: {
-    tr: 'Avans kaydedildi (fatura yok). Cari bakiye ve kasa hareketi yazıldı.',
-    en: 'Advance recorded (no invoice). Customer balance and cash movement have been posted.',
-    ar: 'تم تسجيل الدفعة الأولى (بدون فاتورة). تم ترحيل رصيد العميل وحركة الصندوق.',
-    ku: 'پێشەکی تۆمارکرا (هیچ فاکتەیەک نییە). باڵانسی کڕیار و جووڵەی سندوق تۆمارکران.',
+    tr: 'Rezervasyon tutarı kaydedildi (fatura yok). Cari bakiye ve kasa hareketi yazıldı.',
+    en: 'Reservation amount recorded (no invoice). Customer balance and cash movement have been posted.',
+    ar: 'تم تسجيل مبلغ الحجز (بدون فاتورة). تم ترحيل رصيد العميل وحركة الصندوق.',
+    ku: 'بڕی نۆرە تۆمارکرا (هیچ فاکتەیەک نییە). باڵانسی کڕیار و جووڵەی سندوق تۆمارکران.',
   },
   bPrePaymentReceived: {
     tr: 'Ön ödeme alındı — randevu başladı. Hizmet verildiğinde tamamlayın.',
@@ -9293,22 +9295,43 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'بڕی نادروست. تەنها بڕی ژمارەیی بنووسە.',
   },
   bReservationRecordedToast: {
-    tr: 'Ön ödeme ({amount} {currency}) kaydedildi.',
-    en: 'Deposit recorded ({amount} {currency}).',
-    ar: 'تم تسجيل العرنون ({amount} {currency}).',
-    ku: 'پارەی دەسبەشکراو تۆمار کرا ({amount} {currency}).',
+    tr: 'Rezervasyon tutarı ({amount} {currency}) kaydedildi.',
+    en: 'Reservation amount recorded ({amount} {currency}).',
+    ar: 'تم تسجيل مبلغ الحجز ({amount} {currency}).',
+    ku: 'بڕی نۆرە تۆمارکرا ({amount} {currency}).',
   },
   bReservationCreateReceipt: {
-    tr: 'Peşinat fişi kes',
-    en: 'Issue deposit receipt',
-    ar: 'إصدار إيصال العرنون',
-    ku: 'وەسڵی دەسبەشکراو دەربکە',
+    tr: 'Rezervasyon fişi kes',
+    en: 'Issue reservation receipt',
+    ar: 'إصدار إيصال الحجز',
+    ku: 'وەسڵی نۆرە دەربکە',
+  },
+  bAvansFailed: {
+    tr: 'Rezervasyon tutarı kaydı başarısız: {message}',
+    en: 'Reservation amount recording failed: {message}',
+    ar: 'فشل تسجيل مبلغ الحجز: {message}',
+    ku: 'تۆمارکردنی بڕی نۆرە سەرکەوتوو نەبوو: {message}',
+  },
+  bReservationSaleNote: {
+    tr: 'Rezervasyon tutarı — {amount} {currency}',
+    en: 'Reservation amount — {amount} {currency}',
+    ar: 'مبلغ الحجز — {amount} {currency}',
+    ku: 'بڕی نۆرە — {amount} {currency}',
+  },
+  bReservationSaleFailed: {
+    tr: 'Rezervasyon tutarı kaydedilemedi',
+    en: 'Reservation amount could not be recorded',
+    ar: 'تعذر تسجيل مبلغ الحجز',
+    ku: 'بڕی نۆرە تۆمار نەکرا',
   },
   bReservationCreateReceiptHint: {
-    tr: 'İşaretliyse ayrıca BEAUTY-PESINAT-* satış fişi kesilir. İşareti kaldırırsanız yalnızca cari avans + kasa hareketi yazılır.',
-    en: 'When checked, an additional BEAUTY-PESINAT-* sales receipt is issued. Uncheck to write only the customer advance + cash movement.',
-    ar: 'عند التفعيل، يتم إصدار إيصال بيع BEAUTY-PESINAT-* إضافي. ألغِ العلامة لكتابة السلفة فقط.',
-    ku: 'کاتێک چالاکە، وەسڵی فرۆشتنی BEAUTY-PESINAT-* دەردەچێت. لابەری بۆ تەنها نوسینی پارەی پێشەکی + جووڵەی نەقد.',
+    // 07.10.2026 — Plan A1: BEAUTY-PESINAT-* satış fişi artık kesilmiyor.
+    // Kullanıcı kararı: yalnızca cari bakiye + kasa hareketi yazılır;
+    // hizmet verildiğinde tek beauty_sales fişi (BEA-2026-...) kesilir.
+    tr: 'Rezervasyon tutarı bilgi satırı: yalnızca cari bakiye + kasa hareketi yazılır. Hizmet verildiğinde tek fiş (BEA-2026-...) kesilir.',
+    en: 'Reservation amount note: only the customer balance + cash movement is written. When the service is delivered, a single BEA-2026-... receipt is issued.',
+    ar: 'ملاحظة مبلغ الحجز: يتم كتابة رصيد العميل + حركة الصندوق فقط. عند تنفيذ الخدمة، يتم إصدار إيصال واحد (BEA-2026-...).',
+    ku: 'تێبینی بڕی نۆرە: تەنها باڵانسی کڕیار + جووڵەی سندوق دەنووسرێت. لەکاتی ئەنجامدانی خزمەتگوزاریدا، یەک وەسڵ (BEA-2026-...) دەردەچێت.',
   },
   bAppointmentNo: { tr: 'Randevu No', en: 'Appointment No', ar: 'رقم الموعد', ku: 'ژمارەی ژماون' },
   bAppointmentUpdateSaving: { tr: 'Kaydediliyor…', en: 'Saving…', ar: 'جارٍ الحفظ…', ku: 'پاشەکەوت…' },
@@ -10764,34 +10787,35 @@ export const excelModuleTranslations = {
     ku: 'پارەی نۆرە — خزمەتگوزاری نەدراوە',
   },
   ekstreAvansBadge: {
-    tr: 'Avans',
-    en: 'Advance',
-    ar: 'دفعة مقدمة',
-    ku: 'پێشەکی',
+    // 07.10.2026 — UI: "Avans" → "Rezervasyon".
+    tr: 'Rezervasyon',
+    en: 'Reservation',
+    ar: 'حجز',
+    ku: 'نۆرە',
   },
   ekstreAvansNote: {
-    tr: 'Cari avansı — satışta mahsup edilene dek cari bakiyesinde kalır',
-    en: 'Customer advance — remains on customer balance until applied to a sale',
-    ar: 'دفعة مقدمة — تبقى في رصيد العميل حتى تُخصم من بيع',
-    ku: 'پێشەکی — لە باڵانسی کڕیاردا دەمێنێتەوە تا دەکرێت بە فرۆشتن',
+    tr: 'Rezervasyon tarafı — satışta mahsup edilene dek cari bakiyesinde kalır',
+    en: 'Reservation side — remains on customer balance until applied to a sale',
+    ar: 'جانب الحجز — تبقى في رصيد العميل حتى تُخصم من بيع',
+    ku: 'لایەنی نۆرە — لە باڵانسی کڕیاردا دەمێنێتەوە تا دەکرێت بە فرۆشتن',
   },
   openAdvancesNotice: {
-    tr: 'Bu müşterinin açık avansları var',
-    en: 'This customer has open advances',
-    ar: 'هذا العميل لديه دفعات مقدمة مفتوحة',
-    ku: 'ئەم کڕیارە پێشەکی کراوەی هەیە',
+    tr: 'Bu müşterinin açık rezervasyon tutarı var',
+    en: 'This customer has open reservation amounts',
+    ar: 'هذا العميل لديه مبالغ حجز مفتوحة',
+    ku: 'ئەم کڕیارە بڕی نۆرەی کراوەی هەیە',
   },
   openAdvancesEmpty: {
-    tr: 'Açık avans yok',
-    en: 'No open advances',
-    ar: 'لا دفعات مقدمة مفتوحة',
-    ku: 'پێشەکی کراو نییە',
+    tr: 'Açık rezervasyon tutarı yok',
+    en: 'No open reservation amounts',
+    ar: 'لا مبالغ حجز مفتوحة',
+    ku: 'بڕی نۆرەی کراو نییە',
   },
   finalizeWithAvans: {
-    tr: 'Avansı Satışa Uygula',
-    en: 'Apply Advance to Sale',
-    ar: 'تطبيق الدفعة المقدمة على البيع',
-    ku: 'پێشەکی بخەرە سەر فرۆشتن',
+    tr: 'Rezervasyon Tutarını Satışa Uygula',
+    en: 'Apply Reservation Amount to Sale',
+    ar: 'تطبيق مبلغ الحجز على البيع',
+    ku: 'بڕی نۆرە بخەرە سەر فرۆشتن',
   },
   aylikGunOzeti: { tr: 'Aylık Gün Özeti', en: 'Monthly Day Summary', ar: 'ملخص أيام الشهر', ku: 'پوختەی ڕۆژەکانی مانگ' },
   aylikGunOzetiDesc: {
@@ -11817,6 +11841,14 @@ export const excelModuleTranslations = {
     en: 'Reservation Deposit',
     ar: 'مبلغ الحجز',
     ku: 'بڕی نۆرە',
+  },
+  bReceivedPayment: {
+    // 07.10.2026 — Rezervasyon raporları için yeni kolon: hizmet verildikten
+    // sonra fiilen tahsil edilen tutar (toplam − kalan bakiye − rezervasyon).
+    tr: 'Alınan Ödeme',
+    en: 'Received Payment',
+    ar: 'الدفعة المستلمة',
+    ku: 'پارەی وەرگیراو',
   },
   paymentLabelAvans: {
     tr: 'Avans',
@@ -13966,6 +13998,50 @@ export const excelModuleTranslations = {
   exportExcel: { tr: 'Excel', en: 'Excel', ar: 'إكسل', ku: 'ئێکسڵ' },
   filterRefresh: { tr: 'Yenile', en: 'Refresh', ar: 'تحديث', ku: 'نوێکردنەوە' },
   filterLoading: { tr: 'Yükleniyor...', en: 'Loading...', ar: 'جار التحميل...', ku: 'بارکردن...' },
+  // DevExDataGrid toolbar — tablo yoğunluğu / scroll davranışı
+  bFit: { tr: 'Sığdır', en: 'Fit', ar: 'ملاءمة', ku: 'لەبارکردن' },
+  bVerticalScroll: {
+    tr: 'Dikey scroll',
+    en: 'Vertical scroll',
+    ar: 'تمرير عمودي',
+    ku: 'سکڕۆڵی ستوونی',
+  },
+  gridDensityFitTitle: {
+    tr: 'Sığdır — sütunlar içeriğe göre, dikey scroll yok',
+    en: 'Fit — columns by content, no vertical scroll',
+    ar: 'ملاءمة — الأعمدة حسب المحتوى، لا تمرير عمودي',
+    ku: 'لەبارکردن — ستوونەکان بەپێی ناوەڕۆک، سکڕۆڵی ستوونی نییە',
+  },
+  gridDensityVerticalTitle: {
+    tr: 'Dikey scroll — sabit yükseklik, her iki scrollbar görünür',
+    en: 'Vertical scroll — fixed height, both scrollbars visible',
+    ar: 'تمرير عمودي — ارتفاع ثابت، كلا الشريطين مرئيان',
+    ku: 'سکڕۆڵی ستوونی — بەرزی جێگیر، هەردوو شریتەکە دیارن',
+  },
+  // DevExDataGrid — Sığdır / Dikey scroll option menüsü
+  fitModeMenuTitle: {
+    tr: 'Sığdırma modu',
+    en: 'Fit mode',
+    ar: 'وضع الملاءمة',
+    ku: 'دۆخی لەبارکردن',
+  },
+  fitModeMenuAria: {
+    tr: 'Sığdırma modu seçimi',
+    en: 'Fit mode selection',
+    ar: 'اختيار وضع الملاءمة',
+    ku: 'هەڵبژاردنی دۆخی لەبارکردن',
+  },
+  fitModeManual: {
+    tr: 'Sığdırmadan devam et',
+    en: 'Continue without fitting',
+    de: 'Ohne Anpassen fortfahren',
+  },
+  fitModeAutoOnly: {
+    tr: 'Yalnızca dikey scrollbar',
+    en: 'Vertical scrollbar only',
+    ar: 'شريط التمرير العمودي فقط',
+    ku: 'تەنها شریتی سکڕۆڵی ستوونی',
+  },
   gridResizeColumn: {
     tr: 'Kolon genişliğini ayarla',
     en: 'Resize column',

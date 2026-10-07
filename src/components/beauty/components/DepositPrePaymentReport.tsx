@@ -135,7 +135,7 @@ export function DepositPrePaymentReport() {
             },
             {
                 key: 'deposit_amount',
-                header: tm('bKpiTotalReservation'),
+                header: tm('bKpiTotalReservation') || 'Rezervasyon Tutarı',
                 type: 'number',
                 align: 'right',
                 size: 140,
@@ -144,8 +144,31 @@ export function DepositPrePaymentReport() {
                 cell: (r) => <span className="font-semibold text-blue-700 tabular-nums">{fmt(r.deposit_amount)}</span>,
             },
             {
+                key: 'received_payment',
+                // 07.10.2026 — "Alınan ödeme" kolonu: hizmet verildikten sonra fiilen tahsil edilen tutar.
+                // Formül: total_price - outstanding_amount. Hizmet henüz verilmediyse (outstanding > 0)
+                // bu kolon 0 olur; verildiyse total_price'e eşit olur.
+                header: tm('bReceivedPayment') || 'Alınan Ödeme',
+                type: 'number',
+                align: 'right',
+                size: 130,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (r) => {
+                    const received = Math.max(
+                        0,
+                        Number(r.total_price ?? 0) - Number(r.outstanding_amount ?? 0) - Number(r.deposit_amount ?? 0),
+                    );
+                    const cls =
+                        received > 0.005
+                            ? 'font-semibold text-emerald-700 tabular-nums'
+                            : 'tabular-nums text-slate-500';
+                    return <span className={cls}>{fmt(received)}</span>;
+                },
+            },
+            {
                 key: 'outstanding_amount',
-                header: tm('bKpiTotalOutstanding'),
+                header: tm('bKpiTotalOutstanding') || 'Kalan Bakiye',
                 type: 'number',
                 align: 'right',
                 size: 130,
@@ -283,6 +306,44 @@ export function DepositPrePaymentReport() {
                             height={520}
                             footerLabel={tm('rprTotal') || 'Toplam'}
                             storageNamespace="beauty-deposit-prepayment"
+                            // 07.10.2026 — Rezervasyon Tutarı gruplaması (fiş bazlı):
+                            // aynı BEA-* fişine ait birden çok hizmet/paket/ürün satırı
+                            // tek grup altında toplanır; grup altında deposit + paid + kalan
+                            // tutarları otomatik toplanır; footer'da grand total görünür.
+                            groupByColumnId="deposit_sale_fiche_no"
+                            groupFooterSumColumns={[
+                                {
+                                    columnId: 'deposit_amount',
+                                    getValue: (r) => Number(r.deposit_amount ?? 0),
+                                    format: (sum) => (
+                                        <span className="text-blue-700 font-semibold">{fmt(sum)}</span>
+                                    ),
+                                },
+                                {
+                                    columnId: 'received_payment',
+                                    getValue: (r) =>
+                                        Math.max(
+                                            0,
+                                            Number(r.total_price ?? 0) -
+                                                Number(r.outstanding_amount ?? 0) -
+                                                Number(r.deposit_amount ?? 0),
+                                        ),
+                                    format: (sum) => (
+                                        <span className={sum > 0.005 ? 'text-emerald-700 font-semibold' : 'text-slate-500'}>
+                                            {fmt(sum)}
+                                        </span>
+                                    ),
+                                },
+                                {
+                                    columnId: 'outstanding_amount',
+                                    getValue: (r) => Number(r.outstanding_amount ?? 0),
+                                    format: (sum) => (
+                                        <span className={sum > 0.005 ? 'text-rose-700 font-semibold' : 'text-emerald-700 font-semibold'}>
+                                            {fmt(sum)}
+                                        </span>
+                                    ),
+                                },
+                            ]}
                         />
                     </div>
                 )}

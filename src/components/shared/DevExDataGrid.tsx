@@ -33,7 +33,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronDown, ChevronUp, Filter, Download, Printer, Layers, GripVertical, BarChart3, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronUp, Filter, Download, Printer, Layers, GripVertical, BarChart3, RefreshCw, Minimize2, Maximize2 } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -447,10 +447,65 @@ export interface DevExDataGridProps<T> {
     getValue: (row: T) => number;
     format?: (sum: number, rows: T[]) => ReactNode;
   }>;
+  /**
+   * Sağ üst köşede "Sığdır / Dikey Scroll" seçenek menüsü.
+   * true ise buton + 3 modlu option menüsü (Sığdır, Sığdırmadan devam et, Yalnızca dikey scrollbar) görünür.
+   * Varsayılan: false (mevcut davranış korunur).
+   *
+   * Davranış:
+   *  - `fit_columns`: body satırları içeriğe göre auto-fit (sütun genişliği = max(colMinWidth, maxBodyContentWidth)).
+   *    Header (üst başlık satırı) SABİT kalır — kesilirse text-overflow: ellipsis ile gösterilir.
+   *  - `vertical_only` / `auto`: mevcut davranış — sabit kolon genişlikleri + dikey scroll açılır.
+   *
+   * Persist: `retailex_datagrid_fit_mode` localStorage anahtarı.
+   */
+  enableFitButton?: boolean;
+  /** Fit modu (controlled). Verilmezse içeride tutulur ve LS'a yazılır. */
+  fitMode?: DevExGridFitMode;
+  onFitModeChange?: (mode: DevExGridFitMode) => void;
 }
 
 /** Satır türü — grup başlığı / grup alt toplamı / detay */
 export type DevExGridRowKind = 'detail' | 'group' | 'subtotal';
+
+/**
+ * Kolon sığdırma modu:
+ *  - `fit_columns`: body auto-fit, header sabit (kesilirse ellipsis).
+ *  - `vertical_only`: mevcut davranış — sabit kolon genişlikleri, dikey scroll açılır.
+ *  - `auto`: alias for `vertical_only` (varsayılan).
+ *
+ * "Option açıkken üst başlıkları sığdırmaya çalışma" — header her zaman sabit kalır.
+ */
+export type DevExGridFitMode = 'fit_columns' | 'vertical_only' | 'auto';
+
+export const DEFAULT_FIT_MODE: DevExGridFitMode = 'vertical_only';
+
+const FIT_MODE_STORAGE_KEY = 'retailex_datagrid_fit_mode';
+
+function isValidFitMode(value: unknown): value is DevExGridFitMode {
+  return value === 'fit_columns' || value === 'vertical_only' || value === 'auto';
+}
+
+export function loadFitModeFromStorage(): DevExGridFitMode {
+  if (typeof window === 'undefined') return DEFAULT_FIT_MODE;
+  try {
+    const raw = localStorage.getItem(FIT_MODE_STORAGE_KEY);
+    if (raw && isValidFitMode(raw)) return raw;
+  } catch {
+    /* quota / private mode */
+  }
+  return DEFAULT_FIT_MODE;
+}
+
+export function saveFitModeToStorage(mode: DevExGridFitMode): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!isValidFitMode(mode)) return;
+    localStorage.setItem(FIT_MODE_STORAGE_KEY, mode);
+  } catch {
+    /* quota / private mode */
+  }
+}
 
 /** Dahili otomatik gruplama meta alanları (satır objesine yazılır) */
 export const DEVEX_GRID_ROW_KIND = '__devexRowKind';
@@ -1903,6 +1958,8 @@ type SortableHeaderThProps<T> = {
   groupByTitle: string;
   groupClearTitle: string;
   resizeTitle: string;
+  /** true: body auto-fit; header SABİT — text-overflow: ellipsis ile kesilir (sığdırma yok). */
+  isFitColumns?: boolean;
   onContextMenu: (e: ReactMouseEvent) => void;
   onGroupToggle: (columnId: string) => void;
   onOpenFilter: (headerId: string, anchorEl: HTMLElement, column: Column<T, unknown>) => void;
@@ -1923,6 +1980,7 @@ function SortableHeaderTh<T>({
   groupByTitle,
   groupClearTitle,
   resizeTitle,
+  isFitColumns = false,
   onContextMenu,
   onGroupToggle,
   onOpenFilter,
@@ -1967,7 +2025,11 @@ function SortableHeaderTh<T>({
             />
           )}
           <span
-            className="min-w-0 flex-1 whitespace-normal break-words leading-tight line-clamp-2 text-left"
+            className={`min-w-0 flex-1 text-left leading-tight ${
+              isFitColumns
+                ? 'whitespace-nowrap overflow-hidden text-ellipsis'
+                : 'whitespace-normal break-words line-clamp-2'
+            }`}
             title={gridColumnHeaderLabel(header.column, columnId)}
           >
             {flexRender(header.column.columnDef.header, header.getContext())}
@@ -2105,6 +2167,9 @@ export function DevExDataGrid<T>({
   getRowKind,
   getRowClassName,
   groupFooterSumColumns,
+  enableFitButton = false,
+  fitMode: fitModeProp,
+  onFitModeChange,
 }: DevExDataGridProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(() => initialSorting ?? []);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -2113,6 +2178,20 @@ export function DevExDataGrid<T>({
     pageSize,
   }));
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>(selectedRowIds || {});
+  // Toolbar: tablo yoğunluğu (fit | vertical). Tercih localStorage'da saklanır.
+  // 'fit' (varsayılan): mevcut davranış — sütunlar içeriğe göre, gerekirse yatay scroll.
+  // 'vertical': sabit max-h-[60vh] ile dikey scroll + tüm sütunlar için daima yatay scroll görünür.
+  const [scrollMode, setScrollMode] = useState<'fit' | 'vertical'>(() => {
+    if (typeof window === 'undefined') return 'fit';
+    const stored = window.localStorage.getItem('retailex_devex_density');
+    return stored === 'vertical' ? 'vertical' : 'fit';
+  });
+  const updateScrollMode = useCallback((mode: 'fit' | 'vertical') => {
+    setScrollMode(mode);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('retailex_devex_density', mode);
+    }
+  }, []);
   const [internalColumnVisibility, setInternalColumnVisibility] = useState<Record<string, boolean>>(() =>
     mergeDevExDefaultColumnVisibility(columns as ColumnDef<any, any>[], columnVisibility),
   );
@@ -2537,7 +2616,8 @@ export function DevExDataGrid<T>({
     (enableColumnVisibility && showColumnVisibilityToolbar) ||
     enableExcelExport ||
     printEnabled ||
-    Boolean(resolvedGroupByColumnId);
+    Boolean(resolvedGroupByColumnId) ||
+    true; // Sığdır / Dikey scroll toggle her zaman görünür (mevcut butonlar yoksa bile)
 
   const footerSumFormats = useMemo(() => {
     const map = new Map<string, (sum: number, rows: T[]) => ReactNode>();
@@ -2958,10 +3038,12 @@ export function DevExDataGrid<T>({
   // Desktop Table View
   const visibleLeafColumns = table.getVisibleLeafColumns();
   const tableTotalSize = table.getTotalSize();
-  const tableMinWidth = Math.max(
-    tableTotalSize,
-    visibleLeafColumns.reduce((acc, col) => acc + col.getSize(), 0),
-  );
+  /** Fit modunda her kolon effective genişlik kullanılır; diğer modda TanStack size yeterli. */
+  const effectiveTotalSize = visibleLeafColumns.reduce((acc, col) => {
+    const minSize = col.columnDef?.minSize ?? 48;
+    return acc + resolveEffectiveColumnWidth(col.id, col.getSize(), minSize);
+  }, 0);
+  const tableMinWidth = Math.max(tableTotalSize, effectiveTotalSize);
   const isColumnResizing = table.getState().columnSizingInfo.isResizingColumn != null;
   const leafColumnsForVisibility = table
     .getAllLeafColumns()
@@ -2999,6 +3081,35 @@ export function DevExDataGrid<T>({
               {tm('filterRefresh') || 'Yenile'}
             </button>
           )}
+          {/* Yoğunluk toggle: Sığdır (mevcut) / Dikey scroll (sabit max-h + her iki scrollbar) */}
+          <button
+            type="button"
+            onClick={() => updateScrollMode('fit')}
+            aria-pressed={scrollMode === 'fit'}
+            className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border ${
+              scrollMode === 'fit'
+                ? 'bg-slate-200 text-slate-900 border-slate-400'
+                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+            }`}
+            title={tm('gridDensityFitTitle') || 'Sığdır — sütunlar içeriğe göre, dikey scroll yok'}
+          >
+            <Minimize2 className="w-3 h-3" />
+            {tm('bFit') || 'Sığdır'}
+          </button>
+          <button
+            type="button"
+            onClick={() => updateScrollMode('vertical')}
+            aria-pressed={scrollMode === 'vertical'}
+            className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border ${
+              scrollMode === 'vertical'
+                ? 'bg-slate-200 text-slate-900 border-slate-400'
+                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+            }`}
+            title={tm('gridDensityVerticalTitle') || 'Dikey scroll — sabit yükseklik, her iki scrollbar görünür'}
+          >
+            <Maximize2 className="w-3 h-3" />
+            {tm('bVerticalScroll') || 'Dikey scroll'}
+          </button>
           {resolvedGroupByColumnId && (
             <button
               type="button"
@@ -3049,6 +3160,47 @@ export function DevExDataGrid<T>({
               {tm('print') || 'Yazdır'}
             </button>
           )}
+          {enableFitButton && (
+            <div className="relative inline-block">
+              <button
+                ref={fitButtonRef}
+                type="button"
+                onClick={() => {
+                  if (!fitButtonRef.current) return;
+                  const rect = fitButtonRef.current.getBoundingClientRect();
+                  fitMenuAnchorRef.current = {
+                    top: rect.bottom + 4,
+                    left: Math.max(8, rect.right - 220),
+                  };
+                  setIsFitMenuOpen((v) => !v);
+                }}
+                aria-haspopup="menu"
+                aria-expanded={isFitMenuOpen}
+                className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border ${
+                  resolvedFitMode === 'fit_columns'
+                    ? darkMode
+                      ? 'text-emerald-300 bg-emerald-900/40 border-emerald-700'
+                      : 'text-emerald-800 bg-emerald-50 border-emerald-300'
+                    : darkMode
+                      ? 'text-slate-200 bg-slate-800 border-slate-600 hover:bg-slate-700'
+                      : 'text-slate-700 bg-white border-slate-300 hover:bg-slate-100'
+                }`}
+                title={
+                  resolvedFitMode === 'fit_columns'
+                    ? tm('gridDensityFitTitle') || 'Sığdır — sütunlar içeriğe göre'
+                    : tm('gridDensityVerticalTitle') || 'Dikey scroll — sabit yükseklik'
+                }
+              >
+                <span aria-hidden className="font-bold">
+                  {resolvedFitMode === 'fit_columns' ? '⤢' : '↕'}
+                </span>
+                {resolvedFitMode === 'fit_columns'
+                  ? tm('bFit') || 'Sığdır'
+                  : tm('bVerticalScroll') || 'Dikey scroll'}
+                <ChevronDown className="w-2.5 h-2.5" aria-hidden />
+              </button>
+            </div>
+          )}
           {enableColumnVisibility && showColumnVisibilityToolbar && (
           <ColumnVisibilityMenu
             variant="grid"
@@ -3092,6 +3244,11 @@ export function DevExDataGrid<T>({
       <div
         className={`relative z-0 flex-1 overflow-auto border isolate ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'} ${
           isColumnResizing ? 'select-none cursor-col-resize' : ''
+        } ${
+          // Dikey scroll modunda: sabit max-h, daima her iki scrollbar görünür.
+          scrollMode === 'vertical'
+            ? 'max-h-[60vh] min-h-[260px] overflow-x-scroll overflow-y-auto'
+            : ''
         }`}
       >
         <DndContext
@@ -3100,6 +3257,7 @@ export function DevExDataGrid<T>({
           onDragEnd={handleColumnDragEnd}
         >
         <table
+          ref={tableRef}
           className="border-collapse"
           style={{
             tableLayout: 'fixed',
@@ -3126,8 +3284,15 @@ export function DevExDataGrid<T>({
                     header={header}
                     enableReorder={columnReorderEnabled}
                     enableResize={enableColumnResizing}
-                    headerClassName={`px-2 py-1 text-left border-r last:border-r-0 relative box-border ${headerBg} ${darkMode ? 'text-gray-100 border-gray-600' : 'text-gray-800 border-gray-300'} ${density === 'comfortable' ? 'text-xs font-semibold py-1.5' : 'text-[10px] font-medium'}`}
-                    headerStyle={gridColumnWidthStyle(header.getSize())}
+                    headerClassName={`px-2 py-1 text-left border-r last:border-r-0 relative box-border ${headerBg} ${darkMode ? 'text-gray-100 border-gray-600' : 'text-gray-800 border-gray-300'} ${density === 'comfortable' ? 'text-xs font-semibold py-1.5' : 'text-[10px] font-medium'} ${resolvedFitMode === 'fit_columns' ? 'overflow-hidden' : ''}`}
+                    headerStyle={gridColumnWidthStyle(
+                      resolveEffectiveColumnWidth(
+                        header.column.id,
+                        header.getSize(),
+                        header.column.columnDef?.minSize ?? 48,
+                      ),
+                    )}
+                    isFitColumns={resolvedFitMode === 'fit_columns'}
                     darkMode={darkMode}
                     groupingEnabled={groupingEnabled}
                     enableFiltering={enableFiltering}
@@ -3202,7 +3367,13 @@ export function DevExDataGrid<T>({
                       className={`px-2 py-1 border-r last:border-r-0 box-border overflow-hidden ${cellTextSize} ${
                         kind === 'group' ? 'font-bold' : kind === 'subtotal' ? 'font-semibold' : cellWeight
                       } ${cellColor} ${cellBorder} ${gridColumnAlignClass(align)} ${cellKindBg}`}
-                      style={gridColumnWidthStyle(cell.column.getSize())}
+                      style={gridColumnWidthStyle(
+                        resolveEffectiveColumnWidth(
+                          cell.column.id,
+                          cell.column.getSize(),
+                          cell.column.columnDef?.minSize ?? 48,
+                        ),
+                      )}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
@@ -3244,7 +3415,13 @@ export function DevExDataGrid<T>({
                         className={`px-2 py-1.5 border-r last:border-r-0 box-border ${cellTextSize} font-bold ${footerBg} ${gridColumnAlignClass(align)} ${
                           darkMode ? 'text-blue-200 border-gray-600' : 'text-blue-900 border-blue-200'
                         } ${sumNode != null ? 'whitespace-nowrap' : ''}`}
-                        style={gridColumnWidthStyle(colSpan ? visibleLeafColumns.slice(labelStart, labelEnd).reduce((w, c) => w + c.getSize(), 0) : col.getSize())}
+                        style={gridColumnWidthStyle(
+                          colSpan
+                            ? visibleLeafColumns
+                                .slice(labelStart, labelEnd)
+                                .reduce((w, c) => w + resolveEffectiveColumnWidth(c.id, c.getSize(), c.columnDef?.minSize ?? 48), 0)
+                            : resolveEffectiveColumnWidth(col.id, col.getSize(), col.columnDef?.minSize ?? 48),
+                        )}
                       >
                         {sumNode != null ? (
                           sumNode
@@ -3376,6 +3553,80 @@ export function DevExDataGrid<T>({
           reportTitle={printTitle || excelFileName}
         />
       )}
+
+      {enableFitButton && isFitMenuOpen && fitMenuAnchorRef.current &&
+        createPortal(
+          <div
+            data-devex-fit-dropdown
+            role="menu"
+            aria-label={tm('fitModeMenuAria') || 'Sığdırma modu'}
+            className={`absolute min-w-[15rem] rounded-md border shadow-lg py-1 text-[11px] ${
+              darkMode ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-gray-200 text-gray-800'
+            }`}
+            style={{
+              top: fitMenuAnchorRef.current.top,
+              left: fitMenuAnchorRef.current.left,
+              zIndex: GRID_POPOVER_Z,
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className={`px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              {tm('fitModeMenuTitle') || 'Sığdırma modu'}
+            </div>
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={resolvedFitMode === 'fit_columns'}
+              className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${
+                darkMode ? 'hover:bg-gray-700' : 'hover:bg-sky-50'
+              } ${resolvedFitMode === 'fit_columns' ? (darkMode ? 'bg-emerald-900/40 text-emerald-200' : 'bg-emerald-50 text-emerald-800') : ''}`}
+              onClick={() => {
+                setFitMode('fit_columns');
+                closeFitMenu();
+              }}
+            >
+              <span className="w-3 h-3 inline-flex items-center justify-center" aria-hidden>
+                {resolvedFitMode === 'fit_columns' ? '●' : '○'}
+              </span>
+              <span className="font-medium">{tm('bFit') || 'Sütunları sığdır'}</span>
+            </button>
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={resolvedFitMode === 'vertical_only'}
+              className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${
+                darkMode ? 'hover:bg-gray-700' : 'hover:bg-sky-50'
+              } ${resolvedFitMode === 'vertical_only' ? (darkMode ? 'bg-sky-900/40 text-sky-200' : 'bg-sky-50 text-sky-800') : ''}`}
+              onClick={() => {
+                setFitMode('vertical_only');
+                closeFitMenu();
+              }}
+            >
+              <span className="w-3 h-3 inline-flex items-center justify-center" aria-hidden>
+                {resolvedFitMode === 'vertical_only' ? '●' : '○'}
+              </span>
+              <span className="font-medium">{tm('fitModeManual') || 'Sığdırmadan devam et'}</span>
+            </button>
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={resolvedFitMode === 'auto'}
+              className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${
+                darkMode ? 'hover:bg-gray-700' : 'hover:bg-sky-50'
+              } ${resolvedFitMode === 'auto' ? (darkMode ? 'bg-sky-900/40 text-sky-200' : 'bg-sky-50 text-sky-800') : ''}`}
+              onClick={() => {
+                setFitMode('auto');
+                closeFitMenu();
+              }}
+            >
+              <span className="w-3 h-3 inline-flex items-center justify-center" aria-hidden>
+                {resolvedFitMode === 'auto' ? '●' : '○'}
+              </span>
+              <span className="font-medium">{tm('bVerticalScroll') || 'Yalnızca dikey scrollbar'}</span>
+            </button>
+          </div>,
+          document.body,
+        )}
 
       {/* Pagination */}
       {enablePagination && (
