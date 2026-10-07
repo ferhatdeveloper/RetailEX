@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FileText, Loader2, Printer, X } from 'lucide-react';
+import { FileText, Loader2, Printer, Trash2, X } from 'lucide-react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { formatNumber } from '../../../utils/formatNumber';
@@ -52,6 +52,8 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
   const [ekstresiStart, setEkstresiStart] = useState(defaultEkstre.start);
   const [ekstresiEnd, setEkstresiEnd] = useState(defaultEkstre.end);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  /** Açılış/devir fişi hard-delete sırasında buton disable + spinner */
+  const [hardDeletingId, setHardDeletingId] = useState<string | null>(null);
 
   const mainDec = preferIntegerAmountDisplay(mainCurrency) ? 0 : 2;
   const mainShowDec = !preferIntegerAmountDisplay(mainCurrency);
@@ -322,8 +324,42 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
           );
         },
       },
+      {
+        id: 'actions',
+        header: '',
+        size: 110,
+        minSize: 90,
+        enableSorting: false,
+        enableHiding: false,
+        meta: { align: 'right' },
+        cell: ({ row }) => {
+          const ft = String(row.original.fiche_type || '').toLowerCase();
+          if (ft !== 'opening_balance') return null;
+          const rowId = String(row.original.invoiceId || '').trim();
+          if (!rowId) return null;
+          const isDeleting = hardDeletingId === rowId;
+          return (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={!!hardDeletingId}
+                onClick={() => void handleHardDeleteOpeningBalance(row.original)}
+                className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-bold text-red-700 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Açılış/devir fişini kalıcı olarak sil (DB'den tamamen kaldır)"
+              >
+                {isDeleting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                <span>{isDeleting ? 'Siliniyor' : 'Sil'}</span>
+              </button>
+            </div>
+          );
+        },
+      },
     ];
-  }, [tm, mainDec, mainShowDec, mainCurrency, account.cardType]);
+  }, [tm, mainDec, mainShowDec, mainCurrency, account.cardType, hardDeletingId]);
 
   const totalBorc = ekstresiRows.reduce((s, r) => s + r.borcAmount, 0);
   const totalAlacak = ekstresiRows.reduce((s, r) => s + r.alacakAmount, 0);
@@ -384,6 +420,75 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
         invoiceSearch: ficheNo,
       },
     }));
+  };
+
+  /**
+   * Açılış/devir fişini (fiche_type='opening_balance') ekstre satırından
+   * hard-delete. invoicesAPI.hardDeleteOpeningBalance aynı güvenlik
+   * kontrollerini (tutar + döviz + fiche_type + is_cancelled) uygular.
+   * Burada ekstra çift onay (confirm + tutar yazma) ekliyoruz.
+   */
+  const handleHardDeleteOpeningBalance = async (row: EkstreRow) => {
+    if (!row?.invoiceId && !row?.fiche_no) {
+      toast.error('Fiş kimliği bulunamadı');
+      return;
+    }
+    const id = String(row.invoiceId || '').trim();
+    if (!id) {
+      toast.error('Bu satır için DB kimliği yok (yalnız açılış fişlerinde olur)');
+      return;
+    }
+    const ficheType = String(row.fiche_type || '').toLowerCase();
+    if (ficheType !== 'opening_balance') {
+      toast.error('Bu işlem yalnızca açılış/devir fişleri için kullanılabilir.');
+      return;
+    }
+
+    // Borç ya da alacak yönündeki tutar (yön işareti bağlı değil, mutlak)
+    const amount = Math.abs(Number(row.borcAmount || 0) || Number(row.alacakAmount || 0) || 0);
+    const currency = mainCurrency;
+
+    // 1. onay
+    if (!window.confirm(
+      `Bu açılış/devir fişi kalıcı olarak silinecek (geri alınamaz).\n\n` +
+      `Fiş No: ${row.fiche_no || id}\n` +
+      `Tutar: ${amount.toLocaleString('tr-TR')} ${currency}\n` +
+      `Tarih: ${row.date || '—'}\n\n` +
+      `Devam etmek istiyor musunuz?`,
+    )) {
+      return;
+    }
+
+    // 2. onay: tutarı yazma
+    const typed = window.prompt(
+      `Onay için fiş tutarını (${amount.toLocaleString('tr-TR')} ${currency}) aynen yazın:`,
+    );
+    if (typed == null) return;
+    const typedAbs = Math.abs(parseFloat(typed.replace(/[^\d.,-]/g, '').replace(',', '.')) || 0);
+    if (typedAbs !== amount) {
+      toast.error(
+        `Tutar uyuşmuyor. Beklenen: ${amount.toLocaleString('tr-TR')}, yazılan: ${typedAbs.toLocaleString('tr-TR')}`,
+      );
+      return;
+    }
+
+    setHardDeletingId(id);
+    try {
+      const { invoicesAPI } = await import('../../../services/api/invoices');
+      const result = await invoicesAPI.hardDeleteOpeningBalance(id, amount, currency);
+      if (!result.ok) {
+        toast.error(result.reason || 'Açılış fişi silinemedi');
+        return;
+      }
+      toast.success(`Açılış fişi silindi (${result.deleted} satır)`);
+      // Ekstreyi yeniden yükle (ledger yeniden dengelendi)
+      await loadEkstresi(ekstresiStart, ekstresiEnd);
+    } catch (error: any) {
+      console.error('Hard delete failed:', error);
+      toast.error('Silme hatası: ' + (error?.message || 'Bilinmeyen'));
+    } finally {
+      setHardDeletingId(null);
+    }
   };
 
   const borcHdr = fmtEkstreAmount(totalBorc);

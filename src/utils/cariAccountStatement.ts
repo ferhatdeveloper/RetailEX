@@ -279,6 +279,8 @@ export function resolveEkstreDescription(
 }
 
 export type EkstreRow = {
+  /** sales tablosundaki PK (UUID). Açılış/devir fişlerini hard-delete için gerekli. */
+  invoiceId?: string;
   date?: string;
   fiche_no?: string;
   fiche_type?: string;
@@ -457,6 +459,8 @@ export function buildEkstreRows(
       (ftLower === 'sales_invoice' || ftLower === 'service' || ftLower === 'hizmet');
     return {
       ...row,
+      /** sales tablosundaki PK. Açılış/devir fişlerini hard-delete için gerekli. */
+      invoiceId: row.id != null ? String(row.id) : undefined,
       borcAmount,
       alacakAmount,
       balance: runningBalance,
