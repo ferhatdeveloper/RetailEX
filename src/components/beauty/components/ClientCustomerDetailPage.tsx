@@ -966,8 +966,24 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         const sumDocument = mainSales.reduce((acc, s) => acc + Math.max(0, Number(s.total) || 0), 0);
         const collectedAmount = mainSales.reduce((acc, s) => acc + beautySalePocketCollected(s), 0);
         const veresiyeCari = mainSales.reduce((acc, s) => acc + beautySaleRemainingCari(s), 0);
-        /** Belge tutarı; ana hizmet satışı yoksa kart total_spent, o da yoksa tamamlanmış randevu fiyatları */
-        let totalSpent = mainSales.length > 0 ? sumDocument : Number(selected.total_spent ?? 0);
+        // 09.10.2026 — Rezervasyon peşinatı (henüz hizmet verilmemiş avanslar)
+        // totalSpent hesabına katılmadığı için müşteri profilinde "Toplam Harcama"
+        // yalnızca ana hizmet satış tutarını gösteriyordu. Peşinat da müşterinin
+        // o hizmete yaptığı bir HARCAMA olduğundan, toplam harcamaya dahil
+        // edilmelidir. Kullanıcı isteği: "Toplam Harcama = Alınan Tutar +
+        // Rezervasyon Peşinat" — peşinat ayrı bir sales fişi olarak yazılmadığı
+        // (skipInvoice modu) için `depositTotal`'ı doğrudan ekliyoruz.
+        // depositTotal hesabı return bloğunda zaten depositSales + openAdvanceTotal
+        // toplamı olarak hesaplanıyor; burada tekrar hesaplamamak için satır 1050
+        // sonrasına taşınmış halini kullanıyoruz.
+        const depositForTotal =
+            depositSales.reduce(
+                (acc, s) => acc + Math.max(0, Number(s.total) || 0),
+                0,
+            ) + openAdvanceTotal;
+        /** Belge tutarı + peşinat; ana hizmet satışı yoksa kart total_spent, o da yoksa tamamlanmış randevu fiyatları */
+        let totalSpent =
+            mainSales.length > 0 ? sumDocument + depositForTotal : Number(selected.total_spent ?? 0);
         const completedAppointments = pastAppointments.filter(isCompletedBeautyAppointment);
         if (!(totalSpent > 0) && mainSales.length === 0) {
             const fromApts = completedAppointments.reduce(

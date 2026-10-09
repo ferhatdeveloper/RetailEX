@@ -3804,19 +3804,34 @@ export function ReportsModule({
       // Rezervasyon avansı (henüz hizmet verilmemiş peşinat) Ciro/işlem
       // sayacına katılmamalı — kullanıcı isteği: "işlem sayısı 1 ama
       // buradaya rezervasyonu da işlem gibi almış".
-      if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) {
+      // AVANS → FATURA (Basit Model): cari_avans'tan gelen sanal satırlar da
+      // işlem/ciro sayacına katılmamalı — avans zaten ilgili sales satırının
+      // peşinatıdır; aksi halde aynı hizmet için 2x işlem + avans tutarı
+      // + net tutarı toplanır (kullanıcı şikayeti 2026-10-09 guzel DB).
+      if (
+        isDepositSale(row.erpSale as Partial<Sale> | undefined) ||
+        row.isDeposit === true ||
+        row.isAvans === true
+      ) {
         return;
       }
       const rawName = String(row.cashier || '').trim();
       const name = rawName && !isPlaceholderCashierName(rawName) ? rawName : '—';
       const existing = cashierMap.get(name) || { name, salesCount: 0, totalRevenue: 0, avgSale: 0, cashSales: 0, cardSales: 0 };
       existing.salesCount += 1;
-      // B1: Kasiyer cirosu net (iade düşülmüş) — `dailyActiveRows` zaten iadeleri
-      // barındırıyor olabilir (refundAmount negatif değil pozitif kayıt); negatif
-      // gelenleri ters işaretle düş.
-      const net = Number(row.total) || 0;
+      // Ciro = hizmet başına tam fiyat (avans dahil). `row.total` mapInvoiceToSale'den
+      // `sales.net_amount` (peşinat düşülmüş tahsilat) ile geliyor; tam ciro için
+      // `sale.subtotal` = `sales.total_net` (avans + net) kullanılır.
+      // Kullanıcı isteği 2026-10-09 guzel DB: "3 randevu, 1'er işlem, tam ciro
+      // 200.000 tek satır olmalı" (örn. 75K hizmet için avans 25K + net 50K).
+      const sale = row.erpSale as (Partial<Sale> & { total_net?: number | null }) | undefined;
+      const net = Number(sale?.subtotal ?? row.total) || 0;
       existing.totalRevenue += net;
       existing.avgSale = existing.totalRevenue / existing.salesCount;
+      // Kasa/kart tahsilatı ise peşinat (avans) dahil **tahsil edilen** tutar —
+      // burada avans zaten ayrı sanal satır olarak düşürüldü, geriye kalan ana
+      // fiş tahsilatı (saleCollectedSplit `sale.total`'a değil `payments`'a bakar;
+      // tahsilat alanı doluysa doğru yansır).
       const split = row.erpSale
         ? saleCollectedSplit(row.erpSale)
         : saleCollectedSplit({ total: net, paymentMethod: row.paymentMethod });
@@ -4043,6 +4058,10 @@ export function ReportsModule({
   };
 
   // Hourly Analysis — seçili güne göre (restoranda günlük birleşik satır saatleri)
+  // Avans (`isAvans === true`) Hariç: cari_avans kayıtları hizmet tamamlandığında
+  // oluşan ana fişin peşinat parçasıdır; aynı randevu için avans + ana fiş çifti
+  // tek işlem sayılır (1 randevu = 1 işlem). Aksi halde 14:00 → 2, 15:00 → 4
+  // gibi iki katı şişmiş işlem sayısı raporlanır.
   const getHourlyAnalysis = () => {
     const hourlyMap = new Map<number, { hour: number; sales: number; revenue: number; count: number }>();
 
@@ -4058,6 +4077,13 @@ export function ReportsModule({
     };
 
     for (const row of dailyUnifiedRows) {
+      // Avans kayıtlarını (cari_avans sanal satırları) atla; bunlar ana fişin
+      // peşinatıdır ve saatlik analizde ayrı işlem olarak sayılmamalıdır.
+      // Yalnızca `isAvans` işaretli sanal satırları değil, ERP satışlarının
+      // içinden de deposit (`isDeposit`) fişlerini çıkarıyoruz ki aynı randevu
+      // hem deposit hem ana fişle 2 kez sayılmasın.
+      if (row.isAvans === true) continue;
+      if (row.isDeposit === true) continue;
       const hour = saleWallClockHourLocal(dailyRowWallClockSource(row));
       if (hour == null) continue;
       bump(hour, Number(row.total) || 0);
@@ -8608,7 +8634,11 @@ export function ReportsModule({
             {selectedTab === 'check-tracking' && <ChequeTrackingReport />}
 
             {selectedTab === 'customer-sales' && (
-              <CustomerSalesReport sales={effectiveCatalogSales} customers={reportCustomers} />
+              <CustomerSalesReport
+                sales={effectiveCatalogSales}
+                customers={reportCustomers}
+                businessType={businessType}
+              />
             )}
 
             {selectedTab === 'sales-trend' && (

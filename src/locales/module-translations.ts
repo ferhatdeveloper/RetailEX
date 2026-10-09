@@ -12300,7 +12300,7 @@ export const excelModuleTranslations = {
   bPaymentStateUnpaid: { tr: 'Ödenmedi', en: 'Unpaid', ar: 'غير مدفوع', ku: 'نەدراوە' },
   bPaymentStateDepositOnly: { tr: 'Sadece Peşinat', en: 'Deposit Only', ar: 'دفعة مقدمة فقط', ku: 'تەنها پارەی پێشەکی' },
   bPaymentStatePartial: { tr: 'Kısmi Ödeme', en: 'Partial', ar: 'جزئي', ku: 'بەشێک' },
-  bPaymentStatePaid: { tr: 'Tamamlandı', en: 'Paid', ar: 'مدفوع', ku: 'دراوە' },
+  bPaymentStatePaid: { tr: 'Kapandı', en: 'Closed', ar: 'مغلق', ku: 'داخراو' },
   bPaymentStateNoAmount: { tr: 'Tutar Yok', en: 'No Amount', ar: 'لا يوجد مبلغ', ku: 'بڕی نییە' },
   bTodayAppointmentsTitle: { tr: 'Bugünün Randevuları', en: 'Today\'s Appointments', ar: 'مواعيد اليوم', ku: 'ئامادەبوونەکانی ئەمڕۆ' },
   bRegisteredAppointmentsSub: { tr: '{n} kayıtlı randevu', en: '{n} scheduled', ar: '{n} موعد مسجل', ku: '{n} ئامادەبوونی تۆمارکراو' },

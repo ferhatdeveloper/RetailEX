@@ -67,7 +67,11 @@ export function SalesTrendReport({ sales }: SalesTrendReportProps) {
           data.push({
             date: dateStr,
             sales: positiveSales.length,
-            revenue: positiveSales.reduce((sum, s) => sum + s.total, 0),
+            // Ciro = brüt hizmet değeri (indirim öncesi). Güzellik POS'ta
+            // Sale.total bazen sadece kalan ödemeyi yansıtır (deposit + son
+            // ödeme); ciro için Sale.subtotal kullanılır — appointment
+            // total_price brüt tutarıyla birebir eşleşir.
+            revenue: positiveSales.reduce((sum, s) => sum + (s.subtotal ?? s.total ?? 0), 0),
             label: date.toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' }),
           });
         }

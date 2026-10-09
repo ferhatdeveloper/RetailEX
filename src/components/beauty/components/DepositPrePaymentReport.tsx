@@ -155,10 +155,9 @@ export function DepositPrePaymentReport() {
                 footerSum: true,
                 footerFormat: (n) => fmt(n),
                 cell: (r) => {
-                    const received = Math.max(
-                        0,
-                        Number(r.total_price ?? 0) - Number(r.outstanding_amount ?? 0) - Number(r.deposit_amount ?? 0),
-                    );
+                    // Kaynak: view pas.remainder_paid_amount (DB tarafında deposit + remainder >= total ise paid olur).
+                    // Kullanıcı talebi: "odeme tutarini alinca guncellemeli toplam hizmet avans odenen kalan"
+                    const received = Math.max(0, Number(r.remainder_paid_amount ?? 0));
                     const cls =
                         received > 0.005
                             ? 'font-semibold text-emerald-700 tabular-nums'
@@ -321,13 +320,7 @@ export function DepositPrePaymentReport() {
                                 },
                                 {
                                     columnId: 'received_payment',
-                                    getValue: (r) =>
-                                        Math.max(
-                                            0,
-                                            Number(r.total_price ?? 0) -
-                                                Number(r.outstanding_amount ?? 0) -
-                                                Number(r.deposit_amount ?? 0),
-                                        ),
+                                    getValue: (r) => Math.max(0, Number(r.remainder_paid_amount ?? 0)),
                                     format: (sum) => (
                                         <span className={sum > 0.005 ? 'text-emerald-700 font-semibold' : 'text-slate-500'}>
                                             {fmt(sum)}

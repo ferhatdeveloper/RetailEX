@@ -120,10 +120,15 @@ export function computeClinicDayKpis(input: ClinicDayKpiInputs): ClinicDayKpis {
     const completed = todayApts.filter(
         (a) => a.status === AppointmentStatus.COMPLETED,
     );
-    const pending = todayApts.filter(
-        (a) =>
-            a.status === AppointmentStatus.SCHEDULED ||
-            a.status === AppointmentStatus.CONFIRMED,
+    // 09.10.2026 — Bug "planli olan var bekleyende gozukmuyor":
+    // BEKLEYEN KPI'ı yalnız SCHEDULED+CONFIRMED durumlarını sayıyordu;
+    // PRE_PAID (peşinat alınmış) ve IN_PROGRESS (hizmet devam ediyor) durumları
+    // da operatörün "henüz tamamlanmamış" olarak izlemesi gereken planlı
+    // randevulardır. EXPECTED_REVENUE_STATUSES ile aynı 4 durum kullanılır.
+    const pending = todayApts.filter((a) =>
+        EXPECTED_REVENUE_STATUSES.includes(
+            a.status as (typeof EXPECTED_REVENUE_STATUSES)[number],
+        ),
     );
     const inProg = todayApts.filter(
         (a) => a.status === AppointmentStatus.IN_PROGRESS,

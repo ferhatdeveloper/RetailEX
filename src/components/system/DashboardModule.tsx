@@ -174,11 +174,27 @@ export function DashboardModule({
   /** Tarih filtresi uygulanmış, iptal edilmemiş aktif satışlar */
   const activeSales = useMemo(() => sales.filter(isActiveSale), [sales]);
 
+  // 09.10.2026 — Randevu kapatılınca ana fişe yalnız kalan ödeme (net_amount)
+  // yazılıyor; peşinat ayrı bir fiş olarak yazılmadığı için toplam hizmet
+  // (75.000) dashboard'da 50.000 görünüyordu. Dashboard "Bugünkü Satış" toplamı
+  // artık fişin **toplam_net**'inden (hizmet toplamı) alınır; eğer DB'de
+  // total_net yoksa (eski fiş) `s.total`'a geri düşer.
+  const saleServiceTotal = (s: Sale): number => {
+    const anyS = s as Sale & {
+      total_net?: number;
+      totalAmount?: number;
+      total?: number;
+    };
+    const tn = Number(anyS.total_net ?? 0);
+    if (tn > 0) return tn;
+    return Number(anyS.total ?? anyS.totalAmount ?? 0);
+  };
+
   // Today's sales (iptal hariç)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todaysSales = activeSales.filter(s => new Date(s.date) >= today);
-  const totalRevenue = todaysSales.reduce((sum, s) => sum + s.total, 0);
+  const totalRevenue = todaysSales.reduce((sum, s) => sum + saleServiceTotal(s), 0);
   const totalProfitToday = layeredValuation
     ? totalRevenue - layeredValuation.todayCogs
     : todaysSales.reduce((sum, s) => sum + (s.profit || 0), 0);
@@ -190,7 +206,10 @@ export function DashboardModule({
     const saleDate = new Date(s.date);
     return saleDate >= yesterday && saleDate < today;
   });
-  const yesterdayRevenue = yesterdaySales.reduce((sum, s) => sum + s.total, 0);
+  const yesterdayRevenue = yesterdaySales.reduce(
+    (sum, s) => sum + saleServiceTotal(s),
+    0,
+  );
   const yesterdayProfit = yesterdaySales.reduce((sum, s) => sum + (s.profit || 0), 0);
 
   const revenueChange = yesterdayRevenue > 0
@@ -205,7 +224,10 @@ export function DashboardModule({
   const weekAgo = new Date(today);
   weekAgo.setDate(weekAgo.getDate() - 7);
   const weekSales = activeSales.filter(s => new Date(s.date) >= weekAgo);
-  const weekRevenue = weekSales.reduce((sum, s) => sum + s.total, 0);
+  const weekRevenue = weekSales.reduce(
+    (sum, s) => sum + saleServiceTotal(s),
+    0,
+  );
 
   // Stock value — FIFO kalan katman (kart alış × miktar değil)
   const totalStockValue = products.reduce((sum, p) => sum + layeredCostForProduct(layeredValuation, p), 0);

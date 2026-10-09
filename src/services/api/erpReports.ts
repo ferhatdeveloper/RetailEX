@@ -2340,7 +2340,7 @@ export const erpReportsAPI = {
           WHERE cl.fiche_no = s.fiche_no
             AND UPPER(TRIM(COALESCE(cl.transaction_type, ''))) = 'CH_TAHSILAT'
         ), 0) AS collected,
-        COALESCE(s.net_amount, 0) AS invoice_amount,
+        COALESCE(s.total_net, s.net_amount, 0) AS invoice_amount,
         COALESCE((
           SELECT SUM(si.total_cost)
           FROM sale_items si
@@ -3291,3 +3291,109 @@ export type CashLedgerGroup =
   | 'INCOMING'
   | 'OUT'
   | string; // yayılma: kullanıcı tanımlı grup da olabilir
+
+/**
+ * Güzellik (beauty) — Müşteri Satış Analizi satırı. Randevu bazlı agregasyon.
+ *
+ * Neden appointment tablosu? Bug 32 (2026-10-09 guzel DB):
+ *  - Beauty müşterileri için gerçek ciro `beauty_appointments` satırında
+ *    (`total_price` = brüt hizmet tutarı, `deposit_amount` = rezervasyon
+ *    avansı, `remainder_paid_amount` = hizmet verildikten sonra tahsil
+ *    edilen kalan).
+ *  - `public.sales` (sales_invoice) tablosunda yalnızca kalan ödeme fişi
+ *    yansıyor (`net_amount = remainder_paid_amount`); avans hiçbir fatura
+ *    fişine yazılmıyor. Bu yüzden `effectiveCatalogSales` → invoice
+ *    zinciri güzellik için deposit'i eksik raporluyordu.
+ *  - Bu fonksiyon appointment tablosundan aggregate hesap yapar:
+ *      Hizmet Tutarı   = SUM(total_price)            (avans dahil brüt)
+ *      Rezervasyon     = SUM(deposit_amount)          (avans)
+ *      Alınan Tutar    = SUM(remainder_paid_amount)   (kalan ödeme)
+ *      Toplam Ciro     = SUM(total_price)            (hizmet brüt)
+ *      Satış Sayısı    = COUNT(DISTINCT appointment_id)
+ *
+ * İade / iptal edilmiş randevular (`status = 'cancelled' / 'canceled' /
+ * 'refunded' / 'void' / 'silindi' / 'iptal' / 'deleted' / 'no_show'`)
+ * hariç tutulur.
+ */
+export interface BeautyCustomerSalesRow {
+  customerId: string;
+  customerCode: string;
+  customerName: string;
+  phone: string;
+  /** Tamamlanmış (veya henüz iptal edilmemiş) randevu sayısı. */
+  appointmentCount: number;
+  /** Hizmet brüt tutarı (avans dahil) — toplam ciro. */
+  serviceRevenue: number;
+  /** Rezervasyon peşinatı (avans). */
+  depositRevenue: number;
+  /** Hizmet tamamlandıktan sonra tahsil edilen kalan tutar. */
+  remainderRevenue: number;
+  /** Toplam ciro = serviceRevenue (avans dahil brüt). */
+  totalRevenue: number;
+  /** Ortalama hizmet tutarı. */
+  avgServiceRevenue: number;
+  /** Son randevu tarihi (YYYY-MM-DD). */
+  lastAppointmentDate: string;
+}
+
+export async function getCustomerSalesFromAppointments(opts: {
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD (dahil)
+}): Promise<BeautyCustomerSalesRow[]> {
+  const { startDate, endDate } = opts;
+  if (!startDate || !endDate) return [];
+  const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
+  const custTable = postgres.getCardTableName('customers');
+  const sql = `
+    WITH appts AS (
+      SELECT
+        a.client_id,
+        a.appointment_date,
+        COALESCE(a.total_price, 0)        AS total_price,
+        COALESCE(a.deposit_amount, 0)     AS deposit_amount,
+        COALESCE(a.remainder_paid_amount, 0) AS remainder_paid_amount,
+        LOWER(TRIM(COALESCE(a.status::text, ''))) AS status_lc
+      FROM ${aptTable} a
+      WHERE a.appointment_date >= $1
+        AND a.appointment_date <= $2
+    )
+    SELECT
+      c.id::text                                                   AS customer_id,
+      COALESCE(c.code, '')                                         AS customer_code,
+      COALESCE(c.name, '')                                         AS customer_name,
+      COALESCE(c.phone, '')                                        AS phone,
+      COUNT(*)::int                                                AS appointment_count,
+      COALESCE(SUM(appts.total_price), 0)::float8                 AS service_revenue,
+      COALESCE(SUM(appts.deposit_amount), 0)::float8               AS deposit_revenue,
+      COALESCE(SUM(appts.remainder_paid_amount), 0)::float8        AS remainder_revenue,
+      COALESCE(SUM(appts.total_price), 0)::float8                 AS total_revenue,
+      CASE
+        WHEN COUNT(*) > 0
+          THEN COALESCE(SUM(appts.total_price), 0)::float8 / COUNT(*)
+        ELSE 0
+      END                                                          AS avg_service_revenue,
+      MAX(appts.appointment_date::text)                            AS last_appointment_date
+    FROM appts
+    INNER JOIN ${custTable} c ON c.id = appts.client_id
+    WHERE appts.status_lc NOT IN (
+      'cancelled', 'canceled', 'refunded', 'void',
+      'silindi', 'iptal', 'deleted', 'no_show'
+    )
+    GROUP BY c.id, c.code, c.name, c.phone
+    ORDER BY total_revenue DESC, c.name ASC
+  `;
+  const { rows } = await postgres.query(sql, [startDate, endDate]);
+  return (rows || []).map((r: any) => ({
+    customerId: String(r.customer_id ?? ''),
+    customerCode: String(r.customer_code ?? ''),
+    customerName: String(r.customer_name ?? ''),
+    phone: String(r.phone ?? ''),
+    appointmentCount: Number(r.appointment_count ?? 0),
+    serviceRevenue: Number(r.service_revenue ?? 0),
+    depositRevenue: Number(r.deposit_revenue ?? 0),
+    remainderRevenue: Number(r.remainder_revenue ?? 0),
+    totalRevenue: Number(r.total_revenue ?? 0),
+    avgServiceRevenue: Number(r.avg_service_revenue ?? 0),
+    lastAppointmentDate: String(r.last_appointment_date ?? ''),
+  }));
+}

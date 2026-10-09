@@ -99,6 +99,10 @@ export function ClinicDashboard() {
     const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = useMemo(() => ({
         scheduled:   { label: tm('bAppointmentScheduled'), color: '#6366f1', bg: '#eef2ff' },
         confirmed:   { label: tm('bAppointmentConfirmed'), color: '#0284c7', bg: '#e0f2fe' },
+        // 09.10.2026 — pre_paid durumu için rozet eklendi; önce yoktu ve
+        // STATUS_CFG['pre_paid'] undefined → fallback scheduled ("Planlandı")
+        // ile gösterilirdi. Şimdi doğru etiket: "Ön Ödeme Alındı".
+        pre_paid:    { label: tm('bAppointmentPrePaid') || 'Ön Ödeme Alındı', color: '#0d9488', bg: '#ccfbf1' },
         in_progress: { label: tm('bAppointmentStarted'), color: '#d97706', bg: '#fef3c7' },
         completed:   { label: tm('bAppointmentCompleted'), color: '#059669', bg: '#d1fae5' },
         cancelled:   { label: tm('bAppointmentCancelled'), color: '#dc2626', bg: '#fee2e2' },

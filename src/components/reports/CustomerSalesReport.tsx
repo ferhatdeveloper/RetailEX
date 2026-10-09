@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Users } from 'lucide-react';
 import { SearchOutlined } from '@ant-design/icons';
 import { Input } from 'antd';
@@ -15,10 +15,23 @@ import { formatReportDateCell } from '../../utils/dateLocale';
 import { ReportYmdDatePicker } from '../shared/ReportDateRangePresets';
 import { ReportColumnTable } from './shared/ReportDataGrid';
 import { isDepositSale } from '../../utils/reportDepositFilter';
+import {
+  getCustomerSalesFromAppointments,
+  type BeautyCustomerSalesRow,
+} from '../../services/api/erpReports';
 
 interface CustomerSalesReportProps {
   sales: Sale[];
   customers: Customer[];
+  /**
+   * İş kolu. `'beauty'` ise rapor `effectiveCatalogSales` (invoice fişleri)
+   * yerine doğrudan `beauty_appointments` tablosundan beslenir; böylece
+   * rezervasyon avansı (`deposit_amount`) ciroya doğru yansır. Diğer
+   * iş kollarında (`market` / `restaurant`) mevcut davranış korunur.
+   *
+   * Varsayılan: `'market'` (geriye dönük uyumlu).
+   */
+  businessType?: 'market' | 'restaurant' | 'beauty' | string;
 }
 
 function trNorm(value: string | undefined | null): string {
@@ -38,13 +51,17 @@ function matchesSearchBlob(term: string, fields: Array<string | undefined | null
   return blob.includes(term);
 }
 
-export function CustomerSalesReport({ sales, customers }: CustomerSalesReportProps) {
+export function CustomerSalesReport({ sales, customers, businessType = 'market' }: CustomerSalesReportProps) {
   const { tm } = useLanguage();
-  const { selectedFirm } = useFirmaDonem();
-  const currency = getFirmLedgerCurrency(
-    selectedFirm,
-    getAppDefaultCurrency() || getGlobalCurrency(),
-  );
+  const isBeauty = String(businessType ?? '').toLowerCase() === 'beauty';
+
+  /**
+   * Bug 32 — Beauty müşterileri için randevu bazlı veri kaynağı.
+   * Invoice (sales_invoice) zinciri avansı (`deposit_amount`) kaçırıyordu;
+   * burada `beauty_appointments` aggregate'inden doğrudan çekiyoruz.
+   */
+  const [beautyRows, setBeautyRows] = useState<BeautyCustomerSalesRow[]>([]);
+  const [beautyLoading, setBeautyLoading] = useState(false);
   // Rapor filtreleri — diğer raporlarla paylaşılan ortak bağlam (Bug rapor bağlantı kopukluğu).
   const {
     dateStart,
@@ -53,6 +70,31 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
     customerFilter,
     setCustomerFilter,
   } = useReportFilters();
+  useEffect(() => {
+    if (!isBeauty) return;
+    if (!dateStart || !dateEnd) return;
+    let cancelled = false;
+    setBeautyLoading(true);
+    void getCustomerSalesFromAppointments({ startDate: dateStart, endDate: dateEnd })
+      .then((rows) => {
+        if (!cancelled) setBeautyRows(Array.isArray(rows) ? rows : []);
+      })
+      .catch((err) => {
+        console.error('[CustomerSalesReport] beauty appointments yüklenemedi:', err);
+        if (!cancelled) setBeautyRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setBeautyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isBeauty, dateStart, dateEnd]);
+  const { selectedFirm } = useFirmaDonem();
+  const currency = getFirmLedgerCurrency(
+    selectedFirm,
+    getAppDefaultCurrency() || getGlobalCurrency(),
+  );
   const dateRange = { start: dateStart, end: dateEnd };
 
   const unknownCustomerLabel = tm('rptCustUnknown');
@@ -77,6 +119,39 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
         lastSaleDate: string;
       }
     >();
+
+    // Bug 32 — Beauty müşterileri için randevu bazlı (appointment) veri
+    // kaynağı. Invoice (sales_invoice) zinciri avansı kaçırıyordu; burada
+    // `beauty_appointments` aggregate doğrudan kullanılıyor.
+    if (isBeauty) {
+      beautyRows.forEach((row) => {
+        if (!row.customerId) return;
+        const matchedCustomer =
+          customers?.find((c) => String(c.id) === String(row.customerId)) || null;
+        const customerName = row.customerName || matchedCustomer?.name || unknownCustomerLabel;
+        customerMap.set(row.customerId, {
+          customer: {
+            ...(matchedCustomer || { id: row.customerId, name: customerName }),
+            id: matchedCustomer?.id || row.customerId,
+            name: customerName,
+            code: row.customerCode || matchedCustomer?.code,
+            phone: row.phone || matchedCustomer?.phone || '',
+          } as Customer,
+          salesCount: row.appointmentCount,
+          serviceRevenue: row.serviceRevenue,
+          depositRevenue: row.depositRevenue,
+          returnsRevenue: 0,
+          totalRevenue: row.totalRevenue,
+          serviceCount: row.appointmentCount,
+          depositCount: 0, // appointment tablosunda ayrı peşinat sayımı yok
+          avgSale: row.avgServiceRevenue,
+          lastSaleDate: row.lastAppointmentDate || '',
+        });
+      });
+      return Array.from(customerMap.values()).sort(
+        (a, b) => b.totalRevenue - a.totalRevenue,
+      );
+    }
 
     sales.forEach((sale) => {
       if (!isSaleInDateRange(sale, dateRange.start, dateRange.end)) return;
@@ -262,12 +337,12 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
             />
             <ReportYmdDatePicker
               value={dateRange.start}
-              onChange={(start) => setDateRange({ ...dateRange, start })}
+              onChange={(start) => setDateRange(start, dateRange.end)}
               className="min-w-[9.5rem]"
             />
             <ReportYmdDatePicker
               value={dateRange.end}
-              onChange={(end) => setDateRange({ ...dateRange, end })}
+              onChange={(end) => setDateRange(dateRange.start, end)}
               className="min-w-[9.5rem]"
             />
           </div>
