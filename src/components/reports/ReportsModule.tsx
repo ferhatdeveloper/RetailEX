@@ -6528,13 +6528,19 @@ export function ReportsModule({
                           align: 'right',
                           size: 120,
                           footerSum: true,
-                          // footerSum ham satır değerini toplar; deposit
+                          // footerSum ham satır değerini toplar; deposit ve avans
                           // satırları hariç tutmak için footerFormat'ta rows
-                          // üzerinden yeniden hesaplanır.
+                          // üzerinden yeniden hesaplanır. Avans brüt tutarını
+                          // İndirim Öncesi toplamına katmamak gerek — aksi halde
+                          // (hizmet brüt + avans) gibi "uydurma" bir rakam
+                          // görünür ve gerçek brüt hizmet cirosu bulunamaz.
+                          // Avans tutarı zaten "Net" kolonunda ve cari bakiyede
+                          // ayrı izlenir; burada brüt hizmet cirosu = hizmet brüt.
                           footerFormat: (_n, rows) => {
-                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; beforeDiscount?: number; total?: number; discount?: number }>).reduce(
+                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; isAvans?: boolean; beforeDiscount?: number; total?: number; discount?: number }>).reduce(
                               (acc, r) => {
                                 if (isDepositSale(r.erpSale as Partial<Sale> | undefined) || r.isDeposit === true) return acc;
+                                if ((r as { isAvans?: boolean }).isAvans === true) return acc;
                                 return acc + (Number(r.beforeDiscount ?? ((Number(r.total) || 0) + (Number(r.discount) || 0))) || 0);
                               },
                               0,
@@ -6546,6 +6552,13 @@ export function ReportsModule({
                             // belge karşılığı yok, "İndirim Öncesi" boş bırakılır —
                             // aksi halde iki kez yazılmış gibi görünür.
                             if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) {
+                              return '—';
+                            }
+                            // AVANS → FATURA: cari_avans satırlarında brüt tutar
+                            // hizmet brütünü değil avans tutarını taşır. İndirim
+                            // Öncesi toplamı yalnızca hizmet brütünü yansıtmalı;
+                            // avans ayrı izlendiği için burada "—" gösterilir.
+                            if ((row as { isAvans?: boolean }).isAvans === true) {
                               return '—';
                             }
                             return formatNumber(row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0)), 2, false);
