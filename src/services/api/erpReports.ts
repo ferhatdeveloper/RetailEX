@@ -82,7 +82,23 @@ export interface CariBalanceRow {
   accountCode: string;
   accountName: string;
   cardType: 'customer' | 'supplier' | 'employee' | 'partner';
+  /**
+   * `customers.balance` / `suppliers.balance` kolonundan okunan ham bakiye.
+   * Rezervasyon avansı (`cash_lines.special_code='REZERVASYON'`) dahil
+   * — kullanıcıya bu alanı göstermek için değil, ekstre mutabakatı
+   * veya Excel export gibi "ledger ham" gerektiren yerlerde kullanılır.
+   * Cari Hesap Özeti raporu ise `pendingDeposit`'i ayırıp bakiyeden
+   * düşerek raporlar (`effectiveBalance`).
+   */
   balance: number;
+  /**
+   * Henüz hizmet verilmemiş rezervasyon avansı toplamı.
+   * Kaynak: `cash_lines` (transaction_type='CH_TAHSILAT' AND
+   * special_code IN ('REZERVASYON','AVANS')). Bakiyeden ayrı
+   * gösterilir; geri ödenmeyeceği varsayımıyla cari alacak bakiyesine
+   * dahil edilmez.
+   */
+  pendingDeposit: number;
   creditLimit: number;
   paymentTerms: string;
   /** Cari kart telefonu (varsa) */
@@ -788,6 +804,86 @@ export const erpReportsAPI = {
         normalizeTrText(n).includes(filterKey)
       );
     };
+    // Rezervasyon avansı (henüz hizmet verilmemiş peşinat). Cari bakiyesine
+    // dahil edilmeyen, kasa tarafında pasif tutulan `cash_lines.special_code`
+    // değerleri. Cari Hesap Özeti raporu için ayrı KPI kartı olarak
+    // gösterilecek; geri ödenmeyeceği varsayımıyla cari alacak bakiyesinden
+    // düşülür. Kasa Durumu raporundaki REZERVASYON_AVANS bucket'ı ile aynı
+    // veri kaynağı (cash_lines), farklı rapor katmanı.
+    const RESERVATION_SPECIAL_CODES = ['REZERVASYON', 'AVANS'] as const;
+
+    /**
+     * `cash_lines` üzerinden her cari için bekleyen rezervasyon avansı
+     * toplamını hesapla. İki ayrı kolon eşleşir: `customer_id` (müşteri)
+     * ve `party_id` (tedarikçi/personel polymorphic). Dönem tablo
+     * (`rex_{firm}_{period}_cash_lines`); ledger'da avans tahsil edilen
+     * dönemden rapor ediliyor — periyot değişimi rapor ekranındaki
+     * "selectedDonem" ile yapılır.
+     */
+    const fetchPendingDeposits = async (): Promise<Map<string, number>> => {
+      const map = new Map<string, number>();
+      if (want === 'employee') {
+        // Personel için rezervasyon avansı mantığı yok; boş döner.
+        return map;
+      }
+      const pn = padPeriod();
+      const cashTable = `rex_${firmNr}_${pn}_cash_lines`;
+      // SQL: hem customer_id hem party_id üzerinden bağla, çift
+      // sayımı önlemek için COALESCE ile tek anahtar üret.
+      const codeList = RESERVATION_SPECIAL_CODES.map((c) => `'${c}'`).join(', ');
+      try {
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+          const { postgrest } = await import('./postgrestClient');
+          const rows = await postgrest
+            .get<Record<string, unknown>[]>(
+              `/${cashTable}`,
+              {
+                select: 'customer_id,party_id,amount,transaction_type,special_code',
+                transaction_type: 'eq.CH_TAHSILAT',
+                special_code: `in.(${RESERVATION_SPECIAL_CODES.join(',')})`,
+                limit: '50000',
+              },
+              { schema: 'public' },
+            )
+            .catch(() => [] as Record<string, unknown>[]);
+          for (const r of rows || []) {
+            const key = String(r.customer_id || r.party_id || '').trim();
+            if (!key) continue;
+            const amt = Math.abs(Number(r.amount) || 0);
+            if (!(amt > 0)) continue;
+            map.set(key, (map.get(key) || 0) + amt);
+          }
+        } else {
+          const { rows: cashRows } = await postgres.query<{
+            customer_id: string | null;
+            party_id: string | null;
+            amount: string | number | null;
+          }>(
+            `SELECT customer_id, party_id, amount
+               FROM ${cashTable}
+              WHERE transaction_type = 'CH_TAHSILAT'
+                AND UPPER(TRIM(COALESCE(special_code, ''))) IN (${codeList})
+                AND firm_nr = $1::text
+                AND (customer_id IS NOT NULL OR party_id IS NOT NULL)
+            `,
+            [firmNr],
+            { firmNr, periodNr: ERP_SETTINGS.periodNr },
+          );
+          for (const r of cashRows || []) {
+            const key = String(r.customer_id || r.party_id || '').trim();
+            if (!key) continue;
+            const amt = Math.abs(Number(r.amount) || 0);
+            if (!(amt > 0)) continue;
+            map.set(key, (map.get(key) || 0) + amt);
+          }
+        }
+      } catch (err) {
+        console.warn('[erpReports] getCariBalances pendingDeposit query failed:', err);
+      }
+      return map;
+    };
+
+    const pendingDeposits = await fetchPendingDeposits();
 
     const out: CariBalanceRow[] = [];
 
@@ -811,6 +907,7 @@ export const erpReportsAPI = {
             accountName: name,
             cardType,
             balance,
+            pendingDeposit: pendingDeposits.get(String(a.id ?? '')) || 0,
             creditLimit: Number(a.credit_limit ?? 0) || 0,
             paymentTerms: String(a.payment_terms ?? ''),
             phone: String(a.phone ?? '').trim() || undefined,
@@ -854,6 +951,7 @@ export const erpReportsAPI = {
               accountName: name,
               cardType: ct,
               balance,
+              pendingDeposit: pendingDeposits.get(String(r.id ?? '')) || 0,
               creditLimit: 0,
               paymentTerms: '',
               phone: String(r.phone ?? '').trim() || undefined,
@@ -899,6 +997,7 @@ export const erpReportsAPI = {
               accountName: String(r.account_name ?? ''),
               cardType: ct,
               balance,
+              pendingDeposit: pendingDeposits.get(String(r.account_id ?? '')) || 0,
               creditLimit: 0,
               paymentTerms: '',
               phone: String(r.phone ?? '').trim() || undefined,

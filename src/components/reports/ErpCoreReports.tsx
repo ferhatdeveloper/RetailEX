@@ -298,13 +298,59 @@ export function CariBalanceSummaryReport() {
   }, [load, selectedFirm?.firm_nr]);
 
   const totals = useMemo(() => {
+    // 09.10.2026 — Rezervasyon avansı cari bakiyeden ayrılır.
+    //
+    // Veri akışı:
+    //   - `avansService.recordAdvance` → `createKasaIslemi(..., islem_tipi=
+    //     'CH_TAHSILAT', ozel_kod='REZERVASYON')`.
+    //   - `kasa.ts → cariCashStoredBalanceDelta` (müşteri, CH_TAHSILAT)
+    //     negatif delta döner → `customers.balance` avans tutarı kadar
+    //     azalır.
+    //   - Aynı şekilde `computeCustomerBalanceFromLedger` de bu satırı
+    //     "tahsilat" olarak okur ve bakiyeden düşer.
+    //
+    // Sonuç: ham `customers.balance` (ve `computeCustomerBalanceFromLedger`)
+    // REZERVASYON avansını ZATEN düşmüş halde saklar. Kullanıcı
+    // şikâyeti: "avans alınınca cari alacaklı gösteriyor" — avans
+    // tahsilatı cari alacağı (negatif bakiyeyi) azaltmakta, yani cariyi
+    // "alacaklı" tarafa itmektedir. Kullanıcı beklentisi: avans geri
+    // ödenmeyeceği için cari bakiyeyi etkilememeli, ayrı bilgi kartında
+    // gösterilmeli.
+    //
+    // Düzeltme: "avans hariç" alacaklar = ham alacaklar + bekleyen
+    // avans (avansın bakiyeden düşürdüğü tutarı geri ekler). Bu sayede
+    // rapor kullanıcının beklediği "avans hariç" görünümü sunar; avans
+    // tutarı 4. KPI kartında bilgi amaçlı ayrıca gösterilir.
     let recv = 0;
     let pay = 0;
+    let pending = 0;
     for (const r of rows) {
-      if (r.cardType === 'customer') recv += r.balance;
-      else if (r.cardType === 'supplier') pay += r.balance;
+      if (r.cardType === 'customer') {
+        recv += r.balance;
+        pending += r.pendingDeposit;
+      } else if (r.cardType === 'supplier') {
+        // Tedarikçi tarafında rezervasyon avansı senaryosu yok; yine de
+        // ham değeri toplama dahil et ki migration ile semantik
+        // değişirse rapor tutarlı kalsın.
+        pay += r.balance;
+        pending += r.pendingDeposit;
+      }
     }
-    return { recv, pay, net: recv - pay };
+    // 09.10.2026 (düzeltme): Ham `customers.balance` REZERVASYON
+    // avansını zaten düşmüş sakladığı için `recvAvansHariç = recv`.
+    // Önceki formül (recv + pending) avansı çifte düşürüyordu: ROZA
+    // -76k ham + 25k pending = -51k — fakat ham bakiye avansı zaten
+    // içermekte, kullanıcı beklentisi "avans bakiyeye dahil değil"
+    // olduğu için ham değer doğrudan kullanılmalı. Avans ayrı 4.
+    // KPI kartında bilgi amaçlı gösterilir.
+    const recvAvansHariç = recv;
+    return {
+      recv,
+      recvAvansHariç,
+      pay,
+      pending,
+      net: recvAvansHariç - pay,
+    };
   }, [rows]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
@@ -319,11 +365,33 @@ export function CariBalanceSummaryReport() {
       onExport={() =>
         exportCsv(
           'cari_bakiye_ozeti',
-          ['Tip', 'Kod', 'Unvan', 'Bakiye', 'Kredi Limiti', 'Vade'],
+          [
+            'Tip',
+            'Kod',
+            'Unvan',
+            'Bakiye (avans hariç)',
+            'Bekleyen Avans',
+            'Bakiye (ham)',
+            'Kredi Limiti',
+            'Vade',
+          ],
           rows.map((r) => [
             r.cardType,
             r.accountCode,
             r.accountName,
+            // 09.10.2026 — Avans hariç bakiye: ham `customers.balance`
+            // + bekleyen avans. Yalnızca müşteri tarafında (`r.cardType
+            // === 'customer'`) anlamlı; tedarikçi tarafında avans
+            // senaryosu olmadığı için `r.balance` aynen yazılır.
+            // Avans tahsilatı cari bakiyeyi olduğundan fazla azaltmış
+            // görünüyordu (kullanıcı şikâyeti); rapor kullanıcı için
+            // "gerçek" cari durumunu yansıtır.
+            String(
+              r.cardType === 'customer'
+                ? r.balance + r.pendingDeposit
+                : r.balance,
+            ),
+            String(r.pendingDeposit),
             String(r.balance),
             String(r.creditLimit),
             r.paymentTerms,
@@ -343,14 +411,20 @@ export function CariBalanceSummaryReport() {
       }
     >
       <ReportKpiStrip
-        columns={3}
+        columns={4}
         itemClassName={tableCls}
         items={[
           {
             key: 'recv',
-            label: tm('erpReceivables'),
-            value: formatLedgerAmount(totals.recv, currency),
+            label: tm('erpReceivablesAvansHariç') || tm('erpReceivables'),
+            value: formatLedgerAmount(totals.recvAvansHariç, currency),
             valueClassName: 'text-blue-500',
+            // Ham alacaklar (avans dahil) ile farkı bilgi amaçlı
+            // göster. Bekleyen avans tutarı 4. kartta ayrıca var.
+            hint:
+              totals.pending > 0
+                ? `${tm('erpReceivablesRawHint') || 'Avans dahil'}: ${formatLedgerAmount(totals.recv, currency)}`
+                : undefined,
           },
           {
             key: 'pay',
@@ -363,12 +437,29 @@ export function CariBalanceSummaryReport() {
             label: tm('erpNetBalance'),
             value: formatLedgerAmount(totals.net, currency),
           },
+          {
+            key: 'pending',
+            label: tm('erpPendingReservationDeposit') || 'Bekleyen Rezervasyon Avansı',
+            value: formatLedgerAmount(totals.pending, currency),
+            valueClassName: 'text-violet-500',
+            hint:
+              totals.pending > 0
+                ? tm('erpPendingDepositHint') ||
+                  'Henüz hizmet verilmemiş peşinat — cari alacak bakiyesine dahil değil'
+                : undefined,
+          },
         ]}
       />
       <div className="h-[520px]">
         <DevExDataGrid
           data={rows.map((r) => ({
             ...r,
+            // `effectiveBalance` = ham bakiye + bekleyen avans. Ham
+            // bakiye `customers.balance` (avans tahsilatı dahil,
+            // bakiyeyi azaltmış); avansı hariç tutmak için
+            // `pendingDeposit`'i toplama ekliyoruz. Örnek: ROZA
+            // -76k (ham) + 25k (avans) = -51k (avans hariç).
+            effectiveBalance: r.balance + r.pendingDeposit,
             accountLabel: `${r.accountName} ${r.accountCode}`,
             typeLabel: cariTypeLabel(tm, r.cardType),
           }))}
@@ -386,15 +477,47 @@ export function CariBalanceSummaryReport() {
             },
             { id: 'typeLabel', header: tm('erpColType'), size: 120 },
             {
-              id: 'balance',
-              header: tm('erpColBalance'),
+              // Avans hariç bakiye — birincil gösterim. Ham bakiye
+              // tooltip/hover ile erişilebilir; "Bekleyen Avans" kolonu
+              // ayrıca listelenir.
+              id: 'effectiveBalance',
+              header: tm('erpColBalanceAvansHariç') || tm('erpColBalance'),
+              align: 'right' as const,
+              size: 140,
+              cell: (r: CariBalanceRow & { effectiveBalance: number }) => {
+                const eff = r.effectiveBalance;
+                return (
+                  <span
+                    className={`font-semibold ${eff < 0 ? 'text-red-500' : ''}`}
+                    title={
+                      r.pendingDeposit
+                        ? `${tm('erpReceivablesRawHint') || 'Avans dahil'}: ${formatLedgerAmount(r.balance, currency)}`
+                        : undefined
+                    }
+                  >
+                    {formatLedgerAmount(eff, currency)}
+                  </span>
+                );
+              },
+            },
+            {
+              // Bekleyen Rezervasyon Avansı — pasif, bakiyeye dahil
+              // değil. Avansı olan caride bilgi kartı; 0 ise "—".
+              id: 'pendingDeposit',
+              header: tm('erpColPendingDeposit') || 'Bekleyen Avans',
               align: 'right' as const,
               size: 130,
-              cell: (r: CariBalanceRow) => (
-                <span className={`font-semibold ${r.balance < 0 ? 'text-red-500' : ''}`}>
-                  {formatLedgerAmount(r.balance, currency)}
-                </span>
-              ),
+              cell: (r: CariBalanceRow) =>
+                r.pendingDeposit > 0 ? (
+                  <span
+                    className="font-semibold text-violet-500"
+                    title={tm('erpPendingDepositHint') || 'Henüz hizmet verilmemiş peşinat'}
+                  >
+                    {formatLedgerAmount(r.pendingDeposit, currency)}
+                  </span>
+                ) : (
+                  <span className="opacity-40">—</span>
+                ),
             },
             {
               id: 'creditLimit',

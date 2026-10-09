@@ -157,6 +157,13 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   // tablodan çekiyoruz. Tablo boşsa veya customer store henüz yüklenmediyse
   // sessizce 0 kalır.
   const [appointmentCountByCustomer, setAppointmentCountByCustomer] = useState<Record<string, number>>({});
+
+  // 09.10.2026 — Bekleyen rezervasyon avansı (cash_lines'dan).
+  // Cari Hesap Özeti raporuyla aynı kaynak: CH_TAHSILAT + special_code
+  // IN ('REZERVASYON','AVANS'). Müşteri Yönetimi'nde bilgi amaçlı
+  // gösterilir; cari bakiyesini etkilemez (avans zaten `customers.balance`'a
+  // yansımış).
+  const [pendingDepositByCustomer, setPendingDepositByCustomer] = useState<Record<string, number>>({});
   useEffect(() => {
     if (!customers || customers.length === 0) return;
     let cancelled = false;
@@ -173,6 +180,36 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         void counts;
       } catch {
         // Beauty modülü kullanılmıyor olabilir; sessizce geç
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [customers]);
+
+  // 09.10.2026 — Bekleyen rezervasyon avansı toplamını her cari için
+  // çek. Cari Hesap Özeti raporundaki `getCariBalances()` ile aynı
+  // semantik (CH_TAHSILAT + special_code IN ('REZERVASYON','AVANS')).
+  // Bu sadece bilgi amaçlıdır; `customers.balance` zaten avansı
+  // içermektedir ve bakiyeye tekrar eklenmez.
+  useEffect(() => {
+    if (!customers || customers.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { erpReportsAPI } = await import('../../../services/api/erpReports');
+        // Sadece bu sayfadaki müşteri ID'leri için minimal pending map.
+        const all = await erpReportsAPI.getCariBalances({ cardType: 'customer', onlyNonZero: false });
+        if (cancelled) return;
+        const customerIdSet = new Set(customers.map((c) => c.id));
+        const map: Record<string, number> = {};
+        for (const r of all) {
+          if (!customerIdSet.has(r.accountId)) continue;
+          map[r.accountId] = Number(r.pendingDeposit) || 0;
+        }
+        setPendingDepositByCustomer(map);
+      } catch {
+        // erpReports erişilemiyorsa (örn. eski demo DB) sessizce geç.
       }
     })();
     return () => {
@@ -557,6 +594,31 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         );
       },
       meta: { align: 'right' }
+    }),
+    columnHelper.display({
+      // 09.10.2026 — Cari raporlar tutarsızlık düzeltmesi: bekleyen
+      // rezervasyon avansı bilgi amaçlı ayrı kolon. `customers.balance`
+      // zaten avansı düşmüş sakladığı için bu kolon bakiyeye dahil
+      // edilmez; yalnızca rapor kullanıcısına "henüz hizmet
+      // verilmemiş peşinat" bilgisini gösterir.
+      id: 'pendingDeposit',
+      header: tm('custColPendingDeposit') || 'Bekleyen Avans',
+      cell: ({ row }) => {
+        const dep = pendingDepositByCustomer[row.original.id] ?? 0;
+        if (dep <= 0.005) {
+          return <span className="text-gray-300 text-xs">—</span>;
+        }
+        return (
+          <span
+            className="inline-flex items-center gap-1 font-semibold text-violet-600 whitespace-nowrap"
+            title={tm('custColPendingDepositHint') || 'Henüz hizmet verilmemiş peşinat — cari bakiyesine dahil'}
+          >
+            {formatNumber(dep, 2, true)} IQD
+          </span>
+        );
+      },
+      meta: { align: 'right' },
+      size: 130,
     }),
     columnHelper.display({
       id: 'appointmentCount',

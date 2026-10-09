@@ -18,6 +18,7 @@ import {
     Progress,
     Segmented,
     Select,
+    Tooltip,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -669,14 +670,117 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     /**
      * Aktif satışlar (iptal/iptal edilen/void edilmiş fişler dışı).
      * Geçmiş sekmesi ve KPI hesabı için ortak ön filtre.
+     *
+     * Kök neden (09.10.2026 — "iptal edince karıştı"): yalnızca `payment_status`
+     * alanına güvenmek yetersiz. Bazı akışlarda iptal/iade `payment_status` kolonunu
+     * güncellemeden DB'de `is_cancelled=true` veya `fiche_type='return_invoice'`
+     * olarak işaretlenir; bu fişler aksi halde `mainSales`'e sızarak toplam
+     * harcamayı şişirir, "Son satış" etiketini yanlış satıra çeker ve iade
+     * tutarını toplamdan düşürmez. Üç bağımsız koşul birlikte kontrol edilir.
      */
     const activeSalesHistory = useMemo(
         () =>
             salesHistory.filter((s) => {
                 const st = String(s.payment_status || 'paid').toLowerCase();
-                return st !== 'cancelled' && st !== 'canceled' && st !== 'void';
+                if (st === 'cancelled' || st === 'canceled' || st === 'void' || st === 'refunded') {
+                    return false;
+                }
+                const saleAny = s as BeautySale & {
+                    is_cancelled?: boolean | string | number | null;
+                    fiche_type?: string | null;
+                    status?: string | null;
+                };
+                if (
+                    saleAny.is_cancelled === true ||
+                    saleAny.is_cancelled === 'true' ||
+                    saleAny.is_cancelled === 1 ||
+                    saleAny.is_cancelled === '1'
+                ) {
+                    return false;
+                }
+                const ftype = String(saleAny.fiche_type ?? '').toLowerCase().trim();
+                if (
+                    ftype === 'return_invoice' ||
+                    ftype === 'refund' ||
+                    ftype === 'credit_note' ||
+                    ftype === 'iade' ||
+                    ftype === 'iadeli_fatura'
+                ) {
+                    return false;
+                }
+                const saleStatus = String(saleAny.status ?? '').toLowerCase().trim();
+                if (
+                    saleStatus === 'cancelled' ||
+                    saleStatus === 'canceled' ||
+                    saleStatus === 'iptal' ||
+                    saleStatus === 'silindi' ||
+                    saleStatus === 'refunded' ||
+                    saleStatus === 'deleted'
+                ) {
+                    return false;
+                }
+                // 09.10.2026 — Kök neden (arz senaryosu): yalnızca DB
+                // kolonlarına güvenmek yetersiz. Bazı iptal akışlarında
+                // (özellikle eski POS'tan gelen kayıtlar) `payment_status`
+                // ve `is_cancelled` BOŞ kalır; iptal işareti yalnızca
+                // `notes` içinde taşınır (örn. "iptal edildi", "[VOID]",
+                // "cancelled by …"). Bu kayıtlar `veresiyeCari` hesabına
+                // girip "kayıt yok ama bakiye alacaklı" yanılgısına yol
+                // açıyordu. Not içinde iptal anahtar kelimesi varsa da
+                // aktif listeden çıkar. Negatif `paid_amount` veya
+                // `total_amount` (iade sonrası reversal) da aynı kapıda
+                // hariç tutulur; aksi halde bakiyeyi tersine çeker.
+                const notesText = String(saleAny.notes ?? '').toLowerCase();
+                const NOTE_CANCEL_PATTERNS = [
+                    /\bvoid\b/i,
+                    /\bcancel(?:led|ed)?\b/i,
+                    /\biptal\b/i,
+                    /\biade\b/i,
+                    /\bsilindi\b/i,
+                    /\brefund(?:ed)?\b/i,
+                    /\[void\]/i,
+                ];
+                if (NOTE_CANCEL_PATTERNS.some((re) => re.test(notesText))) {
+                    return false;
+                }
+                const totalAmt = Number(saleAny.total);
+                const paidAmt = Number(saleAny.paid_amount);
+                if (Number.isFinite(totalAmt) && totalAmt < 0) return false;
+                if (Number.isFinite(paidAmt) && paidAmt < 0) return false;
+                return true;
             }),
         [salesHistory],
+    );
+
+    /**
+     * Kök neden (09.10.2026 — "iptal edince karıştı"): `getAppointmentsByCustomer`
+     * backend SQL'i `status` filtresi içermez; iptal edilen randevular da
+     * `pastAppointments`'a gelir ve `completedAppointmentIds`/`linkedAptIds`
+     * hesaplarına sızar. Mevcut `isCompletedBeautyAppointment` sadece
+     * `status='completed'` seçtiği için ana hesaplamayı doğru tutar; ancak
+     * `collectAppointmentIdsLinkedToSales` `pastAppointments`'ı doğrudan
+     * kullandığı için iptal edilen randevuya bağlı aktif bir ana hizmet
+     * satışı `linkedAptIds`'e girip `appointmentCount` (Fiş bazında randevu)
+     * sayısını yapay olarak artırabilir.
+     *
+     * Çözüm: iptal/randevuya gelinmedi durumları client-side elenir; tüm
+     * KPI ve link hesapları bu görünür listeyi kullanır. `unifiedCustomerHistory`
+     * ve Geçmiş sekmesi orijinal listeyi kullanmaya devam eder (iptal edilen
+     * randevu müşteri geçmişinde görünür kalmalı).
+     */
+    const visibleAppointments = useMemo(
+        () =>
+            pastAppointments.filter((a) => {
+                const st = String(a.status ?? '').toLowerCase().trim();
+                return (
+                    st !== 'cancelled' &&
+                    st !== 'canceled' &&
+                    st !== 'no_show' &&
+                    st !== 'no-show' &&
+                    st !== 'refunded'
+                );
+            }),
+        [pastAppointments],
     );
 
     /**
@@ -685,13 +789,13 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
      */
     const completedAppointmentIds = useMemo(() => {
         const set = new Set<string>();
-        for (const a of pastAppointments) {
+        for (const a of visibleAppointments) {
             if (!isCompletedBeautyAppointment(a)) continue;
             const id = String(a.id ?? '').trim().toLowerCase();
             if (id) set.add(id);
         }
         return set;
-    }, [pastAppointments]);
+    }, [visibleAppointments]);
 
     const unifiedCustomerHistory = useMemo((): UnifiedHistoryRow[] => {
         const appointmentWhenStr = (a: BeautyAppointment) => {
@@ -951,6 +1055,8 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 totalSpent: 0,
                 collectedAmount: 0,
                 veresiyeCari: 0,
+                rawDbBalance: 0,
+                ledgerMismatch: false,
                 depositTotal: 0,
                 depositCount: 0,
                 appointmentCount: 0,
@@ -976,15 +1082,45 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         // depositTotal hesabı return bloğunda zaten depositSales + openAdvanceTotal
         // toplamı olarak hesaplanıyor; burada tekrar hesaplamamak için satır 1050
         // sonrasına taşınmış halini kullanıyoruz.
+        //
+        // Kök neden takip (09.10.2026 — "iptal edince karıştı"): randevu
+        // tamamlandıktan sonra `mergeReservationDepositIntoMainSaleForAppointment`
+        // başarısız olursa deposit fişi `mainSales`'e `is_deposit=true` ile
+        // girebilir. Aynı tutar `cari_avans.status='open'` olarak da
+        // `getOpenAdvances` dönerse "Rezervasyon Peşinatı" kartında çift
+        // sayım olur. Bu yüzden `openAdvanceTotal/Count`, `mainSales`'e
+        // deposit olarak giren toplam kadar düşürülür.
+        const depositInMainSales = mainSales.reduce(
+            (acc, s) => {
+                const saleAny = s as BeautySale & {
+                    is_deposit?: boolean | null;
+                    notes?: string;
+                };
+                const isDeposit = saleAny.is_deposit === true ||
+                    beautyService.parseDepositFlagFromNotes(saleAny.notes);
+                if (!isDeposit) return acc;
+                const amt = Math.max(0, Number(s.total) || 0);
+                return { total: acc.total + amt, count: acc.count + 1 };
+            },
+            { total: 0, count: 0 },
+        );
+        const adjustedOpenAdvanceTotal = Math.max(
+            0,
+            openAdvanceTotal - depositInMainSales.total,
+        );
+        const adjustedOpenAdvanceCount = Math.max(
+            0,
+            openAdvanceCount - depositInMainSales.count,
+        );
         const depositForTotal =
             depositSales.reduce(
                 (acc, s) => acc + Math.max(0, Number(s.total) || 0),
                 0,
-            ) + openAdvanceTotal;
+            ) + adjustedOpenAdvanceTotal;
         /** Belge tutarı + peşinat; ana hizmet satışı yoksa kart total_spent, o da yoksa tamamlanmış randevu fiyatları */
         let totalSpent =
             mainSales.length > 0 ? sumDocument + depositForTotal : Number(selected.total_spent ?? 0);
-        const completedAppointments = pastAppointments.filter(isCompletedBeautyAppointment);
+        const completedAppointments = visibleAppointments.filter(isCompletedBeautyAppointment);
         if (!(totalSpent > 0) && mainSales.length === 0) {
             const fromApts = completedAppointments.reduce(
                 (acc, a) => acc + Math.max(0, Number(a.total_price) || 0),
@@ -994,7 +1130,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         }
 
         /** Fiş bazında: randevuya bağlı aktif ana hizmet satış fişi adedi (yoksa tamamlanan randevu). */
-        const linkedAptIds = collectAppointmentIdsLinkedToSales(mainSales, pastAppointments);
+        const linkedAptIds = collectAppointmentIdsLinkedToSales(mainSales, visibleAppointments);
         const receiptSaleKeys = new Set<string>();
         for (const s of mainSales) {
             const saleKey = String(s.id || `${s.created_at}-${s.total}`);
@@ -1009,7 +1145,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             const saleYmd = beautyToYmd(s.created_at);
             const saleTotal = Math.round(Number(s.total) || 0);
             if (!saleYmd || !(saleTotal > 0) || linkedAptIds.size === 0) continue;
-            const matched = pastAppointments.some((a) => {
+            const matched = visibleAppointments.some((a) => {
                 const aptId = String(a.id ?? '').trim().toLowerCase();
                 if (!aptId || !linkedAptIds.has(aptId)) return false;
                 return (
@@ -1053,6 +1189,25 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             totalSpent,
             collectedAmount,
             veresiyeCari,
+            // 09.10.2026 — arz senaryosu kök neden: ham `customers.balance`
+            // snapshot'ı iptal sonrası güncellenmediğinde ledger 0 iken
+            // eski değer hâlâ durur. Bu sapmayı UI'da açıkça göster →
+            // orphan onarım tetiklensin. Negatif bakiye = müşteri bizden
+            // alacaklı; pozitif = müşteri bize borçlu.
+            rawDbBalance: (() => {
+                const raw = Number((selected as { balance?: number | string | null } | null)?.balance ?? 0);
+                if (!Number.isFinite(raw) || Math.abs(raw) < 0.009) return 0;
+                return Math.round(raw * 100) / 100;
+            })(),
+            // veresiyeCari (ledger) ile rawDbBalance (snapshot) farkı.
+            // Eşik 1 IQD: küçük yuvarlama farklarını "mutabık" say.
+            ledgerMismatch: (() => {
+                const rawBal = Number(
+                    (selected as { balance?: number | string | null } | null)?.balance ?? 0,
+                );
+                if (!Number.isFinite(rawBal)) return false;
+                return Math.abs(veresiyeCari - rawBal) > 1;
+            })(),
             // Bug 28 — Rezervasyon peşinat tutarı (henüz hizmet verilmemiş avanslar).
             // Bug 28 follow-up: skipInvoice modunda `sales.is_deposit=true`
             // fiş YAZILMAZ (avans doğrudan `cari_avans` tablosuna yazılır);
@@ -1060,12 +1215,16 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             // "Rezervasyon Peşinatı" tutarı + `cari_avans.status='open'`
             // toplamı olarak genişletildi. setOpenAdvanceTotal üst useEffect'te
             // `getOpenAdvances` ile doldurulur.
+            //
+            // 09.10.2026 takip — çift sayım koruması: `mainSales`'e deposit
+            // olarak giren tutar `openAdvanceTotal/Count`'tan düşülür (merge
+            // başarısız + cari_avans güncellenmemiş senaryosu).
             depositTotal:
                 depositSales.reduce(
                     (acc, s) => acc + Math.max(0, Number(s.total) || 0),
                     0,
-                ) + openAdvanceTotal,
-            depositCount: depositSales.length + openAdvanceCount,
+                ) + adjustedOpenAdvanceTotal,
+            depositCount: depositSales.length + adjustedOpenAdvanceCount,
             appointmentCount: receiptBasedCount,
             appointmentCountDetail,
             lastVisitLabel,
@@ -1073,7 +1232,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             lastSaleCollected,
             lastSaleRemaining,
         };
-    }, [selected, mainSalesHistory, depositSalesHistory, pastAppointments, openAdvanceTotal, openAdvanceCount, dateLocale, tm]);
+    }, [selected, mainSalesHistory, depositSalesHistory, visibleAppointments, openAdvanceTotal, openAdvanceCount, dateLocale, tm]);
 
     const historyColumns: ColumnsType<UnifiedHistoryRow> = useMemo(
         () => [
@@ -2026,48 +2185,123 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                         </Card>
                                     </Col>
                                     <Col xs={24} sm={12} lg={8} xl={4}>
-                                        <Card size="small" bordered className="!shadow-none h-full">
+                                        <Card
+                                            size="small"
+                                            bordered
+                                            className={`!shadow-none h-full ${
+                                                profileStats.ledgerMismatch
+                                                    ? 'border-orange-300 bg-orange-50/40'
+                                                    : ''
+                                            }`}
+                                            data-testid="customer-balance-card"
+                                        >
                                             <Statistic
-                                                title={tm('bVeresiyeCariAll')}
+                                                title={
+                                                    <span
+                                                        className={
+                                                            profileStats.ledgerMismatch
+                                                                ? 'text-orange-700 font-semibold'
+                                                                : undefined
+                                                        }
+                                                    >
+                                                        {tm('bVeresiyeCariAll')}
+                                                    </span>
+                                                }
                                                 value={formatCurrency(profileStats.veresiyeCari)}
-                                                prefix={<CurrencyBadge code={currency} className="text-orange-500" />}
+                                                prefix={
+                                                    <CurrencyBadge
+                                                        code={currency}
+                                                        className={
+                                                            profileStats.ledgerMismatch
+                                                                ? 'text-orange-600'
+                                                                : 'text-orange-500'
+                                                        }
+                                                    />
+                                                }
                                             />
+                                            {profileStats.ledgerMismatch ? (
+                                                <Tooltip
+                                                    title={tm('bCustomerBalanceMismatchHint').replace(
+                                                        '{raw}',
+                                                        formatCurrency(profileStats.rawDbBalance),
+                                                    )}
+                                                >
+                                                    <div
+                                                        className="mt-1 text-[10px] font-semibold text-orange-700 leading-tight cursor-help"
+                                                        data-testid="customer-balance-mismatch"
+                                                    >
+                                                        ⚠ {tm('bCustomerBalanceMismatchHint').replace(
+                                                            '{raw}',
+                                                            formatCurrency(profileStats.rawDbBalance),
+                                                        )}
+                                                    </div>
+                                                </Tooltip>
+                                            ) : (
+                                                <div className="mt-1 text-[10px] font-medium text-gray-400 leading-tight">
+                                                    {tm('bCustomerBalanceLedgerConsistentHint')}
+                                                </div>
+                                            )}
                                         </Card>
                                     </Col>
-                                    {/* Bug 28 — Rezervasyon peşinatı (henüz hizmet verilmemiş avanslar).
-                                        * DB'de gerçek bir peşinat fişi yokken 0 IQD gösterip kafa
-                                        * karıştırmasın diye yalnızca depositCount > 0 iken kart render
-                                        * edilir; pre_paid statüsünde ama henüz fiş yazılmamış
-                                        * randevularda kullanıcıyı yanıltmaz. */}
-                                    {profileStats.depositCount > 0 ? (
-                                        <Col xs={24} sm={12} lg={8} xl={4}>
-                                            <Card
-                                                size="small"
-                                                bordered
-                                                className="!shadow-none h-full border-cyan-200"
-                                                data-testid="customer-deposit-card"
+                                    {/* 09.10.2026 — Rezervasyon peşinatı (henüz hizmet verilmemiş avanslar).
+                                        * Kart her zaman render edilir; depositCount = 0 iken pasif
+                                        * (gri border + "avans yok" ipucu) gösterilir. Kök neden:
+                                        * kullanıcı "kayıt yok ama bakiye 75.000 alacaklı" diye
+                                        * şikâyet ettiğinde ekstre boş + cari 0 + bekleyen avans 0
+                                        * üçlüsü net görünmeli; 0 bekleyen avans bilgi amaçlı
+                                        * gösterilir, kafa karıştırmaz. */}
+                                    <Col xs={24} sm={12} lg={8} xl={4}>
+                                        <Card
+                                            size="small"
+                                            bordered
+                                            className={`!shadow-none h-full ${
+                                                profileStats.depositCount > 0
+                                                    ? 'border-cyan-200'
+                                                    : 'border-dashed border-gray-200'
+                                            }`}
+                                            data-testid="customer-deposit-card"
+                                        >
+                                            <Statistic
+                                                title={
+                                                    <span
+                                                        className={
+                                                            profileStats.depositCount > 0
+                                                                ? 'text-cyan-700'
+                                                                : 'text-gray-500'
+                                                        }
+                                                    >
+                                                        {tm('bReservationDepositLabel')}
+                                                    </span>
+                                                }
+                                                value={formatCurrency(profileStats.depositTotal)}
+                                                valueStyle={{
+                                                    color: profileStats.depositCount > 0 ? '#0e7490' : '#9ca3af',
+                                                    fontSize: '20px',
+                                                }}
+                                                prefix={
+                                                    <CalendarOutlined
+                                                        className={
+                                                            profileStats.depositCount > 0
+                                                                ? 'text-cyan-600'
+                                                                : 'text-gray-400'
+                                                        }
+                                                        aria-hidden
+                                                    />
+                                                }
+                                            />
+                                            <div
+                                                className={`mt-1 text-[10px] font-medium leading-tight ${
+                                                    profileStats.depositCount > 0
+                                                        ? 'text-cyan-700'
+                                                        : 'text-gray-400'
+                                                }`}
                                             >
-                                                <Statistic
-                                                    title={
-                                                        <span className="text-cyan-700">
-                                                            {tm('bReservationDepositLabel')}
-                                                        </span>
-                                                    }
-                                                    value={formatCurrency(profileStats.depositTotal)}
-                                                    valueStyle={{ color: '#0e7490', fontSize: '20px' }}
-                                                    prefix={
-                                                        <CalendarOutlined
-                                                            className="text-cyan-600"
-                                                            aria-hidden
-                                                        />
-                                                    }
-                                                />
-                                                <div className="mt-1 text-[10px] font-medium text-cyan-700 leading-tight">
-                                                    {tm('bDepositCountShort')}: {profileStats.depositCount}
-                                                </div>
-                                            </Card>
-                                        </Col>
-                                    ) : null}
+                                                {profileStats.depositCount > 0
+                                                    ? `${tm('bDepositCountShort')}: ${profileStats.depositCount}`
+                                                    : tm('bReservationDepositEmptyHint')}
+                                            </div>
+                                        </Card>
+                                    </Col>
                                     <Col xs={24} sm={12} lg={8} xl={4}>
                                         <Card size="small" bordered className="!shadow-none h-full">
                                             <Statistic
@@ -2106,6 +2340,25 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                             .replace('{credit}', formatCurrency(profileStats.lastSaleRemaining))}
                                     />
                                 )}
+
+                                {/* 09.10.2026 — arz senaryosu bilgi bandı:
+                                 * ekstre boş + veresiye 0 + bekleyen avans 0 +
+                                 * ham DB balance 0 dışı → snapshot orphan. */}
+                                {profileStats.activeSaleCount === 0 &&
+                                    Math.abs(profileStats.veresiyeCari) < 0.5 &&
+                                    profileStats.depositCount === 0 &&
+                                    profileStats.rawDbBalance > 0.5 && (
+                                        <Alert
+                                            className="mt-3"
+                                            type="warning"
+                                            showIcon
+                                            message={tm('bCustomerBalanceMismatchHint').replace(
+                                                '{raw}',
+                                                formatCurrency(profileStats.rawDbBalance),
+                                            )}
+                                            description={tm('bReservationDepositEmptyHint')}
+                                        />
+                                    )}
 
                                 {selected.notes && (
                                     <Alert

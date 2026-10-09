@@ -1362,6 +1362,25 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   custColBalance: { tr: 'Cari Bakiye', en: 'Current balance', ar: 'الرصيد الجاري', ku: 'باڵانسی جاری' },
   custColFileNo: { tr: 'Dosya No', en: 'File No', ar: 'رقم الملف', ku: 'ژ. فایل' },
   custColAppointmentCount: { tr: 'Randevu Sayısı', en: 'Appointment count', ar: 'عدد المواعيد', ku: 'ژمارەی مەوع|د' },
+  /**
+   * 09.10.2026 — Cari raporlar tutarsızlık düzeltmesi. Müşteri
+   * Yönetimi tablosunda bilgi amaçlı kolon: henüz hizmet
+   * verilmemiş rezervasyon avansı (cash_lines'dan). Cari bakiyesini
+   * etkilemez; kullanıcı "avanslar alınca carıleri alacaklı
+   * gösterıyor" şikâyetinin çözümü.
+   */
+  custColPendingDeposit: {
+    tr: 'Bekleyen Avans',
+    en: 'Pending Deposit',
+    ar: 'عربون معلق',
+    ku: 'عربونی چاوەڕوان',
+  },
+  custColPendingDepositHint: {
+    tr: 'Henüz hizmet verilmemiş peşinat — cari bakiyesine dahil değil',
+    en: 'Unearned deposit — not included in cari balance',
+    ar: 'عربون لم يتم تقديم الخدمة له — غير مشمول في رصيد العميل',
+    ku: 'عربونی پێش‌نەدراو — لە باڵانسی کڕیاردا نییە',
+  },
   custColLastAction: { tr: 'Son İşlem', en: 'Last action', ar: 'آخر إجراء', ku: 'دوایین کردار' },
   custColLastAmount: { tr: 'Son Tutar', en: 'Last amount', ar: 'آخر مبلغ', ku: 'دوایین بڕ' },
   appointmentTempInvoiceNoLabel: {
@@ -7505,6 +7524,33 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     en: 'Card KPIs sum all sales (not the last sale only). Last sale: prepaid {paid}, credit {credit}.',
     ar: 'مؤشرات البطاقة تجمع كل المبيعات (وليست آخر عملية فقط). آخر عملية: نقداً {paid}، آجل {credit}.',
     ku: 'KPIی کارت کۆی هەموو فرۆشتنەکانە (تەنها دوایین نەبێت). دوایین فرۆشتن: پێشەکی {paid}، قەرز {credit}.',
+  },
+  /** 09.10.2026 — Veresiye Cari kartı altında: ham DB `customers.balance`
+   * ile canlı ledger hesap uyuşmazsa gösterilen uyarı. Kök neden:
+   * iptal/silme sonrası `customers.balance` snapshot'ı güncellenmediğinde
+   * ledger 0 iken eski değer hâlâ durur; kullanıcı "kayıt yok ama bakiye
+   * alacaklı" görür. */
+  bCustomerBalanceMismatchHint: {
+    tr: 'Ham DB bakiye: {raw} • canlı defter: 0 IQD • orphan onarım gerekebilir',
+    en: 'Raw DB balance: {raw} • live ledger: 0 IQD • orphan repair may be needed',
+    ar: 'رصيد DB الخام: {raw} • دفتر حي: 0 IQD • قد يلزم إصلاح',
+    ku: 'باڵانسی DBی خام: {raw} • دەفتەری زیندوو: 0 IQD • لەوانەیە چاککردنەوە پێویست بێت',
+  },
+  /** 09.10.2026 — Veresiye Cari kartı altında: ham DB `customers.balance`
+   * ile canlı ledger hesap aynı olduğunda "ledger bakiye" ipucu. */
+  bCustomerBalanceLedgerConsistentHint: {
+    tr: 'Canlı defter bakiye (DB snapshot ile uyumlu)',
+    en: 'Live ledger balance (consistent with DB snapshot)',
+    ar: 'رصيد الدفتر الحي (متوافق مع لقطة DB)',
+    ku: 'باڵانسی دەفتەری زیندوو (لەگەڵ وێنەی DB یەکسانە)',
+  },
+  /** 09.10.2026 — "Bekleyen Avans" etiketi (henüz hizmet verilmemiş peşinat
+   * yoksa pasif kartta gösterilen 0 IQD durumu). */
+  bReservationDepositEmptyHint: {
+    tr: 'Henüz bekleyen avans yok',
+    en: 'No pending deposit yet',
+    ar: 'لا يوجد عربون معلق',
+    ku: 'هیچ پێشەکیەکی چاوەڕوانکراو نییە',
   },
   bAppointmentCountLabel: { tr: 'Randevu Sayısı', en: 'Appointments', ar: 'المواعيد', ku: 'ژمارەی ئامادەبوون' },
   /** Özet KPI: satış fişine bağlı randevu adedi (satır değil fiş) */
@@ -13683,8 +13729,61 @@ export const excelModuleTranslations = {
   erpAgingBucket6190: { tr: '61–90 gün', en: '61–90 days', ar: '61–90 يوماً', ku: '61–90 ڕۆژ' },
   erpAgingBucket90Plus: { tr: '90+ gün', en: '90+ days', ar: 'أكثر من 90 يوماً', ku: '90+ ڕۆژ' },
   erpReceivables: { tr: 'Alacaklar (müşteri)', en: 'Receivables (customers)', ar: 'الذمم المدينة', ku: 'قەرزەکان (کڕیار)' },
+  /**
+   * Cari Hesap Özeti — Alacaklar KPI kartı. Rezervasyon avansı
+   * (henüz hizmet verilmemiş peşinat) hariç tutulmuş hali. Etiket
+   * "avans hariç" ifadesini ekleyerek ham alacaklardan ayrılır;
+   * kullanıcı KPI altındaki "avans dahil" hint satırıyla farkı görür.
+   */
+  erpReceivablesAvansHariç: {
+    tr: 'Alacaklar (avans hariç)',
+    en: 'Receivables (excl. deposits)',
+    ar: 'الذمم المدينة (بدون العربون)',
+    ku: 'قەرزەکان (بێ عربون)',
+  },
+  /** KPI alt bilgi — ham alacaklar toplamı (avans dahil). */
+  erpReceivablesRawHint: {
+    tr: 'Avans dahil',
+    en: 'Incl. deposits',
+    ar: 'شامل العربون',
+    ku: 'بە عربونەوە',
+  },
   erpPayables: { tr: 'Borçlar (tedarikçi)', en: 'Payables (suppliers)', ar: 'الذمم الدائنة', ku: 'قەرزەکان (دابینکەر)' },
   erpNetBalance: { tr: 'Net bakiye', en: 'Net balance', ar: 'صافي الرصيد', ku: 'باڵانسی خالص' },
+  /**
+   * Cari Hesap Özeti — 4. KPI kartı. Henüz hizmet verilmemiş
+   * rezervasyon avanslarının toplamı. Pasif bakiye: geri ödenmeyeceği
+   * varsayımıyla cari alacak bakiyesinden ayrı tutulur. Kasa Durumu
+   * raporundaki REZERVASYON_AVANS bucket'ı ile aynı veri kaynağı,
+   * farklı rapor katmanı.
+   */
+  erpPendingReservationDeposit: {
+    tr: 'Bekleyen Rezervasyon Avansı',
+    en: 'Pending Reservation Deposit',
+    ar: 'عربون الحجز المعلق',
+    ku: 'عربونی چاوەڕوان',
+  },
+  /** KPI alt bilgi — bekleyen avans neden ayrı gösterilir. */
+  erpPendingDepositHint: {
+    tr: 'Henüz hizmet verilmemiş peşinat — cari bakiyeye dahil değil',
+    en: 'Unearned deposit — not included in cari balance',
+    ar: 'عربون لم يقدَّم خدمته بعد — غير مدرج في رصيد الحساب',
+    ku: 'پارەی نۆرەی پێشەخت — لە باڵانسی کڕیار دا نییە',
+  },
+  /** Tablo kolon başlığı — bekleyen avans. */
+  erpColPendingDeposit: {
+    tr: 'Bekleyen Avans',
+    en: 'Pending Deposit',
+    ar: 'عربون معلق',
+    ku: 'عربونی چاوەڕوان',
+  },
+  /** Tablo kolon başlığı — avans hariç bakiye. */
+  erpColBalanceAvansHariç: {
+    tr: 'Bakiye (avans hariç)',
+    en: 'Balance (excl. deposits)',
+    ar: 'الرصيد (بدون العربون)',
+    ku: 'باڵانس (بێ عربون)',
+  },
   erpInflow: { tr: 'Giriş', en: 'Inflow', ar: 'دخول', ku: 'چوونەژوورەوە' },
   erpOutflow: { tr: 'Çıkış', en: 'Outflow', ar: 'خروج', ku: 'دەرچوون' },
   erpNetMovement: { tr: 'Net hareket', en: 'Net movement', ar: 'صافي الحركة', ku: 'جووڵەی خالص' },
