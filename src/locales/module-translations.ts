@@ -10766,13 +10766,17 @@ export const excelModuleTranslations = {
   },
 
   gunlukRapor: { tr: 'Günlük Rapor', en: 'Daily Report', ar: 'تقرير يومي', ku: 'ڕاپۆرتی ڕۆژانە' },
-  dailyDepositCollected: { tr: 'Peşinat (Avans)', en: 'Deposit (Advance)', ar: 'عربون (مقدم)', ku: 'پاشەی پێشوەختە' },
+  // 09.10.2026 — Kullanıcı isteği: günlük rapor "Peşinat (Avans)" KPI
+  // başlığı ve "Avans Peşinat Ödemeleri" kolon başlığı tutarlı olarak
+  // "Rezervasyon Tutarı" terminolojisini kullansın. Cari ekstre / maaş
+  // avansı bağlamındaki diğer "Avans" etiketlerine dokunulmaz.
+  dailyDepositCollected: { tr: 'Rezervasyon Tutarı', en: 'Reservation Amount', ar: 'مبلغ الحجز', ku: 'بڕی نۆرە' },
   dailyDepositCountShort: { tr: 'Adet', en: 'Count', ar: 'العدد', ku: 'ژمارە' },
   avansPesinatPayments: {
-    tr: 'Avans Peşinat Ödemeleri',
-    en: 'Advance Deposit Payments',
-    ar: 'دفعات عربون الحجز',
-    ku: 'پارەدانی نۆرەی پێشوەختە',
+    tr: 'Rezervasyon Tutarı Ödemeleri',
+    en: 'Reservation Amount Payments',
+    ar: 'دفعات مبلغ الحجز',
+    ku: 'پارەدانی بڕی نۆرە',
   },
   reservationDepositCollected: {
     tr: 'Alınan Rezervasyon Tutarı',
@@ -11850,11 +11854,15 @@ export const excelModuleTranslations = {
     ar: 'الدفعة المستلمة',
     ku: 'پارەی وەرگیراو',
   },
+  // 09.10.2026 — Kullanıcı isteği: cari_avans satırları günlük rapor TÜR
+  // kolonunda "Avans" yerine "Rezervasyon Tutarı" görsün. paymentTypeAvans
+  // (Cari hesap hareketi — maaş/personel avansı bağlamı) AYNI DEĞİLDİR;
+  // orijinal "Avans (Cari)" metni korunur.
   paymentLabelAvans: {
-    tr: 'Avans',
-    en: 'Advance',
-    ar: 'دفعة مقدمة',
-    ku: 'پێشەکی',
+    tr: 'Rezervasyon Tutarı',
+    en: 'Reservation Amount',
+    ar: 'مبلغ الحجز',
+    ku: 'بڕی نۆرەکردن',
   },
   paymentTypeAvans: {
     tr: 'Avans (Cari)',
@@ -11869,11 +11877,24 @@ export const excelModuleTranslations = {
   reportsDailyKindService: { tr: 'Hizmet', en: 'Service', ar: 'خدمة', ku: 'خزمەتگوزاری' },
   reportsDailyKindProduct: { tr: 'Ürün', en: 'Product', ar: 'منتج', ku: 'بەرهەم' },
   reportsDailyKindMixed: { tr: 'Karma', en: 'Mixed', ar: 'مختلط', ku: 'تێکەڵ' },
+  // 09.10.2026 — Kullanıcı isteği: cari_avans satırları günlük rapor TÜR
+  // kolonunda artık "Rezervasyon" rozeti görsün; "Ürün/Hizmet" filtresinden
+  // otomatik olarak Hariç tutulur (avans bir hizmet rezervasyonu, ürün
+  // satışı değil). Hizmet veya Ürün filtresi uygulandığında avans
+  // satırları gizlenir.
+  reportsDailyKindReservation: {
+    tr: 'Rezervasyon',
+    en: 'Reservation',
+    ar: 'حجز',
+    ku: 'نۆرە',
+  },
   reportsDailyKindHint: {
-    tr: 'Hizmet ve ürün tutarlarını ayırır. Karma fiş seçilen türe göre bölünür.',
-    en: 'Separates service and product amounts. Mixed receipts are split by the selected type.',
-    ar: 'يفصل مبالغ الخدمة والمنتج. تُقسَّم الإيصالات المختلطة حسب النوع المحدد.',
-    ku: 'بڕی خزمەتگوزاری و بەرهەم جیا دەکاتەوە. پسوڵەی تێکەڵ بە جۆری هەڵبژێردراو دابەش دەکرێت.',
+    tr: 'Hizmet ve ürün tutarlarını ayırır. Karma fiş seçilen türe göre bölünür. Rezervasyon avansı ayrı rozet — Hizmet/Ürün filtresinden Hariç.',
+    en: 'Separates service and product amounts. Mixed receipts are split by the selected type. Reservation advances are excluded from service/product filters.',
+    ar: 'يفصل مبالغ الخدمة والمنتج. تُقسَّم الإيصالات المختلطة حسب النوع المحدد. عربونات الحجز مستبعدة من فلتر الخدمة/المنتج.',
+    // 09.10.2026 — Rezervasyon avansı filtrelerden Hariç tutulduğunu
+    // kullanıcıya bildiren ek ipucu.
+    ku: 'بڕی خزمەتگوزاری و بەرهەم جیا دەکاتەوە. پسوڵەی تێکەڵ بە جۆری هەڵبژێردراو دابەش دەکرێت. نۆرەکان لە فلتەری خزمەت/بەرهەم مەستەثنایە.',
   },
   transactionCount: { tr: 'İşlem Sayısı', en: 'Transaction Count', ar: 'عدد العمليات', ku: 'ژمارەی کارەکان' },
   totalRevenueLabel: { tr: 'Toplam Ciro', en: 'Total Revenue', ar: 'إجمالي الإيرادات', ku: 'کۆی داهات' },

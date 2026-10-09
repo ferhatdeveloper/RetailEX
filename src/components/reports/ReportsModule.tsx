@@ -736,6 +736,12 @@ function dailyKindAmountShare(row: DailyUnifiedRow, filter: DailyKindFilter): nu
 
 function applyDailyKindFilter(row: DailyUnifiedRow, filter: DailyKindFilter): DailyUnifiedRow | null {
   if (filter === 'all') return row;
+  // 09.10.2026 — Kullanıcı isteği: cari_avans satırları (rezervasyon
+  // avansı) Hizmet veya Ürün filtresinde **Hariç** tutulmalı. Avans bir
+  // hizmet rezervasyonunun peşinatıdır; ürün satışı değildir. Hizmet
+  // filtresinde de göstermiyoruz çünkü avans henüz hizmet verilmemiş bir
+  // kayıttır — hizmet cirosuna katılması yanlış olur.
+  if (row.isAvans === true) return null;
   const share = dailyKindAmountShare(row, filter);
   if (filter === 'service') {
     if (Math.abs(Number(row.serviceTotal) || 0) < 0.0001) return null;
@@ -3177,12 +3183,19 @@ export function ReportsModule({
       }
       // AVANS → FATURA (Basit Model): cari avansı ayrı rozet
       if (row.isAvans) {
-        paymentLabelText = tm('paymentLabelAvans') || 'Avans';
+        paymentLabelText = tm('paymentLabelAvans') || 'Rezervasyon Tutarı';
       }
       return {
         ...row,
         hour,
-        kindLabel: kindLabel(row.kind),
+        // 09.10.2026 — cari_avans satırları için TÜR kolonu "Rezervasyon"
+        // rozeti gösterir (eskiden `kind='product'` üzerinden "Ürün"
+        // yazıyordu — kullanıcı şikayeti: "avanslar ürün satışlarına
+        // dahil oluyor"). `kind` alanı ürün filtresinin çalışması için
+        // korunur; TÜR etiketi sadece `isAvans` ile override edilir.
+        kindLabel: row.isAvans
+          ? tm('reportsDailyKindReservation') || 'Rezervasyon'
+          : kindLabel(row.kind),
         paymentLabel: paymentLabelText,
         statusLabel: isReturn
           ? 'Satış İade'
@@ -6458,6 +6471,18 @@ export function ReportsModule({
                           header: tm('reportsDailyKindLabel'),
                           size: 100,
                           cell: (row) => {
+                            // 09.10.2026 — Rezervasyon avansı (cari_avans)
+                            // satırları için ayrı cyan rozet. Aksi halde
+                            // "Ürün" rozeti ile karışır ve kullanıcı
+                            // "avanslar ürün satışına dahil" şikayetinde
+                            // bulunuyor (WhatsApp 09.10.2026 guzel DB).
+                            if (row.isAvans) {
+                              return (
+                                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-cyan-100 text-cyan-800">
+                                  {row.kindLabel}
+                                </span>
+                              );
+                            }
                             const kind = row.kind;
                             const cls =
                               kind === 'service'
