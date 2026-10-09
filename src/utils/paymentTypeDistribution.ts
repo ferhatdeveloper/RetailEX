@@ -56,6 +56,7 @@ function emptyAmounts(): Record<PaymentFormCode, number> {
     HAVAL: 0,
     CEK: 0,
     SENET: 0,
+    REZERVASYON_AVANS: 0,
   };
 }
 
@@ -112,6 +113,13 @@ export function allocateErpSaleByFormCode(
 export type BuildPaymentTypeDistributionOpts = {
   /** CH_TAHSILAT vb. satışa yazılmamış ekstra nakit */
   extraCash?: number;
+  /**
+   * Kasa'ya giren ama Ciro'ya dahil olmayan **Rezervasyon Avansı** (henüz
+   * hizmet verilmemiş peşinat). `REZERVASYON_AVANS` form koduna yazılır; Nakit
+   * bucket'ını şişirmez. Kullanıcı şikâyeti: 25.000 nakit + 25.000 avans = 50.000
+   * rapor hatası. Bu alan ayrı bir kalem olarak gösterilir.
+   */
+  extraReservation?: number;
   /** Tutar 0 olan yapı tiplerini de listele (varsayılan true) */
   includeZero?: boolean;
 };
@@ -156,6 +164,16 @@ export function buildPaymentTypeDistribution(
   if (Math.abs(extra) > 1e-9) {
     amounts.NAKIT += extra;
     counts.NAKIT += 1;
+  }
+
+  // Rezervasyon avansı — ayrı bucket'a yazılır; NAKIT'e eklenmez.
+  // Sahte satış tahsilatı (CH_TAHSILAT + REZERVASYON) kasaya girer ama Ciro
+  // değildir → alınan avans (passif) kalemi. Kullanıcı beklentisi: ayrı
+  // gösterim, Kasa Nakit'ine dahil etme.
+  const extraRes = Number(opts?.extraReservation) || 0;
+  if (Math.abs(extraRes) > 1e-9) {
+    amounts.REZERVASYON_AVANS += extraRes;
+    counts.REZERVASYON_AVANS += 1;
   }
 
   const totalAmount = SYSTEM_PAYMENT_FORM_CODES.reduce((s, c) => s + amounts[c], 0);
@@ -207,7 +225,7 @@ export function buildPaymentTypeDistribution(
 export function buildPaymentTypeMovements(
   sales: PaymentTypeSaleInput[],
   methodCode: PaymentFormCode,
-  opts?: { extraCash?: number; extraCashLabel?: string },
+  opts?: { extraCash?: number; extraCashLabel?: string; extraReservation?: number; extraReservationLabel?: string },
 ): PaymentTypeMovement[] {
   const out: PaymentTypeMovement[] = [];
 
@@ -244,6 +262,21 @@ export function buildPaymentTypeMovements(
       cashier: '—',
       customerName: '—',
       methodCode: 'NAKIT',
+    });
+  }
+
+  // Rezervasyon avansı — ayrı satır; Ciro'ya değil, alınan avans (passif) kalemi.
+  const extraRes = Number(opts?.extraReservation) || 0;
+  if (methodCode === 'REZERVASYON_AVANS' && Math.abs(extraRes) > 1e-9) {
+    out.push({
+      id: 'extra-reservation-collect',
+      date: '',
+      receiptNumber: '—',
+      description: opts?.extraReservationLabel || 'Rezervasyon avansı tahsilatı',
+      amount: extraRes,
+      cashier: '—',
+      customerName: '—',
+      methodCode: 'REZERVASYON_AVANS',
     });
   }
 

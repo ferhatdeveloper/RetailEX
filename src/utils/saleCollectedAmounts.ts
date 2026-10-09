@@ -393,6 +393,10 @@ export type ExtraCollectionSaleRef = {
   receiptNumber?: string | null;
   paid_amount?: number | null;
   remaining_amount?: number | null;
+  /** CH_TAHSILAT satırı rezervasyon avansı mı? (special_code='REZERVASYON') */
+  is_reservation_deposit?: boolean | null;
+  /** Ham `special_code` — rezervasyon tespiti için */
+  ozel_kod?: string | null;
 };
 
 export function extraCustomerCollectionsNotOnSales(
@@ -411,6 +415,17 @@ export function extraCustomerCollectionsNotOnSales(
     if (tip !== 'CH_TAHSILAT') continue;
     const amt = Math.abs(Number(line.tutar) || 0);
     if (!(amt > 0)) continue;
+    // Rezervasyon avansı Ciro'ya değil, REZERVASYON_AVANS bucket'ına yazılır
+    // (`extraReservationCustomerCollections` ile). Burada Nakit'e dahil
+    // edilmez (Bug-fix: 25k+25k=50k rapor hatası).
+    const specialCode = String(
+      (line as KasaCollectionLine & { ozel_kod?: string | null; special_code?: string | null }).ozel_kod ??
+      (line as KasaCollectionLine & { ozel_kod?: string | null; special_code?: string | null }).special_code ??
+      ''
+    )
+      .trim()
+      .toUpperCase();
+    if (specialCode === 'REZERVASYON' || specialCode === 'AVANS') continue;
     const sale = byReceipt.get(receiptKey(line.islem_no));
     if (!sale) {
       extra += amt;
@@ -437,4 +452,38 @@ export function extraCustomerCollectionsNotOnSales(
     }
   }
   return extra;
+}
+
+/**
+ * Rezervasyon avansı tahsilatları (henüz hizmet verilmemiş peşinat).
+ * `cash_lines` içinde `transaction_type = 'CH_TAHSILAT'` VE
+ * `special_code = 'REZERVASYON'` olan satırlar Ciro'ya değil, **alınan avans**
+ * bakiyesine yazılır. Kasa bakiyesinden ayrıştırılır; Toplam Nakit'e dahil
+ * edilmez. Kullanıcı şikâyeti Bug-fix: 25.000 + 25.000 = 50.000 yanlışlığı.
+ *
+ * @returns Rezervasyon avansı tutarı (IQD/YEREL).
+ */
+export function extraReservationCustomerCollections(
+  cashLines: KasaCollectionLine[] | null | undefined,
+): number {
+  if (!Array.isArray(cashLines) || cashLines.length === 0) return 0;
+  let total = 0;
+  for (const line of cashLines) {
+    const tip = String(line.islem_tipi || '').trim().toUpperCase();
+    if (tip !== 'CH_TAHSILAT') continue;
+    const specialCode = String(
+      (line as KasaCollectionLine & { ozel_kod?: string | null; special_code?: string | null }).ozel_kod ??
+      (line as KasaCollectionLine & { ozel_kod?: string | null; special_code?: string | null }).special_code ??
+      ''
+    )
+      .trim()
+      .toUpperCase();
+    // Hem `special_code='REZERVASYON'` hem `transaction_type='CH_TAHSILAT'+REZERVASYON`
+    // durumlarını yakala (UI rename sonrası `transaction_type` hâlâ CH_TAHSILAT).
+    if (specialCode !== 'REZERVASYON' && specialCode !== 'AVANS') continue;
+    const amt = Math.abs(Number(line.tutar) || 0);
+    if (!(amt > 0)) continue;
+    total += amt;
+  }
+  return total;
 }

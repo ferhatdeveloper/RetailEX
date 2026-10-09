@@ -1,5 +1,18 @@
 /** Form ödeme kodları (InvoicePaymentInfoModal / raporlar — tek kaynak) */
-export type PaymentFormCode = 'NAKIT' | 'KREDIKARTI' | 'ACIK_CARI' | 'HAVAL' | 'CEK' | 'SENET';
+export type PaymentFormCode =
+  | 'NAKIT'
+  | 'KREDIKARTI'
+  | 'ACIK_CARI'
+  | 'HAVAL'
+  | 'CEK'
+  | 'SENET'
+  /**
+   * Rezervasyon avansı — Kasa Durumu raporunda ayrı kalem (alınan avans).
+   * Henüz hizmet verilmemiş peşinat tahsilatı (`cash_lines.special_code = 'REZERVASYON'`
+   * veya `transaction_type = 'CH_TAHSILAT' + REZERVASYON`) Ciro'ya dahil değildir;
+   * kasa bakiyesinden ayrı gösterilir.
+   */
+  | 'REZERVASYON_AVANS';
 
 /** Yapıdaki tüm ödeme tipleri (fatura ödeme modalı ile aynı sıra) */
 export const SYSTEM_PAYMENT_FORM_CODES: readonly PaymentFormCode[] = [
@@ -9,6 +22,7 @@ export const SYSTEM_PAYMENT_FORM_CODES: readonly PaymentFormCode[] = [
   'HAVAL',
   'CEK',
   'SENET',
+  'REZERVASYON_AVANS',
 ] as const;
 
 const FORM_CODES: PaymentFormCode[] = [...SYSTEM_PAYMENT_FORM_CODES];
@@ -24,6 +38,7 @@ export const PAYMENT_FORM_CODE_META: Record<
   HAVAL: { nameKey: 'paymentTransfer', color: '#f59e0b' },
   CEK: { nameKey: 'paymentCheck', color: '#14b8a6' },
   SENET: { nameKey: 'paymentPromissory', color: '#f43f5e' },
+  REZERVASYON_AVANS: { nameKey: 'paymentReservationDeposit', color: '#0ea5e9' },
 };
 
 /** DB / POS değerini forma yüklenecek koda çevirir */
@@ -109,6 +124,8 @@ export function paymentFormCodeTranslationKey(code: string): string {
       return 'paymentCheck';
     case 'SENET':
       return 'paymentPromissory';
+    case 'REZERVASYON_AVANS':
+      return 'paymentReservationDeposit';
     default:
       return 'openTerms';
   }

@@ -10790,6 +10790,22 @@ export const excelModuleTranslations = {
     ar: 'عربون الحجز — الخدمة لم تقدم بعد',
     ku: 'پارەی نۆرە — خزمەتگوزاری نەدراوە',
   },
+  /**
+   * RetailEX Kasa Durumu — yeni "Alınan Avans (Rezervasyon)" KPI kartı.
+   * Ciro'ya değil, ayrı bakiyeye (passif) yazılır.
+   */
+  cashStatusReservationDeposit: {
+    tr: 'Alınan Avans (Rezervasyon)',
+    en: 'Reservation Deposit Collected',
+    ar: 'عربون الحجز المحصّل',
+    ku: 'نۆرەی گیراوە (پارەدانی پێشوەختە)',
+  },
+  paymentReservationDeposit: {
+    tr: 'Rezervasyon Avansı',
+    en: 'Reservation Deposit',
+    ar: 'عربون الحجز',
+    ku: 'پارەی نۆرە',
+  },
   ekstreAvansBadge: {
     // 07.10.2026 — UI: "Avans" → "Rezervasyon".
     tr: 'Rezervasyon',

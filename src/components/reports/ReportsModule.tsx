@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed, Wallet, X, Trash2 } from 'lucide-react';
+import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed, Wallet, X, Trash2, HandCoins } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
@@ -77,7 +77,7 @@ import {
 } from '../../utils/purchasePromotionReport';
 import { applyExtraCashCollections, buildPosZReportForRange, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
-import { extraCustomerCollectionsNotOnSales, saleCollectedSplit, dailyPaymentKind } from '../../utils/saleCollectedAmounts';
+import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections, saleCollectedSplit, dailyPaymentKind } from '../../utils/saleCollectedAmounts';
 import { filterForRevenue, filterForCash, filterForDeposit, isCompletedAppointmentStatus, isDepositSale } from '../../utils/reportDepositFilter';
 import {
   buildPaymentTypeDistribution,
@@ -2864,6 +2864,15 @@ export function ReportsModule({
     dailySalesForCash,
   );
   dailyCash += extraCollections;
+  /**
+   * Rezervasyon avansı (henüz hizmet verilmemiş peşinat) — Kasa bakiyesinden
+   * ayrıştırılır. Ciro'ya dahil değildir; Toplam Nakit'e eklenmez; ayrı
+   * "Alınan Avans" kalemi olarak gösterilir. Kullanıcı şikâyeti:
+   * 25.000 nakit + 25.000 avans = 50.000 rapor hatası.
+   */
+  const extraReservation = extraReservationCustomerCollections(kasaLinesForSelectedDate);
+  // Rezervasyon avansı Ciro'ya değil alınan avans (passif) bucket'ına yazılır.
+  // dailyCash'e eklenmez; ayrı izlenir.
 
   // Bug 24: TAHSİL EDİLEN, peşinat dahil. dailyCollected kasa bazlıdır;
   // peşinat tahsilatı zaten kasaya yansımıştır (cash_lines / split.paid).
@@ -3773,6 +3782,9 @@ export function ReportsModule({
     }));
     const dist = buildPaymentTypeDistribution(saleInputs, {
       extraCash: extraCollections,
+      // Rezervasyon avansı ayrı bucket'a (REZERVASYON_AVANS) yazılır;
+      // Nakit'i şişirmez. Kullanıcı şikâyeti: 25.000+25.000=50.000 düzeltmesi.
+      extraReservation,
       includeZero: true,
     });
     const cash = dist.byCode.NAKIT;
@@ -3812,6 +3824,8 @@ export function ReportsModule({
     return buildPaymentTypeMovements(saleInputs, code, {
       extraCash: extraCollections,
       extraCashLabel: tm('reportsExtraCashCollections') || 'Ek tahsilat (CH)',
+      extraReservation,
+      extraReservationLabel: tm('reportsExtraReservationCollections') || 'Rezervasyon avansı tahsilatı',
     });
   };
 
@@ -4121,6 +4135,13 @@ export function ReportsModule({
     const cardTotal = dist.card.amount;
     const transferTotal = dist.transfer.amount;
     const todayTotal = dist.totalAmount;
+    /**
+     * Rezervasyon avansı (henüz hizmet verilmemiş peşinat). Ciro'ya değil,
+     * ayrı "Alınan Avans" kalemidir. Kasa bakiyesi fiziksel olarak bu tutarı
+     * içerir ama Kapanış Kasası'ndan ayrı tutulur — kullanıcı şikâyeti:
+     * 25.000 nakit + 25.000 avans = 50.000 yanlış toplam.
+     */
+    const reservationDeposit = dist.byCode.REZERVASYON_AVANS?.amount ?? 0;
 
     const todayKey = localTodayDateKey();
     const openingCash =
@@ -4129,10 +4150,11 @@ export function ReportsModule({
         : 0;
     const expenses = cashExpensesForReport;
 
-    // E1: Kapanış bakiyesi — açılış + bugünkü nakit tahsilat − nakit giderler
+    // E1: Kapanış bakiyesi — avans Hariç. Yalnızca gerçek nakit tahsilat
+    // (Ciro + sonradan ek nakit tahsilat). Rezervasyon avansı Ciro değil.
     const closingCash = openingCash + cashTotal - expenses;
     const netCashMovement = cashTotal - expenses;
-    const totalCollection = cashTotal + cardTotal + transferTotal;
+    const totalCollection = cashTotal + cardTotal + transferTotal + reservationDeposit;
 
     const map = new Map<string, number>();
     for (const row of dailyUnifiedRows) {
@@ -4155,6 +4177,7 @@ export function ReportsModule({
       todayCard: cardTotal,
       todayTransfer: transferTotal,
       todayTotal,
+      reservationDeposit,
       totalCollection,
       netCashMovement,
       expenses,
@@ -7500,7 +7523,7 @@ export function ReportsModule({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                     <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
@@ -7520,8 +7543,19 @@ export function ReportsModule({
                         <div>
                           <p className="text-sm text-gray-600">{tm('todayCash')}</p>
                           <p className="text-2xl text-green-600 mt-1 font-bold">{formatNumber(cashStatus.todayCash, 2, false)} {reportCurrency}</p>
+                          <p className="text-xs text-slate-500 mt-1">avans hariç gerçek tahsilat</p>
                         </div>
                         <Banknote className="w-12 h-12 text-green-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-cyan-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">{tm('cashStatusReservationDeposit') || 'Alınan Avans (Rezervasyon)'}</p>
+                          <p className="text-2xl text-cyan-600 mt-1 font-bold">{formatNumber(cashStatus.reservationDeposit, 2, false)} {reportCurrency}</p>
+                          <p className="text-xs text-slate-500 mt-1">henüz hizmet verilmemiş peşinat — pasif</p>
+                        </div>
+                        <HandCoins className="w-12 h-12 text-cyan-600 opacity-20" />
                       </div>
                     </div>
                     <div className="bg-white rounded-lg border-2 border-purple-200 p-4">
@@ -7538,6 +7572,7 @@ export function ReportsModule({
                         <div>
                           <p className="text-sm text-gray-600">{tm('closingCash')}</p>
                           <p className="text-2xl text-orange-600 mt-1 font-bold">{formatNumber(cashStatus.closingCash, 2, false)} {reportCurrency}</p>
+                          <p className="text-xs text-slate-500 mt-1">avans Hariç Kapanış</p>
                         </div>
                         <Banknote className="w-12 h-12 text-orange-600 opacity-20" />
                       </div>
