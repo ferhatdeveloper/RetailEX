@@ -7203,7 +7203,7 @@ dependencies = [
 
 [[package]]
 name = "retailex"
-version = "0.1.292"
+version = "0.1.297"
 dependencies = [
  "amq-protocol",
  "anyhow",

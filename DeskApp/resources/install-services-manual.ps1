@@ -65,6 +65,20 @@ try {
         Write-WarnMsg "RetailEX_Printer.exe not found, Printer service skipped."
     }
 
+    $waBridgeExe = Join-Path $baseDir "RetailEX_WA_Bridge.exe"
+    $waBridgeScript = Join-Path $baseDir "scripts\whatsapp-bridge\server.mjs"
+    if (Test-Path $waBridgeExe) {
+        if (Test-Path $waBridgeScript) {
+            Install-AppService -exePath $waBridgeExe -serviceName "RetailEX_WA_Bridge"
+        }
+        else {
+            Write-WarnMsg "RetailEX_WA_Bridge.exe var ama scripts\whatsapp-bridge\server.mjs eksik; WhatsApp koprusu hizmeti atlandi."
+        }
+    }
+    else {
+        Write-WarnMsg "RetailEX_WA_Bridge.exe not found, WhatsApp bridge service skipped."
+    }
+
     $postgrestExe = Join-Path $baseDir "postgrest.exe"
     $postgrestScript = Join-Path $baseDir "install-postgrest-service.ps1"
     if ((Test-Path $postgrestExe) -and (Test-Path $postgrestScript)) {

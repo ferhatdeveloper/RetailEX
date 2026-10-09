@@ -94,6 +94,10 @@ name = "RetailEX_Printer"
 path = "src/printer_main.rs"
 
 [[bin]]
+name = "RetailEX_WA_Bridge"
+path = "src/wa_bridge_main.rs"
+
+[[bin]]
 name = "RetailEX_Tools"
 path = "src/tools_main.rs"
 

@@ -158,11 +158,41 @@ catch {
     Write-Warning $msg
 }
 
+$waBridgeExe = Join-Path $Prefix "RetailEX_WA_Bridge.exe"
+$waBridgeScript = Join-Path $Prefix "scripts\whatsapp-bridge\server.mjs"
+if (Test-Path -LiteralPath $waBridgeExe) {
+    if (-not (Test-Path -LiteralPath $waBridgeScript)) {
+        $msg = "RetailEX_WA_Bridge.exe var ama scripts\whatsapp-bridge\server.mjs eksik - WA Bridge hizmeti kurulmayacak."
+        $warnings += $msg
+        Write-RetailExSetupLog -LogFile $logFile -Message "UYARI: $msg"
+        Write-Warning $msg
+    }
+    else {
+        try {
+            Install-RetailExWindowsService `
+                -ExePath $waBridgeExe `
+                -ServiceName "RetailEX_WA_Bridge" `
+                -Label "RetailEX_WA_Bridge"
+        }
+        catch {
+            $msg = $_.Exception.Message
+            $failures += $msg
+            Write-RetailExSetupLog -LogFile $logFile -Message $msg
+            Write-Warning $msg
+        }
+    }
+}
+else {
+    Write-RetailExSetupLog -LogFile $logFile -Message "RetailEX_WA_Bridge.exe yok - WhatsApp koprusu hizmeti atlandi."
+}
+
 $svcCore = Get-Service -Name "RetailEX_Service" -ErrorAction SilentlyContinue
 $svcBridge = Get-Service -Name "RetailEX_SQL_Bridge" -ErrorAction SilentlyContinue
 $svcPrinter = Get-Service -Name "RetailEX_Printer" -ErrorAction SilentlyContinue
+$svcWa = Get-Service -Name "RetailEX_WA_Bridge" -ErrorAction SilentlyContinue
 $bridgeExpected = Test-Path -LiteralPath $bridgeExe
 $printerExpected = Test-Path -LiteralPath $printerExe
+$waExpected = Test-Path -LiteralPath $waBridgeExe
 
 $coreOk = $false
 if ($bridgeExpected) {

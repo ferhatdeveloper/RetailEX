@@ -277,11 +277,16 @@ fn install_services_nearby() -> anyhow::Result<String> {
             .status();
         let _ = std::process::Command::new("sc").args(["start", "RetailEX_PostgREST"]).status();
     }
+    let wa_bridge_exe = base.join("RetailEX_WA_Bridge.exe");
+    if wa_bridge_exe.exists() {
+        let _ = std::process::Command::new(&wa_bridge_exe).arg("--install").status();
+        let _ = std::process::Command::new("sc").args(["start", "RetailEX_WA_Bridge"]).status();
+    }
     Ok("Servis kurulum islemleri tetiklendi. Yonetici olarak calistirdiginizden emin olun.".to_string())
 }
 
 fn get_services_health() -> anyhow::Result<String> {
-    let script = "Get-Service -Name RetailEX_Service,RetailEX_SQL_Bridge,RetailEX_Printer,RetailEX_PostgREST -ErrorAction SilentlyContinue | Select-Object Name,Status | Format-Table -HideTableHeaders";
+    let script = "Get-Service -Name RetailEX_Service,RetailEX_SQL_Bridge,RetailEX_Printer,RetailEX_PostgREST,RetailEX_WA_Bridge -ErrorAction SilentlyContinue | Select-Object Name,Status | Format-Table -HideTableHeaders";
     let out = std::process::Command::new("powershell")
         .args(["-NoProfile", "-Command", script])
         .output()?;

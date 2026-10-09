@@ -11,7 +11,7 @@ RetailEX portable **yerelde müşteriye yayınlanmaz**. Yayın kaynağı **GitHu
 
 | Profil | Asset | Tag | İçerik |
 |--------|--------|-----|--------|
-| **Full** (müşteri / hizmet) | `RetailEX-{version}.exe` | `portable-v{version}` | NSIS + Sync / SQL Bridge / Printer / PostgREST |
+| **Full** (müşteri / hizmet) | `RetailEX-{version}.exe` | `portable-v{version}` | NSIS + Sync / SQL Bridge / Printer / PostgREST / **WA Bridge (Baileys, port 3000)** |
 | **Soft** (hızlı deneme) | `RetailEX-Soft-{version}.zip` | `portable-soft-v{version}` | Hizmetsiz ZIP; NSIS yok |
 
 `RetailEX_Tools update` yalnızca **Full EXE** indirir; Soft ZIP güncelleme kanalı değildir.

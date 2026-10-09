@@ -57,12 +57,14 @@ Section "RetailEX Portable" SecMain
   SetOutPath "$INSTDIR"
 
   nsExec::ExecToLog 'cmd /c net stop RetailEX_Service /y'
-  Pop $0
+    Pop $0
   nsExec::ExecToLog 'cmd /c net stop RetailEX_SQL_Bridge /y'
   Pop $0
   nsExec::ExecToLog 'cmd /c net stop RetailEX_Printer /y'
   Pop $0
   nsExec::ExecToLog 'cmd /c net stop RetailEX_PostgREST /y'
+  Pop $0
+  nsExec::ExecToLog 'cmd /c net stop RetailEX_WA_Bridge /y'
   Pop $0
   Sleep 500
 
@@ -119,9 +121,11 @@ Section "Uninstall"
   Pop $0
   nsExec::ExecToLog 'cmd /c net stop RetailEX_PostgREST /y'
   Pop $0
+  nsExec::ExecToLog 'cmd /c net stop RetailEX_WA_Bridge /y'
+  Pop $0
   Sleep 300
 
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "foreach ($n in @(''RetailEX_Service'',''RetailEX_SQL_Bridge'',''RetailEX_Printer'',''RetailEX_PostgREST'')) { if (Get-Service -Name $n -EA SilentlyContinue) { sc.exe delete $n } }"'
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "foreach ($n in @(''RetailEX_Service'',''RetailEX_SQL_Bridge'',''RetailEX_Printer'',''RetailEX_PostgREST'',''RetailEX_WA_Bridge'')) { if (Get-Service -Name $n -EA SilentlyContinue) { sc.exe delete $n } }"'
   Pop $0
 
   Delete "$DESKTOP\RetailEX.lnk"

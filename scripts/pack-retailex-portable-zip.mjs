@@ -94,7 +94,7 @@ Kurulum (EXE — Yönetici)
 1. RetailEX-${version}.exe dosyasını çalıştırın (UAC: Evet).
 2. Varsayılan dizin: C:\\RetailEx\\App
 3. Kurulum Windows hizmetlerini otomatik kurar:
-   RetailEX_Service, RetailEX_SQL_Bridge, RetailEX_Printer, PostgREST
+   RetailEX_Service, RetailEX_SQL_Bridge, RetailEX_Printer, PostgREST, RetailEX_WA_Bridge
 4. RetailEX_Config.exe ile C:\\RetailEx\\config.db ayarlayın.
 5. RetailEX_Tools.exe setup-db (veya menü 9) — DB oluştur + migration
 6. retailex.exe çalıştırın.
@@ -132,7 +132,10 @@ Kurulum
 
 Notlar
 - Müşteri / üretim için Full kullanın: RetailEX-{version}.exe
-  (Sync, SQL Bridge, Printer, PostgREST hizmetleri).
+  (Sync, SQL Bridge, Printer, PostgREST, WhatsApp Bridge hizmetleri).
+- WhatsApp Bridge Soft ZIP'te Windows hizmeti olarak kurulmaz; manuel baslatma:
+  node runtime\\node\\node.exe scripts\\whatsapp-bridge\\server.mjs
+  (port 3000, auth: wa-auth klasoru).
 - Soft paket güncelleme kanalı değildir; RetailEX_Tools update yalnızca Full EXE alır.
 - WebView2 Runtime gerekir.
 - Mark of the Web: sağ tık → Özellikler → Engellemeyi kaldır.
@@ -154,6 +157,7 @@ function stagePortable(stageRoot, { soft }) {
         'retailex.exe',
         'RetailEX_Config.exe',
         'RetailEX_Tools.exe',
+        'RetailEX_WA_Bridge.exe',
       ]
     : [
         'retailex.exe',
@@ -162,10 +166,19 @@ function stagePortable(stageRoot, { soft }) {
         'RetailEX_SQL_Bridge.exe',
         'RetailEX_Printer.exe',
         'RetailEX_Tools.exe',
+        'RetailEX_WA_Bridge.exe',
       ];
   for (const b of bins) {
-    mustExist(path.join(releaseDir, b), b);
-    copyFile(path.join(releaseDir, b), path.join(stageRoot, b));
+    const srcBin = path.join(releaseDir, b);
+    if (fs.existsSync(srcBin)) {
+      copyFile(srcBin, path.join(stageRoot, b));
+    } else if (b === 'RetailEX_WA_Bridge.exe') {
+      // Tauri build daha WA bridge binary uretmemis olabilir (CI sirasinda); uyari ver ve atla.
+      console.warn(`[portable-pack] Atlandi (yok): ${b} — Tauri Cargo bin RetailEX_WA_Bridge uretilmemis olabilir.`);
+    } else {
+      mustExist(srcBin, b);
+      copyFile(srcBin, path.join(stageRoot, b));
+    }
   }
 
   copyIfExists(path.join(deskApp, 'wintun.dll'), path.join(stageRoot, 'wintun.dll'));
@@ -224,6 +237,18 @@ function stagePortable(stageRoot, { soft }) {
 
   copyIfExists(path.join(res, 'nodejs-runtime', 'node.exe'), path.join(stageRoot, 'runtime', 'node', 'node.exe'));
   copyIfExists(path.join(res, 'node_modules'), path.join(stageRoot, 'node_modules'));
+
+  // WhatsApp Baileys koprusu (RetailEX_WA_Bridge.exe tarafindan kullanilir)
+  // Hem Full hem Soft: server.mjs + prebundle node_modules/whatsapp-bridge
+  copyIfExists(path.join(root, 'scripts', 'whatsapp-bridge'), path.join(stageRoot, 'scripts', 'whatsapp-bridge'));
+  const waBridgeNodeModules = path.join(stageRoot, 'node_modules', 'whatsapp-bridge');
+  const waBridgeNodeModulesSrc = path.join(res, 'node_modules', 'whatsapp-bridge');
+  if (fs.existsSync(waBridgeNodeModulesSrc)) {
+    console.log('[portable-pack] WhatsApp bridge node_modules prebundle kopyalaniyor...');
+    copyDirRecursive(waBridgeNodeModulesSrc, waBridgeNodeModules);
+  } else {
+    console.warn('[portable-pack] node_modules/whatsapp-bridge prebundle bulunamadi — WhatsApp koprusu calismayabilir. CI: npm ci --prefix scripts/whatsapp-bridge --omit=dev adimindan sonra resources/node_modules/whatsapp-bridge kopyalanmalidir.');
+  }
 
   copyIfExists(path.join(root, 'database', 'migrations'), path.join(stageRoot, '_up_', 'database', 'migrations'));
   copyIfExists(path.join(root, 'database', 'init'), path.join(stageRoot, '_up_', 'database', 'init'));

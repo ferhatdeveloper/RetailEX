@@ -489,6 +489,7 @@ fn try_stop_services() {
         "RetailEX_SQL_Bridge",
         "RetailEX_Printer",
         "RetailEX_PostgREST",
+        "RetailEX_WA_Bridge",
     ] {
         let _ = Command::new("net").args(["stop", name]).status();
     }
@@ -500,6 +501,7 @@ fn try_start_services() {
         "RetailEX_SQL_Bridge",
         "RetailEX_Printer",
         "RetailEX_PostgREST",
+        "RetailEX_WA_Bridge",
     ] {
         let _ = Command::new("net").args(["start", name]).status();
     }

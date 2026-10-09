@@ -2422,6 +2422,7 @@ fn remove_retailex_windows_services() -> Result<String, String> {
             ("RetailEX_Service.exe", "RetailEX_Service"),
             ("RetailEX_SQL_Bridge.exe", "RetailEX_SQL_Bridge"),
             ("RetailEX_Printer.exe", "RetailEX_Printer"),
+            ("RetailEX_WA_Bridge.exe", "RetailEX_WA_Bridge"),
             ("RetailEX_Logo.exe", "RetailEX_Logo"),
             ("RetailEX_Logo_Connector.exe", "RetailEXLogoConnector"),
         ];

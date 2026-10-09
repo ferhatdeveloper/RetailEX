@@ -171,6 +171,9 @@ jobs:
           }
           npm run node-runtime:fetch
           if ($LASTEXITCODE -ne 0) { throw "node-runtime:fetch failed: $LASTEXITCODE" }
+          # WhatsApp Baileys bridge prebundle (RetailEX_WA_Bridge.exe icin node_modules)
+          npm run whatsapp:bridge:prebundle
+          if ($LASTEXITCODE -ne 0) { throw "whatsapp:bridge:prebundle failed: $LASTEXITCODE" }
 
       - name: Sync app version + prebuild extras
         shell: pwsh
