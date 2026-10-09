@@ -82,8 +82,37 @@ interface PeriodSummaryRow {
   expenseShares: Record<string, number>;
 }
 
-function hasPeriodActivity(row: Pick<PeriodSummaryRow, 'saleCount' | 'revenue' | 'expenses' | 'cashIn' | 'purchases'>): boolean {
-  return row.saleCount > 0 || row.revenue > 0 || row.expenses > 0 || row.cashIn > 0 || row.purchases > 0;
+function hasPeriodActivity(row: Pick<PeriodSummaryRow,
+  'saleCount' | 'revenue' | 'cash' | 'card' | 'veresiye' | 'discount' |
+  'returnsAmount' | 'depositCount' | 'depositAmount' |
+  'expenses' | 'cashIn' | 'purchases' | 'netRemaining'
+>): boolean {
+  // Bug 30 — Aylık Gün Özeti tablosu boş (hücreler "—") ama KPI dolu kök neden.
+  // Önceki filtre yalnızca Ciro/Gider/Kasa Girişi/Alış'a bakıyordu:
+  //   `saleCount || revenue || expenses || cashIn || purchases`
+  // Oysa şu senaryolarda satır "etkinlik yok" olarak işaretleniyordu:
+  //   - Sadece peşinat (avans) Ciro'ya yansımadan alındı → Ciro=0, satırda yalnız
+  //     `depositAmount` ve/veya `cash`/`card` (toplam satırda görünür ama gün
+  //     satırı boş kalırdı).
+  //   - Sadece kart ödeme (Ciro başka fatura/avansla) → `card>0` ama Ciro=0.
+  //   - Sadece iade → `returnsAmount>0` ama Ciro=0.
+  //   - Yalnız veresiye (cariye kalan) → `veresiye>0` ama Ciro'ya yansımaz.
+  // Şimdi: hücrelerin herhangi birinde finansal değer varsa satır "aktif" sayılır.
+  return (
+    row.saleCount > 0 ||
+    row.revenue > 0 ||
+    row.cash > 0 ||
+    row.card > 0 ||
+    row.veresiye > 0 ||
+    row.discount > 0 ||
+    row.returnsAmount > 0 ||
+    row.depositCount > 0 ||
+    row.depositAmount > 0 ||
+    row.expenses > 0 ||
+    row.cashIn > 0 ||
+    row.purchases > 0
+    // netRemaining türetilmiş; bilinçli olarak Hariç (gider/ciro 0 ise 0).
+  );
 }
 
 function isRemovedSaleStatus(status: unknown): boolean {
