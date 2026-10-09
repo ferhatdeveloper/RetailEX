@@ -73,6 +73,11 @@ function mapCashRowToEkstre(r: any) {
     currency_rate: r.exchange_rate != null ? Number(r.exchange_rate) : 1,
     notes: r.definition,
     f_amount: r.f_amount != null ? Number(r.f_amount) : undefined,
+    // Avans/rezervasyon tespiti (09.10.2026): cari_avans tarafı CH_TAHSILAT +
+    // ozel_kod='REZERVASYON' ile yazılır; bu alanı EkstreRow'a taşıyarak
+    // ekstrede avans satırını borç=alacak=amt, bakiye=0 olarak iki satıra
+    // bölebiliriz.
+    special_code: r.special_code != null ? String(r.special_code).trim().toUpperCase() : undefined,
   };
 }
 
@@ -704,7 +709,7 @@ export const supplierAPI = {
         }
 
         const cashByIdQuery: Record<string, string> = {
-          select: 'fiche_no,date,transaction_type,amount,currency_code,exchange_rate,f_amount,definition,customer_id,party_id',
+          select: 'fiche_no,date,transaction_type,amount,currency_code,exchange_rate,f_amount,definition,customer_id,party_id,special_code',
           // Tedarikçi ödemeleri party_id ile yazılır; eski müşteri tarafı verileri için customer_id fallback.
           or: `(customer_id.eq.${accountId},party_id.eq.${accountId})`,
           transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
@@ -813,7 +818,8 @@ export const supplierAPI = {
       const sql = `
         SELECT fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency,
                COALESCE(currency_rate, 1) AS currency_rate, notes,
-               COALESCE(is_cancelled, false) AS is_cancelled, payment_method
+               COALESCE(is_cancelled, false) AS is_cancelled, payment_method,
+               NULL::text AS special_code
         FROM sales t
         WHERE ${accountMatchSales}${ledgerFicheFilter}${dateFilter}
           AND COALESCE(t.is_cancelled, false) = false
@@ -822,7 +828,8 @@ export const supplierAPI = {
         SELECT fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
                ABS(amount) AS total_amount, currency_code AS currency,
                COALESCE(exchange_rate, 1) AS currency_rate, definition AS notes,
-               false AS is_cancelled, NULL::text AS payment_method
+               false AS is_cancelled, NULL::text AS payment_method,
+               UPPER(TRIM(COALESCE(special_code, ''))) AS special_code
         FROM cash_lines t
         WHERE (t.customer_id::text = $1::text OR t.party_id::text = $1::text)${dateFilter}
           AND UPPER(TRIM(t.transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')

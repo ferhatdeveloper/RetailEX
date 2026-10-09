@@ -305,6 +305,12 @@ export type EkstreRow = {
   avansReferenceNo?: string;
   /** Avans kayıt UUID */
   avansId?: string;
+  /** cash_lines.special_code ham değeri (örn. REZERVASYON). Avans tespitinde kullanılır. */
+  special_code?: string;
+  /** Cash_lines tablosunun PK. Avans satırını çift satıra bölerken eşleşmede kullanılır. */
+  cash_line_id?: string;
+  /** Satırın sanal/in-memory eşi olup olmadığı (`expandReservationDepositRows` çıktısı). */
+  isVirtualPair?: boolean;
 };
 
 /** `payment_status` iptal/iade seti (müşteri/peşin satışlar için). */
@@ -391,6 +397,16 @@ export function buildEkstreRows(
     // AVANS → FATURA (Basit Model): cari_avans satırı. Müşteri için tahsilat
     // mantığı ile aynı (müşteri bize para verdi → bakiye alacaklanır).
     const isAvansRow = !cancelled && row.is_avans === true && absAmt > 0;
+    // 09.10.2026 avans formatı: cash_lines + CH_TAHSILAT +
+    // special_code='REZERVASYON' rezervasyon avansıdır. Cari bakiyeyi
+    // kirletmemeli (avans bakiyeden bağımsız); UI tarafında
+    // `expandReservationDepositRows` çift satıra böler (borç=amt +
+    // alacak=amt, bakiye=0). Burada delta=0 kabul edilir.
+    const isCashReservationDepositForBalance = !cancelled &&
+      !isSupplierAccount &&
+      ficheType === 'CH_TAHSILAT' &&
+      String(row.special_code ?? '').trim().toUpperCase() === 'REZERVASYON' &&
+      absAmt > 0;
     let delta = 0;
     let borcAmount = 0;
     let alacakAmount = 0;
@@ -403,6 +419,15 @@ export function buildEkstreRows(
         delta = 0;
         borcAmount = 0;
         alacakAmount = 0;
+      } else if (isCashReservationDepositForBalance) {
+        // Rezervasyon avansı (cash_lines + CH_TAHSILAT + REZERVASYON): cari
+        // bakiyeyi etkilemez (delta=0); ama ekstrede tek satır olarak
+        // KULLANICI BEKLENTİSİ: hem borç hem alacak sütununda tutar görünür
+        // (örn. 15/15), bakiye 0 kalır. Bu sayede hizmet tamamlanınca
+        // bakiye yalnızca hizmet tutarı olur (avans hariç, nötr).
+        delta = 0;
+        borcAmount = absAmt;
+        alacakAmount = absAmt;
       } else if (isAvansRow) {
         // Avans: müşteri bize para verdi (alacaklanır → borç B sütununa),
         // supplier ise tersi (bize para verdi → alacak A sütununa).
@@ -461,18 +486,35 @@ export function buildEkstreRows(
       }
     }
     runningBalance += delta;
-    // Rezervasyon avansı (is_deposit=true / notes: parent_sale:) — borç/alacak/bakiye
-    // satırını kirletmeden bilgi amaçlı tutarı taşı. Hizmet tamamlanınca ana satışa
-    // mahsup edilir; burada yalnızca "Alınan Rezervasyon Tutarı" olarak gösterilir.
+    // Rezervasyon avansı (is_deposit=true / notes: parent_sale: / cash_lines +
+    // CH_TAHSILAT + special_code='REZERVASYON') — borç/alacak/bakiye satırını
+    // kirletmeden bilgi amaçlı tutarı taşı. Hizmet tamamlanınca ana satışa
+    // mahsup edilir; burada yalnızca "Alınan Rezervasyon Tutarı" olarak
+    // gösterilir.
+    //
+    // 09.10.2026 düzeltmesi: cash_lines + CH_TAHSILAT + special_code=
+    // 'REZERVASYON' da rezervasyon avansı sayılır; bu bayrak ile birlikte
+    // `expandReservationDepositRows` helper'ı avans satırını çift satıra
+    // böler (borç=amt + alacak=amt, bakiye=0).
+    const cashSpecial = String(row.special_code ?? '').trim().toUpperCase();
+    const isCashReservationDeposit = !cancelled &&
+      !isSupplierAccount &&
+      ficheType === 'CH_TAHSILAT' &&
+      cashSpecial === 'REZERVASYON' &&
+      absAmt > 0;
     const isReservationDeposit = !cancelled &&
       !isSupplierAccount &&
       (row.is_deposit === true ||
-        /parent_sale:|sale_group:/.test(String(row.notes ?? ''))) &&
+        /parent_sale:|sale_group:/.test(String(row.notes ?? '')) ||
+        isCashReservationDeposit) &&
       absAmt > 0 &&
-      (ftLower === 'sales_invoice' || ftLower === 'service' || ftLower === 'hizmet');
+      (ftLower === 'sales_invoice' ||
+        ftLower === 'service' ||
+        ftLower === 'hizmet' ||
+        isCashReservationDeposit);
     return {
       ...row,
-      /** sales tablosundaki PK. Açılış/devir fişlerini hard-delete için gerekli. */
+      /** sales / cash_lines tablosundaki PK. Açılış/devir fişlerini hard-delete için gerekli. */
       invoiceId: row.id != null ? String(row.id) : undefined,
       borcAmount,
       alacakAmount,
@@ -486,6 +528,69 @@ export function buildEkstreRows(
       isAvans: row.is_avans === true,
       avansReferenceNo: row.avans_reference_no != null ? String(row.avans_reference_no) : undefined,
       avansId: row.avans_id != null ? String(row.avans_id) : undefined,
+      // Cash_lines özelinde avans tespitinde kullanılan ham alan (UI tarafı
+      // okunabilir hale getirildi).
+      special_code: row.special_code != null ? String(row.special_code) : undefined,
+      cash_line_id: row.cash_line_id != null ? String(row.cash_line_id) : undefined,
     } as EkstreRow;
   });
+}
+
+/**
+ * Rezervasyon avansı satırını iki sanal satıra böler:
+ *   - Satır A (borc):  borcAmount=amt, alacakAmount=0, bakiye değişmez
+ *   - Satır B (alacak): borcAmount=0, alacakAmount=amt, bakiye değişmez
+ *
+ * Amaç: Kullanıcının istediği "borç ve alacak kolonlarının ikisi de 15
+ * yazacak, bakiye 0 olacak" görünümü; sonra hizmet tamamlanınca alacak
+ * kolonunda hizmet tutarı, bakiye = hizmet tutarı (avans hariç).
+ *
+ * Mevcut tek-satır avans → CH_TAHSILAT eşleşmesi müşteri bakiyesini
+ * -amt yapıp hizmet tamamlanınca +veresiye ile çakışıyordu (60 yerine 75
+ * hatalı bakiye). Bu helper avansı cari bakiyeden tamamen çıkarır, hizmet
+ * satırı bakiyeyi doğru yazar.
+ *
+ * Bakiyenin doğru hesaplanması için iki sanal satırın da runningBalance'i
+ * aynı tutulmalı; sonraki hizmet satırı bu bakiyenin üstüne eklenir.
+ *
+ * Davranış:
+ *   - Yalnızca müşteri tarafı (`customer` | `partner` | `undefined`).
+ *   - Tüm sanal satırların bakiyesi aynı (cash_lines delta sıfır kabul).
+ *   - Orijinal `fiche_no`, `date`, `fiche_type`, `currency_rate` korunur.
+ *   - Print/screen çıktısı için `isVirtualPair=true` işareti konur; UI
+ *     tek satır gibi göstermek istediğinde kullanabilir.
+ */
+export function expandReservationDepositRows(
+  rows: EkstreRow[],
+  cardType: ExtCardType,
+): EkstreRow[] {
+  if (cardType === 'supplier') return rows;
+  const out: EkstreRow[] = [];
+  for (const row of rows) {
+    if (row.isReservationDeposit && row.reservationDeposit && row.reservationDeposit > 0) {
+      const amt = Number(row.reservationDeposit) || 0;
+      const base: EkstreRow = {
+        ...row,
+        borcAmount: amt,
+        alacakAmount: 0,
+        balance: row.balance,
+        isVirtualPair: false,
+        reservationDeposit: amt,
+      };
+      const pair: EkstreRow = {
+        ...row,
+        borcAmount: 0,
+        alacakAmount: amt,
+        balance: row.balance,
+        isVirtualPair: true,
+        // Aynı borç/alacak rezervasyon bilgisini taşı; print ekranı tek satır
+        // göstermek isterse `reservationDeposit` üzerinden karar verebilir.
+        reservationDeposit: 0,
+      };
+      out.push(base, pair);
+    } else {
+      out.push(row);
+    }
+  }
+  return out;
 }

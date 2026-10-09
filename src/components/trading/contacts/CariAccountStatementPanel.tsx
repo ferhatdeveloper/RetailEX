@@ -122,7 +122,13 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
   }, [account.id]);
 
   const ekstresiRows = useMemo(
-    () => buildEkstreRows(ekstresiData, account.cardType),
+    () =>
+      // 09.10.2026 — rezervasyon avansı (cash_lines + CH_TAHSILAT +
+      // REZERVASYON) tek satır: borç=amt + alacak=amt, bakiye=0
+      // (kullanıcı beklentisi "avans hem borç hem alacak kolonunda 15
+      // yazacak, bakiye 0 olacak"). Hizmet tamamlanınca bakiye yalnızca
+      // hizmet tutarı kadar artar (avans nötr).
+      buildEkstreRows(ekstresiData, account.cardType),
     [ekstresiData, account.cardType],
   );
 
