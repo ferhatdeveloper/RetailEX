@@ -6053,6 +6053,22 @@ export function AppointmentPOS({
                                         <span style={{ color: '#b91c1c', fontWeight: 700 }}>{tm('bRemainingAmount') || 'Kalan'}</span>
                                         <span style={{ fontWeight: 800, color: '#b91c1c' }}>{remaining.toLocaleString('tr-TR')} IQD</span>
                                     </div>
+                                    {/* 09.10.2026 — tek satış faturası önizleme satırı.
+                                        Kalan ödeme alındığında BEAUTY-MAIN-{aptId} fişi
+                                        `total_price` (avans dahil) ile yazılır; cari borç
+                                        net 0 olur. Bu satır kullanıcıya "oluşacak fatura"
+                                        bilgisini verir. */}
+                                    <div data-testid="beauty-remainer-invoice-preview" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, paddingTop: 6, borderTop: '1px dashed #a78bfa' }}>
+                                        <span style={{ color: '#5b21b6', fontWeight: 700, fontSize: 11 }}>
+                                            {tm('bInvoiceWillBeCreated') || 'Oluşacak Satış Faturası'}
+                                        </span>
+                                        <span data-testid="beauty-remainer-invoice-total" style={{ fontWeight: 800, color: '#5b21b6', fontSize: 13 }}>
+                                            {total.toLocaleString('tr-TR')} IQD
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: 10, color: '#6b21a8', opacity: 0.75, marginTop: 2 }}>
+                                        {tm('bInvoiceIncludesDeposit') || 'Avans dahil toplam tutar — ödeme tamamlanınca fatura kapatılır.'}
+                                    </div>
                                 </div>
 
                                 <div>
@@ -6157,7 +6173,7 @@ export function AppointmentPOS({
                                     {remainerBusy ? (tm('bLoading') || 'İşleniyor…') : (
                                         <>
                                             <CheckCircle size={14} />
-                                            {tm('bPaymentCompleted') || 'Öde ve Tamamla'}
+                                            {tm('bPaymentCompleteAndCloseInvoice') || 'Ödemeyi Tamamla ve Faturayı Kapat'}
                                         </>
                                     )}
                                 </button>

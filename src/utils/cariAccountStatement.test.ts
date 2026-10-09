@@ -1,12 +1,116 @@
-/**
- * ficheTypeToInfo / ekstre açıklama i18n
- */
 import { describe, expect, it, vi } from 'vitest';
 import {
+  buildEkstreRows,
+  expandReservationDepositRows,
   ficheTypeToInfo,
   resolveEkstreDescription,
-  buildEkstreRows,
 } from './cariAccountStatement';
+
+/**
+ * Kök neden (09.10.2026 düzeltmesi): cash_lines CH_TAHSILAT +
+ * special_code='REZERVASYON' müşteriden tahsil edilen rezervasyon avansıdır.
+ * Klasik ekstre hesabında bu satır müşteri bakiyesini -amt yapıyor, hizmet
+ * tamamlanınca da +veresiye yazılınca bakiye yanlış (60) çıkıyordu —
+ * kullanıcı beklentisi 75.
+ *
+ * Düzeltme: avans tek satırda borç=alacak=amt (nötr, bakiye artmaz);
+ * hizmet tamamlanınca bakiye yalnızca hizmet tutarı olur (avans hariç).
+ */
+describe('buildEkstreRows — 09.10.2026 avans tek satır formatı', () => {
+  it('müşteri CH_TAHSILAT + REZERVASYON 15 → tek satır: borç 15, alacak 15, bakiye 0', () => {
+    const built = buildEkstreRows(
+      [
+        {
+          date: '2026-10-09',
+          fiche_no: 'AVN-1',
+          fiche_type: 'CH_TAHSILAT',
+          total_amount: 15,
+          special_code: 'REZERVASYON',
+        },
+      ],
+      'customer',
+    );
+    // 09.10.2026 düzeltmesi: avans tek satırda her iki kolon eşit
+    // (nötr), bakiye değişmez → sonraki hizmet satırı bakiyeyi düzgün
+    // artırır (avans hariç).
+    expect(built).toHaveLength(1);
+    expect(built[0].isReservationDeposit).toBe(true);
+    expect(built[0].reservationDeposit).toBe(15);
+    expect(built[0].borcAmount).toBe(15);
+    expect(built[0].alacakAmount).toBe(15);
+    expect(built[0].balance).toBe(0);
+  });
+
+  it('avans 15 + hizmet 75 → bakiye 0, 75 (avans nötr, hizmet bakiyeyi 75 yapar)', () => {
+    const built = buildEkstreRows(
+      [
+        {
+          date: '2026-10-09',
+          fiche_no: 'AVN-1',
+          fiche_type: 'CH_TAHSILAT',
+          total_amount: 15,
+          special_code: 'REZERVASYON',
+        },
+        {
+          date: '2026-10-09',
+          fiche_no: 'BEA-1',
+          fiche_type: 'service',
+          total_amount: 75,
+          payment_method: 'veresiye',
+          trcode: 9,
+        },
+      ],
+      'customer',
+    );
+    // 09.10.2026 düzeltmesi: avans tek satır (15/15/0), hizmet tek satır
+    // (borç 75, bakiye 75). Eski kodda avans bakiyeyi -15'e çekiyor,
+    // hizmet +75 eklenince yanlış 60 çıkıyordu.
+    expect(built).toHaveLength(2);
+    expect(built[0].borcAmount).toBe(15);
+    expect(built[0].alacakAmount).toBe(15);
+    expect(built[0].balance).toBe(0);
+    expect(built[1].borcAmount).toBe(75);
+    expect(built[1].balance).toBe(75);
+  });
+
+  it('tedarikçi tarafı — avans nötr mantığı uygulanmaz (mevcut muhasebe kuralı korunur)', () => {
+    // Tedarikçi tarafı müşteriyle simetrik değil; avans bayrağı
+    // yalnızca müşteri tarafında cari bakiyeyi kirletmez. Tedarikçi
+    // tarafında standart CH_TAHSILAT davranışı korunur.
+    const built = buildEkstreRows(
+      [
+        {
+          date: '2026-10-09',
+          fiche_no: 'AVN-1',
+          fiche_type: 'CH_TAHSILAT',
+          total_amount: 15,
+          special_code: 'REZERVASYON',
+        },
+      ],
+      'supplier',
+    );
+    expect(built).toHaveLength(1);
+    // Tedarikçi tarafında avans flag'i false (yalnız müşteri tarafı)
+    expect(built[0].isReservationDeposit).toBe(false);
+  });
+
+  it('avans olmayan satırlar etkilenmez', () => {
+    const built = buildEkstreRows(
+      [
+        {
+          date: '2026-10-09',
+          fiche_no: 'SF-1',
+          fiche_type: 'sales_invoice',
+          total_amount: 100,
+          payment_method: 'veresiye',
+        },
+      ],
+      'customer',
+    );
+    expect(built).toHaveLength(1);
+    expect(built[0].borcAmount).toBe(100);
+  });
+});
 
 describe('ficheTypeToInfo — i18n', () => {
   it('t verilmezse hardcoded Türkçe korunur (geriye uyumluluk)', () => {

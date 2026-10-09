@@ -10913,6 +10913,21 @@ export const beautyService = {
             //      Peşinat fişi ile aynı `sale_group_id`, `deposit_sale_id` bağı.
             //      Tauri uyumu: ham SQL, `DO $$` YOK.
             //      Hata durumunda ana akışı bozmaz; sadece loglanır.
+            //
+            // Tek satış faturası (9.10.2026 kök düzeltme): `total_*` alanlarına
+            // hizmet tam fiyatı (`apt.total_price` = 75.000) yazılır —
+            // `amount` (kalan ödeme = 50.000) DEĞİL. Aksi halde "Toplam Harcama"
+            // raporları avansı (`cari_avans` ayrı tabloda) saymadığı için
+            // hizmet toplamı yalnızca kalan ödeme (50.000) olarak görünüyordu.
+            //
+            //   * `total_net / total_gross / net_amount` = hizmet tam fiyatı
+            //   * `paid_amount` = alınan toplam = `deposit_amount + amount` (75.000)
+            //   * `credit_amount` = 0 (tam ödeme — veresiye kalmadı)
+            //   * `status = 'paid'` ve `payment_status` zaten cash_lines ile
+            //     mutabık (90 yıllık kıdemli muhasebe denetimi: borç/alacak
+            //     tek yönde, cari bakiye net 0).
+            //   * `payment_method` — toplam ödemenin yöntemi (cash|transfer|card);
+            //     birden fazla yöntemde revenueInPriceNotes: 'karışık' bırakılır.
             const salesTable = `rex_${firmNr}_${periodNr}_sales`;
             const saleItemsTable = `rex_${firmNr}_${periodNr}_sale_items`;
             const mainFicheNo = `BEAUTY-MAIN-${aptId}-${new Date().toISOString()
@@ -10923,24 +10938,42 @@ export const beautyService = {
             const trcode = 7;
             const ficheType = 'sales_invoice';
             const paymentMethodLabel = paymentMethod === 'card' ? 'card' : 'cash';
-            const mainNotes = `Güzellik hizmet — kalan ödeme — ${aptId}${notes ? ` (${notes})` : ''}`;
+            // Tam hizmet fiyatı (75.000); avans dahil toplam — kalan ödeme
+            // (`amount`) DEĞİL. total_price 0 ise fallback olarak amount
+            // (eski davranış) — bu istisna korunur.
+            const totalPriceForSale = Math.max(0, Number(apt.total_price ?? 0));
+            const depositAmtForSale = Math.max(0, Number(apt.deposit_amount ?? 0));
+            const paidRemainderBeforeForSale = Math.max(0, Number(apt.remainder_paid_amount ?? 0));
+            const paidAfter = Math.min(
+                totalPriceForSale || amount,
+                depositAmtForSale + paidRemainderBeforeForSale + amount,
+            );
+            const saleGross = totalPriceForSale || amount;
+            const creditAfter = Math.max(0, saleGross - paidAfter);
+            const saleStatus = creditAfter <= 0 ? 'paid' : 'completed';
+            const mainNotes = `Güzellik hizmet — toplam fatura (avans dahil) — ${aptId}${notes ? ` (${notes})` : ''}`;
             let mainSaleId: string | null = null;
             try {
                 const salesInsert = await postgres.query<{ id: string; fiche_no: string }>(
                     `INSERT INTO ${salesTable}
                         (id, firm_nr, period_nr, fiche_no, document_no, trcode, fiche_type,
                          customer_id, customer_name, total_net, total_vat, total_gross,
-                         total_discount, net_amount, currency, currency_rate,
+                         total_discount, net_amount,
+                         paid_amount, credit_amount,
+                         currency, currency_rate,
                          status, payment_method, notes, header_fields,
                          linked_appointment_id, deposit_sale_id, parent_sale_id, sale_group_id,
                          is_deposit, created_at, updated_at)
                      VALUES
                         (gen_random_uuid(), $1::text, $2::text,
                          $3::text, $3::text, $4::int, $5::text,
-                         $6::text::uuid, $7::text, $8::numeric, 0::numeric, $8::numeric,
-                         0::numeric, $8::numeric, 'IQD'::text, 1::numeric,
-                         'completed'::text, $9::text, $10::text, '{}'::jsonb,
-                         $11::text::uuid, $12::text::uuid, NULL, $13::text,
+                         $6::text::uuid, $7::text,
+                         $8::numeric, 0::numeric, $8::numeric,
+                         0::numeric, $8::numeric,
+                         $9::numeric, $10::numeric,
+                         'IQD'::text, 1::numeric,
+                         $11::text, $12::text, $13::text, '{}'::jsonb,
+                         $14::text::uuid, $15::text::uuid, NULL, $16::text,
                          false::boolean, NOW(), NOW())
                      ON CONFLICT (fiche_no) DO NOTHING
                      RETURNING id, fiche_no`,
@@ -10952,7 +10985,10 @@ export const beautyService = {
                         ficheType,
                         customerId,
                         customerName,
-                        amount,
+                        saleGross,
+                        paidAfter,
+                        creditAfter,
+                        saleStatus,
                         paymentMethodLabel,
                         mainNotes,
                         aptId,
@@ -10963,6 +10999,9 @@ export const beautyService = {
                 const insertedRows = (salesInsert.rows ?? []) as Array<{ id: string; fiche_no: string }>;
                 if (insertedRows[0]?.id) {
                     mainSaleId = insertedRows[0].id;
+                    // Hizmet toplam tutarı (satır) — yine tam hizmet fiyatı,
+                    // `amount` değil; böylece invoice preview / fatura PDF
+                    // 75.000'lik tek kalem gösterir.
                     await postgres.query(
                         `INSERT INTO ${saleItemsTable}
                             (id, invoice_id, product_id, quantity, unit_price, vat_rate,
@@ -10970,7 +11009,7 @@ export const beautyService = {
                          VALUES
                             (gen_random_uuid(), $1::text::uuid, NULL, 1, $2::numeric, 0,
                              0, 0, $2::numeric, 0, 'service'::text, $3::text)`,
-                        [mainSaleId, amount, serviceName],
+                        [mainSaleId, saleGross, serviceName],
                     );
                     // randevuya remainder_sale_id + fiche_no geri yaz
                     await postgres.query(
