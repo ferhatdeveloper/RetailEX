@@ -250,6 +250,16 @@ export function buildInvoiceLineScaleCte(): string {
       SUM(COALESCE(si.net_amount, 0)) AS lines_net
     FROM sale_items si
     GROUP BY si.invoice_id
+  ),
+  beauty_appt_bridge AS (
+    SELECT
+      s.fiche_no,
+      bs.linked_appointment_id,
+      a.total_price,
+      LOWER(TRIM(COALESCE(a.status::text, ''))) AS appt_status
+    FROM sales s
+    INNER JOIN beauty_sales bs ON bs.invoice_number = s.fiche_no
+    INNER JOIN beauty_appointments a ON a.id = bs.linked_appointment_id
   )
 `.trim();
 }
@@ -357,16 +367,54 @@ CASE WHEN ${SQL_IS_SALES_RETURN} THEN -1 ELSE 1 END
 /**
  * Dip indirim: satır net toplamı fatura net_amount’tan büyükse oransal ölçek.
  * Satır indirimi zaten si.net_amount içinde varsayılır.
+ *
+ * BEA-* (güzellik) satışları: fatura `net_amount`'ı yalnızca `remainder_paid_amount`
+ * (avans sonrası kalan ödeme) — `appointment.total_price` brüt hizmet tutarını
+ * içermez. Ölçekleme uygularsak ciro eksik (avans hariç) raporlanır.
+ * Bu nedenle BEA fişlerinde `appointment.total_price` brüt tutarı kullanılır.
  */
 export const LINE_REVENUE_EXPR = `
 (
-  COALESCE(si.net_amount, 0) * (
-    CASE
-      WHEN COALESCE(ils.lines_net, 0) <> 0
-        AND ABS(ils.lines_net - COALESCE(s.net_amount, 0)) > 0.009
-      THEN COALESCE(s.net_amount, 0) / NULLIF(ils.lines_net, 0)
-      ELSE 1
-    END
+  CASE
+    WHEN s.fiche_no LIKE 'BEA-%' THEN
+      COALESCE(ba_total.total_price, COALESCE(si.net_amount, 0))
+    ELSE
+      COALESCE(si.net_amount, 0) * (
+        CASE
+          WHEN COALESCE(ils.lines_net, 0) <> 0
+            AND ABS(ils.lines_net - COALESCE(s.net_amount, 0)) > 0.009
+          THEN COALESCE(s.net_amount, 0) / NULLIF(ils.lines_net, 0)
+          ELSE 1
+        END
+      )
+  END
+)
+`.trim();
+
+/**
+ * BEA-* (güzellik) satışı → randevu köprüsü (CTE üzerinden).
+ * `buildInvoiceLineScaleCte` içindeki `beauty_appt_bridge` CTE'sini kullanır.
+ * Sol birleştirme: BEA olmayan satışlarda `ba_total` NULL döner; sorgu
+ * yalnızca BEA fişlerinde `ba_total` üzerinden ciro ve filtre uygular.
+ */
+export const BEAUTY_APPOINTMENT_BRIDGE_JOIN = `
+  LEFT JOIN beauty_appt_bridge ba_total ON ba_total.fiche_no = s.fiche_no
+`.trim();
+
+/**
+ * BEA satışı randevuya bağlıysa ciroya dahil mi? (evet = brüt kâr sayılır)
+ * İptal/No-show/refunded randevulara bağlı BEA fişleri Hariç.
+ * BEA olmayan satışlar için TRUE.
+ */
+export const SQL_BEAUTY_APPT_INCLUDED = `
+(
+  s.fiche_no NOT LIKE 'BEA-%'
+  OR (
+    ba_total.linked_appointment_id IS NOT NULL
+    AND ba_total.appt_status NOT IN (
+      'cancelled', 'canceled', 'refunded', 'void',
+      'silindi', 'iptal', 'deleted', 'no_show'
+    )
   )
 )
 `.trim();

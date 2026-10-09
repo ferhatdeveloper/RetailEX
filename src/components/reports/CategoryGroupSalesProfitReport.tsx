@@ -28,6 +28,8 @@ import {
   displayItemCode,
   isUuidText,
   sqlLineKindFilter,
+  BEAUTY_APPOINTMENT_BRIDGE_JOIN,
+  SQL_BEAUTY_APPT_INCLUDED,
 } from '../../utils/lastPurchaseCostSql';
 import { toast } from 'sonner';
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
@@ -174,11 +176,13 @@ export function CategoryGroupSalesProfitReport() {
         LEFT JOIN product_groups pg ON pg.code = p.group_code
         ${LAST_PURCHASE_JOIN}
         ${INVOICE_LINE_SCALE_JOIN}
+        ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
         WHERE s.firm_nr = $1
           AND COALESCE(s.is_cancelled, false) = false
           AND ${SQL_COUNTABLE_SALE_STATUS}
           AND ${SQL_PL_SALES_OR_RETURN}
           AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+          AND ${SQL_BEAUTY_APPT_INCLUDED}
           ${lineKindSql}
           AND (s.date::timestamptz AT TIME ZONE 'UTC')::date >= $2::date
           AND (s.date::timestamptz AT TIME ZONE 'UTC')::date <= $3::date

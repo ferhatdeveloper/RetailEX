@@ -1939,7 +1939,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     { id: 'genel' as TabType, label: tm('general'), icon: Package },
     { id: 'fiyat' as TabType, label: tm('price'), icon: Calculator },
     { id: 'birim-barkod' as TabType, label: tm('unitBarcode'), icon: BarcodeIcon },
-    { id: 'varyant' as TabType, label: tm('variant'), icon: Tag },
+    // Varyant sekmesi UI’da gizli; altyapı (state, fonksiyonlar, render koşulu) ileride lazım olur diye korunur
     { id: 'muhasebe' as TabType, label: tm('accounting'), icon: FileText },
     { id: 'ek-bilgi' as TabType, label: tm('additionalInfo'), icon: Globe },
     { id: 'resim' as TabType, label: tm('image'), icon: ImageIcon },
@@ -1947,6 +1947,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
 
   useEffect(() => {
     if (activeTab === 'stok') setActiveTab('genel');
+    if (activeTab === 'varyant') setActiveTab('genel');
   }, [activeTab]);
 
   return (

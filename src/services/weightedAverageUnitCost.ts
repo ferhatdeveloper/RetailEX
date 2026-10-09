@@ -70,8 +70,36 @@ export async function fetchWeightedAverageUnitCosts(opts?: {
   const accById = new Map<string, WeightedAvgAccumulator>();
   const accByCode = new Map<string, WeightedAvgAccumulator>();
 
+  /**
+   * Dip indirim dahil satır tutarı (indirim sonrası).
+   * Fatura `total_net` (brüt) ile `net_amount` (indirim sonrası) farklıysa
+   * oranı satırlara dağıtırız; aksi halde satır net_amount kullanılır.
+   * `lastPurchaseCostSql.ts` içindeki `LINE_REVENUE_EXPR` + `inv_line_scale`
+   * kalıbıyla aynı mantık.
+   */
+  function scaledLineAmount(
+    rawLineNet: number,
+    invoiceTotalNet: number,
+    invoiceNet: number,
+  ): number {
+    const lineNet = Math.abs(Number(rawLineNet) || 0);
+    const total = Math.abs(Number(invoiceTotalNet) || 0);
+    const net = Math.abs(Number(invoiceNet) || 0);
+    if (!(total > 0) || !(lineNet > 0)) return lineNet;
+    if (Math.abs(total - net) <= 0.009) return lineNet; // dip indirim yok
+    return lineNet * (net / total);
+  }
+
   const ingestLine = (
-    inv: { fiche_type?: unknown; trcode?: unknown; date?: unknown; is_cancelled?: unknown; status?: unknown },
+    inv: {
+      fiche_type?: unknown;
+      trcode?: unknown;
+      date?: unknown;
+      is_cancelled?: unknown;
+      status?: unknown;
+      total_net?: unknown;
+      net_amount?: unknown;
+    },
     it: Record<string, unknown>,
     productIdByCode?: Map<string, string>,
   ) => {
@@ -89,7 +117,13 @@ export async function fetchWeightedAverageUnitCosts(opts?: {
 
     const qty = Number(it.quantity ?? 0) || 0;
     const unitCost = unitCostFromPurchaseLine(it);
-    const amount = Math.abs(Number(it.net_amount ?? 0)) || unitCost * Math.abs(qty);
+    // Dip indirim oranı uygulanmış satır tutarı (varsayılan: satır net_amount).
+    const lineAmount = scaledLineAmount(
+      Number(it.net_amount ?? 0) || 0,
+      Number(inv.total_net ?? 0) || 0,
+      Number(inv.net_amount ?? 0) || 0,
+    );
+    const amount = lineAmount || unitCost * Math.abs(qty);
     const isReturn = isPurchaseReturnRow(inv);
     const pid =
       resolveLineProductId(it) ||
@@ -110,7 +144,7 @@ export async function fetchWeightedAverageUnitCosts(opts?: {
         .get<Record<string, unknown>[]>(
           `/rex_${fn}_${pn}_sales`,
           {
-            select: 'id,date,fiche_type,is_cancelled,status,trcode',
+            select: 'id,date,fiche_type,is_cancelled,status,trcode,total_net,net_amount',
             order: 'date.asc',
             limit: '12000',
           },
@@ -165,6 +199,8 @@ export async function fetchWeightedAverageUnitCosts(opts?: {
         s.date,
         s.is_cancelled,
         s.status,
+        s.total_net,
+        s.net_amount AS invoice_net,
         si.product_id,
         si.item_code,
         si.item_type,

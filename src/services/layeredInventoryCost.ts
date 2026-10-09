@@ -28,6 +28,8 @@ import {
   displayItemCode,
   restServiceUnitCost,
   lineCostAmount,
+  BEAUTY_APPOINTMENT_BRIDGE_JOIN,
+  SQL_BEAUTY_APPT_INCLUDED,
 } from '../utils/lastPurchaseCostSql';
 import { localCalendarDateKey, localTodayDateKey, toSqlDateInputString } from '../utils/localCalendarDate';
 import {
@@ -452,9 +454,11 @@ async function loadCostProfitSaleLinesSql(opts: {
     ${SERVICE_COST_JOINS}
     ${LAST_PURCHASE_JOIN}
     ${INVOICE_LINE_SCALE_JOIN}
+    ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
     WHERE ${SQL_NOT_REMOVED_SALE}
       AND ${SQL_RETAIL_PRODUCT_SALE}
       AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+      AND ${SQL_BEAUTY_APPT_INCLUDED}
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) >= $2
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) <= $3
     GROUP BY 1, 2, 3, 4
@@ -939,9 +943,11 @@ async function loadCustomerCostProfitSaleLinesSql(opts: {
     ${SERVICE_COST_JOINS}
     ${LAST_PURCHASE_JOIN}
     ${INVOICE_LINE_SCALE_JOIN}
+    ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
     WHERE ${SQL_NOT_REMOVED_SALE}
       AND ${SQL_RETAIL_PRODUCT_SALE}
       AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+      AND ${SQL_BEAUTY_APPT_INCLUDED}
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) >= $2
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) <= $3
     GROUP BY 1, 2, 3, 4, 5, 6, 7

@@ -40,11 +40,18 @@ export interface InvoiceItemsDetailRow {
   customerId: string;
   customerName: string;
   productName: string;
+  /** Malzeme | Hizmet — hizmet raporundaki filtre/etiket kararları için */
+  itemType: string;
   quantity: number;
   unitPrice: number;
   discount: number;
+  /** Satır brüt (miktar × birim fiyat, indirim öncesi). */
+  lineGross: number;
+  /** Satır net (indirim sonrası); UI'da "Satır Toplam". */
   lineTotal: number;
+  /** Fatura brüt toplamı (total_net, avans hariç). */
   invoiceTotal: number;
+  /** Kalan bakiye = fatura_brüt - ödenen. */
   balance: number;
   phone: string;
 }
@@ -177,12 +184,11 @@ export function InvoiceItemsDetailReport() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const raw = await erpReportsAPI.getInvoiceItemsDetail({
+      const data = await erpReportsAPI.getInvoiceItemsDetail({
         from: dateRange.from,
         to: dateRange.to,
         cariIds: cariIds.length > 0 ? cariIds : undefined,
       });
-      const data = (Array.isArray(raw) ? raw : []) as unknown as InvoiceItemsDetailRow[];
       setRows(data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

@@ -20,6 +20,8 @@ import {
   LINE_REVENUE_EXPR,
   INVOICE_LINE_SCALE_JOIN,
   buildInvoiceLineScaleCte,
+  BEAUTY_APPOINTMENT_BRIDGE_JOIN,
+  SQL_BEAUTY_APPT_INCLUDED,
 } from '../../utils/lastPurchaseCostSql';
 
 export type ProductDocumentMoneyTotals = {
@@ -677,6 +679,7 @@ export const productAPI = {
            FROM sale_items si
            INNER JOIN sales s ON s.id = si.invoice_id
            ${INVOICE_LINE_SCALE_JOIN}
+           ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
            LEFT JOIN products p_by_code
              ON LPAD(TRIM(COALESCE(p_by_code.firm_nr, '')), 3, '0') = $1
              AND NULLIF(TRIM(p_by_code.code), '') IS NOT NULL
@@ -688,6 +691,7 @@ export const productAPI = {
            WHERE LPAD(TRIM(COALESCE(s.firm_nr, '')), 3, '0') = $1
              AND COALESCE(s.is_cancelled, false) = false
              AND ${SQL_COUNTABLE_SALE_STATUS}
+             AND ${SQL_BEAUTY_APPT_INCLUDED}
              AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
          ) resolved
          WHERE resolved.pid IS NOT NULL

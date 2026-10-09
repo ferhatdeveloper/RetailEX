@@ -25,6 +25,8 @@ import {
   SQL_SERVICE_CATEGORY_EXPR,
   displayItemCode,
   sqlLineKindFilter,
+  BEAUTY_APPOINTMENT_BRIDGE_JOIN,
+  SQL_BEAUTY_APPT_INCLUDED,
 } from '../../utils/lastPurchaseCostSql';
 import {
   ProductMovementHistoryModal,
@@ -145,7 +147,9 @@ export function ProfitLossReport() {
             LEFT JOIN categories leaf_cat ON leaf_cat.id = p.category_id
             ${LAST_PURCHASE_JOIN}
             ${INVOICE_LINE_SCALE_JOIN}
+            ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
             WHERE ${SALES_FILTER}
+              AND ${SQL_BEAUTY_APPT_INCLUDED}
             ${kindFilter}
             GROUP BY
               ${SQL_LINE_KIND_EXPR},
@@ -173,7 +177,9 @@ export function ProfitLossReport() {
             ${SERVICE_COST_JOINS}
             ${LAST_PURCHASE_JOIN}
             ${INVOICE_LINE_SCALE_JOIN}
+            ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
             WHERE ${SALES_FILTER}
+              AND ${SQL_BEAUTY_APPT_INCLUDED}
             ${kindFilter}
             GROUP BY (s.date::timestamptz AT TIME ZONE 'UTC')::date, ${SQL_LINE_KIND_EXPR}
             HAVING SUM(ABS(si.quantity)) > 0
@@ -198,7 +204,9 @@ export function ProfitLossReport() {
             ${SERVICE_COST_JOINS}
             ${LAST_PURCHASE_JOIN}
             ${INVOICE_LINE_SCALE_JOIN}
+            ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
             WHERE ${SALES_FILTER}
+              AND ${SQL_BEAUTY_APPT_INCLUDED}
             ${kindFilter}
             GROUP BY date_trunc('month', s.date::timestamptz AT TIME ZONE 'UTC'), ${SQL_LINE_KIND_EXPR}
             HAVING SUM(ABS(si.quantity)) > 0
@@ -223,7 +231,9 @@ export function ProfitLossReport() {
             ${SERVICE_COST_JOINS}
             ${LAST_PURCHASE_JOIN}
             ${INVOICE_LINE_SCALE_JOIN}
+            ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
             WHERE ${SALES_FILTER}
+              AND ${SQL_BEAUTY_APPT_INCLUDED}
             ${kindFilter}
             GROUP BY
               ${SQL_LINE_KIND_EXPR},

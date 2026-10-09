@@ -184,4 +184,20 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
     expect(classifyProductHistoryType('return_invoice', 2)).toBe('sales_return');
     expect(classifyProductHistoryType('return_invoice', 6)).toBe('purchase_return');
   });
+
+  // Bug 32 (2026-10-09 guzel DB) — BEA-* (güzellik) satışlarında
+  // ciro `appointment.total_price` üzerinden (avans dahil) sayılmalı;
+  // `no_show` / `cancelled` randevulara bağlı BEA fişleri Hariç tutulur.
+  it('BEA-* (güzellik) — ciro appointment.total_price üzerinden; bağlı olmayan veya iptal/no_show Hariç', async () => {
+    const { BEAUTY_APPOINTMENT_BRIDGE_JOIN, SQL_BEAUTY_APPT_INCLUDED, LINE_REVENUE_EXPR } = await import('../../utils/lastPurchaseCostSql');
+    expect(BEAUTY_APPOINTMENT_BRIDGE_JOIN).toContain('beauty_appt_bridge');
+    expect(BEAUTY_APPOINTMENT_BRIDGE_JOIN).toContain('ba_total');
+    expect(LINE_REVENUE_EXPR).toContain('fiche_no LIKE');
+    expect(LINE_REVENUE_EXPR).toContain("'BEA-%'");
+    expect(LINE_REVENUE_EXPR).toContain('ba_total.total_price');
+    expect(SQL_BEAUTY_APPT_INCLUDED).toContain('BEA-%');
+    expect(SQL_BEAUTY_APPT_INCLUDED).toContain("'no_show'");
+    expect(SQL_BEAUTY_APPT_INCLUDED).toContain("'cancelled'");
+    expect(SQL_BEAUTY_APPT_INCLUDED).toContain("'refunded'");
+  });
 });

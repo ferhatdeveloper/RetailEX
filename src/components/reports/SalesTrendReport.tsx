@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { TrendingUp } from 'lucide-react';
 import type { Sale } from '../../App';
 import { formatNumber } from '../../utils/formatNumber';

@@ -1934,7 +1934,41 @@ export function WarehouseStockReport() {
 
   const tableColumns = useMemo<ReportColumnTableCol<WarehouseStockRow>[]>(
     () => [
-      { key: 'warehouseCode', header: tm('erpColWarehouse'), size: 160 },
+      {
+        key: 'warehouseLabel',
+        header: tm('erpColWarehouse'),
+        size: 220,
+        cell: (r) => (
+          <div className="flex flex-col">
+            <span className="font-medium">{r.warehouseLabel || r.warehouseCode || '—'}</span>
+            {r.warehouseCode && r.warehouseLabel !== r.warehouseCode && (
+              <span className="text-xs opacity-60">{r.warehouseCode}</span>
+            )}
+          </div>
+        ),
+      },
+      {
+        key: 'productNames',
+        header: tm('erpColProduct') || 'Ürün',
+        size: 220,
+        cell: (r) => {
+          const names = r.productNames || [];
+          const codes = r.productCodes || [];
+          if (!names.length) return <span className="opacity-60">—</span>;
+          const head = names.slice(0, 2);
+          const more = names.length - head.length;
+          return (
+            <div className="flex flex-col">
+              {head.map((nm, i) => (
+                <span key={`${nm}-${i}`} className="text-sm">
+                  {codes[i] ? `${codes[i]} — ${nm}` : nm}
+                </span>
+              ))}
+              {more > 0 && <span className="text-xs opacity-60">+{more} ürün</span>}
+            </div>
+          );
+        },
+      },
       {
         key: 'skuCount',
         header: tm('erpColSkuCount'),
@@ -1992,9 +2026,12 @@ export function WarehouseStockReport() {
       onExport={() =>
         exportCsv(
           'depo_stok',
-          ['Depo', 'SKU', 'Miktar', 'Değer', 'Kritik'],
+          ['Depo', 'Ürün', 'SKU', 'Miktar', 'Değer', 'Kritik'],
           rows.map((r) => [
-            r.warehouseCode,
+            r.warehouseLabel || r.warehouseCode,
+            (r.productCodes?.[0] && r.productNames?.[0]
+              ? `${r.productCodes[0]} — ${r.productNames[0]}`
+              : (r.productNames?.[0] || '')),
             String(r.skuCount),
             String(r.totalQty),
             String(r.totalValue),

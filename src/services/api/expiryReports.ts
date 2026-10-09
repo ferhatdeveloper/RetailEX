@@ -10,6 +10,10 @@ import {
 import { looksLikeUuid } from '../../utils/pgUuid';
 import { PURCHASE_ONLY_TRCODES } from '../../utils/lastPurchaseCostSql';
 import {
+  fetchWeightedAverageUnitCosts,
+  lookupWeightedAvgUnitCost,
+} from '../weightedAverageUnitCost';
+import {
   buildExpiryPurchaseReturnInvoice,
   canReturnExpiringPurchase,
   clampExpiryReturnQty,
@@ -54,6 +58,14 @@ export interface ExpiringPurchaseItem {
   trcode?: number;
   ficheType?: string;
   paymentMethod?: string;
+  /**
+   * Ürünün tüm aktif alış faturalarının ağırlıklı ortalama birim maliyeti
+   * (SUM(net_amount) / SUM(quantity), iade düşülmüş). Fatura güncellendiğinde
+   * anında yenilenir; snapshot değil. Faturalardan herhangi birinin
+   * `expiry_date`'i olmasa da dahil edilir (stok değerinin gerçek
+   * maliyetini yansıtır). Boşsa fallback olarak `unitPrice` kullanılır.
+   */
+  weightedAvgUnitCost?: number;
 }
 
 /** Logo alış trcode — invoices.TRCODES_BY_INVOICE_CATEGORY.Alis + alış iade (6) */
@@ -336,6 +348,30 @@ export const expiryReportsAPI = {
     const inRange = merged.filter((row) => isExpiryYmdInRange(row.expiryDate, bounds));
     const stockByProductKey = await fetchProductStockMap(fn, pn, inRange);
     const aligned = finalizeExpiryReportQuantities(inRange, stockByProductKey, lotQtyByKey);
+    // SKT raporundaki "Birim Maliyet" snapshot'ı (sale_items.unit_price veya
+    // products.cost) fatura güncellemelerinde eski kalıyordu. Bunun yerine
+    // ürünün tüm aktif alışlarının ağırlıklı ortalama net maliyetini
+    // (SUM(net_amount) / SUM(quantity), iade düşülmüş) kullanıyoruz —
+    // fatura indirimi silindiğinde/eklendiğinde anında yenilenir.
+    try {
+      const wavg = await fetchWeightedAverageUnitCosts({
+        firmNr: fn,
+        periodNr: pn,
+      });
+      if (wavg.byProductId.size || wavg.byCode.size) {
+        for (let i = 0; i < aligned.length; i++) {
+          const cost = lookupWeightedAvgUnitCost(wavg, {
+            id: aligned[i].productId,
+            code: aligned[i].itemCode,
+          });
+          if (cost > 0) {
+            aligned[i] = { ...aligned[i], weightedAvgUnitCost: cost };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[expiryReports] ağırlıklı ortalama maliyet okunamadı:', e);
+    }
     aligned.sort((a, b) => a.expiryDate.localeCompare(b.expiryDate) || a.itemName.localeCompare(b.itemName, 'tr'));
     return aligned;
   },

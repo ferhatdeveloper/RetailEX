@@ -42,6 +42,8 @@ import {
   SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
   unitCostFromPurchaseLine,
+  BEAUTY_APPOINTMENT_BRIDGE_JOIN,
+  SQL_BEAUTY_APPT_INCLUDED,
 } from '../../utils/lastPurchaseCostSql';
 import {
   productCardUnitCost,
@@ -389,7 +391,14 @@ export interface CriticalStockRow {
 }
 
 export interface WarehouseStockRow {
+  /** Depo kodu (string). Boşsa tek aktif deponun kodu ile doldurulur. */
   warehouseCode: string;
+  /** Görünen depo etiketi: "Kod — Ad" veya sadece kod/ad (UI için). */
+  warehouseLabel: string;
+  /** Bu depoda stokta olan ürün adları (özet). SKU adedi 1 ise "SABUN" görünür. */
+  productNames: string[];
+  /** Bu depoda stokta olan ürün kodları (özet). SKU adedi 1 ise "0000001". */
+  productCodes: string[];
   skuCount: number;
   totalQty: number;
   totalValue: number;
@@ -1589,12 +1598,12 @@ export const erpReportsAPI = {
       const { postgrest } = await import('./postgrestClient');
       const fn = firmNr;
       const pn = padPeriod();
-      const [sales, items, products, services, beautyServices, consumables] = await Promise.all([
+      const [sales, items, products, services, beautyServices, consumables, beautySales, beautyAppointments] = await Promise.all([
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_sales`,
             {
-              select: 'id,date,fiche_type,is_cancelled,status,trcode,created_at,net_amount,is_deposit,linked_appointment_id',
+              select: 'id,date,fiche_no,fiche_type,is_cancelled,status,trcode,created_at,net_amount,is_deposit,linked_appointment_id',
               order: 'date.desc',
               limit: '8000',
             },
@@ -1637,6 +1646,20 @@ export const erpReportsAPI = {
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_beauty_service_consumables`,
             { select: 'service_id,product_id,qty_per_service', limit: '12000' },
+            { schema: 'beauty' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/rex_${fn}_${pn}_beauty_sales`,
+            { select: 'invoice_number,linked_appointment_id', limit: '8000' },
+            { schema: 'beauty' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/rex_${fn}_${pn}_beauty_appointments`,
+            { select: 'id,status,total_price', limit: '8000' },
             { schema: 'beauty' },
           )
           .catch(() => [] as Record<string, unknown>[]),
@@ -1729,6 +1752,32 @@ export const erpReportsAPI = {
         );
       }
 
+      // BEA-* (güzellik) randevu köprüsü: fiche_no → { total_price, status }
+      // Bug 32 — beauty_sales üzerinden appointment'a bağlanır (sales.linked_appointment_id NULL).
+      // No-show / iptal randevulara bağlı BEA fişleri Hariç (ciro yansımaz, sadece kasa etkilenir).
+      const apptStatusById = new Map<string, string>();
+      const apptTotalPriceById = new Map<string, number>();
+      for (const a of beautyAppointments || []) {
+        const id = String(a.id || '').trim();
+        if (!id) continue;
+        apptStatusById.set(id, String(a.status || '').toLowerCase().trim());
+        apptTotalPriceById.set(id, Number(a.total_price ?? 0) || 0);
+      }
+      const beautyApptByFiche = new Map<string, { totalPrice: number; status: string }>();
+      for (const bs of beautySales || []) {
+        const ficheNo = String(bs.invoice_number || '').trim();
+        const apptId = String(bs.linked_appointment_id || '').trim();
+        if (!ficheNo || !apptId) continue;
+        beautyApptByFiche.set(ficheNo, {
+          totalPrice: apptTotalPriceById.get(apptId) ?? 0,
+          status: apptStatusById.get(apptId) ?? '',
+        });
+      }
+      const BEA_EXCLUDED_STATUSES = new Set([
+        'cancelled', 'canceled', 'refunded', 'void',
+        'silindi', 'iptal', 'deleted', 'no_show',
+      ]);
+
       const saleOk = new Set(
         (sales || [])
           .filter((s) => {
@@ -1750,6 +1799,16 @@ export const erpReportsAPI = {
                 'tamamlandi', 'tamamlandı', 'paid', 'closed',
               ]);
               if (!completed.has(st)) return false;
+            }
+            // Bug 32 (2026-10-09 guzel DB) — BEA-* (güzellik) satışı randevuya
+            // bağlıysa appointment status kontrolü. No-show / iptal
+            // randevulara bağlı BEA fişleri Hariç (ciro yansımaz, sadece
+            // kasa'ya gider).
+            const ficheNo = String(s.fiche_no || '').trim();
+            if (ficheNo.startsWith('BEA-')) {
+              const appt = beautyApptByFiche.get(ficheNo);
+              if (!appt) return false; // bağlantı yok → brüt kâr'a katma
+              if (BEA_EXCLUDED_STATUSES.has(appt.status)) return false;
             }
             return true;
           })
@@ -1785,13 +1844,24 @@ export const erpReportsAPI = {
           unitPrice,
         );
         const qty = sgn * absQty;
+        // Bug 32 (2026-10-09 guzel DB) — BEA-* (güzellik) satışlarında
+        // `sales.net_amount` yalnızca `remainder_paid_amount` (avans sonrası
+        // kalan ödeme) — brüt hizmet tutarı (`appointment.total_price`)
+        // içermez. Bu yüzden ciro = appointment.total_price (avans dahil).
+        const ficheNo = String(inv.fiche_no || '').trim();
+        const isBeautyFiche = ficheNo.startsWith('BEA-');
+        const apptTotal = isBeautyFiche
+          ? (beautyApptByFiche.get(ficheNo)?.totalPrice ?? 0)
+          : 0;
         const revenue =
           sgn *
-          scaleLineRevenueToInvoiceNet(
-            rawLineNet,
-            linesNetByInvoice.get(String(it.invoice_id)) || 0,
-            Number(inv.net_amount ?? 0) || 0,
-          );
+          (apptTotal > 0
+            ? apptTotal
+            : scaleLineRevenueToInvoiceNet(
+                rawLineNet,
+                linesNetByInvoice.get(String(it.invoice_id)) || 0,
+                Number(inv.net_amount ?? 0) || 0,
+              ));
         const resolvedPid =
           pid ||
           (String(it.item_code || '').trim() &&
@@ -1887,11 +1957,13 @@ export const erpReportsAPI = {
       ${SERVICE_COST_JOINS}
       ${LAST_PURCHASE_JOIN}
       ${INVOICE_LINE_SCALE_JOIN}
+      ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
       WHERE s.firm_nr = $1
         AND COALESCE(s.is_cancelled, false) = false
         AND ${SQL_COUNTABLE_SALE_STATUS}
         AND ${SQL_PL_SALES_OR_RETURN}
         AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+        AND ${SQL_BEAUTY_APPT_INCLUDED}
         ${lineKindSql}
         AND ${sqlUtcDate('s.date')} >= $2::date
         AND ${sqlUtcDate('s.date')} <= $3::date
@@ -2187,19 +2259,41 @@ export const erpReportsAPI = {
   /**
    * Depo Stok Özeti — depo koduna göre SKU / miktar / stok değeri.
    * Değer: Σ(stok × birim maliyet); birim = ağırlıklı ort. alış → kart cost/purchase_price
-   * (satış fiyatı değil). warehouse_code boşsa grup '—' (filtre değil, eksik depo etiketi).
+   * (satış fiyatı değil). warehouse_code boşsa tek aktif deponun kodu/adı ile doldurulur
+   * (ürün kartında depo alanı set edilmemişse tek depo varsayılır).
    */
   async getWarehouseStock(): Promise<WarehouseStockRow[]> {
     const avgMaps = await loadStockValuationUnitCostMaps();
+    const firmNr = padFirm();
+
+    // Tek aktif depo (boş warehouse_code fallback): kod + ad
+    let defaultWhCode = '';
+    let defaultWhName = '';
+    try {
+      const wh = await postgres.query<{ code: string; name: string }>(
+        `SELECT code, name FROM stores WHERE COALESCE(is_active, true) = true ORDER BY code LIMIT 1`,
+        [],
+      );
+      defaultWhCode = String(wh.rows?.[0]?.code ?? '').trim();
+      defaultWhName = String(wh.rows?.[0]?.name ?? '').trim();
+    } catch {
+      /* yoksay — fallback '—' kullanılır */
+    }
+
+    /** Boş warehouse_code için fallback etiket: "ST_01 — Merkez Depo" */
+    const fallbackLabel = defaultWhCode
+      ? defaultWhName
+        ? `${defaultWhCode} — ${defaultWhName}`
+        : defaultWhCode
+      : '—';
 
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
-      const fn = padFirm();
       const products = await postgrest
         .get<Record<string, unknown>[]>(
-          `/rex_${fn}_products`,
+          `/rex_${firmNr}_products`,
           {
-            select: 'id,code,stock,cost,purchase_price,warehouse_code,min_stock,critical_stock,is_active',
+            select: 'id,code,name,stock,cost,purchase_price,warehouse_code,min_stock,critical_stock,is_active',
             is_active: 'eq.true',
             limit: '5000',
           },
@@ -2208,7 +2302,8 @@ export const erpReportsAPI = {
         .catch(() => [] as Record<string, unknown>[]);
       const map = new Map<string, WarehouseStockRow>();
       for (const p of products || []) {
-        const wh = String(p.warehouse_code || '').trim() || '—';
+        const rawWh = String(p.warehouse_code || '').trim();
+        const wh = rawWh || defaultWhCode || '—';
         const stock = Number(p.stock ?? 0);
         const minStock = Number(p.min_stock ?? 0);
         const criticalStock = Number(p.critical_stock ?? 0);
@@ -2220,11 +2315,21 @@ export const erpReportsAPI = {
         });
         const cur = map.get(wh) || {
           warehouseCode: wh,
+          warehouseLabel: rawWh ? wh : fallbackLabel,
+          productNames: [],
+          productCodes: [],
           skuCount: 0,
           totalQty: 0,
           totalValue: 0,
           criticalCount: 0,
         };
+        if (stock > 0 || minStock > 0 || criticalStock > 0) {
+          // yalnızca görünür ürünler (stok > 0 veya kritik eşikle izlenen)
+          const nm = String(p.name ?? '').trim();
+          const cd = String(p.code ?? '').trim();
+          if (nm) cur.productNames.push(nm);
+          if (cd) cur.productCodes.push(cd);
+        }
         cur.skuCount += 1;
         cur.totalQty += stock;
         cur.totalValue += stock * unitCost;
@@ -2245,7 +2350,8 @@ export const erpReportsAPI = {
       SELECT
         p.id::text AS product_id,
         COALESCE(p.code, '') AS product_code,
-        COALESCE(NULLIF(TRIM(p.warehouse_code), ''), '—') AS warehouse_code,
+        COALESCE(NULLIF(TRIM(p.name), ''), '') AS product_name,
+        COALESCE(NULLIF(TRIM(p.warehouse_code), ''), '') AS warehouse_code,
         COALESCE(p.stock, 0) AS stock,
         COALESCE(p.min_stock, 0) AS min_stock,
         COALESCE(p.critical_stock, 0) AS critical_stock,
@@ -2254,12 +2360,14 @@ export const erpReportsAPI = {
         ${SQL_PRODUCT_CARD_UNIT_COST} AS unit_cost
       FROM products p
       WHERE COALESCE(p.is_active, true) = true
+        AND COALESCE(p.stock, 0) <> 0
       `,
       [],
     );
     const map = new Map<string, WarehouseStockRow>();
     for (const r of rows || []) {
-      const wh = String(r.warehouse_code ?? '—');
+      const rawWh = String(r.warehouse_code ?? '').trim();
+      const wh = rawWh || defaultWhCode || '—';
       const stock = Number(r.stock ?? 0);
       const minStock = Number(r.min_stock ?? 0);
       const criticalStock = Number(r.critical_stock ?? 0);
@@ -2275,11 +2383,18 @@ export const erpReportsAPI = {
       );
       const cur = map.get(wh) || {
         warehouseCode: wh,
+        warehouseLabel: rawWh ? wh : fallbackLabel,
+        productNames: [],
+        productCodes: [],
         skuCount: 0,
         totalQty: 0,
         totalValue: 0,
         criticalCount: 0,
       };
+      const nm = String(r.product_name ?? '').trim();
+      const cd = String(r.product_code ?? '').trim();
+      if (nm) cur.productNames.push(nm);
+      if (cd) cur.productCodes.push(cd);
       cur.skuCount += 1;
       cur.totalQty += stock;
       cur.totalValue += stock * unitCost;
@@ -2838,7 +2953,7 @@ export const erpReportsAPI = {
     search?: string;
     priceMin?: number;
     priceMax?: number;
-  }): Promise<Record<string, unknown>[]> {
+  }): Promise<InvoiceItemsDetailRow[]> {
     const from = String(params.from ?? '').slice(0, 10);
     const to = String(params.to ?? '').slice(0, 10);
     if (!from || !to) return [];
@@ -2882,15 +2997,20 @@ export const erpReportsAPI = {
         si.id::text AS id,
         ${sqlUtcDate('s.date')}::text AS date,
         COALESCE(s.fiche_no, '') AS invoice_no,
+        COALESCE(s.customer_id::text, '') AS customer_id,
         COALESCE(c.name, s.customer_name, '') AS customer,
         COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, '') AS product,
+        COALESCE(NULLIF(TRIM(si.item_type), ''), '') AS item_type,
         COALESCE(si.quantity, 0) AS qty,
         COALESCE(si.unit_price, 0) AS unit_price,
         COALESCE(si.discount_amount, 0) AS discount,
+        COALESCE(si.total_amount, 0) AS line_gross,
         COALESCE(si.net_amount, 0) AS line_total,
-        COALESCE(s.net_amount, 0) AS invoice_total,
-        COALESCE(c.phone, '') AS phone,
-        COALESCE(s.net_amount, 0) - COALESCE(coll.paid, 0) AS balance
+        -- Fatura toplamı: brüt hizmet/ürün değeri (avans/ödemeler hariç).
+        COALESCE(s.total_net, 0) AS invoice_total,
+        -- Kalan bakiye: brüt hizmet/ürün değeri - ödenen.
+        COALESCE(s.total_net, 0) - COALESCE(coll.paid, 0) AS balance,
+        COALESCE(c.phone, '') AS phone
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.invoice_id
       LEFT JOIN customers c ON c.id = s.customer_id
@@ -2903,15 +3023,21 @@ export const erpReportsAPI = {
       values,
     );
 
+    // Frontend `InvoiceItemsDetailRow` tipi camelCase bekler; backend SQL snake_case
+    // döndürür. Burada iki katman arasında tip uyumunu koruyoruz — aksi halde
+    // ürün adı boş, miktar 0 görünür (UI sızdıran alanlar).
     return (rows || []).map((r: any) => ({
       id: String(r.id ?? ''),
       date: String(r.date ?? '').slice(0, 10),
       invoiceNo: String(r.invoice_no ?? ''),
-      customer: String(r.customer ?? ''),
-      product: String(r.product ?? ''),
-      qty: Number(r.qty ?? 0),
+      customerId: String(r.customer_id ?? ''),
+      customerName: String(r.customer ?? ''),
+      productName: String(r.product ?? ''),
+      itemType: String(r.item_type ?? ''),
+      quantity: Number(r.qty ?? 0),
       unitPrice: Number(r.unit_price ?? 0),
       discount: Number(r.discount ?? 0),
+      lineGross: Number(r.line_gross ?? 0),
       lineTotal: Number(r.line_total ?? 0),
       invoiceTotal: Number(r.invoice_total ?? 0),
       balance: Number(r.balance ?? 0),
