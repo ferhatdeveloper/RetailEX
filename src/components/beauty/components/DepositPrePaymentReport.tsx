@@ -41,6 +41,27 @@ function computeKalan(r: Row): number {
     return Math.max(0, total - deposit - remainder);
 }
 
+// 10.10.2026 — "Alınan Ödeme" helper'ı.
+// Hizmet tamamlandığında (completed/closed/cancelled/no_show) fiilen
+// tahsil edilen tutar = total - deposit (peşinat zaten tahsil edildiği
+// için geriye kalan bakiye de tahsil kabul edilir). Hizmet henüz
+// tamamlanmadıysa Sadece Peşinat vardır → Alınan = 0 (peşinat ayrı
+// kolonda). DB view `remainder_paid_amount` her zaman 0 olabiliyor
+// (DB tarafında payment_state sadece deposit_only olduğunda remainder
+// henüz kaydedilmediği için); bu yüzden status-aware hesap şart.
+function computeTakenPayment(r: Row): number {
+    const total = Number(r.total_price) || 0;
+    const deposit = Number(r.deposit_amount) || 0;
+    const status = String(r.status ?? '').trim().toLowerCase();
+    if (status === 'completed' || status === 'closed') return Math.max(0, total - deposit);
+    if (status === 'cancelled' || status === 'no_show') return 0;
+    // Sadece Peşinat (deposit_only / scheduled / partial vs.) → Alınan = 0
+    // çünkü kalan ödeme henüz tahsil edilmedi (DB remainder genelde 0).
+    // DB remainder > 0 ise (ör. partial ödeme yapıldıysa) onu ekle.
+    const remainder = Number(r.remainder_paid_amount) || 0;
+    return Math.max(0, remainder);
+}
+
 const PAYMENT_STATE_LABEL_KEY: Record<string, string> = {
     unpaid: 'bPaymentStateUnpaid',
     deposit_only: 'bPaymentStateDepositOnly',
@@ -154,9 +175,12 @@ export function DepositPrePaymentReport() {
             },
             {
                 key: 'received_payment',
-                // 07.10.2026 — "Alınan ödeme" kolonu: hizmet verildikten sonra fiilen tahsil edilen tutar.
-                // Formül: total_price - outstanding_amount. Hizmet henüz verilmediyse (outstanding > 0)
-                // bu kolon 0 olur; verildiyse total_price'e eşit olur.
+                // 10.10.2026 — "Alınan ödeme" kolonu: hizmet verildiğinde fiilen tahsil edilen tutar.
+                // Formül: completed/closed → total - deposit (kalan bakiye tahsil kabul edilir);
+                // Sadece Peşinat aşamasında (scheduled/deposit_only/partial) → remainder_paid_amount.
+                // DB view `remainder_paid_amount` her zaman 0 olabiliyor; bu yüzden status-aware
+                // `computeTakenPayment` helper'ı tek kaynak. Kullanıcı şikâyeti: "Alınan Ödeme boş"
+                // — hücre 0 döndüğünde bile görünür kalmalı.
                 header: tm('bReceivedPayment') || 'Alınan Ödeme',
                 type: 'number',
                 align: 'right',
@@ -164,9 +188,7 @@ export function DepositPrePaymentReport() {
                 footerSum: true,
                 footerFormat: (n) => fmt(n),
                 cell: (r) => {
-                    // Kaynak: view pas.remainder_paid_amount (DB tarafında deposit + remainder >= total ise paid olur).
-                    // Kullanıcı talebi: "odeme tutarini alinca guncellemeli toplam hizmet avans odenen kalan"
-                    const received = Math.max(0, Number(r.remainder_paid_amount ?? 0));
+                    const received = computeTakenPayment(r);
                     const cls =
                         received > 0.005
                             ? 'font-semibold text-emerald-700 tabular-nums'
@@ -287,7 +309,7 @@ export function DepositPrePaymentReport() {
                             columns={columns}
                             height={520}
                             footerLabel={tm('rprTotal') || 'Toplam'}
-                            storageNamespace="beauty-deposit-prepayment"
+                            storageNamespace="beauty-deposit-prepayment-v2"
                             // 07.10.2026 — Rezervasyon Tutarı gruplaması (fiş bazlı):
                             // aynı BEA-* fişine ait birden çok hizmet/paket/ürün satırı
                             // tek grup altında toplanır; grup altında deposit + paid + kalan
@@ -303,7 +325,7 @@ export function DepositPrePaymentReport() {
                                 },
                                 {
                                     columnId: 'received_payment',
-                                    getValue: (r) => Math.max(0, Number(r.remainder_paid_amount ?? 0)),
+                                    getValue: (r) => computeTakenPayment(r),
                                     format: (sum) => (
                                         <span className={sum > 0.005 ? 'text-emerald-700 font-semibold' : 'text-slate-500'}>
                                             {fmt(sum)}
