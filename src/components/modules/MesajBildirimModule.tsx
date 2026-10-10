@@ -71,6 +71,7 @@ import {
   filterTemplatesByLang,
   type MessageTemplateRow,
 } from '../../services/messaging/messageTemplateService';
+import { MessageTemplateEditorModal } from './MessageTemplateEditorModal';
 import {
   MsgAutomationPanel,
   MsgQueueLogPanel,
@@ -159,6 +160,7 @@ export function MesajBildirimModule({
   const [selectedCustomTplId, setSelectedCustomTplId] = useState('');
   const [upcomingDays, setUpcomingDays] = useState(7);
   const [retryingFailed, setRetryingFailed] = useState(false);
+  const [tplEditorOpen, setTplEditorOpen] = useState(false);
 
   const panel = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const inputCls = darkMode
@@ -1195,9 +1197,10 @@ export function MesajBildirimModule({
               <div>
                 <label className={labelCls}>{tm('msgNotifyFreeText')}</label>
                 <div className="mb-2">
-                  <label className={labelCls}>{tm('msgNotifyCustomTplPick')}</label>
+<label className={labelCls}>{tm('msgNotifyCustomTplPick')}</label>
+                <div className="flex gap-2 items-stretch">
                   <select
-                    className={inputCls}
+                    className={`${inputCls} flex-1`}
                     value={selectedCustomTplId}
                     onChange={(e) => {
                       const id = e.target.value;
@@ -1241,12 +1244,27 @@ export function MesajBildirimModule({
                         {tm('msgNotifyCustomTplNoLang')}
                       </option>
                     )}
-                  </select>
-                  {customTemplates.length > 0 && langFilteredCustomTemplates.length === 0 ? (
-                    <p className="text-[11px] text-amber-600 mt-1">
-                      {tm('msgNotifyCustomTplNoLangHint')}
-                    </p>
-                  ) : null}
+</select>
+                  <button
+                    type="button"
+                    onClick={() => setTplEditorOpen(true)}
+                    title={tm('msgTplEditorTitle')}
+                    aria-label={tm('msgTplEditorTitle')}
+                    className={`inline-flex items-center justify-center gap-1 rounded-lg border px-3 py-2 text-sm font-semibold shrink-0 ${
+                      darkMode
+                        ? 'border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700'
+                        : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                    }`}
+                  >
+                    <FileText className="h-4 w-4" />
+                    <span className="hidden sm:inline">{tm('msgTplEditorTitle')}</span>
+                  </button>
+                </div>
+                {customTemplates.length > 0 && langFilteredCustomTemplates.length === 0 ? (
+                  <p className="text-[11px] text-amber-600 mt-1">
+                    {tm('msgNotifyCustomTplNoLangHint')}
+                  </p>
+                ) : null}
                 </div>
                 <textarea
                   dir={messageLang === 'ar' || messageLang === 'ku' ? 'rtl' : 'ltr'}
@@ -1304,6 +1322,13 @@ export function MesajBildirimModule({
         onRebuildItems={rebuildBulkPreviewItems}
         initialMessageLang={messageLang}
         missingItems={bulkPreviewMissing}
+      />
+      <MessageTemplateEditorModal
+        open={tplEditorOpen}
+        templates={customTemplates}
+        messageLang={messageLang}
+        onChanged={() => void loadAll()}
+        onClose={() => setTplEditorOpen(false)}
       />
     </div>
   );

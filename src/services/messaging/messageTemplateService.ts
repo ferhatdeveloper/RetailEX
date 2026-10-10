@@ -196,6 +196,19 @@ export function filterTemplatesByLang(
   });
 }
 
+/** Migration 207 ile oluşturulan 3 seed şablonun sabit ID listesi.
+ *  Bu şablonlar kullanıcı tarafından **silinemez** (sistem şablonu). */
+export const SYSTEM_TEMPLATE_IDS: ReadonlySet<string> = new Set([
+  'c1000001-bbbb-4bbb-8bbb-000000000001',
+  'c1000001-bbbb-4bbb-8bbb-000000000002',
+  'c1000001-bbbb-4bbb-8bbb-000000000003',
+]);
+
+export function isSystemTemplate(row: MessageTemplateRow | { id: string } | null | undefined): boolean {
+  if (!row || !row.id) return false;
+  return SYSTEM_TEMPLATE_IDS.has(row.id);
+}
+
 export const messageTemplateService = {
   async list(activeOnly = false): Promise<MessageTemplateRow[]> {
     const fn = firmNrRow();
@@ -383,3 +396,97 @@ export const messageTemplateService = {
     await postgres.query(`DELETE FROM ${t} WHERE id = $1`, [id], { firmNr: fn });
   },
 };
+
+/**
+ * Şablon düzenleme modalı için isim-odaklı CRUD wrapper'ları.
+ * Mevcut `messageTemplateService.create/update/remove` çağrılarını
+ * 4-dil (tr/en/ar/ku) tek-nesne şemasıyla sarmalar.
+ */
+
+export interface TemplateInput {
+  name: string;
+  category?: MessageTemplateCategory;
+  /** body_<lang>: 4 dilde içerik metinleri (opsiyonel, en az biri zorunlu) */
+  body_text_tr?: string | null;
+  body_text_en?: string | null;
+  body_text_ar?: string | null;
+  body_text_ku?: string | null;
+  /** headline_<lang>: opsiyonel başlıklar */
+  headline_tr?: string | null;
+  headline_en?: string | null;
+  headline_ar?: string | null;
+  headline_ku?: string | null;
+  /** Taslak olarak kaydetmek için false; varsayılan true */
+  is_active?: boolean;
+}
+
+/** Yeni şablon oluşturur; oluşturulan kaydın id'sini döndürür. */
+export async function createMessageTemplate(input: TemplateInput): Promise<{ id: string }> {
+  const translations = {
+    tr: input.body_text_tr ?? '',
+    en: input.body_text_en ?? '',
+    ar: input.body_text_ar ?? '',
+    ku: input.body_text_ku ?? '',
+  };
+  const headlines = {
+    tr: input.headline_tr ?? '',
+    en: input.headline_en ?? '',
+    ar: input.headline_ar ?? '',
+    ku: input.headline_ku ?? '',
+  };
+  const created = await messageTemplateService.create({
+    name: input.name,
+    translations,
+    headlines,
+    category: input.category ?? 'general',
+    is_active: input.is_active !== false,
+  });
+  return { id: created.id };
+}
+
+/** Mevcut şablonun bir kısmını günceller — verilmeyen alanlar korunur. */
+export async function updateMessageTemplate(
+  id: string,
+  patch: Partial<TemplateInput>,
+): Promise<void> {
+  const translations: Partial<MessageTemplateTranslations> | undefined =
+    patch.body_text_tr !== undefined ||
+    patch.body_text_en !== undefined ||
+    patch.body_text_ar !== undefined ||
+    patch.body_text_ku !== undefined
+      ? {
+          ...(patch.body_text_tr !== undefined ? { tr: patch.body_text_tr } : {}),
+          ...(patch.body_text_en !== undefined ? { en: patch.body_text_en } : {}),
+          ...(patch.body_text_ar !== undefined ? { ar: patch.body_text_ar } : {}),
+          ...(patch.body_text_ku !== undefined ? { ku: patch.body_text_ku } : {}),
+        }
+      : undefined;
+  const headlines: Partial<MessageTemplateTranslations> | undefined =
+    patch.headline_tr !== undefined ||
+    patch.headline_en !== undefined ||
+    patch.headline_ar !== undefined ||
+    patch.headline_ku !== undefined
+      ? {
+          ...(patch.headline_tr !== undefined ? { tr: patch.headline_tr } : {}),
+          ...(patch.headline_en !== undefined ? { en: patch.headline_en } : {}),
+          ...(patch.headline_ar !== undefined ? { ar: patch.headline_ar } : {}),
+          ...(patch.headline_ku !== undefined ? { ku: patch.headline_ku } : {}),
+        }
+      : undefined;
+
+  await messageTemplateService.update(id, {
+    ...(patch.name !== undefined ? { name: patch.name } : {}),
+    ...(patch.category !== undefined ? { category: patch.category } : {}),
+    ...(patch.is_active !== undefined ? { is_active: !!patch.is_active } : {}),
+    ...(translations ? { translations } : {}),
+    ...(headlines ? { headlines } : {}),
+  });
+}
+
+/** Şablonu siler — sistem şablonları için Error fırlatır. */
+export async function deleteMessageTemplate(id: string): Promise<void> {
+  if (SYSTEM_TEMPLATE_IDS.has(id)) {
+    throw new Error('Bu şablon sistem şablonudur ve silinemez.');
+  }
+  await messageTemplateService.remove(id);
+}

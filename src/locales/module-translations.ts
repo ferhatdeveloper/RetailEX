@@ -15774,9 +15774,116 @@ export const pdksRangeTranslations = {
   },
 };
 
+/** Mesaj şablonu düzenleme modalı (Şablonları yönet). */
+export const messageTemplateEditorTranslations: Record<string, { tr: string; en: string; ar: string; ku: string }> = {
+  msgTplEditorTitle: {
+    tr: 'Şablonları yönet',
+    en: 'Manage templates',
+    ar: 'إدارة القوالب',
+    ku: 'بەڕێوەبردنی قاڵبەکان',
+  },
+  msgTplEditorSubtitle: {
+    tr: 'Hazır şablonları 4 dilde düzenleyin, yenilerini ekleyin veya silin.',
+    en: 'Edit saved templates across 4 languages, add new ones, or delete them.',
+    ar: 'حرر القوالب المحفوظة بأربع لغات، أضف قوالب جديدة أو احذفها.',
+    ku: 'قاڵبە پاشەکەوتکراوەکان لە ٤ زمان دەستکاری بکە، زیادیان بکە یان بسڕەوە.',
+  },
+  msgTplEditorPickerLabel: {
+    tr: 'Şablon',
+    en: 'Template',
+    ar: 'القالب',
+    ku: 'قاڵب',
+  },
+  msgTplEditorNewButton: {
+    tr: 'Yeni şablon',
+    en: 'New template',
+    ar: 'قالب جديد',
+    ku: 'قاڵبی نوێ',
+  },
+  msgTplEditorNoTemplateSelected: {
+    tr: '— Şablon seçin veya yeni oluşturun —',
+    en: '— Pick a template or create a new one —',
+    ar: '— اختر قالباً أو أنشئ جديداً —',
+    ku: '— قاڵبێک هەڵبژێرە یان نوێ دروست بکە —',
+  },
+  msgTplEditorNameLabel: {
+    tr: 'Şablon adı',
+    en: 'Template name',
+    ar: 'اسم القالب',
+    ku: 'ناوی قاڵب',
+  },
+  msgTplEditorNamePlaceholder: {
+    tr: 'ör. Genel Karşılama',
+    en: 'e.g. General greeting',
+    ar: 'مثال: تحية عامة',
+    ku: 'نموونە: سڵاوی گشتی',
+  },
+  msgTplEditorHeadlineLabel: {
+    tr: 'Başlık',
+    en: 'Headline',
+    ar: 'العنوان',
+    ku: 'سەرنووسەر',
+  },
+  msgTplEditorBodyLabel: {
+    tr: 'İçerik',
+    en: 'Body',
+    ar: 'المحتوى',
+    ku: 'ناوەڕۆک',
+  },
+  msgTplEditorEmptyLang: {
+    tr: 'Bu dilde henüz çeviri yok',
+    en: 'No translation in this language yet',
+    ar: 'لا توجد ترجمة بهذه اللغة بعد',
+    ku: 'لەم زمانەدا هێشتا وەرگێڕان نییە',
+  },
+  msgTplEditorSeedProtected: {
+    tr: 'Önceden tanımlı şablonlar silinemez (sistem şablonu).',
+    en: 'Built-in templates cannot be deleted (system template).',
+    ar: 'لا يمكن حذف القوالب المعرّفة مسبقاً (قالب نظام).',
+    ku: 'قاڵبە پێشوەختە دیاریکراوەکان ناسڕدرێنەوە (قاڵبی سیستەم).',
+  },
+  msgTplEditorDeleteConfirm: {
+    tr: 'Bu şablonu silmek istediğinize emin misiniz?',
+    en: 'Are you sure you want to delete this template?',
+    ar: 'هل أنت متأكد من حذف هذا القالب؟',
+    ku: 'دڵنیایت کە دەتەوێت ئەم قاڵبە بسڕیتەوە؟',
+  },
+  msgTplEditorLangBadgeAll: {
+    tr: '4 dilde tamamlandı',
+    en: 'All 4 languages filled',
+    ar: 'اكتملت اللغات الأربع',
+    ku: '٤ زمان تەواوە',
+  },
+  msgTplEditorLangBadgePartial: {
+    tr: '{filled}/4 dilde çeviri var',
+    en: '{filled}/4 languages translated',
+    ar: '{filled}/4 لغات مترجمة',
+    ku: '{filled}/٤ زمان وەرگێڕدراوە',
+  },
+  msgTplEditorSaveSuccess: {
+    tr: 'Şablon kaydedildi.',
+    en: 'Template saved.',
+    ar: 'تم حفظ القالب.',
+    ku: 'قاڵب پاشەکەوتکرا.',
+  },
+  msgTplEditorDeleteSuccess: {
+    tr: 'Şablon silindi.',
+    en: 'Template deleted.',
+    ar: 'تم حذف القالب.',
+    ku: 'قاڵب سڕدرایەوە.',
+  },
+  msgTplEditorCreateSuccess: {
+    tr: 'Yeni şablon oluşturuldu.',
+    en: 'New template created.',
+    ar: 'تم إنشاء قالب جديد.',
+    ku: 'قاڵبی نوێ دروستکرا.',
+  },
+};
+
 Object.assign(moduleTranslations, rbacUiTranslations);
 Object.assign(moduleTranslations, restPrinterUiTranslations);
 Object.assign(moduleTranslations, restCallerUiTranslations);
 Object.assign(moduleTranslations, excelModuleTranslations);
 Object.assign(moduleTranslations, wmsModuleTranslations);
 Object.assign(moduleTranslations, pdksRangeTranslations);
+Object.assign(moduleTranslations, messageTemplateEditorTranslations);
