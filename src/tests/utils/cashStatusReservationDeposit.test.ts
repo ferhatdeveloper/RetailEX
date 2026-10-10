@@ -153,4 +153,55 @@ describe('Kasa Durumu — Rezervasyon Avansı ayrıştırma', () => {
     expect(extraReservationCustomerCollections([])).toBe(0);
     expect(extraReservationCustomerCollections(undefined)).toBe(0);
   });
+
+  /**
+   * Kullanıcı şikâyeti 2026-10-10:
+   *   "ABI diptoplam yanlis nakit 10 rezervasyondan alinan para zaten hem
+   *    nakite hem rezervasyona yazinca diptoplam 20 ediyor ama aslinda 10"
+   *
+   * Senaryo: müşteri 10.000 nakit → REZERVASYON olarak işaretli. cash_lines
+   * bu tutarı CH_TAHSILAT + ozel_kod='REZERVASYON' olarak taşır. Bu satır
+   * için ayrıca bir `sales` fişi de olabilir (`is_deposit=true` veya eski
+   * fişlerde normal satış). ReportsModule.getPaymentDistribution deposit
+   * satırları saleInputs'tan çıkarır (çift sayımı önlemek için); tek
+   * sayım REZERVASYON_AVANS bucket'ına `extraReservation` ile yazılır.
+   *
+   * Bu test: kullanıcı senaryosunda (10k nakit REZERVASYON işaretli) +
+   * deposit fiş saleInputs'tan filtrelenmiş hali için:
+   *   NAKIT = 0
+   *   REZERVASYON_AVANS = 10.000
+   *   TOPLAM = 10.000  (çift sayım yok)
+   */
+  it('10.000 nakit REZERVASYON olarak işaretli — TOPLAM 10 olmalı (çift sayım yok)', () => {
+    const kasaLines = [
+      // Müşteri 10.000 nakit → REZERVASYON olarak işaretli.
+      // cash_lines bu avansı REZERVASYON/AVANS özel kodu ile taşır.
+      {
+        id: '1',
+        islem_no: 'KL-001-RESERVATION',
+        islem_tipi: 'CH_TAHSILAT',
+        ozel_kod: 'REZERVASYON',
+        tutar: 10000,
+      },
+    ];
+    // SaleInputs: deposit fiş filtrelenmiş — boş liste.
+    // (ReportsModule.getPaymentDistribution bu filtreyi uygular.)
+    const saleInputs: never[] = [];
+
+    const dist = buildPaymentTypeDistribution(
+      saleInputs as never,
+      {
+        extraCash: extraCustomerCollectionsNotOnSales(kasaLines, []),
+        extraReservation: extraReservationCustomerCollections(kasaLines),
+        includeZero: true,
+      }
+    );
+
+    // ✅ NAKIT = 0 (10.000 nakit rezervasyon olarak işaretlendi, Nakit'e sıfır)
+    expect(dist.byCode.NAKIT.amount).toBe(0);
+    // ✅ Rezervasyon Avansı = 10.000 (tek kayıt)
+    expect(dist.byCode.REZERVASYON_AVANS.amount).toBe(10000);
+    // ✅ TOPLAM = 10.000 (çift sayım yok)
+    expect(dist.totalAmount).toBe(10000);
+  });
 });

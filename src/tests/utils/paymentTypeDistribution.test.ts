@@ -8,6 +8,7 @@ import {
 describe('paymentTypeDistribution', () => {
   it('yapıdaki tüm form kodlarını sıfır tutarla listeler', () => {
     const dist = buildPaymentTypeDistribution([], { includeZero: true });
+    // REZERVASYON_AVANS, 5c56b892 ile eklendi — kasa durumu ayrı kalem.
     expect(dist.types.map((t) => t.code)).toEqual([
       'NAKIT',
       'KREDIKARTI',
@@ -15,6 +16,7 @@ describe('paymentTypeDistribution', () => {
       'HAVAL',
       'CEK',
       'SENET',
+      'REZERVASYON_AVANS',
     ]);
     expect(dist.types.every((t) => t.amount === 0)).toBe(true);
   });

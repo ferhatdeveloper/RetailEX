@@ -3765,7 +3765,20 @@ export function ReportsModule({
   };
 
   const getPaymentDistribution = () => {
-    const saleInputs = dailyActiveRows.map((row) => ({
+    // Bug-fix: Rezervasyon avansı (henüz hizmet verilmemiş peşinat) satırları
+    // `dailyActiveRows` içinde `isDeposit=true` olarak yer alır ve tutarı
+    // `extraReservation` üzerinden zaten `REZERVASYON_AVANS` bucket'ına
+    // yazılır (cash_lines CH_TAHSILAT + ozel_kod=REZERVASYON). Bu satırlar
+    // `saleInputs`'a dahil edilirse — özellikle henüz `is_deposit=true` yazılmamış
+    // eski fişlerde — aynı tutar hem NAKIT'e hem REZERVASYON_AVANS'a yazılır ve
+    // TOPLAM çift olur (kullanıcı şikâyeti 2026-10-10: "10 nakit rezervasyondan,
+    // diptoplam 20 ediyor ama aslında 10"). Çözüm: deposit satırları saleInputs'tan
+    // çıkar; çift sayımı engelle. `mapErpSale` deposit fişleri `total=0`
+    // yazdığı için zaten bucket'a ekleme yapmaz ama yine de defensive filtre.
+    const nonDepositRows = dailyActiveRows.filter(
+      (row) => !isDepositSale(row.erpSale as Partial<Sale> | undefined) && row.isDeposit !== true,
+    );
+    const saleInputs = nonDepositRows.map((row) => ({
       id: row.key,
       total: Number(row.total) || 0,
       paymentMethod: row.erpSale?.paymentMethod ?? row.paymentMethod,
@@ -3776,8 +3789,9 @@ export function ReportsModule({
       customerName: row.customerName,
       description: row.customerName || row.receiptNumber || '—',
       // Rezervasyon avansı (henüz hizmet verilmemiş peşinat) — Açık Cari
-      // bucket'ına yazılmaz; tutarı Nakit'e kaydırılır.
-      isDeposit: isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true,
+      // bucket'ına yazılmaz; tutarı Nakit'e kaydırılır. Bu satır deposit
+      // filtresinden geçtiği için deposit fişler buraya gelmez; bilgi amaçlı.
+      isDeposit: false,
       notes: row.erpSale?.notes,
     }));
     const dist = buildPaymentTypeDistribution(saleInputs, {
@@ -3808,7 +3822,15 @@ export function ReportsModule({
   };
 
   const getPaymentTypeMovements = (code: PaymentFormCode): PaymentTypeMovement[] => {
-    const saleInputs = dailyActiveRows.map((row) => ({
+    // Bug-fix 2026-10-10: deposit satırları saleInputs'tan çıkar (getPaymentDistribution
+    // ile aynı neden — çift sayım). Burada sadece deposit olanlar filtrelenir;
+    // `extraReservation` ile REZERVASYON_AVANS koduna eklenen cash_lines ayrıca
+    // buildPaymentTypeMovements içinde kendi satırı olarak eklenir (id=
+    // 'extra-reservation-collect').
+    const nonDepositRows = dailyActiveRows.filter(
+      (row) => !isDepositSale(row.erpSale as Partial<Sale> | undefined) && row.isDeposit !== true,
+    );
+    const saleInputs = nonDepositRows.map((row) => ({
       id: row.key,
       total: Number(row.total) || 0,
       paymentMethod: row.erpSale?.paymentMethod ?? row.paymentMethod,
@@ -3818,7 +3840,7 @@ export function ReportsModule({
       cashier: row.cashier,
       customerName: row.customerName,
       description: row.customerName || row.receiptNumber || '—',
-      isDeposit: isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true,
+      isDeposit: false,
       notes: row.erpSale?.notes,
     }));
     return buildPaymentTypeMovements(saleInputs, code, {
