@@ -2,6 +2,7 @@
  * ERP çekirdek raporları — mevcut server tablolarından (sales, cash_lines, bank_lines, customers, suppliers).
  * Yeni view/tablo yok; LIMIT ile ağır sorgular sınırlanır.
  */
+import type { InvoiceItemsDetailRow } from '../../components/reports/InvoiceItemsDetailReport';
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import {
   normalizeFirmTableNr,
@@ -526,7 +527,7 @@ const rawFilter = String(cariFilter ?? '').trim();
       fiche_type: ficheFilter,
       is_cancelled: 'eq.false',
       order: 'date.desc',
-      limit: String(ROW_LIMIT),
+      limit: ROW_LIMIT,
     },
     { schema: 'public' },
   ).catch(() => [] as Record<string, unknown>[]);
@@ -556,7 +557,7 @@ const rawFilter = String(cariFilter ?? '').trim();
           {
             select: 'id,code,name,payment_terms,balance',
             id: `in.(${ids.join(',')})`,
-            limit: '2000',
+            limit: 2000,
             ...(hasFilter
               ? { or: `(code.ilike.*${rawFilter}*,name.ilike.*${rawFilter}*)` }
               : {}),
@@ -842,7 +843,7 @@ export const erpReportsAPI = {
                 select: 'customer_id,party_id,amount,transaction_type,special_code',
                 transaction_type: 'eq.CH_TAHSILAT',
                 special_code: `in.(${RESERVATION_SPECIAL_CODES.join(',')})`,
-                limit: '50000',
+                limit: 50000,
               },
               { schema: 'public' },
             )
@@ -932,7 +933,7 @@ export const erpReportsAPI = {
                 select: 'id,code,name,balance,card_type,is_active,firm_nr,phone',
                 is_active: 'eq.true',
                 order: 'name.asc',
-                limit: '2000',
+                limit: 2000,
               },
               { schema: 'public' },
             )
@@ -1048,12 +1049,12 @@ export const erpReportsAPI = {
         const [lines, regs] = await Promise.all([
           postgrest.get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_cash_lines`,
-            { select: '*', order: 'date.desc', limit: String(ROW_LIMIT) },
+            { select: '*', order: 'date.desc', limit: ROW_LIMIT },
             { schema: 'public' },
           ).catch(() => [] as Record<string, unknown>[]),
           postgrest.get<Record<string, unknown>[]>(
             `/rex_${fn}_cash_registers`,
-            { select: 'id,code,name', limit: '500' },
+            { select: 'id,code,name', limit: 500 },
             { schema: 'public' },
           ).catch(() => [] as Record<string, unknown>[]),
         ]);
@@ -1091,12 +1092,12 @@ export const erpReportsAPI = {
         const [lines, regs] = await Promise.all([
           postgrest.get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_bank_lines`,
-            { select: '*', order: 'date.desc', limit: String(ROW_LIMIT) },
+            { select: '*', order: 'date.desc', limit: ROW_LIMIT },
             { schema: 'public' },
           ).catch(() => [] as Record<string, unknown>[]),
           postgrest.get<Record<string, unknown>[]>(
             `/rex_${fn}_bank_registers`,
-            { select: 'id,code,name', limit: '500' },
+            { select: 'id,code,name', limit: 500 },
             { schema: 'public' },
           ).catch(() => [] as Record<string, unknown>[]),
         ]);
@@ -1220,7 +1221,7 @@ export const erpReportsAPI = {
           {
             select: 'date,customer_name,net_amount,fiche_type,trcode,is_cancelled,status',
             order: 'date.asc',
-            limit: '5000',
+            limit: 5000,
           },
           { schema: 'public' },
         )
@@ -1372,7 +1373,7 @@ export const erpReportsAPI = {
               select:
                 'date,customer_id,customer_name,net_amount,fiche_type,trcode,is_cancelled,status',
               order: 'date.asc',
-              limit: '8000',
+              limit: 8000,
             },
             { schema: 'public' },
           )
@@ -1380,7 +1381,7 @@ export const erpReportsAPI = {
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_suppliers`,
-            { select: 'id,code,name', limit: '4000' },
+            { select: 'id,code,name', limit: 4000 },
             { schema: 'public' },
           )
           .catch(() => [] as Record<string, unknown>[]),
@@ -1613,7 +1614,7 @@ export const erpReportsAPI = {
           {
             select: 'id,fiche_no,date,customer_name,payment_method,net_amount,cashier,notes,fiche_type,trcode,is_cancelled,status',
             order: 'date.desc',
-            limit: String(ROW_LIMIT),
+            limit: ROW_LIMIT,
           },
           { schema: 'public' },
         )
@@ -1710,7 +1711,7 @@ export const erpReportsAPI = {
             {
               select: 'id,date,fiche_no,fiche_type,is_cancelled,status,trcode,created_at,net_amount,is_deposit,linked_appointment_id',
               order: 'date.desc',
-              limit: '8000',
+              limit: 8000,
             },
             { schema: 'public' },
           )
@@ -1721,7 +1722,7 @@ export const erpReportsAPI = {
             {
               select:
                 'invoice_id,product_id,item_code,item_name,item_type,quantity,net_amount,unit_price,unit_cost,total_cost',
-              limit: '12000',
+              limit: 12000,
             },
             { schema: 'public' },
           )
@@ -1729,42 +1730,42 @@ export const erpReportsAPI = {
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_products`,
-            { select: 'id,code,barcode,name,cost', limit: '8000' },
+            { select: 'id,code,barcode,name,cost', limit: 8000 },
             { schema: 'public' },
           )
           .catch(() => [] as Record<string, unknown>[]),
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_services`,
-            { select: 'id,code,name,purchase_price', limit: '8000' },
+            { select: 'id,code,name,purchase_price', limit: 8000 },
             { schema: 'public' },
           )
           .catch(() => [] as Record<string, unknown>[]),
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_beauty_services`,
-            { select: 'id,name,cost_price', limit: '8000' },
+            { select: 'id,name,cost_price', limit: 8000 },
             { schema: 'beauty' },
           )
           .catch(() => [] as Record<string, unknown>[]),
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_beauty_service_consumables`,
-            { select: 'service_id,product_id,qty_per_service', limit: '12000' },
+            { select: 'service_id,product_id,qty_per_service', limit: 12000 },
             { schema: 'beauty' },
           )
           .catch(() => [] as Record<string, unknown>[]),
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_beauty_sales`,
-            { select: 'invoice_number,linked_appointment_id', limit: '8000' },
+            { select: 'invoice_number,linked_appointment_id', limit: 8000 },
             { schema: 'beauty' },
           )
           .catch(() => [] as Record<string, unknown>[]),
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_beauty_appointments`,
-            { select: 'id,status,total_price', limit: '8000' },
+            { select: 'id,status,total_price', limit: 8000 },
             { schema: 'beauty' },
           )
           .catch(() => [] as Record<string, unknown>[]),
@@ -2269,7 +2270,7 @@ export const erpReportsAPI = {
               'id,code,name,stock,min_stock,critical_stock,cost,purchase_price,warehouse_code,is_active',
             is_active: 'eq.true',
             order: 'name.asc',
-            limit: '4000',
+            limit: 4000,
           },
           { schema: 'public' },
         )
@@ -2400,7 +2401,7 @@ export const erpReportsAPI = {
           {
             select: 'id,code,name,stock,cost,purchase_price,warehouse_code,min_stock,critical_stock,is_active',
             is_active: 'eq.true',
-            limit: '5000',
+            limit: 5000,
           },
           { schema: 'public' },
         )
@@ -2976,7 +2977,7 @@ export const erpReportsAPI = {
               firm_nr: `eq.${firmNr}`,
               is_active: 'eq.true',
               order: 'created_at.desc',
-              limit: String(ROW_LIMIT),
+              limit: ROW_LIMIT,
               ...(staffIds && staffIds.length > 0
                 ? { id: `in.(${staffIds.join(',')})` }
                 : {}),
@@ -2995,7 +2996,7 @@ export const erpReportsAPI = {
               firm_nr: `eq.${firmNr}`,
               period_nr: `eq.${periodNr}`,
               attendance_date: `gte.${year}-${String(month).padStart(2, '0')}-01`,
-              limit: String(ROW_LIMIT),
+              limit: ROW_LIMIT,
             },
             { schema: 'public' },
           )
