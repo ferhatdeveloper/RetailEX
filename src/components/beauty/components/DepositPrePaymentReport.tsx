@@ -7,7 +7,6 @@ import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { formatLocalYmd } from '../../../utils/dateLocal';
 import { formatReportDateCell } from '../../../utils/dateLocale';
 import { ReportYmdDatePicker } from '../../shared/ReportDateRangePresets';
-import { ReportKpiStrip } from '../../reports/shared/ReportKpiStrip';
 import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 import { getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
 import { getAppDefaultCurrency } from '../../../services/postgres';
@@ -96,24 +95,6 @@ export function DepositPrePaymentReport() {
         void load();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [startYmd, endYmd, paymentStateFilter]);
-
-    const totals = useMemo(() => {
-        const acc = {
-            totalReservation: 0,
-            totalOutstanding: 0,
-            paidCount: 0,
-            depositOnlyCount: 0,
-        };
-        for (const r of rows) {
-            acc.totalReservation += r.deposit_amount;
-            // 10.10.2026 — Kapalı/iptal randevularda kalan = 0.
-            // computeKalan helper'ı ile ekran + hücre + KPI aynı formülü paylaşır.
-            acc.totalOutstanding += computeKalan(r);
-            if (r.payment_state === 'paid') acc.paidCount += 1;
-            if (r.payment_state === 'deposit_only') acc.depositOnlyCount += 1;
-        }
-        return acc;
-    }, [rows]);
 
     const columns = useMemo<ReportColumnTableCol<Row>[]>(
         () => [
@@ -287,36 +268,6 @@ export function DepositPrePaymentReport() {
                     </div>
                 </div>
             </div>
-
-            <ReportKpiStrip
-                columns={4}
-                items={[
-                    {
-                        key: 'reservation',
-                        label: tm('bKpiTotalReservation'),
-                        value: fmt(totals.totalReservation),
-                        valueClassName: 'text-blue-700',
-                    },
-                    {
-                        key: 'outstanding',
-                        label: tm('bKpiTotalOutstanding'),
-                        value: fmt(totals.totalOutstanding),
-                        valueClassName: totals.totalOutstanding > 0 ? 'text-rose-700' : 'text-emerald-700',
-                    },
-                    {
-                        key: 'paid',
-                        label: tm('bKpiPaidAppointments'),
-                        value: String(totals.paidCount),
-                        valueClassName: 'text-emerald-700',
-                    },
-                    {
-                        key: 'depositOnly',
-                        label: tm('bKpiDepositOnly'),
-                        value: String(totals.depositOnlyCount),
-                        valueClassName: 'text-amber-700',
-                    },
-                ]}
-            />
 
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2 text-gray-900 font-black">
