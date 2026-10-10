@@ -298,52 +298,42 @@ export function CariBalanceSummaryReport() {
   }, [load, selectedFirm?.firm_nr]);
 
   const totals = useMemo(() => {
-    // 09.10.2026 — Rezervasyon avansı cari bakiyeden ayrılır.
+    // 10.10.2026 — Rezervasyon avansı cari bakiyeden ayrılır.
     //
     // Veri akışı:
     //   - `avansService.recordAdvance` → `createKasaIslemi(..., islem_tipi=
     //     'CH_TAHSILAT', ozel_kod='REZERVASYON')`.
     //   - `kasa.ts → cariCashStoredBalanceDelta` (müşteri, CH_TAHSILAT)
     //     negatif delta döner → `customers.balance` avans tutarı kadar
-    //     azalır.
-    //   - Aynı şekilde `computeCustomerBalanceFromLedger` de bu satırı
-    //     "tahsilat" olarak okur ve bakiyeden düşer.
+    //     azalır (snapshot ham bakiye avansı ZATEN düşmüş saklar).
+    //   - `cash_lines` (REZERVASYON özel_kod) → `pendingDeposit` olarak
+    //     ayrı raporlanır.
     //
-    // Sonuç: ham `customers.balance` (ve `computeCustomerBalanceFromLedger`)
-    // REZERVASYON avansını ZATEN düşmüş halde saklar. Kullanıcı
-    // şikâyeti: "avans alınınca cari alacaklı gösteriyor" — avans
-    // tahsilatı cari alacağı (negatif bakiyeyi) azaltmakta, yani cariyi
-    // "alacaklı" tarafa itmektedir. Kullanıcı beklentisi: avans geri
-    // ödenmeyeceği için cari bakiyeyi etkilememeli, ayrı bilgi kartında
-    // gösterilmeli.
+    // Kullanıcı beklentisi: avans geri ödenmeyeceği için cari bakiyeyi
+    // etkilememeli. Yani:
+    //   effectiveBalance(caride) = r.balance + r.pendingDeposit
+    // Örnek: ROZA -10.000 (ham) + 10.000 (avans) = 0 — kullanıcının
+    // gözünden "gerçek" cari durumu.
     //
-    // Düzeltme: "avans hariç" alacaklar = ham alacaklar + bekleyen
-    // avans (avansın bakiyeden düşürdüğü tutarı geri ekler). Bu sayede
-    // rapor kullanıcının beklediği "avans hariç" görünümü sunar; avans
-    // tutarı 4. KPI kartında bilgi amaçlı ayrıca gösterilir.
-    let recv = 0;
+    // Düzeltme: KPI 1 ("avans hariç") ile tablo `effectiveBalance`
+    // kolonu AYNI formülü kullanmak zorunda; daha önce `recvAvansHariç
+    // = recv` yanlış değer döndürüyordu.
+    let recv = 0; // ham (avans dahil) müşteri bakiyesi toplamı
+    let recvAvansHariç = 0; // müşteri effectiveBalance toplamı
     let pay = 0;
     let pending = 0;
     for (const r of rows) {
       if (r.cardType === 'customer') {
         recv += r.balance;
+        recvAvansHariç += r.balance + r.pendingDeposit;
         pending += r.pendingDeposit;
       } else if (r.cardType === 'supplier') {
-        // Tedarikçi tarafında rezervasyon avansı senaryosu yok; yine de
-        // ham değeri toplama dahil et ki migration ile semantik
-        // değişirse rapor tutarlı kalsın.
+        // Tedarikçi tarafında rezervasyon avansı senaryosu yok; yine
+        // de semantik tutarlılık için ham değer toplanır.
         pay += r.balance;
         pending += r.pendingDeposit;
       }
     }
-    // 09.10.2026 (düzeltme): Ham `customers.balance` REZERVASYON
-    // avansını zaten düşmüş sakladığı için `recvAvansHariç = recv`.
-    // Önceki formül (recv + pending) avansı çifte düşürüyordu: ROZA
-    // -76k ham + 25k pending = -51k — fakat ham bakiye avansı zaten
-    // içermekte, kullanıcı beklentisi "avans bakiyeye dahil değil"
-    // olduğu için ham değer doğrudan kullanılmalı. Avans ayrı 4.
-    // KPI kartında bilgi amaçlı gösterilir.
-    const recvAvansHariç = recv;
     return {
       recv,
       recvAvansHariç,
@@ -379,13 +369,13 @@ export function CariBalanceSummaryReport() {
             r.cardType,
             r.accountCode,
             r.accountName,
-            // 09.10.2026 — Avans hariç bakiye: ham `customers.balance`
+            // 10.10.2026 — Avans hariç bakiye: ham `customers.balance`
             // + bekleyen avans. Yalnızca müşteri tarafında (`r.cardType
             // === 'customer'`) anlamlı; tedarikçi tarafında avans
             // senaryosu olmadığı için `r.balance` aynen yazılır.
-            // Avans tahsilatı cari bakiyeyi olduğundan fazla azaltmış
-            // görünüyordu (kullanıcı şikâyeti); rapor kullanıcı için
-            // "gerçek" cari durumunu yansıtır.
+            // Ham bakiye REZERVASYON avansını ZATEN düşerek saklar;
+            // pendingDeposit'i eklemek kullanıcının beklediği
+            // effectiveBalance değerini verir.
             String(
               r.cardType === 'customer'
                 ? r.balance + r.pendingDeposit
@@ -454,11 +444,11 @@ export function CariBalanceSummaryReport() {
         <DevExDataGrid
           data={rows.map((r) => ({
             ...r,
-            // `effectiveBalance` = ham bakiye + bekleyen avans. Ham
-            // bakiye `customers.balance` (avans tahsilatı dahil,
-            // bakiyeyi azaltmış); avansı hariç tutmak için
-            // `pendingDeposit`'i toplama ekliyoruz. Örnek: ROZA
-            // -76k (ham) + 25k (avans) = -51k (avans hariç).
+            // 10.10.2026 — `effectiveBalance` = ham bakiye + bekleyen avans.
+            // Ham bakiye `customers.balance` (REZERVASYON avansı
+            // tahsilatını ZATEN düşerek saklar); avansı bakiyeden
+            // hariç tutmak için `pendingDeposit`'i toplama ekliyoruz.
+            // Örnek: ROZA -10.000 (ham) + 10.000 (avans) = 0.
             effectiveBalance: r.balance + r.pendingDeposit,
             accountLabel: `${r.accountName} ${r.accountCode}`,
             typeLabel: cariTypeLabel(tm, r.cardType),
