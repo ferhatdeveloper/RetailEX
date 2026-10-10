@@ -454,7 +454,11 @@ let suggested = pct;
             {/* ============================================================
                 ADIM A — Paket bilgisi modalı (PercentBodyModal)
                 Yalnızca paket kartı; hizmet ekleme bu modalda YOK.
+                NOT: Modal koşullu render edilir — aksi halde
+                PercentBodyModal mount anında overlay + body scroll-lock
+                tetiklediği için sayfa açılır açılmaz tüm modallar görünür.
                ============================================================ */}
+            {infoModalOpen && (
             <PercentBodyModal
                 onClose={() => setInfoModalOpen(false)}
                 size="list"
@@ -629,12 +633,15 @@ let suggested = pct;
                     </Button>
                 </div>
             </PercentBodyModal>
+            )}
 
             {/* ============================================================
                 ADIM B — Hizmet / Personel / Yüzde modalı (PercentBodyModal)
                 Paket kaydedildikten sonra kart üzerindeki "Hizmet Ekle" ile açılır.
                 Paket kaydedilmemişse «+ Ekle» butonu pasif olur ve toast verir.
+                NOT: Koşullu render — mount anında görünmesin.
                ============================================================ */}
+            {addSvcOpen && (
             <PercentBodyModal
                 onClose={() => setAddSvcOpen(false)}
                 size="compact"
@@ -740,8 +747,10 @@ let suggested = pct;
                     </Button>
                 </div>
             </PercentBodyModal>
+            )}
 
-            {/* Silme onay modalı */}
+            {/* Silme onay modalı — YALNIZCA deleteConfirm doluyken açılır (koşullu render) */}
+            {deleteConfirm !== null && (
             <PercentBodyModal
                 onClose={closeDeleteConfirm}
                 size="compact"
@@ -774,6 +783,7 @@ let suggested = pct;
                     </div>
                 </div>
             </PercentBodyModal>
+            )}
         </div>
     );
 }
