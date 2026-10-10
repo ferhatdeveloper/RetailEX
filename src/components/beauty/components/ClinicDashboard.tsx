@@ -389,11 +389,34 @@ export function ClinicDashboard() {
             if (ps === 'pending' || ps === 'partial' || ps === 'awaiting_service') return false;
             return true;
         });
-        const revenue = mainSales.reduce((s, sale) => s + beautySalePocketCollected(sale), 0) + todayExtraCash;
-        const remainingCari = Math.max(
-            0,
-            mainSales.reduce((s, sale) => s + beautySaleRemainingCari(sale), 0) - todayExtraCash,
-        );
+        /**
+         * Bug 22: Klinik Paneli "Tahsilat" KPI'sı kullanıcının iş gereksinimine
+         * göre yeniden tanımlandı. Önceki davranış `beautySalePocketCollected`
+         * → yalnızca `cash + card + transfer` tahsilatı (avans/peşinat hariç).
+         *
+         * Senaryo (kullanıcı şikâyeti 09.10.2026):
+         *  - ROZA: hizmet 50.000, avans (REZERVASYON) 15.000, kalan nakit 35.000
+         *  - ARA:  hizmet 50.000, peşin nakit 50.000
+         *  - Önceki KPI = 35.000 + 50.000 = 85.000 (yanlış; avans düşülmüş)
+         *  - Yeni KPI    = 50.000 + 50.000 = 100.000 (hizmet tam tutarı)
+         *
+         * "Randevu kapanmışsa rezervasyon + kalan hizmet tutarı yansıyacak,
+         * yani hizmetin tam tutarı" gereksinimi → tamamlanan randevunun
+         * `total` (belge tutarı) toplamı. Avans ayrıca sayılmaz çünkü zaten
+         * `total` içinde; buradaki KPI kasaya giren nakit değil,
+         * **hizmetin brüt ciro** toplamıdır.
+         *
+         * `todayExtraCash` hariç tutuldu: bu helper `KASA_GIRIS` /
+         * `CH_TAHSILAT` gibi satış dışı tahsilatları ekliyor; KPI "hizmet
+         * tam tutarı" olduğu için burada yeri yok (kasa tarafı ayrı rapor).
+         *
+         * `remainingCari` 0: hizmet tam tutarı zaten avans dahil olduğu için
+         * "kalan cari" bilgisi bu KPI'da anlamlı değil; sub-text'te göstermek
+         * yanıltıcı olur (Kasa Durumu ve Cari Ekstre ayrı yerde kalan cari
+         bakiyesini gösterir — burada 0 dönmek doğru).
+         */
+        const revenue = mainSales.reduce((s, sale) => s + Math.max(0, Number(sale.total) || 0), 0);
+        const remainingCari = 0;
 
         const sorted = [...kpis.todayApts].sort((a, b) => {
             return (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? '');
@@ -412,7 +435,7 @@ export function ClinicDashboard() {
             rate: kpis.rate,
             total: kpis.total,
         };
-    }, [appointments, todayStr, todaySales, todayExtraCash]);
+    }, [appointments, todayStr, todaySales]);
 
     const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
