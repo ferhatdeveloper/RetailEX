@@ -2052,14 +2052,28 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                         {initials(selected.name)}
                                     </Avatar>
                                     <div className="min-w-0 flex-1">
-                                        <Space wrap size={8}>
-                                            <Typography.Title level={4} className="!mb-1 !text-lg">
+                                        <Space wrap size={8} align="center">
+                                            <Typography.Title level={4} className="!mb-0 !text-lg">
                                                 {selected.name}
                                             </Typography.Title>
                                             {(selected.customer_tier === 'vip' ||
                                                 (selected.points ?? 0) >= 1000) && (
                                                 <Tag color="gold">{tm('bVipCustomer')}</Tag>
                                             )}
+                                            {/*
+                                              * Sadakat puanı — minimal rozet.
+                                              * Eski konum: Row/Col KPI kartı (büyük Statistic).
+                                              * Yeni konum: müşteri adı yanı, VIP tag'in yanında.
+                                              * KPI gridinden çıkarıldı → 6 kart xl={4}'te tek satırda.
+                                              * Bk. .cursor/rules (sadakat puanı minimal).
+                                              */}
+                                            <Tag
+                                                color="warning"
+                                                icon={<StarOutlined className="text-amber-500" />}
+                                                data-testid="customer-loyalty-chip"
+                                            >
+                                                {tm('bLoyaltyPoints')}: {selected.points ?? 0}
+                                            </Tag>
                                         </Space>
                                         {selected.code && (
                                             <Typography.Text type="secondary" className="text-sm">
@@ -2157,15 +2171,11 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                 />
 
                                 <Row gutter={[16, 16]} className="mt-4">
-                                    <Col xs={24} sm={12} lg={8} xl={4}>
-                                        <Card size="small" bordered className="!shadow-none h-full">
-                                            <Statistic
-                                                title={tm('bLoyaltyPoints')}
-                                                value={selected.points ?? 0}
-                                                prefix={<StarOutlined className="text-amber-500" />}
-                                            />
-                                        </Card>
-                                    </Col>
+                                    {/*
+                                      * Sadakat Puanı artık header'da chip olarak gösteriliyor
+                                      * (müşteri adı yanı). KPI gridinden çıkarıldı.
+                                      * xl={4} ile 6 kart tek satırda yayılır.
+                                      */}
                                     <Col xs={24} sm={12} lg={8} xl={4}>
                                         <Card size="small" bordered className="!shadow-none h-full">
                                             <Statistic
