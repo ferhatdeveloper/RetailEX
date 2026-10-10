@@ -2,6 +2,10 @@ import { useState, useEffect, useMemo } from 'react';
 import { Users, Search, Plus, Edit, Trash2, Phone, Mail, MapPin, TrendingUp, Calendar, FileText, Eye, X, BarChart3 } from 'lucide-react';
 import type { Customer, Sale } from '../../../App';
 import { formatNumber } from '../../../utils/formatNumber';
+import {
+  customerEffectiveBalance,
+  isDisplayableBalance,
+} from '../../../utils/customerEffectiveBalance';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ColumnDef, createColumnHelper } from '@tanstack/react-table';
 import { ContextMenu } from '../../shared/ContextMenu';
@@ -158,11 +162,14 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   // sessizce 0 kalır.
   const [appointmentCountByCustomer, setAppointmentCountByCustomer] = useState<Record<string, number>>({});
 
-  // 09.10.2026 — Bekleyen rezervasyon avansı (cash_lines'dan).
+  // 10.10.2026 — Bekleyen rezervasyon avansı (cash_lines'dan).
   // Cari Hesap Özeti raporuyla aynı kaynak: CH_TAHSILAT + special_code
-  // IN ('REZERVASYON','AVANS'). Müşteri Yönetimi'nde bilgi amaçlı
-  // gösterilir; cari bakiyesini etkilemez (avans zaten `customers.balance`'a
-  // yansımış).
+  // IN ('REZERVASYON','AVANS'). Müşteri Yönetimi'nde:
+  //  - "Bekleyen Avans" kolonu (bilgi amaçlı)
+  //  - "Bakiye" kolonu = `balance + pendingDeposit` (avans hariç effective)
+  // `customers.balance` ledger'dan gelir; henüz hizmet verilmemiş
+  // rezervasyon avansını içermez (avans tahsilatı müşteri alacağını
+  // azaltır). Bu yüzden bakiye kolonu effective balance gösterir.
   const [pendingDepositByCustomer, setPendingDepositByCustomer] = useState<Record<string, number>>({});
   useEffect(() => {
     if (!customers || customers.length === 0) return;
@@ -187,11 +194,14 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
     };
   }, [customers]);
 
-  // 09.10.2026 — Bekleyen rezervasyon avansı toplamını her cari için
+  // 10.10.2026 — Bekleyen rezervasyon avansı toplamını her cari için
   // çek. Cari Hesap Özeti raporundaki `getCariBalances()` ile aynı
   // semantik (CH_TAHSILAT + special_code IN ('REZERVASYON','AVANS')).
-  // Bu sadece bilgi amaçlıdır; `customers.balance` zaten avansı
-  // içermektedir ve bakiyeye tekrar eklenmez.
+  // Bu sadece bilgi amaçlıdır; `customers.balance` ledger'dan gelir
+  // ve henüz hizmet verilmemiş rezervasyon avansını içermez
+  // (avans tahsilatı müşteri alacağını azaltır). Bu yüzden "Bakiye"
+  // kolonu `balance + pendingDeposit` ile effective balance gösterir
+  // (Cari Hesap Özeti ile uyumlu, 3fd0690b ile aynı formül).
   useEffect(() => {
     if (!customers || customers.length === 0) return;
     let cancelled = false;
@@ -608,8 +618,21 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
       id: 'balance',
       header: tm('custColBalance'),
       cell: ({ row }) => {
-        const bal = Number(row.original.balance ?? 0);
-        if (Math.abs(bal) < 0.005) {
+        // 10.10.2026 — Müşteri bakiyesi (avans hariç).
+        // `customers.balance` ledger'dan gelir ve henüz hizmet verilmemiş
+        // rezervasyon avansını içermez (avans tahsilatı müşteri
+        // alacağını azaltır). Bu yüzden ham `balance` ROZA gibi bir
+        // senaryoda -10.000 gösterir (avans 10.000 ayrı).
+        // Cari Hesap Özeti ile aynı semantik: `effectiveBalance =
+        // balance + pendingDeposit`. 3fd0690b ile aynı formül — kullanıcı
+        // bu kolondan "cari ekstre ile uyumlu" anlamı çıkarmalı.
+        const rawBalance = Number(row.original.balance ?? 0);
+        const pending = pendingDepositByCustomer[row.original.id] ?? 0;
+        const bal = customerEffectiveBalance({
+          balance: rawBalance,
+          pendingDeposit: pending,
+        });
+        if (!isDisplayableBalance(bal)) {
           return <span className="text-gray-400 text-xs">—</span>;
         }
         return (
@@ -622,11 +645,14 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
       meta: { align: 'right' }
     }),
     columnHelper.display({
-      // 09.10.2026 — Cari raporlar tutarsızlık düzeltmesi: bekleyen
-      // rezervasyon avansı bilgi amaçlı ayrı kolon. `customers.balance`
-      // zaten avansı düşmüş sakladığı için bu kolon bakiyeye dahil
-      // edilmez; yalnızca rapor kullanıcısına "henüz hizmet
-      // verilmemiş peşinat" bilgisini gösterir.
+      // 10.10.2026 — Bekleyen rezervasyon avansı bilgi amaçlı ayrı kolon.
+      // `customers.balance` ledger'dan gelir ve henüz hizmet verilmemiş
+      // rezervasyon avansını (CH_TAHSILAT + special_code IN
+      // ('REZERVASYON','AVANS')) içermez; bu avans tahsilatı müşteri
+      // alacağını azaltır. "Bakiye" kolonu artık
+      // `balance + pendingDeposit` ile avans hariç effective balance
+      // gösteriyor (Cari Hesap Özeti ile uyumlu). Bu kolon ise kullanıcıya
+      // "henüz hizmet verilmemiş peşinat" bilgisini ayrıca gösterir.
       id: 'pendingDeposit',
       header: tm('custColPendingDeposit') || 'Bekleyen Avans',
       cell: ({ row }) => {
