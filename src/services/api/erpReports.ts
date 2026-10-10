@@ -16,6 +16,7 @@ import {
   isCariDebtorsReportRow,
   resolveEkstreDescription,
 } from '../../utils/cariAccountStatement';
+import { sortCariBalanceForReport } from './cariBalanceSort';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { localTodayDateKey } from '../../utils/localCalendarDate';
 import {
@@ -1009,12 +1010,17 @@ export const erpReportsAPI = {
       }
     }
 
-    return out
-      .sort((a, b) => {
-        if (balanceSide) return Math.abs(b.balance) - Math.abs(a.balance);
-        return b.balance - a.balance;
-      })
-      .slice(0, ROW_LIMIT);
+    // 10.10.2026 — Cari Hesap Özeti "Hizmet satırları gözükmüyor" düzeltmesi.
+    // Sıralama helper'ı (`cariBalanceSort.ts`) ile:
+    //   1) bekleyen avans desc
+    //   2) bakiye desc (alt raporlarda ABS)
+    //   3) unvan asc (tr locale)
+    // Zero-balance + zero-pending cariler de listede KALIR — `passBalance`
+    // `onlyNonZero=false` iken true döner.
+    return sortCariBalanceForReport(out, { balanceSide: !!balanceSide }).slice(
+      0,
+      ROW_LIMIT,
+    );
   },
 
   async getCashBankMovements(opts: {

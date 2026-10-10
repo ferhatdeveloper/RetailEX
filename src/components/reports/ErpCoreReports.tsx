@@ -284,6 +284,12 @@ export function CariBalanceSummaryReport() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // 10.10.2026 — "Hizmet satırları gözükmüyor" düzeltmesi:
+      // `onlyNonZero: false` ile bekleyen avansı / alacağı / borcu sıfır
+      // olan cariler de listede kalır (geçmiş hizmet almış ama bakiyesi
+      // kapanmış cariler dahil). Sıralama API tarafında
+      // `cariBalanceSort` helper'ı ile pendingDeposit desc → balance desc
+      // → name asc.
       setRows(await erpReportsAPI.getCariBalances({ cardType, onlyNonZero: false }));
     } catch (err: any) {
       toast.error(err?.message || String(err));
