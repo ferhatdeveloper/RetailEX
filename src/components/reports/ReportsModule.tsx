@@ -87,7 +87,6 @@ import {
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
 import {
   CariAgingReport,
-  CariBalanceSummaryReport,
   CashBankMovementReport,
   PurchaseSummaryReport,
   SupplierPurchaseReturnsReport,
@@ -878,7 +877,7 @@ type ReportTab =
   // Satış Raporları
   'top-products' | 'category-analysis' | 'hourly-analysis' | 'cashiers' | 'customer-sales' | 'sales-trend' | 'sales-target' | 'sales-returns' | 'product-gross-profit' |
   // Finansal Raporlar
-  'profit-loss' | 'cash-flow' | 'debt-aging' | 'current-account' | 'cari-debtors' | 'cari-creditors' | 'purchase-summary' | 'supplier-purchase-returns' | 'collection-due' | 'cari-extract' | 'party-customer-sales' | 'party-supplier-purchases' | 'product-sales-by-period' |
+  'profit-loss' | 'cash-flow' | 'debt-aging' | 'cari-debtors' | 'cari-creditors' | 'purchase-summary' | 'supplier-purchase-returns' | 'collection-due' | 'cari-extract' | 'party-customer-sales' | 'party-supplier-purchases' | 'product-sales-by-period' |
   // VIVA SOLAR — yeni ERP raporları
   'cash-ledger' | 'contact-account-legacy' | 'invoice-items-detail' |
   // Stok Raporları
@@ -5907,7 +5906,6 @@ export function ReportsModule({
           { key: 'yearly-months-summary', label: tm('yillikAyOzeti'), icon: <BarChart3 /> },
           { key: 'cash-flow', label: tm('nakitAkisRaporu'), icon: <TransactionOutlined /> },
           { key: 'debt-aging', label: tm('borcAlacakYaslandirma'), icon: <HistoryOutlined /> },
-          { key: 'current-account', label: tm('cariHesapOzeti'), icon: <BankOutlined /> },
           { key: 'cari-debtors', label: tm('cariDebtorsReportTitle'), icon: <BankOutlined /> },
           { key: 'cari-creditors', label: tm('cariCreditorsReportTitle'), icon: <BankOutlined /> },
           { key: 'party-customer-sales', label: tm('partyPeriodSalesCustomerTitle'), icon: <ShoppingCart className="w-4 h-4" /> },
@@ -8729,7 +8727,6 @@ export function ReportsModule({
             {selectedTab === 'profit-loss' && <ProfitLossReport />}
 
             {selectedTab === 'debt-aging' && <CariAgingReport />}
-            {selectedTab === 'current-account' && <CariBalanceSummaryReport />}
             {selectedTab === 'cari-debtors' && <CariDebtorsReport />}
             {selectedTab === 'cari-creditors' && <CariCreditorsReport />}
             {selectedTab === 'party-customer-sales' && <PartyPeriodSalesCustomerReport />}
