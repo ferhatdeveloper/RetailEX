@@ -15203,6 +15203,9 @@ export const excelModuleTranslations = {
   custColAddress: { tr: 'ADRES', en: 'ADDRESS', ar: 'العنوان', ku: 'ناونیشان' },
   custColNameUpper: { tr: 'MÜŞTERİ ADI', en: 'CUSTOMER NAME', ar: 'اسم العميل', ku: 'ناوی کڕیار' },
   custColPurchasesUpper: { tr: 'TOPLAM ALIŞVERİŞ', en: 'TOTAL PURCHASES', ar: 'إجمالي المشتريات', ku: 'کۆی کڕین' },
+  custColCountryCode: { tr: 'ÜLKE KODU', en: 'COUNTRY CODE', ar: 'كود الدولة', ku: 'کۆدی وڵات' },
+  custColPhoneShort: { tr: 'TELEFON', en: 'PHONE', ar: 'الهاتف', ku: 'تەلەفۆن' },
+  custColCombinedContact: { tr: 'İLETİŞİM', en: 'CONTACT', ar: 'اتصال', ku: 'پەیوەندی' },
   custHeardOther: { tr: 'Diğer', en: 'Other', ar: 'أخرى', ku: 'تر' },
   custHeardReferral: { tr: 'Tavsiye', en: 'Referral', ar: 'توصية', ku: 'پێشنیار' },
 

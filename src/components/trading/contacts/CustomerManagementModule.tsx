@@ -12,7 +12,7 @@ import { customerAPI } from '../../../services/api/customers';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { DEMO_CUSTOMER_CODES } from '../../../utils/demoSeedCodes';
-import { phoneMatchesQuery } from '../../../shared/utils/validators';
+import { phoneMatchesQuery, parsePhone } from '../../../shared/utils/validators';
 import { SupplierModule } from './SupplierModule';
 import { CariPeriodBalanceModal } from './CariPeriodBalanceModal';
 import type { Supplier } from '../../../core/types';
@@ -514,15 +514,41 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         );
       }
     }),
+    columnHelper.accessor((row) => parsePhone(row.phone).countryCode, {
+      id: 'countryCode',
+      header: tm('custColCountryCode'),
+      cell: info => {
+        const cc = String(info.getValue() ?? '').trim();
+        if (!cc) return <span className="text-gray-300 text-xs">—</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-xs font-semibold">
+            {cc}
+          </span>
+        );
+      },
+      sortingFn: (a, b) =>
+        String(parsePhone(a.original.phone).countryCode).localeCompare(
+          String(parsePhone(b.original.phone).countryCode),
+        ),
+      size: 80,
+      meta: { align: 'left' },
+    }),
     columnHelper.accessor('phone', {
-      header: tm('custColContact'),
+      header: tm('custColPhoneShort'),
       cell: info => {
         const row = info.row.original;
+        const parsed = parsePhone(row.phone);
+        // Ülke kodu zaten ayrı kolonda gösterildiği için burada yalnız numara
+        // (parsePhone ile ülke kodu çıkarılmış hali) gösterilir. Eski verilerde
+        // "+90 555..." DB'de ise parçalı render edilir.
+        const phoneLabel = parsed.countryCode
+          ? (parsed.number || row.phone)
+          : row.phone;
         return (
           <div className="flex flex-col gap-1 text-sm">
             <span className="flex items-center gap-1">
               <Phone className="w-3 h-3 text-gray-400" />
-              {row.phone}
+              {phoneLabel || '—'}
             </span>
             {row.phone2 && (
               <span className="text-xs text-gray-500 flex items-center gap-1">

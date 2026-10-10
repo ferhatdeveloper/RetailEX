@@ -135,6 +135,42 @@ export const phonesMatchQuery = (
 };
 
 /**
+ * Telefon numarasını UI'da ayrı göstermek için ülke kodu + ulusal gövde olarak parse eder.
+ * - "  +90 555 123 45 67 " → { countryCode: "+90", number: "555 123 45 67" }
+ * - "0090 555 123 45 67"   → { countryCode: "0090", number: "555 123 45 67" }
+ * - "+964 750 123 4567"    → { countryCode: "+964", number: "750 123 4567" }
+ * - "5551234567"           → { countryCode: "",        number: "5551234567" }
+ * - "0 555 123 45 67"     → { countryCode: "",        number: "0 555 123 45 67" } (yerelde baş 0)
+ * Veri yalnızca telefon formatında (ülke kodu ayrı kolon) döndürür; arama için
+ * `phoneMatchesQuery` kullanın.
+ */
+export interface ParsedPhone {
+  /** Ülke kodu prefix'i: "+90", "+964", "0090" gibi; yoksa "". UI sütunu. */
+  countryCode: string;
+  /** Kalan numara (boşluk/format korunur). */
+  number: string;
+}
+
+export const parsePhone = (raw: unknown): ParsedPhone => {
+  if (raw == null) return { countryCode: '', number: '' };
+  const original = String(raw);
+  if (!original.trim()) return { countryCode: '', number: '' };
+
+  // +90 555 ... → "+90"
+  const plusMatch = original.match(/^(\s*)(\+\d{1,4})(.*)$/);
+  if (plusMatch) {
+    return { countryCode: `+${plusMatch[2].slice(1)}`, number: (plusMatch[3] ?? '').trim() };
+  }
+  // 0090 ... (veya 00090) → "0090"
+  const intlMatch = original.match(/^(\s*)(00\d{1,4})(.*)$/);
+  if (intlMatch) {
+    return { countryCode: intlMatch[2], number: (intlMatch[3] ?? '').trim() };
+  }
+  // Ülke kodu yok — baş 0 / sadece numara hepsi number içinde kalsın
+  return { countryCode: '', number: original.trim() };
+};
+
+/**
  * Validate barcode (basic check)
  */
 export const isValidBarcode = (barcode: string): boolean => {

@@ -6,6 +6,7 @@ import type { Customer, Sale } from '../../../App';
 import { useCustomerStore } from '../../../store/useCustomerStore';
 import { compareFileIdAsc, sortByFileIdAsc } from '../../../utils/customerFileIdSort';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { parsePhone } from '../../../shared/utils/validators';
 
 interface CustomerManagementProps {
   customers: Customer[];
@@ -146,9 +147,31 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
       cell: info => info.getValue(),
       size: 200
     }),
+    columnHelper.accessor((row) => parsePhone(row.phone).countryCode, {
+      id: 'countryCode',
+      header: tm('custColCountryCode'),
+      cell: info => {
+        const cc = String(info.getValue() ?? '').trim();
+        if (!cc) return <span className="text-gray-300 text-xs">—</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-xs font-semibold">
+            {cc}
+          </span>
+        );
+      },
+      sortingFn: (a, b) =>
+        String(parsePhone(a.original.phone).countryCode).localeCompare(
+          String(parsePhone(b.original.phone).countryCode),
+        ),
+      size: 90,
+    }),
     columnHelper.accessor('phone', {
-      header: tm('custColPhone'),
-      cell: info => info.getValue(),
+      header: tm('custColPhoneShort'),
+      cell: info => {
+        const raw = String(info.getValue() ?? '');
+        const parsed = parsePhone(raw);
+        return parsed.countryCode ? (parsed.number || raw) : raw;
+      },
       size: 140
     }),
     columnHelper.accessor('email', {
