@@ -14,7 +14,7 @@ import {
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import { printPayrollVoucher, type PayrollVoucherKind } from '../../../utils/printPayrollVoucher';
 import { ficheTypeToInfo } from '../../../utils/cariAccountStatement';
-import { ChevronDown, FileText, Loader2, Printer, X } from 'lucide-react';
+import { CalendarClock, ChevronDown, FileText, Loader2, Printer, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { Party, PartyLedgerMovement } from '../../../core/types/models';
@@ -46,6 +46,8 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
   const [penalty, setPenalty] = useState('');
   const [bonusDefinition, setBonusDefinition] = useState('');
   const [penaltyDefinition, setPenaltyDefinition] = useState('');
+  const [txnDate, setTxnDate] = useState<string>(''); // YYYY-MM-DD; boşsa bugün
+  const [isBackDated, setIsBackDated] = useState(false);
   const [registerId, setRegisterId] = useState('');
   const [definition, setDefinition] = useState('');
   const [registers, setRegisters] = useState<Kasa[]>([]);
@@ -126,6 +128,8 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
       setPenalty('');
       setBonusDefinition('');
       setPenaltyDefinition('');
+      setTxnDate('');
+      setIsBackDated(false);
     }
   }, [action]);
 
@@ -208,6 +212,8 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
           penaltyAmount: penaltyAmt && penaltyAmt > 0 ? penaltyAmt : undefined,
           bonusDefinition: bonusDefinition.trim() || undefined,
           penaltyDefinition: penaltyDefinition.trim() || undefined,
+          date: txnDate || undefined,
+          isBackDated,
         });
       } else if (action === 'advance') {
         result = await employeeAPI.payAdvance({
@@ -232,6 +238,8 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
       setPenalty('');
       setBonusDefinition('');
       setPenaltyDefinition('');
+      setTxnDate('');
+      setIsBackDated(false);
       onSaved();
       if (action !== 'reconcile') {
         const titles = {
@@ -457,6 +465,46 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
                     </div>
                   );
                 })()}
+
+                {/* İşlem tarihi — bonus/ceza dahil tüm maaş hareketleri bu tarihle yazılır */}
+                <div className="pt-3 border-t border-slate-200">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    {t('party.payroll.txnDate')}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      value={txnDate}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setTxnDate(v);
+                        if (v) {
+                          const today = new Date().toISOString().slice(0, 10);
+                          setIsBackDated(v < today);
+                        } else {
+                          setIsBackDated(false);
+                        }
+                      }}
+                      max={new Date().toISOString().slice(0, 10)}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium"
+                    />
+                    {txnDate && (
+                      <button
+                        type="button"
+                        onClick={() => { setTxnDate(''); setIsBackDated(false); }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold uppercase"
+                      >
+                        {t('party.payroll.txnDateToday')}
+                      </button>
+                    )}
+                  </div>
+                  {isBackDated && (
+                    <div className="mt-2 p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2">
+                      <CalendarClock className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{t('party.payroll.backDatedWarning')}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

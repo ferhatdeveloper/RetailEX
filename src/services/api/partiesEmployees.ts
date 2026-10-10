@@ -403,6 +403,14 @@ export const employeeAPI = {
     /** Bonus / ceza için serbest açıklama (ekstrede görünür). */
     bonusDefinition?: string;
     penaltyDefinition?: string;
+    /**
+     * Geçmiş tarihli işlem desteği (maaş + bonus + ceza + kasa çıkışı).
+     * Boşsa NOW() kullanılır (bugün). ISO format ('YYYY-MM-DD' veya ISO timestamp).
+     * Tarih < bugün ise `isBackDated` audit bayrağı cash_lines'a ve
+     * ledger satırlarına işlenir (migration 186/190 deseni).
+     */
+    date?: string;
+    isBackDated?: boolean;
   }): Promise<PayrollWriteResult> {
     if (!input.employeeId) throw new Error('Personel seçilmedi.');
     if (!(input.amount > 0)) throw new Error('Maaş tutarı pozitif olmalı.');
@@ -421,10 +429,16 @@ export const employeeAPI = {
     // kasayı etkilemez; bordro kaydı olarak ledger'a yazılır.
     const grossPaid = Number(input.amount) || 0;
 
+    // Tarih: YYYY-MM-DD → ISO timestamp; boşsa NOW(). Bonus/ceza ile aynı tarih.
+    const txnDate = input.date
+      ? (input.date.includes('T') ? input.date : `${input.date}T12:00:00`)
+      : new Date().toISOString();
+    const isBackDated = Boolean(input.isBackDated);
+
     const cih = await createKasaIslemi({
       firma_id: normalizeFirmTableNr(ERP_SETTINGS.firmNr),
       kasa_id: input.registerId,
-      islem_tarihi: new Date().toISOString(),
+      islem_tarihi: txnDate,
       tutar: grossPaid,
       islem_tipi: 'MAAS_ODEME',
       islem_aciklamasi: input.definition || `Maaş ödemesi — ${emp.name}`,
@@ -433,6 +447,7 @@ export const employeeAPI = {
       party_name: emp.name,
       doviz_kodu: 'YEREL',
       dovizli_tutar: grossPaid,
+      is_back_dated: isBackDated,
     });
 
     // Ana maaş ödemesi ledger satırı — brüt tutar (kasadan çıkan)
@@ -446,6 +461,7 @@ export const employeeAPI = {
       sourceModule: 'payroll',
       sourceId: cih.id,
       cashLineId: cih.id,
+      date: txnDate,
     });
 
     // Bonus hakkedişi (kasa etkisiz; party balance +bonus)
@@ -459,6 +475,7 @@ export const employeeAPI = {
         definition: input.bonusDefinition || `Bordro bonusu — ${emp.name}`,
         sourceModule: 'payroll',
         sourceId: cih.id,
+        date: txnDate,
       });
     }
 
@@ -473,6 +490,7 @@ export const employeeAPI = {
         definition: input.penaltyDefinition || `Bordro cezası/kesinti — ${emp.name}`,
         sourceModule: 'payroll',
         sourceId: cih.id,
+        date: txnDate,
       });
     }
 

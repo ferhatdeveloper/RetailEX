@@ -3159,6 +3159,10 @@ export const translations: any = {
         penaltyPositive: 'Ceza tutarı negatif olamaz',
         netSalary: 'Brüt Maaş',
         netPayable: 'Net Ödenecek',
+        // Migration 208 — bordro için geçmiş tarih girişi (maaş + bonus + ceza ortak)
+        txnDate: 'İşlem Tarihi',
+        txnDateToday: 'Bugün',
+        backDatedWarning: 'Geçmiş tarihli kayıt: maaş, bonus ve ceza satırları seçilen tarihle yazılacak ve audit rozetinde işaretlenecek.',
       },
       statement: {
         title: 'Personel Hesap Ekstresi',
@@ -4863,6 +4867,10 @@ export const translations: any = {
         penaltyPositive: 'Penalty amount must be non-negative',
         netSalary: 'Gross Salary',
         netPayable: 'Net Payable',
+        // Migration 208 — back-dated payroll entry (salary + bonus + penalty shared date)
+        txnDate: 'Transaction Date',
+        txnDateToday: 'Today',
+        backDatedWarning: 'Back-dated entry: salary, bonus and penalty rows will be written with the selected date and flagged for audit.',
       },
       statement: {
         title: 'Employee Account Statement',
@@ -6555,6 +6563,10 @@ export const translations: any = {
         penaltyPositive: 'يجب أن لا يكون مبلغ الخصم سالباً',
         netSalary: 'الراتب الإجمالي',
         netPayable: 'صافي المستحق',
+        // Migration 208 — تاريخ سابق للراتب (الراتب + العلاوة + الخصم بنفس التاريخ)
+        txnDate: 'تاريخ العملية',
+        txnDateToday: 'اليوم',
+        backDatedWarning: 'قيد بتاريخ سابق: ستُسجل صفوف الراتب والعلاوة والخصم بالتاريخ المحدد وتُوسم للتدقيق.',
       },
       statement: {
         title: 'كشف حساب الموظف',
@@ -8297,6 +8309,10 @@ export const translations: any = {
         penaltyPositive: 'بڕی سزا نابێت نەرێنی بێت',
         netSalary: 'مووچەی گشتی',
         netPayable: 'پاکێتی دانەوە',
+        // Migration 208 — بەرواری پێشوو بۆ مووچە (مووچە + پاداش + سزا بە هەمان بەروار)
+        txnDate: 'بەرواری مامەڵە',
+        txnDateToday: 'ئەمڕۆ',
+        backDatedWarning: 'تۆمارکردنی بەرواری پێشوو: ڕیزەکانی مووچە، پاداش و سزا بە بەرواری هەڵبژێردراو دەنووسرێن و بۆ پشکنین نیشانە دەکرێن.',
       },
       statement: {
         title: 'کەشفی حسابی کارمەند',
