@@ -33,10 +33,12 @@ export interface EmployeePayrollModalProps {
   initialTxnDate?: string; // YYYY-MM-DD
   initialSalary?: string; // boş ise default salary_base kullanılmaz
   initialAction?: 'salary' | 'advance' | 'reconcile';
+  /** Açılışta hangi view tab aktif olsun. */
+  initialViewTab?: ViewTab;
 }
 
 type Action = 'salary' | 'advance' | 'reconcile';
-type ViewTab = 'form' | 'movements';
+type ViewTab = 'form' | 'bonus' | 'penalty' | 'movements';
 
 type MovementRow = PartyLedgerMovement & {
   debit: number;
@@ -56,10 +58,11 @@ export function EmployeePayrollModal({
   initialTxnDate,
   initialSalary,
   initialAction,
+  initialViewTab,
 }: EmployeePayrollModalProps) {
   const t = useNestedT();
   const { tm } = useLanguage();
-  const [viewTab, setViewTab] = useState<ViewTab>('form');
+  const [viewTab, setViewTab] = useState<ViewTab>(initialViewTab || 'form');
   const [action, setAction] = useState<Action>(initialAction || 'salary');
   const [amount, setAmount] = useState('');
   const [bonus, setBonus] = useState(initialBonus ?? '');
@@ -205,8 +208,6 @@ export function EmployeePayrollModal({
     e.preventDefault();
     setError(null);
     const amt = parseFloat(amount);
-    const bonusAmt = parseFloat(bonus);
-    const penaltyAmt = parseFloat(penalty);
     if (!amt || amt <= 0) {
       setError(t('party.payroll.amountPositive'));
       return;
@@ -214,16 +215,6 @@ export function EmployeePayrollModal({
     if (action !== 'reconcile' && !registerId) {
       setError(t('party.payroll.registerRequired'));
       return;
-    }
-    if (action === 'salary') {
-      if (bonusAmt && bonusAmt < 0) {
-        setError(t('party.payroll.bonusPositive') || 'Bonus tutarı negatif olamaz');
-        return;
-      }
-      if (penaltyAmt && penaltyAmt < 0) {
-        setError(t('party.payroll.penaltyPositive') || 'Ceza tutarı negatif olamaz');
-        return;
-      }
     }
     setLoading(true);
     try {
@@ -234,10 +225,6 @@ export function EmployeePayrollModal({
           amount: amt,
           registerId,
           definition: definition || undefined,
-          bonusAmount: bonusAmt && bonusAmt > 0 ? bonusAmt : undefined,
-          penaltyAmount: penaltyAmt && penaltyAmt > 0 ? penaltyAmt : undefined,
-          bonusDefinition: bonusDefinition.trim() || undefined,
-          penaltyDefinition: penaltyDefinition.trim() || undefined,
           date: txnDate || undefined,
           isBackDated,
         });
@@ -260,10 +247,6 @@ export function EmployeePayrollModal({
       await loadRecent();
       setViewTab('movements');
       // Form state'i temizle (başarı sonrası)
-      setBonus('');
-      setPenalty('');
-      setBonusDefinition('');
-      setPenaltyDefinition('');
       setTxnDate('');
       setIsBackDated(false);
       onSaved();
@@ -272,37 +255,16 @@ export function EmployeePayrollModal({
           salary: t('party.payroll.voucherTitleSalary'),
           advance: t('party.payroll.voucherTitleAdvance'),
         } as const;
-        // Bonus / ceza varsa tek maaş makbuzunda birleşik göster; aksi halde mevcut davranış
-        const hasBonusPenalty = action === 'salary'
-          && (parseFloat(bonus) > 0 || parseFloat(penalty) > 0);
-        const bonusNum = parseFloat(bonus) > 0 ? parseFloat(bonus) : 0;
-        const penaltyNum = parseFloat(penalty) > 0 ? parseFloat(penalty) : 0;
-        const netAmount = hasBonusPenalty
-          ? amt + bonusNum - penaltyNum
-          : amt;
-        const bonusDef = bonusDefinition.trim();
-        const penaltyDef = penaltyDefinition.trim();
-        const compositeDefinition = hasBonusPenalty
-          ? [
-              definition.trim() || undefined,
-              bonusNum > 0
-                ? `${t('party.payroll.bonusLabel')}: ${bonusNum.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}${bonusDef ? ` — ${bonusDef}` : ''}`
-                : undefined,
-              penaltyNum > 0
-                ? `${t('party.payroll.penaltyLabel')}: ${penaltyNum.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}${penaltyDef ? ` — ${penaltyDef}` : ''}`
-                : undefined,
-            ].filter(Boolean).join(' | ') || undefined
-          : definition || undefined;
         try {
           await printPayrollVoucher({
             kind: action,
             title: titles[action],
             employeeName: employee.name,
             employeeCode: employee.code,
-            amount: netAmount,
+            amount: amt,
             ficheNo: result?.ficheNo,
             date: new Date().toISOString(),
-            definition: compositeDefinition,
+            definition: definition || undefined,
             balanceAfter: result?.balance,
             balanceLabel: t('party.fields.balance'),
           });
@@ -346,11 +308,23 @@ export function EmployeePayrollModal({
           </div>
         </div>
 
-        <div className="shrink-0 px-5 pt-3 flex gap-2 border-b border-slate-100 bg-white">
+        <div className="shrink-0 px-5 pt-3 flex gap-2 border-b border-slate-100 bg-white flex-wrap">
           <ViewTabButton
             active={viewTab === 'form'}
             onClick={() => setViewTab('form')}
             label={t('party.payroll.tabForm')}
+          />
+          <ViewTabButton
+            active={viewTab === 'bonus'}
+            onClick={() => setViewTab('bonus')}
+            label={t('party.payroll.bonusTabLabel') || t('party.payroll.bonusLabel')}
+            color="violet"
+          />
+          <ViewTabButton
+            active={viewTab === 'penalty'}
+            onClick={() => setViewTab('penalty')}
+            label={t('party.payroll.penaltyTabLabel') || t('party.payroll.penaltyLabel')}
+            color="rose"
           />
           <ViewTabButton
             active={viewTab === 'movements'}
@@ -406,133 +380,7 @@ export function EmployeePayrollModal({
               )}
             </div>
 
-            {/* Bonus / Ceza — yalnızca maaş ödemesinde geçerli */}
-            {action === 'salary' && (
-              <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    {t('party.payroll.bonusPenaltyTitle')}
-                  </div>
-                  <div className="text-[10px] text-slate-500">
-                    {t('party.payroll.bonusPenaltyHint')}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-violet-700 uppercase tracking-wider mb-1.5">
-                      {t('party.payroll.bonusLabel')}
-                    </label>
-                    <input
-                      type="number"
-                      value={bonus}
-                      onChange={(e) => setBonus(e.target.value)}
-                      min={0}
-                      step="0.01"
-                      placeholder="0.00"
-                      className="w-full px-4 py-3 border border-violet-200 rounded-2xl focus:ring-2 focus:ring-violet-500 focus:border-violet-400 outline-none text-slate-800 font-medium bg-white"
-                    />
-                    <input
-                      type="text"
-                      value={bonusDefinition}
-                      onChange={(e) => setBonusDefinition(e.target.value)}
-                      placeholder={t('party.payroll.bonusNotePlaceholder')}
-                      className="mt-2 w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-400 focus:border-violet-300 outline-none text-slate-700"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-rose-700 uppercase tracking-wider mb-1.5">
-                      {t('party.payroll.penaltyLabel')}
-                    </label>
-                    <input
-                      type="number"
-                      value={penalty}
-                      onChange={(e) => setPenalty(e.target.value)}
-                      min={0}
-                      step="0.01"
-                      placeholder="0.00"
-                      className="w-full px-4 py-3 border border-rose-200 rounded-2xl focus:ring-2 focus:ring-rose-500 focus:border-rose-400 outline-none text-slate-800 font-medium bg-white"
-                    />
-                    <input
-                      type="text"
-                      value={penaltyDefinition}
-                      onChange={(e) => setPenaltyDefinition(e.target.value)}
-                      placeholder={t('party.payroll.penaltyNotePlaceholder')}
-                      className="mt-2 w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-400 focus:border-rose-300 outline-none text-slate-700"
-                    />
-                  </div>
-                </div>
-
-                {/* Net özet */}
-                {(() => {
-                  const b = parseFloat(bonus) || 0;
-                  const p = parseFloat(penalty) || 0;
-                  const a = parseFloat(amount) || 0;
-                  const net = a + b - p;
-                  const hasAny = b > 0 || p > 0;
-                  if (!hasAny) return null;
-                  return (
-                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">{t('party.payroll.netSalary')}</span>
-                        <strong className="font-mono text-slate-800">{formatMoney(a)}</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">{t('party.payroll.netPayable')}</span>
-                        <strong className="font-mono text-emerald-700">{formatMoney(net)}</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">{t('party.fields.balance')}</span>
-                        <strong className={`font-mono ${balance + net > 0 ? 'text-emerald-700' : balance + net < 0 ? 'text-amber-700' : 'text-slate-500'}`}>
-                          {formatMoney(balance + net)}
-                        </strong>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* İşlem tarihi — bonus/ceza dahil tüm maaş hareketleri bu tarihle yazılır */}
-                <div className="pt-3 border-t border-slate-200">
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                    {t('party.payroll.txnDate')}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={txnDate}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setTxnDate(v);
-                        if (v) {
-                          const today = new Date().toISOString().slice(0, 10);
-                          setIsBackDated(v < today);
-                        } else {
-                          setIsBackDated(false);
-                        }
-                      }}
-                      max={new Date().toISOString().slice(0, 10)}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium"
-                    />
-                    {txnDate && (
-                      <button
-                        type="button"
-                        onClick={() => { setTxnDate(''); setIsBackDated(false); }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold uppercase"
-                      >
-                        {t('party.payroll.txnDateToday')}
-                      </button>
-                    )}
-                  </div>
-                  {isBackDated && (
-                    <div className="mt-2 p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2">
-                      <CalendarClock className="w-4 h-4 shrink-0 mt-0.5" />
-                      <span>{t('party.payroll.backDatedWarning')}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* Bonus / Ceza artık kendi tab'larında — Form'da yalnızca maaş/avans/mahsup */}
 
             <div>
               <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
@@ -546,6 +394,20 @@ export function EmployeePayrollModal({
                 className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium"
               />
             </div>
+
+            <TxnDateField
+              value={txnDate}
+              onChange={(v) => {
+                setTxnDate(v);
+                if (v) {
+                  const today = new Date().toISOString().slice(0, 10);
+                  setIsBackDated(v < today);
+                } else {
+                  setIsBackDated(false);
+                }
+              }}
+              isBackDated={isBackDated}
+            />
 
             {error && (
               <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-sm">
@@ -582,6 +444,76 @@ export function EmployeePayrollModal({
               </button>
             </div>
           </form>
+        )}
+
+        {viewTab === 'bonus' && (
+          <BonusPenaltyForm
+            mode="bonus"
+            employee={employee}
+            amount={bonus}
+            definition={bonusDefinition}
+            salaryAmount={initialSalary ?? ''}
+            includeSalary={initialSalary !== undefined && parseFloat(initialSalary) > 0}
+            txnDate={txnDate}
+            isBackDated={isBackDated}
+            onAmountChange={setBonus}
+            onDefinitionChange={setBonusDefinition}
+            onTxnDateChange={(v) => {
+              setTxnDate(v);
+              if (v) {
+                const today = new Date().toISOString().slice(0, 10);
+                setIsBackDated(v < today);
+              } else {
+                setIsBackDated(false);
+              }
+            }}
+            onSaved={() => {
+              setBonus('');
+              setBonusDefinition('');
+              setTxnDate('');
+              setIsBackDated(false);
+            }}
+            onSavedNavigate={onSaved}
+            onOpenStatement={onOpenStatement}
+            onAfterSave={() => setViewTab('movements')}
+            currentBalance={balance}
+            hint={t('party.payroll.bonusPenaltyHint')}
+          />
+        )}
+
+        {viewTab === 'penalty' && (
+          <BonusPenaltyForm
+            mode="penalty"
+            employee={employee}
+            amount={penalty}
+            definition={penaltyDefinition}
+            salaryAmount={initialSalary ?? ''}
+            includeSalary={false}
+            txnDate={txnDate}
+            isBackDated={isBackDated}
+            onAmountChange={setPenalty}
+            onDefinitionChange={setPenaltyDefinition}
+            onTxnDateChange={(v) => {
+              setTxnDate(v);
+              if (v) {
+                const today = new Date().toISOString().slice(0, 10);
+                setIsBackDated(v < today);
+              } else {
+                setIsBackDated(false);
+              }
+            }}
+            onSaved={() => {
+              setPenalty('');
+              setPenaltyDefinition('');
+              setTxnDate('');
+              setIsBackDated(false);
+            }}
+            onSavedNavigate={onSaved}
+            onOpenStatement={onOpenStatement}
+            onAfterSave={() => setViewTab('movements')}
+            currentBalance={balance}
+            hint={t('party.payroll.bonusPenaltyHint')}
+          />
         )}
 
         {viewTab === 'movements' && (
@@ -751,19 +683,374 @@ function txKind(type: string): PayrollVoucherKind | null {
   return null;
 }
 
-function ViewTabButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+function ViewTabButton({ active, onClick, label, color }: { active: boolean; onClick: () => void; label: string; color?: 'violet' | 'rose' | 'emerald' }) {
+  const palette = color === 'violet'
+    ? { active: 'border-violet-600 text-violet-700 bg-violet-50' }
+    : color === 'rose'
+    ? { active: 'border-rose-600 text-rose-700 bg-rose-50' }
+    : { active: 'border-emerald-600 text-emerald-700 bg-emerald-50' };
   return (
     <button
       type="button"
       onClick={onClick}
       className={`px-4 py-2.5 rounded-t-xl text-xs font-bold uppercase tracking-wider border-b-2 -mb-px ${
         active
-          ? 'border-emerald-600 text-emerald-700 bg-emerald-50'
+          ? palette.active
           : 'border-transparent text-slate-500 hover:text-slate-700'
       }`}
     >
       {label}
     </button>
+  );
+}
+
+/**
+ * Tarih seçici + hızlı öneriler (Bugün, Dün, Geçen ay, Ay başı).
+ * Geçmişe dönük kayıt için serbest tarih seçimi destekler.
+ */
+function TxnDateField({
+  value,
+  onChange,
+  isBackDated,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  isBackDated: boolean;
+}) {
+  const t = useNestedT();
+  const today = new Date();
+  const todayIso = today.toISOString().slice(0, 10);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayIso = yesterday.toISOString().slice(0, 10);
+
+  // Geçen ayın son günü
+  const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+  const lastMonthEndIso = lastMonthEnd.toISOString().slice(0, 10);
+  // Bu ayın ilk günü
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthStartIso = monthStart.toISOString().slice(0, 10);
+
+  const presets: { label: string; value: string; subtle?: boolean }[] = [
+    { label: t('party.payroll.dateToday') || 'Bugün', value: '' },
+    { label: t('party.payroll.dateYesterday') || 'Dün', value: yesterdayIso },
+    { label: t('party.payroll.dateLastMonth') || 'Geçen ay', value: lastMonthEndIso },
+    { label: t('party.payroll.dateMonthStart') || 'Ay başı', value: monthStartIso },
+  ];
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+          {t('party.payroll.txnDate')}
+        </label>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="text-[10px] text-slate-500 hover:text-slate-700 font-bold uppercase"
+          >
+            {t('party.payroll.txnDateToday')}
+          </button>
+        )}
+      </div>
+      <div className="relative">
+        <input
+          type="date"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium"
+        />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {presets.map((p) => {
+          const active = (p.value === '' && !value) || (p.value && p.value === value);
+          return (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => onChange(p.value)}
+              className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition ${
+                active
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:border-emerald-300 hover:text-emerald-700'
+              }`}
+            >
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+      {isBackDated && (
+        <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2">
+          <CalendarClock className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{t('party.payroll.backDatedWarning')}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Bonus veya Ceza için ayrı tab formu.
+ * Bonus: tutar (BONUS_HAKKEDIS), opsiyonel maaş ile birlikte.
+ * Ceza: tutar (CEZA_ODEME), sadece bordro düzeltme.
+ */
+function BonusPenaltyForm({
+  mode,
+  employee,
+  amount,
+  definition,
+  salaryAmount,
+  includeSalary,
+  txnDate,
+  isBackDated,
+  onAmountChange,
+  onDefinitionChange,
+  onTxnDateChange,
+  onSaved,
+  onSavedNavigate,
+  onOpenStatement,
+  onAfterSave,
+  currentBalance,
+  hint,
+}: {
+  mode: 'bonus' | 'penalty';
+  employee: Party;
+  amount: string;
+  definition: string;
+  salaryAmount: string;
+  includeSalary: boolean;
+  txnDate: string;
+  isBackDated: boolean;
+  onAmountChange: (v: string) => void;
+  onDefinitionChange: (v: string) => void;
+  onTxnDateChange: (v: string) => void;
+  onSaved: () => void;
+  onSavedNavigate: () => void;
+  onOpenStatement?: () => void;
+  onAfterSave: () => void;
+  currentBalance: number;
+  hint: string;
+}) {
+  const t = useNestedT();
+  const [includeSalaryState, setIncludeSalaryState] = useState(includeSalary);
+  const [salary, setSalary] = useState(salaryAmount);
+  const [registerId, setRegisterId] = useState('');
+  const [registers, setRegisters] = useState<Kasa[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchKasalar({ aktif: true }).then(setRegisters).catch(() => setRegisters([]));
+  }, []);
+
+  const isBonus = mode === 'bonus';
+  const accent = isBonus ? 'violet' : 'rose';
+  const accentText = isBonus ? 'text-violet-700' : 'text-rose-700';
+  const accentBorder = isBonus ? 'border-violet-200 focus:ring-violet-500 focus:border-violet-400' : 'border-rose-200 focus:ring-rose-500 focus:border-rose-400';
+  const accentButton = isBonus ? 'bg-violet-600 hover:bg-violet-700 shadow-violet-200/50' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-200/50';
+  const title = isBonus ? (t('party.payroll.bonusTabTitle') || 'Bordro Bonusu') : (t('party.payroll.penaltyTabTitle') || 'Bordro Cezası / Kesintisi');
+  const label = isBonus ? t('party.payroll.bonusLabel') : t('party.payroll.penaltyLabel');
+  const placeholder = isBonus ? t('party.payroll.bonusNotePlaceholder') : t('party.payroll.penaltyNotePlaceholder');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) {
+      setError(isBonus
+        ? (t('party.payroll.bonusPositive') || 'Bonus tutarı negatif olamaz')
+        : (t('party.payroll.penaltyPositive') || 'Ceza tutarı negatif olamaz'));
+      return;
+    }
+    const salaryNum = includeSalaryState ? parseFloat(salary) || 0 : 0;
+    if (includeSalaryState && (!salary || salaryNum <= 0)) {
+      setError(t('party.payroll.amountPositive'));
+      return;
+    }
+    if (includeSalaryState && !registerId) {
+      setError(t('party.payroll.registerRequired'));
+      return;
+    }
+    setLoading(true);
+    try {
+      let result: { ficheNo?: string | null; balance: number } | null = null;
+      if (includeSalaryState) {
+        // Maaş + bonus/ceza birlikte yaz (tek maaş makbuzu)
+        result = await employeeAPI.paySalary({
+          employeeId: employee.id,
+          amount: salaryNum,
+          registerId,
+          definition: definition || undefined,
+          bonusAmount: isBonus ? amt : undefined,
+          penaltyAmount: !isBonus ? amt : undefined,
+          bonusDefinition: isBonus ? definition.trim() || undefined : undefined,
+          penaltyDefinition: !isBonus ? definition.trim() || undefined : undefined,
+          date: txnDate || undefined,
+          isBackDated,
+        });
+      } else if (isBonus) {
+        result = await employeeAPI.addBonus({
+          employeeId: employee.id,
+          amount: amt,
+          definition: definition || undefined,
+          date: txnDate || undefined,
+          isBackDated,
+        });
+      } else {
+        result = await employeeAPI.addPenalty({
+          employeeId: employee.id,
+          amount: amt,
+          definition: definition || undefined,
+          date: txnDate || undefined,
+          isBackDated,
+        });
+      }
+      if (result) {
+        toast.success(t('party.payroll.saveSuccess'));
+        onSaved();
+        onSavedNavigate();
+        onAfterSave();
+      }
+    } catch (err: any) {
+      setError(err?.message || String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="flex-1 min-h-0 overflow-y-auto p-5 space-y-3">
+      <div className={`rounded-2xl border ${isBonus ? 'border-violet-200 bg-violet-50/40' : 'border-rose-200 bg-rose-50/40'} p-3`}>
+        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700">{title}</div>
+        <div className="text-[10px] text-slate-500 mt-0.5">{hint}</div>
+      </div>
+
+      <div>
+        <label className={`block text-[11px] font-bold ${accentText} uppercase tracking-wider mb-1.5`}>
+          {label}
+        </label>
+        <input
+          type="number"
+          value={amount}
+          onChange={(e) => onAmountChange(e.target.value)}
+          min={0}
+          step="0.01"
+          placeholder="0.00"
+          className={`w-full px-4 py-3 border ${accentBorder} rounded-2xl outline-none text-slate-800 font-medium bg-white`}
+        />
+        <input
+          type="text"
+          value={definition}
+          onChange={(e) => onDefinitionChange(e.target.value)}
+          placeholder={placeholder}
+          className="mt-2 w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-300 focus:border-slate-300 outline-none text-slate-700"
+        />
+      </div>
+
+      {/* Bonus tab'ında maaş dahil etme opsiyonu — kullanıcı geçen ay farkını bugün maaşıyla birlikte yazabilsin */}
+      {isBonus && (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+          <label className="flex items-center gap-2 text-xs text-slate-700">
+            <input
+              type="checkbox"
+              checked={includeSalaryState}
+              onChange={(e) => setIncludeSalaryState(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+            />
+            <span className="font-bold uppercase tracking-wider text-[10px]">
+              {t('party.payroll.includeSalaryWithBonus') || 'Bu ay maaşıyla birlikte yaz'}
+            </span>
+          </label>
+          {includeSalaryState && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  {t('party.payroll.amount')}
+                </label>
+                <input
+                  type="number"
+                  value={salary}
+                  onChange={(e) => setSalary(e.target.value)}
+                  min={0}
+                  step="0.01"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium"
+                />
+              </div>
+              <div className="relative">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  {t('party.payroll.register')}
+                </label>
+                <select
+                  value={registerId}
+                  onChange={(e) => setRegisterId(e.target.value)}
+                  className="w-full px-3 py-2 pr-8 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium appearance-none bg-white"
+                >
+                  <option value="">{t('party.payroll.chooseRegister')}</option>
+                  {registers.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.kasa_adi} ({r.kasa_kodu})
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2 top-[28px] -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <TxnDateField
+        value={txnDate}
+        onChange={onTxnDateChange}
+        isBackDated={isBackDated}
+      />
+
+      {error && (
+        <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-sm">
+          {error}
+        </div>
+      )}
+
+      <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 grid grid-cols-2 gap-2">
+        <div className="flex justify-between gap-2"><span>{t('party.fields.balance')}</span>
+          <strong className={currentBalance > 0 ? 'text-emerald-700' : currentBalance < 0 ? 'text-amber-700' : ''}>
+            {formatMoney(currentBalance)}
+          </strong>
+        </div>
+        {onOpenStatement && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onOpenStatement}
+              className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 hover:underline flex items-center gap-1"
+            >
+              <FileText className="w-3 h-3" />
+              {t('party.payroll.openStatement')}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={onAfterSave}
+          className="flex-1 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider py-3 hover:bg-slate-100 active:scale-[0.98] transition"
+        >
+          {t('common.cancel', 'İptal')}
+        </button>
+        <button
+          type="submit"
+          disabled={loading}
+          className={`flex-1 rounded-2xl ${accentButton} text-white font-bold uppercase text-sm tracking-wider py-3 shadow-lg active:scale-[0.98] transition flex items-center justify-center gap-2 disabled:opacity-50`}
+        >
+          {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+          {t('common.save', 'Kaydet')}
+        </button>
+      </div>
+    </form>
   );
 }
 

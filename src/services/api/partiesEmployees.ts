@@ -508,6 +508,96 @@ export const employeeAPI = {
     };
   },
 
+  /**
+   * Sadece bordro bonusu yaz (kasadan para çıkışı yok).
+   * - Geçen ay fark analizi veya performans primi gibi senaryolarda kullanılır.
+   * - BONUS_HAKKEDIS ledger satırı yazılır; sign=+1, kasa etkisiz.
+   * - Geçmiş tarihli giriş desteklenir.
+   */
+  async addBonus(input: {
+    employeeId: string;
+    amount: number;
+    definition?: string;
+    date?: string;
+    isBackDated?: boolean;
+  }): Promise<PayrollWriteResult> {
+    if (!input.employeeId) throw new Error('Personel seçilmedi.');
+    const amount = Math.abs(Number(input.amount) || 0);
+    if (amount <= 0) throw new Error('Bonus tutarı pozitif olmalı.');
+    const emp = await this.getById(input.employeeId);
+    if (!emp) throw new Error('Personel bulunamadı.');
+
+    const txnDate = input.date
+      ? (input.date.includes('T') ? input.date : `${input.date}T12:00:00`)
+      : new Date().toISOString();
+    const isBackDated = Boolean(input.isBackDated);
+
+    const ledger = await writePartyLedger({
+      partyId: emp.id,
+      cardType: 'employee',
+      transactionType: 'BONUS_HAKKEDIS',
+      amount,
+      sign: 1,
+      definition: input.definition || `Bordro bonusu — ${emp.name}`,
+      sourceModule: 'payroll',
+      date: txnDate,
+    });
+
+    const balances = await this.recomputeEmployeeBalances([emp.id]);
+    const balance = balances.get(emp.id) ?? ((emp.balance || 0) + amount);
+    return {
+      ledger,
+      ficheNo: null,
+      cashLineId: null,
+      balance,
+    };
+  },
+
+  /**
+   * Sadece bordro cezası/kesintisi yaz (kasadan para çıkışı yok).
+   * - Geçen ay fark analizi veya bordro düzeltmesi gibi senaryolarda kullanılır.
+   * - CEZA_ODEME ledger satırı yazılır; sign=−1, kasa etkisiz.
+   * - Geçmiş tarihli giriş desteklenir.
+   */
+  async addPenalty(input: {
+    employeeId: string;
+    amount: number;
+    definition?: string;
+    date?: string;
+    isBackDated?: boolean;
+  }): Promise<PayrollWriteResult> {
+    if (!input.employeeId) throw new Error('Personel seçilmedi.');
+    const amount = Math.abs(Number(input.amount) || 0);
+    if (amount <= 0) throw new Error('Ceza tutarı pozitif olmalı.');
+    const emp = await this.getById(input.employeeId);
+    if (!emp) throw new Error('Personel bulunamadı.');
+
+    const txnDate = input.date
+      ? (input.date.includes('T') ? input.date : `${input.date}T12:00:00`)
+      : new Date().toISOString();
+    const isBackDated = Boolean(input.isBackDated);
+
+    const ledger = await writePartyLedger({
+      partyId: emp.id,
+      cardType: 'employee',
+      transactionType: 'CEZA_ODEME',
+      amount,
+      sign: -1,
+      definition: input.definition || `Bordro cezası/kesinti — ${emp.name}`,
+      sourceModule: 'payroll',
+      date: txnDate,
+    });
+
+    const balances = await this.recomputeEmployeeBalances([emp.id]);
+    const balance = balances.get(emp.id) ?? ((emp.balance || 0) - amount);
+    return {
+      ledger,
+      ficheNo: null,
+      cashLineId: null,
+      balance,
+    };
+  },
+
   async payAdvance(input: {
     employeeId: string;
     amount: number;

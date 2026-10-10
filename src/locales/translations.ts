@@ -3163,6 +3163,16 @@ export const translations: any = {
         txnDate: 'İşlem Tarihi',
         txnDateToday: 'Bugün',
         backDatedWarning: 'Geçmiş tarihli kayıt: maaş, bonus ve ceza satırları seçilen tarihle yazılacak ve audit rozetinde işaretlenecek.',
+        // Bonus / Ceza ayrı tab'lar
+        bonusTabLabel: 'Bonus',
+        penaltyTabLabel: 'Ceza',
+        bonusTabTitle: 'Bordro Bonusu',
+        penaltyTabTitle: 'Bordro Cezası / Kesintisi',
+        includeSalaryWithBonus: 'Bu ay maaşıyla birlikte yaz',
+        dateToday: 'Bugün',
+        dateYesterday: 'Dün',
+        dateLastMonth: 'Geçen ay',
+        dateMonthStart: 'Ay başı',
       },
       // Geçen ay / seçili ay bordro fark analizi (fazla veya eksik ödemeleri tespit et)
       variance: {
@@ -4888,6 +4898,16 @@ export const translations: any = {
         txnDate: 'Transaction Date',
         txnDateToday: 'Today',
         backDatedWarning: 'Back-dated entry: salary, bonus and penalty rows will be written with the selected date and flagged for audit.',
+        // Bonus / Penalty as separate tabs
+        bonusTabLabel: 'Bonus',
+        penaltyTabLabel: 'Penalty',
+        bonusTabTitle: 'Payroll Bonus',
+        penaltyTabTitle: 'Payroll Penalty / Deduction',
+        includeSalaryWithBonus: 'Write together with this month salary',
+        dateToday: 'Today',
+        dateYesterday: 'Yesterday',
+        dateLastMonth: 'Last month',
+        dateMonthStart: 'Month start',
       },
       // Previous month / selected month payroll variance analysis (overpaid or underpaid detection)
       variance: {
@@ -6601,6 +6621,16 @@ export const translations: any = {
         txnDate: 'تاريخ العملية',
         txnDateToday: 'اليوم',
         backDatedWarning: 'قيد بتاريخ سابق: ستُسجل صفوف الراتب والعلاوة والخصم بالتاريخ المحدد وتُوسم للتدقيق.',
+        // تبويبات منفصلة للعلاوة والخصم
+        bonusTabLabel: 'العلاوة',
+        penaltyTabLabel: 'الخصم',
+        bonusTabTitle: 'علاوة الرواتب',
+        penaltyTabTitle: 'خصم / جزاء الرواتب',
+        includeSalaryWithBonus: 'تسجيل مع راتب هذا الشهر',
+        dateToday: 'اليوم',
+        dateYesterday: 'أمس',
+        dateLastMonth: 'الشهر الماضي',
+        dateMonthStart: 'بداية الشهر',
       },
       // تحليل فروقات الرواتب للشهر السابق
       variance: {
@@ -8364,6 +8394,16 @@ export const translations: any = {
         txnDate: 'بەرواری مامەڵە',
         txnDateToday: 'ئەمڕۆ',
         backDatedWarning: 'تۆمارکردنی بەرواری پێشوو: ڕیزەکانی مووچە، پاداش و سزا بە بەرواری هەڵبژێردراو دەنووسرێن و بۆ پشکنین نیشانە دەکرێن.',
+        // تابە جیاکراوەکانی پاداش و سزا
+        bonusTabLabel: 'پاداش',
+        penaltyTabLabel: 'سزا',
+        bonusTabTitle: 'پاداشی مووچە',
+        penaltyTabTitle: 'سزا / بڕینی مووچە',
+        includeSalaryWithBonus: 'لەگەڵ مووچەی ئەم مانگە بنووسە',
+        dateToday: 'ئەمڕۆ',
+        dateYesterday: 'دوێنێ',
+        dateLastMonth: 'مانگی پێشوو',
+        dateMonthStart: 'دەستپێکی مانگ',
       },
       // شیکردنەوەی جیاوازی مووچە بۆ مانگی پێشوو
       variance: {

@@ -77,6 +77,7 @@ export function PartiesModule({
     txnDate: string;
     salaryAmount: string;
     action?: 'salary' | 'advance' | 'reconcile';
+    viewTab?: 'form' | 'bonus' | 'penalty' | 'movements';
   } | null>(null);
   const [varianceOpen, setVarianceOpen] = useState(false);
   const [cashPartner, setCashPartner] = useState<Party | null>(null);
@@ -609,6 +610,7 @@ export function PartiesModule({
           initialTxnDate={payrollPrefill?.txnDate}
           initialSalary={payrollPrefill?.salaryAmount}
           initialAction={payrollPrefill?.action}
+          initialViewTab={payrollPrefill?.viewTab}
         />
       )}
 
@@ -623,6 +625,7 @@ export function PartiesModule({
               penaltyDefinition: payload.penaltyDefinition,
               txnDate: payload.txnDate,
               salaryAmount: String(payload.salaryAmount ?? 0),
+              viewTab: payload.bonusAmount !== undefined ? 'bonus' : 'penalty',
             });
             setPayrollEmployee(employee);
           }}
