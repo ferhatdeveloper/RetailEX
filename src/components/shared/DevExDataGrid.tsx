@@ -962,12 +962,21 @@ export function parseRangeBoundMs(
 }
 
 function gridColumnFilterFnInner(
-  row: { getValue: (columnId: string) => unknown },
+  row: { getValue: (columnId: string) => unknown; original?: unknown },
   columnId: string,
   filterValue: unknown,
 ): boolean {
   const payload = filterValue as GridFilterPayload | undefined;
   if (payload == null || payload === '') return true;
+
+  // 10.10.2026 — Grup / alt-toplam sentetik satırlarını filtre hesabından
+  // Hariç tut. Bu satırlar `cari` / `table` gibi grup-dışı kolonlarda
+  // yalnızca ilk detay satırının değerini taşır; gerçek veriyi temsil
+  // etmediğinden filtre karşılaştırmasına katılırsa görsel tutarsızlık
+  // ve yanlış "Tümü eşleşti → filtre temizlendi" sonucu üretir.
+  const original = row.original as Record<string, unknown> | undefined;
+  const rowKind = original?.[DEVEX_GRID_ROW_KIND];
+  if (rowKind === 'group' || rowKind === 'subtotal') return true;
 
   if (typeof payload === 'string') {
     const cellValue = String(row.getValue(columnId) ?? '').toLowerCase();
@@ -1414,7 +1423,15 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
       /* fallback */
     }
     if (counts.size === 0) {
+      // 10.10.2026 — Grup / alt-toplam sentetik satırlarını filtre
+      // değerleri listesinden Hariç tut. Bu satırlar `cari` / `table` gibi
+      // kolonlarda yalnızca ilk detay satırının değerini taşır; dropdown'da
+      // görünmesi "Tümü" karşılaştırmasını bozar ve dropdown kapanma /
+      // filtre uygulama algısını yanıltır.
       column.getPreFilteredRowModel().rows.forEach((row) => {
+        const original = row.original as Record<string, unknown> | undefined;
+        const rowKind = original?.[DEVEX_GRID_ROW_KIND];
+        if (rowKind === 'group' || rowKind === 'subtotal') return;
         const key = cellToFilterKey(row.getValue(column.id));
         counts.set(key, (counts.get(key) ?? 0) + 1);
       });
