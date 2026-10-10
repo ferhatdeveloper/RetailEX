@@ -167,17 +167,115 @@ export function filterFollowUpRemindersForBulk(
 }
 
 /**
+ * Telefon numarasi olmayan / gecersiz olan hatirlatmalari ayirir.
+ * Toplu gonderimde "Telefonu eksik musteriler" listesini olusturmak icin kullanilir.
+ */
+export interface MissingFollowUpRecipient {
+  id: string;
+  name: string;
+  reason: 'no_phone' | 'invalid_phone' | 'dismissed' | 'shadow';
+  service: string;
+  due_date: string;
+  customer_id?: string | null;
+  phone_raw?: string | null;
+}
+
+export function partitionFollowUpRemindersForBulk(
+  reminders: BeautyFollowUpReminder[],
+  options?: { includeShadow?: boolean },
+): {
+  eligible: BeautyFollowUpReminder[];
+  missing: MissingFollowUpRecipient[];
+} {
+  const includeShadow = options?.includeShadow === true;
+  const seen = new Set<string>();
+  const eligible: BeautyFollowUpReminder[] = [];
+  const missing: MissingFollowUpRecipient[] = [];
+  for (const r of reminders) {
+    if (r.follow_up_status === 'dismissed') {
+      missing.push({
+        id: reminderKey(r),
+        name: r.customer_name?.trim() || 'Musteri',
+        reason: 'dismissed',
+        service: serviceLabel(r),
+        due_date: r.due_date,
+        customer_id: r.customer_id,
+        phone_raw: r.customer_phone,
+      });
+      continue;
+    }
+    if (!includeShadow && r.is_natural_shadow) {
+      missing.push({
+        id: reminderKey(r),
+        name: r.customer_name?.trim() || 'Musteri',
+        reason: 'shadow',
+        service: serviceLabel(r),
+        due_date: r.due_date,
+        customer_id: r.customer_id,
+        phone_raw: r.customer_phone,
+      });
+      continue;
+    }
+    const phone = normalizePhone(r.customer_phone);
+    if (!phone || phone.length < 10) {
+      missing.push({
+        id: reminderKey(r),
+        name: r.customer_name?.trim() || 'Musteri',
+        reason: r.customer_phone?.trim() ? 'invalid_phone' : 'no_phone',
+        service: serviceLabel(r),
+        due_date: r.due_date,
+        customer_id: r.customer_id,
+        phone_raw: r.customer_phone,
+      });
+      continue;
+    }
+    const key = reminderKey(r);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    eligible.push(r);
+  }
+  return { eligible, missing };
+}
+
+/**
  * Toplu gönderim önizleme listesi (gönderimden önce gösterilir).
  */
 export async function buildFollowUpBulkPreviewList(
   reminders: BeautyFollowUpReminder[],
   options?: { includeShadow?: boolean; lang?: WhatsAppMessageLang },
 ): Promise<WhatsAppBulkPreviewItem[]> {
-  const rows = filterFollowUpRemindersForBulk(reminders, options);
+  const { items, missing: _missing } = await buildFollowUpBulkPreviewWithMissing(
+    reminders,
+    options,
+  );
+  return items;
+}
+
+/**
+ * buildFollowUpBulkPreviewList + telefonu eksik / gecersiz olan musteriler.
+ * Bulk preview modalinda "Telefonu eksik" tab'i icin kullanilir.
+ */
+export async function buildFollowUpBulkPreviewWithMissing(
+  reminders: BeautyFollowUpReminder[],
+  options?: { includeShadow?: boolean; lang?: WhatsAppMessageLang },
+): Promise<{ items: WhatsAppBulkPreviewItem[]; missing: MissingFollowUpRecipient[] }> {
+  const { eligible, missing } = partitionFollowUpRemindersForBulk(reminders, options);
   const out: WhatsAppBulkPreviewItem[] = [];
-  for (const r of rows) {
+  for (const r of eligible) {
     const built = await buildFollowUpWhatsAppPayload(r, { lang: options?.lang });
-    if (!built) continue;
+    if (!built) {
+      // Bireysel payload insasi basarisiz (locale, template vs.) — missing'e dus.
+      missing.push({
+        id: reminderKey(r),
+        name: r.customer_name?.trim() || 'Musteri',
+        reason: r.customer_phone?.trim() ? 'invalid_phone' : 'no_phone',
+        service: serviceLabel(r),
+        due_date: r.due_date,
+        customer_id: r.customer_id,
+        phone_raw: r.customer_phone,
+      });
+      continue;
+    }
     const service = serviceLabel(r);
     out.push({
       id: reminderKey(r),
@@ -191,7 +289,7 @@ export async function buildFollowUpBulkPreviewList(
       event_type: 'follow_up_reminder',
     });
   }
-  return out;
+  return { items: out, missing };
 }
 
 /**

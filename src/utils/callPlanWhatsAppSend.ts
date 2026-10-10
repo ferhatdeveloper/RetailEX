@@ -199,6 +199,14 @@ export async function sendCallPlanCustomerWhatsApp(
   return { success: true };
 }
 
+export interface MissingCallPlanRecipient {
+  id: string;
+  name: string;
+  reason: 'no_phone' | 'invalid_phone';
+  phone_raw?: string | null;
+  weekdays?: string | null;
+}
+
 export async function buildCallPlanBulkPreviewList(
   customers: Supplier[],
   options?: {
@@ -207,14 +215,44 @@ export async function buildCallPlanBulkPreviewList(
     customText?: string;
   },
 ): Promise<WhatsAppBulkPreviewItem[]> {
+  const { items, missing: _missing } = await buildCallPlanBulkPreviewWithMissing(
+    customers,
+    options,
+  );
+  return items;
+}
+
+/**
+ * buildCallPlanBulkPreviewList + telefonu eksik / gecersiz olan musteriler.
+ * "Telefonu eksik" tab'i icin kullanilir; bulk preview'in takilmadan acilmasi saglanir.
+ */
+export async function buildCallPlanBulkPreviewWithMissing(
+  customers: Supplier[],
+  options?: {
+    preset?: CallPlanWhatsAppPreset;
+    lang?: WhatsAppMessageLang;
+    customText?: string;
+  },
+): Promise<{ items: WhatsAppBulkPreviewItem[]; missing: MissingCallPlanRecipient[] }> {
   const lang = options?.lang ?? 'tr';
   const preset = options?.preset ?? 'call_reminder';
-  const out: WhatsAppBulkPreviewItem[] = [];
+  const items: WhatsAppBulkPreviewItem[] = [];
+  const missing: MissingCallPlanRecipient[] = [];
   const seen = new Set<string>();
 
   for (const customer of customers) {
     const phone = normalizePhone(customer.phone);
-    if (!phone || seen.has(phone)) continue;
+    if (!phone) {
+      missing.push({
+        id: customer.id,
+        name: customer.name || 'Musteri',
+        reason: customer.phone?.trim() ? 'invalid_phone' : 'no_phone',
+        phone_raw: customer.phone,
+        weekdays: customerCallWeekdaysLabel(customer.call_plan_weekdays, 'tr-TR', true) || null,
+      });
+      continue;
+    }
+    if (seen.has(phone)) continue;
     seen.add(phone);
 
     const built = await buildCallPlanWhatsAppPayload(customer, {
@@ -222,9 +260,18 @@ export async function buildCallPlanBulkPreviewList(
       lang,
       customText: options?.customText,
     });
-    if (!built) continue;
+    if (!built) {
+      missing.push({
+        id: customer.id,
+        name: customer.name || 'Musteri',
+        reason: 'invalid_phone',
+        phone_raw: customer.phone,
+        weekdays: customerCallWeekdaysLabel(customer.call_plan_weekdays, 'tr-TR', true) || null,
+      });
+      continue;
+    }
 
-    out.push({
+    items.push({
       id: customer.id,
       name: built.name,
       phone: built.phone,
@@ -236,7 +283,7 @@ export async function buildCallPlanBulkPreviewList(
       event_type: 'customer_call_plan',
     });
   }
-  return out;
+  return { items, missing };
 }
 
 export async function sendCallPlanCustomersBulkWhatsApp(

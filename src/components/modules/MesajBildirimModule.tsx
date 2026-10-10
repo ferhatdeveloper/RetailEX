@@ -44,9 +44,11 @@ import type { BeautyFollowUpReminder } from '../../types/beauty';
 import {
   filterFollowUpRemindersForBulk,
   buildFollowUpBulkPreviewList,
+  buildFollowUpBulkPreviewWithMissing,
   followUpReminderKey,
+  type MissingFollowUpRecipient,
 } from '../../utils/followUpWhatsAppSend';
-import { WhatsAppBulkSendPreviewModal } from '../shared/WhatsAppBulkSendPreviewModal';
+import { WhatsAppBulkSendPreviewModal, type BulkMissingItem } from '../shared/WhatsAppBulkSendPreviewModal';
 import type { WhatsAppBulkPreviewItem } from '../../utils/whatsappBulkSend';
 import {
   CUSTOMER_BROADCAST_TEMPLATES,
@@ -139,6 +141,7 @@ export function MesajBildirimModule({
   const [customerSearch, setCustomerSearch] = useState('');
   const [bulkPreviewOpen, setBulkPreviewOpen] = useState(false);
   const [bulkPreviewItems, setBulkPreviewItems] = useState<WhatsAppBulkPreviewItem[]>([]);
+  const [bulkPreviewMissing, setBulkPreviewMissing] = useState<BulkMissingItem[]>([]);
   const [bulkPreviewTitle, setBulkPreviewTitle] = useState('');
   const [mainTab, setMainTab] = useState<MainTab>('send');
   const [queueInitialFilter, setQueueInitialFilter] = useState<'all' | 'failed'>('all');
@@ -408,12 +411,17 @@ export function MesajBildirimModule({
     setSending(true);
     try {
       let items: WhatsAppBulkPreviewItem[] = [];
+      let missing: MissingFollowUpRecipient[] = [];
       if (mode === 'follow_up_range') {
         if (selectedFollowUpRows.length === 0) {
           toast.warning(tm('msgNotifyNoRecipients'));
           return;
         }
-        items = await buildFollowUpBulkPreviewList(selectedFollowUpRows, { lang: messageLang });
+        const result = await buildFollowUpBulkPreviewWithMissing(selectedFollowUpRows, {
+          lang: messageLang,
+        });
+        items = result.items;
+        missing = result.missing;
         setBulkPreviewTitle(tm('msgNotifyModeFollowUpRange'));
       } else {
         const recipients = await customerNotificationService.resolveRecipients({
@@ -439,11 +447,20 @@ export function MesajBildirimModule({
         });
         setBulkPreviewTitle(tm('msgNotifyBulkPreviewSubtitle'));
       }
-      if (!items.length) {
+      if (!items.length && missing.length === 0) {
         toast.warning(tm('msgNotifyNoRecipients'));
         return;
       }
       setBulkPreviewItems(items);
+      setBulkPreviewMissing(
+        missing.map((m) => ({
+          id: m.id,
+          name: m.name,
+          reason: m.reason,
+          contextLine: `${m.service} · ${m.due_date}`,
+          phoneRaw: m.phone_raw ?? null,
+        })),
+      );
       setBulkPreviewOpen(true);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -460,7 +477,20 @@ export function MesajBildirimModule({
   const rebuildBulkPreviewItems = useCallback(
     async (lang: WhatsAppMessageLang): Promise<WhatsAppBulkPreviewItem[]> => {
       if (mode === 'follow_up_range') {
-        return buildFollowUpBulkPreviewList(selectedFollowUpRows, { lang });
+        const { items, missing } = await buildFollowUpBulkPreviewWithMissing(
+          selectedFollowUpRows,
+          { lang },
+        );
+        setBulkPreviewMissing(
+          missing.map((m) => ({
+            id: m.id,
+            name: m.name,
+            reason: m.reason,
+            contextLine: `${m.service} · ${m.due_date}`,
+            phoneRaw: m.phone_raw ?? null,
+          })),
+        );
+        return items;
       }
       const recipients = await customerNotificationService.resolveRecipients({
         mode: mode as CustomerNotifyAudience,
@@ -1212,6 +1242,7 @@ export function MesajBildirimModule({
         onComplete={() => void handleBulkComplete()}
         onRebuildItems={rebuildBulkPreviewItems}
         initialMessageLang={messageLang}
+        missingItems={bulkPreviewMissing}
       />
     </div>
   );

@@ -4,20 +4,22 @@ import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
-import { WhatsAppBulkSendPreviewModal } from '../../shared/WhatsAppBulkSendPreviewModal';
 import { createColumnHelper } from '@tanstack/react-table';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { userAPI, type User } from '../../../services/api/users';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import {
   buildCallPlanBulkPreviewList,
+  buildCallPlanBulkPreviewWithMissing,
   buildCallPlanMessageText,
   normalizeCallPlanMessageLang,
   sendCallPlanCustomerWhatsApp,
   supplierHasWhatsAppPhone,
   type CallPlanWhatsAppPreset,
+  type MissingCallPlanRecipient,
 } from '../../../utils/callPlanWhatsAppSend';
 import type { WhatsAppBulkPreviewItem } from '../../../utils/whatsappBulkSend';
+import { WhatsAppBulkSendPreviewModal, type BulkMissingItem } from '../../shared/WhatsAppBulkSendPreviewModal';
 import { CariAccountStatementPanel } from './CariAccountStatementPanel';
 import { UniversalInvoiceForm } from '../invoices/UniversalInvoiceForm';
 import { KasaIslemModal } from '../../accounting/cash-ops/KasaIslemModal';
@@ -72,6 +74,7 @@ export function CustomerCallPlanModule() {
   const [waCustomSending, setWaCustomSending] = useState(false);
   const [waBulkOpen, setWaBulkOpen] = useState(false);
   const [waBulkItems, setWaBulkItems] = useState<WhatsAppBulkPreviewItem[]>([]);
+  const [waBulkMissing, setWaBulkMissing] = useState<BulkMissingItem[]>([]);
   const [waBulkPreparing, setWaBulkPreparing] = useState(false);
   const [gridSelected, setGridSelected] = useState<Supplier[]>([]);
   const [ekstreAccount, setEkstreAccount] = useState<Supplier | null>(null);
@@ -520,22 +523,22 @@ export function CustomerCallPlanModule() {
 
   const prepareBulkWhatsApp = async () => {
     const pool = gridSelected.length > 0 ? gridSelected : currentWeekFiltered;
-    const withPhone = pool.filter(supplierHasWhatsAppPhone);
-    if (withPhone.length === 0) {
+    if (pool.length === 0) {
       toast.error(tm('callPlanWaNoPhone'));
       return;
     }
     setWaBulkPreparing(true);
     try {
-      const items = await buildCallPlanBulkPreviewList(withPhone, {
+      const { items, missing } = await buildCallPlanBulkPreviewWithMissing(pool, {
         preset: 'call_reminder',
         lang: messageLang,
       });
-      if (!items.length) {
+      if (!items.length && missing.length === 0) {
         toast.error(tm('callPlanWaNoPhone'));
         return;
       }
       setWaBulkItems(items);
+      setWaBulkMissing(missingItemsToBulk(missing));
       setWaBulkOpen(true);
     } catch (error: any) {
       toast.error(error?.message || tm('callPlanWaFailed'));
@@ -544,11 +547,18 @@ export function CustomerCallPlanModule() {
     }
   };
 
-  const rebuildWaBulkItems = useCallback(async (lang: typeof messageLang) => {
-    const pool = gridSelected.length > 0 ? gridSelected : currentWeekFiltered;
-    const withPhone = pool.filter(supplierHasWhatsAppPhone);
-    return buildCallPlanBulkPreviewList(withPhone, { preset: 'call_reminder', lang });
-  }, [currentWeekFiltered, gridSelected, messageLang]);
+  const rebuildWaBulkItems = useCallback(
+    async (lang: typeof messageLang) => {
+      const pool = gridSelected.length > 0 ? gridSelected : currentWeekFiltered;
+      const { items, missing } = await buildCallPlanBulkPreviewWithMissing(pool, {
+        preset: 'call_reminder',
+        lang,
+      });
+      setWaBulkMissing(missingItemsToBulk(missing));
+      return items;
+    },
+    [currentWeekFiltered, gridSelected],
+  );
 
   const reportWeekOptions = useMemo(() => {
     const current = customerCallPlanWeeklyAPI.getCurrentWeekStart();
@@ -1178,6 +1188,7 @@ export function CustomerCallPlanModule() {
         title={tm('callPlanWaBulkTitle')}
         initialMessageLang={messageLang}
         onRebuildItems={rebuildWaBulkItems}
+        missingItems={waBulkMissing}
         onClose={() => setWaBulkOpen(false)}
         onComplete={() => void load()}
       />
@@ -1493,4 +1504,14 @@ export function CustomerCallPlanModule() {
       ) : null}
     </div>
   );
+}
+
+function missingItemsToBulk(missing: MissingCallPlanRecipient[]): BulkMissingItem[] {
+  return missing.map((m) => ({
+    id: m.id,
+    name: m.name,
+    reason: m.reason,
+    contextLine: m.weekdays ?? undefined,
+    phoneRaw: m.phone_raw ?? null,
+  }));
 }

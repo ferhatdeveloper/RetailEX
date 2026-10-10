@@ -67,8 +67,10 @@ import { FollowUpMesajBildirimModal } from './FollowUpMesajBildirimModal';
 import {
     filterFollowUpRemindersForBulk,
     buildFollowUpBulkPreviewList,
+    buildFollowUpBulkPreviewWithMissing,
+    type MissingFollowUpRecipient,
 } from '../../../utils/followUpWhatsAppSend';
-import { WhatsAppBulkSendPreviewModal } from '../../shared/WhatsAppBulkSendPreviewModal';
+import { WhatsAppBulkSendPreviewModal, type BulkMissingItem } from '../../shared/WhatsAppBulkSendPreviewModal';
 import type { WhatsAppBulkPreviewItem } from '../../../utils/whatsappBulkSend';
 import { toast } from 'sonner';
 import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
@@ -536,21 +538,22 @@ export function SmartScheduler() {
     const [followUpBulkSending, setFollowUpBulkSending] = useState(false);
     const [followUpBulkPreviewOpen, setFollowUpBulkPreviewOpen] = useState(false);
     const [followUpBulkPreviewItems, setFollowUpBulkPreviewItems] = useState<WhatsAppBulkPreviewItem[]>([]);
+    const [followUpBulkPreviewMissing, setFollowUpBulkPreviewMissing] = useState<BulkMissingItem[]>([]);
     const [followUpSinglePreviewTitle, setFollowUpSinglePreviewTitle] = useState('');
     const [followUpPreviewReminder, setFollowUpPreviewReminder] = useState<BeautyFollowUpReminder | null>(null);
 
     const openFollowUpWhatsAppPreview = useCallback(async (reminder: BeautyFollowUpReminder) => {
         try {
-            const items = await buildFollowUpBulkPreviewList([reminder]);
+            const { items, missing } = await buildFollowUpBulkPreviewWithMissing([reminder]);
             if (!items.length) {
                 toast.warning(tm('msgNotifyNoRecipients'));
-                return;
             }
             setFollowUpSinglePreviewTitle(
                 `${reminder.customer_name ?? '—'} · ${tm('msgNotifyModeSingle')}`,
             );
             setFollowUpPreviewReminder(reminder);
             setFollowUpBulkPreviewItems(items);
+            setFollowUpBulkPreviewMissing(missingItemsToBulk(missing));
             setFollowUpBulkPreviewOpen(true);
         } catch (e: unknown) {
             toast.error(e instanceof Error ? e.message : String(e));
@@ -574,12 +577,13 @@ export function SmartScheduler() {
         }
         setFollowUpBulkSending(true);
         try {
-            const items = await buildFollowUpBulkPreviewList(followUpReminders);
-            if (!items.length) {
+            const { items, missing } = await buildFollowUpBulkPreviewWithMissing(followUpReminders);
+            if (!items.length && missing.length === 0) {
                 toast.warning(tm('msgNotifyNoRecipients'));
                 return;
             }
             setFollowUpBulkPreviewItems(items);
+            setFollowUpBulkPreviewMissing(missingItemsToBulk(missing));
             setFollowUpPreviewReminder(null);
             setFollowUpSinglePreviewTitle('');
             setFollowUpBulkPreviewOpen(true);
@@ -3330,14 +3334,36 @@ export function SmartScheduler() {
                     setFollowUpBulkPreviewOpen(false);
                     setFollowUpSinglePreviewTitle('');
                     setFollowUpPreviewReminder(null);
+                    setFollowUpBulkPreviewMissing([]);
                 }}
+                missingItems={followUpBulkPreviewMissing}
                 onRebuildItems={async (lang) => {
                     if (followUpPreviewReminder) {
-                        return buildFollowUpBulkPreviewList([followUpPreviewReminder], { lang });
+                        const { items, missing } = await buildFollowUpBulkPreviewWithMissing(
+                            [followUpPreviewReminder],
+                            { lang },
+                        );
+                        setFollowUpBulkPreviewMissing(missingItemsToBulk(missing));
+                        return items;
                     }
-                    return buildFollowUpBulkPreviewList(followUpReminders, { lang });
+                    const { items, missing } = await buildFollowUpBulkPreviewWithMissing(
+                        followUpReminders,
+                        { lang },
+                    );
+                    setFollowUpBulkPreviewMissing(missingItemsToBulk(missing));
+                    return items;
                 }}
             />
         </div>
     );
+}
+
+function missingItemsToBulk(missing: MissingFollowUpRecipient[]): BulkMissingItem[] {
+    return missing.map((m) => ({
+        id: m.id,
+        name: m.name,
+        reason: m.reason,
+        contextLine: `${m.service} · ${m.due_date}`,
+        phoneRaw: m.phone_raw ?? null,
+    }));
 }
