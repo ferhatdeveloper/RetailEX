@@ -8770,6 +8770,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'قاڵبی پاشەکەوتکراو هەڵبژێرە',
   },
   msgNotifyCustomTplNone: { tr: '— Şablon seçme —', en: '— No template —', ar: '— بدون قالب —', ku: '— قاڵب هەڵنەبژێردرا —' },
+  msgNotifyCustomTplNoLang: {
+    tr: 'Bu dilde şablon yok',
+    en: 'No templates in this language',
+    ar: 'لا توجد قوالب بهذه اللغة',
+    ku: 'لەم زمانەدا قاڵب نییە',
+  },
+  msgNotifyCustomTplNoLangHint: {
+    tr: 'Aktif dilde kayıtlı şablon bulunamadı. Şablonlar sekmesinden 4-dil içerik ekleyin veya farklı bir dil seçin.',
+    en: 'No saved templates in the active language. Add 4-language content from the Templates tab or pick another language.',
+    ar: 'لا توجد قوالب محفوظة باللغة الفعّالة. أضف محتوى بـ 4 لغات من علامة تبويب القوالب أو اختر لغة أخرى.',
+    ku: 'لەم زمانەی کارا قاڵبی پاشەکەوتکراو نییە. لە تابی قاڵبەکان 4 زمان زیاد بکە یان زمانێکی تر هەڵبژێرە.',
+  },
   msgNotifyFilterTier: { tr: 'Müşteri segmenti', en: 'Customer tier', ar: 'فئة العميل', ku: 'پلەی کڕیار' },
   msgNotifyFilterCity: { tr: 'Şehir', en: 'City', ar: 'المدينة', ku: 'شار' },
   msgNotifyFilterDistrict: { tr: 'İlçe', en: 'District', ar: 'المنطقة', ku: 'ناوچە' },

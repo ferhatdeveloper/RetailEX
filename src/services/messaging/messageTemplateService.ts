@@ -142,6 +142,60 @@ export function resolveTemplateTranslations(
   };
 }
 
+/** Belirli bir dilde dolu body_text kolonu olan şablonları filtrele.
+ *  - Dil kolonu (`body_text_<lang>`) açıkça dolu olan şablonlar listelenir.
+ *  - Geriye uyumluluk: tüm 4 dil kolonu boş + legacy `body_text` dolu olan
+ *    eski şablonlar, tüm dillerde (fallback) görünür kabul edilir (migration 207
+ *    öncesi tek kolon verisi).
+ *  - Pasif taslak (is_active=false) şablonlar hariç tutulur. */
+const TPL_LANG_KEYS = [
+  'body_text_tr',
+  'body_text_en',
+  'body_text_ar',
+  'body_text_ku',
+] as const;
+
+function readExplicitBodyLang(row: MessageTemplateRow, lang: WhatsAppMessageLang): string {
+  switch (lang) {
+    case 'en':
+      return (row.body_text_en ?? '').trim();
+    case 'ar':
+      return (row.body_text_ar ?? '').trim();
+    case 'ku':
+      return (row.body_text_ku ?? '').trim();
+    default:
+      return (row.body_text_tr ?? '').trim();
+  }
+}
+
+function allLangColsEmpty(row: MessageTemplateRow): boolean {
+  return TPL_LANG_KEYS.every((k) => !(row[k] ?? '').toString().trim());
+}
+
+export function hasTemplateBodyInLang(
+  row: MessageTemplateRow,
+  lang: WhatsAppMessageLang,
+): boolean {
+  const direct = readExplicitBodyLang(row, lang);
+  if (direct) return true;
+  // Tüm 4 dil kolonu boş + eski body_text dolu → fallback olarak göster (her dilde listele)
+  if (allLangColsEmpty(row) && (row.body_text ?? '').trim()) return true;
+  return false;
+}
+
+export function filterTemplatesByLang(
+  rows: MessageTemplateRow[],
+  lang: WhatsAppMessageLang,
+): MessageTemplateRow[] {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  const normLang = normalizeWhatsAppMessageLang(lang);
+  return rows.filter((r) => {
+    // Pasif taslaklar (is_active === false) gizle
+    if (r.is_active === false) return false;
+    return hasTemplateBodyInLang(r, normLang);
+  });
+}
+
 export const messageTemplateService = {
   async list(activeOnly = false): Promise<MessageTemplateRow[]> {
     const fn = firmNrRow();

@@ -68,6 +68,7 @@ import {
   splitHeadlineAndBody,
   resolveTemplateBody,
   resolveTemplateTranslations,
+  filterTemplatesByLang,
   type MessageTemplateRow,
 } from '../../services/messaging/messageTemplateService';
 import {
@@ -88,6 +89,9 @@ export interface MesajBildirimModuleProps {
 
 type NotifyMode = CustomerNotifyAudience | 'follow_up_range';
 type MainTab = 'send' | 'templates' | 'special' | 'auto' | 'queue';
+
+/** Şablon dropdown'ında "TR/EN/AR/KU" rozetleri için */
+const TPL_LANG_KEYS_M: WhatsAppMessageLang[] = ['tr', 'en', 'ar', 'ku'];
 
 const BASE_AUDIENCE_MODES: Array<{
   id: CustomerNotifyAudience;
@@ -163,6 +167,12 @@ export function MesajBildirimModule({
   const labelCls = darkMode ? 'text-xs font-medium text-gray-400' : 'text-xs font-medium text-gray-500';
 
   const metaTemplates = useMemo(() => customerNotificationService.getMetaTemplates(), []);
+
+  /** Aktif dile göre filtrelenmiş kullanıcı şablonları (dropdown listesi). */
+  const langFilteredCustomTemplates = useMemo(
+    () => filterTemplatesByLang(customTemplates, messageLang),
+    [customTemplates, messageLang],
+  );
   const selectedMetaTpl = useMemo(
     () => metaTemplates.find((t) => t.id === metaTemplateId) ?? metaTemplates[0],
     [metaTemplates, metaTemplateId],
@@ -205,6 +215,22 @@ export function MesajBildirimModule({
     if (!selectedMetaTpl) return;
     setMetaParams(selectedMetaTpl.parameterLabels.map(() => ''));
   }, [selectedMetaTpl?.id]);
+
+  /** Dil değişince: seçili özel şablon, yeni dilde yoksa seçimi temizle. */
+  useEffect(() => {
+    if (!selectedCustomTplId) return;
+    const tpl = customTemplates.find((t) => t.id === selectedCustomTplId);
+    if (!tpl) return;
+    const available = filterTemplatesByLang([tpl], messageLang);
+    if (available.length === 0) {
+      setSelectedCustomTplId('');
+      return;
+    }
+    if (messageText.trim() === '') {
+      setMessageText(resolveTemplateBody(tpl, messageLang));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageLang]);
 
   // Üst mavi banner tıklaması → ilgili sekmeyi aç (örn. auto, queue, special, templates)
   useEffect(() => {
@@ -1168,37 +1194,62 @@ export function MesajBildirimModule({
             ) : (
               <div>
                 <label className={labelCls}>{tm('msgNotifyFreeText')}</label>
-                {customTemplates.length > 0 ? (
-                  <div className="mb-2">
-                    <label className={labelCls}>{tm('msgNotifyCustomTplPick')}</label>
-                    <select
-                      className={inputCls}
-                      value={selectedCustomTplId}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        setSelectedCustomTplId(id);
-                        const tpl = customTemplates.find((t) => t.id === id);
-                        if (tpl) {
-                          setFreeTextPreset('custom');
-                          // 4-dil birleşik şablondan aktif dilin metnini çözümle
-                          setMessageText(resolveTemplateBody(tpl, messageLang));
-                        }
-                      }}
-                    >
-                      <option value="">{tm('msgNotifyCustomTplNone')}</option>
-                      {customTemplates.map((t) => {
+                <div className="mb-2">
+                  <label className={labelCls}>{tm('msgNotifyCustomTplPick')}</label>
+                  <select
+                    className={inputCls}
+                    value={selectedCustomTplId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSelectedCustomTplId(id);
+                      const tpl = customTemplates.find((t) => t.id === id);
+                      if (tpl) {
+                        setFreeTextPreset('custom');
+                        // Şablon seçildiğinde aktif dilin body_text_<lang> kolonunu doldur;
+                        // o dil kolonu boşsa fallback zinciri (ku→ar→en→tr) ile çözümle.
+                        setMessageText(resolveTemplateBody(tpl, messageLang));
+                      }
+                    }}
+                  >
+                    <option value="">{tm('msgNotifyCustomTplNone')}</option>
+                    {langFilteredCustomTemplates.length > 0 ? (
+                      langFilteredCustomTemplates.map((t) => {
                         const trn = resolveTemplateTranslations(t);
-                        const preview = (trn[messageLang] || trn.tr || t.body_text || '').slice(0, 60);
+                        const langBody = (trn[messageLang] ?? '').trim();
+                        const previewSource =
+                          langBody ||
+                          (messageLang === 'tr'
+                            ? t.body_text
+                            : '') ||
+                          '';
+                        const preview = previewSource.slice(0, 60);
+                        const langBadges = TPL_LANG_KEYS_M.filter(
+                          (l) => (resolveTemplateTranslations(t)[l] ?? '').trim(),
+                        )
+                          .map((l) => l.toUpperCase())
+                          .join('·');
                         return (
                           <option key={t.id} value={t.id}>
-                            {t.name}{preview ? ` — ${preview}` : ''}
+                            {t.name}
+                            {preview ? ` — ${preview}` : ''}
+                            {langBadges ? ` [${langBadges}]` : ''}
                           </option>
                         );
-                      })}
-                    </select>
-                  </div>
-                ) : null}
+                      })
+                    ) : (
+                      <option value="" disabled>
+                        {tm('msgNotifyCustomTplNoLang')}
+                      </option>
+                    )}
+                  </select>
+                  {customTemplates.length > 0 && langFilteredCustomTemplates.length === 0 ? (
+                    <p className="text-[11px] text-amber-600 mt-1">
+                      {tm('msgNotifyCustomTplNoLangHint')}
+                    </p>
+                  ) : null}
+                </div>
                 <textarea
+                  dir={messageLang === 'ar' || messageLang === 'ku' ? 'rtl' : 'ltr'}
                   value={messageText}
                   onChange={(e) => {
                     setFreeTextPreset('custom');
@@ -1215,7 +1266,12 @@ export function MesajBildirimModule({
 
           <div className={`rounded-lg p-3 text-sm ${darkMode ? 'bg-gray-900' : 'bg-slate-100'}`}>
             <p className={`text-xs font-bold mb-1 ${labelCls}`}>{tm('msgNotifyPreview')}</p>
-            <p className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{previewMessage}</p>
+            <p
+              dir={messageLang === 'ar' || messageLang === 'ku' ? 'rtl' : 'ltr'}
+              className={darkMode ? 'text-gray-200' : 'text-gray-800'}
+            >
+              {previewMessage}
+            </p>
           </div>
 
           <button
