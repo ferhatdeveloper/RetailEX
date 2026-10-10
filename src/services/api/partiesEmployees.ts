@@ -396,6 +396,13 @@ export const employeeAPI = {
     amount: number;
     registerId: string;
     definition?: string;
+    /** Bordro bonusu — kasa etkisiz, party balance +bonus (ek hakkediş). */
+    bonusAmount?: number;
+    /** Bordro cezası/kesinti — kasa etkisiz, party balance −ceza. */
+    penaltyAmount?: number;
+    /** Bonus / ceza için serbest açıklama (ekstrede görünür). */
+    bonusDefinition?: string;
+    penaltyDefinition?: string;
   }): Promise<PayrollWriteResult> {
     if (!input.employeeId) throw new Error('Personel seçilmedi.');
     if (!(input.amount > 0)) throw new Error('Maaş tutarı pozitif olmalı.');
@@ -403,33 +410,75 @@ export const employeeAPI = {
     const emp = await this.getById(input.employeeId);
     if (!emp) throw new Error('Personel bulunamadı.');
 
+    const bonus = Math.abs(Number(input.bonusAmount) || 0);
+    const penalty = Math.abs(Number(input.penaltyAmount) || 0);
+    if (bonus > 0 && penalty > 0 && bonus === penalty && !input.amount) {
+      // bonus==penalty ve net 0 ise gereksiz maaş ödemesi yazma
+      throw new Error('Bonus ve ceza eşit; net ödeme sıfır. Maaş yerine mahsup kaydı kullanın.');
+    }
+
+    // Tek kasa çıkışı: brüt maaş (kasadan çıkan gerçek tutar) — bonus ve ceza
+    // kasayı etkilemez; bordro kaydı olarak ledger'a yazılır.
+    const grossPaid = Number(input.amount) || 0;
+
     const cih = await createKasaIslemi({
       firma_id: normalizeFirmTableNr(ERP_SETTINGS.firmNr),
       kasa_id: input.registerId,
       islem_tarihi: new Date().toISOString(),
-      tutar: input.amount,
+      tutar: grossPaid,
       islem_tipi: 'MAAS_ODEME',
       islem_aciklamasi: input.definition || `Maaş ödemesi — ${emp.name}`,
       party_id: emp.id,
       party_code: emp.code,
       party_name: emp.name,
       doviz_kodu: 'YEREL',
-      dovizli_tutar: input.amount,
+      dovizli_tutar: grossPaid,
     });
 
+    // Ana maaş ödemesi ledger satırı — brüt tutar (kasadan çıkan)
     const ledger = await writePartyLedger({
       partyId: emp.id,
       cardType: 'employee',
       transactionType: 'MAAS_ODEME',
-      amount: input.amount,
+      amount: grossPaid,
       sign: -1,
       definition: input.definition || `Maaş ödemesi — ${emp.name}`,
       sourceModule: 'payroll',
       sourceId: cih.id,
       cashLineId: cih.id,
     });
+
+    // Bonus hakkedişi (kasa etkisiz; party balance +bonus)
+    if (bonus > 0) {
+      await writePartyLedger({
+        partyId: emp.id,
+        cardType: 'employee',
+        transactionType: 'BONUS_HAKKEDIS',
+        amount: bonus,
+        sign: 1,
+        definition: input.bonusDefinition || `Bordro bonusu — ${emp.name}`,
+        sourceModule: 'payroll',
+        sourceId: cih.id,
+      });
+    }
+
+    // Ceza / kesinti (kasa etkisiz; party balance −ceza)
+    if (penalty > 0) {
+      await writePartyLedger({
+        partyId: emp.id,
+        cardType: 'employee',
+        transactionType: 'CEZA_ODEME',
+        amount: penalty,
+        sign: -1,
+        definition: input.penaltyDefinition || `Bordro cezası/kesinti — ${emp.name}`,
+        sourceModule: 'payroll',
+        sourceId: cih.id,
+      });
+    }
+
     const balances = await this.recomputeEmployeeBalances([emp.id]);
-    const balance = balances.get(emp.id) ?? (emp.balance || 0) - input.amount;
+    // Net bakiye: önceki + bonus − maaş − ceza
+    const balance = balances.get(emp.id) ?? ((emp.balance || 0) + bonus - grossPaid - penalty);
     return {
       ledger: { ...ledger, fiche_no: cih.islem_no || null, cash_line_id: cih.id },
       ficheNo: cih.islem_no || null,

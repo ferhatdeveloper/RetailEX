@@ -167,6 +167,8 @@ const FICHE_TYPE_I18N_KEYS: Record<string, string> = {
   MAAS_ODEME: 'ficheTypeSalaryPayment',
   AVANS_ODEME: 'ficheTypeAdvancePayment',
   AVANS_MAHSUP: 'ficheTypeAdvanceOffset',
+  BONUS_HAKKEDIS: 'ficheTypeBonusAccrual',
+  CEZA_ODEME: 'ficheTypePenaltyPayment',
   KAR_DAGITIMI: 'ficheTypeProfitDistribution',
   ORTAK_DAGITIM_KAR: 'ficheTypeProfitDistribution',
   ZARAR_DAGITIMI: 'ficheTypeLossDistribution',
@@ -217,8 +219,10 @@ export function ficheTypeToInfo(
   if (ftUpper === 'CH_ODEME') return { label: resolve(key!) || 'Ödeme', color: 'bg-green-100 text-green-700', isReturn: true };
   if (ftUpper === 'CH_TAHSILAT') return { label: resolve(key!) || 'Tahsilat', color: 'bg-teal-100 text-teal-700', isReturn: true };
   if (ftUpper === 'MAAS_HAKKEDIS') return { label: resolve(key!) || 'Hakkediş', color: 'bg-indigo-100 text-indigo-700', isReturn: false };
+  if (ftUpper === 'BONUS_HAKKEDIS') return { label: resolve(key!) || 'Bonus', color: 'bg-violet-100 text-violet-700', isReturn: false };
   if (ftUpper === 'MAAS_ODEME') return { label: resolve(key!) || 'Maaş', color: 'bg-emerald-100 text-emerald-700', isReturn: true };
   if (ftUpper === 'AVANS_ODEME') return { label: resolve(key!) || 'Avans', color: 'bg-amber-100 text-amber-700', isReturn: true };
+  if (ftUpper === 'CEZA_ODEME') return { label: resolve(key!) || 'Ceza', color: 'bg-rose-100 text-rose-700', isReturn: true };
   if (ftUpper === 'AVANS_MAHSUP') return { label: resolve(key!) || 'Mahsup', color: 'bg-slate-100 text-slate-600', isReturn: false };
   if (ftUpper === 'ORTAK_DAGITIM_KAR' || ftUpper === 'KAR_DAGITIMI') return { label: resolve(key!) || 'Kâr Dağıtım', color: 'bg-purple-100 text-purple-700', isReturn: false };
   if (ftUpper === 'ORTAK_DAGITIM_ZARAR' || ftUpper === 'ZARAR_DAGITIMI') return { label: resolve(key!) || 'Zarar Dağıtım', color: 'bg-rose-100 text-rose-700', isReturn: true };

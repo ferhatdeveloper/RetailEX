@@ -5,9 +5,17 @@
  * Negatif bakiye = hakkedişi aşan avans / ödeme (personel borçlu).
  *
  *   MAAS_HAKKEDIS : +tutar  (ay başı hakkediş, kasa yok)
+ *   BONUS_HAKKEDIS: +tutar  (ek hakkediş; kasa yok — bordro bonusu)
  *   MAAS_ODEME    : −tutar  (kasa çıkışı)
  *   AVANS_ODEME   : −tutar  (kasa çıkışı)
+ *   CEZA_ODEME    : −tutar  (maaştan kesinti; kasa yok — bordro cezası)
  *   AVANS_MAHSUP  :  0      (belge; avans zaten bakiyeyi düşürdü)
+ *
+ * 90 yıllık muhasebeci denetimi:
+ *   party_balance = MAAS_HAKKEDIS + BONUS_HAKKEDIS
+ *                 − MAAS_ODEME − AVANS_ODEME − CEZA_ODEME
+ *   Pozitif = işletmenin personele ödenmemiş toplam hakkedişi.
+ *   Negatif = avans/kesinti toplamı maaşı aşıyor (personel borçlu).
  */
 
 export function employeeLedgerBalanceDelta(transactionType: string, amount: number): number {
@@ -15,9 +23,11 @@ export function employeeLedgerBalanceDelta(transactionType: string, amount: numb
   if (!amt) return 0;
   switch (String(transactionType || '').toUpperCase().trim()) {
     case 'MAAS_HAKKEDIS':
+    case 'BONUS_HAKKEDIS':
       return amt;
     case 'MAAS_ODEME':
     case 'AVANS_ODEME':
+    case 'CEZA_ODEME':
       return -amt;
     case 'AVANS_MAHSUP':
       return 0;
@@ -26,15 +36,17 @@ export function employeeLedgerBalanceDelta(transactionType: string, amount: numb
   }
 }
 
-/** Ekstre sütunları: hakkediş → Alacak, ödeme/avans → Borç. */
+/** Ekstre sütunları: hakkediş → Alacak, ödeme/avans/ceza → Borç. */
 export function employeeStatementSides(
   transactionType: string,
   amount: number,
 ): { debit: number; credit: number } {
   const amt = Math.abs(parseFloat(String(amount ?? 0)) || 0);
   const t = String(transactionType || '').toUpperCase().trim();
-  if (t === 'MAAS_HAKKEDIS') return { debit: 0, credit: amt };
-  if (t === 'MAAS_ODEME' || t === 'AVANS_ODEME') return { debit: amt, credit: 0 };
+  if (t === 'MAAS_HAKKEDIS' || t === 'BONUS_HAKKEDIS') return { debit: 0, credit: amt };
+  if (t === 'MAAS_ODEME' || t === 'AVANS_ODEME' || t === 'CEZA_ODEME') {
+    return { debit: amt, credit: 0 };
+  }
   return { debit: 0, credit: 0 };
 }
 

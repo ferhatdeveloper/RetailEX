@@ -113,8 +113,10 @@ export async function printPayrollVoucher(opts: {
 function txLabel(type: string): string {
   const u = String(type || '').toUpperCase();
   if (u === 'MAAS_HAKKEDIS') return 'Hakkediş';
+  if (u === 'BONUS_HAKKEDIS') return 'Bonus';
   if (u === 'MAAS_ODEME') return 'Maaş';
   if (u === 'AVANS_ODEME') return 'Avans';
+  if (u === 'CEZA_ODEME') return 'Ceza';
   if (u === 'AVANS_MAHSUP') return 'Mahsup';
   if (u === 'ORTAK_DAGITIM_KAR' || u === 'KAR_DAGITIMI') return 'Kâr Dağıtım';
   if (u === 'ORTAK_DAGITIM_ZARAR' || u === 'ZARAR_DAGITIMI') return 'Zarar Dağıtım';

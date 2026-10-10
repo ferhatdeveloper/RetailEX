@@ -42,6 +42,10 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
   const [viewTab, setViewTab] = useState<ViewTab>('form');
   const [action, setAction] = useState<Action>('salary');
   const [amount, setAmount] = useState('');
+  const [bonus, setBonus] = useState('');
+  const [penalty, setPenalty] = useState('');
+  const [bonusDefinition, setBonusDefinition] = useState('');
+  const [penaltyDefinition, setPenaltyDefinition] = useState('');
   const [registerId, setRegisterId] = useState('');
   const [definition, setDefinition] = useState('');
   const [registers, setRegisters] = useState<Kasa[]>([]);
@@ -115,6 +119,16 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
     setError(null);
   }, [action, salaryBase]);
 
+  // Action değiştiğinde bonus/ceza inputlarını temizle (yalnızca maaş ödemesinde geçerli)
+  useEffect(() => {
+    if (action !== 'salary') {
+      setBonus('');
+      setPenalty('');
+      setBonusDefinition('');
+      setPenaltyDefinition('');
+    }
+  }, [action]);
+
   useEffect(() => {
     setContextMenu(null);
   }, [viewTab]);
@@ -161,6 +175,8 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
     e.preventDefault();
     setError(null);
     const amt = parseFloat(amount);
+    const bonusAmt = parseFloat(bonus);
+    const penaltyAmt = parseFloat(penalty);
     if (!amt || amt <= 0) {
       setError(t('party.payroll.amountPositive'));
       return;
@@ -168,6 +184,16 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
     if (action !== 'reconcile' && !registerId) {
       setError(t('party.payroll.registerRequired'));
       return;
+    }
+    if (action === 'salary') {
+      if (bonusAmt && bonusAmt < 0) {
+        setError(t('party.payroll.bonusPositive') || 'Bonus tutarı negatif olamaz');
+        return;
+      }
+      if (penaltyAmt && penaltyAmt < 0) {
+        setError(t('party.payroll.penaltyPositive') || 'Ceza tutarı negatif olamaz');
+        return;
+      }
     }
     setLoading(true);
     try {
@@ -178,6 +204,10 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
           amount: amt,
           registerId,
           definition: definition || undefined,
+          bonusAmount: bonusAmt && bonusAmt > 0 ? bonusAmt : undefined,
+          penaltyAmount: penaltyAmt && penaltyAmt > 0 ? penaltyAmt : undefined,
+          bonusDefinition: bonusDefinition.trim() || undefined,
+          penaltyDefinition: penaltyDefinition.trim() || undefined,
         });
       } else if (action === 'advance') {
         result = await employeeAPI.payAdvance({
@@ -197,22 +227,48 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
       toast.success(t('party.payroll.saveSuccess'));
       await loadRecent();
       setViewTab('movements');
+      // Form state'i temizle (başarı sonrası)
+      setBonus('');
+      setPenalty('');
+      setBonusDefinition('');
+      setPenaltyDefinition('');
       onSaved();
       if (action !== 'reconcile') {
         const titles = {
           salary: t('party.payroll.voucherTitleSalary'),
           advance: t('party.payroll.voucherTitleAdvance'),
         } as const;
+        // Bonus / ceza varsa tek maaş makbuzunda birleşik göster; aksi halde mevcut davranış
+        const hasBonusPenalty = action === 'salary'
+          && (parseFloat(bonus) > 0 || parseFloat(penalty) > 0);
+        const bonusNum = parseFloat(bonus) > 0 ? parseFloat(bonus) : 0;
+        const penaltyNum = parseFloat(penalty) > 0 ? parseFloat(penalty) : 0;
+        const netAmount = hasBonusPenalty
+          ? amt + bonusNum - penaltyNum
+          : amt;
+        const bonusDef = bonusDefinition.trim();
+        const penaltyDef = penaltyDefinition.trim();
+        const compositeDefinition = hasBonusPenalty
+          ? [
+              definition.trim() || undefined,
+              bonusNum > 0
+                ? `${t('party.payroll.bonusLabel')}: ${bonusNum.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}${bonusDef ? ` — ${bonusDef}` : ''}`
+                : undefined,
+              penaltyNum > 0
+                ? `${t('party.payroll.penaltyLabel')}: ${penaltyNum.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}${penaltyDef ? ` — ${penaltyDef}` : ''}`
+                : undefined,
+            ].filter(Boolean).join(' | ') || undefined
+          : definition || undefined;
         try {
           await printPayrollVoucher({
             kind: action,
             title: titles[action],
             employeeName: employee.name,
             employeeCode: employee.code,
-            amount: amt,
+            amount: netAmount,
             ficheNo: result?.ficheNo,
             date: new Date().toISOString(),
-            definition: definition || undefined,
+            definition: compositeDefinition,
             balanceAfter: result?.balance,
             balanceLabel: t('party.fields.balance'),
           });
@@ -315,6 +371,94 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
                 <div />
               )}
             </div>
+
+            {/* Bonus / Ceza — yalnızca maaş ödemesinde geçerli */}
+            {action === 'salary' && (
+              <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    {t('party.payroll.bonusPenaltyTitle')}
+                  </div>
+                  <div className="text-[10px] text-slate-500">
+                    {t('party.payroll.bonusPenaltyHint')}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-violet-700 uppercase tracking-wider mb-1.5">
+                      {t('party.payroll.bonusLabel')}
+                    </label>
+                    <input
+                      type="number"
+                      value={bonus}
+                      onChange={(e) => setBonus(e.target.value)}
+                      min={0}
+                      step="0.01"
+                      placeholder="0.00"
+                      className="w-full px-4 py-3 border border-violet-200 rounded-2xl focus:ring-2 focus:ring-violet-500 focus:border-violet-400 outline-none text-slate-800 font-medium bg-white"
+                    />
+                    <input
+                      type="text"
+                      value={bonusDefinition}
+                      onChange={(e) => setBonusDefinition(e.target.value)}
+                      placeholder={t('party.payroll.bonusNotePlaceholder')}
+                      className="mt-2 w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-400 focus:border-violet-300 outline-none text-slate-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-rose-700 uppercase tracking-wider mb-1.5">
+                      {t('party.payroll.penaltyLabel')}
+                    </label>
+                    <input
+                      type="number"
+                      value={penalty}
+                      onChange={(e) => setPenalty(e.target.value)}
+                      min={0}
+                      step="0.01"
+                      placeholder="0.00"
+                      className="w-full px-4 py-3 border border-rose-200 rounded-2xl focus:ring-2 focus:ring-rose-500 focus:border-rose-400 outline-none text-slate-800 font-medium bg-white"
+                    />
+                    <input
+                      type="text"
+                      value={penaltyDefinition}
+                      onChange={(e) => setPenaltyDefinition(e.target.value)}
+                      placeholder={t('party.payroll.penaltyNotePlaceholder')}
+                      className="mt-2 w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-400 focus:border-rose-300 outline-none text-slate-700"
+                    />
+                  </div>
+                </div>
+
+                {/* Net özet */}
+                {(() => {
+                  const b = parseFloat(bonus) || 0;
+                  const p = parseFloat(penalty) || 0;
+                  const a = parseFloat(amount) || 0;
+                  const net = a + b - p;
+                  const hasAny = b > 0 || p > 0;
+                  if (!hasAny) return null;
+                  return (
+                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">{t('party.payroll.netSalary')}</span>
+                        <strong className="font-mono text-slate-800">{formatMoney(a)}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">{t('party.payroll.netPayable')}</span>
+                        <strong className="font-mono text-emerald-700">{formatMoney(net)}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">{t('party.fields.balance')}</span>
+                        <strong className={`font-mono ${balance + net > 0 ? 'text-emerald-700' : balance + net < 0 ? 'text-amber-700' : 'text-slate-500'}`}>
+                          {formatMoney(balance + net)}
+                        </strong>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             <div>
               <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">

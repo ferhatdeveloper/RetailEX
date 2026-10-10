@@ -93,6 +93,8 @@ async function resolvePartyCardType(partyId: string): Promise<string> {
 const PARTY_CANCEL_TYPES = new Set<string>([
   'MAAS_ODEME',
   'MAAS_HAKKEDIS',
+  'BONUS_HAKKEDIS',
+  'CEZA_ODEME',
   'AVANS_ODEME',
   'AVANS_MAHSUP',
   'ORTAK_DAGITIM_KAR',
@@ -160,8 +162,10 @@ async function writePartyLedgerCancel(opts: {
  * İşlem       | Kasa sign | Party balance delta
  * -----------|-----------|--------------------
  * MAAS_HAKKEDIS |  0      |   +tutar (kasa yok; payroll API yazar)
+ * BONUS_HAKKEDIS|  0      |   +tutar (kasa yok; bordro bonusu)
  * MAAS_ODEME  |   -1      |   −tutar (ödenen maaş)
  * AVANS_ODEME |   -1      |   −tutar (avans)
+ * CEZA_ODEME  |    0      |   −tutar (kasa yok; bordro cezası/kesinti)
  * AVANS_MAHSUP|    0      |    0     (belge; avans zaten düştü)
  * ORTAK_DAGITIM_KAR  |  0 | +tutar (hesaba kâr payı; kasa yok)
  * ORTAK_DAGITIM_ZARAR|  0 | -tutar (hesaba zarar; kasa yok)
@@ -179,12 +183,14 @@ export function computePartyBalanceDelta(tutar: number, islemTipi: string): numb
   if (!amt) return 0;
   switch (String(islemTipi || '').toUpperCase().trim()) {
     case 'MAAS_HAKKEDIS':
+    case 'BONUS_HAKKEDIS':
     case 'ORTAK_DAGITIM_KAR':
     case 'ORTAK_SERMAYE_TAHSILAT':
     case 'ORTAK_PARA_GIRIS':
       return amt;
     case 'MAAS_ODEME':
     case 'AVANS_ODEME':
+    case 'CEZA_ODEME':
     case 'ORTAK_DAGITIM_ZARAR':
     case 'ORTAK_SERMAYE_ODEME':
     case 'ORTAK_PARA_CIKIS':
@@ -1532,13 +1538,14 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
         sign = -1;
         break;
       case 'AVANS_MAHSUP':
+      case 'MAAS_HAKKEDIS':
+      case 'BONUS_HAKKEDIS':
+      case 'CEZA_ODEME':
         sign = 0;
         break;
       default:
         sign = islem.islem_tipi.includes('CIKIS') || islem.islem_tipi.includes('ODEME') ? -1 : 1;
     }
-
-    const ficheNo = islem.islem_no || `KL-${ERP_SETTINGS.firmNr}-${Date.now()}`;
 
     // cari_hesap_id türünü INSERT'ten ÖNCE tespit et (tedarikçi → party_id, müşteri → customer_id).
     // CH_ODEME bağlamında caller supplier hint'i verir; UUID her iki tabloda olsa bile doğru yazılır.
@@ -2698,6 +2705,9 @@ export function computeKasaIslemiSign(islemTipi: string): number {
     case 'ORTAK_SERMAYE_CIKIS':
       return -1;
     case 'AVANS_MAHSUP':
+    case 'MAAS_HAKKEDIS':
+    case 'BONUS_HAKKEDIS':
+    case 'CEZA_ODEME':
       return 0;
     default:
       return tip.includes('CIKIS') || tip.includes('ODEME') ? -1 : 1;

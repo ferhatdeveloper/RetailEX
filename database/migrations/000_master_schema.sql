@@ -3392,7 +3392,7 @@ BEGIN
       party_id        UUID NOT NULL,
       card_type       VARCHAR(20) NOT NULL,
       trcode          INTEGER,
-      transaction_type VARCHAR(50) NOT NULL,
+      transaction_type VARCHAR(50) NOT NULL, -- MAAS_HAKKEDIS / MAAS_ODEME / AVANS_ODEME / AVANS_MAHSUP / BONUS_HAKKEDIS / CEZA_ODEME / ORTAK_* / CH_*
       date            TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       amount          DECIMAL(15,2) DEFAULT 0,
       sign            INTEGER DEFAULT 0,
