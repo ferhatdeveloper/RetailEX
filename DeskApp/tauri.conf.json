@@ -75,7 +75,7 @@
   },
   "productName": "retailex",
   "mainBinaryName": "retailex",
-  "version": "0.1.297",
+  "version": "0.1.298",
   "identifier": "com.retailex.app",
   "plugins": {
     "updater": {
