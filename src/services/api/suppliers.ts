@@ -49,6 +49,13 @@ function dedupeEkstreRows(rows: any[]): any[] {
 function mapSalesRowToEkstre(r: any) {
   const cancelled = r.is_cancelled === true || String(r.fiche_type || '').toLowerCase() === 'cancelled';
   return {
+    /**
+     * sales tablosunun PK (UUID). Açılış/devir fişlerinin (fiche_type=
+     * 'opening_balance') Cari Ekstresi ekranından hard-delete edilebilmesi
+     * için gerekli; aksi halde panel butonu gizleniyor (CariAccountStatementPanel
+     * `if (!rowId) return null`).
+     */
+    id: r.id != null ? String(r.id) : undefined,
     fiche_no: r.fiche_no,
     date: r.date,
     trcode: r.trcode,
@@ -695,7 +702,9 @@ export const supplierAPI = {
         const cashPath = `/rex_${fn}_${pn}_cash_lines`;
 
         const salesByIdQuery: Record<string, string> = {
-          select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,currency_rate,notes,is_cancelled,customer_id,customer_name,payment_method,status',
+          // id alanı Cari Ekstresi panelindeki "Sil" butonu için zorunlu
+          // (opening_balance satırları hard-delete edilebilmesi için DB PK gerekli).
+          select: 'id,fiche_no,date,trcode,fiche_type,net_amount,currency,currency_rate,notes,is_cancelled,customer_id,customer_name,payment_method,status',
           customer_id: `eq.${accountId}`,
           is_cancelled: 'eq.false',
           order: 'date.asc',
@@ -726,7 +735,8 @@ export const supplierAPI = {
         const nameTrim = String(accountName || '').trim();
         const nameSalesQuery: Record<string, string> | null = nameTrim
           ? {
-              select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,currency_rate,notes,customer_id,customer_name,is_cancelled,payment_method',
+              // id alanı: opening_balance hard-delete için gerekli
+              select: 'id,fiche_no,date,trcode,fiche_type,net_amount,currency,currency_rate,notes,customer_id,customer_name,is_cancelled,payment_method',
               customer_name: `not.is.null`,
               order: 'date.asc',
               limit: '5000',
@@ -816,7 +826,7 @@ export const supplierAPI = {
             : '';
 
       const sql = `
-        SELECT fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency,
+        SELECT id, fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency,
                COALESCE(currency_rate, 1) AS currency_rate, notes,
                COALESCE(is_cancelled, false) AS is_cancelled, payment_method,
                NULL::text AS special_code
@@ -825,7 +835,7 @@ export const supplierAPI = {
           AND COALESCE(t.is_cancelled, false) = false
           AND LOWER(TRIM(COALESCE(t.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted', 'refunded')
         UNION ALL
-        SELECT fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
+        SELECT NULL::uuid AS id, fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
                ABS(amount) AS total_amount, currency_code AS currency,
                COALESCE(exchange_rate, 1) AS currency_rate, definition AS notes,
                false AS is_cancelled, NULL::text AS payment_method,
