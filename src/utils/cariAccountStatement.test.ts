@@ -181,9 +181,11 @@ describe('resolveEkstreDescription', () => {
 });
 
 describe('buildEkstreRows — müşteri peşin satış', () => {
-  it('nakit satış: borç 0, alacak 0, bakiye 0 (Bug 13 kök neden düzeltmesi)', () => {
-    // Önceki davranışta borç=50k/alacak=50k yazılıyordu → "borç 50.000" görünüyordu.
-    // Yeni kural: peşin müşteri satışı zaten tahsil edildi → 0/0, "borç" hiç görünmez.
+  it('nakit satış: borç=alacak=hizmet tutarı, bakiye 0 (10.10.2026 düzeltmesi)', () => {
+    // Önceki davranışta borç=alacak=0 yazılıyordu → hizmet tutarı
+    // hiç görünmüyordu (kullanıcı şikâyeti). Yeni kural: peşin müşteri
+    // satışı zaten tahsil edildi → delta=0 ama hizmet tutarı avans
+    // formatında görünür (borç=alacak=hizmet). Bakiye 0.
     const rows = buildEkstreRows(
       [
         {
@@ -197,8 +199,8 @@ describe('buildEkstreRows — müşteri peşin satış', () => {
       'customer',
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0].borcAmount).toBe(0);
-    expect(rows[0].alacakAmount).toBe(0);
+    expect(rows[0].borcAmount).toBe(150000);
+    expect(rows[0].alacakAmount).toBe(150000);
     expect(rows[0].balance).toBe(0);
   });
 
@@ -266,10 +268,11 @@ describe('buildEkstreRows — müşteri peşin satış', () => {
 });
 
 describe('buildEkstreRows — Bug 13: peşin + ayrı CH_TAHSILAT bakiyeyi şişirmez', () => {
-  it('peşin 50.000 + aynı tutarda CH_TAHSILAT 50.000: borç=0, alacak=0, bakiye=0', () => {
+  it('peşin 50.000 + aynı tutarda CH_TAHSILAT 50.000: satış 50/50/0, tahsilat 0/0/0', () => {
     // Senaryo: hizmet verildi (50.000 peşin), aynı gün ayrıca CH_TAHSILAT yazılmış.
-    // Eski kod: borç 50k + alacak 50k + bakiye 0 AMA ayrıca yazılan CH_TAHSILAT
-    // yüzünden bakiye −50k'e gidiyordu. Yeni kod: her ikisi de 0/0.
+    // 10.10.2026: peşin satış borç=alacak=50k (hizmet görünür, bakiye 0).
+    // CH_TAHSILAT eşleşmesi (50k, nakit) → 0/0, böylece bakiye −50k'e
+    // gitmez; toplam borç/alacak simetriği de sağlanır.
     const rows = buildEkstreRows(
       [
         {
@@ -289,8 +292,8 @@ describe('buildEkstreRows — Bug 13: peşin + ayrı CH_TAHSILAT bakiyeyi şişi
       'customer',
     );
     expect(rows).toHaveLength(2);
-    expect(rows[0].borcAmount).toBe(0);
-    expect(rows[0].alacakAmount).toBe(0);
+    expect(rows[0].borcAmount).toBe(50000);
+    expect(rows[0].alacakAmount).toBe(50000);
     expect(rows[0].balance).toBe(0);
     expect(rows[1].borcAmount).toBe(0);
     expect(rows[1].alacakAmount).toBe(0);
@@ -397,5 +400,72 @@ describe('buildEkstreRows — Bug 13: peşin + ayrı CH_TAHSILAT bakiyeyi şişi
     expect(rows[0].borcAmount).toBe(45000);
     expect(rows[0].alacakAmount).toBe(0);
     expect(rows[0].balance).toBe(45000);
+  });
+});
+
+describe('buildEkstreRows — ARA 10.10.2026 güzellik hizmet senaryosu', () => {
+  it('ARA: 5k avans (REZERVASYON) + 10k peşin hizmet: her ikisi de nötr, bakiye 0', () => {
+    // Kullanıcı şikâyeti: "buraya yansıyor ama tutar yok hizmetin".
+    // ARA senaryosu: 10.000 hizmet peşin kapatılmış (GüzellikPOS
+    // checkout), peşin avans (cash_lines + CH_TAHSILAT + REZERVASYON)
+    // 5.000. Hizmet satırı eskiden borç=alacak=0 yazıyordu (tutar
+    // görünmüyordu); 10.10.2026 düzeltmesi ile avans gibi nötr
+    // (borç=alacak=10.000, bakiye 0) gösterilir.
+    const rows = buildEkstreRows(
+      [
+        {
+          date: '2026-10-10',
+          fiche_no: 'KL-001-1791620668704',
+          fiche_type: 'CH_TAHSILAT',
+          total_amount: 5000,
+          special_code: 'REZERVASYON',
+          notes: 'Rezervasyon tahsilatı - AVANS-26Qkace',
+        },
+        {
+          date: '2026-10-10',
+          fiche_no: 'BEA-2026-MV2429HH',
+          fiche_type: 'sales_invoice',
+          total_amount: 10000,
+          payment_method: 'cash',
+          notes: 'GüzellikPOS',
+          trcode: 8,
+        },
+      ],
+      'customer',
+    );
+    expect(rows).toHaveLength(2);
+    // Satır 1: avans (REZERVASYON) — borç=alacak=5.000, bakiye 0
+    expect(rows[0].borcAmount).toBe(5000);
+    expect(rows[0].alacakAmount).toBe(5000);
+    expect(rows[0].balance).toBe(0);
+    expect(rows[0].isReservationDeposit).toBe(true);
+    // Satır 2: peşin hizmet — borç=alacak=10.000, bakiye 0 (yeni davranış)
+    expect(rows[1].borcAmount).toBe(10000);
+    expect(rows[1].alacakAmount).toBe(10000);
+    expect(rows[1].balance).toBe(0);
+  });
+
+  it('ARA: 50k peşin hizmet: tek satır borç=alacak=50.000, bakiye 0', () => {
+    // Kullanıcı orijinal beklentisi: "Hizmetin tutarı görünmeli
+    // (50k veya gerçek hizmet fiyatı)". Tek satır nakit hizmet
+    // senaryosunda borç ve alacak kolonlarının ikisinde de 50.000
+    // görünmeli, bakiye 0.
+    const rows = buildEkstreRows(
+      [
+        {
+          date: '2026-10-10',
+          fiche_no: 'BEA-2026-MV9999',
+          fiche_type: 'service',
+          total_amount: 50000,
+          payment_method: 'cash',
+          trcode: 9,
+        },
+      ],
+      'customer',
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].borcAmount).toBe(50000);
+    expect(rows[0].alacakAmount).toBe(50000);
+    expect(rows[0].balance).toBe(0);
   });
 });

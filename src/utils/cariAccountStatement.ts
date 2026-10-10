@@ -460,12 +460,18 @@ export function buildEkstreRows(
         if (amount > 0) borcAmount = absAmt;
         else if (amount < 0) alacakAmount = absAmt;
       } else if (isCustomerCashSale) {
-        // Peşin müşteri satışı: ekstrede borç yazılmaz (zaten tahsil edildi);
-        // bakiyeyi şişirmez. Muhasebeci kuralı: çift yön her satırda biri 0,
-        // diğeri tutar olmalı — peşin satış 0/0 yazılır.
+        // 10.10.2026 düzeltmesi — peşin müşteri satışı (tamamen peşin
+        // tahsil edilmiş, `saleSplit.remaining ≈ 0`): cari bakiyeyi
+        // etkilemez (zaten kasa kanalında tahsil edildi), bakiye delta=0.
+        // Ancak kullanıcı hizmet tutarının ekstrede **görünmesini**
+        // istiyor (önceki 0/0 davranışında "borç 50.000" hiç
+        // yazılmıyordu). Rezervasyon avansı ile aynı format kullanılır:
+        // borç=alacak=hizmet tutarı, bakiye 0. Böylece peşin satış + ayrı
+        // CH_TAHSILAT senaryolarında borç/alacak toplamı simetrik kalır
+        // (ledger çift yön, muhasebeci kuralı).
         delta = 0;
-        borcAmount = 0;
-        alacakAmount = 0;
+        borcAmount = absAmt;
+        alacakAmount = absAmt;
       } else if (isSupplierAccount) {
         // Tedarikçi alışı alacak artırır (A, bizim borcumuz), iade alacak azaltır.
         // Müşterinin TERS yönü — cari simetrisi gereği.
