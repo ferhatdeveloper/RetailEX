@@ -25,6 +25,14 @@ export interface EmployeePayrollModalProps {
   onClose: () => void;
   onSaved: () => void;
   onOpenStatement?: () => void;
+  /** Geçen ay fark analizi gibi dış akışlardan gelen başlangıç değerleri */
+  initialBonus?: string;
+  initialPenalty?: string;
+  initialBonusDefinition?: string;
+  initialPenaltyDefinition?: string;
+  initialTxnDate?: string; // YYYY-MM-DD
+  initialSalary?: string; // boş ise default salary_base kullanılmaz
+  initialAction?: 'salary' | 'advance' | 'reconcile';
 }
 
 type Action = 'salary' | 'advance' | 'reconcile';
@@ -36,18 +44,36 @@ type MovementRow = PartyLedgerMovement & {
   balance_after: number;
 };
 
-export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStatement }: EmployeePayrollModalProps) {
+export function EmployeePayrollModal({
+  employee,
+  onClose,
+  onSaved,
+  onOpenStatement,
+  initialBonus,
+  initialPenalty,
+  initialBonusDefinition,
+  initialPenaltyDefinition,
+  initialTxnDate,
+  initialSalary,
+  initialAction,
+}: EmployeePayrollModalProps) {
   const t = useNestedT();
   const { tm } = useLanguage();
   const [viewTab, setViewTab] = useState<ViewTab>('form');
-  const [action, setAction] = useState<Action>('salary');
+  const [action, setAction] = useState<Action>(initialAction || 'salary');
   const [amount, setAmount] = useState('');
-  const [bonus, setBonus] = useState('');
-  const [penalty, setPenalty] = useState('');
-  const [bonusDefinition, setBonusDefinition] = useState('');
-  const [penaltyDefinition, setPenaltyDefinition] = useState('');
-  const [txnDate, setTxnDate] = useState<string>(''); // YYYY-MM-DD; boşsa bugün
+  const [bonus, setBonus] = useState(initialBonus ?? '');
+  const [penalty, setPenalty] = useState(initialPenalty ?? '');
+  const [bonusDefinition, setBonusDefinition] = useState(initialBonusDefinition ?? '');
+  const [penaltyDefinition, setPenaltyDefinition] = useState(initialPenaltyDefinition ?? '');
+  const [txnDate, setTxnDate] = useState<string>(initialTxnDate || ''); // YYYY-MM-DD; boşsa bugün
   const [isBackDated, setIsBackDated] = useState(false);
+  // initial varsa: initialAmount prop'una uy
+  useEffect(() => {
+    if (initialSalary !== undefined && initialSalary !== null) {
+      setAmount(initialSalary);
+    }
+  }, [initialSalary]);
   const [registerId, setRegisterId] = useState('');
   const [definition, setDefinition] = useState('');
   const [registers, setRegisters] = useState<Kasa[]>([]);

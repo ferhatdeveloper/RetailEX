@@ -6,6 +6,7 @@ import { PartnerDistributionModal } from './PartnerDistributionModal';
 import { PartnerCashModal } from './PartnerCashModal';
 import { PartnerBalanceGuideModal } from './PartnerBalanceGuideModal';
 import { EmployeePayrollModal } from './EmployeePayrollModal';
+import { PayrollVarianceModal } from './PayrollVarianceModal';
 import { PartyEditModal } from './PartyEditModal';
 import { PartyMergeModal } from './PartyMergeModal';
 import { PartyStatementPanel } from './PartyStatementPanel';
@@ -31,6 +32,7 @@ import {
   FileText,
   CalendarPlus,
   HelpCircle,
+  ArrowRightLeft,
 } from 'lucide-react';
 import type { Party, PartyCardType } from '../../../core/types/models';
 import { shortUuid } from './PartyMergeModal';
@@ -66,6 +68,17 @@ export function PartiesModule({
   const [editing, setEditing] = useState<Party | null>(null);
   const [creating, setCreating] = useState<PartyCardType | null>(null);
   const [payrollEmployee, setPayrollEmployee] = useState<Party | null>(null);
+  /** Geçen ay fark analizi → bonus/ceza için EmployeePayrollModal'a hazır değerler */
+  const [payrollPrefill, setPayrollPrefill] = useState<{
+    bonusAmount?: string;
+    penaltyAmount?: string;
+    bonusDefinition?: string;
+    penaltyDefinition?: string;
+    txnDate: string;
+    salaryAmount: string;
+    action?: 'salary' | 'advance' | 'reconcile';
+  } | null>(null);
+  const [varianceOpen, setVarianceOpen] = useState(false);
   const [cashPartner, setCashPartner] = useState<Party | null>(null);
   const [statementParty, setStatementParty] = useState<Party | null>(null);
   const [distributionOpen, setDistributionOpen] = useState(false);
@@ -297,15 +310,26 @@ export function PartiesModule({
           </button>
           )}
           {tab === 'employee' && (
-            <button
-              type="button"
-              onClick={() => void handleAccrueMonth()}
-              disabled={accruing}
-              className="px-4 py-2.5 rounded-2xl bg-emerald-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-emerald-700 active:scale-[0.98] flex items-center gap-2 disabled:opacity-50"
-            >
-              {accruing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarPlus className="w-4 h-4" />}
-              {t('party.payroll.accrueMonth')}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setVarianceOpen(true)}
+                className="px-4 py-2.5 rounded-2xl bg-amber-500 text-white text-xs font-bold uppercase tracking-wider hover:bg-amber-600 active:scale-[0.98] flex items-center gap-2"
+                title={t('party.variance.openButton') || 'Geçen ay fazla/eksik ödemeleri tespit et'}
+              >
+                <ArrowRightLeft className="w-4 h-4" />
+                {t('party.variance.openButton') || 'Geçen Ay Farkları'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleAccrueMonth()}
+                disabled={accruing}
+                className="px-4 py-2.5 rounded-2xl bg-emerald-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-emerald-700 active:scale-[0.98] flex items-center gap-2 disabled:opacity-50"
+              >
+                {accruing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarPlus className="w-4 h-4" />}
+                {t('party.payroll.accrueMonth')}
+              </button>
+            </>
           )}
           {tab === 'partner' && (
             <>
@@ -568,12 +592,39 @@ export function PartiesModule({
       {payrollEmployee && (
         <EmployeePayrollModal
           employee={payrollEmployee}
-          onClose={() => setPayrollEmployee(null)}
+          onClose={() => {
+            setPayrollEmployee(null);
+            setPayrollPrefill(null);
+          }}
           onSaved={() => {
             load();
           }}
           onOpenStatement={() => {
             setStatementParty(payrollEmployee);
+          }}
+          initialBonus={payrollPrefill?.bonusAmount}
+          initialPenalty={payrollPrefill?.penaltyAmount}
+          initialBonusDefinition={payrollPrefill?.bonusDefinition}
+          initialPenaltyDefinition={payrollPrefill?.penaltyDefinition}
+          initialTxnDate={payrollPrefill?.txnDate}
+          initialSalary={payrollPrefill?.salaryAmount}
+          initialAction={payrollPrefill?.action}
+        />
+      )}
+
+      {varianceOpen && (
+        <PayrollVarianceModal
+          onClose={() => setVarianceOpen(false)}
+          onOpenAdjustment={(employee, payload) => {
+            setPayrollPrefill({
+              bonusAmount: payload.bonusAmount !== undefined ? String(payload.bonusAmount) : undefined,
+              penaltyAmount: payload.penaltyAmount !== undefined ? String(payload.penaltyAmount) : undefined,
+              bonusDefinition: payload.bonusDefinition,
+              penaltyDefinition: payload.penaltyDefinition,
+              txnDate: payload.txnDate,
+              salaryAmount: String(payload.salaryAmount ?? 0),
+            });
+            setPayrollEmployee(employee);
           }}
         />
       )}

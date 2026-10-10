@@ -62,6 +62,8 @@ export interface PayrollMonthLine {
   employee_name: string;
   salary_base: number;
   total_advance: number;
+  /** Dönem içinde ödenen brüt maaş (MAAS_ODEME toplamı). */
+  total_paid: number;
   net_payable: number;
   last_payment_date?: string;
 }
@@ -385,6 +387,7 @@ export const employeeAPI = {
         employee_name: e.name,
         salary_base: e.salary_base || 0,
         total_advance: s.advance,
+        total_paid: s.paid,
         net_payable: hakkedis - s.advance - s.paid,
         last_payment_date: s.last || undefined,
       };
