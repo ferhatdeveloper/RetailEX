@@ -2865,22 +2865,30 @@ export function ReportsModule({
   );
   dailyCash += extraCollections;
   /**
-   * Rezervasyon avansı (henüz hizmet verilmemiş peşinat) — Kasa bakiyesinden
-   * ayrıştırılır. Ciro'ya dahil değildir; Toplam Nakit'e eklenmez; ayrı
-   * "Alınan Avans" kalemi olarak gösterilir. Kullanıcı şikâyeti:
-   * 25.000 nakit + 25.000 avans = 50.000 rapor hatası.
+   * Rezervasyon avansı (henüz hizmet verilmemiş peşinat) — Ciro'ya dahil
+   * değildir (pasif/alınan avans), ancak KASA'ya fiilen giren KASAYA
+   * giren nakit olarak tanınır. Tahsil Edilen / Kasa Para Girişi /
+   * Cebe Giren Nakit KPI'larına `+ extraReservation` eklenir (10.10.2026).
+   * NOT: Ciro (dailyTotal) ve İşlem Sayacı'na katılmaz; ayrı
+   * "Alınan Avans" kalemi olarak gösterilir. ROZA senaryosu: 50k ciro
+   + 10k rezervasyon avansı → Kasa Para Girişi 50k, Tahsil Edilen 50k,
+   * Cebe Giren Nakit 50k (avans ayrılan ayrı gösterilir).
    */
   const extraReservation = extraReservationCustomerCollections(kasaLinesForSelectedDate);
-  // Rezervasyon avansı Ciro'ya değil alınan avans (passif) bucket'ına yazılır.
-  // dailyCash'e eklenmez; ayrı izlenir.
+  // Rezervasyon avansı Ciro'ya değil alınan avans (passif) bucket'ına yazılır;
+  // ancak Kasa Para Girişi / Tahsil Edilen / Cebe Giren Nakit'e eklenir.
+  dailyCash += extraReservation;
 
   // Bug 24: TAHSİL EDİLEN, peşinat dahil. dailyCollected kasa bazlıdır;
   // peşinat tahsilatı zaten kasaya yansımıştır (cash_lines / split.paid).
+  // 10.10.2026: Rezervasyon avansı tahsilatı (henüz hizmet verilmemiş
+  // peşinat — CH_TAHSILAT + ozel_kod=REZERVASYON) da kasa bazlı tahsilat
+  // olduğundan `dailyCollected`'a eklenir (KPI'ye ayrı izlenir; ciro yok).
   const dailyCollected =
     dailySalesForCash.reduce((sum, s) => {
       if (isReturnSale(s)) return sum;
       return sum + (Number(saleCollectedSplit(s).collected) || 0);
-    }, 0) + extraCollections;
+    }, 0) + extraCollections + extraReservation;
   // VERESİYE (dailyRemaining) ciro/borç tarafıdır; peşinat Hariç
   // (`dailySalesActive` üzerinden). Henüz hizmet verilmemiş rezervasyonun
   // `remaining_amount`'ı caride yazılmaz, ancak yine de ciro/veresiye
@@ -3281,11 +3289,15 @@ export function ReportsModule({
     () => dailyExpenseRowsForReport.reduce((sum, row) => sum + (row.isCash ? row.amount : 0), 0),
     [dailyExpenseRowsForReport],
   );
-  /** Günlük kasa para girişi toplamı — sign=+1 (KASA_GIRIS, ORTAK_SERMAYE_TAHSILAT, ORTAK_PARA_GIRIS). */
+  /** Günlük kasa para girişi toplamı — sign=+1 (KASA_GIRIS, ORTAK_SERMAYE_TAHSILAT, ORTAK_PARA_GIRIS).
+   * 10.10.2026: Rezervasyon avansı tahsilatı (CH_TAHSILAT + ozel_kod=REZERVASYON)
+   * cash_lines içinde değilse `dailyCashInRows`'a ayrıca eklenir; burada
+   * `extraReservation` ile birlikte toplanır. Ciro'ya katılmaz; alınan avans
+   * (pasif) olarak ayrı izlenir. */
   const totalDailyCashIn = useMemo(
     () =>
-      dailyCashInRows.reduce((s, cl) => s + (Math.abs(Number(cl.tutar) || 0)), 0),
-    [dailyCashInRows],
+      dailyCashInRows.reduce((s, cl) => s + (Math.abs(Number(cl.tutar) || 0)), 0) + extraReservation,
+    [dailyCashInRows, extraReservation],
   );
   /**
    * Gider kartı kapalıysa net'ten gider düşülmez.
