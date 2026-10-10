@@ -4168,7 +4168,6 @@ export function ReportsModule({
     const cashTotal = dist.cash.amount;
     const cardTotal = dist.card.amount;
     const transferTotal = dist.transfer.amount;
-    const todayTotal = dist.totalAmount;
     /**
      * Rezervasyon avansı (henüz hizmet verilmemiş peşinat). Ciro'ya değil,
      * ayrı "Alınan Avans" kalemidir. Kasa bakiyesi fiziksel olarak bu tutarı
@@ -4176,6 +4175,15 @@ export function ReportsModule({
      * 25.000 nakit + 25.000 avans = 50.000 yanlış toplam.
      */
     const reservationDeposit = dist.byCode.REZERVASYON_AVANS?.amount ?? 0;
+    /**
+     * Bugün toplam tahsilat — Rezervasyon avansı **hariç**. Rezervasyon ayrı
+     * bir pasif KPI kartında gösterilir; TOPLAM satırına dahil edilirse
+     * kullanıcı yanlışlıkla iki kez sayılmış izlenimi alır (100k nakit +
+     * 15k avans → 115k yerine 100k olmalı). `dist.totalAmount` altta yatan
+     * API'de tüm form kodlarını toplar (REZERVASYON_AVANS dahil); KPI
+     * semantiği burada avansı ayıkırır — Senaryo A.
+     */
+    const todayTotal = dist.totalAmount - reservationDeposit;
 
     const todayKey = localTodayDateKey();
     const openingCash =
@@ -7650,6 +7658,11 @@ export function ReportsModule({
                           <span className="font-semibold">{tm('totalLabel_rep')}</span>
                           <span className="font-bold text-green-700 text-lg">{formatNumber(cashStatus.todayTotal, 2, false)} {reportCurrency}</span>
                         </div>
+                        {cashStatus.reservationDeposit > 0 && (
+                          <p className="text-xs text-slate-500 px-1">
+                            Rezervasyon avansı toplama dahil değildir (alınan avans — pasif).
+                          </p>
+                        )}
                       </div>
                     </div>
 

@@ -204,4 +204,146 @@ describe('Kasa Durumu — Rezervasyon Avansı ayrıştırma', () => {
     // ✅ TOPLAM = 10.000 (çift sayım yok)
     expect(dist.totalAmount).toBe(10000);
   });
+
+  /**
+   * Kullanıcı şikâyeti 2026-10-10:
+   *   "toplam yanlis nakit dogru giren dogru rezervasyon toplama dahil
+   *    etmesin yada rezervasyonu eksi olarak yazdir toplamdan duserse
+   *    115-15 =100 olur yine"
+   *
+   * Senaryo: gün içinde 100.000 Nakit tahsilat + 15.000 Rezervasyon avansı
+   * (cash_lines CH_TAHSILAT + ozel_kod=REZERVASYON). Altta yatan API
+   * `dist.totalAmount` Rezervasyon'u dahil eder (115.000); Kasa Durumu KPI
+   * semantiği Rezervasyon'u ayrı pasif kartta gösterdiği için TOPLAM satırı
+   * Rezervasyon hariç olmalı (100.000). Düzeltme: `getCashStatus` artık
+   * `todayTotal = dist.totalAmount - reservationDeposit` formu ediyor.
+   */
+  it('KPI toplamı (Senaryo A): 100k nakit + 15k rezervasyon → toplam 100k (rezervasyon hariç)', () => {
+    const kasaLines = [
+      // 100.000 nakit (BEA fiş) — cash_lines genel tahsilat
+      {
+        id: '1',
+        islem_no: 'BEA-2026-FX',
+        islem_tipi: 'KASA_GIRIS',
+        tutar: 100000,
+      },
+      // 15.000 rezervasyon avansı (KL-001) — cash_lines REZERVASYON
+      {
+        id: '2',
+        islem_no: 'KL-001-X',
+        islem_tipi: 'CH_TAHSILAT',
+        ozel_kod: 'REZERVASYON',
+        tutar: 15000,
+      },
+    ];
+    const sales = [
+      {
+        receiptNumber: 'BEA-2026-FX',
+        total: 100000,
+        paymentMethod: 'cash',
+        payments: [{ amount: 100000, method: 'cash' }],
+      },
+    ];
+
+    const dist = buildPaymentTypeDistribution(
+      [
+        {
+          id: 'sale-1',
+          total: 100000,
+          paymentMethod: 'cash',
+          payments: [{ amount: 100000, method: 'cash' }],
+        },
+      ],
+      {
+        extraCash: extraCustomerCollectionsNotOnSales(kasaLines, sales),
+        extraReservation: extraReservationCustomerCollections(kasaLines),
+        includeZero: true,
+      }
+    );
+
+    const reservationDeposit = dist.byCode.REZERVASYON_AVANS?.amount ?? 0;
+
+    // ✅ Bireysel kalemler doğru
+    expect(dist.byCode.NAKIT.amount).toBe(100000);
+    expect(dist.byCode.REZERVASYON_AVANS.amount).toBe(15000);
+
+    // ✅ Altta yatan API: dist.totalAmount hala tüm form kodlarını toplar
+    // (REZERVASYON_AVANS dahil) — 115.000. Bu, Senaryo A düzeltmesinin
+    // ayrı bir katmanda yapılması gerektiğini doğrular.
+    expect(dist.totalAmount).toBe(115000);
+
+    // ✅ KPI semantiği: TOPLAM satırı Rezervasyon hariç → 100.000
+    const todayTotal = dist.totalAmount - reservationDeposit;
+    expect(todayTotal).toBe(100000);
+  });
+
+  it('KPI toplamı (Senaryo A): 50k nakit + 30k kart + 10k rezervasyon → toplam 80k', () => {
+    const kasaLines = [
+      {
+        id: '1',
+        islem_no: 'KL-RES',
+        islem_tipi: 'CH_TAHSILAT',
+        ozel_kod: 'REZERVASYON',
+        tutar: 10000,
+      },
+    ];
+
+    const dist = buildPaymentTypeDistribution(
+      [
+        {
+          id: 's1',
+          total: 50000,
+          paymentMethod: 'cash',
+          payments: [{ amount: 50000, method: 'cash' }],
+        },
+        {
+          id: 's2',
+          total: 30000,
+          paymentMethod: 'card',
+          payments: [{ amount: 30000, method: 'card' }],
+        },
+      ],
+      {
+        extraCash: extraCustomerCollectionsNotOnSales(kasaLines, []),
+        extraReservation: extraReservationCustomerCollections(kasaLines),
+        includeZero: true,
+      }
+    );
+
+    const reservationDeposit = dist.byCode.REZERVASYON_AVANS?.amount ?? 0;
+    const todayTotal = dist.totalAmount - reservationDeposit;
+    expect(dist.byCode.NAKIT.amount).toBe(50000);
+    expect(dist.byCode.KREDIKARTI.amount).toBe(30000);
+    expect(dist.byCode.REZERVASYON_AVANS.amount).toBe(10000);
+    expect(dist.totalAmount).toBe(90000); // 50k + 30k + 10k
+    expect(todayTotal).toBe(80000); // 90k - 10k rezervasyon = 80k
+  });
+
+  it('KPI toplamı (Senaryo A): sadece 10k rezervasyon (nakit yok) → toplam 0', () => {
+    const kasaLines = [
+      {
+        id: '1',
+        islem_no: 'KL-RES-ONLY',
+        islem_tipi: 'CH_TAHSILAT',
+        ozel_kod: 'REZERVASYON',
+        tutar: 10000,
+      },
+    ];
+
+    const dist = buildPaymentTypeDistribution(
+      [],
+      {
+        extraCash: extraCustomerCollectionsNotOnSales(kasaLines, []),
+        extraReservation: extraReservationCustomerCollections(kasaLines),
+        includeZero: true,
+      }
+    );
+
+    const reservationDeposit = dist.byCode.REZERVASYON_AVANS?.amount ?? 0;
+    const todayTotal = dist.totalAmount - reservationDeposit;
+    expect(dist.byCode.NAKIT.amount).toBe(0);
+    expect(dist.byCode.REZERVASYON_AVANS.amount).toBe(10000);
+    expect(dist.totalAmount).toBe(10000);
+    expect(todayTotal).toBe(0);
+  });
 });
