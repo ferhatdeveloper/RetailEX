@@ -48,6 +48,10 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
 import { formatBeautyTime } from '../../../utils/beautyTimeFormat';
+import {
+    customerEffectiveBalance,
+    isDisplayableBalance,
+} from '../../../utils/customerEffectiveBalance';
 import { logger } from '../../../services/loggingService';
 import type {
     BeautyCustomer,
@@ -1189,6 +1193,16 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             totalSpent,
             collectedAmount,
             veresiyeCari,
+            // 10.10.2026 — Müşteri Detay bakiyesi artık profildeki (snapshot)
+            // değerden alınır. `customers.balance` henüz hizmet verilmemiş
+            // rezervasyon avansını içermez; bu yüzden `effectiveBalance =
+            // balance + pendingDeposit` ile Cari Hesap Özeti / Müşteri
+            // Yönetimi ile aynı semantik korunur. ROZA (-10k bakiye + 10k
+            // avans) → 0; ARA (-5k + 5k) → 0; avanssız müşteri etkilenmez.
+            effectiveBalance: customerEffectiveBalance({
+                balance: (selected as { balance?: number | string | null } | null)?.balance,
+                pendingDeposit: depositForTotal,
+            }),
             // 09.10.2026 — arz senaryosu kök neden: ham `customers.balance`
             // snapshot'ı iptal sonrası güncellenmediğinde ledger 0 iken
             // eski değer hâlâ durur. Bu sapmayı UI'da açıkça göster →
@@ -2157,15 +2171,22 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                                 </Space>
                                             ),
                                             /**
-                                             * Bug 3: DB `selected.balance`, deposit + parent_sale_id
-                                             * ile bağlı fişlerin cariye yansıması nedeniyle henüz
-                                             * tamamlanmamış randevuya rağmen borçlu gösteriyor.
-                                             * Hesaplanmış `profileStats.veresiyeCari` (deposit/parent
-                                             * hariç, yalnızca gerçekleşmiş ana hizmet satışlarının
-                                             * açık cari kalanı) kullanılır — DB bakiye ile çelişiyorsa
-                                             * muhasebeci tarafında ledger onarımı gerekir.
+                                             * 10.10.2026 — Kullanıcı isteği: bakiye profildeki
+                                             * (`selected.balance`) değerden alınmalı.
+                                             * `customers.balance` henüz hizmet verilmemiş
+                                             * rezervasyon avansını içermez; `effectiveBalance =
+                                             * balance + pendingDeposit` (pure fonksiyon) ile Cari
+                                             * Hesap Özeti / Müşteri Yönetimi ile aynı semantik
+                                             * korunur. Ledger-bazlı `veresiyeCari` ayrıca UI'da
+                                             * "Veresiye Cari" KPI kartında gösterilir; DB snapshot
+                                             * ile çelişiyorsa ledgerMismatch uyarısı orada kalır.
                                              */
-                                            children: formatCurrency(profileStats.veresiyeCari),
+                                            children: profileStats.effectiveBalance === 0 ||
+                                            !isDisplayableBalance(profileStats.effectiveBalance) ? (
+                                                <span className="text-gray-400">—</span>
+                                            ) : (
+                                                formatCurrency(profileStats.effectiveBalance)
+                                            ),
                                         },
                                     ]}
                                 />
