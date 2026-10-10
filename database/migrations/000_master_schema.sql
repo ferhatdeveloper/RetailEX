@@ -2557,6 +2557,7 @@ BEGIN
       email        VARCHAR(255),
       tax_nr       VARCHAR(50),
       taxi_nr      VARCHAR(50),
+      lang         VARCHAR(5),
       tax_office   VARCHAR(100),
       address      TEXT,
       city         VARCHAR(100),
@@ -3041,13 +3042,21 @@ BEGIN
     )
   $f$, v_prefix || '_messaging_settings');
 
-  -- Kullanıcı mesaj şablonları
+  -- Kullanıcı mesaj şablonları (4-dil birleşik: tr/en/ar/ku — migration 207 ile)
   EXECUTE format($f$
     CREATE TABLE IF NOT EXISTS %I (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       firm_nr VARCHAR(10) NOT NULL,
       name VARCHAR(200) NOT NULL,
       body_text TEXT NOT NULL,
+      body_text_tr TEXT,
+      body_text_en TEXT,
+      body_text_ar TEXT,
+      body_text_ku TEXT,
+      headline_tr TEXT,
+      headline_en TEXT,
+      headline_ar TEXT,
+      headline_ku TEXT,
       category VARCHAR(40) NOT NULL DEFAULT 'general',
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,

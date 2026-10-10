@@ -46,6 +46,8 @@ export interface NotifyCustomerRow {
   heard_from?: string;
   birth_date?: string | null;
   gender?: string | null;
+  /** Müşterinin tercih ettiği dil (tr/en/ar/ku) — mesaj şablonunda kullanılır */
+  lang?: string | null;
 }
 
 function firmNrRow(): string {
@@ -73,6 +75,7 @@ function mapCustomerRow(
     heard_from: r.heard_from != null ? String(r.heard_from) : undefined,
     birth_date: birthRaw && birthRaw.length >= 10 ? birthRaw : null,
     gender: r.gender != null ? String(r.gender).trim().toLowerCase() || null : null,
+    lang: r.lang != null ? String(r.lang).trim() || null : null,
   };
 }
 
@@ -222,7 +225,7 @@ export const customerNotificationService = {
 
     const t = customersTable();
     const { rows } = await postgres.query(
-      `SELECT id, name, phone, customer_tier, city, district, heard_from, birth_date, gender
+      `SELECT id, name, phone, customer_tier, city, district, heard_from, birth_date, gender, lang
        FROM ${t}
        WHERE firm_nr = $1 AND COALESCE(is_active, true) = true
        ORDER BY name

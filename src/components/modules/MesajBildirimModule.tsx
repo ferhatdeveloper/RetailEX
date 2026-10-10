@@ -63,7 +63,13 @@ import {
   type WhatsAppFreeTextPresetId,
   type WhatsAppMessageLang,
 } from '../../services/messaging/whatsappMessageLang';
-import { messageTemplateService, splitHeadlineAndBody, type MessageTemplateRow } from '../../services/messaging/messageTemplateService';
+import {
+  messageTemplateService,
+  splitHeadlineAndBody,
+  resolveTemplateBody,
+  resolveTemplateTranslations,
+  type MessageTemplateRow,
+} from '../../services/messaging/messageTemplateService';
 import {
   MsgAutomationPanel,
   MsgQueueLogPanel,
@@ -1174,19 +1180,18 @@ export function MesajBildirimModule({
                         const tpl = customTemplates.find((t) => t.id === id);
                         if (tpl) {
                           setFreeTextPreset('custom');
-                          setMessageText(tpl.body_text);
+                          // 4-dil birleşik şablondan aktif dilin metnini çözümle
+                          setMessageText(resolveTemplateBody(tpl, messageLang));
                         }
                       }}
                     >
                       <option value="">{tm('msgNotifyCustomTplNone')}</option>
                       {customTemplates.map((t) => {
-                        const split = splitHeadlineAndBody(t.body_text);
-                        const label = split.headline
-                          ? `${t.name} — ${split.headline}`
-                          : t.name;
+                        const trn = resolveTemplateTranslations(t);
+                        const preview = (trn[messageLang] || trn.tr || t.body_text || '').slice(0, 60);
                         return (
                           <option key={t.id} value={t.id}>
-                            {label}
+                            {t.name}{preview ? ` — ${preview}` : ''}
                           </option>
                         );
                       })}

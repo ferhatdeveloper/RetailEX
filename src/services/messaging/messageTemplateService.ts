@@ -1,9 +1,22 @@
 /**
  * Kullanıcı tanımlı WhatsApp mesaj şablonları (firma kart).
+ *
+ * 4-dil birleşik yapı (migration 207):
+ *   - body_text_tr / body_text_en / body_text_ar / body_text_ku
+ *   - headline_tr / headline_en / headline_ar / headline_ku
+ *   - Mevcut body_text (geriye uyumlu) korunur; yeni kayıtlarda tr olarak
+ *     body_text_tr ile aynı metin kullanılır.
+ *
+ * Recipient gönderiminde resolveTemplateBody(row, lang) fallback ile
+ *   ku → ar → en → tr sırasıyla dil kolonunu seçer.
  */
 import { v4 as uuidv4 } from 'uuid';
 import { shouldUseTenantPostgrestApi } from '../../config/postgrest.config';
 import { ERP_SETTINGS, postgres } from '../postgres';
+import {
+  normalizeWhatsAppMessageLang,
+  type WhatsAppMessageLang,
+} from './whatsappMessageLang';
 
 export type MessageTemplateCategory = 'general' | 'birthday' | 'special_day' | string;
 
@@ -12,17 +25,31 @@ export interface MessageTemplateRow {
   firm_nr?: string;
   name: string;
   body_text: string;
+  body_text_tr?: string | null;
+  body_text_en?: string | null;
+  body_text_ar?: string | null;
+  body_text_ku?: string | null;
+  headline_tr?: string | null;
+  headline_en?: string | null;
+  headline_ar?: string | null;
+  headline_ku?: string | null;
   category: MessageTemplateCategory;
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;
 }
 
+/** Çeviri objesi (4 dil) — UI ve dış servisler için */
+export interface MessageTemplateTranslations {
+  tr: string;
+  en: string;
+  ar: string;
+  ku: string;
+}
+
 /**
  * Mesaj gövdesini iki parçaya ayır: kısa başlık (headline) + ana metin (body).
  * Saklama formatı: `headline` boşsa tüm metin `body`; doluysa `headline\n\nbody`.
- * Birleşik modda kaydedilen metinler (kullanıcı tek alana yazdı) olduğu gibi
- * döner — sadece ilk "\n\n" sınırında ayrılır; sınır yoksa `body` dolu, `headline` boş kalır.
  */
 export function splitHeadlineAndBody(bodyText: string): { headline: string; body: string } {
   const raw = String(bodyText ?? '');
@@ -31,7 +58,6 @@ export function splitHeadlineAndBody(bodyText: string): { headline: string; body
   if (idx <= 0) return { headline: '', body: raw };
   const head = raw.slice(0, idx).trim();
   const body = raw.slice(idx + 2);
-  // Başlık tek satır olmalı; aksi halde ayrımı koruma
   if (head.includes('\n')) return { headline: '', body: raw };
   if (!head) return { headline: '', body: raw };
   return { headline: head, body };
@@ -51,6 +77,69 @@ function firmNrRow(): string {
 
 function templatesTable(): string {
   return postgres.getCardTableName('message_templates', 'public');
+}
+
+/**
+ * Tek bir body_text kolonunu dile göre getirir.
+ * Sırasıyla: ku → ar → en → tr (fallback boş kalırsa ilk dolu olan).
+ */
+export function resolveTemplateBody(
+  row: MessageTemplateRow | null | undefined,
+  rawLang: string | null | undefined,
+): string {
+  if (!row) return '';
+  const lang = normalizeWhatsAppMessageLang(rawLang);
+  const direct = readBodyLang(row, lang);
+  if (direct) return direct;
+  // Fallback zinciri (kendi dilinden sonra, soldan sağa)
+  const order: WhatsAppMessageLang[] = ['tr', 'en', 'ar', 'ku'];
+  for (const l of order) {
+    if (l === lang) continue;
+    const v = readBodyLang(row, l);
+    if (v) return v;
+  }
+  return row.body_text ?? '';
+}
+
+function readBodyLang(row: MessageTemplateRow, lang: WhatsAppMessageLang): string {
+  switch (lang) {
+    case 'en':
+      return (row.body_text_en ?? '').trim();
+    case 'ar':
+      return (row.body_text_ar ?? '').trim();
+    case 'ku':
+      return (row.body_text_ku ?? '').trim();
+    default:
+      return (row.body_text_tr ?? row.body_text ?? '').trim();
+  }
+}
+
+function readHeadlineLang(row: MessageTemplateRow, lang: WhatsAppMessageLang): string {
+  switch (lang) {
+    case 'en':
+      return (row.headline_en ?? '').trim();
+    case 'ar':
+      return (row.headline_ar ?? '').trim();
+    case 'ku':
+      return (row.headline_ku ?? '').trim();
+    default:
+      return (row.headline_tr ?? '').trim();
+  }
+}
+
+/** 4 dilde body çevirilerini tek bir obje olarak getirir (boşsa fallback). */
+export function resolveTemplateTranslations(
+  row: MessageTemplateRow | null | undefined,
+): MessageTemplateTranslations {
+  const empty: MessageTemplateTranslations = { tr: '', en: '', ar: '', ku: '' };
+  if (!row) return empty;
+  const fallback = (row.body_text_tr ?? row.body_text ?? '').trim();
+  return {
+    tr: (row.body_text_tr ?? '').trim() || fallback,
+    en: (row.body_text_en ?? '').trim() || fallback,
+    ar: (row.body_text_ar ?? '').trim() || fallback,
+    ku: (row.body_text_ku ?? '').trim() || fallback,
+  };
 }
 
 export const messageTemplateService = {
@@ -93,16 +182,29 @@ export const messageTemplateService = {
 
   async create(data: {
     name: string;
-    body_text: string;
+    body_text?: string;
+    /** 4-dil birleşik metin (ör. { tr, en, ar, ku }); verilirse body_text yerine öncelikli */
+    translations?: Partial<MessageTemplateTranslations>;
+    /** 4-dil birleşik başlık */
+    headlines?: Partial<MessageTemplateTranslations>;
     category?: MessageTemplateCategory;
     is_active?: boolean;
   }): Promise<MessageTemplateRow> {
     const fn = firmNrRow();
+    const trBody = data.translations?.tr ?? data.body_text ?? '';
     const row: MessageTemplateRow = {
       id: uuidv4(),
       firm_nr: fn,
       name: data.name.trim(),
-      body_text: data.body_text,
+      body_text: trBody,
+      body_text_tr: data.translations?.tr ?? trBody,
+      body_text_en: data.translations?.en ?? null,
+      body_text_ar: data.translations?.ar ?? null,
+      body_text_ku: data.translations?.ku ?? null,
+      headline_tr: data.headlines?.tr ?? null,
+      headline_en: data.headlines?.en ?? null,
+      headline_ar: data.headlines?.ar ?? null,
+      headline_ku: data.headlines?.ku ?? null,
       category: data.category || 'general',
       is_active: data.is_active !== false,
     };
@@ -116,9 +218,18 @@ export const messageTemplateService = {
     }
     const t = templatesTable();
     await postgres.query(
-      `INSERT INTO ${t} (id, firm_nr, name, body_text, category, is_active)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
-      [row.id, fn, row.name, row.body_text, row.category, row.is_active],
+      `INSERT INTO ${t} (
+         id, firm_nr, name, body_text,
+         body_text_tr, body_text_en, body_text_ar, body_text_ku,
+         headline_tr, headline_en, headline_ar, headline_ku,
+         category, is_active
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [
+        row.id, fn, row.name, row.body_text,
+        row.body_text_tr, row.body_text_en, row.body_text_ar, row.body_text_ku,
+        row.headline_tr, row.headline_en, row.headline_ar, row.headline_ku,
+        row.category, row.is_active,
+      ],
       { firmNr: fn },
     );
     return row;
@@ -126,31 +237,81 @@ export const messageTemplateService = {
 
   async update(
     id: string,
-    data: Partial<Pick<MessageTemplateRow, 'name' | 'body_text' | 'category' | 'is_active'>>,
+    data: Partial<{
+      name: string;
+      body_text: string;
+      translations: Partial<MessageTemplateTranslations>;
+      headlines: Partial<MessageTemplateTranslations>;
+      category: MessageTemplateCategory;
+      is_active: boolean;
+    }>,
   ): Promise<void> {
     const fn = firmNrRow();
     const cur = await messageTemplateService.getById(id);
     if (!cur) return;
-    const merged = {
+    const nextTr = data.translations?.tr ?? data.body_text ?? cur.body_text_tr ?? cur.body_text;
+    const merged: MessageTemplateRow = {
+      ...cur,
       name: data.name?.trim() ?? cur.name,
-      body_text: data.body_text ?? cur.body_text,
+      body_text: nextTr,
+      body_text_tr: data.translations?.tr ?? nextTr ?? null,
+      body_text_en: data.translations?.en ?? cur.body_text_en ?? null,
+      body_text_ar: data.translations?.ar ?? cur.body_text_ar ?? null,
+      body_text_ku: data.translations?.ku ?? cur.body_text_ku ?? null,
+      headline_tr: data.headlines?.tr ?? cur.headline_tr ?? null,
+      headline_en: data.headlines?.en ?? cur.headline_en ?? null,
+      headline_ar: data.headlines?.ar ?? cur.headline_ar ?? null,
+      headline_ku: data.headlines?.ku ?? cur.headline_ku ?? null,
       category: data.category ?? cur.category,
       is_active: data.is_active ?? cur.is_active !== false,
     };
+
     if (shouldUseTenantPostgrestApi()) {
       const { postgrest } = await import('../api/postgrestClient');
       await postgrest.patch(
         `/rex_${fn}_message_templates?id=eq.${encodeURIComponent(id)}`,
-        { ...merged, updated_at: new Date().toISOString() },
+        {
+          name: merged.name,
+          body_text: merged.body_text,
+          body_text_tr: merged.body_text_tr,
+          body_text_en: merged.body_text_en,
+          body_text_ar: merged.body_text_ar,
+          body_text_ku: merged.body_text_ku,
+          headline_tr: merged.headline_tr,
+          headline_en: merged.headline_en,
+          headline_ar: merged.headline_ar,
+          headline_ku: merged.headline_ku,
+          category: merged.category,
+          is_active: merged.is_active,
+          updated_at: new Date().toISOString(),
+        },
         { schema: 'public', prefer: 'return=minimal' },
       );
       return;
     }
     const t = templatesTable();
     await postgres.query(
-      `UPDATE ${t} SET name=$2, body_text=$3, category=$4, is_active=$5, updated_at=CURRENT_TIMESTAMP
+      `UPDATE ${t} SET
+         name=$2,
+         body_text=$3,
+         body_text_tr=$4,
+         body_text_en=$5,
+         body_text_ar=$6,
+         body_text_ku=$7,
+         headline_tr=$8,
+         headline_en=$9,
+         headline_ar=$10,
+         headline_ku=$11,
+         category=$12,
+         is_active=$13,
+         updated_at=CURRENT_TIMESTAMP
        WHERE id=$1`,
-      [id, merged.name, merged.body_text, merged.category, merged.is_active],
+      [
+        id, merged.name, merged.body_text,
+        merged.body_text_tr, merged.body_text_en, merged.body_text_ar, merged.body_text_ku,
+        merged.headline_tr, merged.headline_en, merged.headline_ar, merged.headline_ku,
+        merged.category, merged.is_active,
+      ],
       { firmNr: fn },
     );
   },

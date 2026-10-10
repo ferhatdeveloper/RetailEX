@@ -8412,6 +8412,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'السطر الأول يُعامل كعنوان قصير، الأسطر التالية كنص رئيسي.',
     ku: 'یەکەم دێڕ وەک سەردێڕ، دێڕەکانی دیکە وەک دەقی سەرەکی.',
   },
+  msgNotifyTplLangTab: {
+    tr: 'Şablon dili (4 dil birleşik)',
+    en: 'Template language (4-lang merged)',
+    ar: 'لغة القالب (4 لغات مدمجة)',
+    ku: 'زمانی قاڵب (٤ زمان یەکگرتوو)',
+  },
+  msgNotifyTplLangTabHint: {
+    tr: 'Her dilde ayrı ayrı mesaj metni yazın. Müşteri/carinin diline göre uygun metin seçilir; eksikse tr fallback kullanılır.',
+    en: 'Fill each language separately. The system picks the right text per recipient language; missing translations fall back to tr.',
+    ar: 'اكتب نصًا منفصلًا لكل لغة. يختار النظام اللغة المناسبة لكل مستلم؛ في حال نقص الترجمة يُستخدم tr كاحتياط.',
+    ku: 'بۆ هەر زمانێک دەقێکی جیا بنووسە. سیستەم بەپێی زمانی وەرگر دەقی گونجاو هەڵدەبژێرێت؛ ئەگەر نەبوو tr بەکاردێت.',
+  },
   msgNotifyBannerTitle: {
     tr: 'Yaklaşan bildirimler',
     en: 'Upcoming notifications',

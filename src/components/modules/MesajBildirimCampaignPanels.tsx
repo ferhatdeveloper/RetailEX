@@ -1,7 +1,7 @@
 /**
  * Mesaj Bildirim — şablon / özel gün / otomasyon / kuyruk panelleri.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Trash2, Save, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -10,6 +10,7 @@ import {
   messageTemplateService,
   splitHeadlineAndBody,
   composeHeadlineAndBody,
+  resolveTemplateTranslations,
   type MessageTemplateRow,
 } from '../../services/messaging/messageTemplateService';
 import {
@@ -24,12 +25,18 @@ import {
 import type { MessagingSettings, NotificationQueueRow } from '../../services/messaging/messagingTypes';
 import { MessagingCountryCodeSelect } from '../shared/MessagingCountryCodeSelect';
 import { sanitizeCountryCode } from '../../services/messaging/messagingCountryCodes';
+import {
+  WHATSAPP_MESSAGE_LANG_OPTIONS,
+  type WhatsAppMessageLang,
+} from '../../services/messaging/whatsappMessageLang';
 
 type PanelProps = {
   panel: string;
   inputCls: string;
   labelCls: string;
 };
+
+const TPL_LANG_OPTIONS: WhatsAppMessageLang[] = ['tr', 'en', 'ar', 'ku'];
 
 export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
   const { darkMode } = useTheme();
@@ -42,6 +49,19 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
   const [category, setCategory] = useState('general');
   const [editId, setEditId] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<'separate' | 'combined'>('separate');
+  const [activeLang, setActiveLang] = useState<WhatsAppMessageLang>('tr');
+  const [perLangHeadline, setPerLangHeadline] = useState<Record<WhatsAppMessageLang, string>>({
+    tr: '',
+    en: '',
+    ar: '',
+    ku: '',
+  });
+  const [perLangBody, setPerLangBody] = useState<Record<WhatsAppMessageLang, string>>({
+    tr: '',
+    en: '',
+    ar: '',
+    ku: '',
+  });
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -65,6 +85,9 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
     setBody('');
     setHeadline('');
     setInputMode('separate');
+    setActiveLang('tr');
+    setPerLangHeadline({ tr: '', en: '', ar: '', ku: '' });
+    setPerLangBody({ tr: '', en: '', ar: '', ku: '' });
     setCategory('general');
   };
 
@@ -73,11 +96,25 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
       toast.warning(tm('msgNotifyTplRequired'));
       return;
     }
-    const composed =
-      inputMode === 'separate'
-        ? composeHeadlineAndBody(headline, body)
-        : body;
-    if (!composed.trim()) {
+    // Çok-dil modu: perLangBody + perLangHeadline boş olmayanları oku.
+    const translations: Partial<Record<WhatsAppMessageLang, string>> = {};
+    const headlines: Partial<Record<WhatsAppMessageLang, string>> = {};
+    if (inputMode === 'separate') {
+      for (const l of TPL_LANG_OPTIONS) {
+        const bb = (perLangBody[l] ?? '').trim();
+        const hh = (perLangHeadline[l] ?? '').trim();
+        if (bb) translations[l] = composeHeadlineAndBody(hh, bb);
+        if (hh) headlines[l] = hh;
+      }
+    } else {
+      for (const l of TPL_LANG_OPTIONS) {
+        const bb = (perLangBody[l] ?? '').trim();
+        if (bb) translations[l] = bb;
+      }
+    }
+    const fallbackBody = composeHeadlineAndBody(headline, body);
+    const trBody = translations.tr ?? translations.en ?? translations.ku ?? translations.ar ?? fallbackBody;
+    if (!trBody.trim()) {
       toast.warning(tm('msgNotifyTplRequired'));
       return;
     }
@@ -86,14 +123,18 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
       if (editId) {
         await messageTemplateService.update(editId, {
           name: name.trim(),
-          body_text: composed,
+          body_text: trBody,
+          translations,
+          headlines,
           category,
         });
         toast.success(tm('msgNotifyTplUpdated'));
       } else {
         await messageTemplateService.create({
           name: name.trim(),
-          body_text: composed,
+          body_text: trBody,
+          translations,
+          headlines,
           category,
         });
         toast.success(tm('msgNotifyTplCreated'));
@@ -110,7 +151,8 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
   const handleEdit = (r: MessageTemplateRow) => {
     setEditId(r.id);
     setName(r.name);
-    const split = splitHeadlineAndBody(r.body_text);
+    const trn = resolveTemplateTranslations(r);
+    const split = splitHeadlineAndBody(trn.tr || r.body_text);
     if (split.headline) {
       setInputMode('separate');
       setHeadline(split.headline);
@@ -118,8 +160,19 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
     } else {
       setInputMode('combined');
       setHeadline('');
-      setBody(r.body_text);
+      setBody(trn.tr || r.body_text);
     }
+    // 4-dil mapping
+    const nextHeadline: Record<WhatsAppMessageLang, string> = { tr: '', en: '', ar: '', ku: '' };
+    const nextBody: Record<WhatsAppMessageLang, string> = { tr: '', en: '', ar: '', ku: '' };
+    for (const l of TPL_LANG_OPTIONS) {
+      const s = splitHeadlineAndBody(trn[l] || '');
+      nextHeadline[l] = s.headline;
+      nextBody[l] = s.body || trn[l] || '';
+    }
+    setPerLangHeadline(nextHeadline);
+    setPerLangBody(nextBody);
+    setActiveLang('tr');
     setCategory(r.category || 'general');
   };
 
@@ -142,6 +195,15 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
       </div>
     );
   }
+
+  const langBadge = (lang: WhatsAppMessageLang): string =>
+    WHATSAPP_MESSAGE_LANG_OPTIONS.find((o) => o.id === lang)?.id === 'tr'
+      ? tm('turkish')
+      : WHATSAPP_MESSAGE_LANG_OPTIONS.find((o) => o.id === lang)?.id === 'en'
+        ? tm('english')
+        : WHATSAPP_MESSAGE_LANG_OPTIONS.find((o) => o.id === lang)?.id === 'ar'
+          ? tm('arabic')
+          : tm('kurdish');
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -193,25 +255,61 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
           </div>
           <p className="text-[11px] text-gray-500 mt-1">{tm('msgNotifyTplInputModeHint')}</p>
         </div>
+
+        {/* 4-dil tab selector */}
+        <div>
+          <label className={labelCls}>{tm('msgNotifyTplLangTab')}</label>
+          <div className={`inline-flex rounded-lg border overflow-hidden text-xs font-semibold mt-1 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+            {TPL_LANG_OPTIONS.map((l, idx) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => setActiveLang(l)}
+                className={`px-3 py-1.5 transition ${
+                  idx > 0 ? (darkMode ? 'border-l border-gray-600' : 'border-l border-gray-200') : ''
+                } ${
+                  activeLang === l
+                    ? 'bg-blue-600 text-white'
+                    : darkMode
+                      ? 'text-gray-200 hover:bg-gray-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {langBadge(l)}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-gray-500 mt-1">{tm('msgNotifyTplLangTabHint')}</p>
+        </div>
+
         {inputMode === 'separate' ? (
           <>
             <div>
-              <label className={labelCls}>{tm('msgNotifyTplHeadline')}</label>
+              <label className={labelCls}>
+                {tm('msgNotifyTplHeadline')} ({langBadge(activeLang)})
+              </label>
               <input
                 className={inputCls}
-                value={headline}
-                onChange={(e) => setHeadline(e.target.value)}
+                value={perLangHeadline[activeLang] ?? ''}
+                onChange={(e) =>
+                  setPerLangHeadline((p) => ({ ...p, [activeLang]: e.target.value }))
+                }
                 placeholder={tm('msgNotifyTplHeadlinePh')}
                 maxLength={120}
               />
               <p className="text-[11px] text-gray-500 mt-1">{tm('msgNotifyTplHeadlineHint')}</p>
             </div>
             <div>
-              <label className={labelCls}>{tm('msgNotifyTplBody')}</label>
+              <label className={labelCls}>
+                {tm('msgNotifyTplBody')} ({langBadge(activeLang)})
+              </label>
               <textarea
                 className={`${inputCls} min-h-[120px]`}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
+                dir={activeLang === 'ar' || activeLang === 'ku' ? 'rtl' : 'ltr'}
+                value={perLangBody[activeLang] ?? ''}
+                onChange={(e) =>
+                  setPerLangBody((p) => ({ ...p, [activeLang]: e.target.value }))
+                }
                 placeholder="{customer_name} {birth_date} {special_day_name} {date}"
               />
               <p className="text-xs text-gray-500 mt-1">{tm('msgNotifyTplPlaceholders')}</p>
@@ -219,16 +317,41 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
           </>
         ) : (
           <div>
-            <label className={labelCls}>{tm('msgNotifyTplCombined')}</label>
+            <label className={labelCls}>
+              {tm('msgNotifyTplCombined')} ({langBadge(activeLang)})
+            </label>
             <textarea
               className={`${inputCls} min-h-[140px]`}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
+              dir={activeLang === 'ar' || activeLang === 'ku' ? 'rtl' : 'ltr'}
+              value={perLangBody[activeLang] ?? ''}
+              onChange={(e) =>
+                setPerLangBody((p) => ({ ...p, [activeLang]: e.target.value }))
+              }
               placeholder={tm('msgNotifyTplCombinedPh')}
             />
             <p className="text-[11px] text-gray-500 mt-1">{tm('msgNotifyTplCombinedHint')}</p>
           </div>
         )}
+
+        {/* Dil doluluk chip'leri */}
+        <div className="flex flex-wrap gap-1.5">
+          {TPL_LANG_OPTIONS.map((l) => {
+            const has = (perLangBody[l] ?? '').trim().length > 0;
+            return (
+              <span
+                key={l}
+                className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${
+                  has
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-50 text-amber-700'
+                }`}
+              >
+                {langBadge(l)} {has ? '✓' : '∅'}
+              </span>
+            );
+          })}
+        </div>
+
         <div className="flex gap-2">
           <button
             type="button"
@@ -259,8 +382,9 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
         ) : (
           <ul className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
             {rows.map((r) => {
-              const split = splitHeadlineAndBody(r.body_text);
-              const preview = split.headline ? split.body : r.body_text;
+              const trn = resolveTemplateTranslations(r);
+              const filled = TPL_LANG_OPTIONS.filter((l) => (trn[l] ?? '').trim());
+              const preview = (trn.tr || r.body_text || '').slice(0, 220);
               return (
               <li key={r.id} className="py-2 flex items-start gap-2">
                 <button
@@ -270,12 +394,24 @@ export function MsgTemplatesPanel({ panel, inputCls, labelCls }: PanelProps) {
                 >
                   <div className="font-medium text-sm truncate">{r.name}</div>
                   <div className="text-xs text-gray-500 truncate">{r.category}</div>
-                  {split.headline ? (
-                    <div className="text-xs font-semibold text-blue-600 truncate">
-                      {split.headline}
-                    </div>
-                  ) : null}
-                  <div className="text-xs text-gray-400 line-clamp-2">{preview}</div>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {TPL_LANG_OPTIONS.map((l) => (
+                      <span
+                        key={l}
+                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                          (trn[l] ?? '').trim()
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {langBadge(l)}
+                      </span>
+                    ))}
+                    <span className="text-[10px] text-gray-400">
+                      ({filled.length}/4)
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-400 line-clamp-2 mt-1">{preview}</div>
                 </button>
                 <button
                   type="button"

@@ -7,13 +7,18 @@ import {
   replaceMessagePlaceholders,
   type NotifyCustomerRow,
 } from './customerNotificationService';
-import { messageTemplateService } from './messageTemplateService';
+import {
+  messageTemplateService,
+  resolveTemplateBody,
+  type MessageTemplateRow,
+} from './messageTemplateService';
 import { messagingService } from './messagingService';
 import {
   isSpecialDaySendDue,
   specialDayService,
   timeMatchesNow,
 } from './specialDayService';
+import { normalizeWhatsAppMessageLang, type WhatsAppMessageLang } from './whatsappMessageLang';
 
 let timerId: number | null = null;
 let running = false;
@@ -23,17 +28,28 @@ function ymd(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function pickRecipientLang(c: NotifyCustomerRow): WhatsAppMessageLang {
+  return normalizeWhatsAppMessageLang((c as { lang?: string | null }).lang);
+}
+
 async function enqueueCampaignBatch(params: {
   campaignKey: string;
   eventType: string;
-  templateBody: string;
+  /** Şablon satırı (4-dil birleşik) — varsa recipient diline göre kolon seçilir */
+  template?: MessageTemplateRow | null;
+  /** template yoksa kullanılan TR fallback metin */
+  templateFallback?: string;
   recipients: NotifyCustomerRow[];
   extraPlaceholders?: Record<string, string>;
 }): Promise<number> {
   let queued = 0;
   for (const c of params.recipients) {
+    const lang = pickRecipientLang(c);
+    const body = params.template
+      ? resolveTemplateBody(params.template, lang) || params.templateFallback || ''
+      : params.templateFallback || '';
     const messageText = replaceMessagePlaceholders(
-      params.templateBody,
+      body,
       c,
       params.extraPlaceholders,
     );
@@ -45,7 +61,7 @@ async function enqueueCampaignBatch(params: {
       message_text: messageText,
       reference_type: 'customer',
       reference_id: c.id,
-      payload_json: { campaign_key: params.campaignKey },
+      payload_json: { campaign_key: params.campaignKey, lang },
     });
     if (id) queued++;
   }
@@ -78,11 +94,10 @@ async function tick(): Promise<void> {
       const upcomingDays = Number(settings.birthday_upcoming_days ?? 7) || 7;
       const exactUpcoming = settings.birthday_upcoming_exact === true;
       const giftText = String(settings.birthday_gift_text ?? '').trim();
-      let tplBody = 'Sayın {customer_name}, doğum gününüzü kutlarız! {gift}';
-      if (settings.birthday_template_id) {
-        const tpl = await messageTemplateService.getById(settings.birthday_template_id);
-        if (tpl?.body_text?.trim()) tplBody = tpl.body_text;
-      }
+      const tpl = settings.birthday_template_id
+        ? await messageTemplateService.getById(settings.birthday_template_id)
+        : null;
+      const tplFallback = 'Sayın {customer_name}, doğum gününüzü kutlarız! {gift}';
 
       const modes: Array<'birthday_today' | 'birthday_upcoming'> = [];
       if (mode === 'today' || mode === 'both') modes.push('birthday_today');
@@ -101,7 +116,8 @@ async function tick(): Promise<void> {
         await enqueueCampaignBatch({
           campaignKey,
           eventType: m,
-          templateBody: tplBody,
+          template: tpl,
+          templateFallback: tplFallback,
           recipients,
           extraPlaceholders: { gift: giftText, service: giftText },
         });
@@ -112,11 +128,10 @@ async function tick(): Promise<void> {
     for (const day of specialDays) {
       if (!isSpecialDaySendDue(day, now)) continue;
       if (!timeMatchesNow(day.send_time || '10:00', now, 1)) continue;
-      let body = 'Sayın {customer_name}, {special_day_name} kutlu olsun!';
-      if (day.template_id) {
-        const tpl = await messageTemplateService.getById(day.template_id);
-        if (tpl?.body_text?.trim()) body = tpl.body_text;
-      }
+      const tpl = day.template_id
+        ? await messageTemplateService.getById(day.template_id)
+        : null;
+      const fallback = 'Sayın {customer_name}, {special_day_name} kutlu olsun!';
       const gender = (day.gender_filter ?? '').trim().toLowerCase();
       const recipients =
         gender === 'female' || gender === 'male' || gender === 'other'
@@ -131,7 +146,8 @@ async function tick(): Promise<void> {
       await enqueueCampaignBatch({
         campaignKey,
         eventType: 'special_day',
-        templateBody: body,
+        template: tpl,
+        templateFallback: fallback,
         recipients,
         extraPlaceholders: { special_day_name: day.name },
       });
