@@ -161,6 +161,7 @@ export function MesajBildirimModule({
   const [upcomingDays, setUpcomingDays] = useState(7);
   const [retryingFailed, setRetryingFailed] = useState(false);
   const [tplEditorOpen, setTplEditorOpen] = useState(false);
+  const messageBodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   const panel = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const inputCls = darkMode
@@ -596,6 +597,38 @@ export function MesajBildirimModule({
   const openWhatsAppSettings = () => {
     window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'whatsapp' }));
   };
+
+  /**
+   * Şablon düzenleme modalındaki "Mesaja ekle" butonu tetiklendiğinde
+   * çağrılır. Aktif dilin body_text_<lang> içeriğini Serbest metin
+   * textarea'sının sonuna ekler (append). Mevcut içerik korunur; boş
+   * textarea için önce newline eklenmez, dolu textarea için `\n\n` ayraç
+   * olarak kullanılır. Custom preset'e geçer (şablon dropdown temizlenir).
+   */
+  const handleAppendTemplateToMessage = useCallback(
+    (body: string) => {
+      setFreeTextPreset('custom');
+      setSelectedCustomTplId('');
+      setMessageText((prev) => {
+        const trimmedPrev = (prev ?? '').trim();
+        return trimmedPrev ? `${trimmedPrev}\n\n${body}` : body;
+      });
+      // İmleci sona odakla
+      requestAnimationFrame(() => {
+        const el = messageBodyRef.current;
+        if (el) {
+          el.focus();
+          const end = el.value.length;
+          try {
+            el.setSelectionRange(end, end);
+          } catch {
+            // ignore (örn. readonly ortam)
+          }
+        }
+      });
+    },
+    [],
+  );
 
   if (loading) {
     return (
@@ -1267,6 +1300,7 @@ export function MesajBildirimModule({
                 ) : null}
                 </div>
                 <textarea
+                  ref={messageBodyRef}
                   dir={messageLang === 'ar' || messageLang === 'ku' ? 'rtl' : 'ltr'}
                   value={messageText}
                   onChange={(e) => {
@@ -1328,6 +1362,7 @@ export function MesajBildirimModule({
         templates={customTemplates}
         messageLang={messageLang}
         onChanged={() => void loadAll()}
+        onAppendToMessage={handleAppendTemplateToMessage}
         onClose={() => setTplEditorOpen(false)}
       />
     </div>

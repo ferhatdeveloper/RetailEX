@@ -15878,6 +15878,24 @@ export const messageTemplateEditorTranslations: Record<string, { tr: string; en:
     ar: 'تم إنشاء قالب جديد.',
     ku: 'قاڵبی نوێ دروستکرا.',
   },
+  msgTplEditorAppendToMessage: {
+    tr: 'Mesaja ekle',
+    en: 'Append to message',
+    ar: 'إضافة إلى الرسالة',
+    ku: 'لێ زێدەبکە بۆ نامە',
+  },
+  msgTplEditorAppended: {
+    tr: 'Şablon mesaja eklendi',
+    en: 'Template appended to message',
+    ar: 'تمت إضافة القالب إلى الرسالة',
+    ku: 'قاڵب لێ زێدەکرا بۆ نامە',
+  },
+  msgTplEditorAppendHint: {
+    tr: "Bu içerik 'Serbest metin' alanının altına eklenecek",
+    en: "Content will be appended to 'Free text' field below",
+    ar: "سيتم إضافة المحتوى إلى حقل 'النص الحر' أدناه",
+    ku: "ئەم ناوەڕۆکە لە خوارەوە بۆ خانەی 'نووسینە ئازادەکە' زێدە دەکرێت",
+  },
 };
 
 Object.assign(moduleTranslations, rbacUiTranslations);

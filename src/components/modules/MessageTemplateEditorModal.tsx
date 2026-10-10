@@ -19,6 +19,7 @@ import {
   ChevronDown,
   Pencil,
   Lock,
+  CornerDownLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -44,6 +45,13 @@ interface MessageTemplateEditorModalProps {
   messageLang: WhatsAppMessageLang;
   /** Kaydet/sil/oluştur sonrası liste güncellemesi için */
   onChanged?: () => void | Promise<void>;
+  /**
+   * Aktif dildeki body_text_<lang> içeriğini çağırıcının "Serbest metin"
+   * alanına **eklemek** (append) istediğinde çağrılır. Mevcut içerik
+   * korunur; callback tetiklendiğinde boş textarea için önce newline
+   * eklenmez, dolu textarea için `\n\n` ayraç olarak kullanılır.
+   */
+  onAppendToMessage?: (body: string, lang: WhatsAppMessageLang) => void;
   onClose: () => void;
 }
 
@@ -93,6 +101,7 @@ export function MessageTemplateEditorModal({
   templates,
   messageLang,
   onChanged,
+  onAppendToMessage,
   onClose,
 }: MessageTemplateEditorModalProps) {
   const { tm } = useLanguage();
@@ -277,6 +286,21 @@ export function MessageTemplateEditorModal({
 
   const bodyTextByLang = (lang: WhatsAppMessageLang): string =>
     (form.getFieldValue(`body_${lang}`) ?? '') as string;
+
+  /** "Mesaja ekle" — aktif dilin body_text_<lang> içeriğini parent'a iletir. */
+  const handleAppendToMessage = useCallback(
+    (lang: WhatsAppMessageLang) => {
+      if (!onAppendToMessage) return;
+      const body = (form.getFieldValue(`body_${lang}`) ?? '') as string;
+      if (!body.trim()) {
+        toast.warning(tm('msgTplEditorAppendHint'));
+        return;
+      }
+      onAppendToMessage(body, lang);
+      toast.success(tm('msgTplEditorAppended'));
+    },
+    [form, onAppendToMessage, tm],
+  );
 
   return (
     <PercentBodyModal onClose={onClose} size="wide" ariaLabel={tm('msgTplEditorTitle')}>
@@ -498,7 +522,12 @@ export function MessageTemplateEditorModal({
               </span>
             ),
             children: (
-              <LangFields lang={l} form={form} />
+              <LangFields
+                lang={l}
+                form={form}
+                canAppendToMessage={!!onAppendToMessage}
+                onAppendToMessage={() => handleAppendToMessage(l)}
+              />
             ),
           }))}
         />
@@ -567,12 +596,21 @@ export function MessageTemplateEditorModal({
 function LangFields({
   lang,
   form,
+  canAppendToMessage,
+  onAppendToMessage,
 }: {
   lang: WhatsAppMessageLang;
   form: ReturnType<typeof Form.useForm<FieldValues>>[0];
+  /** "Mesaja ekle" butonu gösterilsin mi (parent callback verdi mi) */
+  canAppendToMessage: boolean;
+  /** Aktif dilin body_text_<lang> içeriğini parent'a append olarak gönderir */
+  onAppendToMessage: () => void;
 }) {
   const { tm } = useLanguage();
   const isRtl = RTL_LANGS.has(lang);
+  // Boş içerikte butonu kilitle (canlı form değeri)
+  const currentBody = (Form.useWatch(`body_${lang}`, form) ?? '') as string;
+  const isEmpty = !currentBody.trim();
   return (
     <div className="grid grid-cols-1 gap-3 py-2" dir={isRtl ? 'rtl' : 'ltr'}>
       <Form.Item
@@ -606,6 +644,28 @@ function LangFields({
           className="w-full rounded-2xl border border-slate-200 dark:border-gray-600 bg-white dark:bg-gray-900 px-4 py-3 text-sm text-slate-800 dark:text-gray-100 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none resize-y min-h-[8rem]"
         />
       </Form.Item>
+      {canAppendToMessage ? (
+        <div
+          className={`flex items-center gap-2 ${isRtl ? 'flex-row-reverse' : ''}`}
+        >
+          <Tooltip title={tm('msgTplEditorAppendHint')}>
+            <button
+              type="button"
+              onClick={onAppendToMessage}
+              disabled={isEmpty}
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/60 dark:bg-blue-900/20 px-3 py-2 text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-900/40 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-50/60"
+            >
+              <CornerDownLeft className="h-3.5 w-3.5" />
+              {tm('msgTplEditorAppendToMessage')}
+            </button>
+          </Tooltip>
+          <span
+            className={`text-[11px] text-slate-400 ${isRtl ? 'text-right' : ''}`}
+          >
+            {tm('msgTplEditorAppendHint')}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
