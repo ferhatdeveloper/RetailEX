@@ -16,6 +16,32 @@ const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
 type Row = Awaited<ReturnType<typeof beautyService.getDepositPrePaymentReport>>[number];
 
+// 10.10.2026 — Rezervasyon / Ön Ödeme Raporu "Kalan" hesabı.
+//
+// Kullanıcı formülü:
+//   remaining = bTotal - (bReservation + takenPayment)
+//
+// DB view'i `beauty_appointment_payment_status.outstanding_amount`
+//   = total_price - deposit_amount - remainder_paid_amount
+// formülünü kullanıyor; fakat randevu **tamamlandığında** (status =
+// 'completed' / 'closed') kalan bakiye tahsilat akışına bakılmaksızın
+// 0 olmalıdır — hizmet verildiği için artık alacak yoktur. Aynı
+// şekilde 'cancelled' ve 'no_show' durumlarında da alacak kapanır.
+//
+// Bu helper, ekran hücresinde, grup footer'da ve "Toplam Kalan" KPI'ında
+// tek kaynak olarak kullanılır; DB'den gelen ham `outstanding_amount`
+// alanı status-aware düzeltmeyi garanti etmez (ör. hizmet tamamlanmış
+// ama kalan tahsil edilmemiş olabilir).
+function computeKalan(r: Row): number {
+    const total = Number(r.total_price) || 0;
+    const deposit = Number(r.deposit_amount) || 0;
+    const remainder = Number(r.remainder_paid_amount) || 0;
+    const status = String(r.status ?? '').trim().toLowerCase();
+    if (status === 'completed' || status === 'closed') return 0;
+    if (status === 'cancelled' || status === 'no_show') return 0;
+    return Math.max(0, total - deposit - remainder);
+}
+
 const PAYMENT_STATE_LABEL_KEY: Record<string, string> = {
     unpaid: 'bPaymentStateUnpaid',
     deposit_only: 'bPaymentStateDepositOnly',
@@ -80,7 +106,9 @@ export function DepositPrePaymentReport() {
         };
         for (const r of rows) {
             acc.totalReservation += r.deposit_amount;
-            acc.totalOutstanding += r.outstanding_amount;
+            // 10.10.2026 — Kapalı/iptal randevularda kalan = 0.
+            // computeKalan helper'ı ile ekran + hücre + KPI aynı formülü paylaşır.
+            acc.totalOutstanding += computeKalan(r);
             if (r.payment_state === 'paid') acc.paidCount += 1;
             if (r.payment_state === 'deposit_only') acc.depositOnlyCount += 1;
         }
@@ -174,7 +202,11 @@ export function DepositPrePaymentReport() {
                 footerSum: true,
                 footerFormat: (n) => fmt(n),
                 cell: (r) => {
-                    const amt = r.outstanding_amount;
+                    // 10.10.2026 — Kalan = bTotal - (bReservation + takenPayment).
+                    // completed/cancelled/no_show durumlarında Kalan = 0; DB'deki
+                    // raw `outstanding_amount` alanı bunu garanti etmez, çünkü
+                    // bakiye tahsil edilmemiş ama hizmet verilmiş olabilir.
+                    const amt = computeKalan(r);
                     const cls = amt > 0.005 ? 'text-rose-700 font-semibold' : 'text-emerald-700 font-semibold';
                     return <span className={`tabular-nums ${cls}`}>{fmt(amt)}</span>;
                 },
@@ -329,7 +361,7 @@ export function DepositPrePaymentReport() {
                                 },
                                 {
                                     columnId: 'outstanding_amount',
-                                    getValue: (r) => Number(r.outstanding_amount ?? 0),
+                                    getValue: (r) => computeKalan(r),
                                     format: (sum) => (
                                         <span className={sum > 0.005 ? 'text-rose-700 font-semibold' : 'text-emerald-700 font-semibold'}>
                                             {fmt(sum)}

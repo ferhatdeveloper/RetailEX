@@ -7613,6 +7613,10 @@ export const beautyService = {
         remainder_paid_amount: number;
         outstanding_amount: number;
         payment_state: 'no_amount' | 'unpaid' | 'deposit_only' | 'partial' | 'paid';
+        // 10.10.2026 — Randevu kapanma durumu (appointment.saldumeranne durumu).
+        // Rezervasyon raporundaki "Kalan" kolonu bu alana göre 0 olur:
+        // tamamlanan / iptal edilen / gelmeyen randevularda artık alacak yoktur.
+        status: string | null;
         currency: string;
         deposit_provider: string | null;
         deposit_sale_fiche_no: string | null;
@@ -7670,6 +7674,7 @@ export const beautyService = {
                 pas.remainder_paid_amount::float               AS remainder_paid_amount,
                 pas.outstanding_amount::float                  AS outstanding_amount,
                 pas.payment_state                              AS payment_state,
+                NULLIF(LOWER(TRIM(COALESCE(pas.status, ''))), '') AS status,
                 NULLIF(pas.deposit_provider, '')               AS deposit_provider,
                 a.deposit_sale_fiche_no                        AS deposit_sale_fiche_no
             FROM beauty.beauty_appointment_payment_status pas
@@ -7718,6 +7723,7 @@ export const beautyService = {
                 outstanding_amount: Number(r.outstanding_amount) || 0,
                 payment_state: (String(r.payment_state ?? 'no_amount') as
                     | 'no_amount' | 'unpaid' | 'deposit_only' | 'partial' | 'paid'),
+                status: r.status ? String(r.status) : null,
                 currency: 'IQD',
                 deposit_provider: r.deposit_provider ? String(r.deposit_provider) : null,
                 deposit_sale_fiche_no: r.deposit_sale_fiche_no ? String(r.deposit_sale_fiche_no) : null,
