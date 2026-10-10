@@ -30,7 +30,7 @@ import {
   runWhatsAppBulkCampaign,
 } from '../../utils/whatsappBulkSend';
 
-type BulkModalTab = 'send' | 'connection' | 'missing';
+type BulkModalTab = 'send' | 'connection' | 'missing' | 'invalid';
 
 export interface BulkMissingItem {
   id: string;
@@ -111,18 +111,14 @@ export function WhatsAppBulkSendPreviewModal({
     return new Date(resolvedScheduledAt).getTime() > Date.now() + 30_000;
   }, [resolvedScheduledAt]);
 
-  // Eger gonderim listesi bos ama telefonu eksik olanlar varsa, otomatik
-  // olarak "Telefonu eksik" tab'ina gec; kullanici takilmis hissetmesin.
+  // Eger gonderim listesi bos ama gecersiz/eksik telefon olanlar varsa, otomatik
+  // olarak ilgili tab'a gec; kullanici takilmis hissetmesin. Oncelik: gecersiz.
   useEffect(() => {
-    if (
-      open &&
-      localItems.length === 0 &&
-      missingItems &&
-      missingItems.length > 0 &&
-      activeTab === 'send'
-    ) {
-      setActiveTab('missing');
-    }
+    if (!open || localItems.length > 0 || !missingItems) return;
+    if (activeTab !== 'send') return;
+    const hasInvalid = missingItems.some((m) => m.reason === 'invalid_phone');
+    if (hasInvalid) setActiveTab('invalid');
+    else if (missingItems.some((m) => m.reason === 'no_phone')) setActiveTab('missing');
   }, [open, localItems.length, missingItems, activeTab]);
 
   const refreshConnection = useCallback(async () => {
@@ -419,7 +415,26 @@ export function WhatsAppBulkSendPreviewModal({
           >
             <AlertTriangle size={12} />
             Telefonu eksik
-            <span className="ml-0.5 text-[10px] text-amber-500">({missingItems.length})</span>
+            <span className="ml-0.5 text-[10px] text-amber-500">
+              ({missingItems.filter((m) => m.reason === 'no_phone').length})
+            </span>
+          </button>
+        )}
+        {missingItems && missingItems.filter((m) => m.reason === 'invalid_phone').length > 0 && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('invalid')}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
+              activeTab === 'invalid'
+                ? 'border-rose-500 text-rose-700'
+                : 'border-transparent text-rose-600 hover:text-rose-800'
+            }`}
+          >
+            <AlertTriangle size={12} />
+            Geçersiz numara
+            <span className="ml-0.5 text-[10px] text-rose-500">
+              ({missingItems.filter((m) => m.reason === 'invalid_phone').length})
+            </span>
           </button>
         )}
         <button
@@ -437,53 +452,64 @@ export function WhatsAppBulkSendPreviewModal({
 
       {activeTab === 'missing' ? (
         <PercentBodyModalScrollBody className="p-5 space-y-4">
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex gap-3">
-            <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={20} />
-            <div className="text-sm text-amber-900 space-y-1">
-              <p className="font-bold">
-                {missingItems?.length ?? 0} müşteri gönderim listesine alınamadı
-              </p>
-              <p>
-                Telefon numarası olmayan veya geçersiz olan müşteriler. Bu liste
-                ana gönderimi engellemez; müşterilerin telefonlarını güncelledikten
-                sonra tekrar deneyin.
-              </p>
-            </div>
-          </div>
-          {missingItems && missingItems.length > 0 && (
-            <button
-              type="button"
-              onClick={() => exportMissingItemsCsv(missingItems)}
-              className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-50"
-            >
-              Listeyi CSV indir
-            </button>
-          )}
-          <div className="rounded-xl border border-gray-200 overflow-hidden">
-            <div className="grid grid-cols-[1.2fr_2fr_1fr_1.5fr] gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-200">
-              <div>Müşteri</div>
-              <div>Bağlam</div>
-              <div>Durum</div>
-              <div>Telefon (ham)</div>
-            </div>
-            <div className="max-h-[55vh] overflow-y-auto">
-              {(missingItems ?? []).map((m) => (
-                <div
-                  key={m.id}
-                  className="grid grid-cols-[1.2fr_2fr_1fr_1.5fr] gap-2 px-3 py-2.5 text-sm border-b border-gray-100 last:border-b-0 hover:bg-amber-50/40"
-                >
-                  <div className="font-medium text-gray-800 truncate">{m.name}</div>
-                  <div className="text-gray-600 truncate">{m.contextLine || '—'}</div>
-                  <div>
-                    <MissingReasonBadge reason={m.reason} />
-                  </div>
-                  <div className="text-xs font-mono text-gray-500 truncate">
-                    {m.phoneRaw?.trim() || <span className="italic text-gray-400">— boş —</span>}
+          {(() => {
+            const rows = (missingItems ?? []).filter((m) => m.reason === 'no_phone');
+            return (
+              <>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex gap-3">
+                  <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={20} />
+                  <div className="text-sm text-amber-900 space-y-1">
+                    <p className="font-bold">{rows.length} müşterinin telefonu kayıtlı değil</p>
+                    <p>
+                      Bu müşterilere WhatsApp gönderilemez. Müşteri kartından telefon
+                      ekledikten sonra tekrar deneyin. Ana gönderim bu yüzden engellenmez.
+                    </p>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
+                {rows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => exportMissingItemsCsv(rows)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-50"
+                  >
+                    Listeyi CSV indir
+                  </button>
+                )}
+                <MissingItemsTable rows={rows} tone="amber" />
+              </>
+            );
+          })()}
+        </PercentBodyModalScrollBody>
+      ) : activeTab === 'invalid' ? (
+        <PercentBodyModalScrollBody className="p-5 space-y-4">
+          {(() => {
+            const rows = (missingItems ?? []).filter((m) => m.reason === 'invalid_phone');
+            return (
+              <>
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 flex gap-3">
+                  <AlertTriangle className="text-rose-600 shrink-0 mt-0.5" size={20} />
+                  <div className="text-sm text-rose-900 space-y-1">
+                    <p className="font-bold">{rows.length} müşterinin telefonu geçersiz</p>
+                    <p>
+                      Alan kodu eksik, çok kısa/uzun ya da WhatsApp'a uygun olmayan bir
+                      biçimde kayıtlı. Numarayı uluslararası biçimde (ör. +90 5XX …)
+                      düzelttikten sonra tekrar deneyin. Ana gönderim bu yüzden engellenmez.
+                    </p>
+                  </div>
+                </div>
+                {rows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => exportMissingItemsCsv(rows)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50"
+                  >
+                    Listeyi CSV indir
+                  </button>
+                )}
+                <MissingItemsTable rows={rows} tone="rose" />
+              </>
+            );
+          })()}
         </PercentBodyModalScrollBody>
       ) : activeTab === 'connection' ? (
         <PercentBodyModalScrollBody className="p-5 space-y-4">
@@ -785,6 +811,51 @@ export function WhatsAppBulkSendPreviewModal({
         )}
       </div>
     </PercentBodyModal>
+  );
+}
+
+function MissingItemsTable({
+  rows,
+  tone,
+}: {
+  rows: BulkMissingItem[];
+  tone: 'amber' | 'rose';
+}) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-gray-500 py-8 text-center">
+        Bu kategoride kayıt yok.
+      </p>
+    );
+  }
+  return (
+    <div className="rounded-xl border border-gray-200 overflow-hidden">
+      <div className="grid grid-cols-[1.2fr_2fr_1fr_1.5fr] gap-2 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-200">
+        <div>Müşteri</div>
+        <div>Bağlam</div>
+        <div>Durum</div>
+        <div>Telefon (ham)</div>
+      </div>
+      <div className="max-h-[55vh] overflow-y-auto">
+        {rows.map((m) => (
+          <div
+            key={m.id}
+            className={`grid grid-cols-[1.2fr_2fr_1fr_1.5fr] gap-2 px-3 py-2.5 text-sm border-b border-gray-100 last:border-b-0 ${
+              tone === 'amber' ? 'hover:bg-amber-50/40' : 'hover:bg-rose-50/40'
+            }`}
+          >
+            <div className="font-medium text-gray-800 truncate">{m.name}</div>
+            <div className="text-gray-600 truncate">{m.contextLine || '—'}</div>
+            <div>
+              <MissingReasonBadge reason={m.reason} />
+            </div>
+            <div className="text-xs font-mono text-gray-500 truncate">
+              {m.phoneRaw?.trim() || <span className="italic text-gray-400">— boş —</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
