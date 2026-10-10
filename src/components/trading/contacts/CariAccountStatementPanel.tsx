@@ -337,7 +337,13 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
         minSize: 90,
         enableSorting: false,
         enableHiding: false,
-        meta: { align: 'right' },
+        // 10.10.2026 — `actions` kimliği DevExDataGrid'in
+        // `DEVEX_DEFAULT_HIDDEN_COLUMN_IDS` listesinde; depolamada
+        // görünürlük kaydı yoksa kolon otomatik gizleniyor ve açılış/
+        // devir satırındaki "Sil" butonu hiç render edilmiyordu. Zorla
+        // görünür işaretleyerek her oturumda butonu gösteriyoruz
+        // (kullanıcı isterse kolonlar menüsünden yine kapatabilir).
+        meta: { align: 'right', defaultVisible: true, defaultHidden: false },
         cell: ({ row }) => {
           const ft = String(row.original.fiche_type || '').toLowerCase();
           if (ft !== 'opening_balance') return null;
