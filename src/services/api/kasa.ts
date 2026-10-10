@@ -1458,6 +1458,21 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
       tutar: Math.abs(parseKasaAmount(incoming.tutar)),
     };
     delete (islem as { skipExpenseMirror?: boolean }).skipExpenseMirror;
+    // Fiş No (fiche_no): caller `islem_no` veya `fiche_no` set etmişse onu kullan;
+    // aksi halde benzersiz bir değer üret. cash_lines.fiche_no sütunu UNIQUE ama
+    // NULL olabilir; boş bırakırsak Postgres'te UNIQUE constraint no-op sayılır ve
+    // cash_lines listeleme/ekstre sorguları boş fiche_no görür. Bu nedenle her
+    // zaman dolu bir ficheNo üretiyoruz.
+    const explicitNo = String(
+      (incoming as { islem_no?: string; fiche_no?: string }).islem_no
+      || (incoming as { islem_no?: string; fiche_no?: string }).fiche_no
+      || ''
+    ).trim();
+    const ts = Date.now().toString(36).toUpperCase();
+    const rnd = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const generated = `KL-${ts}-${rnd}`;
+    const ficheNo = explicitNo || generated;
+    islem.islem_no = ficheNo;
     // Dönem kontrolü — kapalı dönemde yazma engellenir (PeriodControl entegrasyonu).
     await assertPeriodOpen(
       ERP_SETTINGS.firmNr,
