@@ -92,6 +92,19 @@ export interface StockMovementLine {
     category: string;
     quantity: number;
     unit_price: number;
+    /**
+     * Brüt toplam (indirim öncesi). Fatura kalemlerinde `unit_price * quantity`
+     * (KDV hariç). Ambar fişlerinde yoksa 0.
+     */
+    gross_amount?: number;
+    /** Satır indirimi (fatura kalemleri için). Ambar fişlerinde 0. */
+    discount_amount?: number;
+    /**
+     * Net tutar (indirim sonrası, KDV hariç). Fatura kalemlerinde
+     * `sale_items.net_amount`; ambar fişlerinde `unit_price * quantity`.
+     * Boşsa frontend `quantity * unit_price`'a düşer (geriye uyumlu).
+     */
+    net_amount?: number;
     warehouse_name: string;
     customer_name: string;
     description: string;
@@ -519,6 +532,9 @@ class StockMovementAPI {
                         ${SQL_PRODUCT_CARD_REPORT_FIELDS},
                         i.quantity,
                         i.unit_price,
+                        COALESCE(i.unit_price, 0) * ABS(COALESCE(i.quantity, 0)) AS gross_amount,
+                        0 AS discount_amount,
+                        COALESCE(i.unit_price, 0) * ABS(COALESCE(i.quantity, 0)) AS net_amount,
                         COALESCE(NULLIF(TRIM(s.code), ''), '') AS warehouse_code,
                         COALESCE(NULLIF(TRIM(s.name), ''), '') AS warehouse_name_raw,
                         '' AS customer_name,
@@ -560,6 +576,8 @@ class StockMovementAPI {
                         COALESCE(p.name, si.item_name, '') AS product_name,
                         ${SQL_PRODUCT_CARD_REPORT_FIELDS},
                         si.quantity,
+                        -- brüt birim fiyat (unit_price DB'de kayıtlı brüt ise kullanılır;
+                        -- frontend'de net_amount üzerinden raporlanır).
                         COALESCE(
                           NULLIF(si.unit_price, 0),
                           CASE
@@ -569,6 +587,17 @@ class StockMovementAPI {
                             ELSE 0
                           END
                         ) AS unit_price,
+                        -- brüt toplam (indirim öncesi)
+                        COALESCE(si.quantity, 0) * COALESCE(si.unit_price, 0) AS gross_amount,
+                        -- satır indirimi (negatif değil)
+                        COALESCE(si.discount_amount, 0) AS discount_amount,
+                        -- net tutar (indirim sonrası) — fallback brüt
+                        COALESCE(
+                          NULLIF(si.net_amount, 0),
+                          COALESCE(si.quantity, 0) * COALESCE(si.unit_price, 0)
+                            - COALESCE(si.discount_amount, 0),
+                          COALESCE(si.quantity, 0) * COALESCE(si.unit_price, 0)
+                        ) AS net_amount,
                         COALESCE(NULLIF(TRIM(st.code), ''), '') AS warehouse_code,
                         COALESCE(NULLIF(TRIM(st.name), ''), '') AS warehouse_name_raw,
                         NULLIF(TRIM(COALESCE(sl.header_fields->>'warehouse', '')), '') AS warehouse_header,
@@ -624,6 +653,9 @@ class StockMovementAPI {
                     ...mapCardFields(r),
                     quantity: Number(r.quantity) || 0,
                     unit_price: Number(r.unit_price) || 0,
+                    gross_amount: Number(r.gross_amount) || 0,
+                    discount_amount: Number(r.discount_amount) || 0,
+                    net_amount: Number(r.net_amount) || 0,
                     warehouse_name:
                         formatWarehouseLabel(r.warehouse_code, r.warehouse_name_raw) || defaultWarehouse,
                     customer_name: String(r.customer_name || ''),
@@ -655,6 +687,9 @@ class StockMovementAPI {
                     ...mapCardFields(r),
                     quantity: Number(r.quantity) || 0,
                     unit_price: Number(r.unit_price) || 0,
+                    gross_amount: Number(r.gross_amount) || 0,
+                    discount_amount: Number(r.discount_amount) || 0,
+                    net_amount: Number(r.net_amount) || 0,
                     warehouse_name: fromStore || fromHeader || defaultWarehouse,
                     customer_name: String(r.customer_name || ''),
                     description: String(r.description || ''),

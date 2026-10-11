@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatNumber } from '../../../utils/formatNumber';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
+import { computeNetAmount } from '../../../utils/stockMovementNet';
 import { labelMaterialExtractFiche } from '../../../utils/materialExtractLabels';
 import { displayItemCode } from '../../../utils/lastPurchaseCostSql';
 
@@ -35,15 +36,28 @@ interface TxRow {
     /** Fiş / hareket tipi (Satış İade, Satınalma, …) */
     type_label: string;
     in_qty: number;
+    /** Net tutar (indirim sonrası) — dip toplam net üzerinden hesaplanır. */
     in_amount: number;
     out_qty: number;
+    /** Net tutar (indirim sonrası). */
     out_amount: number;
+    /** Brüt tutar (indirim öncesi). Dip toplamda kullanılmaz, sadece görünür. */
+    gross_amount: number;
+    /** Satır indirimi. */
+    discount_amount: number;
     warehouse_name: string;
     unit_price: number;
     document_no: string;
     customer_name: string;
 }
 
+/**
+ * Hareket Dökümü kalem satırı. Tutar = **net** (indirim sonrası).
+ * Brüt/indirim ayrı kolon olarak görünür; dip toplam `in_amount` + `out_amount`
+ * üzerinden net hesaplanır. Slips (ambar fişi) için `net_amount` SQL'de
+ * `unit_price * quantity` olarak hesaplanır; fatura kalemleri için
+ * `sale_items.net_amount` önceliklidir.
+ */
 function lineToRow(line: StockMovementLine, tm: (key: string) => string): TxRow {
     const qty = Number(line.quantity) || 0;
     const unitPrice = Number(line.unit_price) || 0;
@@ -53,6 +67,17 @@ function lineToRow(line: StockMovementLine, tm: (key: string) => string): TxRow 
     const outQty = isIn ? 0 : qty;
     const code1 = line.special_code_1 || line.special_code || '';
     const shownCode = displayItemCode(line.product_code);
+
+    const net = computeNetAmount({
+        quantity: qty,
+        unit_price: unitPrice,
+        gross_amount: line.gross_amount,
+        discount_amount: line.discount_amount,
+        net_amount: line.net_amount,
+    });
+    const gross = Number(line.gross_amount ?? 0) || qty * unitPrice;
+    const discount = Number(line.discount_amount ?? 0);
+
     return {
         id: line.id,
         movement_date: line.movement_date || line.created_at,
@@ -77,9 +102,11 @@ function lineToRow(line: StockMovementLine, tm: (key: string) => string): TxRow 
             String(line.fiche_type || ''),
         ),
         in_qty: inQty,
-        in_amount: inQty * unitPrice,
+        in_amount: isIn ? net : 0,
         out_qty: outQty,
-        out_amount: outQty * unitPrice,
+        out_amount: isIn ? 0 : net,
+        gross_amount: gross,
+        discount_amount: discount,
         warehouse_name: line.warehouse_name || '',
         unit_price: unitPrice,
         document_no: line.document_no || '',
@@ -89,7 +116,8 @@ function lineToRow(line: StockMovementLine, tm: (key: string) => string): TxRow 
 
 /**
  * Hareket Dökümü — kalem satırı (ürün, miktar/tutar giriş/çıkış, depo, fiyat).
- * Giriş/çıkış tutar = ilgili miktar × birim fiyat. Footer autoFooterSums ile toplanır.
+ * Giriş/çıkış tutar = **net** (indirim sonrası). Brüt/indirim ayrı kolon olarak
+ * görünür. Footer `autoFooterSums` ile net üzerinden toplanır.
  * Fiş Listesi belge başlığıdır; bu ekran aynı belgelerin stok dökümüdür.
  */
 export function TransactionBreakdownReport() {
