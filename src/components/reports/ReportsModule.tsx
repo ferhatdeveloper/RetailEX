@@ -77,7 +77,8 @@ import {
 } from '../../utils/purchasePromotionReport';
 import { applyExtraCashCollections, buildPosZReportForRange, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
-import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections, saleCollectedSplit, dailyPaymentKind } from '../../utils/saleCollectedAmounts';
+import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections, saleCollectedSplit, dailyPaymentKind, beautySalePocketCollected } from '../../utils/saleCollectedAmounts';
+import { saleCollected as saleActualCollected } from '../../utils/computeActualCollected';
 import { filterForRevenue, filterForCash, filterForDeposit, isCompletedAppointmentStatus, isDepositSale } from '../../utils/reportDepositFilter';
 import {
   buildPaymentTypeDistribution,
@@ -4150,7 +4151,36 @@ export function ReportsModule({
       if (row.isDeposit === true) continue;
       const hour = saleWallClockHourLocal(dailyRowWallClockSource(row));
       if (hour == null) continue;
-      bump(hour, Number(row.total) || 0);
+      // Bug-fix 2026-10-11 — Ciro = "tahsil edilen nakit" (saatlik analiz).
+      // Önceki: `Number(row.total)` (hizmet tam tutarı, brüt).
+      // Yeni: ERP satışında paid_amount / payments → nakit/kart/havale toplamı
+      //       (kalan cari borç Ciro sayılmaz; iptal = 0).
+      // `row.collected` kaynak tarafında zaten hesaplanıyor olabilir, ancak
+      // beauty/special durumlar veya rest kaynaklı satırlar için de tutarlı
+      // olsun diye merkezi helper'a düşürüyoruz.
+      let ciro = 0;
+      if (row.erpSale) {
+        const s = row.erpSale as Sale & {
+          paid_amount?: number | null;
+          payment_status?: string | null;
+        };
+        ciro = saleActualCollected({
+          total: Number(s.total) || 0,
+          total_price: Number(s.total) || 0,
+          paid_amount: Number(s.paid_amount) || 0,
+          deposit_amount: Number((s as any).deposit_amount) || 0,
+          remainder_paid_amount: Number((s as any).remainder_paid_amount) || 0,
+          status: s.status,
+          payment_status: s.payment_status,
+          payment_method: s.paymentMethod,
+        });
+      } else if (typeof row.collected === 'number' && Number.isFinite(row.collected)) {
+        // ERP satışı dışındaki satırlar (restoran vb.) için merkezi tahsilat alanı.
+        ciro = Math.max(0, row.collected);
+      } else {
+        ciro = Math.max(0, Number(row.total) || 0);
+      }
+      bump(hour, ciro);
     }
 
     return Array.from(hourlyMap.entries())

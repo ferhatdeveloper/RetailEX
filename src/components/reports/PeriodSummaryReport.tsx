@@ -12,6 +12,7 @@ import { postgres, ERP_SETTINGS } from '../../services/postgres';
 import { isReturnSale } from '../../utils/posZReport';
 import { isDepositSale } from '../../utils/reportDepositFilter';
 import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
+import { saleCollected } from '../../utils/computeActualCollected';
 import {
   mergeExpensesWithCashOuts,
   mergeExpensesWithCashIns,
@@ -224,7 +225,18 @@ function aggregateSales(
       const linkedApt = String((s as any).linked_appointment_id ?? '').trim();
       const isCompletedLinked = linkedApt && completedAppointmentIds.has(linkedApt);
       if (isCompletedLinked && !isReturn) {
-        row.revenue += absTotal;
+        // Ciro (tahsil edilen nakit) — deposit fiş, paid_amount veya payments’tan.
+        const depositedCollected = saleCollected({
+          total: absTotal,
+          total_price: absTotal,
+          paid_amount: Number((s as any).paid_amount) || 0,
+          deposit_amount: absTotal,
+          remainder_paid_amount: Number((s as any).remainder_paid_amount) || 0,
+          status: s.status,
+          payment_status: (s as any).payment_status,
+          payment_method: s.paymentMethod,
+        });
+        row.revenue += depositedCollected;
         row.saleCount += 1;
         const split = saleCollectedSplit(s);
         row.cash += split.cash;
@@ -242,7 +254,26 @@ function aggregateSales(
       row.discount += Number(s.discount) || 0;
     }
 
-    row.revenue += total;
+    // Bug-fix 2026-10-11 — Ciro = "tahsil edilen nakit" (geri-çevrim).
+    // Önceki: `row.revenue += total` (brüt belge tutarı). Kullanıcı:
+    //   "Tüm raporlar hizmet tam tutarını (50.000) yansıtıyor;
+    //    Ciro = bugün tahsil edilen nakit olmalı."
+    // Yeni: `saleCollected(s)` — paid_amount + (tamamlandı ise remainder_paid);
+    //       iade → negatif tahsilat Ciro'dan düşer.
+    // Muhasebeci kuralı: Ciro = peşinat + tahsil edilen kalan ödeme;
+    //                   rezervasyon peşinatı da Ciro'ya girer;
+    //                   iptal = 0; veresiye kalan = cari borç (Ciro değil).
+    const collected = saleCollected({
+      total,
+      total_price: total,
+      paid_amount: Number((s as any).paid_amount) || 0,
+      deposit_amount: Number((s as any).deposit_amount) || 0,
+      remainder_paid_amount: Number((s as any).remainder_paid_amount) || 0,
+      status: s.status,
+      payment_status: (s as any).payment_status,
+      payment_method: s.paymentMethod,
+    });
+    row.revenue += collected;
     const split = saleCollectedSplit(s);
     row.cash += split.cash;
     row.card += split.card;
