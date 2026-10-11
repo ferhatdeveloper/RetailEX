@@ -12412,6 +12412,32 @@ export const excelModuleTranslations = {
   bPaymentStatePartial: { tr: 'Kısmi Ödeme', en: 'Partial', ar: 'جزئي', ku: 'بەشێک' },
   bPaymentStatePaid: { tr: 'Kapandı', en: 'Closed', ar: 'مغلق', ku: 'داخراو' },
   bPaymentStateNoAmount: { tr: 'Tutar Yok', en: 'No Amount', ar: 'لا يوجد مبلغ', ku: 'بڕی نییە' },
+  // 10.10.2026 — Rezervasyon raporundaki "Faturayı kapat" eylemi.
+  // satır bazında tamamlama butonu + onay modalı için.
+  bActions: { tr: 'İşlem', en: 'Actions', ar: 'إجراءات', ku: 'کردارەکان' },
+  bCloseInvoice: { tr: 'Faturayı kapat', en: 'Close invoice', ar: 'إغلاق الفاتورة', ku: 'داخستنی فاتوورە' },
+  bCloseInvoiceHint: {
+    tr: 'Kapatınca Kalan tutar Alınan Ödemeye eklenir, Kalan = 0 olur.',
+    en: 'On close, the Outstanding balance is added to Received Payment, and Outstanding becomes 0.',
+    ar: 'عند الإغلاق، تتم إضافة المبلغ المتبقي إلى الدفعة المستلمة ويصبح المتبقي 0.',
+    ku: 'کاتێک دادەخەیت، ماوەی پارە زیاد دەکرێت بۆ پارەی وەرگیراو و ماوە دەبێتە ٠.',
+  },
+  bCloseInvoiceConfirm: {
+    tr: 'Bu randevunun faturasını kapatmak istediğinize emin misiniz?',
+    en: 'Are you sure you want to close this appointment invoice?',
+    ar: 'هل تريد بالتأكيد إغلاق فاتورة هذا الموعد؟',
+    ku: 'دڵنیایت لە داخستنی فاتوورەی ئەم مەوعیدە؟',
+  },
+  bCloseInvoiceWillReceive: {
+    tr: 'Kapatınca bu tutar Alınan Ödemeye eklenecek:',
+    en: 'On close, this amount will be added to Received Payment:',
+    ar: 'عند الإغلاق، ستضاف هذه الدفعة إلى الدفعة المستلمة:',
+    ku: 'کاتێک دادەخەیت، ئەم بڕە زیاد دەکرێت بۆ پارەی وەرگیراو:',
+  },
+  bCloseInvoiceOk: { tr: 'Fatura kapatıldı', en: 'Invoice closed', ar: 'تم إغلاق الفاتورة', ku: 'فاتوورە داخرا' },
+  bCloseInvoiceFail: { tr: 'Fatura kapatılamadı', en: 'Could not close invoice', ar: 'تعذر إغلاق الفاتورة', ku: 'نەتوانرا فاتوورە داخە' },
+  bAptStatusCompleted: { tr: 'Tamamlandı', en: 'Completed', ar: 'مكتمل', ku: 'تەواوبوو' },
+  bAptStatusCancelled: { tr: 'İptal', en: 'Cancelled', ar: 'ملغى', ku: 'هەڵوەشاوە' },
   bTodayAppointmentsTitle: { tr: 'Bugünün Randevuları', en: 'Today\'s Appointments', ar: 'مواعيد اليوم', ku: 'ئامادەبوونەکانی ئەمڕۆ' },
   bRegisteredAppointmentsSub: { tr: '{n} kayıtlı randevu', en: '{n} scheduled', ar: '{n} موعد مسجل', ku: '{n} ئامادەبوونی تۆمارکراو' },
   bDashboardColAmount: { tr: 'Tutar', en: 'Amount', ar: 'المبلغ', ku: 'بڕ' },

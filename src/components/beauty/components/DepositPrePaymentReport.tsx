@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Banknote, RefreshCw, ListChecks } from 'lucide-react';
+import { Banknote, RefreshCw, ListChecks, CheckCircle2, X } from 'lucide-react';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
@@ -10,6 +10,8 @@ import { ReportYmdDatePicker } from '../../shared/ReportDateRangePresets';
 import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 import { getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
 import { getAppDefaultCurrency } from '../../../services/postgres';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
+import { toast } from 'sonner';
 
 const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
@@ -91,6 +93,18 @@ export function DepositPrePaymentReport() {
     const [error, setError] = useState<string | null>(null);
     const [rows, setRows] = useState<Row[]>([]);
     const [paymentStateFilter, setPaymentStateFilter] = useState<string>('');
+
+    // 10.10.2026 — "Faturayı kapat" satır eylemi.
+    // Kullanıcı şikâyeti: status "Sadece Peşinat" → "completed" yapacak bir
+    // buton yok; bu yüzden Kalan sıfırlanmıyor. Eylem butonu eklendi;
+    // tıklanınca PercentBodyModal onay penceresi açılır; onayda
+    // `beautyService.updateAppointmentStatus(id, 'completed')` çağrılır.
+    // Bu fonksiyon zaten deposit'i ana satışa merge eder ve paket seans
+    // tüketir (mevcut yan etkiler korunur). Çağrı sonrası refetch ile
+    // liste yenilenir; status=completed → computeKalan=0,
+    // computeTakenPayment=total-deposit olur.
+    const [closeTarget, setCloseTarget] = useState<Row | null>(null);
+    const [closing, setClosing] = useState(false);
 
     const currency = useMemo(
         () => getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency()),
@@ -229,6 +243,52 @@ export function DepositPrePaymentReport() {
                 },
             },
             {
+                key: 'actions',
+                // 10.10.2026 — Satır eylemi: status henüz kapanmadıysa
+                // "Faturayı kapat" butonu gösterir. Tıklanınca onay modalı
+                // açılır. Kapanmış/iptal edilmiş satırlarda pasif rozet
+                // gösterilir — geri alma yok (iptal farklı bir akış).
+                header: tm('bActions') || 'İşlem',
+                align: 'center',
+                size: 130,
+                cell: (r) => {
+                    const status = String(r.status ?? '').trim().toLowerCase();
+                    const closed =
+                        status === 'completed' ||
+                        status === 'closed' ||
+                        status === 'cancelled' ||
+                        status === 'no_show';
+                    if (closed) {
+                        const isCancel = status === 'cancelled' || status === 'no_show';
+                        return (
+                            <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${
+                                    isCancel
+                                        ? 'bg-slate-100 text-slate-500 border-slate-200'
+                                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                }`}
+                            >
+                                {isCancel ? tm('bAptStatusCancelled') || 'İptal' : tm('bAptStatusCompleted') || 'Tamamlandı'}
+                            </span>
+                        );
+                    }
+                    return (
+                        <button
+                            type="button"
+                            onClick={(ev) => {
+                                ev.stopPropagation();
+                                setCloseTarget(r);
+                            }}
+                            className="inline-flex items-center gap-1 h-8 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-extrabold shadow-sm shadow-blue-200/50 active:scale-[0.98] transition-colors"
+                            aria-label={tm('bCloseInvoice') || 'Faturayı kapat'}
+                        >
+                            <CheckCircle2 size={12} />
+                            {tm('bCloseInvoice') || 'Faturayı kapat'}
+                        </button>
+                    );
+                },
+            },
+            {
                 key: 'deposit_sale_fiche_no',
                 header: tm('bFicheNoCol') || 'Fiş No',
                 size: 150,
@@ -346,6 +406,136 @@ export function DepositPrePaymentReport() {
                     </div>
                 )}
             </div>
+
+            {closeTarget && (
+                <PercentBodyModal
+                    onClose={() => {
+                        if (closing) return;
+                        setCloseTarget(null);
+                    }}
+                    size="compact"
+                    ariaLabel={tm('bCloseInvoice') || 'Faturayı kapat'}
+                >
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white flex items-center justify-between shrink-0">
+                        <div>
+                            <h3 className="text-base font-extrabold tracking-tight">
+                                {tm('bCloseInvoice') || 'Faturayı kapat'}
+                            </h3>
+                            <p className="text-[11px] font-semibold text-blue-100/90 mt-0.5">
+                                {tm('bCloseInvoiceHint') ||
+                                    'Kapatınca Kalan tutar Alınan Ödemeye eklenir, Kalan = 0 olur.'}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (closing) return;
+                                setCloseTarget(null);
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-white/15 active:scale-95 transition"
+                            aria-label="Kapat"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+                    <PercentBodyModalScrollBody className="p-6">
+                        <p className="text-sm font-semibold text-slate-700">
+                            {tm('bCloseInvoiceConfirm') ||
+                                'Bu randevunun faturasını kapatmak istediğinize emin misiniz?'}
+                        </p>
+                        <ul className="mt-4 space-y-2 text-[13px] text-slate-600">
+                            <li className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+                                <span className="font-semibold text-slate-500">{tm('bCustomerCol') || 'Müşteri'}</span>
+                                <span className="font-bold text-slate-800">{closeTarget.customer_name || '—'}</span>
+                            </li>
+                            <li className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+                                <span className="font-semibold text-slate-500">{tm('service')}</span>
+                                <span className="font-bold text-slate-800 truncate max-w-[60%] text-right">
+                                    {closeTarget.service_name || '—'}
+                                </span>
+                            </li>
+                            <li className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+                                <span className="font-semibold text-slate-500">{tm('bTotalAmountCol') || 'Toplam Tutar'}</span>
+                                <span className="font-bold text-slate-800 tabular-nums">
+                                    {fmt(closeTarget.total_price)}
+                                </span>
+                            </li>
+                            <li className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+                                <span className="font-semibold text-slate-500">
+                                    {tm('bKpiTotalReservation') || 'Rezervasyon Tutarı'}
+                                </span>
+                                <span className="font-bold text-blue-700 tabular-nums">
+                                    {fmt(closeTarget.deposit_amount)}
+                                </span>
+                            </li>
+                            <li className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+                                <span className="font-semibold text-slate-500">
+                                    {tm('bKpiTotalOutstanding') || 'Kalan Bakiye'}
+                                </span>
+                                <span className="font-bold text-rose-700 tabular-nums">
+                                    {fmt(computeKalan(closeTarget))}
+                                </span>
+                            </li>
+                        </ul>
+                        <div className="mt-5 px-4 py-3 rounded-2xl bg-amber-50 border border-amber-200 text-[12px] font-semibold text-amber-800">
+                            {(() => {
+                                const willReceive = computeKalan(closeTarget);
+                                return (
+                                    <>
+                                        {tm('bCloseInvoiceWillReceive') ||
+                                            'Kapatınca bu tutar Alınan Ödemeye eklenecek:'}{' '}
+                                        <b className="tabular-nums">{fmt(willReceive)}</b>
+                                    </>
+                                );
+                            })()}
+                        </div>
+                    </PercentBodyModalScrollBody>
+                    <div className="p-5 border-t border-slate-100 bg-slate-50/60 flex items-center justify-end gap-3 shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => setCloseTarget(null)}
+                            disabled={closing}
+                            className="h-10 px-5 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-[12px] tracking-wider hover:bg-slate-100 active:scale-[0.98] disabled:opacity-50"
+                        >
+                            {tm('cancel') || 'İptal'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                if (!closeTarget) return;
+                                setClosing(true);
+                                try {
+                                    await beautyService.updateAppointmentStatus(
+                                        closeTarget.appointment_id,
+                                        'completed',
+                                    );
+                                    toast.success(tm('bCloseInvoiceOk') || 'Fatura kapatıldı');
+                                    setCloseTarget(null);
+                                    await load();
+                                } catch (e: unknown) {
+                                    const msg =
+                                        e instanceof Error
+                                            ? e.message
+                                            : (e as { message?: string })?.message ||
+                                              String(e);
+                                    toast.error(tm('bCloseInvoiceFail') || 'Fatura kapatılamadı', {
+                                        description: msg,
+                                    });
+                                } finally {
+                                    setClosing(false);
+                                }
+                            }}
+                            disabled={closing}
+                            className="h-10 px-5 rounded-2xl bg-blue-600 text-white font-bold uppercase text-[12px] tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 active:scale-[0.98] disabled:opacity-60 inline-flex items-center gap-2"
+                        >
+                            <CheckCircle2 size={14} />
+                            {closing
+                                ? tm('bLoading') || 'Kapatılıyor…'
+                                : tm('bCloseInvoice') || 'Faturayı kapat'}
+                        </button>
+                    </div>
+                </PercentBodyModal>
+            )}
         </div>
     );
 }
