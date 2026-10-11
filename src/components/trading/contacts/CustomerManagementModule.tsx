@@ -6,6 +6,10 @@ import {
   customerEffectiveBalance,
   isDisplayableBalance,
 } from '../../../utils/customerEffectiveBalance';
+import {
+  computeCustomerBalance,
+  balanceColorClass,
+} from '../../../utils/customerBalance';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ColumnDef, createColumnHelper } from '@tanstack/react-table';
 import { ContextMenu } from '../../shared/ContextMenu';
@@ -618,28 +622,57 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
       id: 'balance',
       header: tm('custColBalance'),
       cell: ({ row }) => {
-        // 10.10.2026 — Müşteri bakiyesi (avans hariç).
+        // 11.10.2026 — Müşteri bakiyesi 3 parçalı gösterim.
         // `customers.balance` ledger'dan gelir ve henüz hizmet verilmemiş
         // rezervasyon avansını içermez (avans tahsilatı müşteri
-        // alacağını azaltır). Bu yüzden ham `balance` ROZA gibi bir
-        // senaryoda -10.000 gösterir (avans 10.000 ayrı).
-        // Cari Hesap Özeti ile aynı semantik: `effectiveBalance =
-        // balance + pendingDeposit`. 3fd0690b ile aynı formül — kullanıcı
-        // bu kolondan "cari ekstre ile uyumlu" anlamı çıkarmalı.
+        // alacağını azaltır). Bu yüzden önceki tek değerli "B/A" gösterimi
+        // ROZA gibi bir senaryoda -10.000 gösterirdi — oysa müşterinin
+        // gerçek bakiyesi 0, parası kasada "avans" olarak bekliyor.
+        //
+        // Bu hücre artık iki satır gösterir:
+        //   Satır 1: Gerçek Bakiye (avans Hariç) — renk: kırmızı borç /
+        //            yeşil alacak / gri 0.
+        //   Satır 2: Varsa, mavi "Avans" badge (henüz hizmet verilmemiş).
+        // `balanceColorClass` positive/negative/nötr için token seçer.
         const rawBalance = Number(row.original.balance ?? 0);
         const pending = pendingDepositByCustomer[row.original.id] ?? 0;
-        const bal = customerEffectiveBalance({
+        const { realBalance, pendingDeposit } = computeCustomerBalance({
           balance: rawBalance,
           pendingDeposit: pending,
         });
-        if (!isDisplayableBalance(bal)) {
+        // `customerEffectiveBalance` (e186bcc1) ile uyumluluk için
+        // aynı sayısal değeri kullanıyoruz; sadece görsel zenginleştirme.
+        const bal = customerEffectiveBalance({ balance: rawBalance, pendingDeposit });
+        if (!isDisplayableBalance(bal) && pendingDeposit <= 0.005) {
           return <span className="text-gray-400 text-xs">—</span>;
         }
+        const colorCls = balanceColorClass(realBalance);
+        const directionTag = realBalance > 0.005 ? 'B' : realBalance < -0.005 ? 'A' : '';
+        const formattedMain = isDisplayableBalance(realBalance)
+          ? `${formatNumber(Math.abs(realBalance), 2, true)} IQD`
+          : '0 IQD';
         return (
-          <span className={`font-bold whitespace-nowrap ${bal > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-            {formatNumber(Math.abs(bal), 2, true)} IQD
-            <span className="ml-1 text-[10px] opacity-80">{bal > 0 ? 'B' : 'A'}</span>
-          </span>
+          <div className="flex flex-col items-end gap-0.5">
+            <span className={`font-bold whitespace-nowrap tabular-nums ${colorCls}`}>
+              {formattedMain}
+              {directionTag && (
+                <span className="ml-1 text-[10px] opacity-80">{directionTag}</span>
+              )}
+            </span>
+            {pendingDeposit > 0.005 && (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap"
+                title={tm('custColPendingDepositHint') || 'Henüz hizmet verilmemiş peşinat — cari bakiyesine dahil değil'}
+              >
+                <span className="text-[9px] font-bold uppercase tracking-wide">
+                  {tm('custColPendingDeposit') || 'Bekleyen Avans'}:
+                </span>
+                <span className="tabular-nums">
+                  {formatNumber(pendingDeposit, 2, true)} IQD
+                </span>
+              </span>
+            )}
+          </div>
         );
       },
       meta: { align: 'right' }
