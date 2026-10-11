@@ -1004,16 +1004,36 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     columnHelper.accessor('total', {
       header: 'Tutar',
       cell: info => {
-        const value = info.getValue();
-        return value ? `${formatNumber(value, 2, true)} IQD` : '0,00 IQD';
-      }
+        const value = Number(info.getValue() ?? 0);
+        const display = Number.isFinite(value) && value !== 0
+          ? `${formatNumber(value, 2, true)} IQD`
+          : '—';
+        return (
+          <span
+            className={`font-mono tabular-nums ${value < 0 ? 'text-red-600' : ''}`}
+          >
+            {display}
+          </span>
+        );
+      },
+      meta: { type: 'number', align: 'right' },
     }),
     columnHelper.accessor('grandTotal', {
       header: 'Toplam',
       cell: info => {
-        const value = info.getValue();
-        return <span>{value ? `${formatNumber(value, 2, true)} IQD` : '0,00 IQD'}</span>;
-      }
+        const value = Number(info.getValue() ?? 0);
+        const display = Number.isFinite(value) && value !== 0
+          ? `${formatNumber(value, 2, true)} IQD`
+          : '—';
+        return (
+          <span
+            className={`font-mono tabular-nums ${value < 0 ? 'text-red-600' : ''}`}
+          >
+            {display}
+          </span>
+        );
+      },
+      meta: { type: 'number', align: 'right' },
     }),
     columnHelper.accessor('status', {
       header: 'Durum',
@@ -1781,6 +1801,8 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
           enableFiltering
           enableColumnResizing
           enablePagination
+          enableExcelExport
+          footerLabel={tm('rptPeriodTotalRow') || tm('invoiceListDipTotal') || 'Dip Toplam'}
           onRowDoubleClick={handleRowDoubleClick}
         />
       </div>
