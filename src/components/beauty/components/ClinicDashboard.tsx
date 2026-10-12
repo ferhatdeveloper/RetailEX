@@ -492,7 +492,15 @@ export function ClinicDashboard() {
             mainSales: mainSales.map((s) => ({ total: Number(s.total) || 0 })),
             cashLines: todayCashLines,
         });
-        const revenue = tahsilat.revenue;
+        // 12.10.2026 — Kullanıcı isteği: TAHSİLAT = toplam kasaya giren nakit
+        // (avans/rezervasyon dahil). REZERVASYON KPI ayrı görünmeye devam
+        // eder; buradaki toplam kasaya yansıyan parayı temsil eder.
+        //   Bugün 12.10.2026: 85.000 KASA_GIRIS + 55.000 cari_avans = 140.000
+        //   REZERVASYON kart'ı (55.000) ise avans bilgilendirmesi olarak kalır.
+        // `reservation` ve `reservationFromAvans` aşağıda hesaplanıyor; onları
+        // tahsilat.revenue'a ekleyerek toplam TAHSİLAT elde edilir.
+        const reservationFromAvans = Math.max(0, Number(todayReservations?.amount ?? 0) || 0);
+        const revenue = tahsilat.revenue; // aşağıda reservation + reservationFromAvans eklenecek
         /**
          * Rezervasyon KPI toplamı: bugün alınan peşinat / avans fişlerinin
          * `total` toplamı. Ana satış fişleri hariç, deposit fişleri (`is_deposit`
@@ -535,8 +543,10 @@ export function ClinicDashboard() {
          * beauty_sales deposit'e düşer; iki yerde birden olan kayıt uç
          * durumdur ve muhasebe tarafında `applyAdvanceToSale`
          * `applied_sale_id` ile bağlandığında izlenebilir.
+         *
+         * Not: `reservationFromAvans` yukarıda TAHSİLAT formülü için bir kez
+         * hesaplandı; burada yeniden hesaplamıyoruz.
          */
-        const reservationFromAvans = Math.max(0, Number(todayReservations?.amount ?? 0) || 0);
 
         const sorted = [...kpis.todayApts].sort((a, b) => {
             return (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? '');
@@ -548,8 +558,12 @@ export function ClinicDashboard() {
             pending: kpis.pending,
             inProg: kpis.inProg,
             cancelled: kpis.cancelled,
-            revenue,
-            // Bug ekleme (12.10.2026): reservation = sales.deposit + cari_avans.today
+            // 12.10.2026 — Kullanıcı isteği: TAHSİLAT = toplam kasaya giren
+            // nakit (avans/rezervasyon dahil). REZERVASYON KPI ayrı görünür
+            // (bilgilendirme); TAHSİLAT zaten her şeyi kapsar.
+            //   Bugün 12.10.2026: 85.000 (KASA_GIRIS) + 55.000 (cari_avans) = 140.000
+            revenue: revenue + reservation + reservationFromAvans,
+            // REZERVASYON kart'ı: yalnızca avans bilgilendirmesi
             reservation: reservation + reservationFromAvans,
             remainingCari,
             expectedRevenue: kpis.expectedRevenue,

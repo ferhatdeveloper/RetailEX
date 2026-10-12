@@ -525,3 +525,44 @@ describe('ClinicDashboard Tahsilat 3-katmanlı (12.10.2026)', () => {
     expect(r.revenueFromCariTahsilat).toBe(0);
   });
 });
+
+/**
+ * 12.10.2026 — Kullanıcı isteği: TAHSİLAT = kasaya giren toplam nakit
+ * (avans dahil). Kullanıcı 85.000 + 55.000 = 140.000 görmek istiyor.
+ * TAHSİLAT = `tahsilat.revenue + reservation + reservationFromAvans` formülü.
+ * Bu describe, formülün toplamını doğrular.
+ */
+describe('ClinicDashboard TAHSİLAT toplamı (12.10.2026 bug)', () => {
+  it('KASA_GIRIS 85.000 + cari_avans 55.000 = TAHSİLAT 140.000', () => {
+    const cashLines = [
+      { transaction_type: 'KASA_GIRIS', amount: 45_000, special_code: '' },
+      { transaction_type: 'KASA_GIRIS', amount: 40_000, special_code: '' },
+    ];
+    const r = clinicDashboardTahsilatTotal({ mainSales: [], cashLines });
+    const reservation = 0; // sales.deposit = 0
+    const reservationFromAvans = 55_000;
+    const totalTahsilat = r.revenue + reservation + reservationFromAvans;
+    expect(totalTahsilat).toBe(140_000);
+  });
+
+  it('Sadece avans (50k cari_avans) → 50.000 TAHSİLAT', () => {
+    const r = clinicDashboardTahsilatTotal({ mainSales: [], cashLines: [] });
+    const reservationFromAvans = 50_000;
+    const totalTahsilat = r.revenue + 0 + reservationFromAvans;
+    expect(totalTahsilat).toBe(50_000);
+  });
+
+  it('Sadece KASA_GIRIS (85.000) → 85.000 TAHSİLAT', () => {
+    const cashLines = [
+      { transaction_type: 'KASA_GIRIS', amount: 85_000, special_code: '' },
+    ];
+    const r = clinicDashboardTahsilatTotal({ mainSales: [], cashLines });
+    const totalTahsilat = r.revenue + 0 + 0;
+    expect(totalTahsilat).toBe(85_000);
+  });
+
+  it('Hepsi sıfır → 0', () => {
+    const r = clinicDashboardTahsilatTotal({ mainSales: [], cashLines: [] });
+    expect(r.revenue + 0 + 0).toBe(0);
+  });
+});
