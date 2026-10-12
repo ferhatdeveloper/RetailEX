@@ -19,6 +19,7 @@ import { beautySalePocketCollected, beautySaleRemainingCari, extraCustomerCollec
 import { fetchKasaIslemleri } from '../../../services/api/kasa';
 import type { BeautySale } from '../../../types/beauty';
 import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
+import { clinicDashboardTahsilatTotal } from '../../../utils/clinicDashboardKasaGiris';
 import { BeautyServiceReportCrmModal } from '../../reports/BeautyServiceReportCrmModal';
 import '../ClinicStyles.css';
 
@@ -95,6 +96,18 @@ export function ClinicDashboard() {
     });
     const [todaySales, setTodaySales] = useState<BeautySale[]>([]);
     const [todayExtraCash, setTodayExtraCash] = useState(0);
+    /**
+     * Bug 12.10.2026 — TAHSİLAT KPI'sı bugün KASA_GIRIS toplamından da
+     * besleniyor. `mainSales.total` formülü `total_gross=0` olan satışlarda
+     * 0 dönüyordu; gerçek ödeme cash_lines'a `KASA_GIRIS` olarak yazıldı
+     * (örn. 45.000 + 40.000 = 85.000). State, `stats.revenue` useMemo'sunun
+     * `clinicDashboardTahsilatTotal`'a geçeceği filtrelenmiş cash_lines
+     * listesini tutar; iptal edilen fişlerin CH_TAHSILAT satırları Hariç
+     * tutulmuş hâlde.
+     */
+    const [todayCashLines, setTodayCashLines] = useState<
+        Parameters<typeof clinicDashboardTahsilatTotal>[0]['cashLines']
+    >([]);
     /**
      * Bug ekleme (12.10.2026): REZERVASYON KPI'sı bugün 4 rezervasyon
      * avansı (toplam 50.000 IQD) olmasına rağmen 0 gösteriyordu. Bunun
@@ -185,12 +198,33 @@ export function ClinicDashboard() {
                         | undefined,
                 })),
             ));
+            // Bug 12.10.2026 — TAHSİLAT KPI'sı bugünkü KASA_GIRIS satırlarından
+            // besleniyor. `kasaRowsFiltered` iptal edilen fişlerin CH_TAHSILAT
+            // satırlarını zaten çıkardı; burada state'e alarak `stats.revenue`
+            // useMemo'suna aktarıyoruz. Helper imzalarıyla eşleşmesi için
+            // `transaction_type / sign` alanlarını da sanal olarak ekliyoruz
+            // (KasaIslemi'de yoklar; helper clamp ile güvenli).
+            setTodayCashLines(
+                kasaRowsFiltered.map((line) => ({
+                    transaction_type: String(
+                        (line as { islem_tipi?: string }).islem_tipi ?? ''
+                    ).trim().toUpperCase(),
+                    special_code: String(
+                        (line as { ozel_kod?: string }).ozel_kod ?? ''
+                    ).trim().toUpperCase(),
+                    amount: Math.abs(Number((line as { tutar?: number }).tutar ?? 0) || 0),
+                }))
+            );
         }).catch(() => {
             setTodaySales([]);
             setTodayExtraCash(0);
             // Bug ekleme (12.10.2026): cari_avans sorgusu patlarsa da KPI
             // 0 ile başlar; deposit + 0 = önceki davranış (geriye dönük uyumlu).
             setTodayReservations({ amount: 0, count: 0 });
+            // Bug 12.10.2026 — TAHSİLAT fallback: sorgu patlarsa KPI yine
+            // mevcut davranışa (mainSales.reduce) geriler; KASA_GIRIS katkısı
+            // eksik kalır ama dashboard boş ekranda kalmaz.
+            setTodayCashLines([]);
         });
     }, []);
 
@@ -443,8 +477,22 @@ export function ClinicDashboard() {
          * "kalan cari" bilgisi bu KPI'da anlamlı değil; sub-text'te göstermek
          * yanıltıcı olur (Kasa Durumu ve Cari Ekstre ayrı yerde kalan cari
          bakiyesini gösterir — burada 0 dönmek doğru).
+         *
+         * Bug ekleme 12.10.2026 — TAHSİLAT KPI'sı artık 3 katmanlı
+         * (revenueFromSales + revenueFromKasa + revenueFromCariTahsilat):
+         *   - revenueFromSales     = ana satış `total` (avans dahil) — Bug 22
+         *   - revenueFromKasa      = bugün KASA_GIRIS (cash_lines'a yazılmış)
+         *   - revenueFromCariTahsilat = bugün CH_TAHSILAT (rezervasyon Hariç)
+         * `mainSales.total=0` olan senaryolarda gerçek tahsilat KASA_GIRIS'te
+         * (örn. bugün 45.000 + 40.000 = 85.000 IQD); bug 12.10.2026.
+         * `todayExtraCash` hariç tutuldu: `extraCustomerCollectionsNotOnSales`
+         * yalnızca satış dışı tahsilatları ekler; KASA_GIRIS ayrı bir kaynak.
          */
-        const revenue = mainSales.reduce((s, sale) => s + Math.max(0, Number(sale.total) || 0), 0);
+        const tahsilat = clinicDashboardTahsilatTotal({
+            mainSales: mainSales.map((s) => ({ total: Number(s.total) || 0 })),
+            cashLines: todayCashLines,
+        });
+        const revenue = tahsilat.revenue;
         /**
          * Rezervasyon KPI toplamı: bugün alınan peşinat / avans fişlerinin
          * `total` toplamı. Ana satış fişleri hariç, deposit fişleri (`is_deposit`
@@ -509,7 +557,7 @@ export function ClinicDashboard() {
             rate: kpis.rate,
             total: kpis.total,
         };
-    }, [appointments, todayStr, todaySales, todayReservations]);
+    }, [appointments, todayStr, todaySales, todayReservations, todayCashLines]);
 
     const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 

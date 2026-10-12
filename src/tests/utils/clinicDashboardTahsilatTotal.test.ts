@@ -21,6 +21,10 @@
  * veri üzerinden aynı hesabı yapan yardımcı fonksiyon.
  */
 import { describe, expect, it } from 'vitest';
+import {
+    clinicDashboardKasaGirisTotal,
+    clinicDashboardTahsilatTotal,
+} from '../../utils/clinicDashboardKasaGiris';
 
 export type ClinicDashboardSaleRef = {
   id?: string;
@@ -363,5 +367,161 @@ describe('ClinicDashboard Rezervasyon KPI (cari_avans dahil)', () => {
     expect(
       clinicDashboardReservationWithAvans([], { amount: -1_000, count: 1 })
     ).toBe(0);
+  });
+});
+
+/**
+ * Bug ekleme (12.10.2026): TAHSİLAT KPI'sı bugün 85.000 IQD göstermiyordu
+ * çünkü `mainSales.total` formülü `total_gross=0` olan satışlarda 0
+ * dönüyordu; gerçek ödeme `cash_lines.KASA_GIRIS` tablosunda.
+ *
+ * `clinicDashboardKasaGirisTotal` ve `clinicDashboardTahsilatTotal`
+ * helper'ları bugünkü KASA_GIRIS + ana satışlar + CH_TAHSILAT
+ * (rezervasyon hariç) toplamını döner; üretim bileşeni bu formülü
+ * `stats.revenue`'da kullanır.
+ *
+ * DB alan eşlemesi (KasaIslemi):
+ *   transaction_type → islem_tipi
+ *   amount          → tutar
+ *   special_code    → ozel_kod
+ */
+describe('ClinicDashboard KASA_GIRIS (12.10.2026 bug-fix)', () => {
+  it('bugün senaryosu: 2 KASA_GIRIS (45k + 40k) → 85.000', () => {
+    const lines = [
+      { transaction_type: 'KASA_GIRIS', amount: 45_000, sign: 1 },
+      { transaction_type: 'KASA_GIRIS', amount: 40_000, sign: 1 },
+    ];
+    const r = clinicDashboardKasaGirisTotal(lines);
+    expect(r.total).toBe(85_000);
+    expect(r.count).toBe(2);
+    expect(r.reservationTotal).toBe(0);
+  });
+
+  it('REZERVASYON Hariç → reservationTotal ayrı tutulur', () => {
+    const lines = [
+      // Rezervasyon avansı: ana toplama girmez, reservationTotal'a yazılır.
+      { transaction_type: 'KASA_GIRIS', amount: 30_000, sign: 1, special_code: 'REZERVASYON' },
+      // Normal KASA_GIRIS: ana toplama girer.
+      { transaction_type: 'KASA_GIRIS', amount: 50_000, sign: 1, special_code: '' },
+    ];
+    const r = clinicDashboardKasaGirisTotal(lines);
+    expect(r.total).toBe(50_000);
+    expect(r.count).toBe(1);
+    expect(r.reservationTotal).toBe(30_000);
+  });
+
+  it('CH_TAHSILAT + REZERVASYON → 0 (KASA_GIRIS değil)', () => {
+    // Rezervasyon CH_TAHSILAT satırları KASA_GIRIS filtresine takılmaz;
+    // REZERVASYON bucket'ı `extraReservationCustomerCollections` üzerinden
+    // REZERVASYON KPI'sına gider. Burada helper'a giren tek satır CH_TAHSILAT
+    // olduğu için total = 0 olmalı.
+    const lines = [
+      { transaction_type: 'CH_TAHSILAT', special_code: 'REZERVASYON', amount: 30_000, sign: 1 },
+    ];
+    const r = clinicDashboardKasaGirisTotal(lines);
+    expect(r.total).toBe(0);
+    expect(r.reservationTotal).toBe(0);
+  });
+
+  it('boş liste → 0', () => {
+    expect(clinicDashboardKasaGirisTotal([]).total).toBe(0);
+    expect(clinicDashboardKasaGirisTotal(null).total).toBe(0);
+    expect(clinicDashboardKasaGirisTotal(undefined).total).toBe(0);
+  });
+
+  it('sign=-1 (iade) → 0 (clamp)', () => {
+    const lines = [{ transaction_type: 'KASA_GIRIS', amount: 5_000, sign: -1 }];
+    const r = clinicDashboardKasaGirisTotal(lines);
+    expect(r.total).toBe(0);
+    expect(r.count).toBe(0);
+  });
+
+  it('null/undefined alanlar güvenli', () => {
+    const lines = [
+      { transaction_type: null, amount: 1_000, sign: 1 },
+      { transaction_type: 'KASA_GIRIS', amount: null, sign: 1 },
+      { transaction_type: 'KASA_GIRIS', amount: 20_000, sign: 1, special_code: null },
+    ];
+    const r = clinicDashboardKasaGirisTotal(lines);
+    expect(r.total).toBe(20_000);
+    expect(r.count).toBe(1);
+  });
+
+  it('büyük-küçük harf ve whitespace toleransı', () => {
+    const lines = [
+      { transaction_type: '  kasa_giris  ', amount: 10_000, sign: 1 },
+      { transaction_type: 'KASA_GIRIS', amount: 5_000, sign: 1, special_code: '  rezervasyon  ' },
+    ];
+    const r = clinicDashboardKasaGirisTotal(lines);
+    expect(r.total).toBe(10_000);
+    expect(r.reservationTotal).toBe(5_000);
+  });
+});
+
+describe('ClinicDashboard Tahsilat 3-katmanlı (12.10.2026)', () => {
+  it('bugün senaryosu: sales=0 + KASA_GIRIS=85k + CH_TAHSILAT=0 → 85.000', () => {
+    // Gerçek bugün verisi: `total_gross=0` sales + cash_lines'a yazılmış
+    // 2 KASA_GIRIS. Toplam: 85.000 IQD (kullanıcının beklediği).
+    const mainSales: Array<{ total: number }> = [];
+    const cashLines = [
+      {
+        transaction_type: 'KASA_GIRIS',
+        amount: 45_000,
+        special_code: '',
+        definition: 'Satış faturası — BEA-2026-MV51RK5A (ARAM)',
+      },
+      {
+        transaction_type: 'KASA_GIRIS',
+        amount: 40_000,
+        special_code: '',
+        definition: 'Satış faturası — BEA-2026-MV528MLD (FERHAT)',
+      },
+    ];
+    const r = clinicDashboardTahsilatTotal({ mainSales, cashLines });
+    expect(r.revenueFromSales).toBe(0);
+    expect(r.revenueFromKasa).toBe(85_000);
+    expect(r.revenueFromCariTahsilat).toBe(0);
+    expect(r.revenue).toBe(85_000);
+  });
+
+  it('3 kaynak toplamı: sales 50k + KASA 30k + CH_TAHSILAT 20k = 100k', () => {
+    const mainSales = [{ total: 50_000 }];
+    const cashLines = [
+      { transaction_type: 'KASA_GIRIS', amount: 30_000, special_code: '' },
+      { transaction_type: 'CH_TAHSILAT', amount: 20_000, special_code: '' },
+    ];
+    const r = clinicDashboardTahsilatTotal({ mainSales, cashLines });
+    expect(r.revenue).toBe(100_000);
+  });
+
+  it('REZERVASYON CH_TAHSILAT hariç (rezervasyon kendi kartında)', () => {
+    const cashLines = [
+      { transaction_type: 'CH_TAHSILAT', amount: 15_000, special_code: 'REZERVASYON' },
+      { transaction_type: 'CH_TAHSILAT', amount: 25_000, special_code: '' },
+    ];
+    const r = clinicDashboardTahsilatTotal({ mainSales: [], cashLines });
+    expect(r.revenueFromCariTahsilat).toBe(25_000);
+  });
+
+  it('AVANS da hariç (geriye dönük UI rename uyumu)', () => {
+    // 07.10.2026 öncesi `special_code='AVANS'` kullanılıyordu.
+    const cashLines = [
+      { transaction_type: 'CH_TAHSILAT', amount: 12_000, special_code: 'AVANS' },
+      { transaction_type: 'CH_TAHSILAT', amount: 8_000, special_code: '' },
+    ];
+    const r = clinicDashboardTahsilatTotal({ mainSales: [], cashLines });
+    expect(r.revenueFromCariTahsilat).toBe(8_000);
+  });
+
+  it('negatif/null amount clamp (defansif)', () => {
+    const cashLines = [
+      { transaction_type: 'KASA_GIRIS', amount: -10_000, special_code: '' },
+      { transaction_type: 'KASA_GIRIS', amount: null, special_code: '' },
+      { transaction_type: 'CH_TAHSILAT', amount: Number.NaN, special_code: '' },
+      { transaction_type: 'KASA_GIRIS', amount: 7_000, special_code: '' },
+    ];
+    const r = clinicDashboardTahsilatTotal({ mainSales: [], cashLines });
+    expect(r.revenueFromKasa).toBe(7_000);
+    expect(r.revenueFromCariTahsilat).toBe(0);
   });
 });
