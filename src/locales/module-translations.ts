@@ -10863,10 +10863,10 @@ export const excelModuleTranslations = {
   dailyDepositCollected: { tr: 'Rezervasyon Tutarı', en: 'Reservation Amount', ar: 'مبلغ الحجز', ku: 'بڕی نۆرە' },
   dailyDepositCountShort: { tr: 'Adet', en: 'Count', ar: 'العدد', ku: 'ژمارە' },
   avansPesinatPayments: {
-    tr: 'Rezervasyon Tutarı Ödemeleri',
-    en: 'Reservation Amount Payments',
-    ar: 'دفعات مبلغ الحجز',
-    ku: 'پارەدانی بڕی نۆرە',
+    tr: 'Rezervasyon Miktarı',
+    en: 'Reservation Quantity',
+    ar: 'كمية الحجز',
+    ku: 'بڕی نۆڕەکە',
   },
   reservationDepositCollected: {
     tr: 'Alınan Rezervasyon Tutarı',

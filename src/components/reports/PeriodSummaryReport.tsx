@@ -1013,7 +1013,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // satırında ayın toplam adedi görünür.
       {
         key: 'depositCount',
-        header: tm('avansPesinatPayments') || 'Avans Peşinat Ödemeleri',
+        header: tm('avansPesinatPayments') || 'Rezervasyon Miktarı',
         type: 'number',
         align: 'right',
         footerSum: true,
