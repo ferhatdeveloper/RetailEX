@@ -224,6 +224,25 @@ export function reportNetAfterOptionalExpenseAndPurchases(
   return revenue - exp - pur;
 }
 
+/**
+ * Net (Ciro − Gider) — Günlük Rapor `dailyNetAfterExpenseBrut` ile aynı
+ * formül. 2026-10-12 kullanıcı talebi: Aylık/Yıllık özetin "Net Kalan"
+ * kolonu Günlük Rapor gibi Ciro − Gider olmalı; Alış ayrı kolonda
+ * raporlanmaya devam eder, Net'e yansımaz.
+ *
+ * Muhasebe notu: Alış'ın Net'ten çıkarılması gelir tablosu mantığını
+ * bozar (Alış = maliyet, ciro kârı değil). Ciro − Gider yorumu "işletme
+ * faaliyetlerinden nakit/brüt sonuç"tur; maliyetler (Alış) ayrı
+ * izlenir. partnerPeriodNet.ts ile aynı semantik (revenue − exp).
+ */
+export function reportNetCiroMinusGider(
+  revenue: number,
+  expense: number,
+  expenseParamEnabled: boolean,
+): number {
+  return reportNetAfterOptionalExpense(revenue, expense, expenseParamEnabled);
+}
+
 function notify(params: ReportMenuParams): void {
   listeners.forEach((fn) => {
     try {

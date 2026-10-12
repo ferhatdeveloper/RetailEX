@@ -16,7 +16,7 @@
  *   Ciro (Kasa Durumu todayTotal)    = 500.000   ← Senaryo A: rezervasyon hariç
  *   Avans (Rezervasyon ayrı kalem)  = 30.000
  *   Gider                            = 30.000
- *   Net Kalan (Aylık Özet netRemaining) = 470.000  ← Ciro − Gider − Alış
+ *   Net Kalan (Aylık Özet netRemaining) = 470.000  ← Ciro − Gider (Günlük Rapor formülü)
  *   Kasa (kapıya giren nakit)        = 470.000   ← açılış 0 + nakit tahsilat 500 − gider 30
  *
  * Mevcut düzeltmeler korunur:
@@ -154,9 +154,13 @@ describe('Aylık Özet ↔ Kasa Durumu senkronizasyonu', () => {
     expect(m.gider).toBe(MOCK_SYNC_SCENARIO.expectedExpenses);
   });
 
-  it('Net Kalan (Aylık Özet) = Ciro − Gider − Alış = 470.000', () => {
+  it('Net Kalan (Aylık Özet) = Ciro − Gider = 470.000 (Günlük Rapor formülü)', () => {
+    // 2026-10-12 kullanıcı talebi: "Net Kalan yanlış, günlük rapor formülü
+    // ile aynı olmalı". Günlük Rapor Ciro − Gider (Alış Hariç).
+    // Ciro 500.000 − Gider 30.000 = 470.000.
     const m = computeMonthlyCashSummary(input);
     expect(m.netKalan).toBe(MOCK_SYNC_SCENARIO.expectedKapanisFromCash);
+    expect(m.netKalan).toBe(m.ciro - m.gider);
   });
 
   it('Kapanış Nakit (Kasa Durumu) = açılış + nakit tahsilat − nakit gider = 470.000', () => {
@@ -173,9 +177,10 @@ describe('Aylık Özet ↔ Kasa Durumu senkronizasyonu', () => {
     expect(period.ciro).toBe(kapanis.todayTotal);
   });
 
-  it('Aylık Özet Net Kalan + Alış + Gider = Ciro', () => {
+  it('Aylık Özet Net Kalan = Ciro − Gider (Alış Net\'e yansımaz)', () => {
+    // 2026-10-12 — Alış ayrı kolonda raporlanır, maliyet olarak Net'e yansımaz.
     const p = computePeriodSummaryBucket(input);
-    expect(p.ciro - p.gider - p.alis).toBe(p.netKalan);
+    expect(p.netKalan).toBe(p.ciro - p.gider);
   });
 
   it('Nakit + Kart + Havale = Ciro (veresiye Hariç sanal nakit satış)', () => {
@@ -218,7 +223,8 @@ describe('Aylık Özet ↔ Kasa Durumu senkronizasyonu', () => {
     expect(m.todayTotal).toBe(500_000);
   });
 
-  it('Alış faturası eklendiğinde Net Kalan = Ciro − Gider − Alış', () => {
+  it('Alış faturası eklendiğinde Net Kalan = Ciro − Gider (Alış Hariç)', () => {
+    // 2026-10-12 — Alış = maliyet, Net Kalan'a yansımaz; ayrı kolonda raporlanır.
     const purchases: Invoice[] = [
       {
         id: 'inv-1',
@@ -232,7 +238,8 @@ describe('Aylık Özet ↔ Kasa Durumu senkronizasyonu', () => {
     ];
     const m = computeMonthlyCashSummary({ ...input, purchases });
     expect(m.alis).toBe(25_000);
-    expect(m.netKalan).toBe(500_000 - 30_000 - 25_000);
+    // Ciro 500.000 − Gider 30.000 = 470.000 (Alış 25.000 düşülmez)
+    expect(m.netKalan).toBe(500_000 - 30_000);
   });
 });
 

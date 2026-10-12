@@ -12,9 +12,9 @@
  *   Havale Tahsilat   = Ciro'daki havale tutarı
  *   Rezervasyon Avansı= satışa yansımamış peşinat (cash_lines REZERVASYON/AVANS)
  *   Gider             = Gider Yönetimi + PERIOD_SUMMARY_CASH_OUT_TYPES (kasa çıkışları)
- *   Alış              = Alış faturaları (iade Hariç)
+ *   Alış              = Alış faturaları (iade Hariç) — Net Kalan'a dahil DEĞİL
  *   Kasa Para Girişi  = Ciro Hariç ek kasa girişleri (KASA_GIRIS, ortak sermaye…)
- *   Net Kalan         = Ciro − Gider − Alış
+ *   Net Kalan         = Ciro − Gider  (Günlük Rapor formülüyle aynı; Alış Hariç)
  *   Kapanış (Nakit)   = Açılış + Nakit Tahsilat − nakit giderler
  *   TOPLAM            = Ciro (Rezervasyon Hariç) — Kasa Durumu ile aynı semantik
  *
@@ -80,9 +80,10 @@ export type MonthlyCashSummaryRow = {
   nakitGider: number;
   /** Kasa Para Girişi — Ciro Hariç, yalnız REPORT_CASH_IN_TYPES */
   kasaGirisi: number;
-  /** Tedarikçi alış faturaları (iade Hariç). */
+  /** Tedarikçi alış faturaları (iade Hariç). Net Kalan'a dahil değildir. */
   alis: number;
-  /** Ciro − Gider − Alış. */
+  /** Ciro − Gider. 2026-10-12 kullanıcı talebi: Günlük Rapor formülü ile aynı.
+   * Alış ayrı kolonda raporlanır; maliyet olduğu için Net'ten düşülmez. */
   netKalan: number;
   /** Ciro (Rezervasyon Hariç) — `ReportsModule.getCashStatus.todayTotal` ile aynı semantik. */
   kasaDurumuToplam: number;
@@ -227,7 +228,11 @@ export function computeMonthlyCashSummary(
     kasaGirisi += Math.abs(Number(cl.tutar) || 0);
   }
 
-  const netKalan = ciro - gider - alis;
+  // 2026-10-12 kullanıcı talebi: "Net Kalan yanlış, günlük rapor formülü
+  // ile aynı olmalı". Günlük Rapor dailyNetAfterExpenseBrut = Ciro − Gider.
+  // Alış ayrı kolonda raporlanır; maliyet olarak Net'e yansımaz.
+  // partnerPeriodNet.computeYearMonthlyNets ile aynı semantik.
+  const netKalan = ciro - gider;
 
   // Ciro içinde nakit (nakitCiro) + Ciro dışı ek nakit (extraCash).
   // Kasa Durumu "todayCash" ile aynı semantik.

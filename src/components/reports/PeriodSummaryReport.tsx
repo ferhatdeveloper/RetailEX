@@ -36,6 +36,7 @@ import {
   isReportMenuParamEnabled,
   loadReportMenuParams,
   reportNetAfterOptionalExpenseAndPurchases,
+  reportNetCiroMinusGider,
   subscribeReportMenuParams,
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
@@ -774,15 +775,16 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // (2026-10-04): "Ciro'da 1980K olması gerekiyor, Ciro genişletmesi
       // Ciro'yu 26M'a şişiriyordu". Ciro = sale.revenue. CH_TAHSILAT
       // ayrı "Kasa Para Girişi" kolonunda izlenir.
-      // Net Kalan = Ciro − Gider − Alış. Gider kartı/parametresi kapalıysa
-      // gider düşülmez; alış kartı/parametresi kapalıysa alış düşülmez.
+      // Net Kalan = Ciro − Gider. 2026-10-12 kullanıcı talebi:
+      // "Net Kalan yanlış, Günlük Rapor formülü ile aynı olmalı". Günlük
+      // Rapor dailyNetAfterExpenseBrut = Ciro − Gider (Alış Hariç). partnerPeriodNet
+      // ile tutarlı; alış ayrı kolonda izlenir, Net'e yansımaz. Gider kartı/
+      // parametresi kapalıysa gider düşülmez.
       const ciroTotal = sale.revenue;
-      const netRemaining = reportNetAfterOptionalExpenseAndPurchases(
+      const netRemaining = reportNetCiroMinusGider(
         ciroTotal,
         exp,
         showPeriodCardExpenses,
-        purch,
-        showPeriodCardPurchases,
       );
 
       const shareList = splitAmountByPartners(netRemaining, partnerSlices);

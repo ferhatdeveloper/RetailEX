@@ -80,6 +80,7 @@ import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMEN
 import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections, saleCollectedSplit, dailyPaymentKind, beautySalePocketCollected } from '../../utils/saleCollectedAmounts';
 import { saleCollected as saleActualCollected } from '../../utils/computeActualCollected';
 import { filterForRevenue, filterForCash, filterForDeposit, isCompletedAppointmentStatus, isDepositSale } from '../../utils/reportDepositFilter';
+import { renderCustomerCell, customerNameText } from '../../utils/customerDisplay';
 import {
   buildPaymentTypeDistribution,
   buildPaymentTypeMovements,
@@ -4789,7 +4790,7 @@ export function ReportsModule({
           <td>${escHtml(kindPrintLabel(row.kind))}</td>
           <td>${escHtml(cashier)}</td>
           <td>${escHtml(device)}</td>
-          <td>${escHtml(row.customerName || '—')}</td>
+          <td>${escHtml(customerNameText(row.customerName))}</td>
           <td style="text-align:right">${formatNumber(before, 2, false)}</td>
           <td style="text-align:right">${formatNumber(row.discount ?? 0, 2, false)}</td>
           <td style="text-align:right">${dailyPrintNetCell(row)}</td>
@@ -4844,7 +4845,7 @@ export function ReportsModule({
         return `
     <div class="sale-block">
       <div class="row"><span class="wrap">${escHtml(row.receiptNumber)}</span><span>${escHtml(formatSaleWallClockTime(dailyRowWallClockSource(row)))}</span></div>
-      <div class="sub wrap">${escHtml(kindPrintLabel(row.kind))} · ${escHtml(cashier)} · ${escHtml(device)} · ${escHtml(row.customerName || '—')}</div>
+      <div class="sub wrap">${escHtml(kindPrintLabel(row.kind))} · ${escHtml(cashier)} · ${escHtml(device)} · ${escHtml(customerNameText(row.customerName))}</div>
       <div class="row"><span>${escHtml(L('reportsPrintBefore'))}</span><span>${before}</span></div>
       <div class="row"><span>${escHtml(L('reportsColDiscount'))}</span><span>${disc}</span></div>
       <div class="row bold"><span>${escHtml(L('reportsPrintNetWithPm').replace('{pm}', pm))}</span><span>${net}</span></div>
@@ -6590,7 +6591,7 @@ export function ReportsModule({
                         },
                         { key: 'cashier', header: tm('cashierLabel'), size: 140, cell: (row) => (isPlaceholderCashierName(row.cashier) ? '—' : row.cashier || '—') },
                         { key: 'deviceName', header: tm('reportsDeviceLabel'), size: 110, cell: (row) => (isPlaceholderDeviceName(row.deviceName) ? '—' : row.deviceName || '—') },
-                        { key: 'customerName', header: tm('customerLabel_rep'), size: 150, cell: (row) => row.customerName || '—' },
+                        { key: 'customerName', header: tm('customerLabel_rep'), size: 150, cell: (row) => renderCustomerCell(row.customerName) },
                         {
                           key: 'beforeDiscount',
                           header: tm('reportsBeforeDiscount'),
