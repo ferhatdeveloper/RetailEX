@@ -874,7 +874,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   }, [suppliers, partnerSlices]);
 
   const money = (v: number) => `${formatNumber(v, 0, false)} ${currency}`;
-  const showPartnerCols = partnerSplit.enabled && partnerSlices.length > 0;
+  // 2026-10-12 kullanıcı talebi: Aylık/Yıllık Özet'te yalnızca 3 ana KPI
+  // görünsün (Ciro, Masraf, Net Kalan). "Ortak paylaşımı göster" checkbox'ı
+  // kaldırıldığı için ortak kolonları ve ortak KPI kartları da gizli.
+  const showPartnerCols = false;
   const partnerColColors = ['text-blue-700', 'text-indigo-700', 'text-violet-700', 'text-cyan-700', 'text-teal-700'];
 
   type PeriodSummaryGridRow = PeriodSummaryRow & Record<string, number | string | Record<string, number>>;
@@ -1370,49 +1373,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       });
     }
 
-    // Kâr Dağıtımı — anlık hesap (cache yok)
-    if (mode === 'monthly-days' && profitDistribution) {
-      const pd = profitDistribution;
-      const cls =
-        pd.netDistribution >= 0
-          ? 'text-violet-700 dark:text-violet-300'
-          : 'text-orange-700 dark:text-orange-400';
-      const modeLabelKey = pd.autoMode
-        ? 'rptPeriodProfitDistributionAuto'
-        : 'rptPeriodProfitDistributionManual';
-      const modeBadgeCls = pd.autoMode
-        ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200'
-        : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200';
-      items.push({
-        key: 'profit-distribution',
-        label: tm('rptPeriodProfitDistribution'),
-        value: money(pd.netDistribution),
-        valueClassName: cls,
-        className: 'border-violet-200 bg-violet-50/40 dark:border-violet-800 dark:bg-violet-950/20',
-        hint: (
-          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${modeBadgeCls}`}>
-              {tm(modeLabelKey)}
-            </span>
-            <span className="text-emerald-700 dark:text-emerald-400">
-              +{money(pd.karTotal)}
-            </span>
-            <span className="text-orange-700 dark:text-orange-400">
-              −{money(pd.zararTotal)}
-            </span>
-            {pd.lastRun ? (
-              <span className="text-slate-500 dark:text-slate-400">
-                {tm('rptPeriodProfitDistributionLastRun').replace('{date}', pd.lastRun)}
-              </span>
-            ) : (
-              <span className="text-slate-500 dark:text-slate-400">
-                {tm('rptPeriodProfitDistributionZero')}
-              </span>
-            )}
-          </span>
-        ),
-      });
-    }
+    // 2026-10-12 kullanıcı talebi: "Kâr Dağılımı" KPI kartı tamamen kaldırıldı.
+    // Kart bilgileri (Manuel/Otomatik mod, kâr/zarar tutarları) ileride
+    // menü parametresi ile geri açılabilir; veri kaynağı (monthlyProfitQuery)
+    // hâlâ çalışır durumda — sadece render/görünürlük kapatıldı.
+    // if (mode === 'monthly-days' && profitDistribution) { ... items.push({ key: 'profit-distribution', ... }) }
 
     if (showPartnerCols) {
       partnerSlices.forEach((p, idx) => {
@@ -1538,29 +1503,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
-        <label className="inline-flex items-center gap-1.5 cursor-pointer select-none font-medium text-slate-700">
-          <input
-            type="checkbox"
-            checked={partnerSplit.enabled}
-            onChange={(e) => updatePartnerSplit({ enabled: e.target.checked })}
-            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-          />
-          {tm('rptPeriodPartnerSplitEnable')}
-        </label>
-        {partnerSplit.enabled ? (
-          partnerSlices.length > 0 ? (
-            <span>
-              {tm('rptPeriodPartnerSplitFromCards')}
-              {Math.abs(partnerPctTotal - 100) > 0.01
-                ? ` ${tm('rptPeriodPartnerPctWarn').replace('{total}', String(partnerPctTotal))}`
-                : ''}
-            </span>
-          ) : (
-            <span className="text-amber-700">{tm('rptPeriodPartnerNoPartners')}</span>
-          )
-        ) : null}
-      </div>
+      {/* 2026-10-12 kullanıcı talebi: "Ortak paylaşımı göster" checkbox'ı
+          ve uyarı satırı tamamen kaldırıldı. Sadece 3 ana KPI
+          (Ciro, Masraf, Net Kalan) görünsün. showPartnerCols = false ile
+          ortak kolonları / KPI kartları da gizli. */}
 
       {kpiItems.length > 0 ? (
         <ReportKpiStrip columns={kpiColumns} items={kpiItems} itemClassName="shadow-none" />
