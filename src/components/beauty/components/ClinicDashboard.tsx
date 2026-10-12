@@ -558,11 +558,13 @@ export function ClinicDashboard() {
             pending: kpis.pending,
             inProg: kpis.inProg,
             cancelled: kpis.cancelled,
-            // 12.10.2026 — Kullanıcı isteği: TAHSİLAT = toplam kasaya giren
-            // nakit (avans/rezervasyon dahil). REZERVASYON KPI ayrı görünür
-            // (bilgilendirme); TAHSİLAT zaten her şeyi kapsar.
-            //   Bugün 12.10.2026: 85.000 (KASA_GIRIS) + 55.000 (cari_avans) = 140.000
-            revenue: revenue + reservation + reservationFromAvans,
+            // 12.10.2026 — Kullanıcı isteği (revize): TAHSİLAT = KASA_GIRIS
+            // + cari_avans. Bugün 85.000 + 55.000 = 140.000.
+            //   - `tahsilat.revenue` = 85.000 (KASA_GIRIS) + 0 (CH_TAHSILAT,
+            //     REZERVASYON Hariç) + 0 (sales total) = 85.000
+            //   - `reservationFromAvans` = 55.000 (bugün açık cari_avans)
+            // REZERVASYON KPI ayrı kart = avans bilgilendirmesi (55.000).
+            revenue: revenue + reservationFromAvans,
             // REZERVASYON kart'ı: yalnızca avans bilgilendirmesi
             reservation: reservation + reservationFromAvans,
             remainingCari,
