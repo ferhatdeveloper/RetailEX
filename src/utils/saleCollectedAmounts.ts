@@ -13,6 +13,13 @@ import { normalizePaymentMethodBucket, paymentMethodImpliesCustomerDebt } from '
 
 const FX: Record<string, number> = { IQD: 1, USD: 1310, EUR: 1450 };
 
+// Bug fix 2026-10-12: 1 IQD tolerans — küçük yuvarlama farkları
+// (numpad yazım hatası, 250 IQD kademe, kur dönüşümü) artık otomatik
+// veresiye yazmıyor; küçük fark kasaya yansır. Kullanıcı onayladı.
+const ROUNDING_TOLERANCE_IQD = 1;
+// Float hassasiyeti için ayrı eşik (yazılım içi matematik; UI’a yansımaz)
+const FLOAT_EPSILON = 1e-6;
+
 export type SaleCollectedSplit = {
   document: number;
   cash: number;
@@ -74,21 +81,24 @@ export function splitPaymentRows(
       normalizePaymentMethodBucket(paymentMethod) === 'credit' ||
       paymentMethodImpliesCustomerDebt(String(paymentMethod ?? ''));
 
-    if (methodIsCredit && remaining <= 1e-9) {
+    // Bug fix 2026-10-12: 1 IQD tolerans — küçük yuvarlama farkları kasaya yansır,
+    // otomatik veresiye olarak yazılmaz (numpad yazım hatası, 250 IQD kademe, kur dönüşümü).
+    if (methodIsCredit && remaining <= FLOAT_EPSILON) {
       const gap = Math.abs(document) - collected;
-      if (gap > 1e-6) {
+      if (gap > ROUNDING_TOLERANCE_IQD) {
         // Kısmi peşin + üst bilgi veresiye: kalan = belge − tahsilat (cebe giren korunur)
         remaining = Math.max(0, gap);
-      } else if (collected > 1e-9 && Math.abs(gap) <= 1e-6) {
+      } else if (collected > FLOAT_EPSILON && Math.abs(gap) <= ROUNDING_TOLERANCE_IQD) {
         // Ödeme=Veresiye ama payments[] tam belgeyi nakit/kart yazmış — kasa şişmesin.
-        // Yalnızca collected ≈ document iken; kısmi tahsilatı asla sıfırlama.
+        // Yalnızca collected ≈ document (1 IQD tolerans içinde) iken; kısmi
+        // tahsilatı asla sıfırlama. Aksi halde fark gerçek tahsilat olur.
         cashOut = 0;
         cardOut = 0;
         transferOut = 0;
         collected = 0;
         remaining = Math.abs(document);
       }
-    } else if (remaining <= 1e-9 && Math.abs(document) - collected > 1e-6) {
+    } else if (remaining <= FLOAT_EPSILON && Math.abs(document) - collected > ROUNDING_TOLERANCE_IQD) {
       remaining = Math.max(0, Math.abs(document) - collected);
     }
     return {
@@ -228,8 +238,12 @@ export function resolvePosCheckoutSettlement(
 
   const headerGuess = hasCredit ? 'veresiye' : prepaidDominant;
   const split = splitPaymentRows(documentTotal, rows, headerGuess);
+  // Bug fix 2026-10-12: 1 IQD tolerans — küçük yuvarlama farkları (numpad
+  // hatası / 250 IQD kademe / kur dönüşümü) artık otomatik "veresiye" olarak
+  // yazılmıyor; pay-in için header yöntemi (nakit/kart/havale) kalır. Kullanıcı
+  // bilinçli "credit" satırı eklediyse `hasCredit` korunur ve yine veresiye.
   const paymentMethod: PosCheckoutSettlement['paymentMethod'] =
-    hasCredit || Math.abs(split.remaining) > 1e-6 ? 'veresiye' : prepaidDominant;
+    hasCredit || Math.abs(split.remaining) > ROUNDING_TOLERANCE_IQD ? 'veresiye' : prepaidDominant;
 
   return {
     ...split,
@@ -265,18 +279,19 @@ export function dailyPaymentKind(
   const total = Math.abs(Number(sale.total) || 0);
   let collected = Math.abs(Number(split.collected) || 0);
   let remaining = Math.abs(Number(split.remaining) || 0);
-  // Yuvarlama: 1e-6 altında farkları sıfırla
-  if (collected < 1e-6) collected = 0;
-  if (remaining < 1e-6) remaining = 0;
+  // Yuvarlama: float epsilon altında farkları sıfırla — `splitPaymentRows`
+  // zaten 1 IQD ödeme toleransını uyguladı; burası yalnızca float temizliği.
+  if (collected < FLOAT_EPSILON) collected = 0;
+  if (remaining < FLOAT_EPSILON) remaining = 0;
   // Bütçe kontrolü: total = collected + remaining (muhasebe çift yönü)
   const sumGap = Math.abs(total - collected - remaining);
-  if (sumGap < 1e-6) {
-    if (remaining < 1e-6 && total > 0) collected = total;
-    if (collected < 1e-6 && total > 0) remaining = total;
+  if (sumGap < FLOAT_EPSILON) {
+    if (remaining < FLOAT_EPSILON && total > 0) collected = total;
+    if (collected < FLOAT_EPSILON && total > 0) remaining = total;
   }
   let kind: DailyPaymentKind;
-  if (remaining < 1e-6 && collected > 0) kind = 'cash';
-  else if (collected < 1e-6 && remaining > 0) kind = 'credit';
+  if (remaining < FLOAT_EPSILON && collected > 0) kind = 'cash';
+  else if (collected < FLOAT_EPSILON && remaining > 0) kind = 'credit';
   else kind = 'mixed';
   return { kind, collected, remaining, total };
 }
