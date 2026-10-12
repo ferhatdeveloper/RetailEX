@@ -243,8 +243,9 @@ export function DepositPrePaymentReport() {
                 footerSum: true,
                 // 12.10.2026 — Dip toplam (grand total) ham `row.received_payment`
                 // (DB'de 0) yerine `computeTakenPayment` ile hesaplanmalı.
-                // `groupFooterSumColumns` zaten doğru çalışıyordu; bu ek
-                // olmadan mavi dip toplam satırı 0 dönüyordu.
+                // Bu köprü olmadan mavi dip toplam satırı 0 dönüyordu.
+                // 12.10.2026 — Gruplama (sarı satır) kaldırıldı; sadece
+                // dip toplam (mavi) açık. `footerGetValue` köprüsü korunur.
                 footerGetValue: (r) => computeTakenPayment(r),
                 // 12.10.2026 — Dip toplam 0 ise boş string; aksi halde `fmt`.
                 // Sağa hizalı kolonda boş string düzgün çöküntü sağlar.
@@ -422,7 +423,7 @@ export function DepositPrePaymentReport() {
                         {tm('bNoData') || 'Bu tarih aralığında kayıt yok'}
                     </div>
                 ) : (
-                    <div className="p-2">
+<div className="p-2">
                         <ReportColumnTable
                             data={rows}
                             columns={columns}
@@ -431,73 +432,16 @@ export function DepositPrePaymentReport() {
                             // DevExDataGrid: `resolvedFooterLabel` boşsa
                             // `showFooterRow` false döner (bkz. DevExDataGrid.tsx:2952).
                             storageNamespace="beauty-deposit-prepayment-v2"
-                            // 07.10.2026 — Rezervasyon Tutarı gruplaması (fiş bazlı):
-                            // aynı BEA-* fişine ait birden çok hizmet/paket/ürün satırı
-                            // tek grup altında toplanır; grup altında deposit + paid + kalan
-                            // tutarları otomatik toplanır; footer'da grand total görünür.
-                            groupByColumnId="deposit_sale_fiche_no"
-                            groupFooterSumColumns={[
-                                {
-                                    columnId: 'total_price',
-                                    getValue: (r) => Number(r.total_price ?? 0),
-                                    format: (sum) =>
-                                        isZeroAmount(sum) ? (
-                                            <span className="tabular-nums text-slate-300">—</span>
-                                        ) : (
-                                            <span className="font-bold text-gray-900 tabular-nums">
-                                                {fmt(sum)}
-                                            </span>
-                                        ),
-                                },
-                                {
-                                    columnId: 'deposit_amount',
-                                    getValue: (r) => Number(r.deposit_amount ?? 0),
-                                    format: (sum) =>
-                                        isZeroAmount(sum) ? (
-                                            <span className="tabular-nums text-slate-300">—</span>
-                                        ) : (
-                                            <span className="text-blue-700 font-semibold">
-                                                {fmt(sum)}
-                                            </span>
-                                        ),
-                                },
-                                {
-                                    columnId: 'received_payment',
-                                    getValue: (r) => computeTakenPayment(r),
-                                    format: (sum) =>
-                                        isZeroAmount(sum) ? (
-                                            <span className="tabular-nums text-slate-300">—</span>
-                                        ) : (
-                                            <span
-                                                className={
-                                                    sum > 0.005
-                                                        ? 'text-emerald-700 font-semibold'
-                                                        : 'text-slate-500'
-                                                }
-                                            >
-                                                {fmt(sum)}
-                                            </span>
-                                        ),
-                                },
-                                {
-                                    columnId: 'outstanding_amount',
-                                    getValue: (r) => computeKalan(r),
-                                    format: (sum) =>
-                                        isZeroAmount(sum) ? (
-                                            <span className="tabular-nums text-slate-300">—</span>
-                                        ) : (
-                                            <span
-                                                className={
-                                                    sum > 0.005
-                                                        ? 'text-rose-700 font-semibold'
-                                                        : 'text-emerald-700 font-semibold'
-                                                }
-                                            >
-                                                {fmt(sum)}
-                                        </span>
-                                    ),
-                                },
-                            ]}
+                            // 12.10.2026 — Kullanıcı isteği: gruplama kaldırıldı.
+                            // `groupByColumnId` ve `groupFooterSumColumns` kaldırıldı;
+                            // dip toplam (mavi satır) açık kalır — kolonlardaki
+                            // `footerSum: true` + `footerGetValue`/`footerFormat`
+                            // köprüsü ile çalışır. Davranış alternatifleri:
+                            //   1) Yalnızca gruplama (sarı) kaldır, dip toplam kalsın
+                            //      → ŞU ANKİ davranış (bu yorum bloğu).
+                            //   2) Tüm footer'lar kaldırılsın → kolonlardan
+                            //      `footerSum: true` da kaldırılmalı ve
+                            //      `ReportColumnTable`'a `footerLabel={''}` verilmeli.
                         />
                     </div>
                 )}
