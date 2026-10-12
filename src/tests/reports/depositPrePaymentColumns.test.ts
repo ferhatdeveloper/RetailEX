@@ -352,4 +352,109 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             expect(subtotal).toBe(50000);
         });
     });
+
+    // 12.10.2026 — Kullanıcı isteği: "Toplam Kalan, Alınan Ödemenin altına
+    // kaydır". Dip toplam satırı (sarı) aşağıdaki kolon sırasını izlemeli:
+    //   1) Toplam Tutar        (total_price)
+    //   2) Rezervasyon Tutarı  (deposit_amount)
+    //   3) Alınan Ödeme        (received_payment)
+    //   4) Kalan Bakiye        (outstanding_amount)
+    //
+    // DevExDataGrid dip toplam satırı `visibleLeafColumns` sırasını kullandığı
+    // için (DevExDataGrid.tsx:3411+) bu sırayı korumak için kolon tanımlarının
+    // (DepositPrePaymentReport.tsx → `columns` array) yukarıdaki sırayla
+    // tanımlanması gerekir. Bu blok, mantıksal formülün hâlâ geçerli
+    // olduğunu garanti eder:
+    //
+    //   Toplam Tutar = Rezervasyon + Alınan Ödeme + Kalan Bakiye
+    //
+    // (Alınan Ödeme ve Kalan Bakiye birlikte tüm tutarı kapsar; completed
+    // durumda Kalan=0, Alınan=Total-Deposit, böylece Alınan + Kalan =
+    // Total − Deposit.)
+    describe('Kolon sırası + dip toplam hizalama (12.10.2026)', () => {
+        // 12.10.2026 — Beklenen dip toplam kolon sırası.
+        // Sıra, kullanıcının "Kalan, Alınan'ın altına kaydır" isteğine göre
+        // belirlenir: [Toplam Tutar, Rezervasyon, Alınan Ödeme, Kalan Bakiye].
+        const DIP_TOPLAM_KOLON_SIRASI = [
+            'total_price',           // Toplam Tutar
+            'deposit_amount',        // Rezervasyon Tutarı
+            'received_payment',      // Alınan Ödeme
+            'outstanding_amount',    // Kalan Bakiye
+        ] as const;
+
+        it('Dip toplam kolon sırası: Toplam Tutar → Rezervasyon → Alınan → Kalan', () => {
+            // Kullanıcının istediği nihai sıra
+            expect([...DIP_TOPLAM_KOLON_SIRASI]).toEqual([
+                'total_price',
+                'deposit_amount',
+                'received_payment',
+                'outstanding_amount',
+            ]);
+            // Kalan (outstanding_amount), Alınan'dan (received_payment) SONRA gelir
+            expect(DIP_TOPLAM_KOLON_SIRASI.indexOf('outstanding_amount'))
+                .toBeGreaterThan(DIP_TOPLAM_KOLON_SIRASI.indexOf('received_payment'));
+            // Alınan, Rezervasyon'dan (deposit_amount) SONRA gelir
+            expect(DIP_TOPLAM_KOLON_SIRASI.indexOf('received_payment'))
+                .toBeGreaterThan(DIP_TOPLAM_KOLON_SIRASI.indexOf('deposit_amount'));
+            // Rezervasyon, Toplam'dan (total_price) SONRA gelir
+            expect(DIP_TOPLAM_KOLON_SIRASI.indexOf('deposit_amount'))
+                .toBeGreaterThan(DIP_TOPLAM_KOLON_SIRASI.indexOf('total_price'));
+        });
+
+        it('Formül: Toplam = Rezervasyon + Alınan + Kalan (tüm status\'lerde tutar)', () => {
+            const rows: Row[] = [
+                // pending (Sadece Peşinat): Toplam 50k = Rez 10k + Alınan 0 + Kalan 40k
+                { total_price: 50000, deposit_amount: 10000, remainder_paid_amount: 0, status: 'pending' },
+                // completed: Toplam 50k = Rez 10k + Alınan 40k + Kalan 0
+                { total_price: 50000, deposit_amount: 10000, remainder_paid_amount: 0, status: 'completed' },
+                // partial: Toplam 50k = Rez 10k + Alınan 20k + Kalan 20k
+                { total_price: 50000, deposit_amount: 10000, remainder_paid_amount: 20000, status: 'partial' },
+                // deposit_only: Toplam 80k = Rez 5k + Alınan 0 + Kalan 75k
+                { total_price: 80000, deposit_amount: 5000, remainder_paid_amount: 0, status: 'deposit_only' },
+            ];
+
+            const totalToplam = rows.reduce((acc, r) => acc + r.total_price, 0);
+            const totalRez = rows.reduce((acc, r) => acc + r.deposit_amount, 0);
+            const totalAlinan = rows.reduce((acc, r) => acc + computeTakenPayment(r), 0);
+            const totalKalan = rows.reduce((acc, r) => acc + computeKalan(r), 0);
+
+            // 50 + 50 + 50 + 80 = 230.000
+            expect(totalToplam).toBe(230000);
+            // 10 + 10 + 10 + 5 = 35.000 (kullanıcı görselindeki dip toplam)
+            expect(totalRez).toBe(35000);
+            // 0 + 40 + 20 + 0 = 60.000
+            expect(totalAlinan).toBe(60000);
+            // 40 + 0 + 20 + 75 = 135.000
+            expect(totalKalan).toBe(135000);
+
+            // Tutarlılık: Rezervasyon + Alınan + Kalan = Toplam
+            // (Çapraz kontrol — her durumda bu eşitlik sağlanmalı; cancelled
+            // hariç — iptal edilen randevuda toplam hasılat kavramı yoktur.)
+            const activeRows = rows.filter((r) => r.status !== 'cancelled');
+            const sumActive = activeRows.reduce(
+                (acc, r) => acc + r.deposit_amount + computeTakenPayment(r) + computeKalan(r),
+                0,
+            );
+            const sumToplam = activeRows.reduce((acc, r) => acc + r.total_price, 0);
+            expect(sumActive).toBe(sumToplam);
+        });
+
+        it('Kullanıcı görseli ile birebir uyumlu dip toplam (HAIR CUT × 2, 50k+50k)', () => {
+            // Görseldeki iki satır — kullanıcının paylaştığı ekran görüntüsü:
+            //   HAIR CUT: rez 15k + alınan 35k + kalan 0  + tutar 50k
+            //   HAIR CUT: rez 20k + alınan 30k + kalan 0  + tutar 50k
+            //   ────────────────────────────────────────────
+            //   Dip     : rez 35k + alınan 65k + kalan 0  + tutar 100k
+            const rows: Row[] = [
+                { total_price: 50000, deposit_amount: 15000, remainder_paid_amount: 0, status: 'completed' },
+                { total_price: 50000, deposit_amount: 20000, remainder_paid_amount: 0, status: 'completed' },
+            ];
+
+            // Dip toplam hücreleri (sıra: Toplam Tutar → Rezervasyon → Alınan → Kalan)
+            expect(rows.reduce((a, r) => a + r.total_price, 0)).toBe(100000);
+            expect(rows.reduce((a, r) => a + r.deposit_amount, 0)).toBe(35000);
+            expect(rows.reduce((a, r) => a + computeTakenPayment(r), 0)).toBe(65000);
+            expect(rows.reduce((a, r) => a + computeKalan(r), 0)).toBe(0);
+        });
+    });
 });

@@ -168,6 +168,15 @@ export function DepositPrePaymentReport() {
                 cell: (r) => <span className="text-gray-700">{r.service_name || '—'}</span>,
             },
             {
+                // 12.10.2026 — Kolon sırası kullanıcı isteğine göre güncellendi:
+                //   Toplam Tutar → Rezervasyon → Alınan Ödeme → Kalan Bakiye
+                // Mantık: okuyucu önce "Toplam Tutar"ı görür (referans), sonra
+                // peşinatı (Rezervasyon) ve fiilen tahsil edilen tutarı (Alınan)
+                // görür; son olarak borç/kalan sütunu gelir. "Kalan" en sağda
+                // olduğunda hizmet tamamlandığında 0 olur ve Toplam = Alınan + Rezervasyon
+                // eşitliği okuyucu için netleşir. Kullanıcı notu:
+                //   "Toplam Kalan, Alınan Ödemenin altına kaydır"
+                // — bu, Kalan'ın Alınan Ödeme'nin sağına alınması anlamına gelir.
                 key: 'total_price',
                 // 12.10.2026 — `bTotalAmountCol` artık 4 dilde tanımlı; yine de
                 // eski `tm('total')` ve Türkçe fallback korunur (geriye dönük uyum).
@@ -214,6 +223,9 @@ export function DepositPrePaymentReport() {
             },
             {
                 key: 'outstanding_amount',
+                // 12.10.2026 — "Kalan Bakiye" artık Alınan Ödeme'nin sağında.
+                // Hizmet tamamlandığında 0 olur; Alınan Ödeme + Rezervasyon = Toplam Tutar
+                // eşitliği görsel olarak doğrulanabilir.
                 header: tm('bKpiTotalOutstanding') || 'Kalan Bakiye',
                 type: 'number',
                 align: 'right',
