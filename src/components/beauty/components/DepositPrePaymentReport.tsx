@@ -169,6 +169,8 @@ export function DepositPrePaymentReport() {
             },
             {
                 key: 'total_price',
+                // 12.10.2026 — `bTotalAmountCol` artık 4 dilde tanımlı; yine de
+                // eski `tm('total')` ve Türkçe fallback korunur (geriye dönük uyum).
                 header: tm('bTotalAmountCol') || tm('total') || 'Toplam Tutar',
                 type: 'number',
                 align: 'right',
@@ -378,6 +380,15 @@ export function DepositPrePaymentReport() {
                             // tutarları otomatik toplanır; footer'da grand total görünür.
                             groupByColumnId="deposit_sale_fiche_no"
                             groupFooterSumColumns={[
+                                {
+                                    columnId: 'total_price',
+                                    getValue: (r) => Number(r.total_price ?? 0),
+                                    format: (sum) => (
+                                        <span className="font-bold text-gray-900 tabular-nums">
+                                            {fmt(sum)}
+                                        </span>
+                                    ),
+                                },
                                 {
                                     columnId: 'deposit_amount',
                                     getValue: (r) => Number(r.deposit_amount ?? 0),

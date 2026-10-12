@@ -12423,6 +12423,9 @@ export const excelModuleTranslations = {
   bKpiExpectedRevenue: { tr: 'Beklenen Ciro', en: 'Expected Revenue', ar: 'الإيراد المتوقع', ku: 'داهاتی چاوەڕوانکراو' },
   bKpiRemainingAppointmentsSub: { tr: '{n} randevu kaldı', en: '{n} remaining', ar: '{n} مواعيد متبقية', ku: '{n} ئامادەبوون ماوە' },
   bDepositPrePaymentReport: { tr: 'Rezervasyon / Ön Ödeme Raporu', en: 'Reservation / Pre-Payment Report', ar: 'تقرير الحجز / الدفعة المقدمة', ku: 'ڕاپۆرتی نۆڕەی / پارەی پێشەکی' },
+  // 12.10.2026 — Rezervasyon / Ön Ödeme raporu "Toplam" kolonu başlığı.
+  // Önceden `tm('total')` fallback'ine düşüyordu; doğru çeviri için 4 dilde tanımlandı.
+  bTotalAmountCol: { tr: 'Toplam Tutar', en: 'Total Amount', ar: 'المبلغ الإجمالي', ku: 'کۆی بڕ' },
   bKpiTotalReservation: { tr: 'Toplam Rezervasyon', en: 'Total Reservation', ar: 'إجمالي الحجز', ku: 'کۆی نۆڕەکە' },
   bKpiTotalOutstanding: { tr: 'Toplam Kalan', en: 'Total Outstanding', ar: 'إجمالي المتبقي', ku: 'کۆی ماوە' },
   bKpiPaidAppointments: { tr: 'Tamamlanan Randevu', en: 'Completed Appointments', ar: 'المواعيد المكتملة', ku: 'نۆڕەی تەواوبوو' },

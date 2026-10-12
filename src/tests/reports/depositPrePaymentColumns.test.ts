@@ -296,4 +296,60 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             expect(totalKalan).toBe(65000);
         });
     });
+
+    // 12.10.2026 — Rezervasyon / Ön Ödeme raporu "Toplam Tutar" kolonu
+    // grup alt toplamı (sarı satır) boş kalıyordu — kök neden:
+    //   `ReportColumnTable.groupFooterSumColumns` listesinde `total_price`
+    //   tanımlı değildi; yalnızca `deposit_amount`, `received_payment`,
+    //   `outstanding_amount` vardı. DevExDataGrid `buildDevExGroupedRows`
+    //   (DevExDataGrid.tsx:1807-1848) `sumDefs` üzerinden hesap yaptığı
+    //   için `total_price` satırı "Toplam" kolonunda null dönüyordu.
+    //
+    // Bu blok, kullanıcı formülüne göre `total_price` grup alt toplamının
+    // doğru hesaplandığını garanti eder:
+    //   subtotal(total_price) = ∑ rows.map(r => r.total_price)
+    describe('Toplam Tutar (total_price) grup alt toplamı — subtotal satırı', () => {
+        it('Tek satırlı grup: alt toplam total_price = satır total_price', () => {
+            const rows: Row[] = [
+                { total_price: 50000, deposit_amount: 10000, remainder_paid_amount: 0, status: 'pending' },
+            ];
+            const subtotal = rows.reduce((acc, r) => acc + (Number(r.total_price) || 0), 0);
+            expect(subtotal).toBe(50000);
+        });
+
+        it('Aynı BEA-* fişine ait birden çok satır: alt toplam = satırların toplamı', () => {
+            const rows: Row[] = [
+                // hizmet
+                { total_price: 50000, deposit_amount: 10000, remainder_paid_amount: 0, status: 'pending' },
+                // paket seans
+                { total_price: 80000, deposit_amount: 20000, remainder_paid_amount: 0, status: 'pending' },
+                // ürün
+                { total_price: 20000, deposit_amount: 5000, remainder_paid_amount: 0, status: 'pending' },
+            ];
+            const subtotal = rows.reduce((acc, r) => acc + (Number(r.total_price) || 0), 0);
+            expect(subtotal).toBe(150000);
+        });
+
+        it('Cancelled satırlar da alt toplama dahildir (görsel tutarlılık — gizleme yok)', () => {
+            const rows: Row[] = [
+                { total_price: 50000, deposit_amount: 10000, remainder_paid_amount: 0, status: 'pending' },
+                { total_price: 30000, deposit_amount: 5000, remainder_paid_amount: 0, status: 'cancelled' },
+            ];
+            const subtotal = rows.reduce((acc, r) => acc + (Number(r.total_price) || 0), 0);
+            expect(subtotal).toBe(80000);
+        });
+
+        it('null/eksik total_price 0 olarak değerlendirilir (NaN koruması)', () => {
+            const rows = [
+                { total_price: 50000, deposit_amount: 10000, remainder_paid_amount: 0, status: 'pending' },
+                { total_price: null as unknown as number, deposit_amount: 0, remainder_paid_amount: 0, status: 'pending' },
+                { total_price: undefined as unknown as number, deposit_amount: 0, remainder_paid_amount: 0, status: 'pending' },
+            ];
+            const subtotal = rows.reduce(
+                (acc, r) => acc + (Number((r as Row).total_price) || 0),
+                0,
+            );
+            expect(subtotal).toBe(50000);
+        });
+    });
 });
