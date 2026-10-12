@@ -20,6 +20,7 @@ import {
 import { sortCariBalanceForReport } from './cariBalanceSort';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { localTodayDateKey } from '../../utils/localCalendarDate';
+import { SQL_PRODUCT_SALES_MATERIAL_ONLY } from '../../utils/productSalesReportFilters';
 import {
   buildProfitCostCtes,
   INVOICE_LINE_SCALE_JOIN,
@@ -3093,12 +3094,6 @@ export const erpReportsAPI = {
 
     const { rows } = await postgres.query(
       `
-      WITH coll AS (
-        SELECT cl.fiche_no, SUM(cl.amount * cl.sign) AS paid
-        FROM cash_lines cl
-        WHERE cl.sign > 0 AND COALESCE(cl.fiche_no, '') <> ''
-        GROUP BY cl.fiche_no
-      )
       SELECT
         si.id::text AS id,
         ${sqlUtcDate('s.date')}::text AS date,
@@ -3114,14 +3109,11 @@ export const erpReportsAPI = {
         COALESCE(si.net_amount, 0) AS line_total,
         -- Fatura toplamı: brüt hizmet/ürün değeri (avans/ödemeler hariç).
         COALESCE(s.total_net, 0) AS invoice_total,
-        -- Kalan bakiye: brüt hizmet/ürün değeri - ödenen.
-        COALESCE(s.total_net, 0) - COALESCE(coll.paid, 0) AS balance,
         COALESCE(c.phone, '') AS phone
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.invoice_id
       LEFT JOIN customers c ON c.id = s.customer_id
       LEFT JOIN products p ON p.id = si.product_id
-      LEFT JOIN coll ON coll.fiche_no = s.fiche_no
       WHERE ${where.join(' AND ')}
       ORDER BY s.date DESC, s.fiche_no, si.id
       LIMIT ${ROW_LIMIT}
@@ -3146,7 +3138,6 @@ export const erpReportsAPI = {
       lineGross: Number(r.line_gross ?? 0),
       lineTotal: Number(r.line_total ?? 0),
       invoiceTotal: Number(r.invoice_total ?? 0),
-      balance: Number(r.balance ?? 0),
       phone: String(r.phone ?? ''),
     }));
   },
@@ -3294,6 +3285,11 @@ export const erpReportsAPI = {
    * `sale_items` üzerinden ürün başına gruplar; `sales` ile join tarih filtresi,
    * `is_cancelled`, fiche_type ve status için.
    *
+   * **Yalnızca malzemeler** — hizmet/paket/promosyon/indirim satırları Hariç
+   * (`item_type` ile). Beauty/guzellik müşterilerinin hizmet satırları (örn.
+   * "HAIR CUT" → `item_type='Hizmet'`) bu rapora dahil edilmez; hizmet
+   * raporları ayrı modülde.
+   *
    * Brüt / İade / Net ayrı:
    *   - **gross_amount** = sadece satış (iade olmayan kalem) tutar toplamı
    *   - **return_amount** = iade kalemleri (negatif işaretli)
@@ -3351,6 +3347,9 @@ export const erpReportsAPI = {
           AND ${SQL_COUNTABLE_SALE_STATUS}
           AND s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice')
           AND si.product_id IS NOT NULL
+          -- Ürün bazlı rapor: yalnızca malzeme satırları.
+          -- Hizmet/paket/promosyon/indirim Hariç (güzellik HAIR CUT vb.).
+          AND ${SQL_PRODUCT_SALES_MATERIAL_ONLY}
           AND ${sqlUtcDate('COALESCE(s.date, s.created_at)')} BETWEEN $1 AND $2
           ${productFilter}
           ${partyFilter}

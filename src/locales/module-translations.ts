@@ -12426,7 +12426,10 @@ export const excelModuleTranslations = {
   // 12.10.2026 — Rezervasyon / Ön Ödeme raporu "Toplam" kolonu başlığı.
   // Önceden `tm('total')` fallback'ine düşüyordu; doğru çeviri için 4 dilde tanımlandı.
   bTotalAmountCol: { tr: 'Toplam Tutar', en: 'Total Amount', ar: 'المبلغ الإجمالي', ku: 'کۆی بڕ' },
-  bKpiTotalReservation: { tr: 'Toplam Rezervasyon', en: 'Total Reservation', ar: 'إجمالي الحجز', ku: 'کۆی نۆڕەکە' },
+  // 12.10.2026 — Kolon başlığı kullanıcı isteğiyle "Rezervasyon Miktarı" olarak
+  // güncellendi (önceki metin: "Toplam Rezervasyon"). Sütun deposit_amount
+  // sayısal değerini gösterir; semantik değişmedi.
+  bKpiTotalReservation: { tr: 'Rezervasyon Miktarı', en: 'Reservation Quantity', ar: 'كمية الحجز', ku: 'بڕی نۆڕەکە' },
   bKpiTotalOutstanding: { tr: 'Toplam Kalan', en: 'Total Outstanding', ar: 'إجمالي المتبقي', ku: 'کۆی ماوە' },
   bKpiPaidAppointments: { tr: 'Tamamlanan Randevu', en: 'Completed Appointments', ar: 'المواعيد المكتملة', ku: 'نۆڕەی تەواوبوو' },
   bKpiDepositOnly: { tr: 'Sadece Peşinat', en: 'Deposit Only', ar: 'دفعة مقدمة فقط', ku: 'تەنها پارەی پێشەکی' },

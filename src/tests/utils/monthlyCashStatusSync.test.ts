@@ -241,6 +241,55 @@ describe('Aylık Özet ↔ Kasa Durumu senkronizasyonu', () => {
     // Ciro 500.000 − Gider 30.000 = 470.000 (Alış 25.000 düşülmez)
     expect(m.netKalan).toBe(500_000 - 30_000);
   });
+
+  /**
+   * 2026-10-12 Kasa Durumu düzeltmesi — Açık Cari (veresiye) Hariç.
+   *
+   * Ciro brüt belge tutarıdır (veresiye dahil); ancak kullanıcı beklentisi
+   * "kasa fiilen tahsil edilen para" — yani tahsilat (nakit + kart + havale +
+   * extra nakit/kart/havale). Senaryo:
+   *   400k nakit satış + 100k veresiye satış → Ciro = 500k (veresiye dahil),
+   *   tahsilat = 400k (kasa nakit parayı yansıtır).
+   *
+   * kasaDurumuToplam (Kasa Durumu todayTotal) = 400k (veresiye hariç).
+   * Bu, Resimdeki tablo (150k nakit + 35k açık cari → 150k) ile aynı semantik.
+   */
+  it('2026-10-12 — Kasa Durumu TOPLAM = tahsilat (Açık Cari Hariç, Senaryo B)', () => {
+    // Ciro 500k: 400k nakit + 100k veresiye
+    const sales: Sale[] = [
+      ...Array.from({ length: 8 }).map((_, i) =>
+        makeSale({
+          id: `cash-${i}`,
+          receipt: `BEA-2026-CASH-${i}`,
+          total: 50_000,
+          method: 'cash',
+          date: day(`2026-10-${String(i + 1).padStart(2, '0')}`, 10, 0),
+        }),
+      ),
+      ...Array.from({ length: 2 }).map((_, i) =>
+        makeSale({
+          id: `credit-${i}`,
+          receipt: `BEA-2026-CREDIT-${i}`,
+          total: 50_000,
+          method: 'credit',
+          date: day(`2026-10-${String(i + 9).padStart(2, '0')}`, 10, 0),
+        }),
+      ),
+    ];
+    const m = computeMonthlyCashSummary({
+      ...input,
+      sales,
+      rezervasyonAvansi: 0,
+    });
+    // Ciro brüt = 500k (veresiye dahil)
+    expect(m.ciro).toBe(500_000);
+    // Tahsilat = 400k (veresiye hariç, kasa nakit parayı yansıtır)
+    expect(m.tahsilat).toBe(400_000);
+    // kasaDurumuToplam (Senaryo B düzeltmesi) = tahsilat = 400k
+    expect(m.kasaDurumuToplam).toBe(400_000);
+    // Ciro ≠ kasaDurumuToplam (veresiye farkı)
+    expect(m.ciro - m.kasaDurumuToplam).toBe(100_000);
+  });
 });
 
 describe('Geri-çevrim korumaları — mevcut commit düzeltmeleri', () => {

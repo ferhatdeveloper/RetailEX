@@ -88,7 +88,9 @@ export type MonthlyCashSummaryRow = {
   /** Ciro − Gider. 2026-10-12 kullanıcı talebi: Günlük Rapor formülü ile aynı.
    * Alış ayrı kolonda raporlanır; maliyet olduğu için Net'ten düşülmez. */
   netKalan: number;
-  /** Ciro (Rezervasyon Hariç) — `ReportsModule.getCashStatus.todayTotal` ile aynı semantik. */
+  /** Ciro (Rezervasyon **ve Açık Cari** Hariç) — kasa fiilen tahsil edilen tutar.
+   *  `ReportsModule.getCashStatus.todayTotal` ile aynı semantik. 2026-10-12
+   *  Kasa Durumu düzeltmesi. */
   kasaDurumuToplam: number;
   /** Veresiye Hariç tahsilat (nakit + kart + havale + ek tahsilatlar). */
   tahsilat: number;
@@ -248,9 +250,18 @@ export function computeMonthlyCashSummary(
     + (Number(input.extraCard) || 0)
     + (Number(input.extraTransfer) || 0);
 
-  // Kasa Durumu TOPLAM: Ciro (Rezervasyon Hariç). Avans Ciro'ya katılmaz.
-  // Bkz. `ReportsModule.getCashStatus.todayTotal = dist.totalAmount - reservationDeposit`.
-  const kasaDurumuToplam = ciro;
+  // Kasa Durumu TOPLAM: Ciro (Rezervasyon **ve Açık Cari** Hariç).
+  //
+  // Ciro brüt belge tutarıdır (veresiye dahil); kullanıcı beklentisi
+  // "kasa fiilen tahsil edilen para" — yani nakitCiro + kartCiro +
+  // havaleCiro + extra nakit/kart/havale. 2026-10-12 Kasa Durumu düzeltmesi:
+  // nakit 150k + açık cari 35k + rezervasyon 35k → TOPLAM 150k (185k
+  // değil). Avans Ciro'ya katılmaz (Senaryo A); açık cari de katılmaz
+  // (Senaryo B — müşteriden henüz tahsil edilmemiş alacak).
+  //
+  // Bkz. `ReportsModule.getCashStatus.todayTotal = dist.totalAmount -
+  //      reservationDeposit - acikCari`.
+  const kasaDurumuToplam = tahsilat;
 
   const acilis = Number(input.acilis) || 0;
   return {

@@ -4206,14 +4206,24 @@ export function ReportsModule({
      */
     const reservationDeposit = dist.byCode.REZERVASYON_AVANS?.amount ?? 0;
     /**
-     * Bugün toplam tahsilat — Rezervasyon avansı **hariç**. Rezervasyon ayrı
-     * bir pasif KPI kartında gösterilir; TOPLAM satırına dahil edilirse
-     * kullanıcı yanlışlıkla iki kez sayılmış izlenimi alır (100k nakit +
-     * 15k avans → 115k yerine 100k olmalı). `dist.totalAmount` altta yatan
-     * API'de tüm form kodlarını toplar (REZERVASYON_AVANS dahil); KPI
-     * semantiği burada avansı ayıkırır — Senaryo A.
+     * Bugün toplam tahsilat — Rezervasyon avansı **ve Açık Cari** hariç.
+     *
+     *   - REZERVASYON_AVANS → ayrı pasif KPI kartında gösterilir; TOPLAM
+     *     satırına dahil edilirse çift sayım izlenimi alınır (100k nakit +
+     *     15k avans → 115k yerine 100k olmalı).
+     *   - ACIK_CARI (veresiye) → müşteriden henüz tahsil edilmemiş alacak;
+     *     kasa fiilen tahsil edilen tutarı yansıtmaz. Ciro brüt belge
+     *     tutarıdır (veresiye dahil); kullanıcı beklentisi "kasa nakit
+     *     parayı" görmek (150k nakit + 35k açık cari → toplam 150k, 185k
+     *     değil). 2026-10-12 Kasa Durumu düzeltmesi.
+     *
+     * `dist.totalAmount` altta yatan API'de tüm form kodlarını toplar
+     * (REZERVASYON_AVANS + ACIK_CARI dahil); KPI semantiği burada ikisini
+     * de ayıkırır — Senaryo A (rezervasyon) + Senaryo B (açık cari).
      */
-    const todayTotal = dist.totalAmount - reservationDeposit;
+    const acikCariAmount = dist.byCode.ACIK_CARI?.amount ?? 0;
+    const todayTotal =
+      dist.totalAmount - reservationDeposit - acikCariAmount;
 
     const todayKey = localTodayDateKey();
     const openingCash =
@@ -7687,11 +7697,9 @@ export function ReportsModule({
                           <span className="font-semibold">{tm('totalLabel_rep')}</span>
                           <span className="font-bold text-green-700 text-lg">{formatNumber(cashStatus.todayTotal, 2, false)} {reportCurrency}</span>
                         </div>
-                        {cashStatus.reservationDeposit > 0 && (
-                          <p className="text-xs text-slate-500 px-1">
-                            Rezervasyon avansı toplama dahil değildir (alınan avans — pasif).
-                          </p>
-                        )}
+                        <p className="text-xs text-slate-500 px-1">
+                          Açık Cari Hesap ve Rezervasyon Avansı toplama dahil değildir (henüz tahsil edilmemiş alacaklar).
+                        </p>
                       </div>
                     </div>
 

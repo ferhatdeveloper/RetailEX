@@ -206,11 +206,144 @@ export function loadColumnOrderFromStorage(storageKey: string): string[] | null 
   }
 }
 
+/**
+ * Kolon snapshot geçmişi (son 10 snapshot) — geri alma / denetim için.
+ *
+ * - Aktif snapshot eski anahtarda (`storageKey`) yaşamaya devam eder; geriye dönük uyum.
+ * - Geçmiş ayrı anahtarda: `{storageKey}:history` → `Array<{ timestamp: ISO string, snapshot: T }>`
+ * - Her yazımda **mevcut aktif snapshot** history'e itilir, sonra yeni değer aktif yapılır.
+ * - Aynı snapshot tekrar yazılırsa history şişmez (no-op).
+ */
+export const COLUMN_SNAPSHOT_HISTORY_LIMIT = 10;
+
+function getColumnSnapshotHistoryKey(storageKey: string): string {
+  return `${storageKey}:history`;
+}
+
+function readColumnSnapshotHistory<T>(historyKey: string): Array<{ timestamp: string; snapshot: T }> {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(historyKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const out: Array<{ timestamp: string; snapshot: T }> = [];
+    for (const item of parsed) {
+      if (
+        item &&
+        typeof item === 'object' &&
+        !Array.isArray(item) &&
+        typeof (item as { timestamp?: unknown }).timestamp === 'string' &&
+        (item as { snapshot?: unknown }).snapshot !== undefined
+      ) {
+        out.push({
+          timestamp: (item as { timestamp: string }).timestamp,
+          snapshot: (item as { snapshot: T }).snapshot,
+        });
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function writeColumnSnapshotHistory<T>(
+  historyKey: string,
+  history: Array<{ timestamp: string; snapshot: T }>,
+): void {
+  try {
+    localStorage.setItem(historyKey, JSON.stringify(history));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+/** Snapshot'ların içerik eşitliği (referans === değil); kolon sırası / genişlik için kullanılır. */
+function isColumnSnapshotEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Aktif snapshot'ı history'e yedekle, sonra yeni snapshot'ı aktif anahtara yaz.
+ * Snapshot değişmediyse (aynı içerik) yazma — history şişmez.
+ */
+export function saveColumnSnapshotWithHistory<T>(storageKey: string, snapshot: T): void {
+  if (typeof window === 'undefined' || !storageKey) return;
+  try {
+    const activeRaw = localStorage.getItem(storageKey);
+    if (activeRaw != null) {
+      try {
+        const previous = JSON.parse(activeRaw) as unknown;
+        if (!isColumnSnapshotEqual(previous, snapshot)) {
+          const historyKey = getColumnSnapshotHistoryKey(storageKey);
+          const history = readColumnSnapshotHistory<unknown>(historyKey);
+          history.unshift({ timestamp: new Date().toISOString(), snapshot: previous });
+          if (history.length > COLUMN_SNAPSHOT_HISTORY_LIMIT) {
+            history.length = COLUMN_SNAPSHOT_HISTORY_LIMIT;
+          }
+          writeColumnSnapshotHistory(historyKey, history);
+        }
+      } catch {
+        /* parse hatası — geçmişi kirletmeden yeni aktif snapshot yazılır */
+      }
+    }
+    localStorage.setItem(storageKey, JSON.stringify(snapshot));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+/**
+ * Bir kolon snapshot'ı geçmişten aktif anahtara geri yükler.
+ * Başarıyla geri alındığında `true`, geçmiş boş / anahtar yoksa `false` döner.
+ */
+export function restoreColumnSnapshotFromHistory(
+  storageKey: string,
+  index: number,
+): boolean {
+  if (typeof window === 'undefined' || !storageKey) return false;
+  try {
+    const historyKey = getColumnSnapshotHistoryKey(storageKey);
+    const history = readColumnSnapshotHistory<unknown>(historyKey);
+    if (index < 0 || index >= history.length) return false;
+    const entry = history[index];
+    localStorage.setItem(storageKey, JSON.stringify(entry.snapshot));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Snapshot geçmişini getir (salt okunur kopyası — UI dropdown için). */
+export function getColumnSnapshotHistory<T = unknown>(
+  storageKey: string,
+): Array<{ timestamp: string; snapshot: T }> {
+  if (typeof window === 'undefined' || !storageKey) return [];
+  return readColumnSnapshotHistory<T>(getColumnSnapshotHistoryKey(storageKey));
+}
+
+/** Snapshot geçmişini temizle (aktif snapshot'a dokunmaz). */
+export function clearColumnSnapshotHistory(storageKey: string): void {
+  if (typeof window === 'undefined' || !storageKey) return;
+  try {
+    localStorage.removeItem(getColumnSnapshotHistoryKey(storageKey));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
 export function saveColumnOrderToStorage(storageKey: string, order: string[]): void {
   if (typeof window === 'undefined' || !storageKey) return;
   try {
     const persistable = order.filter((id) => !PINNED_COLUMN_IDS.has(id));
-    localStorage.setItem(storageKey, JSON.stringify(persistable));
+    saveColumnSnapshotWithHistory(storageKey, persistable);
   } catch {
     /* quota / private mode */
   }
@@ -272,7 +405,7 @@ export function saveColumnSizingToStorage(storageKey: string, sizing: ColumnSizi
       if (!id || PINNED_COLUMN_IDS.has(id) || !Number.isFinite(n) || n < 24) continue;
       persistable[id] = Math.round(n);
     }
-    localStorage.setItem(storageKey, JSON.stringify(persistable));
+    saveColumnSnapshotWithHistory(storageKey, persistable);
   } catch {
     /* quota / private mode */
   }

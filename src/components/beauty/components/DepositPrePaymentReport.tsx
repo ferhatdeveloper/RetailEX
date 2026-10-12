@@ -217,7 +217,7 @@ export function DepositPrePaymentReport() {
             },
             {
                 key: 'deposit_amount',
-                header: tm('bKpiTotalReservation') || 'Rezervasyon Tutarı',
+                header: tm('bKpiTotalReservation') || 'Rezervasyon Miktarı',
                 type: 'number',
                 align: 'right',
                 size: 140,
@@ -502,7 +502,7 @@ export function DepositPrePaymentReport() {
                             </li>
                             <li className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
                                 <span className="font-semibold text-slate-500">
-                                    {tm('bKpiTotalReservation') || 'Rezervasyon Tutarı'}
+                                    {tm('bKpiTotalReservation') || 'Rezervasyon Miktarı'}
                                 </span>
                                 <span className="font-bold text-blue-700 tabular-nums">
                                     {fmt(closeTarget.deposit_amount)}

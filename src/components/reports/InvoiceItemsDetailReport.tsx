@@ -1,12 +1,11 @@
 /**
  * VIVA SOLAR — `ALL PROJECY` sayfası karşılığı.
- * Fatura kalem detayı — fatura başına tüm satırları, müşteri + telefon + bakiye ile.
+ * Fatura kalem detayı — fatura başına tüm satırları, müşteri + telefon.
  * Mevcut `ErpCoreReports.tsx` mimarisiyle aynı kalıp.
  *
  * Mali denetim notu:
  *  - `lineTotal` = miktar × birimFiyat × (1 - iskonto/100).
  *  - `invoiceTotal` = faturadaki tüm kalemlerin `lineTotal` toplamı; (subtotal > 0 ise o, değilse net + indirim).
- *  - `balance` = invoiceTotal - collected; iade ise ters işaret.
  *  - Cari türü 'customer' olmalı; supplier verisi filtre dışı.
  *  - Telefon araması case-insensitive `ILIKE` benzeri içerir.
  */
@@ -51,8 +50,6 @@ export interface InvoiceItemsDetailRow {
   lineTotal: number;
   /** Fatura brüt toplamı (total_net, avans hariç). */
   invoiceTotal: number;
-  /** Kalan bakiye = fatura_brüt - ödenen. */
-  balance: number;
   phone: string;
 }
 
@@ -226,11 +223,9 @@ export function InvoiceItemsDetailReport() {
     // toplamı" olarak hesaplanır; `lineTotal` ise kalem satırı toplamıdır.
     const seenInvoices = new Set<string>();
     let invoiceTotal = 0;
-    let balance = 0;
     for (const r of filtered) {
       qty += r.quantity;
       lineTotal += r.lineTotal;
-      balance += r.balance;
       const key = r.invoiceNo || r.id;
       if (!seenInvoices.has(key)) {
         seenInvoices.add(key);
@@ -241,7 +236,6 @@ export function InvoiceItemsDetailReport() {
       qty,
       lineTotal,
       invoiceTotal,
-      balance,
       invoiceCount: seenInvoices.size,
     };
   }, [filtered]);
@@ -339,28 +333,6 @@ export function InvoiceItemsDetailReport() {
         ),
       },
       {
-        key: 'balance',
-        header: tm('rprColBalance') || 'Bakiye',
-        type: 'number',
-        align: 'right',
-        size: 120,
-        footerSum: true,
-        footerFormat: (n) => (
-          <span className={n > 0 ? 'text-red-500' : 'text-emerald-600'}>
-            {formatNumber(n, 2, false)} {currency}
-          </span>
-        ),
-        cell: (r) => (
-          <span
-            className={`font-bold ${
-              r.balance > 0 ? 'text-red-500' : r.balance < 0 ? 'text-emerald-600' : ''
-            }`}
-          >
-            {formatNumber(r.balance, 2, false)} {currency}
-          </span>
-        ),
-      },
-      {
         key: 'phone',
         header: tm('rprColPhone') || 'Telefon',
         size: 140,
@@ -381,7 +353,7 @@ export function InvoiceItemsDetailReport() {
           'fatura_kalem_detay',
           [
             'No', 'Tarih', 'Fatura No', 'Müşteri', 'Ürün', 'Miktar', 'Birim Fiyat',
-            'İskonto', 'Satır Toplam', 'Fatura Toplam', 'Bakiye', 'Telefon',
+            'İskonto', 'Satır Toplam', 'Fatura Toplam', 'Telefon',
           ],
           filtered.map((r, i) => [
             String(i + 1),
@@ -394,7 +366,6 @@ export function InvoiceItemsDetailReport() {
             String(r.discount),
             String(r.lineTotal),
             String(r.invoiceTotal),
-            String(r.balance),
             r.phone,
           ]),
         )
@@ -470,7 +441,7 @@ export function InvoiceItemsDetailReport() {
         </>
       }
     >
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className={`rounded-lg border p-3 ${tableCls}`}>
           <p className="text-xs opacity-60">{tm('rprInvoiceCount') || 'Fatura Sayısı'}</p>
           <p className="text-xl font-bold">{totals.invoiceCount}</p>
@@ -488,12 +459,6 @@ export function InvoiceItemsDetailReport() {
         <div className={`rounded-lg border p-3 ${tableCls}`}>
           <p className="text-xs opacity-60">{tm('rprColInvoiceTotal') || 'Fatura Toplam'}</p>
           <p className="text-xl font-bold">{formatNumber(totals.invoiceTotal, 2, false)} {currency}</p>
-        </div>
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('rprColBalance') || 'Bakiye'}</p>
-          <p className={`text-xl font-bold ${totals.balance > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-            {formatNumber(totals.balance, 2, false)} {currency}
-          </p>
         </div>
       </div>
       <div className={`rounded-lg border p-2 ${tableCls}`}>

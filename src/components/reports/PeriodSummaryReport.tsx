@@ -370,23 +370,17 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     'period-summary-card-total-expenses',
     reportMenuParams,
   );
-  const showPeriodCardPurchases = isReportMenuParamEnabled(
-    'period-summary-card-period-purchases',
-    reportMenuParams,
-  );
-  const showPeriodCardSupplierPayables = isReportMenuParamEnabled(
-    'period-summary-card-supplier-payables',
-    reportMenuParams,
-  );
+  // 2026-10-12 kullanıcı talebi: Aylık/Yıllık Özet'te yalnızca 3 ana KPI
+  // görünsün (Ciro, Masraf, Net Kalan). Diğer kartlar (Kasa Para Girişi,
+  // Tedarikçi Açık Borç, Ödeme Dağılımı, Dönem Alışı) kaldırıldı.
+  // Veri kaynakları (purchases, cashIn, supplierPayables, payment split)
+  // hâlâ sorgulanıyor — sadece render/görünürlük kapatıldı; gerekirse
+  // ileride menu parametresi ile yeniden açılabilir.
+  const showPeriodCardPurchases = false;
+  const showPeriodCardSupplierPayables = false;
   const showPeriodCardNet = isReportMenuParamEnabled('period-summary-card-net', reportMenuParams);
-  const showPeriodCardPaymentSplit = isReportMenuParamEnabled(
-    'period-summary-card-payment-split',
-    reportMenuParams,
-  );
-  const showPeriodCardCashIn = isReportMenuParamEnabled(
-    'period-summary-card-cash-in',
-    reportMenuParams,
-  );
+  const showPeriodCardPaymentSplit = false;
+  const showPeriodCardCashIn = false;
 
   const partnerSlices = useMemo(
     () =>
