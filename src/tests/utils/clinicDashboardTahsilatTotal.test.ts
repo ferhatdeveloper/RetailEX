@@ -297,3 +297,71 @@ describe('ClinicDashboard Rezervasyon KPI', () => {
     expect(clinicDashboardReservationTotal(sales)).toBe(30_000);
   });
 });
+
+/**
+ * Bug ekleme (12.10.2026): REZERVASYON KPI'sı sıfır gösteriyordu çünkü
+ * helper yalnızca `beauty_sales` deposit fişlerinden hesaplanıyordu; POS'tan
+ * alınan rezervasyon avansları `rex_<firm>_<period>_cari_avans` tablosuna
+ * (migration 194) yazılır.
+ *
+ * `ClinicDashboard.tsx` `stats.reservation` artık iki kaynağı toplar:
+ *
+ *     reservation = clinicDashboardReservationTotal(sales)   // deposit fişleri
+ *                 + Math.max(0, Number(avans?.amount) || 0)   // cari_avans today
+ *
+ * Bu helper aynı formülü pure function seviyesinde doğrular. Üretim
+ * bileşenini render etmeden veri üzerinden hesap yapılır; KPI 50.000
+ * avans + 5.000 sales deposit = 55.000 gibi regresyonlar burada yakalanır.
+ */
+export function clinicDashboardReservationWithAvans(
+  sales: ClinicDashboardSaleRef[],
+  avans: { amount: number; count: number } | null | undefined,
+): number {
+  const depositTotal = clinicDashboardReservationTotal(sales);
+  const avansAmount = Math.max(0, Number(avans?.amount ?? 0) || 0);
+  return depositTotal + avansAmount;
+}
+
+describe('ClinicDashboard Rezervasyon KPI (cari_avans dahil)', () => {
+  it('cari_avans + sales deposit toplamı', () => {
+    const sales: ClinicDashboardSaleRef[] = [
+      { id: 'd1', total: 5_000, is_deposit: true, parent_sale_id: 'ana' },
+    ];
+    const avans = { amount: 30_000, count: 1 };
+    expect(clinicDashboardReservationWithAvans(sales, avans)).toBe(35_000);
+  });
+
+  it('avans 0, sales 0 → 0', () => {
+    expect(clinicDashboardReservationWithAvans([], { amount: 0, count: 0 })).toBe(0);
+  });
+
+  it('avans 50k, sales 0 → 50k (kullanıcı şikâyeti senaryosu)', () => {
+    // Bugün 4 rezervasyon avansı, toplam 50.000 IQD;
+    // `beauty_sales` içinde henüz deposit fişi yok.
+    expect(clinicDashboardReservationWithAvans([], { amount: 50_000, count: 4 })).toBe(50_000);
+  });
+
+  it('cari_avans + ROZA avans senaryosu: deposit 15k + avans 50k → 65k', () => {
+    // Kullanıcı şikâyeti: aynı gün 4 rezervasyon avansı 50.000 +
+    // eski ROZA deposit fişi 15.000 → toplam 65.000 IQD.
+    const sales: ClinicDashboardSaleRef[] = [
+      { id: 'roza-deposit', total: 15_000, is_deposit: true, parent_sale_id: 'roza-ana' },
+    ];
+    const avans = { amount: 50_000, count: 4 };
+    expect(clinicDashboardReservationWithAvans(sales, avans)).toBe(65_000);
+  });
+
+  it('avans null/undefined → deposit toplamı (defansif)', () => {
+    const sales: ClinicDashboardSaleRef[] = [
+      { id: 'd1', total: 12_000, is_deposit: true },
+    ];
+    expect(clinicDashboardReservationWithAvans(sales, null)).toBe(12_000);
+    expect(clinicDashboardReservationWithAvans(sales, undefined)).toBe(12_000);
+  });
+
+  it('avans negatif → 0 (clamp)', () => {
+    expect(
+      clinicDashboardReservationWithAvans([], { amount: -1_000, count: 1 })
+    ).toBe(0);
+  });
+});

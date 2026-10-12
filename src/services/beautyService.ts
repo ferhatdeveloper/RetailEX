@@ -6567,6 +6567,53 @@ export const beautyService = {
     },
 
     /**
+     * Bug ekleme (12.10.2026): Klinik Paneli REZERVASYON KPI'sı sıfır
+     * gösteriyordu çünkü hesap yalnızca `beauty_sales` tablosundaki
+     * `is_deposit` / `parent_sale_id` / notes-tag deposit fişlerinden
+     * yapılıyordu. Oysa POS'tan alınan rezervasyon avansları
+     * `avansService.recordAdvance` akışıyla `rex_<firmNr>_<periodNr>_cari_avans`
+     * tablosuna (migration 194) yazılır — `beauty_sales` ile değil.
+     *
+     * Bu helper bugünkü `status=open` avansların tutar ve sayısını döner.
+     * ClinicDashboard useEffect'i çağırır; KPI `Σ sales.deposit + Σ avans`.
+     *
+     * - `firmNr` / `periodNr` `ERP_SETTINGS`'ten gelir (ClinicDashboard
+     *   zaten aynı pattern'i kullanıyor).
+     * - `original_amount` (orijinal para birimindeki tutar, varsa) **değil**,
+     *   `amount` (ana birime çevrilmiş tutar) toplanır — kullanıcının KPI
+     *   formatıyla uyumlu.
+     * - İdempotent: tablo yoksa / sorgu patlarsa `gracefully` `{ amount: 0,
+     *   count: 0 }` döner; ClinicDashboard `stats.reservation = deposit +
+     *   avans` formülünde "0" eklenmesi mevcut davranışı korur.
+     */
+    async getCariAvansForDay(ymd: string): Promise<{ amount: number; count: number }> {
+        try {
+            const { startIso, endIso } = localYmdToIsoRange(ymd);
+            const firm = String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
+            const period = String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
+            // Tablo adı firm_period düzeyinde; diğer firmaların avansları
+            // sorguya girmez (her ClinicDashboard kendi firmPeriod'unda).
+            const table = `rex_${firm}_${period}_cari_avans`;
+            const { rows } = await postgres.query(
+                `SELECT COALESCE(SUM(amount), 0)::numeric AS total_amount,
+                        COUNT(*)::int         AS total_count
+                   FROM ${table}
+                  WHERE created_at >= $1 AND created_at <= $2
+                    AND LOWER(COALESCE(status, '')) = 'open'`,
+                [startIso, endIso]
+            );
+            const r = (rows ?? [])[0] as { total_amount?: unknown; total_count?: unknown } | undefined;
+            const amount = Math.max(0, Number(r?.total_amount ?? 0) || 0);
+            const count = Math.max(0, Number(r?.total_count ?? 0) || 0);
+            return { amount, count };
+        } catch {
+            // Tablo yok / yok yetki / sorgu hatası → KPI sıfır kabul eder;
+            // sessizce yutulur; CliniCDashboard catch ile aynı sonucu döner.
+            return { amount: 0, count: 0 };
+        }
+    },
+
+    /**
      * Excel / yedek: yerel gün aralığında güzellik satışları + kalemler + müşteri kodu.
      * `payment_status` filtresi yok (paid / pending / cancelled hepsi listelenir; Excel’de süzebilirsiniz).
      */

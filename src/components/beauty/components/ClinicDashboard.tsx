@@ -95,6 +95,20 @@ export function ClinicDashboard() {
     });
     const [todaySales, setTodaySales] = useState<BeautySale[]>([]);
     const [todayExtraCash, setTodayExtraCash] = useState(0);
+    /**
+     * Bug ekleme (12.10.2026): REZERVASYON KPI'sı bugün 4 rezervasyon
+     * avansı (toplam 50.000 IQD) olmasına rağmen 0 gösteriyordu. Bunun
+     * nedeni KPI'nın yalnızca `beauty_sales` tablosundaki deposit fişlerinden
+     * (`is_deposit` / `parent_sale_id` / notes-tag) hesaplanması; oysa
+     * POS'tan alınan rezervasyon avansları `avansService.recordAdvance`
+     * akışıyla `rex_<firmNr>_<periodNr>_cari_avans` tablosuna (migration
+     * 194) yazılır — `beauty_sales`'a değil.
+     *
+     * Bu state bugünkü açık avansları (`status = 'open'`) tutar/sayı
+     * olarak tutar; `stats.reservation` iki kaynağın toplamıdır:
+     *   reservation = Σ sales.deposit_total + Σ cari_avans.today
+     */
+    const [todayReservations, setTodayReservations] = useState<{ amount: number; count: number }>({ amount: 0, count: 0 });
 
     const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = useMemo(() => ({
         scheduled:   { label: tm('bAppointmentScheduled'), color: '#6366f1', bg: '#eef2ff' },
@@ -128,7 +142,13 @@ export function ClinicDashboard() {
             // fişlerin CH_TAHSILAT satırını "satış yok → ek nakit" sanıyor ve
             // Klinik Paneli TAHSİLAT KPI'sı yanlış şişiyordu (20.000 IQD).
             beautyService.getCancelledReceiptNumbersForDay(todayStr).catch(() => [] as string[]),
-        ]).then(([salesRows, kasaRows, cancelledReceipts]) => {
+            // Bug ekleme (12.10.2026): cari_avans (migration 194) bugünkü açık
+            // avansların tutar/sayısı. POS'tan rezervasyon avansı alındığında
+            // `avansService.recordAdvance` `cari_avans` tablosuna yazar; bu
+            // avanslar REZERVASYON KPI'sını besler. Hata durumunda 0 dönerek
+            // KPI'yı düşürmez, sadece avans katkısı eksik kalır.
+            beautyService.getCariAvansForDay(todayStr).catch(() => ({ amount: 0, count: 0 })),
+        ]).then(([salesRows, kasaRows, cancelledReceipts, avansToday]) => {
             const sales = Array.isArray(salesRows) ? salesRows : [];
             const cancelledSet = new Set(
                 (Array.isArray(cancelledReceipts) ? cancelledReceipts : [])
@@ -146,6 +166,12 @@ export function ClinicDashboard() {
                     })
                 : [];
             setTodaySales(sales);
+            // Bug ekleme (12.10.2026): cari_avans bugünkü toplam / sayı.
+            // Helper idempotent döner; hata durumunda zaten 0 obje döner.
+            setTodayReservations({
+                amount: Math.max(0, Number(avansToday?.amount ?? 0) || 0),
+                count: Math.max(0, Number(avansToday?.count ?? 0) || 0),
+            });
             setTodayExtraCash(extraCustomerCollectionsNotOnSales(
                 kasaRowsFiltered,
                 sales.map((s) => ({
@@ -162,6 +188,9 @@ export function ClinicDashboard() {
         }).catch(() => {
             setTodaySales([]);
             setTodayExtraCash(0);
+            // Bug ekleme (12.10.2026): cari_avans sorgusu patlarsa da KPI
+            // 0 ile başlar; deposit + 0 = önceki davranış (geriye dönük uyumlu).
+            setTodayReservations({ amount: 0, count: 0 });
         });
     }, []);
 
@@ -442,6 +471,25 @@ export function ClinicDashboard() {
         );
         const remainingCari = 0;
 
+        /**
+         * Bug ekleme (12.10.2026) — REZERVASYON KPI toplamı.
+         * İki kaynak toplanır:
+         *   - `reservationSales`: `beauty_sales` içindeki deposit fişleri
+         *     (`is_deposit` / `parent_sale_id` / notes-tag — ana tablo).
+         *   - `todayReservations.amount`: `rex_<firm>_<period>_cari_avans`
+         *     tablosundaki bugün alınan açık avanslar (POS rezervasyon
+         *     avansları, migration 194; `avansService.recordAdvance`).
+         *
+         * Bu iki kaynak **farklı hayat döngüsünde** oluşur:
+         *   1) Cari ekstre / cari avans (cari_avans tablosu, status=open)
+         *   2) Peşinat fişi (beauty_sales tablosu, is_deposit=true)
+         * Aynı para iki kez sayılmaz çünkü tipik akış ya cari_avans'a ya
+         * beauty_sales deposit'e düşer; iki yerde birden olan kayıt uç
+         * durumdur ve muhasebe tarafında `applyAdvanceToSale`
+         * `applied_sale_id` ile bağlandığında izlenebilir.
+         */
+        const reservationFromAvans = Math.max(0, Number(todayReservations?.amount ?? 0) || 0);
+
         const sorted = [...kpis.todayApts].sort((a, b) => {
             return (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? '');
         });
@@ -453,14 +501,15 @@ export function ClinicDashboard() {
             inProg: kpis.inProg,
             cancelled: kpis.cancelled,
             revenue,
-            reservation,
+            // Bug ekleme (12.10.2026): reservation = sales.deposit + cari_avans.today
+            reservation: reservation + reservationFromAvans,
             remainingCari,
             expectedRevenue: kpis.expectedRevenue,
             remaining: kpis.remaining,
             rate: kpis.rate,
             total: kpis.total,
         };
-    }, [appointments, todayStr, todaySales]);
+    }, [appointments, todayStr, todaySales, todayReservations]);
 
     const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
