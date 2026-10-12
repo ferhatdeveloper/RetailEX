@@ -3530,6 +3530,51 @@ BEGIN
     v_prefix || '_01_cari_avans'
   );
 
+  -- Migration 209: 2-segmentli fallback (uygulama `rex_<firm>_<period>_cari_avans` arıyor)
+  EXECUTE format(
+    'CREATE TABLE IF NOT EXISTS %I (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firm_nr             VARCHAR(10) NOT NULL,
+      period_nr           VARCHAR(10) NOT NULL,
+      customer_id         UUID NOT NULL,
+      amount              NUMERIC(18,4) NOT NULL,
+      original_amount     NUMERIC(18,4),
+      original_currency   VARCHAR(10),
+      payment_method      VARCHAR(20) NOT NULL,
+      status              VARCHAR(20) NOT NULL DEFAULT ''open'',
+      applied_sale_id     UUID,
+      reference_no        VARCHAR(60) GENERATED ALWAYS AS (''AVANS-'' || LEFT(id::text, 8)) STORED,
+      cash_register_id    UUID,
+      cash_register_code  VARCHAR(40),
+      cash_line_id        UUID,
+      cari_movement_id    UUID,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_by          VARCHAR(100),
+      notes               TEXT
+    );',
+    v_prefix || '_cari_avans'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (customer_id, status)',
+    v_prefix || '_cari_avans_customer_status_idx',
+    v_prefix || '_cari_avans'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (applied_sale_id)',
+    v_prefix || '_cari_avans_applied_sale_idx',
+    v_prefix || '_cari_avans'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (firm_nr, period_nr)',
+    v_prefix || '_cari_avans_firm_period_idx',
+    v_prefix || '_cari_avans'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (created_at DESC)',
+    v_prefix || '_cari_avans_created_at_idx',
+    v_prefix || '_cari_avans'
+  );
+
   -- 2) inventory_reservations (firm-period düzeyinde, sales pattern'i)
   EXECUTE format('
     CREATE TABLE IF NOT EXISTS %I (
@@ -3583,6 +3628,51 @@ BEGIN
     'CREATE INDEX IF NOT EXISTS %I ON %I (firm_nr, period_nr)',
     v_prefix || '_01_inventory_reservations_firm_period_idx',
     v_prefix || '_01_inventory_reservations'
+  );
+
+  -- Migration 209: 2-segmentli fallback (uygulama `rex_<firm>_<period>_inventory_reservations` arıyor)
+  EXECUTE format(
+    'CREATE TABLE IF NOT EXISTS %I (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firm_nr         VARCHAR(10) NOT NULL,
+      period_nr       VARCHAR(10) NOT NULL,
+      customer_id     UUID NOT NULL,
+      product_id      VARCHAR(100) NOT NULL,
+      quantity        NUMERIC(18,4) NOT NULL,
+      status          VARCHAR(20) NOT NULL DEFAULT ''reserved'',
+      avans_id        UUID,
+      sale_id         UUID,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      released_at     TIMESTAMPTZ,
+      finalized_at    TIMESTAMPTZ,
+      notes           TEXT
+    );',
+    v_prefix || '_inventory_reservations'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (customer_id, status)',
+    v_prefix || '_inventory_reservations_customer_status_idx',
+    v_prefix || '_inventory_reservations'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (product_id, status)',
+    v_prefix || '_inventory_reservations_product_status_idx',
+    v_prefix || '_inventory_reservations'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (avans_id)',
+    v_prefix || '_inventory_reservations_avans_idx',
+    v_prefix || '_inventory_reservations'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (sale_id)',
+    v_prefix || '_inventory_reservations_sale_idx',
+    v_prefix || '_inventory_reservations'
+  );
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (firm_nr, period_nr)',
+    v_prefix || '_inventory_reservations_firm_period_idx',
+    v_prefix || '_inventory_reservations'
   );
 
   -- 4. Bank Transactions
