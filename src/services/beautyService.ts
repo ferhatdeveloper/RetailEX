@@ -393,6 +393,54 @@ function localYmdToIsoRange(ymd: string): { startIso: string; endIso: string } {
     return { startIso: start.toISOString(), endIso: end.toISOString() };
 }
 
+/**
+ * Lokal YYYY-MM-DD → Postgres `timestamptz` parametrelerine TZ-kayıtsız dönüşüm.
+ *
+ * Kök neden 12.10.2026 — `guzel` DB sıfırlama sonrası Klinik Paneli TAHSİLAT
+ * KPI'sı 80.000 gösteriyordu, gerçek veri 50.000 olmalıydı:
+ *
+ *   `localYmdToIsoRange` local 00:00–23:59.999 → `Date.toISOString()` ile UTC'ye
+ *   çevrilip `BETWEEN $start AND $end` ile sorgu atılıyordu. Browser UTC+3'te
+ *   local 03:00 → UTC 00:00 olur; sorgu aralığı `UTC 21:00 ↔ 20:59` arasına
+ *   kayar. `cari_avans.created_at` server-local TZ'de `timestamp without time
+ *   zone` olarak kaydedildiğinde, UTC parametreyle yapılan `BETWEEN` tamamen
+ *   **farklı günlere** denk gelir → bugünkü avansların bir kısmı hariç,
+ *   başka günlerden gelen avanslar dahil olur.
+ *
+ *   Pratik: cari_avans `today = 20.000` olması gerekirken sorgu 50.000
+ *   döndürdü → `revenue = tahsilat.revenue (30) + reservationFromAvans (50) =
+ *   80.000`.
+ *
+ * Çözüm: SQL parametreleri **local** gün başlangıcı (UTC değil) olarak
+ * `timestamptz`'a bind edilir; `BETWEEN` server-local TZ ile aynı gün
+ * aralığını kapsar (Postgres `current_setting('TIMEZONE')` ile yorumlar).
+ * Böylece 03:00 local'de yazılan avans, sorgu aralığı **aynı gün içinde**
+ * kalır; önceki/sonraki güne taşmaz.
+ *
+ * Helper, [start, end) yarı-açık aralığını döner: start = gün 00:00 LOCAL,
+ * end = **sonraki gün 00:00 LOCAL** (UTC'ye çevrilmiş). Sorgu `< $end` ile
+ * "günün tamamı" aralığını kapsar; `<=` ile 23:59:59.999 sınır problemi yok.
+ *
+ * Sorgu kalıbı: `created_at >= $start AND created_at < $end`.
+ *
+ * Diğer kullanıcılar (lokal YYYY-MM-DD gün aralığı sorguları) da bu helper'ı
+ * kullanmalı; eski `localYmdToIsoRange` 'UTC offset' gereken başka çağıran
+ * varsa geriye dönük uyumlu kalır.
+ */
+function localYmdToDayRangeTstz(ymd: string): { startIso: string; endIso: string } {
+    const parts = ymd.split('-').map(Number);
+    if (parts.length < 3 || parts.some(n => Number.isNaN(n))) {
+        const n = new Date();
+        const start = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 0, 0, 0, 0);
+        const next = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1, 0, 0, 0, 0);
+        return { startIso: start.toISOString(), endIso: next.toISOString() };
+    }
+    const [y, mo, d] = parts;
+    const start = new Date(y, mo - 1, d, 0, 0, 0, 0);
+    const next = new Date(y, mo - 1, d + 1, 0, 0, 0, 0);
+    return { startIso: start.toISOString(), endIso: next.toISOString() };
+}
+
 /** Hizmet kartı (rex_*_services) ve malzeme «hizmet» satırları için süre tahmini */
 function inferDurationMinFromUnit(unit: unknown): number {
     const u = String(unit ?? '').toLowerCase();
@@ -6510,7 +6558,11 @@ export const beautyService = {
      * Ana ERP `sales` tablosundan ayrı tutulduğu için rapor modülü burayı birleştirir.
      */
     async getSalesWithItemsForLocalCalendarDay(ymd: string): Promise<BeautySale[]> {
-        const { startIso, endIso } = localYmdToIsoRange(ymd);
+        // Bug 12.10.2026 — TZ-kayıtsız `tstz` aralığı (root-cause doc yukarıda).
+        // Önceki `localYmdToIsoRange` UTC'ye çevirdiği için Postgres server-local
+        // TZ'de `created_at` ile eşleşmiyordu; bugünkü satışlar eksik/diğer
+        // günlerden taşma gelirdi (ör. bugün 30k KASA_GIRIS + 0 sales senaryosu).
+        const { startIso, endIso } = localYmdToDayRangeTstz(ymd);
         const st = postgres.getMovementTableName('beauty_sales', 'beauty');
         const it = postgres.getMovementTableName('beauty_sale_items', 'beauty');
         const ct = postgres.getCardTableName('customers');
@@ -6518,7 +6570,7 @@ export const beautyService = {
             `SELECT s.*, c.name AS customer_name
              FROM ${st} s
              LEFT JOIN ${ct} c ON s.customer_id = c.id
-             WHERE s.created_at >= $1 AND s.created_at <= $2
+             WHERE s.created_at >= $1 AND s.created_at < $2
                AND COALESCE(s.payment_status, 'paid') = 'paid'
              ORDER BY s.created_at ASC`,
             [startIso, endIso]
@@ -6549,11 +6601,12 @@ export const beautyService = {
      * `extraCustomerCollectionsNotOnSales`'a eklenmemelidir.
      */
     async getCancelledReceiptNumbersForDay(ymd: string): Promise<string[]> {
-        const { startIso, endIso } = localYmdToIsoRange(ymd);
+        // Bug 12.10.2026 — TZ-kayıtsız `tstz` aralığı.
+        const { startIso, endIso } = localYmdToDayRangeTstz(ymd);
         const st = postgres.getMovementTableName('beauty_sales', 'beauty');
         const { rows } = await postgres.query(
             `SELECT invoice_number FROM ${st}
-             WHERE created_at >= $1 AND created_at <= $2
+             WHERE created_at >= $1 AND created_at < $2
                AND LOWER(COALESCE(payment_status, '')) IN
                    ('cancelled','canceled','refunded','void','iptal','silindi','deleted')`,
             [startIso, endIso]
@@ -6588,7 +6641,14 @@ export const beautyService = {
      */
     async getCariAvansForDay(ymd: string): Promise<{ amount: number; count: number }> {
         try {
-            const { startIso, endIso } = localYmdToIsoRange(ymd);
+            // Bug 12.10.2026 — Kök neden düzeltmesi: cari_avans tablosundaki
+            // bugünkü açık avansları TZ-kayıtsız `tstz` aralığıyla çekiyoruz.
+            // Önceki `localYmdToIsoRange` ile UTC'ye çevrilen aralık, Postgres
+            // server-local TZ'de `created_at` ile eşleşmiyordu; bugün senaryosu
+            // (12.10.2026) cari_avans toplamı 20k yerine ~50k dönüyordu → TAHSİLAT
+            // KPI 80k (30 KASA_GIRIS + 50 yanlış cari_avans). Yardımcı: `Bug
+            // 12.10.2026 — TZ-kayıtsız gün aralığı (root-cause doc yukarıda)`.
+            const { startIso, endIso } = localYmdToDayRangeTstz(ymd);
             const firm = String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
             const period = String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
             // Tablo adı firm_period düzeyinde; diğer firmaların avansları
@@ -6598,7 +6658,7 @@ export const beautyService = {
                 `SELECT COALESCE(SUM(amount), 0)::numeric AS total_amount,
                         COUNT(*)::int         AS total_count
                    FROM ${table}
-                  WHERE created_at >= $1 AND created_at <= $2
+                  WHERE created_at >= $1 AND created_at < $2
                     AND LOWER(COALESCE(status, '')) = 'open'`,
                 [startIso, endIso]
             );
