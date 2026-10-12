@@ -1191,15 +1191,16 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
         const subFicheNo = prepaidCount > 1 ? `${ficheNo}-T${i + 1}` : `${ficheNo}-T1`;
         const subAciklama = `${labelPrefix} — ${inv.invoice_no || ''} — kısmi tahsilat`;
         try {
+          const subRowMethod = String(row.method || '').toLowerCase().trim();
           if (isRest) {
             await writeCashRegisterLineRest(
               inv, firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
-              cashCustomerId, cashPartyId, 1, 'CH_TAHSILAT',
+              cashCustomerId, cashPartyId, 1, 'CH_TAHSILAT', subRowMethod,
             );
           } else {
             await writeCashRegisterLineSql(
               firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
-              cashCustomerId, cashPartyId, null, 1, 'CH_TAHSILAT',
+              cashCustomerId, cashPartyId, null, 1, 'CH_TAHSILAT', subRowMethod,
             );
           }
         } catch (e: any) {
@@ -1254,12 +1255,12 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
         if (isRest) {
           await writeCashRegisterLineRest(
             inv, firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
-            cashCustomerId, cashPartyId, sign, transactionType,
+            cashCustomerId, cashPartyId, sign, transactionType, rowMethod,
           );
         } else {
           await writeCashRegisterLineSql(
             firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
-            cashCustomerId, cashPartyId, null, sign, transactionType,
+            cashCustomerId, cashPartyId, null, sign, transactionType, rowMethod,
           );
         }
         wroteAnyCashLine = true;
@@ -1293,11 +1294,13 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
       await writeCashRegisterLineRest(
         inv, firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama,
         cashCustomerId, cashPartyId, sign, transactionType,
+        String((inv as any).payment_method || ''),
       );
     } else {
       await writeCashRegisterLineSql(
         firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama,
         cashCustomerId, cashPartyId, null, sign, transactionType,
+        String((inv as any).payment_method || ''),
       );
     }
   } catch (e: any) {
@@ -1317,8 +1320,35 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
 }
 
 /**
- * SQL modu: tek statement INSERT (ON CONFLICT → UPDATE) + bakiye UPDATE.
+ * cash_lines.payment_method normalize yardımcısı.
+ * - Boş / null / 'veresiye' / 'open' → bu satır kasa hareketi değil; null.
+ *   (CH_TAHSILAT hariç — cari borç tahsilinde kasa da yazılıyor.)
+ * - 'cash' | 'nakit' → 'cash'
+ * - 'card' | 'kart' | 'kredi kartı' → 'card'
+ * - 'transfer' | 'havale' | 'eft' → 'transfer'
+ * - 'credit' | 'veresiye' (sadece CH_TAHSILAT'ta) → 'credit'
+ * - Bilinmeyen → lowercase trim, fallback 'cash'.
  */
+function normalizePaymentMethodForCashLine(
+  paymentMethod: string | null | undefined,
+  transactionType: string,
+): string | null {
+  const pm = String(paymentMethod ?? '').toLowerCase().trim();
+  const tx = String(transactionType ?? '').toUpperCase();
+  // Veresiye CH_TAHSILAT (cari tahsilat) değilse bu satır kasa hareketi değil
+  if ((pm === 'veresiye' || pm === 'open' || pm === 'credit' || pm === '') && tx !== 'CH_TAHSILAT') {
+    return null;
+  }
+  if (pm === 'cash' || pm === 'nakit') return 'cash';
+  if (pm === 'card' || pm === 'kart' || pm === 'kredi kartı' || pm === 'kredi karti') return 'card';
+  if (pm === 'transfer' || pm === 'havale' || pm === 'eft' || pm === 'wire') return 'transfer';
+  if (pm === 'credit' || pm === 'veresiye') return 'credit';
+  if (pm === '') {
+    // Caller geçmedi; transaction tipine göre tahmin et
+    return tx === 'CH_TAHSILAT' ? 'credit' : 'cash';
+  }
+  return pm; // bilinmeyen ama dolu — olduğu gibi sakla
+}
 async function writeCashRegisterLineSql(
   firmNr: string,
   periodNr: string,
@@ -1332,6 +1362,7 @@ async function writeCashRegisterLineSql(
   targetRegisterIdRef: string | null,
   sign = 1,
   transactionType = 'KASA_GIRIS',
+  paymentMethod?: string | null,
 ): Promise<void> {
   const firmPad = String(firmNr).padStart(3, '0');
   const cashRegistersTable = `rex_${firmPad}_cash_registers`;
@@ -1365,6 +1396,11 @@ async function writeCashRegisterLineSql(
     return;
   }
 
+  // Ödeme yöntemi: 'cash' | 'card' | 'transfer' | 'credit' | null. 'cash' varsayılan
+  // — eğer caller 'veresiye' gibi cari borç işaretleyen bir yöntem gönderdiyse,
+  // bu satır kasa hareketine yine yazılır (legacy), payment_method'a ne geldi
+  // yazılır. Cari tarafındaki borç durumu ayrıca cari mutabakatı ile belirlenir.
+  const normalizedPm = normalizePaymentMethodForCashLine(paymentMethod, transactionType);
   const upsertResult = await postgres.query<{ id: string; inserted: boolean }>(
     `INSERT INTO cash_lines (
        firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
@@ -1372,7 +1408,8 @@ async function writeCashRegisterLineSql(
        customer_id, party_id, currency_code, exchange_rate, f_amount,
        transfer_status, special_code,
        target_register_id, bank_id, bank_account_id, expense_card_id,
-       tax_rate, withholding_tax_rate
+       tax_rate, withholding_tax_rate,
+       payment_method
      ) VALUES (
        $1::text, $2::text, $3::text::uuid, $4::text, $5::text,
        $6::numeric, $9::integer,
@@ -1380,7 +1417,8 @@ async function writeCashRegisterLineSql(
        $8::text::uuid, $11::text::uuid, 'YEREL', 1, 0,
        0, '',
        NULL, NULL, NULL, NULL,
-       0, 0
+       0, 0,
+       $12::text
      )
      ON CONFLICT (fiche_no) DO UPDATE
        SET amount = EXCLUDED.amount,
@@ -1390,10 +1428,11 @@ async function writeCashRegisterLineSql(
            transaction_type = EXCLUDED.transaction_type,
            customer_id = EXCLUDED.customer_id,
            party_id = EXCLUDED.party_id,
+           payment_method = EXCLUDED.payment_method,
            updated_at = NOW()
      RETURNING id, (xmax = 0) AS inserted`,
     [String(firmNr), periodNr, targetRegisterId, ficheNo, tarih,
-     amount, aciklama, customerId, sign, transactionType, partyId]
+     amount, aciklama, customerId, sign, transactionType, partyId, normalizedPm]
   );
   const inserted = upsertResult.rows?.[0]?.inserted === true;
 
@@ -1433,6 +1472,7 @@ async function writeCashRegisterLineRest(
   partyId: string | null,
   sign = 1,
   transactionType = 'KASA_GIRIS',
+  paymentMethod?: string | null,
 ): Promise<void> {
   const { postgrest } = await import('./postgrestClient');
   const firmPad = String(firmNr).padStart(3, '0');
@@ -1526,6 +1566,7 @@ async function writeCashRegisterLineRest(
     expense_card_id: null,
     tax_rate: 0,
     withholding_tax_rate: 0,
+    payment_method: normalizePaymentMethodForCashLine(paymentMethod, transactionType),
   };
 
   if (existing?.id) {
@@ -2365,15 +2406,26 @@ export const invoicesAPI = {
       const tEnh = import.meta.env.DEV ? '[InvoicesAPI] Enhanced_Insert' : '';
       if (import.meta.env.DEV) console.time(tEnh);
       try {
+        // KDV=0 varsayımı: total_gross = total_net. İleride total_vat ayrılırsa
+        // total_gross = total_net + total_vat formülüne geçilecek. Peşinat
+        // cash_lines'a ayrıca yazılır; fiş başlığında düşülmez (net_amount =
+        // total_amount / total_net).
+        const subtotalVal = Number(invoice.subtotal || 0);
+        const totalVatVal = Number(invoice.tax || 0);
+        const totalGrossVal = subtotalVal + totalVatVal; // KDV=0 ise = total_net
+        const paidAmountVal = Number(
+          (invoice as any).paidAmount ?? (invoice as any).paid_amount ?? 0,
+        );
         const result = await postgres.query(
           `INSERT INTO sales (
               id,
               firm_nr, period_nr, fiche_no, date, fiche_type, trcode,
-              customer_id, customer_name, total_net, total_vat, total_discount, net_amount, 
+              customer_id, customer_name, total_net, total_vat, total_discount, net_amount,
+              total_gross, paid_amount,
               total_cost, gross_profit, profit_margin, currency, currency_rate,
               status, notes, document_no,
               payment_method, cashier, store_id, created_by_user_id
-          ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text::timestamptz, $6::text, $7::text::int, $8::text::uuid, $9::text, $10::text::numeric, $11::text::numeric, $12::text::numeric, $13::text::numeric, $14::text::numeric, $15::text::numeric, $16::text::numeric, $17::text, $18::text::numeric, $19::text, $20::text, $21::text, $22::text, $23::text, $24::text::uuid, $25::text::uuid) RETURNING id`,
+          ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text::timestamptz, $6::text, $7::text::int, $8::text::uuid, $9::text, $10::text::numeric, $11::text::numeric, $12::text::numeric, $13::text::numeric, $14::text::numeric, $15::text::numeric, $16::text::numeric, $17::text::numeric, $18::text::numeric, $19::text::numeric, $20::text, $21::text::numeric, $22::text, $23::text, $24::text, $25::text, $26::text, $27::text::uuid, $28::text::uuid) RETURNING id`,
           [
             newId,
             String(firmNr),
@@ -2391,10 +2443,12 @@ export const invoicesAPI = {
             isValidUuid(invoice.customer_id) ? invoice.customer_id
               : isValidUuid(invoice.supplier_id) ? invoice.supplier_id : null,
             String(invoice.customer_name || invoice.supplier_name || ''),
-            Number(invoice.subtotal || 0),
-            Number(invoice.tax || 0),
+            subtotalVal,
+            totalVatVal,
             Number(invoice.discount || 0),
             Number(invoice.total_amount || 0),
+            totalGrossVal,
+            paidAmountVal,
             Number(invoice.total_cost || 0),
             Number(invoice.gross_profit || 0),
             Number(invoice.profit_margin || 0),
@@ -2425,14 +2479,21 @@ export const invoicesAPI = {
         // 1b. Fallback to Legacy Schema
         const tLeg = import.meta.env.DEV ? '[InvoicesAPI] Legacy_Insert' : '';
         if (import.meta.env.DEV) console.time(tLeg);
+        const subtotalValLeg = Number(invoice.subtotal || 0);
+        const totalVatValLeg = Number(invoice.tax || 0);
+        const totalGrossValLeg = subtotalValLeg + totalVatValLeg; // KDV=0 ise = total_net
+        const paidAmountValLeg = Number(
+          (invoice as any).paidAmount ?? (invoice as any).paid_amount ?? 0,
+        );
         const result = await postgres.query(
           `INSERT INTO sales (
               id,
               firm_nr, period_nr, fiche_no, date, fiche_type, trcode,
-              customer_id, customer_name, total_net, total_vat, total_discount, net_amount, 
+              customer_id, customer_name, total_net, total_vat, total_discount, net_amount,
+              total_gross, paid_amount,
               total_cost, gross_profit, profit_margin, currency, currency_rate,
               status, notes
-          ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text::timestamptz, $6::text, $7::text::int, $8::text::uuid, $9::text, $10::text::numeric, $11::text::numeric, $12::text::numeric, $13::text::numeric, $14::text::numeric, $15::text::numeric, $16::text::numeric, $17::text, $18::text::numeric, $19::text, $20::text) RETURNING id`,
+          ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text::timestamptz, $6::text, $7::text::int, $8::text::uuid, $9::text, $10::text::numeric, $11::text::numeric, $12::text::numeric, $13::text::numeric, $14::text::numeric, $15::text::numeric, $16::text::numeric, $17::text::numeric, $18::text::numeric, $19::text, $20::text::numeric, $21::text, $22::text) RETURNING id`,
           [
             newId,
             String(firmNr),
@@ -2444,10 +2505,12 @@ export const invoicesAPI = {
             isValidUuid(invoice.customer_id) ? invoice.customer_id
               : isValidUuid(invoice.supplier_id) ? invoice.supplier_id : null,
             String(invoice.customer_name || invoice.supplier_name || ''),
-            Number(invoice.subtotal || 0),
-            Number(invoice.tax || 0),
+            subtotalValLeg,
+            totalVatValLeg,
             Number(invoice.discount || 0),
             Number(invoice.total_amount || 0),
+            totalGrossValLeg,
+            paidAmountValLeg,
             Number(invoice.total_cost || 0),
             Number(invoice.gross_profit || 0),
             Number(invoice.profit_margin || 0),
@@ -3402,7 +3465,12 @@ export const invoicesAPI = {
         if (partnerIdRest !== undefined && isValidUuid(String(partnerIdRest))) {
           patchBody.customer_id = String(partnerIdRest);
         }
-        if (invoice.subtotal !== undefined) patchBody.total_net = Number(invoice.subtotal);
+        if (invoice.subtotal !== undefined) {
+          patchBody.total_net = Number(invoice.subtotal);
+          // KDV=0 varsayımı: total_gross = total_net. İleride KDV ayrılırsa
+          // total_net + total_vat kullanılacak.
+          patchBody.total_gross = Number(invoice.subtotal);
+        }
         if (invoice.tax !== undefined) patchBody.total_vat = Number(invoice.tax);
         if (invoice.discount !== undefined) patchBody.total_discount = Number(invoice.discount);
         if (invoice.total_cost !== undefined) patchBody.total_cost = Number(invoice.total_cost);
@@ -3410,6 +3478,14 @@ export const invoicesAPI = {
         if (invoice.currency !== undefined) patchBody.currency = invoice.currency;
         if (invoice.currency_rate !== undefined) patchBody.currency_rate = Number(invoice.currency_rate);
         if (invoice.payment_method !== undefined) patchBody.payment_method = String(invoice.payment_method);
+        // paid_amount: form tarafından gönderildiyse yaz (cash_lines Σ'si veya
+        // tahsilat güncellemesi). Peşinat zaten ayrı cash_lines'a yazılır;
+        // burada sadece başlık alanı.
+        if ((invoice as any).paidAmount !== undefined) {
+          patchBody.paid_amount = Number((invoice as any).paidAmount);
+        } else if ((invoice as any).paid_amount !== undefined) {
+          patchBody.paid_amount = Number((invoice as any).paid_amount);
+        }
         if ((invoice as Record<string, unknown>).document_no !== undefined) {
           patchBody.document_no = String((invoice as Record<string, unknown>).document_no || '');
         }
@@ -3594,7 +3670,12 @@ export const invoicesAPI = {
         fields.push(`customer_id = $${i++}::uuid`);
         values.push(String(partnerId));
       }
-      if (invoice.subtotal !== undefined) { fields.push(`total_net = $${i++}`); values.push(invoice.subtotal); }
+      if (invoice.subtotal !== undefined) {
+        fields.push(`total_net = $${i++}`); values.push(invoice.subtotal);
+        // KDV=0 varsayımı: total_gross = total_net. İleride KDV ayrılırsa
+        // total_net + total_vat kullanılacak.
+        fields.push(`total_gross = $${i++}`); values.push(invoice.subtotal);
+      }
       if (invoice.tax !== undefined) { fields.push(`total_vat = $${i++}`); values.push(invoice.tax); }
       if (invoice.discount !== undefined) { fields.push(`total_discount = $${i++}`); values.push(invoice.discount); }
       if (invoice.total_cost !== undefined) { fields.push(`total_cost = $${i++}`); values.push(invoice.total_cost); }
@@ -3602,6 +3683,14 @@ export const invoicesAPI = {
       if (invoice.currency !== undefined) { fields.push(`currency = $${i++}`); values.push(invoice.currency); }
       if (invoice.currency_rate !== undefined) { fields.push(`currency_rate = $${i++}`); values.push(invoice.currency_rate); }
       if (invoice.payment_method !== undefined) { fields.push(`payment_method = $${i++}`); values.push(String(invoice.payment_method)); }
+      // paid_amount — başlık alanı güncellemesi; peşinat ayrı cash_lines'a yazılır.
+      if ((invoice as any).paidAmount !== undefined) {
+        fields.push(`paid_amount = $${i++}`);
+        values.push(Number((invoice as any).paidAmount));
+      } else if ((invoice as any).paid_amount !== undefined) {
+        fields.push(`paid_amount = $${i++}`);
+        values.push(Number((invoice as any).paid_amount));
+      }
       if ((invoice as Record<string, unknown>).is_cancelled === true) {
         fields.push(`is_cancelled = $${i++}`);
         values.push(true);

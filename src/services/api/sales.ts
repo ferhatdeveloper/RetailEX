@@ -178,6 +178,10 @@ export const salesAPI = {
         total_cost: totalCost,
         gross_profit: totalGrossProfit,
         profit_margin: profitMargin,
+        // paidAmount: peşinat + nakit + kart. Veresiye kısmı ayrı cash_lines'a
+        // yazılır (CH_TAHSILAT); burada fiş başlığında veresiye düşülmez.
+        // paymentRows henüz hesaplanmadı; aşağıda sonradan set edilecek.
+        paidAmount: 0,
 
         // Metadata
         firma_id: firmNr,
@@ -227,6 +231,19 @@ export const salesAPI = {
       if (hasMixedWithCredit) {
         invoiceData.payment_method = 'veresiye';
       }
+
+      // paid_amount: paymentRows varsa Σ(cash+card); yoksa tek ödeme modunda
+      // tam tutar (peşin). Veresiye kısmı burada YOK.
+      // net_amount mantığı: brüt=net (KDV=0, indirim=0 varsayımı). Peşinat
+      // başlığa değil, ayrı cash_lines'a yazılır — başlıkta düşülmez.
+      const computedPaidAmount =
+        paymentRows.length > 0
+          ? cashPortion + cardPortion
+          : Number(sale.total || 0);
+      invoiceData.paidAmount = Number(computedPaidAmount.toFixed(2));
+      // net_amount: invoice.subtotal ile aynı (KDV=0, indirim başlıkta).
+      // Eski kodda peşinat düşülmüş gibi yazılıyordu; bu yanlış.
+      invoiceData.net_amount = Number(sale.subtotal || sale.total || 0);
 
       const tInv = import.meta.env.DEV ? '[SalesAPI] InvoicesAPI_Create' : '';
       if (import.meta.env.DEV) console.time(tInv);
