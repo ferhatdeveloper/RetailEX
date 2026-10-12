@@ -3022,12 +3022,12 @@ export function AppointmentPOS({
                     const disc = lineSplits[idx]?.discount ?? 0;
                     const net = lineSplits[idx]?.total ?? gross;
                     const ratio = finalTotalSale > 0 ? net / finalTotalSale : 0;
-                    // Peşinatlı Cari Düzeltmesi (madde 1): peşinatlı modda kalan
-                    // tutar cariye yazılmamalı. Ana satış fişine yalnızca peşinat
-                    // tutarı yazılır → ERP cari etkisi 0. Randevu tamamlanma
-                    // anında `beautyService.collectAppointmentRemainder` kalanı
-                    // tahsil eder ve cari orada oluşur.
-                    const splitTotal = isPesinatliPrePayment ? paidNow * ratio : net;
+                    // Randevu tamamlandığında Fatura Detayı brüt hizmet tutarını
+                    // (net) göstermeli — `paidNow * ratio` (kalan/peşinat) DEĞİL.
+                    // Cari etkisi `paid_amount/remaining_amount/payment_status`
+                    // üzerinden ayarlanır (peşinatlı modda paid=paidNow, remaining=0);
+                    // `total` alanı brüt kalır.
+                    const splitTotal = net;
                     const splitPaid = isPesinatliPrePayment ? paidNow * ratio : paidNow * ratio;
                     const splitRemaining = isPesinatliPrePayment ? 0 : remainingNow * ratio;
                     const splitStatus = isPesinatliPrePayment ? 'pending' : 'paid';
@@ -3069,9 +3069,11 @@ export function AppointmentPOS({
                     );
                 });
                 await Promise.all(splitSaleTasks);
-                // Peşinatlı modda ERP cari etkisi 0; sync ERP'ye sadece tahsilat olarak
-                // peşinat tutarını yaz (kalan cari olarak yansımaz).
-                const syncTotal = isPesinatliPrePayment ? paidNow : finalTotalSale;
+                // Fatura Detayı brüt hizmet tutarı (finalTotalSale) ile Perakende
+                // Satış listesi tutarlı olmalı. Peşinatlı modda ERP cari etkisi 0
+                // `payment_status=pending` + `remaining_amount=0` ile sağlanır;
+                // `total` alanı brüt kalır (kalan ödeme DEĞİL).
+                const syncTotal = finalTotalSale;
                 const syncRemaining = isPesinatliPrePayment ? 0 : remainingNow;
                 const syncStatus = isPesinatliPrePayment ? 'pending' : 'paid';
                 await beautyService.syncBeautyCheckoutToErp(
@@ -3092,10 +3094,11 @@ export function AppointmentPOS({
                     saleItems,
                 );
             } else {
-                // Peşinatlı Cari Düzeltmesi (madde 1): tek fiş yolunda da aynı
-                // kural — peşinatlı modda ana satış fişi sadece peşinat tutarında,
-                // remaining_amount=0 ile yazılır. Cari etkisi yok.
-                const singleTotal = isPesinatliPrePayment ? paidNow : finalTotalSale;
+                // Randevu tamamlandığında Fatura Detayı brüt hizmet tutarını
+                // göstermeli — peşinatlı modda bile `total` brüt (finalTotalSale)
+                // kalır. Cari etkisi 0 kuralı `paid_amount=paidNow` + `remaining=0`
+                // + `payment_status=pending` ile korunur.
+                const singleTotal = finalTotalSale;
                 const singlePaid = paidNow;
                 const singleRemaining = isPesinatliPrePayment ? 0 : remainingNow;
                 const singleStatus = isPesinatliPrePayment ? 'pending' : 'paid';
