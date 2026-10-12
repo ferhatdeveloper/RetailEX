@@ -74,3 +74,59 @@ export function balanceColorClass(realBalance: number): string {
   if (realBalance < -0.005) return 'text-emerald-600';
   return 'text-gray-500';
 }
+
+/**
+ * Randevu "Kalan" tutarı (12.10.2026 — NIHAT bug'ı).
+ *
+ * Bugün DB gerçeği:
+ *   total_price = 50.000, deposit_amount = 20.000, remainder_paid_amount = 30.000
+ *   status = 'completed' → ekranda **0** görünmeliydi, **30.000** gösteriyordu.
+ *
+ * Kök neden: eski hesap `total_price - deposit_amount - remainder_paid_amount`
+ * formülünü durum bilgisi olmadan uyguluyordu; completed randevuda
+ * remainder_paid_amount kasaya yansımışsa `kalan = 0` olmalı, ama
+ * `remainder_paid_amount` henüz satış fişine uygulanmamış (applyAdvanceToSale
+ * çalıştırılmamış) → aynı tutar hem avans hem satış kalanı sayılıyordu
+ * (çift sayım 50k + 30k = 80k).
+ *
+ * Semantik:
+ *   - status='completed' | 'closed'        → 0 (hizmet verildi, kalan yok)
+ *   - status='cancelled' | 'canceled' | 'no_show' | 'no-show' | 'void'
+ *                                          → 0 (iptal, borç yok)
+ *   - aksi                                → max(0, total_price - deposit - remainder_paid)
+ *
+ * `remainder_paid_amount` opsiyonel; yoksa 0 sayılır.
+ */
+export interface AppointmentRemainderInput {
+  total_price?: number | null | undefined;
+  deposit_amount?: number | null | undefined;
+  remainder_paid_amount?: number | null | undefined;
+  status?: string | null | undefined;
+}
+
+export function computeAppointmentRemainder(
+  apt: AppointmentRemainderInput,
+): number {
+  const status = String(apt.status ?? '').trim().toLowerCase();
+  if (
+    status === 'completed' ||
+    status === 'closed' ||
+    status === 'cancelled' ||
+    status === 'canceled' ||
+    status === 'no_show' ||
+    status === 'no-show' ||
+    status === 'void'
+  ) {
+    return 0;
+  }
+  const total = Math.max(0, Number(apt.total_price ?? 0) || 0);
+  const deposit = Math.max(0, Number(apt.deposit_amount ?? 0) || 0);
+  const remainderPaid = Math.max(
+    0,
+    Number(apt.remainder_paid_amount ?? 0) || 0,
+  );
+  return Math.max(0, total - deposit - remainderPaid);
+}
+
+/** Kısa alias — randevu kalanı için UI tarafında kullanılır. */
+export const computeKalan = computeAppointmentRemainder;

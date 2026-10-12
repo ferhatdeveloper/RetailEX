@@ -40,6 +40,7 @@ import {
     FileTextOutlined,
     FormOutlined,
     PrinterOutlined,
+    ClockCircleOutlined,
 } from '@ant-design/icons';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { beautyService, type BeautyCustomerProfileQueryOpts } from '../../../services/beautyService';
@@ -52,6 +53,7 @@ import {
     customerEffectiveBalance,
     isDisplayableBalance,
 } from '../../../utils/customerEffectiveBalance';
+import { computeKalan } from '../../../utils/customerBalance';
 import { logger } from '../../../services/loggingService';
 import type {
     BeautyCustomer,
@@ -1063,6 +1065,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 ledgerMismatch: false,
                 depositTotal: 0,
                 depositCount: 0,
+                kalanToplam: 0,
                 appointmentCount: 0,
                 appointmentCountDetail: '',
                 lastVisitLabel: '-',
@@ -1193,6 +1196,24 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             totalSpent,
             collectedAmount,
             veresiyeCari,
+            /**
+             * 12.10.2026 — NIHAT bug'ı: tamamlanan randevuda Kalan = 0 olmalı
+             * (hizmet verildi, borç yok). `computeKalan` helper'ı status-aware
+             * (completed/cancelled/no_show/void → 0; aksi max(0, total -
+             * deposit - remainder_paid)). Kullanıcının "80.000 çift sayım"
+             * raporunun kök nedenlerinden biri: status-aware olmayan eski
+             * hesap tamamlanan randevuda 30.000 gösteriyordu → Toplam Harcama
+             * 50.000 + Kalan 30.000 = 80.000.
+             */
+            kalanToplam: visibleAppointments.reduce(
+                (acc, a) => acc + computeKalan({
+                    total_price: a.total_price,
+                    deposit_amount: a.deposit_amount,
+                    remainder_paid_amount: a.remainder_paid_amount,
+                    status: a.status,
+                }),
+                0,
+            ),
             // 10.10.2026 — Müşteri Detay bakiyesi artık profildeki (snapshot)
             // değerden alınır. `customers.balance` henüz hizmet verilmemiş
             // rezervasyon avansını içermez; bu yüzden `effectiveBalance =
@@ -2345,6 +2366,65 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                                     {profileStats.appointmentCountDetail}
                                                 </div>
                                             ) : null}
+                                        </Card>
+                                    </Col>
+                                    {/* 12.10.2026 — Randevu Kalan tutarı (status-aware).
+                                     * Tamamlanan / iptal edilen randevuda 0; aksi
+                                     * max(0, total_price - deposit_amount - remainder_paid_amount).
+                                     * `computeKalan` helper'ı tek doğruluk kaynağı.
+                                     * NIHAT bug'ı kök neden: status-aware olmayan
+                                     * hesap tamamlanan randevuda 30.000 gösteriyordu
+                                     * → kullanıcı 50k + 30k = 80k çift sayım görüyordu. */}
+                                    <Col xs={24} sm={12} lg={8} xl={4}>
+                                        <Card
+                                            size="small"
+                                            bordered
+                                            className={`!shadow-none h-full ${
+                                                profileStats.kalanToplam > 0
+                                                    ? 'border-amber-200'
+                                                    : 'border-dashed border-gray-200'
+                                            }`}
+                                            data-testid="customer-remainder-card"
+                                        >
+                                            <Statistic
+                                                title={
+                                                    <span
+                                                        className={
+                                                            profileStats.kalanToplam > 0
+                                                                ? 'text-amber-700'
+                                                                : 'text-gray-500'
+                                                        }
+                                                    >
+                                                        {tm('bAppointmentRemainderLabel')}
+                                                    </span>
+                                                }
+                                                value={formatCurrency(profileStats.kalanToplam)}
+                                                valueStyle={{
+                                                    color: profileStats.kalanToplam > 0 ? '#b45309' : '#9ca3af',
+                                                    fontSize: '20px',
+                                                }}
+                                                prefix={
+                                                    <ClockCircleOutlined
+                                                        className={
+                                                            profileStats.kalanToplam > 0
+                                                                ? 'text-amber-600'
+                                                                : 'text-gray-400'
+                                                        }
+                                                        aria-hidden
+                                                    />
+                                                }
+                                            />
+                                            <div
+                                                className={`mt-1 text-[10px] font-medium leading-tight ${
+                                                    profileStats.kalanToplam > 0
+                                                        ? 'text-amber-700'
+                                                        : 'text-gray-400'
+                                                }`}
+                                            >
+                                                {profileStats.kalanToplam > 0
+                                                    ? tm('bAppointmentRemainderOpenHint')
+                                                    : tm('bAppointmentRemainderClosedHint')}
+                                            </div>
                                         </Card>
                                     </Col>
                                     <Col xs={24} sm={12} lg={8} xl={4}>

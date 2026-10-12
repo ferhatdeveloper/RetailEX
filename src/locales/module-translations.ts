@@ -7567,6 +7567,26 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: '{completed} ئامادەبوونی تەواوکراو',
   },
   bLastVisit: { tr: 'Son Ziyaret', en: 'Last Visit', ar: 'آخر زيارة', ku: 'دوایین سەردان' },
+  /** 12.10.2026 — NIHAT bug'ı: tamamlanan randevuda Kalan = 0.
+   * `computeKalan` helper'ı status-aware; tamamlanan/iptal randevuda 0. */
+  bAppointmentRemainderLabel: {
+    tr: 'Randevu Kalan',
+    en: 'Appointment Remainder',
+    ar: 'المتبقي من الموعد',
+    ku: 'بڕی ماوەی ئۆردەر',
+  },
+  bAppointmentRemainderOpenHint: {
+    tr: 'Açık randevularda kalan tahsilat',
+    en: 'Open appointments — pending collection',
+    ar: 'مواعيد مفتوحة — تحصيل معلق',
+    ku: 'ئامادەبووونی کراوە — کۆکردنەوەی چاوەڕوانکراو',
+  },
+  bAppointmentRemainderClosedHint: {
+    tr: 'Tüm randevular tamamlandı',
+    en: 'All appointments closed',
+    ar: 'جميع المواعيد مكتملة',
+    ku: 'هەموو ئامادەبووونەکان تەواوکراون',
+  },
   bLastVisitCompletedHint: {
     tr: 'Tamamlanan randevu',
     en: 'Completed appointment',

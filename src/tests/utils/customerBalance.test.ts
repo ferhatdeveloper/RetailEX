@@ -12,6 +12,8 @@ import { describe, expect, it } from 'vitest';
 import {
   computeCustomerBalance,
   balanceColorClass,
+  computeAppointmentRemainder,
+  computeKalan,
 } from '../../utils/customerBalance';
 
 describe('computeCustomerBalance — 3 parçalı müşteri bakiyesi', () => {
@@ -121,5 +123,120 @@ describe('computeCustomerBalance — kullanıcı senaryosu (ROZA / ARAM)', () =>
     expect(result[1]).toMatchObject({ name: 'ARAM', realBalance: 0, pendingDeposit: 35000, color: 'text-gray-500' });
     expect(result[2]).toMatchObject({ name: 'BORCLU', realBalance: 50000, pendingDeposit: 0, color: 'text-red-600' });
     expect(result[3]).toMatchObject({ name: 'ALACAKLI', realBalance: -20000, pendingDeposit: 0, color: 'text-emerald-600' });
+  });
+});
+
+/**
+ * 12.10.2026 — NIHAT müşteri detay sayfası bug'ı:
+ * "TEK randevu var nasıl toplam 80.000 yapıyor" (50.000 hizmet +
+ * 20.000 avans + 30.000 kalan ödeme; randevu completed; cari_avans
+ * status=open).
+ *
+ * Kök neden: Kalan widget'ı status-aware değildi; completed randevuda
+ * `total_price - deposit - remainder_paid` = 30.000 dönüyordu.
+ * 50.000 (Toplam Harcama) + 30.000 (Kalan) = 80.000 çift sayım.
+ *
+ * Çözüm: `computeAppointmentRemainder` (alias `computeKalan`) status-aware —
+ * tamamlanan / iptal edilen randevuda 0; aksi halde max(0, total - deposit -
+ * remainder_paid).
+ */
+describe('computeAppointmentRemainder / computeKalan — randevu Kalan (12.10.2026 NIHAT bug)', () => {
+  it('NIHAT bugün senaryosu: completed → Kalan = 0', () => {
+    // 50k hizmet + 20k peşinat (avans) + 30k kalan ödeme (kasa_giris).
+    // Randevu completed olduğu için Kalan = 0; gerçek ödeme kasa_giris'te.
+    const apt = {
+      total_price: 50_000,
+      deposit_amount: 20_000,
+      remainder_paid_amount: 30_000,
+      status: 'completed',
+    };
+    expect(computeAppointmentRemainder(apt)).toBe(0);
+    expect(computeKalan(apt)).toBe(0);
+  });
+
+  it('cancelled → Kalan = 0', () => {
+    expect(
+      computeAppointmentRemainder({
+        total_price: 50_000,
+        deposit_amount: 20_000,
+        status: 'cancelled',
+      }),
+    ).toBe(0);
+  });
+
+  it('no_show → Kalan = 0', () => {
+    expect(
+      computeAppointmentRemainder({
+        total_price: 80_000,
+        deposit_amount: 30_000,
+        status: 'no_show',
+      }),
+    ).toBe(0);
+  });
+
+  it('scheduled (henüz hizmet verilmemiş) → max(0, total - deposit)', () => {
+    // 50k hizmet + 20k peşinat alınmış, hizmet verilmemiş → 30k kalan.
+    expect(
+      computeAppointmentRemainder({
+        total_price: 50_000,
+        deposit_amount: 20_000,
+        remainder_paid_amount: 0,
+        status: 'scheduled',
+      }),
+    ).toBe(30_000);
+  });
+
+  it('scheduled + kısmi kalan ödeme → fark doğru', () => {
+    // 50k hizmet + 20k peşinat + 10k kalan nakit (henüz 20k kalan).
+    expect(
+      computeAppointmentRemainder({
+        total_price: 50_000,
+        deposit_amount: 20_000,
+        remainder_paid_amount: 10_000,
+        status: 'scheduled',
+      }),
+    ).toBe(20_000);
+  });
+
+  it('overpaid → 0 (clamp)', () => {
+    expect(
+      computeAppointmentRemainder({
+        total_price: 50_000,
+        deposit_amount: 30_000,
+        remainder_paid_amount: 25_000,
+        status: 'scheduled',
+      }),
+    ).toBe(0);
+  });
+
+  it('status null/undefined → scheduled muamelesi (pozitif fark döner)', () => {
+    expect(
+      computeAppointmentRemainder({
+        total_price: 50_000,
+        deposit_amount: 20_000,
+      }),
+    ).toBe(30_000);
+  });
+
+  it('null/undefined alanlar güvenli (defansif)', () => {
+    expect(computeAppointmentRemainder({})).toBe(0);
+    expect(
+      computeAppointmentRemainder({
+        total_price: null,
+        deposit_amount: undefined,
+        remainder_paid_amount: NaN,
+        status: 'completed',
+      }),
+    ).toBe(0);
+  });
+
+  it('büyük-küçük harf ve whitespace toleransı (status)', () => {
+    expect(
+      computeAppointmentRemainder({
+        total_price: 50_000,
+        deposit_amount: 20_000,
+        status: '  COMPLETED  ',
+      }),
+    ).toBe(0);
   });
 });
