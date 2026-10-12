@@ -3314,7 +3314,8 @@ BEGIN
       batch_no        VARCHAR(120),
       item_type       VARCHAR(20) DEFAULT ''Malzeme'',
       qty_shipped     DECIMAL(18,4) DEFAULT 0,
-      qty_delivered   DECIMAL(18,4) DEFAULT 0
+      qty_delivered   DECIMAL(18,4) DEFAULT 0,
+      linked_appointment_id UUID
     );
   ', v_tbl_items, v_tbl_sales);
   -- CREATE TABLE IF NOT EXISTS eski/eksik şemayı güncellemez; kolonları garanti et
@@ -3322,7 +3323,13 @@ BEGIN
     'ALTER TABLE %I ADD COLUMN IF NOT EXISTS item_type VARCHAR(20) DEFAULT ''Malzeme''',
     v_tbl_items
   );
+  -- 212: REZARVASYON HİZMETİ satırı idempotency'si için appointment bağlantısı
+  EXECUTE format(
+    'ALTER TABLE %I ADD COLUMN IF NOT EXISTS linked_appointment_id uuid',
+    v_tbl_items
+  );
   EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (expiry_date) WHERE expiry_date IS NOT NULL', v_tbl_items || '_expiry_date_idx', v_tbl_items);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (linked_appointment_id) WHERE linked_appointment_id IS NOT NULL', v_tbl_items || '_linked_appt_idx', v_tbl_items);
 
   -- 3. Cash Transactions
   EXECUTE format('

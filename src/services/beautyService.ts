@@ -3423,6 +3423,179 @@ export const beautyService = {
         if (statusStr === 'cancelled') {
             await beautyService.voidPaidBeautySalesLinkedToAppointment(id);
         }
+        // 212: REZARVASYON HİZMETİ satırı — completed geçişi idempotent.
+        if (statusStr === 'completed' && current.status !== 'completed') {
+            try {
+                await beautyService.appendReservationHizmetiLine(id);
+            } catch (e) {
+                console.warn('[updateAppointment] appendReservationHizmetiLine failed:', e);
+            }
+        }
+    },
+
+    /**
+     * 212 — Randevu `completed` durumuna geçince bağlı satış fişine
+     * "REZARVASYON HİZMETİ" statik kalem satırı ekler.
+     *
+     * Kurallar:
+     *   - Tutar = appointment.total_price, KDV=0, item_type='Hizmet'.
+     *   - Idempotent: aynı `linked_appointment_id` (veya item_name='REZARVASYON
+     *     HİZMETİ' + invoice_id) için 1 kez yazılır; tekrar completed
+     *     güncellemeleri duplicate oluşturmaz.
+     *   - Header recompute: `sales.total_net`, `total_gross`, `net_amount`
+     *     güncellenir.
+     *   - Cash_lines'a yeni KASA_GIRIS eklenmez (mevcut ödeme kalır);
+     *     sadece fiş başlığı + kalem güncellenir.
+     *
+     * Akış:
+     *   1) `beauty.rex_{firm}_{period}_beauty_appointments` üzerinden
+     *      `total_price` ve `sale_group_id` alınır; total_price <= 0 → sessizce çık.
+     *   2) Bağlı ERP `sales` fişi bulunur (önce `linked_appointment_id`,
+     *      yoksa `notes LIKE '%rex_appt:<id>%'`, sonra `sale_group_id`).
+     *   3) Idempotency: aynı fişte REZARVASYON HİZMETİ satırı var mı?
+     *   4) Yeni kalem INSERT edilir (`linked_appointment_id` kolonu ile).
+     *   5) Header recompute (total_net, total_gross, net_amount).
+     */
+    async appendReservationHizmetiLine(appointmentId: string): Promise<void> {
+        const aid = String(appointmentId ?? '').trim();
+        if (!aid) return;
+        if (shouldUseTenantPostgrestApi()) {
+            // PostgREST modunda appointment + sales zaten ayrı yazılır; şimdilik
+            // ham SQL moduna düş ve aynı bağlantıyı kullan.
+        }
+        const fn = erpFirmNrForRow();
+        const pn = erpPeriodNrForRow();
+        const apptTable = `beauty.rex_${fn}_${pn}_beauty_appointments`;
+        const salesTable = `public.rex_${fn}_${pn}_sales`;
+        const itemsTable = `public.rex_${fn}_${pn}_sale_items`;
+        const RES_ITEM_NAME = 'REZARVASYON HİZMETİ';
+
+        // 1) Appointment'tan total_price al
+        let totalPrice = 0;
+        let saleGroupId: string | null = null;
+        try {
+            const apptRes = await postgres.query<{ total_price: unknown; sale_group_id: unknown }>(
+                `SELECT total_price, sale_group_id FROM ${apptTable} WHERE id = $1`,
+                [aid],
+            );
+            const row = apptRes.rows[0];
+            if (!row) return;
+            totalPrice = Number(row.total_price ?? 0);
+            saleGroupId = row.sale_group_id ? String(row.sale_group_id) : null;
+        } catch (e) {
+            console.warn('[appendReservationHizmetiLine] appointment read failed:', e);
+            return;
+        }
+        if (!Number.isFinite(totalPrice) || totalPrice <= 0) return;
+
+        // 2) Bağlı sales fişini bul — üç katmanlı arama
+        let saleId: string | null = null;
+        try {
+            // 2a) linked_appointment_id eşleşmesi
+            const byLink = await postgres.query<{ id: string }>(
+                `SELECT id FROM ${salesTable}
+                  WHERE linked_appointment_id = $1::uuid
+                    AND COALESCE(is_cancelled, false) = false
+                  ORDER BY created_at DESC LIMIT 1`,
+                [aid],
+            );
+            if (byLink.rows.length > 0) {
+                saleId = String(byLink.rows[0].id);
+            } else {
+                // 2b) notes içinde rex_appt:<id> etiketi
+                const byNote = await postgres.query<{ id: string }>(
+                    `SELECT id FROM ${salesTable}
+                      WHERE COALESCE(notes, '') LIKE $1
+                        AND COALESCE(is_cancelled, false) = false
+                      ORDER BY created_at DESC LIMIT 1`,
+                    [`%rex_appt:${aid}%`],
+                );
+                if (byNote.rows.length > 0) {
+                    saleId = String(byNote.rows[0].id);
+                } else if (saleGroupId) {
+                    // 2c) sale_group_id eşleşmesi (text karşılaştırma)
+                    const byGroup = await postgres.query<{ id: string }>(
+                        `SELECT id FROM ${salesTable}
+                          WHERE sale_group_id = $1
+                            AND COALESCE(is_cancelled, false) = false
+                          ORDER BY created_at DESC LIMIT 1`,
+                        [saleGroupId],
+                    );
+                    if (byGroup.rows.length > 0) {
+                        saleId = String(byGroup.rows[0].id);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[appendReservationHizmetiLine] sales find failed:', e);
+            return;
+        }
+        if (!saleId) {
+            // Bağlı fiş yoksa REZARVASYON HİZMETİ eklenemez; sessizce çık
+            // (randevu tek başına açılmış olabilir, fiş daha sonra oluşur).
+            return;
+        }
+
+        // 3) Idempotency — linked_appointment_id veya item_name ile kontrol
+        try {
+            const dup = await postgres.query<{ id: string }>(
+                `SELECT id FROM ${itemsTable}
+                  WHERE invoice_id = $1::uuid
+                    AND (
+                        linked_appointment_id = $2::uuid
+                        OR item_name = $3
+                    )
+                  LIMIT 1`,
+                [saleId, aid, RES_ITEM_NAME],
+            );
+            if (dup.rows.length > 0) return;
+        } catch (e) {
+            console.warn('[appendReservationHizmetiLine] dup check failed:', e);
+            // Kontrol yapılamadıysa yine de yazma — güvenli tarafta kal.
+            return;
+        }
+
+        // 4) Yeni kalem INSERT — tam tutar (KDV=0, iskonto yok)
+        try {
+            await postgres.query(
+                `INSERT INTO ${itemsTable} (
+                    firm_nr, period_nr, invoice_id, item_name, item_type,
+                    quantity, unit_price, vat_rate,
+                    discount_rate, discount_amount,
+                    total_amount, net_amount,
+                    unit_cost, total_cost, gross_profit,
+                    unit, unit_multiplier, base_quantity, unit_price_fc, currency,
+                    linked_appointment_id
+                ) VALUES (
+                    $1, $2, $3::uuid, $4, 'Hizmet',
+                    1, $5, 0,
+                    0, 0,
+                    $5, $5,
+                    0, 0, 0,
+                    'Adet', 1, 1, $5, 'IQD',
+                    $6::uuid
+                )`,
+                [fn, pn, saleId, RES_ITEM_NAME, totalPrice, aid],
+            );
+        } catch (e) {
+            console.warn('[appendReservationHizmetiLine] insert failed:', e);
+            return;
+        }
+
+        // 5) Header recompute — total_net, total_gross, net_amount güncelle
+        try {
+            await postgres.query(
+                `UPDATE ${salesTable}
+                    SET total_net     = COALESCE(total_net, 0) + $2,
+                        total_gross   = COALESCE(total_gross, 0) + $2,
+                        net_amount    = COALESCE(net_amount, 0) + $2,
+                        updated_at    = NOW()
+                  WHERE id = $1::uuid`,
+                [saleId, totalPrice],
+            );
+        } catch (e) {
+            console.warn('[appendReservationHizmetiLine] header update failed:', e);
+        }
     },
 
     /** POS satış notlarında `rex_appt:<uuid>` ile eşlenen ödenmiş kayıtları iptal (ciro dışı). */
@@ -4742,6 +4915,16 @@ export const beautyService = {
                 } catch (e) {
                     console.warn('[updateAppointmentStatus] package consume failed:', e);
                 }
+            }
+            // 212: REZARVASYON HİZMETİ satırı — tamamlanan randevunun bağlı
+            // satış fişine appointment.total_price tutarında statik satır.
+            // Idempotent: aynı appointment için 1 kez yazılır (linked_appointment_id
+            // + item_name='REZARVASYON HİZMETİ' kontrolü); cash_lines'a yeni
+            // KASA_GIRIS eklenmez, sadece fiş başlığı + kalem güncellenir.
+            try {
+                await beautyService.appendReservationHizmetiLine(id);
+            } catch (e) {
+                console.warn('[updateAppointmentStatus] appendReservationHizmetiLine failed:', e);
             }
         }
         if (status === 'cancelled' || status === 'no_show') {
