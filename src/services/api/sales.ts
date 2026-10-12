@@ -849,9 +849,18 @@ function isCustomerSalesReturnInvoice(invoice: Invoice): boolean {
   });
 }
 
-function mapInvoiceToSale(invoice: Invoice): Sale {
+/**
+ * Bug 29 (2026-10-12) — Export edilir; testlerde brüt Ciro fallback
+ * (total_net → total_amount → total) davranışı doğrulanır.
+ */
+export function mapInvoiceToSale(invoice: Invoice): Sale {
   const isCustomerReturn = isCustomerSalesReturnInvoice(invoice);
-  const amount = Math.abs(Number(invoice.total_amount ?? invoice.total ?? 0));
+  // Bug 29 (2026-10-12) — Ciro brüt belge tutarı (Sale.total):
+  // DB'de total_gross=0 invariant; brüt Ciro = total_net (indirim Hariç).
+  // Fallback zinciri: total_net → total_amount (net_amount) → total (eski alan).
+  const amount = Math.abs(
+    Number(invoice.total_net ?? invoice.total_amount ?? invoice.total ?? 0),
+  );
   const signedTotal = isCustomerReturn ? -amount : amount;
   const signedSubtotal = isCustomerReturn ? -Math.abs(Number(invoice.subtotal) || amount) : invoice.subtotal;
   const headerPayments = Array.isArray((invoice as Invoice & { header_fields?: { payments?: Array<{ method?: string; amount?: number; currency?: string }> } }).header_fields?.payments)

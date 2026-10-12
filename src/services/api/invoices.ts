@@ -5320,6 +5320,9 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     subtotal: parseFloat(dbInv.total_net || 0) || parseFloat(dbInv.total_gross || 0),
     tax: parseFloat(dbInv.total_vat || 0),
     discount: parseFloat(dbInv.total_discount || 0),
+    // Bug 29 (2026-10-12) — Ciro brüt belge tutarı (total_net). DB'de total_gross=0
+    // invariant; ciro brüt = total_net (indirim Hariç). sale.total buradan beslenir.
+    total_net: parseFloat(dbInv.total_net || 0) || undefined,
     total_amount: netAmount,
     total: netAmount,
     status: dbInv.status,

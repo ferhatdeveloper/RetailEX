@@ -601,6 +601,10 @@ export interface Invoice {
   invoice_date: string;
   invoice_type: number;
   invoice_category: 'Satis' | 'Alis' | 'Iade' | 'Irsaliye' | 'Siparis' | 'Teklif' | 'Hizmet';
+  /** Logo trcode (1=Alış, 3=Satış İade, 6=Alış İade, 8=Satış, 9=Verilen Hizmet, 4=Alınan Hizmet). */
+  trcode?: number;
+  /** Logo fiche_type ('sales_invoice' / 'purchase_invoice' / 'return_invoice' vb.). */
+  fiche_type?: string;
   customer_id?: string;
   customer_name?: string;
   /** Cari hesap kodu (müşteri / satış tarafı) — sales tablosunda yok; join veya karttan */
@@ -611,6 +615,12 @@ export interface Invoice {
   supplier_code?: string;
   total_amount: number;
   total?: number;
+  /**
+   * VEYA indirimi dis düşülmeden brüt tutar (DB `total_net` kolonu).
+   * DB'de `total_gross=0` invarianı; bu alan ciro brüt hesabında kullanılır.
+   * Bug 29 (2026-10-12) — Aylık Rapor Ciro brüt düzeltmesi.
+   */
+  total_net?: number;
   total_cost?: number;
   gross_profit?: number;
   profit_margin?: number;
