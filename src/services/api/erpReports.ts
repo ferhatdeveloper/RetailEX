@@ -3200,7 +3200,14 @@ export const erpReportsAPI = {
           s.id,
           s.${partyIdCol} AS party_id,
           COALESCE(NULLIF(TRIM(s.fiche_type), ''), '') AS fiche_type,
-          COALESCE(s.net_amount, 0) AS net_amount,
+          -- Bug 29 follow-up (12.10.2026) — Brüt Ciro kaynağı total_net (DB'de
+          -- total_gross=0 invariant, indirim Hariç brüt belge tutarı). Eski
+          -- kod net_amount aggregate ediyordu; bu alan indirim düşülmüş
+          -- NET tahsilat tutarıydı (örn. 50000 brüt → 30000 net). Brüt
+          -- kolonu 65.000 (30000+35000) gösteriyordu.
+          -- NULLIF(total_net,0) → eski kayıtlarda total_net boşsa net_amount'a
+          -- geri düş (geriye dönük uyum).
+          COALESCE(NULLIF(s.total_net, 0), s.net_amount, 0) AS net_amount,
           COALESCE(s.paid_amount, 0) AS paid_amount,
           COALESCE(s.credit_amount, 0) AS credit_amount,
           COALESCE(s.date, s.created_at) AS doc_date,
@@ -3218,9 +3225,9 @@ export const erpReportsAPI = {
       party_totals AS (
         SELECT
           party_id,
-          -- Brüt: iade olmayan
+          -- Brüt: iade olmayan (sale_lines.net_amount = total_net fallback)
           SUM(CASE WHEN fiche_type <> ${returnFType} THEN net_amount ELSE 0 END) AS gross_amount,
-          -- İade: negatif
+          -- İade: negatif (iade fişlerinin total_net değeri negatif işaretlidir)
           SUM(CASE WHEN fiche_type = ${returnFType} THEN net_amount ELSE 0 END) AS return_amount,
           -- Brüt adet (iade satırları dahil miktar)
           SUM(total_quantity) AS total_quantity,
