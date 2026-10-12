@@ -142,6 +142,16 @@ export type ReportColumnTableCol<T> = {
   enableColumnFilter?: boolean;
   cell?: (row: T) => ReactNode;
   footerSum?: boolean;
+  /**
+   * 12.10.2026 — Dip toplam (grand total) için özel değer çıkarıcı.
+   * Verilirse `footerSum: true` kolonlarda ham `row[key]` yerine bu
+   * çağrılır. Durum-aware hesap (status'a göre Alınan Ödeme / Kalan
+   * Bakiye) veya DB tarafında olmayan türetilmiş alanlar için
+   * kullanılır. `cell` içinde de aynı helper çağrılabilir; DevExDataGrid
+   * bu değeri hem grup alt toplamı (`groupFooterSumColumns` bağımsız),
+   * hem de dip toplam için okur.
+   */
+  footerGetValue?: (row: T) => number;
   footerFormat?: (sum: number, rows: T[]) => ReactNode;
 };
 
@@ -225,10 +235,16 @@ export function ReportColumnTable<T extends object>({
         .filter((c) => c.footerSum || (c.type === 'number' && isReportSumColumnId(c.key)))
         .map((c) => ({
           columnId: c.key,
-          getValue: (row: T) => {
-            const n = Number((row as Record<string, unknown>)[c.key]);
-            return Number.isFinite(n) ? n : 0;
-          },
+          // 12.10.2026 — `footerGetValue` verildiyse ham `row[key]` yerine
+          // status-aware helper çağrılır (ör. `computeTakenPayment(r)`).
+          // Bu, dip toplam satırının grup alt toplamıyla aynı mantığı
+          // kullanmasını garanti eder.
+          getValue: c.footerGetValue
+            ? c.footerGetValue
+            : (row: T) => {
+                const n = Number((row as Record<string, unknown>)[c.key]);
+                return Number.isFinite(n) ? n : 0;
+              },
           format:
             c.footerFormat ??
             ((sum: number) => formatReportFooterSum(sum, c.key, footerCurrency)),

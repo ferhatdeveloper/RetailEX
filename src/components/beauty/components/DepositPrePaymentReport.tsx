@@ -15,6 +15,30 @@ import { toast } from 'sonner';
 
 const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
+// 12.10.2026 — Kullanıcı isteği: "0 ise göstermesin".
+// Sayısal hücrelerde ve footer satırında değer 0 (veya 0.005'ten küçük)
+// olduğunda "0" yerine boş (veya "—") gösterilir; bu hem veri satırı
+// hücresini hem de dip toplam (mavi) / grup alt toplam (sarı) satırını
+// kapsar. Negatif değerler için de aynı tolerans (formül hatası / veri
+// bozulması koruması).
+const isZeroAmount = (n: number): boolean => Math.abs(n) < 0.005;
+
+// 0 ise boş string; aksi halde para formatında. Footer'da hücre sağa
+// hizalı olduğundan boş string görsel olarak düzgün çöküntü sağlar;
+// hücre render'ında ise `renderZeroAmount()` (aşağıda) "—" üretir.
+const fmtAmt = (n: number): string => (isZeroAmount(n) ? '' : fmt(n));
+
+// 12.10.2026 — Hücre render'ı: 0 ise "—", aksi halde mevcut stil.
+// `tabular-nums` sağa hizalı kolonlarda rakam genişliği sabit kalır; bu
+// hem `outstanding_amount` hem `received_payment` hücrelerinde tutarlı
+// görünüm verir. `text-slate-300` "—" için düşük dikkat dağıtıcı renk.
+const renderZeroAmount = (n: number, nonZero: (n: number) => React.ReactNode): React.ReactNode =>
+    isZeroAmount(n) ? (
+        <span className="tabular-nums text-slate-300">—</span>
+    ) : (
+        <>{nonZero(n)}</>
+    );
+
 type Row = Awaited<ReturnType<typeof beautyService.getDepositPrePaymentReport>>[number];
 
 // 10.10.2026 — Rezervasyon / Ön Ödeme Raporu "Kalan" hesabı.
@@ -185,8 +209,11 @@ export function DepositPrePaymentReport() {
                 align: 'right',
                 size: 130,
                 footerSum: true,
-                footerFormat: (n) => fmt(n),
-                cell: (r) => <span className="font-semibold text-gray-700 tabular-nums">{fmt(r.total_price)}</span>,
+                footerFormat: (n) => fmtAmt(n),
+                cell: (r) =>
+                    renderZeroAmount(Number(r.total_price) || 0, (v) => (
+                        <span className="font-semibold text-gray-700 tabular-nums">{fmt(v)}</span>
+                    )),
             },
             {
                 key: 'deposit_amount',
@@ -195,8 +222,11 @@ export function DepositPrePaymentReport() {
                 align: 'right',
                 size: 140,
                 footerSum: true,
-                footerFormat: (n) => fmt(n),
-                cell: (r) => <span className="font-semibold text-blue-700 tabular-nums">{fmt(r.deposit_amount)}</span>,
+                footerFormat: (n) => fmtAmt(n),
+                cell: (r) =>
+                    renderZeroAmount(Number(r.deposit_amount) || 0, (v) => (
+                        <span className="font-semibold text-blue-700 tabular-nums">{fmt(v)}</span>
+                    )),
             },
             {
                 key: 'received_payment',
@@ -204,43 +234,58 @@ export function DepositPrePaymentReport() {
                 // Formül: completed/closed → total - deposit (kalan bakiye tahsil kabul edilir);
                 // Sadece Peşinat aşamasında (scheduled/deposit_only/partial) → remainder_paid_amount.
                 // DB view `remainder_paid_amount` her zaman 0 olabiliyor; bu yüzden status-aware
-                // `computeTakenPayment` helper'ı tek kaynak. Kullanıcı şikâyeti: "Alınan Ödeme boş"
-                // — hücre 0 döndüğünde bile görünür kalmalı.
+                // `computeTakenPayment` helper'ı tek kaynak. 12.10.2026 — kullanıcı isteği:
+                // hücre 0 ise boş ("—") göster; tahsil edilmemiş durumu görsel olarak ifade etme.
                 header: tm('bReceivedPayment') || 'Alınan Ödeme',
                 type: 'number',
                 align: 'right',
                 size: 130,
                 footerSum: true,
-                footerFormat: (n) => fmt(n),
-                cell: (r) => {
-                    const received = computeTakenPayment(r);
-                    const cls =
-                        received > 0.005
-                            ? 'font-semibold text-emerald-700 tabular-nums'
-                            : 'tabular-nums text-slate-500';
-                    return <span className={cls}>{fmt(received)}</span>;
-                },
+                // 12.10.2026 — Dip toplam (grand total) ham `row.received_payment`
+                // (DB'de 0) yerine `computeTakenPayment` ile hesaplanmalı.
+                // `groupFooterSumColumns` zaten doğru çalışıyordu; bu ek
+                // olmadan mavi dip toplam satırı 0 dönüyordu.
+                footerGetValue: (r) => computeTakenPayment(r),
+                // 12.10.2026 — Dip toplam 0 ise boş string; aksi halde `fmt`.
+                // Sağa hizalı kolonda boş string düzgün çöküntü sağlar.
+                footerFormat: (n) => fmtAmt(n),
+                cell: (r) =>
+                    renderZeroAmount(computeTakenPayment(r), (received) => {
+                        const cls =
+                            received > 0.005
+                                ? 'font-semibold text-emerald-700 tabular-nums'
+                                : 'tabular-nums text-slate-500';
+                        return <span className={cls}>{fmt(received)}</span>;
+                    }),
             },
             {
                 key: 'outstanding_amount',
                 // 12.10.2026 — "Kalan Bakiye" artık Alınan Ödeme'nin sağında.
                 // Hizmet tamamlandığında 0 olur; Alınan Ödeme + Rezervasyon = Toplam Tutar
-                // eşitliği görsel olarak doğrulanabilir.
+                // eşitliği görsel olarak doğrulanabilir. Kullanıcı isteği:
+                // 0 ise "—" göster; gerçek borç yoksa hücre boş hissettirmeli.
                 header: tm('bKpiTotalOutstanding') || 'Kalan Bakiye',
                 type: 'number',
                 align: 'right',
                 size: 130,
                 footerSum: true,
-                footerFormat: (n) => fmt(n),
-                cell: (r) => {
-                    // 10.10.2026 — Kalan = bTotal - (bReservation + takenPayment).
-                    // completed/cancelled/no_show durumlarında Kalan = 0; DB'deki
-                    // raw `outstanding_amount` alanı bunu garanti etmez, çünkü
-                    // bakiye tahsil edilmemiş ama hizmet verilmiş olabilir.
-                    const amt = computeKalan(r);
-                    const cls = amt > 0.005 ? 'text-rose-700 font-semibold' : 'text-emerald-700 font-semibold';
-                    return <span className={`tabular-nums ${cls}`}>{fmt(amt)}</span>;
-                },
+                // 12.10.2026 — Dip toplam ham `row.outstanding_amount` yerine
+                // `computeKalan(r)` ile hesaplanmalı (status-aware). Aynı
+                // neden `received_payment` için geçerli. Bu köprü olmadan
+                // mavi dip toplam ham DB alanını okur ve status-aware hesabı
+                // yansıtmaz.
+                footerGetValue: (r) => computeKalan(r),
+                // 12.10.2026 — Dip toplam 0 ise boş string; aksi halde `fmt`.
+                footerFormat: (n) => fmtAmt(n),
+                cell: (r) =>
+                    renderZeroAmount(computeKalan(r), (amt) => {
+                        // 10.10.2026 — Kalan = bTotal - (bReservation + takenPayment).
+                        // completed/cancelled/no_show durumlarında Kalan = 0; DB'deki
+                        // raw `outstanding_amount` alanı bunu garanti etmez, çünkü
+                        // bakiye tahsil edilmemiş ama hizmet verilmiş olabilir.
+                        const cls = amt > 0.005 ? 'text-rose-700 font-semibold' : 'text-emerald-700 font-semibold';
+                        return <span className={`tabular-nums ${cls}`}>{fmt(amt)}</span>;
+                    }),
             },
             {
                 key: 'payment_state',
@@ -395,34 +440,60 @@ export function DepositPrePaymentReport() {
                                 {
                                     columnId: 'total_price',
                                     getValue: (r) => Number(r.total_price ?? 0),
-                                    format: (sum) => (
-                                        <span className="font-bold text-gray-900 tabular-nums">
-                                            {fmt(sum)}
-                                        </span>
-                                    ),
+                                    format: (sum) =>
+                                        isZeroAmount(sum) ? (
+                                            <span className="tabular-nums text-slate-300">—</span>
+                                        ) : (
+                                            <span className="font-bold text-gray-900 tabular-nums">
+                                                {fmt(sum)}
+                                            </span>
+                                        ),
                                 },
                                 {
                                     columnId: 'deposit_amount',
                                     getValue: (r) => Number(r.deposit_amount ?? 0),
-                                    format: (sum) => (
-                                        <span className="text-blue-700 font-semibold">{fmt(sum)}</span>
-                                    ),
+                                    format: (sum) =>
+                                        isZeroAmount(sum) ? (
+                                            <span className="tabular-nums text-slate-300">—</span>
+                                        ) : (
+                                            <span className="text-blue-700 font-semibold">
+                                                {fmt(sum)}
+                                            </span>
+                                        ),
                                 },
                                 {
                                     columnId: 'received_payment',
                                     getValue: (r) => computeTakenPayment(r),
-                                    format: (sum) => (
-                                        <span className={sum > 0.005 ? 'text-emerald-700 font-semibold' : 'text-slate-500'}>
-                                            {fmt(sum)}
-                                        </span>
-                                    ),
+                                    format: (sum) =>
+                                        isZeroAmount(sum) ? (
+                                            <span className="tabular-nums text-slate-300">—</span>
+                                        ) : (
+                                            <span
+                                                className={
+                                                    sum > 0.005
+                                                        ? 'text-emerald-700 font-semibold'
+                                                        : 'text-slate-500'
+                                                }
+                                            >
+                                                {fmt(sum)}
+                                            </span>
+                                        ),
                                 },
                                 {
                                     columnId: 'outstanding_amount',
                                     getValue: (r) => computeKalan(r),
-                                    format: (sum) => (
-                                        <span className={sum > 0.005 ? 'text-rose-700 font-semibold' : 'text-emerald-700 font-semibold'}>
-                                            {fmt(sum)}
+                                    format: (sum) =>
+                                        isZeroAmount(sum) ? (
+                                            <span className="tabular-nums text-slate-300">—</span>
+                                        ) : (
+                                            <span
+                                                className={
+                                                    sum > 0.005
+                                                        ? 'text-rose-700 font-semibold'
+                                                        : 'text-emerald-700 font-semibold'
+                                                }
+                                            >
+                                                {fmt(sum)}
                                         </span>
                                     ),
                                 },
