@@ -12,7 +12,8 @@ import { postgres, ERP_SETTINGS } from '../../services/postgres';
 import { isReturnSale } from '../../utils/posZReport';
 import { isDepositSale } from '../../utils/reportDepositFilter';
 import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
-import { saleCollected } from '../../utils/computeActualCollected';
+// saleCollected kaldırıldı (2026-10-12 — Ciro = brüt belge tutarı;
+// Ciro için `saleCollected` yerine doğrudan `Math.abs(s.total)` kullanılıyor).
 import {
   mergeExpensesWithCashOuts,
   mergeExpensesWithCashIns,
@@ -165,7 +166,8 @@ function expenseDayKey(raw: string | undefined | null): string {
  * Günlük Rapor ile aynı satış özeti:
  * - cancelled / refunded aktif satışa girmez
  * - refunded yalnızca iade sayacında
- * - aktif ciro = Σ total − Σ |iade satırı| (status=return / negatif total aktifteyse)
+ * - aktif ciro = Σ |sale.total| (brüt belge tutarı, 2026-10-12)
+ * - iade Ciro'dan düşer (status=return veya negatif total Hariç tutulur)
  * - nakit / kart ayrı kovalar; iade peşin satırı abs ile şişirmez
  */
 function aggregateSales(
@@ -226,18 +228,10 @@ function aggregateSales(
       const linkedApt = String((s as any).linked_appointment_id ?? '').trim();
       const isCompletedLinked = linkedApt && completedAppointmentIds.has(linkedApt);
       if (isCompletedLinked && !isReturn) {
-        // Ciro (tahsil edilen nakit) — deposit fiş, paid_amount veya payments’tan.
-        const depositedCollected = saleCollected({
-          total: absTotal,
-          total_price: absTotal,
-          paid_amount: Number((s as any).paid_amount) || 0,
-          deposit_amount: absTotal,
-          remainder_paid_amount: Number((s as any).remainder_paid_amount) || 0,
-          status: s.status,
-          payment_status: (s as any).payment_status,
-          payment_method: s.paymentMethod,
-        });
-        row.revenue += depositedCollected;
+        // Ciro = brüt belge tutarı (2026-10-12 kullanıcı kararı). Deposit
+        // fiş tamamlanmış randevuya bağlıysa Ciro'ya eklenir; avans zaten
+        // tahsil edildiği için brüt = tahsilat ile aynı şey.
+        row.revenue += absTotal;
         row.saleCount += 1;
         const split = saleCollectedSplit(s);
         row.cash += split.cash;
@@ -255,26 +249,21 @@ function aggregateSales(
       row.discount += Number(s.discount) || 0;
     }
 
-    // Bug-fix 2026-10-11 — Ciro = "tahsil edilen nakit" (geri-çevrim).
-    // Önceki: `row.revenue += total` (brüt belge tutarı). Kullanıcı:
-    //   "Tüm raporlar hizmet tam tutarını (50.000) yansıtıyor;
-    //    Ciro = bugün tahsil edilen nakit olmalı."
-    // Yeni: `saleCollected(s)` — paid_amount + (tamamlandı ise remainder_paid);
-    //       iade → negatif tahsilat Ciro'dan düşer.
-    // Muhasebeci kuralı: Ciro = peşinat + tahsil edilen kalan ödeme;
-    //                   rezervasyon peşinatı da Ciro'ya girer;
-    //                   iptal = 0; veresiye kalan = cari borç (Ciro değil).
-    const collected = saleCollected({
-      total,
-      total_price: total,
-      paid_amount: Number((s as any).paid_amount) || 0,
-      deposit_amount: Number((s as any).deposit_amount) || 0,
-      remainder_paid_amount: Number((s as any).remainder_paid_amount) || 0,
-      status: s.status,
-      payment_status: (s as any).payment_status,
-      payment_method: s.paymentMethod,
-    });
-    row.revenue += collected;
+    // Bug-fix 2026-10-12 — Ciro = brüt belge tutarı (`sale.total`).
+    // 2026-10-11 geri-çevrimi Ciro'yu tahsil edilen nakit olarak değiştirmişti
+    // (veresiye kalan Ciro'ya girmiyordu). Kullanıcı yeni kararı: Ciro brüt
+    // belge tutarı olmalı; veresiye kalan dahil edilir, "Net Kalan" kolonu
+    // (Ciro − Gider) doğru olsun diye Ciro 65.000 → 100.000 olarak güncellenir.
+    //
+    // Trade-off (bilinçli):
+    //  2026-10-04 geri-çevrimi: "Ciro = brüt belge tutarı veresiyeyi de dahil
+    //  eder, Ciro'yu 26M'a şişirir". Bu biliniyor; Ciro brüt bilinçli olarak
+    //  isteniyor (Net Kalan doğru olsun diye). Veresiye Kasa'ya henüz
+    //  girmediyse Ciro yine de yansır, Net Kalan = Ciro − Gider.
+    //  Tahsilat (nakit/kart/veresiye ayrımı) ayrı kolonlarda korunur.
+    //
+    // Günlük Rapor dailyTotal ile aynı semantik: brüt belge tutarı − iade.
+    row.revenue += absTotal;
     const split = saleCollectedSplit(s);
     row.cash += split.cash;
     row.card += split.card;
@@ -771,15 +760,17 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ? formatIsoDateTr(periodKey)
           : new Date(`${periodKey}-01T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
-      // Ciro = yalnızca satış cirosu (CH_TAHSILAT Hariç). Kullanıcı geri-çevrim
-      // (2026-10-04): "Ciro'da 1980K olması gerekiyor, Ciro genişletmesi
-      // Ciro'yu 26M'a şişiriyordu". Ciro = sale.revenue. CH_TAHSILAT
-      // ayrı "Kasa Para Girişi" kolonunda izlenir.
-      // Net Kalan = Ciro − Gider. 2026-10-12 kullanıcı talebi:
-      // "Net Kalan yanlış, Günlük Rapor formülü ile aynı olmalı". Günlük
-      // Rapor dailyNetAfterExpenseBrut = Ciro − Gider (Alış Hariç). partnerPeriodNet
-      // ile tutarlı; alış ayrı kolonda izlenir, Net'e yansımaz. Gider kartı/
-      // parametresi kapalıysa gider düşülmez.
+      // Ciro = brüt belge tutarı (sale.total). 2026-10-12 kullanıcı kararı:
+      // "Ciro = brüt belge tutarı (sale.total) → Ciro 65.000 → 100.000".
+      // Daha önce Ciro = tahsil edilen nakit idi (2026-10-11 geri-çevrimi);
+      // şimdi brüt Ciro isteniyor (veresiye dahil). Trade-off: brüt Ciro
+      // veresiyeyi de dahil eder ve Ciro'yu olduğundan yüksek gösterebilir;
+      // ancak "Net Kalan = Ciro − Gider" doğru olur. CH_TAHSILAT ayrı
+      // "Kasa Para Girişi" kolonunda izlenir, Ciro'ya katılmaz.
+      // Net Kalan = Ciro − Gider. Günlük Rapor dailyNetAfterExpenseBrut
+      // ile aynı semantik; partnerPeriodNet.computeYearMonthlyNets ile
+      // tutarlı (orada da brüt Ciro). Gider kartı/parametresi kapalıysa
+      // gider düşülmez.
       const ciroTotal = sale.revenue;
       const netRemaining = reportNetCiroMinusGider(
         ciroTotal,

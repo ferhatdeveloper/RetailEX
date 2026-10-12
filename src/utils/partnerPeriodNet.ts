@@ -39,7 +39,8 @@ function monthLastDay(year: number, month: number): string {
 
 /**
  * Aylık net: PeriodSummaryReport (monthly-days / yearly) ile aynı mantık.
- * Ciro: satış faturaları (açılış/alış hariç); iade düşülür.
+ * Ciro: brüt belge tutarı (sale.total); açılış/alış Hariç; iade Hariç.
+ * 2026-10-12 kullanıcı kararı: Ciro = brüt belge tutarı; veresiye dahil.
  * Masraf: gider kartları + bağlanmamış kasa çıkışları.
  */
 export async function computeYearMonthlyNets(year: number): Promise<PartnerMonthNet[]> {
@@ -81,6 +82,9 @@ export async function computeYearMonthlyNets(year: number): Promise<PartnerMonth
     // Ciro kök neden: getSalesOnlyByDateRange zaten iade Hariç döndüğü için
     // Ciro'ya yalnızca toplam eklenir; iade iki kez düşürme yok.
     // PeriodSummaryReport.aggregateSales ile aynı sonuç.
+    // Ciro = brüt belge tutarı (sale.total). 2026-10-12 kullanıcı kararı:
+    // brüt Ciro isteniyor (veresiye dahil). `total` zaten pozitif
+    // (iade Hariç tutulmuş); doğrudan eklenir.
     let rev = saleMap.get(key) || 0;
     rev += total;
     saleMap.set(key, rev);

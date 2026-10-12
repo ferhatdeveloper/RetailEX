@@ -451,3 +451,137 @@ describe('mergeExpensesWithCashOuts — Bug 31 linkedCashIds skip', () => {
     );
   });
 });
+
+// =============================================================
+// 2026-10-12 — Ciro = brüt belge tutarı kullanıcı kararı:
+// PeriodSummaryReport.aggregateSales içindeki Ciro `saleCollected(s)`
+// (tahsil edilen) yerine doğrudan `|sale.total|` (brüt belge tutarı)
+// ile hesaplanır. Veresiye kalan dahil edilir → Ciro 65.000 → 100.000
+// olur. Net Kalan = Ciro − Gider doğru olsun diye Ciro brüt bilinçli
+// olarak isteniyor. Günlük Rapor dailyTotal ile aynı semantik.
+// =============================================================
+import { computeMonthlyCashSummary } from '../../utils/monthlyCashStatusSync';
+import type { Sale } from '../../core/types';
+import type { Invoice } from '../../core/types/models';
+
+function makeBrutSale(args: {
+  id: string;
+  total: number;
+  method?: 'cash' | 'card' | 'credit';
+  date?: string;
+}): Sale {
+  return {
+    id: args.id,
+    receiptNumber: args.id,
+    total: args.total,
+    paymentMethod: args.method ?? 'cash',
+    date: (args.date ?? '2026-10-12T10:00:00') as unknown as Date,
+    status: 'completed',
+    isDeposit: false,
+    payments: [
+      { method: args.method ?? 'cash', amount: args.total, currency: 'IQD' },
+    ],
+  } as unknown as Sale;
+}
+
+describe('periodSummaryCiroBrut — Ciro = brüt belge tutarı (sale.total)', () => {
+  it('kullanıcı senaryosu: Ciro 100.000 (50 + 50), Gider 0 → Net Kalan 100.000', () => {
+    // 2026-10-12 kullanıcı kararı: "Ciro 65.000 → 100.000 olur".
+    // Ciro brüt = 50.000 + 50.000 = 100.000; Gider 0 → Net Kalan 100.000.
+    const sales: Sale[] = [
+      makeBrutSale({ id: 's1', total: 50_000 }),
+      makeBrutSale({ id: 's2', total: 50_000 }),
+    ];
+    const m = computeMonthlyCashSummary({
+      sales,
+      rezervasyonAvansi: 0,
+      expenses: [],
+      cashLines: [],
+      purchases: [] as Invoice[],
+      acilis: 0,
+    });
+    expect(m.ciro).toBe(100_000);
+    expect(m.gider).toBe(0);
+    expect(m.netKalan).toBe(100_000); // Ciro − Gider
+  });
+
+  it('veresiye satışta Ciro brüt = belge tutarı (tahsilat 0 olsa bile)', () => {
+    // Veresiye satış: Ciro = brüt belge tutarı; tahsilat ayrı kolon.
+    // 2026-10-12 Ciro brüt: Ciro 100.000, nakitCiro 0, veresiye 100.000.
+    const sales: Sale[] = [
+      makeBrutSale({ id: 's1', total: 100_000, method: 'credit' }),
+    ];
+    const m = computeMonthlyCashSummary({
+      sales,
+      rezervasyonAvansi: 0,
+      expenses: [],
+      cashLines: [],
+      purchases: [] as Invoice[],
+      acilis: 0,
+    });
+    expect(m.ciro).toBe(100_000);
+    expect(m.nakitCiro).toBe(0);
+    expect(m.veresiye).toBe(100_000);
+    expect(m.netKalan).toBe(100_000); // Ciro brüt − Gider 0
+  });
+
+  it('karma: nakit 60 + kart 40 → Ciro brüt 100, Net 90 (Gider 10)', () => {
+    // Ciro = brüt belge tutarı, nakit+kart = 100 (tam tahsilat).
+    const sales: Sale[] = [
+      makeBrutSale({ id: 's1', total: 60_000, method: 'cash' }),
+      makeBrutSale({ id: 's2', total: 40_000, method: 'card' }),
+    ];
+    const expenses: Expense[] = [
+      makeExpense({ id: 'exp-1', amount: 10_000, expense_date: '2026-10-12' }),
+    ];
+    const m = computeMonthlyCashSummary({
+      sales,
+      rezervasyonAvansi: 0,
+      expenses,
+      cashLines: [],
+      purchases: [] as Invoice[],
+      acilis: 0,
+    });
+    expect(m.ciro).toBe(100_000);
+    expect(m.gider).toBe(10_000);
+    expect(m.netKalan).toBe(90_000);
+  });
+
+  it('iade Ciro\'ya yansımaz (Ciro negatife düşmez)', () => {
+    // Ciro 100.000 (2×50) + 1 iade -30.000 → Ciro 100.000 (iade Hariç).
+    const sales: Sale[] = [
+      makeBrutSale({ id: 's1', total: 50_000 }),
+      makeBrutSale({ id: 's2', total: 50_000 }),
+      makeBrutSale({ id: 'ret-1', total: -30_000, method: 'cash' }),
+    ];
+    const m = computeMonthlyCashSummary({
+      sales,
+      rezervasyonAvansi: 0,
+      expenses: [],
+      cashLines: [],
+      purchases: [] as Invoice[],
+      acilis: 0,
+    });
+    expect(m.ciro).toBe(100_000); // iade Hariç
+  });
+
+  it('Günlük Rapor dailyTotal ile aynı semantik: Ciro brüt − iade', () => {
+    // Günlük rapor dailyTotal = brüt − iade (ReportsModule.tsx 2803).
+    // Aylık rapor Ciro da aynı: brüt belge tutarı (iade Hariç).
+    const sales: Sale[] = [
+      makeBrutSale({ id: 's1', total: 100_000 }),
+      makeBrutSale({ id: 's2', total: 50_000 }),
+      makeBrutSale({ id: 'ret-1', total: -20_000 }),
+    ];
+    const m = computeMonthlyCashSummary({
+      sales,
+      rezervasyonAvansi: 0,
+      expenses: [],
+      cashLines: [],
+      purchases: [] as Invoice[],
+      acilis: 0,
+    });
+    // Ciro = 100.000 + 50.000 (iade Hariç) = 150.000
+    expect(m.ciro).toBe(150_000);
+  });
+});

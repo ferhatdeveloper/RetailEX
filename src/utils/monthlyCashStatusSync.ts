@@ -6,7 +6,9 @@
  * türetildiği için aynı dönem için farklı toplamlar üretiyordu. Bu helper,
  * tek bir tarih aralığı (veya ay) için tek "gerçek" tanımı paylaştırır:
  *
- *   Ciro              = sales cirosu (CH_TAHSILAT Hariç; iade Ciro'ya yansımaz)
+ *   Ciro              = brüt belge tutarı `|sale.total|` (CH_TAHSILAT Hariç;
+ *                        iade Ciro'ya yansımaz). 2026-10-12 kullanıcı kararı:
+ *                        Ciro = brüt belge tutarı; veresiye dahil.
  *   Nakit Tahsilat    = Ciro'daki nakit + sonradan ek nakit tahsilat (CH_TAHSILAT)
  *   Kart Tahsilat     = Ciro'daki kart tutarı
  *   Havale Tahsilat   = Ciro'daki havale tutarı
@@ -26,7 +28,8 @@
  *   `b212c576` (hasPeriodActivity),
  *   `c18aa372` (Günlük Rapor avans),
  *   `94d8a7f5` (Kasa Durumu TOPLAM rezervasyon Hariç),
- *   `4e687eb2` (Klinik TAHŞİLAT).
+ *   `4e687eb2` (Klinik TAHŞİLAT),
+ *   `2026-10-12` (Ciro = brüt belge tutarı, kullanıcı bilinçli kararı).
  */
 
 import type { Sale } from '../core/types';
@@ -171,8 +174,10 @@ export function computeMonthlyCashSummary(
   const purchases = Array.isArray(input.purchases) ? input.purchases : [];
   const cashLines = Array.isArray(input.cashLines) ? input.cashLines : [];
 
-  // Ciro = sales cirosu (iade Ciro'ya yansımaz; Ciro negatife düşmez)
-  // PeriodSummaryReport.aggregateSales ile aynı semantik.
+  // Ciro = brüt belge tutarı (|sale.total|). 2026-10-12 kullanıcı kararı:
+  // Ciro = brüt belge tutarı; veresiye dahil. İade Ciro'ya yansımaz
+  // (negatif şişirmesin). PeriodSummaryReport.aggregateSales ile aynı
+  // semantik.
   let ciro = 0;
   let nakitCiro = 0;
   let kartCiro = 0;
