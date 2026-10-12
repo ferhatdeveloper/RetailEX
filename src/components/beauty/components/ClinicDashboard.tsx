@@ -478,18 +478,31 @@ export function ClinicDashboard() {
          * yanıltıcı olur (Kasa Durumu ve Cari Ekstre ayrı yerde kalan cari
          bakiyesini gösterir — burada 0 dönmek doğru).
          *
-         * Bug ekleme 12.10.2026 — TAHSİLAT KPI'sı artık 3 katmanlı
-         * (revenueFromSales + revenueFromKasa + revenueFromCariTahsilat):
-         *   - revenueFromSales     = ana satış `total` (avans dahil) — Bug 22
-         *   - revenueFromKasa      = bugün KASA_GIRIS (cash_lines'a yazılmış)
-         *   - revenueFromCariTahsilat = bugün CH_TAHSILAT (rezervasyon Hariç)
-         * `mainSales.total=0` olan senaryolarda gerçek tahsilat KASA_GIRIS'te
-         * (örn. bugün 45.000 + 40.000 = 85.000 IQD); bug 12.10.2026.
-         * `todayExtraCash` hariç tutuldu: `extraCustomerCollectionsNotOnSales`
-         * yalnızca satış dışı tahsilatları ekler; KASA_GIRIS ayrı bir kaynak.
+         * Bug ekleme 12.10.2026 — TAHSİLAT KPI'sı bugünkü KASA_GIRIS +
+         * CH_TAHSILAT (REZERVASYON Hariç) toplamıdır. `revenueFromSales`
+         * (ana satış `total`) **Hariç**: Bug 22 sonrası düzeltme (12.10.2026).
+         *
+         * Kök neden: randevu `status='completed'` olduğunda hizmetin bedeli
+         * `cash_lines`'a `KASA_GIRIS` olarak yazılır. `beauty_sales.total`
+         * ve `cash_lines.KASA_GIRIS` aynı parayı temsil eder (peşin nakit /
+         * kalan nakit); ikisini birden toplamak **çift sayım** yaratır.
+         *
+         *   Senaryo (12.10.2026):
+         *     - KASA_GIRIS              = 30.000 (NIHAT hizmet 30.000 peşin nakit)
+         *     - cari_avans (status=open)= 20.000 (POS rezervasyon avansı)
+         *     - ÖNCEKİ (3-katman dahil) = 30 + 30 + 0 + 20 = 80.000 (yanlış)
+         *     - YENİ   (mainSales=[])   =  0 + 30 + 0 + 20 = 50.000 (doğru)
+         *
+         * Bug 22 semantiği korunur: hizmet tam tutarı zaten KASA_GIRIS'te
+         * yansır (peşin + kalan nakit toplamı); avans ayrıca
+         * `reservationFromAvans` üzerinden sayılır (REZERVASYON Hariç).
+         *
+         * Helper 3-katmanlı hesabı hâlâ yapıyor (test uyumu); production
+         * call site yalnız KASA_GIRIS + CH_TAHSILAT (REZ Hariç) katmanını
+         * kullanır. `revenueFromSales` regresyonu için ayrı bir test var.
          */
         const tahsilat = clinicDashboardTahsilatTotal({
-            mainSales: mainSales.map((s) => ({ total: Number(s.total) || 0 })),
+            mainSales: [],
             cashLines: todayCashLines,
         });
         // 12.10.2026 — Kullanıcı isteği: TAHSİLAT = toplam kasaya giren nakit
@@ -559,11 +572,12 @@ export function ClinicDashboard() {
             inProg: kpis.inProg,
             cancelled: kpis.cancelled,
             // 12.10.2026 — Kullanıcı isteği (revize): TAHSİLAT = KASA_GIRIS
-            // + cari_avans. Bugün 85.000 + 55.000 = 140.000.
-            //   - `tahsilat.revenue` = 85.000 (KASA_GIRIS) + 0 (CH_TAHSILAT,
-            //     REZERVASYON Hariç) + 0 (sales total) = 85.000
-            //   - `reservationFromAvans` = 55.000 (bugün açık cari_avans)
-            // REZERVASYON KPI ayrı kart = avans bilgilendirmesi (55.000).
+            // + cari_avans. Bugün 30k KASA_GIRIS + 20k cari_avans = 50.000.
+            //   - `tahsilat.revenue` = 0 (revenueFromSales Hariç) +
+            //     30.000 (KASA_GIRIS) + 0 (CH_TAHSILAT REZERVASYON Hariç)
+            //     = 30.000
+            //   - `reservationFromAvans` = 20.000 (bugün açık cari_avans)
+            // REZERVASYON KPI ayrı kart = avans bilgilendirmesi.
             revenue: revenue + reservationFromAvans,
             // REZERVASYON kart'ı: yalnızca avans bilgilendirmesi
             reservation: reservation + reservationFromAvans,

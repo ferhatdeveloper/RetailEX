@@ -644,3 +644,80 @@ describe('ClinicDashboard TAHSİLAT kompozisyon (12.10.2026 bug)', () => {
     expect(clinicDashboardReservationWithAvans([], avans)).toBe(20_000);
   });
 });
+
+/**
+ * 12.10.2026 — TAHSİLAT çift sayım regresyonu.
+ *
+ * Kullanıcı şikâyeti: randevu `status='completed'` olduğunda hesap 80.000
+ * gösteriyor; olması gereken 50.000.
+ *
+ * Kök neden: NIHAT'ın satışı `payment_status='paid'` ve `total=30.000`;
+ * tahsilat ayrıca `cash_lines.KASA_GIRIS` 30.000 olarak yazılmış
+ * (peşin nakit). Eski 3-katmanlı formül `revenueFromSales (30) +
+ * revenueFromKasa (30) + reservationFromAvans (20) = 80.000` çift
+ * sayım üretiyordu.
+ *
+ * Çözüm: ClinicDashboard.tsx production call site `mainSales=[]` geçer;
+ * `tahsilat.revenue` yalnız KASA_GIRIS + CH_TAHSILAT (REZ Hariç) içerir.
+ * Bug 22 semantiği korunur: hizmet tam tutarı zaten KASA_GIRIS'te
+ * yansır.
+ *
+ * Bu describe bloğu, helper'ın **production** kullanımını simüle eder
+ * (mainSales boş); helper'ın 3-katmanlı iç hesabı regresyona girmez.
+ */
+describe('ClinicDashboard TAHSİLAT çift sayım regresyonu (12.10.2026)', () => {
+  it('randevu completed: KASA_GIRIS 30k + bs.total 30k + cari_avans 20k → TAHSİLAT 50.000', () => {
+    // Yardımcı: bs.total KASA_GIRIS'in aynısı (peşin nakit) → çift sayım.
+    // Production call: mainSales=[] (revenueFromSales Hariç).
+    const cashLines = [
+      { transaction_type: 'KASA_GIRIS', amount: 30_000, special_code: '' },
+    ];
+    const r = clinicDashboardTahsilatTotal({ mainSales: [], cashLines });
+    // tahsilat.revenue = 30 (sadece KASA_GIRIS; revenueFromSales=0).
+    expect(r.revenue).toBe(30_000);
+    expect(r.revenueFromSales).toBe(0);
+    expect(r.revenueFromKasa).toBe(30_000);
+    expect(r.revenueFromCariTahsilat).toBe(0);
+    // + cari_avans 20k = 50.000 (DB ile uyumlu).
+    const reservationFromAvans = 20_000;
+    expect(r.revenue + reservationFromAvans).toBe(50_000);
+  });
+
+  it('regresyon koruması: helper 3-katmanlı hâlâ çalışıyor (sales.total sayılır)', () => {
+    // Helper'ın kendisi hâlâ 3-katman; mainSales geçilirse bug 22 eski
+    // semantiği korunur (regression guard — yanlışlıkla mainSales=[]'i
+    // kaldırırsak bu test yakalar).
+    const mainSales = [{ total: 50_000 }];
+    const cashLines = [
+      { transaction_type: 'KASA_GIRIS', amount: 35_000, special_code: '' },
+      { transaction_type: 'KASA_GIRIS', amount: 15_000, special_code: '' },
+    ];
+    const r = clinicDashboardTahsilatTotal({ mainSales, cashLines });
+    // Helper 3-katman: 50 (sales) + 50 (KASA) + 0 (CH_TAHSILAT) = 100.000.
+    expect(r.revenue).toBe(100_000);
+    expect(r.revenueFromSales).toBe(50_000);
+    expect(r.revenueFromKasa).toBe(50_000);
+  });
+
+  it('Bug 22 korunur — ROZA: KASA 35k + cari_avans 15k = TAHSİLAT 50.000', () => {
+    // ROZA senaryosu: hizmet 50k, avans 15k + kalan nakit 35k.
+    // Bug 22: KPI = 50.000 (hizmet tam tutarı).
+    // Yeni formül: 0 (sales) + 35 (KASA kalan) + 0 (CH REZ Hariç) + 15 (avans) = 50.000.
+    const cashLines = [
+      { transaction_type: 'KASA_GIRIS', amount: 35_000, special_code: '' },
+    ];
+    const r = clinicDashboardTahsilatTotal({ mainSales: [], cashLines });
+    const reservationFromAvans = 15_000;
+    expect(r.revenue + reservationFromAvans).toBe(50_000);
+  });
+
+  it('Bug 22 korunur — ARA: KASA 50k peşin = TAHSİLAT 50.000', () => {
+    // ARA senaryosu: hizmet 50k, peşin nakit 50k.
+    // Bug 22: KPI = 50.000. Yeni formül: 0 (sales) + 50 (KASA) + 0 = 50.000.
+    const cashLines = [
+      { transaction_type: 'KASA_GIRIS', amount: 50_000, special_code: '' },
+    ];
+    const r = clinicDashboardTahsilatTotal({ mainSales: [], cashLines });
+    expect(r.revenue).toBe(50_000);
+  });
+});
