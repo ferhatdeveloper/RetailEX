@@ -17,7 +17,6 @@ import { useBeautyStore } from '../store/useBeautyStore';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
 import type { BeautyCustomer } from '../../../types/beauty';
-import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { ERP_SETTINGS } from '../../../services/postgres';
 import { beautyService } from '../../../services/beautyService';
@@ -229,9 +228,6 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const formatDate = (d?: string) =>
         d ? new Date(d).toLocaleDateString(tm('localeCode') || 'tr-TR') : '-';
 
-    const formatCurrency = (n?: number) =>
-        formatMoneyAmount(n ?? 0, { minFrac: 0, maxFrac: 0 });
-
     const columns: ColumnDef<BeautyCustomer, any>[] = useMemo(
         () => [
             columnHelper.accessor('file_id', {
@@ -285,11 +281,10 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                                     </Tag>
                                 ) : null}
                             </span>
-                            {c.balance != null && Number(c.balance) !== 0 ? (
-                                <span className="text-xs text-gray-500">
-                                    {tm('bBalance')}: {formatCurrency(c.balance)}
-                                </span>
-                            ) : null}
+                            {/* 12.10.2026 — Müşteri adı altındaki "Bakiye: …" satırı
+                                kaldırıldı (kullanıcı isteği). Cari bakiyesi artık
+                                sadece müşteri detayında görünür; liste satırında
+                                gürültü oluşturuyordu. */}
                         </div>
                     );
                 },

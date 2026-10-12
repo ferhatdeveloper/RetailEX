@@ -416,6 +416,30 @@ export function ClinicDashboard() {
          bakiyesini gösterir — burada 0 dönmek doğru).
          */
         const revenue = mainSales.reduce((s, sale) => s + Math.max(0, Number(sale.total) || 0), 0);
+        /**
+         * Rezervasyon KPI toplamı: bugün alınan peşinat / avans fişlerinin
+         * `total` toplamı. Ana satış fişleri hariç, deposit fişleri (`is_deposit`
+         * veya `parent_sale_id`) ve `notes` içindeki yedek tag'ler
+         * (`deposit:1`, `parent_sale:<uuid>`) dahil edilir. mainSales
+         * filtresinin tersi olarak tasarlandı — aynı not-parse mantığı uygulanır.
+         */
+        const reservationSales = todaySales.filter((sale) => {
+            const s = sale as BeautySale & {
+                is_deposit?: boolean | null;
+                parent_sale_id?: string | null;
+                notes?: string | null;
+            };
+            if (s.is_deposit === true || s.parent_sale_id != null) return true;
+            const notes = String(s.notes ?? '');
+            if (notes) {
+                if (beautyService.parseDepositFlagFromNotes(notes)) return true;
+                if (beautyService.parseParentSaleIdFromNotes(notes)) return true;
+            }
+            return false;
+        });
+        const reservation = reservationSales.reduce(
+            (s, sale) => s + Math.max(0, Number(sale.total) || 0), 0
+        );
         const remainingCari = 0;
 
         const sorted = [...kpis.todayApts].sort((a, b) => {
@@ -429,6 +453,7 @@ export function ClinicDashboard() {
             inProg: kpis.inProg,
             cancelled: kpis.cancelled,
             revenue,
+            reservation,
             remainingCari,
             expectedRevenue: kpis.expectedRevenue,
             remaining: kpis.remaining,
@@ -476,6 +501,7 @@ export function ClinicDashboard() {
             {/* ── KPI Strip ───────────────────────────────────────── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
                 <KpiCard label={tm('cebeGirenNakit')} value={fmt(stats.revenue)} sub={stats.remainingCari > 0 ? `${tm('kalanCari')}: ${fmt(stats.remainingCari)}` : undefined} accent={T.violet}  icon={TrendingUp} />
+                <KpiCard label={tm('bKpiReservationLabel')} value={fmt(stats.reservation)} sub={stats.reservation > 0 ? tm('bKpiReservationSub') : tm('bKpiReservationSub')} accent="#0d9488" icon={Wallet} />
                 <KpiCard label={tm('bKpiCompletedLabel')}         value={stats.completed}      sub={tm('bKpiCompletionRateSub').replace('{n}', String(stats.rate))} accent={T.green}   icon={CheckCircle2} />
                 <KpiCard label={tm('bKpiPendingLabel')}           value={stats.pending}        sub={tm('bKpiInProgressSub').replace('{n}', String(stats.inProg))} accent={T.amber} icon={Clock} />
                 <KpiCard label={tm('bKpiCancelledLabel') || 'İptal'} value={stats.cancelled} accent={T.pink} icon={Activity} />

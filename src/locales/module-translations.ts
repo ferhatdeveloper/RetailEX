@@ -12407,6 +12407,18 @@ export const excelModuleTranslations = {
   bKpiTotalOutstanding: { tr: 'Toplam Kalan', en: 'Total Outstanding', ar: 'إجمالي المتبقي', ku: 'کۆی ماوە' },
   bKpiPaidAppointments: { tr: 'Tamamlanan Randevu', en: 'Completed Appointments', ar: 'المواعيد المكتملة', ku: 'نۆڕەی تەواوبوو' },
   bKpiDepositOnly: { tr: 'Sadece Peşinat', en: 'Deposit Only', ar: 'دفعة مقدمة فقط', ku: 'تەنها پارەی پێشەکی' },
+  bKpiReservationLabel: {
+    tr: 'Rezervasyon',
+    en: 'Reservation',
+    ar: 'حجز',
+    ku: 'حیجز',
+  },
+  bKpiReservationSub: {
+    tr: 'Avans / Ön Ödeme',
+    en: 'Deposit / Pre-payment',
+    ar: 'دفعة مقدمة',
+    ku: 'پارەی پێشەکی',
+  },
   bPaymentStateUnpaid: { tr: 'Ödenmedi', en: 'Unpaid', ar: 'غير مدفوع', ku: 'نەدراوە' },
   bPaymentStateDepositOnly: { tr: 'Sadece Peşinat', en: 'Deposit Only', ar: 'دفعة مقدمة فقط', ku: 'تەنها پارەی پێشەکی' },
   bPaymentStatePartial: { tr: 'Kısmi Ödeme', en: 'Partial', ar: 'جزئي', ku: 'بەشێک' },

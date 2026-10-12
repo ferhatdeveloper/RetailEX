@@ -71,6 +71,38 @@ export function clinicDashboardTahsilatRevenue(
     .reduce((sum, s) => sum + Math.max(0, Number(s.total) || 0), 0);
 }
 
+/**
+ * ClinicDashboard `stats.reservation` hesabı.
+ *
+ *   reservation = Σ depositSales.total
+ *
+ * Ana satıştan ayrı tutulan peşinat / avans fişlerinin toplamı. Kullanıcı
+ * şikâyeti 12.10.2026: "rezervasyon tutarını buraya eklemeli" → TAHSİLAT
+ * kartının yanına REZERVASYON kartı. Tahsilat KPI'sı `Σ sale.total`
+ * (avans dahil hizmet tam tutarı) olduğu için aynı parayı iki kez
+ * saymamak amacıyla bu kartta yalnız deposit fişleri sayılır.
+ *
+ * `deposit:1` / `parent_sale:<uuid>` notes tag'leri için regex kullanılır
+ * (mainSales filtresinin simetriği — Bug ARAM-collected-2x).
+ */
+function isDepositBeautySale(sale: ClinicDashboardSaleRef): boolean {
+  if (sale.is_deposit === true || sale.parent_sale_id != null) return true;
+  const notes = String(sale.notes ?? '');
+  if (notes) {
+    if (/deposit\s*[:=]\s*1\b/i.test(notes)) return true;
+    if (/parent_sale\s*[:=]\s*[a-z0-9-]+/i.test(notes)) return true;
+  }
+  return false;
+}
+
+export function clinicDashboardReservationTotal(
+  sales: ClinicDashboardSaleRef[],
+): number {
+  return sales
+    .filter(isDepositBeautySale)
+    .reduce((sum, s) => sum + Math.max(0, Number(s.total) || 0), 0);
+}
+
 describe('ClinicDashboard Tahsilat KPI (Bug 22)', () => {
   it('ROZA senaryosu: 50k hizmet + 15k avans + 35k kalan → KPI = 50.000 (hizmet tam tutarı)', () => {
     const sales: ClinicDashboardSaleRef[] = [
@@ -214,5 +246,54 @@ describe('ClinicDashboard Tahsilat KPI (Bug 22)', () => {
       { id: 'deposit', total: 15_000, is_deposit: true, parent_sale_id: 'roza' },
     ];
     expect(clinicDashboardTahsilatRevenue(sales)).toBe(100_000);
+  });
+});
+
+describe('ClinicDashboard Rezervasyon KPI', () => {
+  it('deposit fişi → reservation toplamı', () => {
+    const sales: ClinicDashboardSaleRef[] = [
+      { id: 'deposit', total: 15_000, is_deposit: true, parent_sale_id: 'ana' },
+      { id: 'ana', total: 50_000, payment_status: 'paid' },
+    ];
+    expect(clinicDashboardReservationTotal(sales)).toBe(15_000);
+  });
+
+  it('notes tag deposit:1 → reservation', () => {
+    const sales: ClinicDashboardSaleRef[] = [
+      { id: 'd1', total: 20_000, notes: 'deposit:1 parent_sale:ana' },
+    ];
+    expect(clinicDashboardReservationTotal(sales)).toBe(20_000);
+  });
+
+  it('boş → 0', () => {
+    expect(clinicDashboardReservationTotal([])).toBe(0);
+  });
+
+  it('karışık → sadece deposit', () => {
+    const sales: ClinicDashboardSaleRef[] = [
+      { id: 'ana', total: 50_000, payment_status: 'paid' },
+      { id: 'd1', total: 15_000, is_deposit: true, parent_sale_id: 'ana' },
+    ];
+    expect(clinicDashboardReservationTotal(sales)).toBe(15_000);
+  });
+
+  it('ROZA senaryosu: 50k hizmet + 15k avans fişi → reservation = 15.000', () => {
+    // Aynı gün: ana satış fişi (50k) + peşinat fişi (15k).
+    // TAHSİLAT KPI 50k (avans dahil), REZERVASYON KPI 15k.
+    const sales: ClinicDashboardSaleRef[] = [
+      { id: 'roza-ana', total: 50_000, payment_status: 'paid' },
+      { id: 'roza-avans', total: 15_000, is_deposit: true, parent_sale_id: 'roza-ana' },
+    ];
+    expect(clinicDashboardTahsilatRevenue(sales)).toBe(50_000);
+    expect(clinicDashboardReservationTotal(sales)).toBe(15_000);
+  });
+
+  it('negatif / null / undefined total 0 sayılır (deposit)', () => {
+    const sales: ClinicDashboardSaleRef[] = [
+      { id: 'd-neg', total: -10_000, is_deposit: true },
+      { id: 'd-nan', total: Number.NaN, is_deposit: true },
+      { id: 'd-ok', total: 30_000, is_deposit: true, parent_sale_id: 'ana' },
+    ];
+    expect(clinicDashboardReservationTotal(sales)).toBe(30_000);
   });
 });

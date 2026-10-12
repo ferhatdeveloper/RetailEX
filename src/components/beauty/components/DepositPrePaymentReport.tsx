@@ -368,7 +368,9 @@ export function DepositPrePaymentReport() {
                             data={rows}
                             columns={columns}
                             height={520}
-                            footerLabel={tm('rprTotal') || 'Toplam'}
+                            // 12.10.2026 — Alt footer ("TOPLAM (N)") kaldırıldı.
+                            // DevExDataGrid: `resolvedFooterLabel` boşsa
+                            // `showFooterRow` false döner (bkz. DevExDataGrid.tsx:2952).
                             storageNamespace="beauty-deposit-prepayment-v2"
                             // 07.10.2026 — Rezervasyon Tutarı gruplaması (fiş bazlı):
                             // aynı BEA-* fişine ait birden çok hizmet/paket/ürün satırı

@@ -359,7 +359,9 @@ export function AppointmentPOS({
     const { tm, language: uiLanguage } = useLanguage();
     const { isMobile } = useResponsive();
     const { selectedFirm } = useFirmaDonem();
-    const { canEditBeautyAppointmentPrice } = usePermission();
+    const { canEditBeautyAppointmentPrice, isAdmin: isAdminPermission } = usePermission();
+    /** Randevu iptal yetkisi — yalnızca admin rolü. Cash/Balance reversal etkisi nedeniyle kısıtlı. */
+    const canCancelAppointment = isAdminPermission();
     const clinicSpec = useClinicErpSpecialtyOptional()?.specialty ?? 'beauty_default';
     const isDentalMode = clinicSpec === 'dental';
     const isStandaloneProductSales = salesMode === 'products_only';
@@ -378,13 +380,16 @@ export function AppointmentPOS({
     ];
     const appointmentStatusSelectOptions = useMemo(() => {
         if (!existingAppointment?.id) return STATUS_OPTS;
-        return [
-            ...STATUS_OPTS,
+        const extra = [
             { value: AppointmentStatus.COMPLETED, label: tm('bAppointmentCompleted') },
-            { value: AppointmentStatus.CANCELLED, label: tm('bAppointmentCancelled') },
+            // CANCELLED — admin-only: cari bakiye reversal + ciro dışı işaretleme etkisi nedeniyle kısıtlı
+            ...(canCancelAppointment
+                ? [{ value: AppointmentStatus.CANCELLED, label: tm('bAppointmentCancelled') } as const]
+                : []),
             { value: AppointmentStatus.NO_SHOW, label: tm('bStatusNoShow') },
         ];
-    }, [existingAppointment?.id, tm]);
+        return [...STATUS_OPTS, ...extra];
+    }, [existingAppointment?.id, tm, canCancelAppointment]);
 
     const posServiceCategoryLabels = useMemo((): Record<string, string> => {
         const base: Record<string, string> = {
@@ -3343,35 +3348,79 @@ export function AppointmentPOS({
                     </div>
                     {existingAppointment?.id &&
                         aptStatus !== AppointmentStatus.CANCELLED && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, justifyContent: 'flex-end' }}>
-                            <Label>{'\u00a0'}</Label>
-                            <button
-                                type="button"
-                                onClick={() => setCancelAptConfirmOpen(true)}
-                                disabled={updateExistingBusy || cancelAptBusy || bookingBusy}
-                                title={tm('bAptCancelToolbarBtn')}
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: 6,
-                                    padding: '8px 12px',
-                                    borderRadius: 5,
-                                    border: '1px solid #fecaca',
-                                    background: '#fff',
-                                    color: '#b91c1c',
-                                    fontSize: 11,
-                                    fontWeight: 800,
-                                    cursor:
-                                        updateExistingBusy || cancelAptBusy || bookingBusy ? 'not-allowed' : 'pointer',
-                                    whiteSpace: 'nowrap',
-                                    minHeight: 30,
-                                    opacity: updateExistingBusy || cancelAptBusy || bookingBusy ? 0.55 : 1,
-                                }}
-                            >
-                                {tm('bAptCancelToolbarBtn')}
-                            </button>
-                        </div>
+                        <>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, justifyContent: 'flex-end' }}>
+                                <Label>{'\u00a0'}</Label>
+                                <button
+                                    type="button"
+                                    onClick={() => setAptStatus(AppointmentStatus.COMPLETED)}
+                                    disabled={
+                                        updateExistingBusy ||
+                                        cancelAptBusy ||
+                                        bookingBusy ||
+                                        appointmentStatusMatches(aptStatus, AppointmentStatus.COMPLETED) ||
+                                        appointmentStatusMatches(aptStatus, AppointmentStatus.CANCELLED) ||
+                                        appointmentStatusMatches(aptStatus, AppointmentStatus.NO_SHOW)
+                                    }
+                                    title={tm('bAppointmentCompleted')}
+                                    aria-label={tm('bAppointmentCompleted')}
+                                    data-testid="beauty-appointment-complete-btn"
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: 6,
+                                        padding: '8px 12px',
+                                        borderRadius: 5,
+                                        border: '1px solid #bbf7d0',
+                                        background:
+                                            aptStatus === AppointmentStatus.COMPLETED ? '#16a34a' : '#fff',
+                                        color:
+                                            aptStatus === AppointmentStatus.COMPLETED ? '#fff' : '#15803d',
+                                        fontSize: 11,
+                                        fontWeight: 800,
+                                        cursor:
+                                            updateExistingBusy || cancelAptBusy || bookingBusy ? 'not-allowed' : 'pointer',
+                                        whiteSpace: 'nowrap',
+                                        minHeight: 30,
+                                        opacity: updateExistingBusy || cancelAptBusy || bookingBusy ? 0.55 : 1,
+                                    }}
+                                >
+                                    {tm('bAppointmentCompleted')}
+                                </button>
+                            </div>
+                            {canCancelAppointment && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, justifyContent: 'flex-end' }}>
+                                    <Label>{'\u00a0'}</Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCancelAptConfirmOpen(true)}
+                                        disabled={updateExistingBusy || cancelAptBusy || bookingBusy}
+                                        title={tm('bAptCancelToolbarBtn')}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: 6,
+                                            padding: '8px 12px',
+                                            borderRadius: 5,
+                                            border: '1px solid #fecaca',
+                                            background: '#fff',
+                                            color: '#b91c1c',
+                                            fontSize: 11,
+                                            fontWeight: 800,
+                                            cursor:
+                                                updateExistingBusy || cancelAptBusy || bookingBusy ? 'not-allowed' : 'pointer',
+                                            whiteSpace: 'nowrap',
+                                            minHeight: 30,
+                                            opacity: updateExistingBusy || cancelAptBusy || bookingBusy ? 0.55 : 1,
+                                        }}
+                                    >
+                                        {tm('bAptCancelToolbarBtn')}
+                                    </button>
+                                </div>
+                            )}
+                        </>
                     )}
                     </>
                     )}
