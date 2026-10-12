@@ -304,15 +304,12 @@ export function POSPaymentModal({
   /** Peşinatlı satış için seçilen taksit sayısı (0 = seçilmedi) */
   const [pesinatInstallments, setPesinatInstallments] = useState<3 | 6 | 9 | 12>(0 as 3 | 6 | 9 | 12);
   /**
-   * Peşinatlı ödemede "Satış faturası oluşturulsun mu?" kullanıcı tercihi.
-   * Default: parent `defaultCreateInvoiceWithDeposit` ile gelir, yoksa
-   * `false` (sadece kasa + cari bakiye; fatura oluşmaz). Kullanıcı
-   * checkbox'ı işaretlerse `onComplete` payload'unda `skipInvoice=false`
-   * gönderilir, parent normal satış akışını yürütür.
+   * Peşinatlı ödemede "Satış faturası oluşturulsun mu?" her zaman `true`.
+   * Rezervasyon fişi oluşturma davranışı sabit: peşinatlı modda da
+   * `skipInvoice=false` ile ana satış fişi kesilir; peşinat ayrıca
+   * kasa/cari/deposit kayıtlarına yansır. 12.10.2026: checkbox kaldırıldı.
    */
-  const [createInvoiceWithDeposit, setCreateInvoiceWithDeposit] = useState<boolean>(
-    defaultCreateInvoiceWithDeposit,
-  );
+  const [createInvoiceWithDeposit] = useState<boolean>(true);
   const [currentAmount, setCurrentAmount] = useState('');
   const [currentCurrency, setCurrentCurrency] = useState<'IQD' | 'USD' | 'EUR'>(baseCurrency);
   const [discountType, setDiscountType] = useState<'percentage' | 'amount'>('percentage');
@@ -1649,47 +1646,6 @@ const handleCollectCustomerDebt = async () => {
                         'Peşin alınır. Kalan tutar cariye yazılmaz, randevu tamamlanırken ayrıca tahsil edilir.'}
                     </span>
                   </div>
-                )}
-
-                {/* Peşinatlı modda: "Peşinatlı ödemede satış faturası oluşturulsun mu?"
-                    checkbox. Default işaretli DEĞİL → sadece kasa + cari bakiye
-                    yansır, sales.invoices / rex_*_01_sales kaydı oluşmaz.
-                    İşaretlenirse mevcut davranış (rezervasyon tutarı + fatura birlikte) korunur.
-                    Yalnızca peşinatlı modda görünür. */}
-                {currentMethod === 'pesinatli' && (
-                  <label
-                    data-testid="pesinat-create-invoice-checkbox"
-                    className={`mt-2 flex items-start gap-2 px-2 py-1.5 rounded border cursor-pointer text-[11px] leading-snug ${
-                      createInvoiceWithDeposit
-                        ? darkMode
-                          ? 'bg-amber-900/20 border-amber-700/60 text-amber-200'
-                          : 'bg-amber-50 border-amber-200 text-amber-800'
-                        : darkMode
-                          ? 'bg-slate-800/60 border-slate-700 text-slate-300'
-                          : 'bg-slate-50 border-slate-200 text-slate-700'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={createInvoiceWithDeposit}
-                      onChange={(e) => setCreateInvoiceWithDeposit(e.target.checked)}
-                      className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-amber-600 focus:ring-amber-500/30"
-                    />
-                    <span className="flex-1">
-                      <span className="font-medium">
-                        {tm('createInvoiceWithDeposit') ||
-                          'Peşinatlı ödemede satış faturası oluşturulsun'}
-                      </span>
-                      <span
-                        className={`block mt-0.5 text-[10.5px] ${
-                          darkMode ? 'text-slate-400' : 'text-slate-500'
-                        }`}
-                      >
-                        {tm('createInvoiceWithDepositHelp') ||
-                          'İşaretli değilse: peşinat yalnızca kasaya ve cari bakiyeye yansır, satış faturası oluşmaz. İşaretliyse: rezervasyon tutarı ile birlikte satış faturası da kesilir.'}
-                      </span>
-                    </span>
-                  </label>
                 )}
 
                 {/* Peşinatlı + appointmentContext: Ön Ödeme + Kalan Tutar bilgi kartı.

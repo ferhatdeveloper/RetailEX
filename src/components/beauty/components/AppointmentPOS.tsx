@@ -5807,14 +5807,12 @@ export function AppointmentPOS({
                     // bilgi kartı görünür. Yeni randevuda rezervasyon tutarı
                     // girilmişse aynı bilgi kartı gösterilir.
                     appointmentContext={aptCtx}
-                    // Peşinatlı modda "fatura oluşturulsun mu?" checkbox default'u.
-                    // 04.10.2026 güncel karar: Beauty POS'ta kullanıcının son
-                    // kararı "skipInvoice=true → fatura YOK ama kasaya/carie/
-                    // randevuya YANSIMALI". Bu yüzden default `false` (fatura
-                    // oluşturma, sadece carie/kasa/deposit yansıt). Kullanıcı
-                    // isterse checkbox'ı işaretleyerek eski davranışa
-                    // (avans + rezervasyon sales fişi) dönebilir.
-                    defaultCreateInvoiceWithDeposit={false}
+                    // Peşinatlı modda "fatura oluşturulsun mu?" checkbox'ı
+                    // 12.10.2026'da kaldırıldı → her zaman fatura oluşur.
+                    // defaultCreateInvoiceWithDeposit parametre olarak hâlâ
+                    // kabul edilir ama POSPaymentModal içinde sabit `true`
+                    // kullanılıyor (skipInvoice her zaman false).
+                    defaultCreateInvoiceWithDeposit={true}
                 />
                 );
             })()}
