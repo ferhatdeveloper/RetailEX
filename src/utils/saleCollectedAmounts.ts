@@ -47,10 +47,21 @@ export function splitPaymentRows(
   documentTotal: number,
   payments?: SalePaymentRow[] | null,
   paymentMethod?: unknown,
+  /**
+   * Belge iskonto tutarı (IQD, mutlak). İskonto cari borç DEĞİLDİR —
+   * `remaining` hesabında belge brütten düşülür, böylece iskonto
+   * otomatik olarak "veresiye" yazılmaz (Bug 2026-10-13 aqua).
+   * `total` (= `total_net` brüt Ciro) zaten iskonto Hariç olduğunda
+   * 0 geçilebilir; çağıran taraf Sale.discount'i aktarmalıdır.
+   */
+  discount: number = 0,
 ): SaleCollectedSplit {
   const signedDoc = Number(documentTotal) || 0;
   const sign = signedDoc < 0 ? -1 : 1;
   const document = signedDoc;
+  const discountAbs = Math.max(0, Math.abs(Number(discount) || 0));
+  // document: brüt Ciro (Sale.total = total_net, iskonto Hariç)
+  // Kalan gerçek cari borç: max(0, document - tahsilat - iskonto)
 
   const rows = Array.isArray(payments) ? payments.filter((p) => p != null) : [];
   if (rows.length > 0) {
@@ -67,7 +78,9 @@ export function splitPaymentRows(
       else if (bucket === 'transfer') transfer += amt;
       // Peşinat (`pesinatli`) ilk taksit tahsilatıdır: gerçek para kasaya girer.
       // Bu yüzden `collected` toplamına (cash gibi) eklenir; kalan cari
-      // farkı aşağıdaki `remaining = belge − collected` mantığıyla hesaplanır.
+      // farkı aşağıdaki `remaining = belge − collected − iskonto` ile
+      // hesaplanır (iskonto cari borç değildir, kalan yalnızca
+      // henüz tahsil edilmemiş kısımdır).
       // Muhasebeci gözü: pesinat = kasa tahsilatı (CH_TAHSILAT), kalan = cari borç.
       else if (bucket === 'pesinatli') cash += amt;
       else credit += amt;
@@ -83,23 +96,31 @@ export function splitPaymentRows(
 
     // Bug fix 2026-10-12: 1 IQD tolerans — küçük yuvarlama farkları kasaya yansır,
     // otomatik veresiye olarak yazılmaz (numpad yazım hatası, 250 IQD kademe, kur dönüşümü).
+    // Bug fix 2026-10-13: `remaining = belge − tahsilat − iskonto` — iskonto
+    // cari borç değildir; 50.000 brüt + 40.000 ödenen + 10.000 iskonto →
+    // remaining=0 (eskiden 10.000 yanlışlıkla veresiye sayılıyordu).
     if (methodIsCredit && remaining <= FLOAT_EPSILON) {
-      const gap = Math.abs(document) - collected;
+      const gap = Math.abs(document) - collected - discountAbs;
       if (gap > ROUNDING_TOLERANCE_IQD) {
-        // Kısmi peşin + üst bilgi veresiye: kalan = belge − tahsilat (cebe giren korunur)
+        // Kısmi peşin + üst bilgi veresiye: kalan = belge − tahsilat − iskonto
         remaining = Math.max(0, gap);
+      } else if (discountAbs > FLOAT_EPSILON) {
+        // İskonto varsa + ödeme tamamlanmış (gap ≈ 0): iskonto cari DEĞİL,
+        // ödeme gerçekten tahsil edildi → nakit kasaya girsin, kalan 0.
+        // (Eski kod burada nakit'i silip kalan'a atıyordu — Bug 2026-10-13 aqua.)
+        remaining = 0;
       } else if (collected > FLOAT_EPSILON && Math.abs(gap) <= ROUNDING_TOLERANCE_IQD) {
         // Ödeme=Veresiye ama payments[] tam belgeyi nakit/kart yazmış — kasa şişmesin.
-        // Yalnızca collected ≈ document (1 IQD tolerans içinde) iken; kısmi
-        // tahsilatı asla sıfırlama. Aksi halde fark gerçek tahsilat olur.
+        // Yalnızca collected ≈ document (1 IQD tolerans içinde) ve iskonto yok.
+        // (Eski bozuk kayıt koruması: header yanlışlıkla "veresiye" yazılmış.)
         cashOut = 0;
         cardOut = 0;
         transferOut = 0;
         collected = 0;
         remaining = Math.abs(document);
       }
-    } else if (remaining <= FLOAT_EPSILON && Math.abs(document) - collected > ROUNDING_TOLERANCE_IQD) {
-      remaining = Math.max(0, Math.abs(document) - collected);
+    } else if (remaining <= FLOAT_EPSILON && Math.abs(document) - collected - discountAbs > ROUNDING_TOLERANCE_IQD) {
+      remaining = Math.max(0, Math.abs(document) - collected - discountAbs);
     }
     return {
       document,
@@ -114,14 +135,16 @@ export function splitPaymentRows(
 
   const bucket = normalizePaymentMethodBucket(paymentMethod);
   if (bucket === 'credit' || paymentMethodImpliesCustomerDebt(String(paymentMethod ?? ''))) {
+    // Veresiye etiket + iskonto: kalan = belge − iskonto (iskonto cari değil)
+    const creditRemaining = Math.max(0, Math.abs(document) - discountAbs);
     return {
       document,
       cash: 0,
       card: 0,
       transfer: 0,
-      credit: document,
+      credit: creditRemaining,
       collected: 0,
-      remaining: document,
+      remaining: creditRemaining,
     };
   }
   if (bucket === 'cash') {
@@ -168,8 +191,15 @@ export function splitPaymentRows(
   };
 }
 
-export function saleCollectedSplit(sale: Pick<Sale, 'total' | 'paymentMethod' | 'payments'>): SaleCollectedSplit {
-  return splitPaymentRows(Number(sale.total) || 0, sale.payments, sale.paymentMethod);
+export function saleCollectedSplit(
+  sale: Pick<Sale, 'total' | 'paymentMethod' | 'payments' | 'discount'>,
+): SaleCollectedSplit {
+  return splitPaymentRows(
+    Number(sale.total) || 0,
+    sale.payments,
+    sale.paymentMethod,
+    Number(sale.discount) || 0,
+  );
 }
 
 export type PosCheckoutPaymentRow = SalePaymentRow & {

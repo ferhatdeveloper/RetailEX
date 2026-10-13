@@ -72,6 +72,75 @@ describe('saleCollectedSplit — belge vs tahsilat', () => {
     expect(s.cash).toBe(0);
     expect(s.remaining).toBe(80);
   });
+
+  // Bug fix 2026-10-13 (aqua güzellik): iskonto cari borç DEĞİLDİR.
+  // 50.000 brüt + 40.000 ödenen + 10.000 iskonto → remaining=0 (veresiye YOK).
+  it('aqua bug: 50k brüt + 40k ödenen + 10k iskonto → remaining=0 (veresiye yok)', () => {
+    const s = saleCollectedSplit({
+      total: 50000,
+      paymentMethod: 'cash',
+      payments: [{ method: 'cash', amount: 40000 }],
+      discount: 10000,
+    });
+    expect(s.cash).toBe(40000);
+    expect(s.collected).toBe(40000);
+    expect(s.remaining).toBe(0); // iskonto cari borç değil
+    expect(s.credit).toBe(0);
+  });
+
+  it('aqua bug: 120k brüt + 85k ödenen + 35k iskonto → remaining=0', () => {
+    const s = saleCollectedSplit({
+      total: 120000,
+      paymentMethod: 'cash',
+      payments: [{ method: 'cash', amount: 85000 }],
+      discount: 35000,
+    });
+    expect(s.remaining).toBe(0);
+    expect(s.collected).toBe(85000);
+  });
+
+  it('iskonto + kısmi veresiye: 100k brüt + 50k nakit + 10k iskonto + 40k veresiye satırı', () => {
+    // 100.000 brüt, ödenen 50.000 nakit + 10.000 iskonto, kalan 40.000 gerçek veresiye
+    const s = saleCollectedSplit({
+      total: 100000,
+      paymentMethod: 'veresiye',
+      payments: [
+        { method: 'cash', amount: 50000 },
+        { method: 'veresiye', amount: 40000 },
+      ],
+      discount: 10000,
+    });
+    expect(s.cash).toBe(50000);
+    expect(s.collected).toBe(50000);
+    expect(s.remaining).toBe(40000); // sadece gerçek cari
+    expect(s.credit).toBe(40000);
+  });
+
+  it('veresiye etiket + tam nakit ödeme + iskonto: kasa şişmez', () => {
+    // 50.000 brüt, nakit 40.000, iskonto 10.000 → ödeme tamam, kasa 40.000
+    const s = saleCollectedSplit({
+      total: 50000,
+      paymentMethod: 'veresiye',
+      payments: [{ method: 'cash', amount: 40000 }],
+      discount: 10000,
+    });
+    expect(s.cash).toBe(40000);
+    expect(s.collected).toBe(40000);
+    expect(s.remaining).toBe(0); // iskonto cari değil
+  });
+
+  it('saf veresiye (payments yok) + iskonto: kalan = brüt − iskonto', () => {
+    // 50.000 brüt veresiye, 10.000 iskonto → kalan 40.000 (cari borç)
+    const s = saleCollectedSplit({
+      total: 50000,
+      paymentMethod: 'veresiye',
+      discount: 10000,
+    });
+    expect(s.cash).toBe(0);
+    expect(s.credit).toBe(40000);
+    expect(s.remaining).toBe(40000);
+    expect(s.collected).toBe(0);
+  });
 });
 
 describe('extraCustomerCollectionsNotOnSales — çift sayım yok', () => {
