@@ -2061,18 +2061,11 @@ export function ReportsModule({
     }
   }, [selectedTab, loadComparisonSales, comparisonPeriod]);
 
-  // Günlük rapor (daily) için otomatik periyodik tazeleme (30 sn) — yeni
-  // girilen satış/kasa hareketi UI'a manuel Yenile gerekmeden yansısın.
-  // Sadece daily sekmesinde ve sayfa görünürken aktif; diğer sekmeleri
-  // gereksiz yere yormasın. 2026-10-13: kullanıcı geri bildirimi — "1.420.000
-  // Nakit 19 cash sale" ekranda cache'li kalıyordu; yeni satış girilse bile
-  // değer değişmiyordu.
+  // Günlük rapor: her 30 sn'de bir tazele (yeni satış/kasa kartlara yansısın).
   useEffect(() => {
     if (selectedTab !== 'daily') return;
-    const interval = setInterval(() => {
-      void refreshAllReportsData();
-    }, 30_000);
-    return () => clearInterval(interval);
+    const id = setInterval(() => void refreshAllReportsData(), 30_000);
+    return () => clearInterval(id);
   }, [selectedTab, refreshAllReportsData]);
 
   useEffect(() => {
