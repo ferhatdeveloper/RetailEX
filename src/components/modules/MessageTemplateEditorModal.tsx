@@ -32,6 +32,7 @@ import {
   updateMessageTemplate as svcUpdate,
   deleteMessageTemplate as svcDelete,
   isSystemTemplate as isSystem,
+  SYSTEM_TEMPLATE_IDS,
   hasTemplateBodyInLang as hasInLang,
   resolveTemplateTranslations as resolveTranslations,
   type MessageTemplateRow,
