@@ -3317,20 +3317,19 @@ export function ReportsModule({
    * - Net (Brüt) = brüt ciro − gider (gelir tablosu; veresiye dahil)
    * - Net (Nakit) = tahsilat − gider (kasa/banka; veresiye hariç)
    */
-  const dailyNetAfterExpenseBrut = useMemo(
-    () =>
-      reportNetAfterOptionalExpense(dailyTotal, totalExpensesForReport, showDailyCardTotalExpense),
-    [dailyTotal, totalExpensesForReport, showDailyCardTotalExpense],
+  /**
+   * Net (Brüt) ve Net (Nakit) kartları her zaman ciro/tahsilattan gideri düşer
+   * — parametre (`showDailyCardTotalExpense`) kapansa bile AVANS_ODEME /
+   * CH_ODEME gibi kasa çıkışları kârı azaltır. 2026-10-13 kullanıcı geri
+   * bildirimi: "Net satırında gizli giderlerin de yansımasını istiyorum".
+   */
+  const dailyNetBrutAlways = useMemo(
+    () => dailyTotal - totalExpensesForReport,
+    [dailyTotal, totalExpensesForReport],
   );
-  /** Kasa/banka akışı: nakit+kart+havale toplamından gider düşülür (veresiye hariç). */
-  const dailyNetAfterExpenseNakit = useMemo(
-    () =>
-      reportNetAfterOptionalExpense(
-        dailyCollected,
-        totalExpensesForReport,
-        showDailyCardTotalExpense,
-      ),
-    [dailyCollected, totalExpensesForReport, showDailyCardTotalExpense],
+  const dailyNetNakitAlways = useMemo(
+    () => dailyCollected - totalExpensesForReport,
+    [dailyCollected, totalExpensesForReport],
   );
 
   const dailyExpenseGridRows = useMemo(() => {
@@ -6497,13 +6496,13 @@ export function ReportsModule({
                     <div className="flex items-center justify-between">
                       <div className="w-full">
                         <p className="text-sm text-gray-600">{tm('dailyNetAfterExpenseBrut')}</p>
-                        <p className={`text-2xl font-bold mt-1 ${dailyNetAfterExpenseBrut >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                          {formatNumber(dailyNetAfterExpenseBrut, 2, false)}
+                        <p className={`text-2xl font-bold mt-1 ${dailyNetBrutAlways >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          {formatNumber(dailyNetBrutAlways, 2, false)}
                         </p>
                         <div className="mt-3 pt-3 border-t border-slate-100">
                           <p className="text-xs text-slate-500">{tm('dailyNetAfterExpenseNakit')}</p>
-                          <p className={`text-lg font-bold mt-0.5 ${dailyNetAfterExpenseNakit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                            {formatNumber(dailyNetAfterExpenseNakit, 2, false)}
+                          <p className={`text-lg font-bold mt-0.5 ${dailyNetNakitAlways >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                            {formatNumber(dailyNetNakitAlways, 2, false)}
                           </p>
                           <p className="text-[10px] text-slate-500 mt-1 leading-snug">{tm('dailyNetAfterExpenseHint')}</p>
                         </div>
