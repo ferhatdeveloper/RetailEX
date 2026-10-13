@@ -32,6 +32,10 @@ type VarianceRow = PayrollMonthLine & {
   /** Fark: paidOut − expectedAccrual. Pozitif = fazla ödeme, negatif = eksik ödeme. */
   variance: number;
   hasOnlyAdvance: boolean;
+  /** Bu ayın hakkedişi (MAAS_HAKKEDIS toplamı). Salary_base değil — gerçek ledger. */
+  monthlyAccrual: number;
+  /** Bu ayın kalan maaşı: monthlyAccrual − (total_paid + total_advance). */
+  remainingSalary: number;
 };
 
 /**
@@ -113,12 +117,20 @@ export function PayrollVarianceModal({ onClose, onOpenAdjustment }: PayrollVaria
           //  < 0 → işletme personele eksik ödedi (CEZA/PERAŞIN düzeltmesi)
           const paidOut = (r.total_advance || 0) + (r.total_paid || 0);
           const variance = paidOut - expectedAccrual;
+          // Bu ayki hakkedişi (MAAS_HAKKEDIS) kullan; yoksa salary_base.
+          // net_payable = monthlyAccrual − (total_paid + total_advance)
+          const monthlyAccrual = r.net_payable != null
+            ? (r.total_paid || 0) + (r.total_advance || 0) + r.net_payable
+            : (r.salary_base || 0);
+          const remainingSalary = monthlyAccrual - (r.total_paid || 0) - (r.total_advance || 0);
           return {
             ...r,
             expectedAccrual,
             paidOut,
             variance,
             hasOnlyAdvance: (r.total_advance || 0) > 0 && (r.total_paid || 0) === 0,
+            monthlyAccrual,
+            remainingSalary,
           };
         });
       // Yalnızca farkı ±0.01'den büyük olanlar + tam doğru ödenenler
@@ -280,6 +292,8 @@ export function PayrollVarianceModal({ onClose, onOpenAdjustment }: PayrollVaria
                   <th className="text-left px-3 py-2">{t('party.table.name') || 'Personel'}</th>
                   <th className="text-right px-3 py-2">{t('party.variance.expectedAccrual') || 'Beklenen Hakkediş'}</th>
                   <th className="text-right px-3 py-2">{t('party.variance.paidOut') || 'Ödenen'}</th>
+                  <th className="text-right px-3 py-2">Bu Ay Avans</th>
+                  <th className="text-right px-3 py-2">Kalan Maaş</th>
                   <th className="text-right px-3 py-2">{t('party.variance.variance') || 'Fark'}</th>
                   <th className="text-center px-3 py-2">{t('party.table.actions') || 'İşlem'}</th>
                 </tr>
@@ -306,7 +320,13 @@ export function PayrollVarianceModal({ onClose, onOpenAdjustment }: PayrollVaria
                         {formatMoney(r.expectedAccrual)}
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-slate-700">
-                        {formatMoney(r.paidOut)}
+                        {formatMoney(r.total_paid || 0)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-amber-700">
+                        {formatMoney(r.total_advance || 0)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700">
+                        {formatMoney(r.remainingSalary || 0)}
                       </td>
                       <td className={`px-3 py-2 text-right font-mono font-bold ${
                         overpaid ? 'text-emerald-700' : underpaid ? 'text-rose-700' : 'text-slate-400'
@@ -350,13 +370,24 @@ export function PayrollVarianceModal({ onClose, onOpenAdjustment }: PayrollVaria
                   );
                 })}
               </tbody>
+              <tfoot>
+                <tr className="bg-slate-50 border-t-2 border-slate-200 font-mono text-xs font-bold text-slate-800">
+                  <td className="px-3 py-2 text-left">TOPLAM</td>
+                  <td className="px-3 py-2 text-right">{formatMoney(rows.reduce((s, r) => s + (r.expectedAccrual || 0), 0))}</td>
+                  <td className="px-3 py-2 text-right">{formatMoney(rows.reduce((s, r) => s + (r.total_paid || 0), 0))}</td>
+                  <td className="px-3 py-2 text-right text-amber-700">{formatMoney(rows.reduce((s, r) => s + (r.total_advance || 0), 0))}</td>
+                  <td className="px-3 py-2 text-right text-emerald-700">{formatMoney(rows.reduce((s, r) => s + (r.remainingSalary || 0), 0))}</td>
+                  <td className="px-3 py-2 text-right">—</td>
+                  <td className="px-3 py-2 text-center">—</td>
+                </tr>
+              </tfoot>
             </table>
           )}
         </PercentBodyModalScrollBody>
 
         <div className="p-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between shrink-0">
           <div className="text-[10px] text-slate-500 max-w-3xl">
-            {t('party.variance.helpText') || 'Fark = (Avans + Maaş Ödeme) − (Brüt × Çalışılan Gün). Bonus = işletme personele ek ödüyor; Ceza = bordro düzeltmesi. Mevcut MAAS_ODEME / AVANS_ODEME satırları etkilenmez; yeni BONUS_HAKKEDIS veya CEZA_ODEME satırı eklenir.'}
+            {t('party.variance.helpText') || 'Kalan Maaş = (Bu ay MAAS_HAKKEDIS) − (Bu ay AVANS_ODEME + MAAS_ODEME). Fark = (Avans + Maaş Ödeme) − (Brüt × Çalışılan Gün). Bonus = işletme personele ek ödüyor; Ceza = bordro düzeltmesi.'}
           </div>
           <button
             type="button"
