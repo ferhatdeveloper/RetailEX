@@ -3174,11 +3174,14 @@ export function ReportsModule({
       // üzerinden tahsil/kısmıtahsil/kalan ayrımı yap; Ödeme kolonu
       // tek "Veresiye" yazmasın. ARAM: 50.000 brüt + 5.000 peşin +
       // 45.000 kalan → "Karma (5.000 peşin + 45.000 veresiye)".
+      // Bug 2026-10-13 aqua: Sale.discount (brüt - net) rapora aktarılmazsa
+      // kalan = brüt - tahsilat = iskonto → "veresiye" gibi görünüyor.
       const erpForKind = row.erpSale;
       const kindInfo = dailyPaymentKind({
         total: Number(row.total) || 0,
         paymentMethod: erpForKind?.paymentMethod ?? row.paymentMethod,
         payments: erpForKind?.payments ?? undefined,
+        discount: Number(erpForKind?.discount ?? row.discount ?? 0) || 0,
       });
       let paymentLabelText = tm(paymentMethodBucketTranslationKey(bucket));
       if (kindInfo.total > 0 && kindInfo.kind === 'mixed') {
@@ -6680,12 +6683,14 @@ export function ReportsModule({
                           footerSum: true,
                           // Deposit satırlarda net tutar "—" gösterilir ve footer'a
                           // katılmaz (ciro zaten randevu tamamlanınca ana hizmete
-                          // yansıyacak).
+                          // yansıyacak). Bug 2026-10-13 aqua: footer brüt
+                          // (row.total) topluyordu; iskonto düşülünce net 660.000
+                          // çıkmalı (eskiden 780.000 brüt gösteriliyordu).
                           footerFormat: (_n, rows) => {
-                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; total?: number }>).reduce(
+                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; total?: number; discount?: number }>).reduce(
                               (acc, r) => {
                                 if (isDepositSale(r.erpSale as Partial<Sale> | undefined) || r.isDeposit === true) return acc;
-                                return acc + (Number(r.total) || 0);
+                                return acc + Math.max(0, (Number(r.total) || 0) - (Number(r.discount) || 0));
                               },
                               0,
                             );
@@ -6695,10 +6700,18 @@ export function ReportsModule({
                             if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) {
                               return '—';
                             }
+                            // Bug 2026-10-13 aqua: "Net Satış" sütunu brüt
+                            // (row.total = total_net, iskonto Hariç) gösteriyordu;
+                            // iskonto düşülmemiş hâliyle 100.000 brüt + 50.000 iskonto
+                            // satırı 100.000 yazıyordu. Doğrusu: net = brüt - iskonto.
+                            const netAmount = Math.max(
+                              0,
+                              (Number(row.total) || 0) - (Number(row.discount) || 0),
+                            );
                             const remaining = Number(row.remaining) > 0.009
                               ? Number(row.remaining)
                               : dailyRowShowsCreditSplit(row)
-                                ? Number(row.total) || 0
+                                ? netAmount
                                 : 0;
                             const split = dailyRowShowsCreditSplit(row)
                               ? dailyCreditSplitDisplay(
@@ -6711,7 +6724,7 @@ export function ReportsModule({
                               : null;
                             return (
                             <div>
-                              <div>{formatNumber(row.total, 2, false)}</div>
+                              <div>{formatNumber(netAmount, 2, false)}</div>
                               {split && (
                                 <div
                                   className="text-[11px] font-normal text-amber-700 mt-0.5 cursor-help"
@@ -6736,6 +6749,9 @@ export function ReportsModule({
                               total: Number(row.total) || 0,
                               paymentMethod: erpForKind?.paymentMethod ?? row.paymentMethod,
                               payments: erpForKind?.payments ?? undefined,
+                              // Bug 2026-10-13 aqua: discount iletilmezse iskonto
+                              // kalan (veresiye) sanılıyor; Sale.discount'ı aktar.
+                              discount: Number(erpForKind?.discount ?? row.discount ?? 0) || 0,
                             });
                             // Rezervasyon avansı (deposit) — 6337'deki beforeDiscount
                             // hücresinde "—" döndüren satırlar burada da

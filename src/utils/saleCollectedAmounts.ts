@@ -192,7 +192,7 @@ export function splitPaymentRows(
 }
 
 export function saleCollectedSplit(
-  sale: Pick<Sale, 'total' | 'paymentMethod' | 'payments' | 'discount'>,
+  sale: Pick<Sale, 'total' | 'paymentMethod' | 'payments'> & { discount?: number | null },
 ): SaleCollectedSplit {
   return splitPaymentRows(
     Number(sale.total) || 0,
@@ -299,12 +299,13 @@ export function resolvePosCheckoutSettlement(
 export type DailyPaymentKind = 'cash' | 'credit' | 'mixed';
 
 export function dailyPaymentKind(
-  sale: Pick<Sale, 'total' | 'paymentMethod' | 'payments'>,
+  sale: Pick<Sale, 'total' | 'paymentMethod' | 'payments'> & { discount?: number | null },
 ): { kind: DailyPaymentKind; collected: number; remaining: number; total: number } {
   const split = saleCollectedSplit({
     total: Number(sale.total) || 0,
     paymentMethod: sale.paymentMethod,
     payments: sale.payments,
+    discount: Number(sale.discount) || 0,
   });
   const total = Math.abs(Number(sale.total) || 0);
   let collected = Math.abs(Number(split.collected) || 0);

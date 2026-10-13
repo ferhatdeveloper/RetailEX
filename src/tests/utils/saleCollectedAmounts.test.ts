@@ -445,3 +445,71 @@ describe('dailyPaymentKind — Bug 14 (Günlük Rapor Ödeme kolonu karma)', () 
     }
   });
 });
+
+describe('dailyPaymentKind — Bug 2026-10-13 aqua (iskonto veresiye yazılıyordu)', () => {
+  it('BEA-2026-MV6POWBD: 100k brüt + 50k iskonto + 50k nakit → kind=cash, remaining=0', () => {
+    const k = dailyPaymentKind({
+      total: 100000,
+      paymentMethod: 'cash',
+      payments: [{ method: 'cash', amount: 50000 }],
+      discount: 50000,
+    });
+    // İskonto cari borç DEĞİL; tahsilat 50k + iskonto 50k = 100k brüt eşit.
+    expect(k.kind).toBe('cash');
+    expect(k.collected).toBe(50000);
+    expect(k.remaining).toBe(0);
+  });
+
+  it('BEA-2026-MV6P3O6X: 60k brüt + 40k iskonto + 20k nakit → kind=cash', () => {
+    const k = dailyPaymentKind({
+      total: 60000,
+      paymentMethod: 'cash',
+      payments: [{ method: 'cash', amount: 20000 }],
+      discount: 40000,
+    });
+    expect(k.kind).toBe('cash');
+    expect(k.collected).toBe(20000);
+    expect(k.remaining).toBe(0);
+  });
+
+  it('BEA-2026-MV6NOBCS: 180k brüt + 15k iskonto + 165k nakit → kind=cash', () => {
+    const k = dailyPaymentKind({
+      total: 180000,
+      paymentMethod: 'cash',
+      payments: [{ method: 'cash', amount: 165000 }],
+      discount: 15000,
+    });
+    expect(k.kind).toBe('cash');
+    expect(k.collected).toBe(165000);
+    expect(k.remaining).toBe(0);
+  });
+
+  it('iskonto + kısmi tahsilat: 100k brüt + 30k iskonto + 50k nakit + 20k veresiye', () => {
+    const k = dailyPaymentKind({
+      total: 100000,
+      paymentMethod: 'cash',
+      payments: [
+        { method: 'cash', amount: 50000 },
+        { method: 'veresiye', amount: 20000 },
+      ],
+      discount: 30000,
+    });
+    // 100k = 50k nakit + 20k veresiye + 30k iskonto
+    expect(k.kind).toBe('mixed');
+    expect(k.collected).toBe(50000);
+    expect(k.remaining).toBe(20000);
+  });
+
+  it('iskonto default 0: eski davranış (geriye uyumlu)', () => {
+    const k = dailyPaymentKind({
+      total: 100000,
+      paymentMethod: 'cash',
+      payments: [{ method: 'cash', amount: 50000 }],
+    });
+    // discount=0 → remaining = 50.000 (eski davranış; iskonto veresiye yazılırdı)
+    // Bu test yalnızca uyumluluk amaçlıdır; aqua verisinde artık discount aktarılıyor.
+    expect(k.kind).toBe('mixed');
+    expect(k.collected).toBe(50000);
+    expect(k.remaining).toBe(50000);
+  });
+});
