@@ -90,6 +90,17 @@ export function PartiesModule({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; party: Party } | null>(null);
   const [accruing, setAccruing] = useState(false);
+  /**
+   * Bu ayki maaş/avans özeti (personel kartları için).
+   * Key: party.id → { totalAdvance, totalPaid, monthlyAccrual, remainingSalary }.
+   * Yalnızca card_type='employee' olanlar için doldurulur; diğerleri Map'te yok.
+   */
+  const [payrollMonth, setPayrollMonth] = useState<Map<string, {
+    totalAdvance: number;
+    totalPaid: number;
+    monthlyAccrual: number;
+    remainingSalary: number;
+  }>>(new Map());
 
   const load = async () => {
     setLoading(true);
@@ -116,6 +127,39 @@ export function PartiesModule({
             : p,
         ),
       );
+
+      // Bu ayki maaş/avans özetini çek (yalnızca employee görünür).
+      // 2026-10-13 NGIN SORAN KASHFADIN şikâyeti: 'avans ayrı, kalan bakiye ayrı
+      // göstermeli'. Bu iki sütun personel listesinde gösterilecek.
+      if (tab === 'employee' || tab === 'all') {
+        try {
+          const now = new Date();
+          const y = now.getFullYear();
+          const m = now.getMonth() + 1;
+          const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
+          const lastDay = new Date(y, m, 0).getDate();
+          const monthEnd = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+          const lines = await employeeAPI.listPayrollMonth(monthStart, monthEnd);
+          const map = new Map<string, { totalAdvance: number; totalPaid: number; monthlyAccrual: number; remainingSalary: number }>();
+          for (const l of lines) {
+            // monthlyAccrual = total_paid + total_advance + net_payable (MAAS_HAKKEDIS toplamı)
+            const monthlyAccrual = (l.total_paid || 0) + (l.total_advance || 0) + (l.net_payable || 0);
+            const remainingSalary = monthlyAccrual - (l.total_paid || 0) - (l.total_advance || 0);
+            map.set(l.employee_id, {
+              totalAdvance: l.total_advance || 0,
+              totalPaid: l.total_paid || 0,
+              monthlyAccrual,
+              remainingSalary,
+            });
+          }
+          setPayrollMonth(map);
+        } catch (err) {
+          console.warn('[PartiesModule] payroll month fetch failed', err);
+          setPayrollMonth(new Map());
+        }
+      } else {
+        setPayrollMonth(new Map());
+      }
     } catch (err: any) {
       toast.error(err?.message || String(err));
     } finally {
@@ -404,6 +448,12 @@ export function PartiesModule({
                 {(tab === 'employee' || tab === 'all') && (
                   <th className="text-right px-4 py-3">{t('party.table.salary')}</th>
                 )}
+                {(tab === 'employee' || tab === 'all') && (
+                  <>
+                    <th className="text-right px-4 py-3" title="Bu ayın AVANS_ODEME toplamı">Bu Ay Avans</th>
+                    <th className="text-right px-4 py-3" title="Bu ayın MAAS_HAKKEDIS − (Ödenen Maaş + Bu Ay Avans)">Kalan Maaş</th>
+                  </>
+                )}
                 <th className="text-right px-4 py-3">{t('party.table.balance')}</th>
                 <th className="text-left px-4 py-3">{t('party.table.share')}</th>
                 <th className="text-right px-4 py-3">{t('party.table.actions')}</th>
@@ -462,6 +512,16 @@ export function PartiesModule({
                     <td className="px-4 py-3 text-right font-mono">
                       {p.card_type === 'employee' ? formatMoney(p.salary_base) : '—'}
                     </td>
+                  )}
+                  {(tab === 'employee' || tab === 'all') && (
+                    <>
+                      <td className="px-4 py-3 text-right font-mono text-amber-700">
+                        {p.card_type === 'employee' ? formatMoney(payrollMonth.get(p.id)?.totalAdvance ?? 0) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">
+                        {p.card_type === 'employee' ? formatMoney(payrollMonth.get(p.id)?.remainingSalary ?? 0) : '—'}
+                      </td>
+                    </>
                   )}
                   <td className="px-4 py-3 text-right font-mono">
                     <div className={Number(p.balance) > 0 ? 'text-emerald-700 font-bold' : Number(p.balance) < 0 ? 'text-amber-700 font-bold' : ''}>
@@ -562,6 +622,20 @@ export function PartiesModule({
                   {tm('invoiceListDipTotal')}
                   <span className="ml-1 font-semibold text-blue-600/80">({listDip.count})</span>
                 </td>
+                {(tab === 'employee' || tab === 'all') && (
+                  <>
+                    <td className="px-4 py-2.5 text-right font-bold tabular-nums text-amber-700">
+                      {formatMoney(
+                        Array.from(payrollMonth.values()).reduce((s, v) => s + (v.totalAdvance || 0), 0),
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-bold tabular-nums text-emerald-700">
+                      {formatMoney(
+                        Array.from(payrollMonth.values()).reduce((s, v) => s + (v.remainingSalary || 0), 0),
+                      )}
+                    </td>
+                  </>
+                )}
                 <td className="px-4 py-2.5 text-right font-bold tabular-nums text-blue-900">
                   {formatMoney(listDip.balance)}
                 </td>
