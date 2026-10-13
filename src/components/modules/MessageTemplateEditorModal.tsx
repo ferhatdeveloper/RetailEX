@@ -31,7 +31,7 @@ import {
   createMessageTemplate as svcCreate,
   updateMessageTemplate as svcUpdate,
   deleteMessageTemplate as svcDelete,
-  isSystemTemplate as isSystem,
+  isSystemTemplate,
   SYSTEM_TEMPLATE_IDS,
   hasTemplateBodyInLang as hasInLang,
   resolveTemplateTranslations as resolveTranslations,
@@ -120,7 +120,7 @@ export function MessageTemplateEditorModal({
   );
 
   /** Sistem şablonu mu? */
-  const isProtected = useMemo(() => isSystem(selectedTpl), [selectedTpl]);
+  const isProtected = useMemo(() => isSystemTemplate(selectedTpl), [selectedTpl]);
 
   /** 4 dildeki doluluk rozeti için. */
   const filledLangCount = useMemo(() => {
@@ -374,7 +374,7 @@ export function MessageTemplateEditorModal({
                   )
                     .map((l) => l.toUpperCase())
                     .join('·');
-                  const protected_ = isSystem(t);
+                  const protected_ = isSystemTemplate(t);
                   return (
                     <li key={t.id}>
                       <button
