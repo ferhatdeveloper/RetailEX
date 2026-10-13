@@ -201,13 +201,31 @@ export const salesAPI = {
       const paymentRows = Array.isArray((sale as any).payments) ? (sale as any).payments : [];
       if (paymentRows.length > 0) {
         const existingHf = (((sale as any).header_fields as Record<string, unknown>) || {});
+        // Bug fix 2026-10-13: payment.amount her zaman PEŞİN ÖDENEN (net) kısım
+        // olmalı, brüt Ciro DEĞİL. Bazı caller'lar (eski BeautyPOS/MarketPOS
+        // akışları) `payment.amount` olarak brüt tutar gönderiyordu; bu durumda
+        // `Σ(payments) > sale.total` oluyor ve iskonto veresiye gibi yansıyordu
+        // (Bug aqua 12-13.10.2026: 120k brüt + 35k iskonto + 85k ödenen →
+        // payment.amount=120k → split fonksiyonu kalan 35k veresiye sayıyordu).
+        //
+        // Çözüm: caller'ın gönderdiği `payment.amount` toplamı `sale.total`'ı
+        // aşıyorsa, her satırı oransal küçülterek `sale.total` sınırına çek
+        // (BUE 12.10.2026: 120k brüt → 85k net; cashPortion=85k).
+        const saleTotal = Math.max(0, Number(sale.total ?? 0));
+        const paymentSumRaw = paymentRows.reduce(
+          (s: number, p: { amount?: unknown }) => s + Math.abs(Number(p?.amount) || 0),
+          0,
+        );
+        const overflow = paymentSumRaw > saleTotal + 1e-6 && saleTotal > 0;
+        const scale = overflow ? saleTotal / paymentSumRaw : 1;
         invoiceData.header_fields = {
           ...existingHf,
           // invoicesAPI karma peşin CH_TAHSILAT yazmasın — POS tahsilatı sales.ts yazar
           source: existingHf.source ?? 'pos',
           payments: paymentRows.map((p: { method?: string; amount?: number; currency?: string; cash_register_id?: string | null }) => ({
             method: String(p.method || 'cash'),
-            amount: Number(p.amount) || 0,
+            // Oransal küçültme (overflow=true ise brüt→net dönüşümü)
+            amount: Math.round((Number(p.amount) || 0) * scale * 100) / 100,
             currency: p.currency || 'IQD',
             cash_register_id: p.cash_register_id ?? null,
           })),
