@@ -1,29 +1,34 @@
 /**
- * 14.10.2026 — Rezervasyon (henüz faturası kesilmemiş randevu) brüt/kalan
- * hesaplama. Aylık Gün Özeti, Günlük Rapor, POS Z Raporu, Beauty Raporu
- * gibi tüm ciro raporlarında ortak kullanılır.
+ * 14.10.2026 — Rezervasyon (henüz faturası kesilmemiş randevu) hesaplama.
+ * Aylık Gün Özeti, Günlük Rapor, POS Z Raporu, Beauty Raporu gibi tüm
+ * ciro raporlarında ortak kullanılır.
  *
- * Mantık:
+ * Mantık (kullanıcı kararı 14.10.2026 17:03):
  *   - status='completed' → hizmet verildi; Ciro'ya girer; buraya yansımaz.
  *   - status='cancelled' → iptal; Ciro'ya girmez; buraya yansımaz.
- *   - status='scheduled' (veya diğer) → hizmet verilmemiş, brüt=kalan
- *     fatura kesilecek. Ciro'ya girmez, buraya girer.
- *   - brüt = total_price; kalan = max(0, brüt − deposit_amount)
- *   - **Fallback zinciri** (AppointmentPOS brüt hizmet tutarı her zaman
- *     doğru yazmıyor olabilir):
- *       1) total_price > 0 ise → brüt = total_price
- *       2) total_price = 0 veya total_price < deposit_amount ise →
- *          service_price (katalogdan) kullan
- *       3) o da yoksa → deposit_amount kabul et (sadece tahsilat görünür,
- *          kalan 0)
- *   - **service_price** kolonu `getAppointmentsInRange` SELECT'ine eklendi
- *     (beauty_services.price LEFT JOIN).
+ *   - status='scheduled' (veya diğer) → hizmet verilmemiş; hizmet
+ *     brütü henüz Ciro'ya girmez (fatura kesilmedi); tahsil edilen
+ *     peşinat Ciro dışı tahsilat olarak ayrı kolondadır ve Net Kalan'a
+ *     eklenir.
+ *
+ *   - **bucket.deposit** = tahsil edilen peşinat (deposit_amount) →
+ *     "Rezervasyon Tutarı" kolonu + Net Kalan'a eklenir.
+ *   - **bucket.gross** = hizmet brüt fiyatı (henüz Ciro'ya yansımamış,
+ *     sadece bilgi amaçlı "Rezervasyon Brüt" kolonu).
+ *   - **bucket.pending** = brüt − peşinat = hizmet verildiğinde
+ *     tahsil edilecek kalan (sadece bilgi amaçlı "Rezervasyon Kalan"
+ *     kolonu; Ciro'ya yansımaz).
+ *
+ * Brüt seçimi (fallback zinciri):
+ *   1) total_price > 0 → brüt = total_price
+ *   2) total_price = 0 / küçükse → service_price (katalogdan)
+ *   3) o da yoksa → deposit_amount
  *
  * @param appointments beautyService.getAppointmentsInRange çıktısı
  * @param mode 'monthly-days' (YYYY-MM-DD) veya 'yearly-months' (YYYY-MM)
- * @returns Map<periodKey, { gross, pending, count }>
+ * @returns Map<periodKey, { gross, pending, deposit, count }>
  */
-export type ReservationBucket = { gross: number; pending: number; count: number };
+export type ReservationBucket = { gross: number; pending: number; deposit: number; count: number };
 
 /**
  * Tek randevu için brüt/peşinat/pending hesapla. Hem map hem range
@@ -35,7 +40,7 @@ export function calcReservationForAppointment(
         deposit_amount?: number | string | null;
         service_price?: number | string | null;
     },
-): { gross: number; pending: number; relevant: boolean } {
+): { gross: number; pending: number; deposit: number; relevant: boolean } {
     const dep = Math.max(0, Number(a.deposit_amount) || 0);
     const tp = Math.max(0, Number(a.total_price) || 0);
     const sp = Math.max(0, Number(a.service_price) || 0);
@@ -54,9 +59,14 @@ export function calcReservationForAppointment(
         gross = dep;
     }
     if (gross <= 0 && dep <= 0) {
-        return { gross: 0, pending: 0, relevant: false };
+        return { gross: 0, pending: 0, deposit: 0, relevant: false };
     }
-    return { gross, pending: Math.max(0, gross - dep), relevant: true };
+    return {
+        gross,
+        pending: Math.max(0, gross - dep),
+        deposit: dep,
+        relevant: true,
+    };
 }
 
 export function buildReservationMap(
@@ -79,9 +89,10 @@ export function buildReservationMap(
         const key = mode === 'monthly-days' ? d : d.slice(0, 7);
         const r = calcReservationForAppointment(a);
         if (!r.relevant) continue;
-        const cur = map.get(key) || { gross: 0, pending: 0, count: 0 };
+        const cur = map.get(key) || { gross: 0, pending: 0, deposit: 0, count: 0 };
         cur.gross += r.gross;
         cur.pending += r.pending;
+        cur.deposit += r.deposit;
         cur.count += 1;
         map.set(key, cur);
     }
@@ -89,8 +100,8 @@ export function buildReservationMap(
 }
 
 /**
- * Tek gün için rezervasyon kalan toplamı. Günlük Rapor / POS Z Raporu
- * gibi tek tarihli raporlarda kullanılır.
+ * Tek gün için rezervasyon toplamı. Günlük Rapor / POS Z Raporu gibi
+ * tek tarihli raporlarda kullanılır.
  */
 export function reservationPendingForDay(
     appointments: Array<{
@@ -102,7 +113,7 @@ export function reservationPendingForDay(
     }> | null | undefined,
     dayKey: string, // YYYY-MM-DD
 ): ReservationBucket {
-    const empty: ReservationBucket = { gross: 0, pending: 0, count: 0 };
+    const empty: ReservationBucket = { gross: 0, pending: 0, deposit: 0, count: 0 };
     if (!Array.isArray(appointments) || !dayKey) return empty;
     let out: ReservationBucket = empty;
     for (const a of appointments) {
@@ -115,6 +126,7 @@ export function reservationPendingForDay(
         out = {
             gross: out.gross + r.gross,
             pending: out.pending + r.pending,
+            deposit: out.deposit + r.deposit,
             count: out.count + 1,
         };
     }
@@ -136,7 +148,7 @@ export function reservationPendingForRange(
     fromIso: string, // YYYY-MM-DD
     toIso: string,   // YYYY-MM-DD
 ): ReservationBucket {
-    const empty: ReservationBucket = { gross: 0, pending: 0, count: 0 };
+    const empty: ReservationBucket = { gross: 0, pending: 0, deposit: 0, count: 0 };
     if (!Array.isArray(appointments) || !fromIso || !toIso) return empty;
     let out: ReservationBucket = empty;
     for (const a of appointments) {
@@ -149,6 +161,7 @@ export function reservationPendingForRange(
         out = {
             gross: out.gross + r.gross,
             pending: out.pending + r.pending,
+            deposit: out.deposit + r.deposit,
             count: out.count + 1,
         };
     }

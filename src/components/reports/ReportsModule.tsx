@@ -3648,10 +3648,11 @@ export function ReportsModule({
     const allDaySales = reportRangeSales.filter((s) => inReportPeriod(localCalendarDateKey(s.date)));
     const canceledSalesRows = allDaySales.filter((s) => isRemovedSaleStatus(s.status) && !isReturnSale(s));
 
-    // 14.10.2026 — Rezervasyon kalan (henüz faturası kesilmemiş
-    // randevular). Net Kalan'a eklenir. ERP ve Resto branch'lerinin
-    // ikisinde de kullanılır. Ad: `resvForZReport` (production build
-    // minify çakışmasını önlemek için açık isim).
+    // 14.10.2026 17:03 — Rezervasyon Tutarı (Ciro dışı tahsilat) Net
+    // Kalan'a eklenir. Brüt/kalan bilgi kolonu olarak gösterilir.
+    // ERP ve Resto branch'lerinin ikisinde de kullanılır.
+    // Ad: `resvForZReport` (production build minify çakışmasını önlemek
+    // için açık isim).
     const resvForZReport = reservationPendingForRange(
       dailyAppointments,
       selectedDateFrom,
@@ -3681,7 +3682,7 @@ export function ReportsModule({
           netSales,
           totalExpensesForReport,
           showDailyCardTotalExpense,
-        ) + resvForZReport.pending,
+        ) + resvForZReport.deposit,
         reservationGross: resvForZReport.gross,
         reservationPending: resvForZReport.pending,
         reservationCount: resvForZReport.count,
@@ -3747,7 +3748,7 @@ export function ReportsModule({
           totalAmount,
           totalExpensesForReport,
           showDailyCardTotalExpense,
-        ) + resvForZReport.pending,
+        ) + resvForZReport.deposit,
         reservationGross: resvForZReport.gross,
         reservationPending: resvForZReport.pending,
         reservationCount: resvForZReport.count,
@@ -5288,7 +5289,7 @@ export function ReportsModule({
         <div class="formula">
           <div class="row"><span class="label">${escHtml(tm('reportsZPrintCashCardCollected'))}</span><span>${formatNumber(posZCollectedAmount(zReport), 2, false)}</span></div>
           <div class="row"><span class="label">${escHtml(tm('reportsZPrintTotalExpense'))}</span><span>- ${formatNumber(zReport.totalExpenses, 2, false)}</span></div>
-          <div class="row"><span class="label">${escHtml(tm('reservationPendingLabel') || 'Rezervasyon Kalan')}</span><span>+ ${formatNumber(zReport.reservationPending ?? 0, 2, false)}</span></div>
+          <div class="row"><span class="label">${escHtml(tm('dailyDepositCollected') || 'Rezervasyon Tutarı')}</span><span>+ ${formatNumber(zReport.reservationPending ?? 0, 2, false)}</span></div>
           <div class="row final"><span>${escHtml(tm('reportsZPrintNetAfterExpensesUpper'))}</span><span>${formatNumber(zReport.netAfterExpenses, 2, false)}</span></div>
         </div>
         <div class="center small muted" style="margin-top:1mm">${escHtml(tm('reportsZPrintNetFootnote'))}</div>
@@ -7135,10 +7136,10 @@ export function ReportsModule({
                           },
                           {
                             key: 'reservation',
-                            label: tm('reservationPendingLabel') || 'Rezervasyon Kalan',
+                            label: tm('dailyDepositCollected') || 'Rezervasyon Tutarı',
                             value: formatNumber(zReport.reservationPending ?? 0, 2, false),
                             valueClassName: darkMode ? 'text-amber-400' : 'text-amber-600',
-                            hint: `${tm('reservationGrossLabel') || 'Brüt'}: ${formatNumber(zReport.reservationGross ?? 0, 2, false)}`,
+                            hint: `${tm('reservationGrossLabel') || 'Brüt'}: ${formatNumber(zReport.reservationGross ?? 0, 2, false)} · ${tm('reservationPendingLabel') || 'Kalan'}: ${formatNumber(Math.max(0, (zReport.reservationGross ?? 0) - (zReport.reservationPending ?? 0)), 2, false)}`,
                           },
                           {
                             key: 'netAfter',

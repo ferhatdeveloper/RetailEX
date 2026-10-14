@@ -77,11 +77,11 @@ interface PeriodSummaryRow {
   depositAmount: number;
   /**
    * 14.10.2026 — Rezervasyon hizmet brüt tutarı (henüz fişi kesilmemiş
-   * randevuların toplam hizmet fiyatı). Net Kalan'a eklenir: günü
-   * geldiğinde faturası kesilecek tutar olarak görünür.
+   * randevuların toplam hizmet fiyatı). Ciro'ya yansımaz, sadece bilgi
+   * kolonu olarak görünür.
    */
   reservationGross: number;
-  /** Rezervasyon kalan (brüt − peşinat). Fatura kesilecek olan tutar. */
+  /** Rezervasyon kalan (brüt − peşinat). Ciro'ya yansımaz; bilgi kolonu. */
   reservationPending: number;
   expenses: number;
   cashIn: number;
@@ -782,40 +782,30 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // veresiyeyi de dahil eder ve Ciro'yu olduğundan yüksek gösterebilir;
       // ancak "Net Kalan = Ciro − Gider" doğru olur. CH_TAHSILAT ayrı
       // "Kasa Para Girişi" kolonunda izlenir, Ciro'ya katılmaz.
-      // Net Kalan = Ciro − Gider + Rezervasyon Kalan (henüz faturası
-      // kesilmemiş randevuların tahsil edilmemiş kısmı). 14.10.2026
-      // kullanıcı talebi: "fatura tam kapatıldığında tam tutar
-      // görünmeli, bazen başka gün/iade olabilir". Faturası kesilince
-      // Ciro'ya girer ve reservationPending sıfırlanır. Gider kartı/
-      // parametresi kapalıysa gider düşülmez.
-      const reservation = reservationMap.get(periodKey) || { gross: 0, pending: 0, count: 0 };
+      //
+      // 14.10.2026 17:03 — kullanıcı kararı (Net Kalan formülü):
+      //   Net Kalan = Ciro − Gider + Ciro Dışı Tahsilat
+      // Ciro dışı tahsilat = Ciro'ya henüz yansımamış peşinatlar
+      // (avanslı satışlar için fatura/randevu tamamlanmamış):
+      //   - sale.depositAmount (Ciro'ya yansımamış avanslı satış)
+      //   - skipInvoiceAvans (cari_avans'tan gelen skipInvoice avans)
+      // Rezervasyon brüt/kalan henüz Ciro'ya yansımaz (fatura kesilmedi);
+      // sadece bilgi kolonu olarak gösterilir, Net Kalan'a katılmaz.
+      const reservation = reservationMap.get(periodKey) || { gross: 0, pending: 0, deposit: 0, count: 0 };
       const ciroTotal = sale.revenue;
+      // Ciro dışı tahsilat (satış kayıtlarından — Ciro'ya yansımamış
+      // avanslı satışlar + cari_avans skipInvoice avanslar).
+      // reservation.deposit burada KULLANILMAZ çünkü zaten
+      // sale.depositAmount içinde aynı avanslanmış satışa bağlı olarak
+      // sayılıyor; çift sayımı önlemek için Ciro dışı tahsilat = Ciro'ya
+      // yansımamış satış depositleri olarak alınır.
+      const ciroDisiTahsilat = sale.depositAmount + skipInvoiceAvans.amount;
       const netRemaining = reportNetCiroMinusGider(
         ciroTotal,
         exp,
         showPeriodCardExpenses,
-      ) + reservation.pending;
-      // 14.10.2026 — DEBUG: tarayıcı konsoluna gerçek değerleri yaz
-      if (periodKey === '2026-10-14') {
-        const dbg = {
-          periodKey,
-          ciroTotal,
-          exp,
-          showPeriodCardExpenses,
-          reservationGross: reservation.gross,
-          reservationPending: reservation.pending,
-          depositAmount: sale.depositAmount,
-          revenue: sale.revenue,
-          cash: sale.cash,
-          card: sale.card,
-          veresiye: sale.veresiye,
-          netRemaining,
-        };
-        // eslint-disable-next-line no-console
-        console.log('[REX DEBUG PeriodSummary 14.10]', JSON.stringify(dbg, null, 2));
-        (window as unknown as { __rexDebug14?: unknown }).__rexDebug14 = dbg;
-      }
-
+      ) + ciroDisiTahsilat;
+      // 14.10.2026 — DEBUG kaldırıldı
       const shareList = splitAmountByPartners(netRemaining, partnerSlices);
       const partnerShareMap: Record<string, number> = {};
       for (const s of shareList) partnerShareMap[s.id] = s.amount;
@@ -839,6 +829,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         depositCount: sale.depositCount + skipInvoiceAvans.count,
         depositAmount: sale.depositAmount + skipInvoiceAvans.amount,
         // 14.10.2026 — Rezervasyon brüt/kalan (henüz faturası kesilecek)
+        // Ciro'ya yansımaz; sadece bilgi kolonu olarak gösterilir.
+        // Ciro dışı tahsilat (peşinat) Ciro − Gider formülüne
+        // skipInvoiceAvans + sale.depositAmount üzerinden eklenir
+        // (çift sayım önlemek için reservation.deposit KULLANILMAZ).
         reservationGross: reservation.gross,
         reservationPending: reservation.pending,
         expenses: exp,
