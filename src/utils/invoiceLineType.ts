@@ -71,7 +71,28 @@ export function canonicalInvoiceLineType(raw: string | undefined): string {
   if (t === 'İndirim' || t === 'Discount' || t === 'discount' || t === 'خصم' || t === 'داشکاندن') {
     return 'İndirim';
   }
+  // Rezervasyon / peşinat bilgi satırı — güzellik randevu ödemelerinde fatura
+  // kalemi olarak görünür ama brüt/toplam/kâr hesabına dahil edilmez
+  // (peşinat zaten ayrı bir avans fişinde sayılmıştır; çift sayımı önler).
+  if (
+    t === 'Rezervasyon' ||
+    t === 'Reservation' ||
+    t === 'reservation' ||
+    t === 'reservation_payment' ||
+    t === 'reservation-payment' ||
+    t === 'حجز' ||
+    t === 'نەقد' ||
+    t === 'peşinat' ||
+    t === 'pesinat'
+  ) {
+    return 'Rezervasyon';
+  }
   return 'Malzeme';
+}
+
+/** Rezervasyon / peşinat bilgi satırı mı? (güzellik randevu ödemeleri) */
+export function isInvoiceReservationLineType(type: string | undefined): boolean {
+  return canonicalInvoiceLineType(type) === 'Rezervasyon';
 }
 
 export function isInvoiceServiceLineType(type: string | undefined): boolean {

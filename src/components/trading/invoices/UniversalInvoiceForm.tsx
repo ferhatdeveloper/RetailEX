@@ -22,6 +22,7 @@ import {
   isInvoiceMaterialLineType,
   isInvoiceSupplierPayableLineType,
   isInvoiceStockLineType,
+  isInvoiceReservationLineType,
   defaultInvoiceLineTypeFor,
   isInvoicePurchaseSide,
   isServiceInvoiceType,
@@ -3622,6 +3623,11 @@ export function UniversalInvoiceForm({
     let quantity = 0;
 
     items.forEach(item => {
+      // Rezervasyon / peşinat bilgi satırı brüt/toplam/kâr hesabına dahil
+      // edilmez (peşinat zaten ayrı bir avans fişinde sayılmıştır; çift
+      // sayımı önler). DB tarafında `item_type='reservation'` olarak
+      // yazılır, fatura önizleme tablosunda görünür ama matematik dışıdır.
+      if (isInvoiceReservationLineType(item.type)) return;
       if (invoiceType.category === 'Alis' && !isInvoiceSupplierPayableLineType(item.type)) return;
       const itemGross = (item.quantity || 0) * (item.unitPrice || 0);
       const itemTotalDiscount = (item.discountAmount || 0);
@@ -3721,7 +3727,15 @@ export function UniversalInvoiceForm({
     }
 
     const calculateProfit = async () => {
-      const validItems = items.filter(item => item.code && item.quantity > 0 && item.unitPrice > 0);
+      // Rezervasyon / peşinat bilgi satırı K/Z hesabına dahil edilmez.
+      // Cost bilgisi yoktur (bilgi satırı) ve zaten ayrı bir avans fişinde
+      // sayılmıştır; buraya katılırsa kâr marjı yanlış hesaplanır.
+      const validItems = items.filter(item =>
+        item.code
+        && item.quantity > 0
+        && item.unitPrice > 0
+        && !isInvoiceReservationLineType(item.type)
+      );
 
       if (validItems.length === 0) {
         setTotalCost(0);
