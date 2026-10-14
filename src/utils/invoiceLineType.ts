@@ -71,21 +71,40 @@ export function canonicalInvoiceLineType(raw: string | undefined): string {
   if (t === 'İndirim' || t === 'Discount' || t === 'discount' || t === 'خصم' || t === 'داشکاندن') {
     return 'İndirim';
   }
-  // Rezervasyon / peşinat bilgi satırı — güzellik randevu ödemelerinde fatura
+  // Rezervasyon (eski bilgi satırı) — güzellik randevu ödemelerinde fatura
   // kalemi olarak görünür ama brüt/toplam/kâr hesabına dahil edilmez
   // (peşinat zaten ayrı bir avans fişinde sayılmıştır; çift sayımı önler).
+  // Geriye uyumluluk için korunuyor; yeni akış 'Depozito' türünü kullanır.
   if (
     t === 'Rezervasyon' ||
     t === 'Reservation' ||
     t === 'reservation' ||
     t === 'reservation_payment' ||
     t === 'reservation-payment' ||
-    t === 'حجز' ||
-    t === 'نەقد' ||
-    t === 'peşinat' ||
-    t === 'pesinat'
+    t === 'حجز'
   ) {
     return 'Rezervasyon';
+  }
+  // Depozito (peşinat avansı) — brüt'ten düşen satır. Muhasebe: hizmet
+  // tahakkuku brüt tutar üzerinden yazılır; peşinat ayrı bir avans fişinde
+  // KASA_GIRIS olarak sayıldığı için burada brütten düşülür (Net = brüt
+  // − peşinat). Böylece cari bakiye yalnızca kalan borcu yansıtır, K/Z
+  // değişmez (hizmet geliri + maliyet).
+  if (
+    t === 'Depozito' ||
+    t === 'deposit' ||
+    t === 'Deposit' ||
+    t === 'advance_payment' ||
+    t === 'advance-payment' ||
+    t === 'peşinat' ||
+    t === 'pesinat' ||
+    t === 'نەقد' ||
+    t === 'دفعة مقدمة' ||
+    t === 'پێشەکی' ||
+    t === 'peşin' ||
+    t === 'pesin'
+  ) {
+    return 'Depozito';
   }
   return 'Malzeme';
 }
@@ -93,6 +112,11 @@ export function canonicalInvoiceLineType(raw: string | undefined): string {
 /** Rezervasyon / peşinat bilgi satırı mı? (güzellik randevu ödemeleri) */
 export function isInvoiceReservationLineType(type: string | undefined): boolean {
   return canonicalInvoiceLineType(type) === 'Rezervasyon';
+}
+
+/** Depozito (peşinat avansı) satırı mı? Brüt'ten düşer. */
+export function isInvoiceDepositLineType(type: string | undefined): boolean {
+  return canonicalInvoiceLineType(type) === 'Depozito';
 }
 
 export function isInvoiceServiceLineType(type: string | undefined): boolean {

@@ -3468,8 +3468,12 @@ export const beautyService = {
         const apptTable = `beauty.rex_${fn}_${pn}_beauty_appointments`;
         const salesTable = `public.rex_${fn}_${pn}_sales`;
         const itemsTable = `public.rex_${fn}_${pn}_sale_items`;
-        const RES_ITEM_NAME = 'Rezervasyon Ödemesi (Depozito)';
-        const RES_ITEM_TYPE = 'reservation';
+        const RES_ITEM_NAME = 'Depozito (Peşinat Avansı)';
+        // item_type='deposit' → fatura önizleme brütten düşer (Net = brüt
+        // − peşinat). Muhasebe: peşinat K/Z'ye dahil değil (zaten ayrı
+        // avans fişinde KASA_GIRIS yazılmıştır), yalnızca cari bakiyeden
+        // düşer.
+        const RES_ITEM_TYPE = 'deposit';
 
         // 1) Appointment'tan deposit_amount al (rezervasyon tutarı).
         //    Eğer 0 ise rezervasyon satırı eklemeye gerek yok.
@@ -11352,9 +11356,11 @@ export const beautyService = {
                         [mainSaleId, saleGross, serviceCost, serviceName],
                     );
 
-                    // Rezervasyon Ödemesi (Depozito) — 2. satır.
+                    // Depozito (Peşinat Avansı) — 2. satır.
                     // Sadece deposit_amount > 0 ise eklenir.
                     // Brüt toplamı iki kez saymamak için K/Z'ye etki etmez (cost=0, profit=0).
+                    // item_type='deposit' → fatura önizleme brütten düşer
+                    // (Net = brüt − peşinat).
                     if (depositAmtForSale > 0) {
                         await postgres.query(
                             `INSERT INTO ${saleItemsTable}
@@ -11364,8 +11370,8 @@ export const beautyService = {
                              VALUES
                                 (gen_random_uuid(), $1::text::uuid, NULL, 1, $2::numeric, 0,
                                  0, 0, $2::numeric, $2::numeric,
-                                 0, 0, 0, 'reservation'::text, $3::text)`,
-                            [mainSaleId, depositAmtForSale, 'Rezervasyon Ödemesi (Depozito)'],
+                                 0, 0, 0, $3::text, $4::text)`,
+                            [mainSaleId, depositAmtForSale, RES_ITEM_TYPE, RES_ITEM_NAME],
                         );
                     }
                     // randevuya remainder_sale_id + fiche_no geri yaz

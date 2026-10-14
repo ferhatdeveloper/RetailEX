@@ -23,6 +23,7 @@ import {
   isInvoiceSupplierPayableLineType,
   isInvoiceStockLineType,
   isInvoiceReservationLineType,
+  isInvoiceDepositLineType,
   defaultInvoiceLineTypeFor,
   isInvoicePurchaseSide,
   isServiceInvoiceType,
@@ -3621,23 +3622,37 @@ export function UniversalInvoiceForm({
     let totalGross = 0;
     let netAfterLines = 0;
     let quantity = 0;
+    let depositDeduction = 0; // Depozito satırı brüt'ten düşer (peşinat avansı)
 
     items.forEach(item => {
-      // Rezervasyon / peşinat bilgi satırı brüt/toplam/kâr hesabına dahil
-      // edilmez (peşinat zaten ayrı bir avans fişinde sayılmıştır; çift
-      // sayımı önler). DB tarafında `item_type='reservation'` olarak
-      // yazılır, fatura önizleme tablosunda görünür ama matematik dışıdır.
+      // Rezervasyon (eski bilgi satırı) brüt/toplam/kâr hesabına dahil
+      // edilmez (geriye uyumluluk). DB tarafında `item_type='reservation'`
+      // olarak yazılır, fatura önizleme tablosunda görünür ama matematik
+      // dışıdır — peşinat zaten ayrı bir avans fişinde sayılmıştır.
       if (isInvoiceReservationLineType(item.type)) return;
       if (invoiceType.category === 'Alis' && !isInvoiceSupplierPayableLineType(item.type)) return;
       const itemGross = (item.quantity || 0) * (item.unitPrice || 0);
       const itemTotalDiscount = (item.discountAmount || 0);
       const itemNet = itemGross - itemTotalDiscount;
 
+      // Depozito / peşinat avansı: brüt'ten düşer, net'i azaltır (cari
+      // yalnızca kalan borcu yansıtır). Görsel olarak indirim gibi
+      // görünür ama muhasebe etkisi farklıdır (kasaya ayrı avans
+      // fişinde yazılmıştır; burada tekrar KASA_GIRIS yazılmaz).
+      if (isInvoiceDepositLineType(item.type)) {
+        depositDeduction += itemNet;
+        quantity += Number(item.quantity) || 0;
+        return;
+      }
+
       quantity += Number(item.quantity) || 0;
       totalGross += itemGross;
       lineDiscount += itemTotalDiscount;
       netAfterLines += itemNet;
     });
+
+    // Net tutar = brüt (hizmet) + (-) depozito düşümü
+    netAfterLines = Math.max(0, netAfterLines - depositDeduction);
 
     let footerDiscount = 0;
     if (footerDiscountMode === 'percentage') {
@@ -3727,14 +3742,15 @@ export function UniversalInvoiceForm({
     }
 
     const calculateProfit = async () => {
-      // Rezervasyon / peşinat bilgi satırı K/Z hesabına dahil edilmez.
-      // Cost bilgisi yoktur (bilgi satırı) ve zaten ayrı bir avans fişinde
-      // sayılmıştır; buraya katılırsa kâr marjı yanlış hesaplanır.
+      // Rezervasyon / Depozito satırları K/Z hesabına dahil edilmez.
+      // Cost bilgisi yoktur (bilgi / avans satırı) ve ayrı bir avans
+      // fişinde sayılmıştır; buraya katılırsa kâr marjı yanlış çıkar.
       const validItems = items.filter(item =>
         item.code
         && item.quantity > 0
         && item.unitPrice > 0
         && !isInvoiceReservationLineType(item.type)
+        && !isInvoiceDepositLineType(item.type)
       );
 
       if (validItems.length === 0) {
