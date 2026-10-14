@@ -1418,12 +1418,13 @@ export function AppointmentPOS({
             );
             if (totalGross <= 0) return prevCart;
             // 14.10.2026 — Rezervasyon tutarı her zaman tam sayı para birimi
-            // (IQD) olarak girilir (`step=1`). Bu yüzden orantılı düşüm
-            // her zaman tam sayı (Math.round) çalışmalı; 2 hane ondalık
-            // kuralı (`reservationMaxFractionDigits === 2`) yalnızca
-            // input alanı içindir, fiyat hesabında küsurat oluşmamalı.
-            // Aksi halde 61.538 / 38.462 gibi bozuk değerler çıkıyordu.
-            const round = (n: number) => Math.round(n);
+            // (IQD) olarak girilir (`step=1`). Orantılı düşüm sonucu
+            // hizmet tutarları 1000'in katlarına yuvarlanır (örn. 61.538
+            // → 62.000, 38.462 → 38.000). Kullanıcı geri bildirimi:
+            // düz/düzgün tutarlar (binliklere yuvarlanmış) gösterilmeli.
+            // Son satıra kalan fark yazılır; bu yüzden yuvarlama farkı
+            // DEPOSIT satırına yansımaz, depositAmount sabit kalır.
+            const round = (n: number) => Math.round(n / 1000) * 1000;
             if (amount <= 0) {
                 // Tüm hizmetleri orijinaline döndür, deposit sil.
                 const restored = serviceLines.map(l =>
