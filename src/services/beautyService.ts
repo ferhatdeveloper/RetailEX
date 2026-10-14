@@ -2834,6 +2834,15 @@ export const beautyService = {
                     pr.name
                 ) AS service_name,
                 COALESCE(s.color, '#6366f1') AS service_color,
+                -- 14.10.2026 — Hizmet kataloğundaki brüt fiyat. Eski
+                -- randevularda total_price indirim sonrası / yanlış
+                -- yazılmış olabilir; raporlarda brüt hizmet tutarı
+                -- olarak service_price fallback olarak kullanılır.
+                COALESCE(
+                    NULLIF(s.price, 0),
+                    NULLIF(rs.price, 0),
+                    NULLIF(pr.price, 0)
+                ) AS service_price,
                 COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
                 c.name   AS customer_name,
                 COALESCE(NULLIF(TRIM(c.phone::text), ''), NULLIF(TRIM(c.phone2::text), '')) AS customer_phone,
@@ -2918,6 +2927,15 @@ export const beautyService = {
                     pr.name
                 ) AS service_name,
                 COALESCE(s.color, '#6366f1') AS service_color,
+                -- 14.10.2026 — Hizmet kataloğundaki brüt fiyat. Eski
+                -- randevularda total_price indirim sonrası / yanlış
+                -- yazılmış olabilir; raporlarda brüt hizmet tutarı
+                -- olarak service_price fallback olarak kullanılır.
+                COALESCE(
+                    NULLIF(s.price, 0),
+                    NULLIF(rs.price, 0),
+                    NULLIF(pr.price, 0)
+                ) AS service_price,
                 COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
                 c.name   AS customer_name,
                 COALESCE(NULLIF(TRIM(c.phone::text), ''), NULLIF(TRIM(c.phone2::text), '')) AS customer_phone,

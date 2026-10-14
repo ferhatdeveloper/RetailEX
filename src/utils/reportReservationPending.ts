@@ -9,10 +9,15 @@
  *   - status='scheduled' (veya diğer) → hizmet verilmemiş, brüt=kalan
  *     fatura kesilecek. Ciro'ya girmez, buraya girer.
  *   - brüt = total_price; kalan = max(0, brüt − deposit_amount)
- *   - **Fallback**: total_price 0 ise ve deposit_amount > 0 ise brüt =
- *     deposit_amount kabul edilir (AppointmentPOS'ta indirim sonrası
- *     total 0 yazılabiliyor; peşinat bilinen tek tutar). Bu durumda
- *     pending = 0 (gerçek brüt belli değil; sadece tahsilat görünür).
+ *   - **Fallback zinciri** (AppointmentPOS brüt hizmet tutarı her zaman
+ *     doğru yazmıyor olabilir):
+ *       1) total_price > 0 ise → brüt = total_price
+ *       2) total_price = 0 veya total_price < deposit_amount ise →
+ *          service_price (katalogdan) kullan
+ *       3) o da yoksa → deposit_amount kabul et (sadece tahsilat görünür,
+ *          kalan 0)
+ *   - **service_price** kolonu `getAppointmentsInRange` SELECT'ine eklendi
+ *     (beauty_services.price LEFT JOIN).
  *
  * @param appointments beautyService.getAppointmentsInRange çıktısı
  * @param mode 'monthly-days' (YYYY-MM-DD) veya 'yearly-months' (YYYY-MM)
@@ -28,20 +33,30 @@ export function calcReservationForAppointment(
     a: {
         total_price?: number | string | null;
         deposit_amount?: number | string | null;
+        service_price?: number | string | null;
     },
 ): { gross: number; pending: number; relevant: boolean } {
-    const tp = Math.max(0, Number(a.total_price) || 0);
     const dep = Math.max(0, Number(a.deposit_amount) || 0);
-    if (tp > 0) {
-        return { gross: tp, pending: Math.max(0, tp - dep), relevant: true };
+    const tp = Math.max(0, Number(a.total_price) || 0);
+    const sp = Math.max(0, Number(a.service_price) || 0);
+    // Brüt seç:
+    //  - service_price varsa ve total_price'tan büyükse → katalog brüt
+    //    (toplam > yazılı: indirim sonrası yazılmış eski veri düzeltmesi)
+    //  - total_price > 0 ise ve service_price yoksa → total_price
+    //  - total_price = 0 ve service_price varsa → service_price
+    //  - o da yoksa → deposit_amount
+    let gross = 0;
+    if (sp > 0 && (tp <= 0 || sp > tp)) {
+        gross = sp;
+    } else if (tp > 0) {
+        gross = tp;
+    } else if (dep > 0) {
+        gross = dep;
     }
-    if (dep > 0) {
-        // total_price 0 / yazılmamış (örn. AppointmentPOS indirim sonrası
-        // 0 yazdı, veya eski kayıt) → brüt = peşinat kabul et; gerçek
-        // brüt belli olmadığı için pending = 0.
-        return { gross: dep, pending: 0, relevant: true };
+    if (gross <= 0 && dep <= 0) {
+        return { gross: 0, pending: 0, relevant: false };
     }
-    return { gross: 0, pending: 0, relevant: false };
+    return { gross, pending: Math.max(0, gross - dep), relevant: true };
 }
 
 export function buildReservationMap(
@@ -50,6 +65,7 @@ export function buildReservationMap(
         status?: string;
         total_price?: number | string | null;
         deposit_amount?: number | string | null;
+        service_price?: number | string | null;
     }> | null | undefined,
     mode: 'monthly-days' | 'yearly-months',
 ): Map<string, ReservationBucket> {
@@ -82,6 +98,7 @@ export function reservationPendingForDay(
         status?: string;
         total_price?: number | string | null;
         deposit_amount?: number | string | null;
+        service_price?: number | string | null;
     }> | null | undefined,
     dayKey: string, // YYYY-MM-DD
 ): ReservationBucket {
@@ -114,6 +131,7 @@ export function reservationPendingForRange(
         status?: string;
         total_price?: number | string | null;
         deposit_amount?: number | string | null;
+        service_price?: number | string | null;
     }> | null | undefined,
     fromIso: string, // YYYY-MM-DD
     toIso: string,   // YYYY-MM-DD
