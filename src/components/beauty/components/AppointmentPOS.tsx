@@ -1121,7 +1121,13 @@ export function AppointmentPOS({
                         type: 'service',
                         item_id: mapped.id,
                         name: mapped.name,
-                        unit_price: Number(apt.total_price ?? mapped.price ?? 0),
+                        // 14.10.2026 — Brüt hizmet fiyatı tercih edilir.
+                        // `apt.total_price` eski kodlarda düşülmüş haliyle
+                        // yazılmış olabilir; bu yüzden hizmet kataloğundaki
+                        // brüt fiyat (`mapped.price`) tercih edilir.
+                        // `apt.total_price` yalnızca katalog eşleşmezse
+                        // fallback olarak kullanılır.
+                        unit_price: Number(mapped.price ?? apt.total_price ?? 0),
                         qty: 1,
                         color: mapped.color,
                         duration_min: Math.max(1, Math.round(Number(apt.duration ?? mapped.duration_min ?? 30))),
@@ -1134,7 +1140,7 @@ export function AppointmentPOS({
                         type: mappedProd ? 'product' : 'service',
                         item_id: svcId || mappedProd?.id || `apt-${apt.id}`,
                         name: mappedProd?.name ?? String(apt.service_name ?? '—'),
-                        unit_price: Number(apt.total_price ?? mappedProd?.price ?? 0),
+                        unit_price: Number(mappedProd?.price ?? apt.total_price ?? 0),
                         qty: 1,
                         color: mappedProd ? '#0d9488' : undefined,
                         duration_min: Math.max(1, Math.round(Number(apt.duration ?? 30))),
@@ -1169,7 +1175,10 @@ export function AppointmentPOS({
                         type: 'service',
                         item_id: mappedService.id,
                         name: mappedService.name,
-                        unit_price: Number(primary.total_price ?? mappedService.price ?? 0),
+                        // 14.10.2026 — Brüt fiyat tercih edilir (mapped.price);
+                        // `apt.total_price` eski kodlarda düşülmüş haliyle
+                        // yazılmış olabilir.
+                        unit_price: Number(mappedService.price ?? primary.total_price ?? 0),
                         qty: 1,
                         color: mappedService.color,
                         duration_min: Number(primary.duration ?? mappedService.duration_min ?? 30),
@@ -1181,7 +1190,7 @@ export function AppointmentPOS({
                         type: mappedProduct ? 'product' : 'service',
                         item_id: serviceId || mappedProduct?.id || `apt-${primary.id}`,
                         name: mappedProduct?.name ?? String(primary.service_name ?? '—'),
-                        unit_price: Number(primary.total_price ?? mappedProduct?.price ?? 0),
+                        unit_price: Number(mappedProduct?.price ?? primary.total_price ?? 0),
                         qty: 1,
                         color: mappedProduct ? '#0d9488' : undefined,
                         duration_min: Number(primary.duration ?? 30),
@@ -1206,6 +1215,19 @@ export function AppointmentPOS({
             );
             setAptActualDurationMin(Math.max(1, sumDur || Math.round(Number(primary.duration) || 30)));
             setHydratedAppointmentId(primary.id);
+            // 14.10.2026 — Mevcut randevuda deposit tutarı DB'den geliyor
+            // (`primary.deposit_amount`). Bu tutarı sepete yansıt:
+            // hizmet kartlarını orantılı düşür + mor DEPOSIT kartı ekle.
+            // Yeni randevuda kullanıcı rezervasyon tutarı girince de aynı
+            // fonksiyon çalışıyor (`applyReservationSpread` onChange'de).
+            // Mevcut randevuda input kilitli olduğu için kullanıcı yanlışlıkla
+            // tetikleyemez; burada sadece ilk yüklemede bir kez çağrılır.
+            const existingDep = Number((primary as { deposit_amount?: number }).deposit_amount ?? 0);
+            if (existingDep > 0 && lines.length > 0) {
+                // Kısa gecikme: setCart async olduğu için applyReservationSpread
+                // bir sonraki tick'te çalışmalı (cart state güncellenmiş olur).
+                setTimeout(() => applyReservationSpread(existingDep), 0);
+            }
         })();
 
         return () => {
@@ -1420,7 +1442,12 @@ export function AppointmentPOS({
      * kilitli, dolayısıyla cart manipülasyonu yapılmaz.
      */
     const applyReservationSpread = (amount: number) => {
-        if (existingAppointment?.id) return;
+        // 14.10.2026 — Mevcut randevu kontrolü kaldırıldı. Yeni randevuda
+        // onChange'den çağrılır (kullanıcı tutar girer), mevcut randevuda
+        // ise randevu yüklenirken bir kez `existingDeposit` ile tetiklenir
+        // (DEPOSIT kartını ekle + hizmetleri orantılı düş). Mevcut
+        // randevuda input readonly olduğu için kullanıcı yanlışlıkla
+        // setReservationAmount çağıramaz.
         setCart(prevCart => {
             const depositIdx = prevCart.findIndex(l => l.type === 'deposit');
             const serviceLines = prevCart.filter(l => l.type !== 'deposit');
