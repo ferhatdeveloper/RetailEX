@@ -465,6 +465,13 @@ export function AppointmentPOS({
     const [discount, setDiscount] = useState(0);
     // Rezervasyon tutarı (müşteriden peşin alınan tutar; toplamdan düşer)
     const [reservationAmount, setReservationAmount] = useState(0);
+    /**
+     * 14.10.2026 — DEPOSIT hizmeti için gerçek DB ID. Sayfa açıldığında
+     * `beautyService.ensureDepositService()` ile DB'de aranır/oluşturulur;
+     * `applyReservationSpread` bu ID ile DEPOSIT satırını ekler. Sentetik
+     * `__deposit__` ID'si fiş kesiminde sorun çıkarıyordu.
+     */
+    const [depositServiceId, setDepositServiceId] = useState<string | null>(null);
     // 14.10.2026 — Default `false`: "Rezervasyon fişi kes" checkbox'ı
     // varsayılan işaretli OLMASIN. Kullanıcı talebi: yeni randevuda
     // peşinat alırken ayrı bir rezervasyon sales fişi otomatik
@@ -735,6 +742,17 @@ export function AppointmentPOS({
         loadServices(); loadPackages(); loadSpecialists();
         loadCustomers(); loadDevices();
         void loadProducts(true);
+        // 14.10.2026 — DEPOSIT hizmeti DB'de yoksa oluştur (idempotent).
+        // ensureDepositService() önce var mı diye bakar, yoksa INSERT yapar
+        // ve ID döndürür; tek seferlik bootstrap — race condition'a karşı
+        // state guard ile korunuyor.
+        if (!depositServiceId) {
+            void beautyService.ensureDepositService()
+                .then(id => setDepositServiceId(id))
+                .catch((err) => {
+                    logger.error('AppointmentPOS', 'ensureDepositService failed', err);
+                });
+        }
         void (async () => {
             try {
                 const accounts = await fetchCurrentAccounts(ERP_SETTINGS.firmNr, 'MUSTERI');
@@ -1442,10 +1460,13 @@ export function AppointmentPOS({
                 };
             });
             // DEPOSIT satırı ekle veya güncelle.
+            // item_id için `depositServiceId` (DB'de bootstrap edilen gerçek
+            // hizmet) kullanılır; hazır değilse sentetik `__deposit__` ID'si
+            // ile devam edilir (faturalama sonraya bırakılır).
             const newDeposit: CartLine = {
                 uid: depositIdx >= 0 ? prevCart[depositIdx].uid : uid(),
                 type: 'deposit',
-                item_id: '__deposit__',
+                item_id: depositServiceId ?? '__deposit__',
                 name: 'DEPOSIT',
                 unit_price: round(cap),
                 qty: 1,

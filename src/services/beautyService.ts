@@ -2414,6 +2414,82 @@ export const beautyService = {
         return out;
     },
 
+    /**
+     * 14.10.2026 — Rezervasyon (deposit) tutarı için otomatik bootstrap.
+     * `beauty.rex_*_beauty_services` içinde "DEPOSIT" hizmeti yoksa oluşturur
+     * ve ID'sini döndürür; varsa mevcut ID'yi döndürür.
+     *
+     * AppointmentPOS bu ID'yi DEPOSIT satırı (`CartLine.type='deposit'`)
+     * oluştururken kullanır — sentetik `__deposit__` ID'si yerine gerçek
+     * hizmet ID'si kullanılır, böylece fiş kesildiğinde hizmet DB'de
+     * bulunur ve cari/stok tarafı sorunsuz çalışır.
+     *
+     * Idempotent: aynı ada sahip birden fazla kayıt oluşturmaz; eşleşen
+     * ilk aktif kaydı tercih eder, yoksa pasif kaydı canlandırır ya da
+     * yenisini ekler.
+     */
+    async ensureDepositService(): Promise<string> {
+        const t = postgres.getCardTableName('beauty_services', 'beauty');
+        const fn = erpFirmNrForRow();
+        // Mevcut DEPOSIT hizmetini ara.
+        try {
+            const { rows } = await postgres.query(
+                `SELECT id, is_active FROM ${t}
+                 WHERE LOWER(TRIM(name)) IN (LOWER('DEPOSIT'), LOWER('Depozito'), LOWER('Peşinat'))
+                 ORDER BY is_active DESC NULLS LAST, created_at ASC
+                 LIMIT 1`,
+            );
+            const first = rows[0];
+            if (first) {
+                return String(first.id);
+            }
+        } catch {
+            /* tablo yoksa INSERT yoluna düş */
+        }
+        // Yoksa oluştur.
+        const newId = uuidv4();
+        try {
+            if (shouldUseTenantPostgrestApi()) {
+                const { postgrest } = await import('./api/postgrestClient');
+                await postgrest.post(
+                    `/rex_${fn}_beauty_services`,
+                    {
+                        id: newId,
+                        name: 'DEPOSIT',
+                        category: 'beauty',
+                        parent_category: 'service',
+                        duration_min: 0,
+                        price: 0,
+                        cost_price: 0,
+                        color: '#a855f7',
+                        commission_rate: 0,
+                        description: 'Rezervasyon tutarı (ön ödeme / kaparo) için otomatik bootstrap hizmeti',
+                        requires_device: false,
+                        expected_shots: 0,
+                        default_sessions: 1,
+                        follow_up_reminder_days: 0,
+                        is_active: true,
+                    },
+                    { schema: 'beauty', prefer: 'return=minimal' },
+                );
+            } else {
+                await postgres.query(
+                    `INSERT INTO ${t}
+                        (id, name, category, parent_category, duration_min, price, cost_price, color, commission_rate,
+                         description, requires_device, expected_shots, default_sessions, follow_up_reminder_days, is_active, created_at, updated_at)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true,NOW(),NOW())`,
+                    [newId, 'DEPOSIT', 'beauty', 'service', 0, 0, 0, '#a855f7', 0,
+                     'Rezervasyon tutarı (ön ödeme / kaparo) için otomatik bootstrap hizmeti',
+                     false, 0, 1, 0],
+                );
+            }
+        } catch (err) {
+            logger.error('beautyService', 'ensureDepositService insert failed', err);
+            throw err;
+        }
+        return newId;
+    },
+
     async createService(data: Partial<BeautyService>): Promise<string> {
         const t = postgres.getCardTableName('beauty_services', 'beauty');
         const fn = erpFirmNrForRow();
