@@ -87,11 +87,18 @@ export type BeautyCustomerProfileQueryOpts = {
     name?: string | null;
 };
 
-/** PG uuid sütunlarında `""` geçersizdir — null kullanılmalı */
+/** PG uuid sütunlarında `""` geçersizdir — null kullanılmalı.
+ *  14.10.2026 — UUID format doğrulaması eklendi. `__deposit__` gibi
+ *  sentetik ID'ler (DB'de bootstrap edilmemiş hizmetler için
+ *  AppointmentPOS'tan geçici fallback) artık NULL'a çevrilir; aksi
+ *  hâlde PostgREST 400 (`22P02 invalid input syntax for type uuid`)
+ *  hatası fırlatıyordu. Geçerli UUID regex: 8-4-4-4-12 hex pattern. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function pgUuidOrNull(v: unknown): string | null {
     if (v == null || v === undefined) return null;
     const s = String(v).trim();
-    return s.length ? s : null;
+    if (!s.length) return null;
+    return UUID_RE.test(s) ? s : null;
 }
 
 /** TIME sütunu için güvenli biçim (HH:mm:ss) */
