@@ -70,6 +70,17 @@ function tableName(): string {
     return `rex_${padServiceFirmNr()}_services`;
 }
 
+/**
+ * 14.10.2026 — Beauty hizmet tablosu adı. Fatura formunda beauty
+ * hizmetleri de listelensin diye UNION ALL'da kullanılır.
+ * (Beauty POS'taki hizmetler ayrı tabloda tutuluyor; ERP faturası
+ * kesildiğinde `item_id` doğrudan bu ID olur — `sale_items.item_id`
+ * kolonu UUID ve nullable, FK yok.)
+ */
+function beautyTableName(): string {
+    return `beauty.rex_${padServiceFirmNr()}_beauty_services`;
+}
+
 function num(v: unknown, fallback = 0): number {
     if (typeof v === 'number' && !Number.isNaN(v)) return v;
     const n = parseFloat(String(v ?? '').replace(',', '.'));
@@ -126,6 +137,31 @@ function mapRow(row: Record<string, unknown>): Service {
         created_at: row.created_at != null ? String(row.created_at) : '',
         updated_at: row.updated_at != null ? String(row.updated_at) : '',
         sale_count: row.sale_count != null ? num(row.sale_count) : undefined,
+    };
+}
+
+/**
+ * 14.10.2026 — Beauty tablosundan gelen satırı Service tipine map et.
+ * Beauty tablosunda `code`, `tax_rate`, `unit` kolonları yok; bunlar
+ * default değerlerle doldurulur. `description` opsiyonel.
+ *
+ * Fatura formunda gösterilirken: id aynı (beauty ID'si), name
+ * korunur, unit_price service kartındaki `price`'tan gelir.
+ */
+function mapBeautyRow(row: Record<string, unknown>): Service {
+    return {
+        id: String(row.id),
+        code: '', // beauty tablosunda code yok
+        name: String(row.name ?? ''),
+        description: row.description != null ? String(row.description) : undefined,
+        category: 'beauty', // ayırt edici — fatura formunda "Beauty" rozeti
+        unit_price: num(row.unit_price, 0),
+        purchase_price: num(row.purchase_price, 0),
+        tax_rate: 0, // beauty hizmetlerinde KDV genelde 0
+        unit: 'Adet',
+        is_active: row.is_active !== false,
+        created_at: '',
+        updated_at: '',
     };
 }
 
@@ -241,12 +277,59 @@ function patchToDbRow(patch: UpdateServiceInput): Record<string, unknown> {
 }
 
 class ServiceAPI {
+    /**
+     * 14.10.2026 — Tüm aktif hizmetler (ERP + beauty). ERP hizmetleri
+     * `public.rex_{firm}_services` tablosundan, beauty hizmetleri
+     * `beauty.rex_{firm}_beauty_services` tablosundan UNION ALL ile
+     * birleştirilir. Fatura formu tek listede hem ERP hem beauty
+     * hizmetlerini görür; kullanıcı seçtiğinde `item_id` doğru
+     * kalır. Kolon farklılıkları (beauty tablosunda code, tax_rate
+     * yok) tip dönüşümünde doldurulur.
+     */
     async getAll(): Promise<Service[]> {
-        const { rows } = await postgres.query(
-            `SELECT * FROM ${tableName()} WHERE firm_nr = $1 ORDER BY created_at DESC`,
-            [padServiceFirmNr()]
-        );
-        return (rows as Record<string, unknown>[]).map(mapRow);
+        const firmNr = padServiceFirmNr();
+        // ERP hizmetleri (public.rex_*_services)
+        let erpRows: Record<string, unknown>[] = [];
+        try {
+            const { rows } = await postgres.query(
+                `SELECT * FROM ${tableName()} WHERE firm_nr = $1 ORDER BY created_at DESC`,
+                [firmNr],
+            );
+            erpRows = rows;
+        } catch {
+            /* tablo yoksa yoksay */
+        }
+        // Beauty hizmetleri (beauty.rex_*_beauty_services)
+        let beautyRows: Record<string, unknown>[] = [];
+        try {
+            const { rows } = await postgres.query(
+                `SELECT id::text AS id, name, COALESCE(category, 'service') AS category,
+                        COALESCE(price, 0) AS unit_price,
+                        COALESCE(cost_price, 0) AS purchase_price,
+                        COALESCE(duration_min, 0) AS duration_min,
+                        COALESCE(color, '#7c3aed') AS color,
+                        COALESCE(is_active, true) AS is_active,
+                        COALESCE(description, '') AS description
+                 FROM ${beautyTableName()}
+                 WHERE firm_nr = $1 OR firm_nr IS NULL
+                 ORDER BY created_at DESC NULLS LAST`,
+                [firmNr],
+            );
+            beautyRows = rows;
+        } catch {
+            /* tablo yoksa yoksay */
+        }
+        const out: Service[] = [];
+        for (const r of erpRows) out.push(mapRow(r));
+        for (const r of beautyRows) out.push(mapBeautyRow(r));
+        // Aktif olanlar önce, sonra isme göre
+        out.sort((a, b) => {
+            const ai = a.is_active ? 0 : 1;
+            const bi = b.is_active ? 0 : 1;
+            if (ai !== bi) return ai - bi;
+            return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'tr');
+        });
+        return out;
     }
 
     async getActive(): Promise<Service[]> {
