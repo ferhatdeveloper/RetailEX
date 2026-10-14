@@ -923,6 +923,12 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
 
   const gridRows = useMemo((): PeriodSummaryGridRow[] => {
     return rows.map((r) => ({
+      // 14.10.2026 — DevExDataGrid `getRowId` `row.id` okur; index-key
+      // kullanmak React 18 reconciliation'da "NotFoundError: removeChild"
+      // hatasına yol açıyor (rows array yeniden hesaplandığında DOM node
+      // eski referansını kaybediyor). periodKey (YYYY-MM-DD veya
+      // YYYY-MM) satır için stable — TanStack Table doğru reconcile eder.
+      id: r.periodKey,
       ...r,
       ...Object.fromEntries(
         partnerSlices.map((p) => [`partner-${p.id}`, r.partnerShares[p.id] ?? 0] as const),
