@@ -81,6 +81,11 @@ interface PeriodSummaryRow {
    * kolonu olarak görünür.
    */
   reservationGross: number;
+  /**
+   * 14.10.2026 19:18 — Rezervasyon miktarı (adet). Brütten bağımsız,
+   * ayrı kolon olarak gösterilir. Ciro'ya yansımaz.
+   */
+  reservationCount: number;
   /** Rezervasyon kalan (brüt − peşinat). Ciro'ya yansımaz; bilgi kolonu. */
   reservationPending: number;
   expenses: number;
@@ -97,7 +102,7 @@ interface PeriodSummaryRow {
 function hasPeriodActivity(row: Pick<PeriodSummaryRow,
   'saleCount' | 'revenue' | 'cash' | 'card' | 'veresiye' | 'discount' |
   'returnsAmount' | 'depositCount' | 'depositAmount' |
-  'reservationGross' | 'reservationPending' |
+  'reservationGross' | 'reservationCount' | 'reservationPending' |
   'expenses' | 'cashIn' | 'purchases' | 'netRemaining'
   >): boolean {
   // Bug 30 — Aylık Gün Özeti tablosu boş (hücreler "—") ama KPI dolu kök neden.
@@ -122,6 +127,7 @@ function hasPeriodActivity(row: Pick<PeriodSummaryRow,
     row.depositCount > 0 ||
     row.depositAmount > 0 ||
     row.reservationGross > 0 ||
+    row.reservationCount > 0 ||
     row.reservationPending > 0 ||
     row.expenses > 0 ||
     row.cashIn > 0 ||
@@ -792,6 +798,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // Rezervasyon brüt/kalan henüz Ciro'ya yansımaz (fatura kesilmedi);
       // sadece bilgi kolonu olarak gösterilir, Net Kalan'a katılmaz.
       const reservation = reservationMap.get(periodKey) || { gross: 0, pending: 0, deposit: 0, count: 0 };
+      // 14.10.2026 19:18 — reservationCount = rezervasyon adedi (miktar);
+      // brütten ayrı kolon olarak gösterilir. depositCount'tan
+      // bağımsız olmalı (depositCount = Ciro'ya yansımamış peşinat adedi).
       const ciroTotal = sale.revenue;
       // Ciro dışı tahsilat (satış kayıtlarından — Ciro'ya yansımamış
       // avanslı satışlar + cari_avans skipInvoice avanslar).
@@ -834,6 +843,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         // skipInvoiceAvans + sale.depositAmount üzerinden eklenir
         // (çift sayım önlemek için reservation.deposit KULLANILMAZ).
         reservationGross: reservation.gross,
+        reservationCount: reservation.count,
         reservationPending: reservation.pending,
         expenses: exp,
         cashIn,
@@ -886,6 +896,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         depositAmount: acc.depositAmount + r.depositAmount,
         // 14.10.2026 — Rezervasyon brüt/kalan toplamları
         reservationGross: acc.reservationGross + r.reservationGross,
+        reservationCount: acc.reservationCount + r.reservationCount,
         reservationPending: acc.reservationPending + r.reservationPending,
         expenses: acc.expenses + r.expenses,
         cashIn: acc.cashIn + r.cashIn,
@@ -897,7 +908,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
         returnsCount: 0, returnsAmount: 0,
         depositCount: 0, depositAmount: 0,
-        reservationGross: 0, reservationPending: 0,
+        reservationGross: 0, reservationCount: 0, reservationPending: 0,
         expenses: 0, cashIn: 0, purchases: 0, netRemaining: 0,
       }
     );
@@ -1108,23 +1119,38 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             {n > 0 ? money(n) : `${money(0)} (yok)`}
           </span>
         ),
-        // 14.10.2026 19:12 — Brüt hücresinde gerçek tutarın yanında
-        // rezervasyon adedi (miktar) gösterilir: "50.000 · 1 adet".
-        // depositCount = Ciro'ya yansımamış avanslı satış adedi (=
-        // rezervasyon sayısı).
-        cell: (row) => {
-          if (row.reservationGross <= 0) return '—';
-          return (
-            <span className="text-violet-700 font-medium">
-              {money(row.reservationGross)}
-              {row.depositCount > 0 ? (
-                <span className="text-violet-500 font-normal text-xs ml-1">
-                  · {row.depositCount} {tm('dailyDepositCountShort') || 'adet'}
-                </span>
-              ) : null}
-            </span>
-          );
-        },
+        // 14.10.2026 19:18 — Brüt hücresinde yalnızca hizmet brütü
+        // gösterilir (örn. 50.000). Rezervasyon adedi (miktar) ayrı
+        // "Rezervasyon Miktarı" kolonunda görünür; burada miktar
+        // gösterilmez. Brüt = hizmet brütü = her zaman tek tek brüt.
+        cell: (row) =>
+          row.reservationGross > 0 ? (
+            <span className="text-violet-700 font-medium">{money(row.reservationGross)}</span>
+          ) : (
+            '—'
+          ),
+        meta: { defaultVisible: true },
+      },
+      // 14.10.2026 19:18 — Rezervasyon Miktarı (adet) — Rezervasyon
+      // Brüt hücresinin yanında. Brütün altında kaç adet rezervasyon
+      // olduğunu gösterir (örn. 1). Ciro'ya yansımaz; sadece bilgi.
+      {
+        key: 'reservationCount',
+        header: `${tm('reservationCountLabel') || 'Rezervasyon Miktarı'}`,
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => (
+          <span className={n > 0 ? 'text-violet-700' : 'text-violet-900/60'}>
+            {n > 0 ? Math.round(n) : `${Math.round(n)} (yok)`}
+          </span>
+        ),
+        cell: (row) =>
+          row.reservationCount > 0 ? (
+            <span className="text-violet-700 font-medium">{row.reservationCount}</span>
+          ) : (
+            '—'
+          ),
         meta: { defaultVisible: true },
       },
       // 14.10.2026 — Rezervasyon kalan (brüt − peşinat). Fatura

@@ -10896,6 +10896,15 @@ export const excelModuleTranslations = {
     ar: 'إجمالي الحجز',
     ku: 'کۆی نۆڕە',
   },
+  // 14.10.2026 19:18 — Rezervasyon Miktarı (adet) — brütten bağımsız
+  // ayrı kolon başlığı. Brütün altında kaç adet rezervasyon olduğunu
+  // gösterir.
+  reservationCountLabel: {
+    tr: 'Rezervasyon Miktarı',
+    en: 'Reservation Count',
+    ar: 'عدد الحجوزات',
+    ku: 'ژمارەی نۆڕە',
+  },
   /**
    * RetailEX Kasa Durumu — yeni "Alınan Avans (Rezervasyon)" KPI kartı.
    * Ciro'ya değil, ayrı bakiyeye (passif) yazılır.
