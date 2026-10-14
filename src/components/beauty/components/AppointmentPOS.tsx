@@ -889,12 +889,24 @@ export function AppointmentPOS({
     }, [specialists, prefillStaffId, existingAppointment?.id]);
 
     // ── Derived ──────────────────────────────────────────────────────────
-    // 14.10.2026 — Subtotal DEPOSIT satırını HARİÇ tutar. Sepete deposit
-    // eklendiğinde hizmetlerden orantılı düşüm zaten yapıldı; DEPOSIT
-    // tekrar toplamda yer alırsa toplam yanlış (brüt × 2 gibi) olur.
-    // Yalnızca hizmet/paket/ürün satırları brüt hizmet tutarını oluşturur.
+    // 14.10.2026 — Subtotal her zaman BRÜT hizmet toplamı = hizmetlerin
+    // ORİJİNAL fiyatları toplamı (varsa `original_unit_price`, yoksa
+    // `unit_price`). DEPOSIT satırı hariç.
+    //
+    // Neden `unit_price` değil `original_unit_price`?
+    // - Rezervasyon girildiğinde hizmet kartlarında orantılı düşüm
+    //   görsel olarak yapılır (FACIAL 80.000 → 62.000 gibi).
+    // - Ancak ödeme/kasa toplamı her zaman BRÜT hizmet tutarı üzerinden
+    //   hesaplanmalı: Ara Toplam 130.000 − Ön Ödenen 30.000 = Kalan 100.000.
+    // - Düşülmüş fiyatı toplarsak Ara Toplam 100.000 olur, Ön Ödenen
+    //   30.000 düşülünce Kalan 70.000 çıkar (hatalı).
+    // - `original_unit_price` ilk eklenen hizmet fiyatını korur; DEPOSIT
+    //   satırında undefined olduğu için o satırı toplama dahil etmiyoruz.
     const subtotal = cart.reduce(
-        (s, l) => (l.type === 'deposit' ? s : s + l.unit_price * l.qty),
+        (s, l) =>
+            l.type === 'deposit'
+                ? s
+                : s + (l.original_unit_price ?? l.unit_price) * l.qty,
         0,
     );
     const discAmt = subtotal * (discount / 100);
