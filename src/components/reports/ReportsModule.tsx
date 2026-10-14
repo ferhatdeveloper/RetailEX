@@ -3349,10 +3349,18 @@ export function ReportsModule({
    * — parametre (`showDailyCardTotalExpense`) kapansa bile AVANS_ODEME /
    * CH_ODEME gibi kasa çıkışları kârı azaltır. 2026-10-13 kullanıcı geri
    * bildirimi: "Net satırında gizli giderlerin de yansımasını istiyorum".
+   *
+   * 14.10.2026 17:03 — Ciro dışı tahsilat (rezervasyon peşinatı) Net
+   * (Brüt)'e eklenir. Ciro'ya henüz yansımamış avanslı satış toplamı
+   * Ciro dışı tahsilat olarak kabul edilir (PeriodSummaryReport ile aynı
+   * semantik; çift sayım önlemek için reservationAggregate.deposit
+   * KULLANILMAZ çünkü aynı avanslı satışı gösterir).
+   * Rezervasyon brüt/kalan Ciro'ya yansımaz (fatura kesilmedi);
+   * sadece tahsil edilen peşinat Ciro dışı tahsilat olarak Net'e eklenir.
    */
   const dailyNetBrutAlways = useMemo(
-    () => dailyTotal - totalExpensesForReport,
-    [dailyTotal, totalExpensesForReport],
+    () => dailyTotal - totalExpensesForReport + dailyDepositTotal,
+    [dailyTotal, totalExpensesForReport, dailyDepositTotal],
   );
   const dailyNetNakitAlways = useMemo(
     () => dailyCollected - totalExpensesForReport,
@@ -3641,6 +3649,20 @@ export function ReportsModule({
     }
   }, [closeDailyRowReceiptModal, confirmReportAction, dailyRowReceiptModal, loadRestOrdersForSelectedDate, tm]);
 
+  // 14.10.2026 17:03 — Rezervasyon Tutarı (Ciro dışı tahsilat) Net
+  // Kalan'a eklenir. Brüt/kalan bilgi kolonu olarak gösterilir.
+  // Tüm raporlarda (Günlük, Z Raporu, Aylık) paylaşılan tek hesaplama.
+  // Ad: `reservationAggregate` (production build minify çakışmasını
+  // önlemek için açık isim).
+  const reservationAggregate = useMemo(
+    () => reservationPendingForRange(
+      dailyAppointments,
+      selectedDateFrom,
+      selectedDateTo,
+    ),
+    [dailyAppointments, selectedDateFrom, selectedDateTo],
+  );
+
   // Z Report — ERP satış + satış iade (trcode 3); restoranda adisyon yedek
   const generateZReport = () => {
     const inReportPeriod = (k: string) => k >= selectedDateFrom && k <= selectedDateTo;
@@ -3648,16 +3670,7 @@ export function ReportsModule({
     const allDaySales = reportRangeSales.filter((s) => inReportPeriod(localCalendarDateKey(s.date)));
     const canceledSalesRows = allDaySales.filter((s) => isRemovedSaleStatus(s.status) && !isReturnSale(s));
 
-    // 14.10.2026 17:03 — Rezervasyon Tutarı (Ciro dışı tahsilat) Net
-    // Kalan'a eklenir. Brüt/kalan bilgi kolonu olarak gösterilir.
-    // ERP ve Resto branch'lerinin ikisinde de kullanılır.
-    // Ad: `resvForZReport` (production build minify çakışmasını önlemek
-    // için açık isim).
-    const resvForZReport = reservationPendingForRange(
-      dailyAppointments,
-      selectedDateFrom,
-      selectedDateTo,
-    );
+    const resvForZReport = reservationAggregate;
 
     const buildFromErpSales = () => {
       const extraCash = extraCustomerCollectionsNotOnSales(kasaLinesForSelectedDate, reportRangeSales);
