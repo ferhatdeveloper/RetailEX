@@ -4511,6 +4511,41 @@ BEGIN
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), customer_id UUID NOT NULL, membership_id UUID NOT NULL, start_date DATE, end_date DATE, status VARCHAR(20) DEFAULT ''active'', auto_renew BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_membership_subscriptions');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), table_name VARCHAR(80) NOT NULL, record_id UUID, action VARCHAR(40) NOT NULL, user_id UUID, payload_json JSONB DEFAULT ''{}''::jsonb, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_audit_log');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), appointment_id UUID, product_id UUID NOT NULL, qty DECIMAL(15,4) NOT NULL, batch_id UUID, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_consumable_usage_log');
+
+  -- 14.10.2026 — Rezervasyon ödeme durumu view'ı. Tablolar
+  -- (örn. rex_001_01_beauty_appointments) yukarıda yaratıldı;
+  -- artık bu view güvenle kurulabilir. Aynı tanım migration 210
+  -- ile uyumlu; migration 210 idempotent (CREATE OR REPLACE).
+  EXECUTE format(
+    'CREATE OR REPLACE VIEW beauty.%I AS
+     SELECT
+       a.id                                  AS appointment_id,
+       a.client_id                           AS customer_id,
+       a.appointment_date,
+       a.status,
+       COALESCE(a.total_price, 0)            AS total_price,
+       COALESCE(a.deposit_amount, 0)         AS deposit_amount,
+       COALESCE(a.deposit_provider, '''')    AS deposit_provider,
+       a.deposit_date,
+       COALESCE(a.remainder_paid_amount, 0)  AS remainder_paid_amount,
+       a.remainder_payment_date,
+       GREATEST(0, ROUND(
+         (COALESCE(a.total_price, 0) - COALESCE(a.deposit_amount, 0)
+          - COALESCE(a.remainder_paid_amount, 0))::numeric, 2)
+       )                                     AS outstanding_amount,
+       CASE
+         WHEN COALESCE(a.total_price, 0) = 0 THEN ''no_amount''
+         WHEN COALESCE(a.deposit_amount, 0) = 0 THEN ''unpaid''
+         WHEN (COALESCE(a.deposit_amount, 0) + COALESCE(a.remainder_paid_amount, 0))
+              >= COALESCE(a.total_price, 0) THEN ''paid''
+         WHEN COALESCE(a.deposit_amount, 0) > 0
+              AND COALESCE(a.remainder_paid_amount, 0) = 0 THEN ''deposit_only''
+         ELSE ''partial''
+       END                                   AS payment_state
+     FROM beauty.%I a',
+    'beauty_appointment_payment_status',
+    v_prefix || '_beauty_appointments'
+  );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -4522,39 +4557,11 @@ $$ LANGUAGE plpgsql;
 -- oluşturulduktan sonra bu view oluşturulmalı; aksi halde raporlar
 -- "relation does not exist" hatası alıp catch'te yutuluyor.
 -- migration 210 ile aynı tanım (181'deki orijinal korunur).
-CREATE OR REPLACE VIEW beauty.beauty_appointment_payment_status AS
-SELECT
-    a.id                                  AS appointment_id,
-    a.client_id                           AS customer_id,
-    a.appointment_date,
-    a.status,
-    COALESCE(a.total_price, 0)            AS total_price,
-    COALESCE(a.deposit_amount, 0)         AS deposit_amount,
-    COALESCE(a.deposit_provider, '')      AS deposit_provider,
-    a.deposit_date,
-    COALESCE(a.remainder_paid_amount, 0)  AS remainder_paid_amount,
-    a.remainder_payment_date,
-    GREATEST(
-        0,
-        ROUND(
-            (COALESCE(a.total_price, 0) - COALESCE(a.deposit_amount, 0)
-             - COALESCE(a.remainder_paid_amount, 0))::numeric,
-            2
-        )
-    )                                     AS outstanding_amount,
-    CASE
-        WHEN COALESCE(a.total_price, 0) = 0                                THEN 'no_amount'
-        WHEN COALESCE(a.deposit_amount, 0) = 0                             THEN 'unpaid'
-        WHEN (COALESCE(a.deposit_amount, 0) + COALESCE(a.remainder_paid_amount, 0))
-             >= COALESCE(a.total_price, 0)                                 THEN 'paid'
-        WHEN COALESCE(a.deposit_amount, 0) > 0
-             AND COALESCE(a.remainder_paid_amount, 0) = 0                  THEN 'deposit_only'
-        ELSE 'partial'
-    END                                   AS payment_state
-FROM beauty.rex_001_01_beauty_appointments a;
-
-COMMENT ON VIEW beauty.beauty_appointment_payment_status IS
-    'Rezervasyon peşinat/ödeme durumu — DepositPrePaymentReport besleme view''u. payment_state: no_amount/unpaid/paid/deposit_only/partial. outstanding_amount >= 0 garantili; total = deposit + remainder + outstanding.';
+--
+-- 14.10.2026 — Master schema'nın doğrudan CREATE VIEW bloğu kaldırıldı;
+-- INIT_BEAUTY_PERIOD_TABLES() içinde firm tabloları yaratıldıktan
+-- hemen sonra CREATE OR REPLACE VIEW ile bu view kurulur. Bu sayede
+-- master schema tek seferde hatasız yüklenir.
 
 NOTIFY pgrest, 'reload schema';
 
