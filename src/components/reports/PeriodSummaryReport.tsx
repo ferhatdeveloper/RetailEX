@@ -847,6 +847,14 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     // AVANS → FATURA (Basit Model): skipInvoice avansları cari_avans'tan
     // okunur; periodKey başına toplam eklenir (depositAmount + depositCount).
     avansDepositsRaw,
+    // 14.10.2026 — Rezervasyon brüt/kalan (buildReservationMap) ve
+    // tamamlanmış randevu id'leri (completedAppointmentIds) bu useMemo
+    // içinde `appointments`'a bağlı. Dependency listesinde yoksa ilk
+    // hesap (boş `appointments`) cache'lenir, useQuery dolduğunda
+    // useMemo yeniden tetiklenmez → rezervasyon brüt/kalan ve dip
+    // toplamlar (totals) boş kalır (satır render'ı useMemo'dan
+    // geçmediği için etkilenmez, ama totals 0 gösterirdi).
+    appointments,
   ]);
 
   const totals = useMemo(() => {
