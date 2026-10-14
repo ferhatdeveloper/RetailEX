@@ -9,12 +9,40 @@
  *   - status='scheduled' (veya diğer) → hizmet verilmemiş, brüt=kalan
  *     fatura kesilecek. Ciro'ya girmez, buraya girer.
  *   - brüt = total_price; kalan = max(0, brüt − deposit_amount)
+ *   - **Fallback**: total_price 0 ise ve deposit_amount > 0 ise brüt =
+ *     deposit_amount kabul edilir (AppointmentPOS'ta indirim sonrası
+ *     total 0 yazılabiliyor; peşinat bilinen tek tutar). Bu durumda
+ *     pending = 0 (gerçek brüt belli değil; sadece tahsilat görünür).
  *
  * @param appointments beautyService.getAppointmentsInRange çıktısı
  * @param mode 'monthly-days' (YYYY-MM-DD) veya 'yearly-months' (YYYY-MM)
  * @returns Map<periodKey, { gross, pending, count }>
  */
 export type ReservationBucket = { gross: number; pending: number; count: number };
+
+/**
+ * Tek randevu için brüt/peşinat/pending hesapla. Hem map hem range
+ * hem day helper'ları aynı formülü kullanır (tek kaynak).
+ */
+export function calcReservationForAppointment(
+    a: {
+        total_price?: number | string | null;
+        deposit_amount?: number | string | null;
+    },
+): { gross: number; pending: number; relevant: boolean } {
+    const tp = Math.max(0, Number(a.total_price) || 0);
+    const dep = Math.max(0, Number(a.deposit_amount) || 0);
+    if (tp > 0) {
+        return { gross: tp, pending: Math.max(0, tp - dep), relevant: true };
+    }
+    if (dep > 0) {
+        // total_price 0 / yazılmamış (örn. AppointmentPOS indirim sonrası
+        // 0 yazdı, veya eski kayıt) → brüt = peşinat kabul et; gerçek
+        // brüt belli olmadığı için pending = 0.
+        return { gross: dep, pending: 0, relevant: true };
+    }
+    return { gross: 0, pending: 0, relevant: false };
+}
 
 export function buildReservationMap(
     appointments: Array<{
@@ -29,19 +57,15 @@ export function buildReservationMap(
     if (!Array.isArray(appointments) || appointments.length === 0) return map;
     for (const a of appointments) {
         const st = String(a.status ?? '').trim().toLowerCase();
-        // Tamamlanmış veya iptal edilmiş randevular Ciro'ya giriyor /
-        // girmiyor; burada yansımaz.
         if (st === 'completed' || st === 'cancelled' || st === 'canceled') continue;
         const d = String(a.appointment_date ?? '').slice(0, 10);
         if (!d) continue;
         const key = mode === 'monthly-days' ? d : d.slice(0, 7);
-        const gross = Math.max(0, Number(a.total_price) || 0);
-        const dep = Math.max(0, Number(a.deposit_amount) || 0);
-        const pending = Math.max(0, gross - dep);
-        if (gross <= 0 && pending <= 0) continue;
+        const r = calcReservationForAppointment(a);
+        if (!r.relevant) continue;
         const cur = map.get(key) || { gross: 0, pending: 0, count: 0 };
-        cur.gross += gross;
-        cur.pending += pending;
+        cur.gross += r.gross;
+        cur.pending += r.pending;
         cur.count += 1;
         map.set(key, cur);
     }
@@ -69,13 +93,11 @@ export function reservationPendingForDay(
         if (st === 'completed' || st === 'cancelled' || st === 'canceled') continue;
         const d = String(a.appointment_date ?? '').slice(0, 10);
         if (d !== dayKey) continue;
-        const gross = Math.max(0, Number(a.total_price) || 0);
-        const dep = Math.max(0, Number(a.deposit_amount) || 0);
-        const pending = Math.max(0, gross - dep);
-        if (gross <= 0 && pending <= 0) continue;
+        const r = calcReservationForAppointment(a);
+        if (!r.relevant) continue;
         out = {
-            gross: out.gross + gross,
-            pending: out.pending + pending,
+            gross: out.gross + r.gross,
+            pending: out.pending + r.pending,
             count: out.count + 1,
         };
     }
@@ -104,13 +126,11 @@ export function reservationPendingForRange(
         if (st === 'completed' || st === 'cancelled' || st === 'canceled') continue;
         const d = String(a.appointment_date ?? '').slice(0, 10);
         if (!d || d < fromIso || d > toIso) continue;
-        const gross = Math.max(0, Number(a.total_price) || 0);
-        const dep = Math.max(0, Number(a.deposit_amount) || 0);
-        const pending = Math.max(0, gross - dep);
-        if (gross <= 0 && pending <= 0) continue;
+        const r = calcReservationForAppointment(a);
+        if (!r.relevant) continue;
         out = {
-            gross: out.gross + gross,
-            pending: out.pending + pending,
+            gross: out.gross + r.gross,
+            pending: out.pending + r.pending,
             count: out.count + 1,
         };
     }

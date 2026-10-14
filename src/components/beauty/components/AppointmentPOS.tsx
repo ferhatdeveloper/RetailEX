@@ -2126,7 +2126,12 @@ export function AppointmentPOS({
             time: aptTimeSafe,
             appointment_time: aptTimeSafe,
             duration: totalDur || 30,
-            total_price: total,
+            // 14.10.2026 — Randevu brüt hizmet tutarı = indirim öncesi
+            // subtotal. Fatura kesileceğinde brüt üzerinden hesaplanır;
+            // indirim sonrası tutar (total) sadece cari bakiye/ekstre
+            // tarafında kullanılır. Eski davranış indirim sonrası 0
+            // yazıyordu → raporlarda "Rezervasyon Kalan" 0 görünüyordu.
+            total_price: subtotal,
             status: aptStatus,
             notes: aptNotes,
             type: 'regular',
