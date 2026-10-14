@@ -135,6 +135,7 @@ import {
   subscribeReportMenuParams,
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
+import { reservationPendingForRange } from '../../utils/reportReservationPending';
 import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
@@ -2944,6 +2945,32 @@ export function ReportsModule({
     };
   }, [dailyReportDateRange?.from, dailyReportDateRange?.to]);
 
+  // 14.10.2026 — Rezervasyon (henüz faturası kesilmemiş randevu)
+  // brüt/kalan. Günlük Rapor, POS Z Raporu, Beauty Raporu'nda Net
+  // Kalan'a eklenir. beautyService.getAppointmentsInRange
+  // merkezi (PostgREST + direct PG) olduğu için tek query yeterli.
+  const [dailyAppointments, setDailyAppointments] = useState<any[]>([]);
+  React.useEffect(() => {
+    const fromIso = dailyReportDateRange?.from;
+    const toIso = dailyReportDateRange?.to;
+    if (!fromIso || !toIso) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await beautyService.getAppointmentsInRange(fromIso, toIso);
+        if (cancelled) return;
+        setDailyAppointments(Array.isArray(rows) ? rows : []);
+      } catch (e) {
+        if (cancelled) return;
+        console.warn('[ReportsModule] daily appointments fetch failed:', e);
+        setDailyAppointments([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dailyReportDateRange?.from, dailyReportDateRange?.to]);
+
   const dailyUnifiedRows = useMemo((): DailyUnifiedRow[] => {
     const mapErpSale = (s: Sale): DailyUnifiedRow => {
       const split = saleCollectedSplit(s);
@@ -3621,6 +3648,15 @@ export function ReportsModule({
     const allDaySales = reportRangeSales.filter((s) => inReportPeriod(localCalendarDateKey(s.date)));
     const canceledSalesRows = allDaySales.filter((s) => isRemovedSaleStatus(s.status) && !isReturnSale(s));
 
+    // 14.10.2026 — Rezervasyon kalan (henüz faturası kesilmemiş
+    // randevular). Net Kalan'a eklenir. ERP ve Resto branch'lerinin
+    // ikisinde de kullanılır.
+    const reservation = reservationPendingForRange(
+      dailyAppointments,
+      selectedDateFrom,
+      selectedDateTo,
+    );
+
     const buildFromErpSales = () => {
       const extraCash = extraCustomerCollectionsNotOnSales(kasaLinesForSelectedDate, reportRangeSales);
       const base = applyExtraCashCollections(
@@ -3638,11 +3674,16 @@ export function ReportsModule({
         totalAmount: base.totalAmount,
         netSales,
         totalExpenses: totalExpensesForReport,
+        // 14.10.2026 — Rezervasyon kalan (henüz faturası kesilmemiş
+        // randevular). Net Kalan'a eklenir.
         netAfterExpenses: reportNetAfterOptionalExpense(
           netSales,
           totalExpensesForReport,
           showDailyCardTotalExpense,
-        ),
+        ) + reservation.pending,
+        reservationGross: reservation.gross,
+        reservationPending: reservation.pending,
+        reservationCount: reservation.count,
         cashAmount: base.cashAmount,
         cardAmount: base.cardAmount,
         creditAmount: base.creditAmount,
@@ -3699,11 +3740,16 @@ export function ReportsModule({
         totalAmount,
         netSales: totalAmount,
         totalExpenses: totalExpensesForReport,
+        // 14.10.2026 — Rezervasyon kalan (henüz faturası kesilmemiş
+        // randevular). Net Kalan'a eklenir.
         netAfterExpenses: reportNetAfterOptionalExpense(
           totalAmount,
           totalExpensesForReport,
           showDailyCardTotalExpense,
-        ),
+        ) + reservation.pending,
+        reservationGross: reservation.gross,
+        reservationPending: reservation.pending,
+        reservationCount: reservation.count,
         cashAmount,
         cardAmount,
         creditAmount,
@@ -5241,6 +5287,7 @@ export function ReportsModule({
         <div class="formula">
           <div class="row"><span class="label">${escHtml(tm('reportsZPrintCashCardCollected'))}</span><span>${formatNumber(posZCollectedAmount(zReport), 2, false)}</span></div>
           <div class="row"><span class="label">${escHtml(tm('reportsZPrintTotalExpense'))}</span><span>- ${formatNumber(zReport.totalExpenses, 2, false)}</span></div>
+          <div class="row"><span class="label">${escHtml(tm('reservationPendingLabel') || 'Rezervasyon Kalan')}</span><span>+ ${formatNumber(zReport.reservationPending ?? 0, 2, false)}</span></div>
           <div class="row final"><span>${escHtml(tm('reportsZPrintNetAfterExpensesUpper'))}</span><span>${formatNumber(zReport.netAfterExpenses, 2, false)}</span></div>
         </div>
         <div class="center small muted" style="margin-top:1mm">${escHtml(tm('reportsZPrintNetFootnote'))}</div>
@@ -7038,7 +7085,7 @@ export function ReportsModule({
                         {tm('reportsSalesSummarySection')}
                       </h4>
                       <ReportKpiStrip
-                        columns={7}
+                        columns={8}
                         itemClassName={
                           darkMode
                             ? 'bg-slate-800/80 border-slate-600 shadow-none'
@@ -7084,6 +7131,13 @@ export function ReportsModule({
                             label: tm('totalExpense'),
                             value: formatNumber(zReport.totalExpenses, 2, false),
                             valueClassName: darkMode ? 'text-rose-400' : 'text-rose-600',
+                          },
+                          {
+                            key: 'reservation',
+                            label: tm('reservationPendingLabel') || 'Rezervasyon Kalan',
+                            value: formatNumber(zReport.reservationPending ?? 0, 2, false),
+                            valueClassName: darkMode ? 'text-amber-400' : 'text-amber-600',
+                            hint: `${tm('reservationGrossLabel') || 'Brüt'}: ${formatNumber(zReport.reservationGross ?? 0, 2, false)}`,
                           },
                           {
                             key: 'netAfter',

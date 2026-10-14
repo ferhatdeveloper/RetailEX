@@ -10880,6 +10880,22 @@ export const excelModuleTranslations = {
     ar: 'عربون الحجز — الخدمة لم تقدم بعد',
     ku: 'پارەی نۆرە — خزمەتگوزاری نەدراوە',
   },
+  // 14.10.2026 — Rezervasyon brüt/kalan kolon başlıkları. Brüt
+  // hizmet tutarı; kalan = brüt − peşinat. Henüz faturası kesilmemiş
+  // randevular için. Tüm ciro raporlarında (Aylık Gün Özeti, Günlük
+  // Rapor, POS Z Raporu) kullanılır.
+  reservationPendingLabel: {
+    tr: 'Rezervasyon Kalan',
+    en: 'Reservation Remaining',
+    ar: 'المتبقي من الحجز',
+    ku: 'ماوەی نۆڕە',
+  },
+  reservationGrossLabel: {
+    tr: 'Rezervasyon Brüt',
+    en: 'Reservation Gross',
+    ar: 'إجمالي الحجز',
+    ku: 'کۆی نۆڕە',
+  },
   /**
    * RetailEX Kasa Durumu — yeni "Alınan Avans (Rezervasyon)" KPI kartı.
    * Ciro'ya değil, ayrı bakiyeye (passif) yazılır.

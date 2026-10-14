@@ -55,6 +55,7 @@ import { PeriodCashInDetailModal } from './PeriodCashInDetailModal';
 import { PeriodSummaryDayDetailModal } from './PeriodSummaryDayDetailModal';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 import { ReportKpiStrip, type ReportKpiItem } from './shared/ReportKpiStrip';
+import { buildReservationMap } from '../../utils/reportReservationPending';
 
 export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
 
@@ -741,31 +742,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         ? aggregatePurchases(purchases, (inv) => localCalendarDateKey(inv.invoice_date))
         : aggregatePurchases(purchases, (inv) => saleMonthKey(inv.invoice_date));
 
-    // 14.10.2026 — Rezervasyon brüt/kalan. Henüz hizmet verilmemiş
-    // randevular (status != completed/cancelled) için brüt hizmet
-    // tutarı (total_price) ve kalan (total_price − deposit_amount)
-    // toplanır. Net Kalan'a eklenir: günü gelince faturası
-    // kesilecek tutar olarak görünür; faturası kesilince Ciro'ya
-    // girer ve rezervasyon brüt/kalan sıfırlanır.
-    const reservationMap = new Map<string, { gross: number; pending: number; count: number }>();
-    for (const a of (appointments as Array<{ appointment_date?: string; status?: string; total_price?: number; deposit_amount?: number }>) || []) {
-      const st = String(a.status ?? '').trim().toLowerCase();
-      // completed/cancelled: hizmet verildi veya iptal; rezervasyon
-      // sütunlarına yansımaz (depositAmount zaten cari_avans'ta).
-      if (st === 'completed' || st === 'cancelled' || st === 'canceled') continue;
-      const d = String(a.appointment_date ?? '').slice(0, 10);
-      if (!d) continue;
-      const key = mode === 'monthly-days' ? d : d.slice(0, 7);
-      const gross = Math.max(0, Number(a.total_price) || 0);
-      const dep = Math.max(0, Number(a.deposit_amount) || 0);
-      const pending = Math.max(0, gross - dep);
-      if (gross <= 0 && pending <= 0) continue;
-      const cur = reservationMap.get(key) || { gross: 0, pending: 0, count: 0 };
-      cur.gross += gross;
-      cur.pending += pending;
-      cur.count += 1;
-      reservationMap.set(key, cur);
-    }
+    // 14.10.2026 — Rezervasyon brüt/kalan (paylaşılan helper, tüm
+    // raporlarda aynı mantık: status!=completed/cancelled). Henüz
+    // hizmet verilmemiş randevuların brüt hizmet tutarı ve kalan
+    // ödenecek miktarı toplanır; Net Kalan'a eklenir.
+    const reservationMap = buildReservationMap(appointments, mode);
 
     const periodKeys =
       mode === 'monthly-days'
@@ -1089,7 +1070,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // dahil edilir: günü geldiğinde faturası kesilecek tutar.
       {
         key: 'reservationGross',
-        header: `Rezervasyon Brüt (${currency})`,
+        header: `${tm('reservationGrossLabel') || 'Rezervasyon Brüt'} (${currency})`,
         type: 'number',
         align: 'right',
         footerSum: true,
@@ -1112,7 +1093,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // kesilecek tutar. Net Kalan formülüne eklenir.
       {
         key: 'reservationPending',
-        header: `Rezervasyon Kalan (${currency})`,
+        header: `${tm('reservationPendingLabel') || 'Rezervasyon Kalan'} (${currency})`,
         type: 'number',
         align: 'right',
         footerSum: true,
