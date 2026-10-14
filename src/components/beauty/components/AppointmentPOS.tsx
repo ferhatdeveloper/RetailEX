@@ -889,7 +889,14 @@ export function AppointmentPOS({
     }, [specialists, prefillStaffId, existingAppointment?.id]);
 
     // ── Derived ──────────────────────────────────────────────────────────
-    const subtotal = cart.reduce((s, l) => s + l.unit_price * l.qty, 0);
+    // 14.10.2026 — Subtotal DEPOSIT satırını HARİÇ tutar. Sepete deposit
+    // eklendiğinde hizmetlerden orantılı düşüm zaten yapıldı; DEPOSIT
+    // tekrar toplamda yer alırsa toplam yanlış (brüt × 2 gibi) olur.
+    // Yalnızca hizmet/paket/ürün satırları brüt hizmet tutarını oluşturur.
+    const subtotal = cart.reduce(
+        (s, l) => (l.type === 'deposit' ? s : s + l.unit_price * l.qty),
+        0,
+    );
     const discAmt = subtotal * (discount / 100);
     // Mevcut randevuda daha önce alınmış ön ödeme (deposit_amount) tutarı.
     // Yeni randevu oluştururken bu alan boş olacağı için 0 döner.
@@ -1410,11 +1417,13 @@ export function AppointmentPOS({
                 0,
             );
             if (totalGross <= 0) return prevCart;
-            // Para birimi ondalık kuralı (IQD tam sayı, diğerleri 2 hane).
-            const round = (n: number) =>
-                reservationMaxFractionDigits === 0
-                    ? Math.round(n)
-                    : Math.round(n * 100) / 100;
+            // 14.10.2026 — Rezervasyon tutarı her zaman tam sayı para birimi
+            // (IQD) olarak girilir (`step=1`). Bu yüzden orantılı düşüm
+            // her zaman tam sayı (Math.round) çalışmalı; 2 hane ondalık
+            // kuralı (`reservationMaxFractionDigits === 2`) yalnızca
+            // input alanı içindir, fiyat hesabında küsurat oluşmamalı.
+            // Aksi halde 61.538 / 38.462 gibi bozuk değerler çıkıyordu.
+            const round = (n: number) => Math.round(n);
             if (amount <= 0) {
                 // Tüm hizmetleri orijinaline döndür, deposit sil.
                 const restored = serviceLines.map(l =>
