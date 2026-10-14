@@ -3,7 +3,11 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { eticaretStaticPlugin } from './vite.eticaret-static';
+
+const __dirnameLocal = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * 14.10.2026 — Cache buster: build edilen index.html'lerdeki
@@ -12,16 +16,33 @@ import { eticaretStaticPlugin } from './vite.eticaret-static';
  * CDN veya tarayıcı cache'inde eski HTML kalsa bile, yeni build
  * deploy edildiğinde farklı SHA ile yeni HTML gelir → yeni JS
  * hash'leri zorla çekilir, eski immutable JS'ler bypass edilir.
- * SHA bulunamazsa (örn. tag/release build) `dev` fallback.
+ *
+ * SHA kaynak önceliği:
+ *   1) `RETAILEX_BUILD_SHA` ortam değişkeni (CI script'leri tarafından set edilir)
+ *   2) `git rev-parse --short HEAD` (lokalde build alınırken)
+ *   3) `package.json` version + `Date.now()` (her build'de farklı)
+ *   4) `dev` (son çare — cache buster etkisiz)
  */
 function htmlCacheBusterPlugin(): Plugin {
-  let sha = 'dev';
-  try {
-    sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
-      .toString()
-      .trim() || 'dev';
-  } catch {
-    sha = 'dev';
+  let sha: string;
+  const envSha = process.env.RETAILEX_BUILD_SHA?.trim();
+  if (envSha) {
+    sha = envSha;
+  } else {
+    try {
+      sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString()
+        .trim();
+    } catch {
+      try {
+        const pkg = JSON.parse(
+          readFileSync(path.resolve(__dirnameLocal, 'package.json'), 'utf-8'),
+        ) as { version?: string };
+        sha = `${pkg.version || 'v0'}-${Date.now().toString(36)}`;
+      } catch {
+        sha = 'dev';
+      }
+    }
   }
   return {
     name: 'html-cache-buster',
