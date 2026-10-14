@@ -795,6 +795,26 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         exp,
         showPeriodCardExpenses,
       ) + reservation.pending;
+      // 14.10.2026 — DEBUG: tarayıcı konsoluna gerçek değerleri yaz
+      if (periodKey === '2026-10-14') {
+        const dbg = {
+          periodKey,
+          ciroTotal,
+          exp,
+          showPeriodCardExpenses,
+          reservationGross: reservation.gross,
+          reservationPending: reservation.pending,
+          depositAmount: sale.depositAmount,
+          revenue: sale.revenue,
+          cash: sale.cash,
+          card: sale.card,
+          veresiye: sale.veresiye,
+          netRemaining,
+        };
+        // eslint-disable-next-line no-console
+        console.log('[REX DEBUG PeriodSummary 14.10]', JSON.stringify(dbg, null, 2));
+        (window as unknown as { __rexDebug14?: unknown }).__rexDebug14 = dbg;
+      }
 
       const shareList = splitAmountByPartners(netRemaining, partnerSlices);
       const partnerShareMap: Record<string, number> = {};
