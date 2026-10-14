@@ -74,6 +74,14 @@ interface PeriodSummaryRow {
   /** Bug 28 — Rezervasyona bağlı peşinat (henüz hizmet verilmemiş avanslar). */
   depositCount: number;
   depositAmount: number;
+  /**
+   * 14.10.2026 — Rezervasyon hizmet brüt tutarı (henüz fişi kesilmemiş
+   * randevuların toplam hizmet fiyatı). Net Kalan'a eklenir: günü
+   * geldiğinde faturası kesilecek tutar olarak görünür.
+   */
+  reservationGross: number;
+  /** Rezervasyon kalan (brüt − peşinat). Fatura kesilecek olan tutar. */
+  reservationPending: number;
   expenses: number;
   cashIn: number;
   // cariTahsilat alanı kullanıcı talebi ile 2026-10-03'te rapordan kaldırıldı.
@@ -88,8 +96,9 @@ interface PeriodSummaryRow {
 function hasPeriodActivity(row: Pick<PeriodSummaryRow,
   'saleCount' | 'revenue' | 'cash' | 'card' | 'veresiye' | 'discount' |
   'returnsAmount' | 'depositCount' | 'depositAmount' |
+  'reservationGross' | 'reservationPending' |
   'expenses' | 'cashIn' | 'purchases' | 'netRemaining'
->): boolean {
+  >): boolean {
   // Bug 30 — Aylık Gün Özeti tablosu boş (hücreler "—") ama KPI dolu kök neden.
   // Önceki filtre yalnızca Ciro/Gider/Kasa Girişi/Alış'a bakıyordu:
   //   `saleCount || revenue || expenses || cashIn || purchases`
@@ -111,6 +120,8 @@ function hasPeriodActivity(row: Pick<PeriodSummaryRow,
     row.returnsAmount > 0 ||
     row.depositCount > 0 ||
     row.depositAmount > 0 ||
+    row.reservationGross > 0 ||
+    row.reservationPending > 0 ||
     row.expenses > 0 ||
     row.cashIn > 0 ||
     row.purchases > 0
@@ -180,6 +191,8 @@ function aggregateSales(
     returnsCount: number; returnsAmount: number;
     // Bug 28 — Rezervasyon peşinatı ayrı toplanır (henüz hizmet verilmemiş avanslar)
     depositCount: number; depositAmount: number;
+    // 14.10.2026 — Rezervasyon brüt/kalan (faturası kesilecek tutar)
+    reservationGross: number; reservationPending: number;
   }>();
 
   const bump = (key: string) => {
@@ -187,6 +200,7 @@ function aggregateSales(
       saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
       returnsCount: 0, returnsAmount: 0,
       depositCount: 0, depositAmount: 0,
+      reservationGross: 0, reservationPending: 0,
     };
     map.set(key, row);
     return row;
@@ -727,6 +741,32 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         ? aggregatePurchases(purchases, (inv) => localCalendarDateKey(inv.invoice_date))
         : aggregatePurchases(purchases, (inv) => saleMonthKey(inv.invoice_date));
 
+    // 14.10.2026 — Rezervasyon brüt/kalan. Henüz hizmet verilmemiş
+    // randevular (status != completed/cancelled) için brüt hizmet
+    // tutarı (total_price) ve kalan (total_price − deposit_amount)
+    // toplanır. Net Kalan'a eklenir: günü gelince faturası
+    // kesilecek tutar olarak görünür; faturası kesilince Ciro'ya
+    // girer ve rezervasyon brüt/kalan sıfırlanır.
+    const reservationMap = new Map<string, { gross: number; pending: number; count: number }>();
+    for (const a of (appointments as Array<{ appointment_date?: string; status?: string; total_price?: number; deposit_amount?: number }>) || []) {
+      const st = String(a.status ?? '').trim().toLowerCase();
+      // completed/cancelled: hizmet verildi veya iptal; rezervasyon
+      // sütunlarına yansımaz (depositAmount zaten cari_avans'ta).
+      if (st === 'completed' || st === 'cancelled' || st === 'canceled') continue;
+      const d = String(a.appointment_date ?? '').slice(0, 10);
+      if (!d) continue;
+      const key = mode === 'monthly-days' ? d : d.slice(0, 7);
+      const gross = Math.max(0, Number(a.total_price) || 0);
+      const dep = Math.max(0, Number(a.deposit_amount) || 0);
+      const pending = Math.max(0, gross - dep);
+      if (gross <= 0 && pending <= 0) continue;
+      const cur = reservationMap.get(key) || { gross: 0, pending: 0, count: 0 };
+      cur.gross += gross;
+      cur.pending += pending;
+      cur.count += 1;
+      reservationMap.set(key, cur);
+    }
+
     const periodKeys =
       mode === 'monthly-days'
         ? daysInMonthKeys(parseInt(selectedMonth.slice(0, 4), 10), parseInt(selectedMonth.slice(5, 7), 10))
@@ -761,16 +801,18 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // veresiyeyi de dahil eder ve Ciro'yu olduğundan yüksek gösterebilir;
       // ancak "Net Kalan = Ciro − Gider" doğru olur. CH_TAHSILAT ayrı
       // "Kasa Para Girişi" kolonunda izlenir, Ciro'ya katılmaz.
-      // Net Kalan = Ciro − Gider. Günlük Rapor dailyNetAfterExpenseBrut
-      // ile aynı semantik; partnerPeriodNet.computeYearMonthlyNets ile
-      // tutarlı (orada da brüt Ciro). Gider kartı/parametresi kapalıysa
-      // gider düşülmez.
+      // Net Kalan = Ciro − Gider + Rezervasyon Kalan (henüz faturası
+      // kesilmemiş randevuların tahsil edilmemiş kısmı). 14.10.2026
+      // kullanıcı talebi: "fatura tam kapatıldığında tam tutar
+      // görünmeli, bazen başka gün/iade olabilir". Faturası kesilince
+      // Ciro'ya girer ve reservationPending sıfırlanır. Gider kartı/
+      // parametresi kapalıysa gider düşülmez.
       const ciroTotal = sale.revenue;
       const netRemaining = reportNetCiroMinusGider(
         ciroTotal,
         exp,
         showPeriodCardExpenses,
-      );
+      ) + reservation.pending;
 
       const shareList = splitAmountByPartners(netRemaining, partnerSlices);
       const partnerShareMap: Record<string, number> = {};
@@ -794,6 +836,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         // Bug 28 — Rezervasyon peşinat (klon kolon olarak grid'de gösterilecek)
         depositCount: sale.depositCount + skipInvoiceAvans.count,
         depositAmount: sale.depositAmount + skipInvoiceAvans.amount,
+        // 14.10.2026 — Rezervasyon brüt/kalan (henüz faturası kesilecek)
+        reservationGross: reservation.gross,
+        reservationPending: reservation.pending,
         expenses: exp,
         cashIn,
         // cariTahsilat satır alanı 2026-10-03 kullanıcı talebi ile kaldırıldı.
@@ -835,6 +880,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         returnsAmount: acc.returnsAmount + r.returnsAmount,
         depositCount: acc.depositCount + r.depositCount,
         depositAmount: acc.depositAmount + r.depositAmount,
+        // 14.10.2026 — Rezervasyon brüt/kalan toplamları
+        reservationGross: acc.reservationGross + r.reservationGross,
+        reservationPending: acc.reservationPending + r.reservationPending,
         expenses: acc.expenses + r.expenses,
         cashIn: acc.cashIn + r.cashIn,
         // cariTahsilat toplamı 2026-10-03 kullanıcı talebi ile kaldırıldı.
@@ -845,6 +893,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
         returnsCount: 0, returnsAmount: 0,
         depositCount: 0, depositAmount: 0,
+        reservationGross: 0, reservationPending: 0,
         expenses: 0, cashIn: 0, purchases: 0, netRemaining: 0,
       }
     );
@@ -1030,6 +1079,53 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         cell: (row) =>
           row.depositCount > 0 ? (
             <span className="text-cyan-700 font-medium">{row.depositCount}</span>
+          ) : (
+            '—'
+          ),
+        meta: { defaultVisible: true },
+      },
+      // 14.10.2026 — Rezervasyon brüt hizmet tutarı (henüz faturası
+      // kesilmemiş randevuların toplam hizmet fiyatı). "Net Kalan"a
+      // dahil edilir: günü geldiğinde faturası kesilecek tutar.
+      {
+        key: 'reservationGross',
+        header: `Rezervasyon Brüt (${currency})`,
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => (
+          <span className={n > 0 ? 'text-violet-700' : 'text-violet-900/60'}>
+            {n > 0 ? money(n) : `${money(0)} (yok)`}
+          </span>
+        ),
+        cell: (row) =>
+          row.reservationGross > 0 ? (
+            <span className="text-violet-700 font-medium">
+              {money(row.reservationGross)}
+            </span>
+          ) : (
+            '—'
+          ),
+        meta: { defaultVisible: true },
+      },
+      // 14.10.2026 — Rezervasyon kalan (brüt − peşinat). Fatura
+      // kesilecek tutar. Net Kalan formülüne eklenir.
+      {
+        key: 'reservationPending',
+        header: `Rezervasyon Kalan (${currency})`,
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => (
+          <span className={n > 0 ? 'text-violet-700' : 'text-violet-900/60'}>
+            {n > 0 ? money(n) : `${money(0)} (yok)`}
+          </span>
+        ),
+        cell: (row) =>
+          row.reservationPending > 0 ? (
+            <span className="text-violet-700 font-medium">
+              {money(row.reservationPending)}
+            </span>
           ) : (
             '—'
           ),
