@@ -39,7 +39,11 @@ const renderZeroAmount = (n: number, nonZero: (n: number) => React.ReactNode): R
         <>{nonZero(n)}</>
     );
 
-type Row = Awaited<ReturnType<typeof beautyService.getDepositPrePaymentReport>>[number];
+type Row = Awaited<ReturnType<typeof beautyService.getDepositPrePaymentReport>>[number] & {
+    // 14.10.2026 20:00 — Rezervasyon miktarı (adet). Servis tarafında
+    // dönüyor; geriye dönük uyum için ?.
+    reservation_count?: number;
+};
 
 // 10.10.2026 — Rezervasyon / Ön Ödeme Raporu "Kalan" hesabı.
 //
@@ -216,8 +220,36 @@ export function DepositPrePaymentReport() {
                     )),
             },
             {
+                // 14.10.2026 20:00 — Rezervasyon Miktarı (adet). Önceki
+                // versiyonda bu kolon deposit_amount tutarını gösteriyordu
+                // (yanlış). Kullanıcı kararı: miktar = adet, tutar ayrı
+                // kolon. `reservation_count` servis tarafında 1 sabit
+                // dönüyor (her randevu 1 hizmet).
+                key: 'reservation_count',
+                header: tm('reservationCountLabel') || 'Rezervasyon Miktarı',
+                type: 'number',
+                align: 'right',
+                size: 130,
+                footerSum: true,
+                footerFormat: (n) => (n > 0 ? Math.round(n).toString() : ''),
+                cell: (r) => {
+                    const v = Number(r.reservation_count ?? 1) || 0;
+                    return v > 0 ? (
+                        <span className="font-semibold text-blue-700 tabular-nums">
+                            {v} {tm('dailyDepositCountShort') || 'adet'}
+                        </span>
+                    ) : (
+                        <span className="tabular-nums text-slate-300">—</span>
+                    );
+                },
+            },
+            {
+                // 14.10.2026 20:00 — Rezervasyon Tutarı (peşinat). DB'de
+                // deposit_amount olarak duruyor (örn. 15.000). Bu kolon
+                // sadece bilgi; brütten ve kalan bakiyeden bağımsız
+                // gösterilir.
                 key: 'deposit_amount',
-                header: tm('bKpiTotalReservation') || 'Rezervasyon Miktarı',
+                header: tm('dailyDepositCollected') || tm('bKpiTotalReservation') || 'Rezervasyon Tutarı',
                 type: 'number',
                 align: 'right',
                 size: 140,
@@ -225,7 +257,7 @@ export function DepositPrePaymentReport() {
                 footerFormat: (n) => fmtAmt(n),
                 cell: (r) =>
                     renderZeroAmount(Number(r.deposit_amount) || 0, (v) => (
-                        <span className="font-semibold text-blue-700 tabular-nums">{fmt(v)}</span>
+                        <span className="font-semibold text-cyan-700 tabular-nums">{fmt(v)}</span>
                     )),
             },
             {

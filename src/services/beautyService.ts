@@ -8083,8 +8083,29 @@ export const beautyService = {
                 COALESCE(sp.name, u.full_name, u.username, '—') AS specialist_name,
                 a.service_id::text                             AS service_id,
                 COALESCE(bs.name, rs.name, pr.name, '—')       AS service_name,
-                pas.total_price::float                         AS total_price,
+                -- 14.10.2026 20:00 — Rezervasyon / Ön Ödeme raporu
+                -- "Toplam Tutar" kolonu. Kullanıcı kararı: brüt =
+                -- hizmet kataloğundaki gerçek fiyat (örn. 50.000); DB'de
+                -- total_price indirim sonrası / yanlış yazılmış olabilir.
+                -- Fallback zinciri: pas.total_price → bs.price (katalog)
+                -- → pr.price (ürün kataloğu). İlk 0 olmayan değer brüt
+                -- olarak alınır (sıralama önemli: katalog ÖNCELİKLİ).
+                COALESCE(
+                    NULLIF(pas.total_price, 0),
+                    NULLIF(bs.price, 0),
+                    NULLIF(pr.price, 0)
+                )::float                                       AS total_price,
+                -- 14.10.2026 20:00 — Rezervasyon Tutarı (peşinat).
+                -- pas.deposit_amount DB'de 15.000 olarak duruyor; bu
+                -- doğru kullanılır. Önceki versiyon karışıklığı
+                -- (deposit_amount "Rezervasyon Miktarı" kolonunda
+                -- gösterilmesi) bu sütun sayesinde çözüldü.
                 pas.deposit_amount::float                      AS deposit_amount,
+                -- Rezervasyon miktarı (adet) — her randevu 1 adet
+                -- (1 service line). İleride çoklu hizmet/miktar
+                -- desteklenirse quantity üzerinden hesaplanabilir;
+                -- şimdilik sabit 1.
+                1::int                                         AS reservation_count,
                 pas.remainder_paid_amount::float               AS remainder_paid_amount,
                 pas.outstanding_amount::float                  AS outstanding_amount,
                 pas.payment_state                              AS payment_state,
@@ -8133,6 +8154,7 @@ export const beautyService = {
                 service_name: r.service_name ? String(r.service_name) : null,
                 total_price: Number(r.total_price) || 0,
                 deposit_amount: Number(r.deposit_amount) || 0,
+                reservation_count: Number(r.reservation_count) || 1,
                 remainder_paid_amount: Number(r.remainder_paid_amount) || 0,
                 outstanding_amount: Number(r.outstanding_amount) || 0,
                 payment_state: (String(r.payment_state ?? 'no_amount') as
