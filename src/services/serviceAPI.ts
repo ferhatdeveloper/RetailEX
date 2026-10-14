@@ -301,6 +301,8 @@ class ServiceAPI {
             console.warn('[serviceAPI.getAll] ERP query failed:', err);
         }
         // Beauty hizmetleri (beauty.rex_*_beauty_services)
+        // Tablo firma numarası zaten adın içinde (firm_nr kolonu YOK);
+        // filtreye gerek yok. created_at NULL olabilir → NULLS LAST.
         let beautyRows: Record<string, unknown>[] = [];
         try {
             const { rows } = await postgres.query(
@@ -312,9 +314,8 @@ class ServiceAPI {
                         COALESCE(is_active, true) AS is_active,
                         COALESCE(description, '') AS description
                  FROM ${beautyTableName()}
-                 WHERE firm_nr = $1 OR firm_nr IS NULL
                  ORDER BY created_at DESC NULLS LAST`,
-                [firmNr],
+                [],
             );
             beautyRows = rows;
             console.log('[serviceAPI.getAll] Beauty rows:', beautyRows.length, 'table:', beautyTableName());

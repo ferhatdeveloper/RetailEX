@@ -2438,43 +2438,28 @@ export const beautyService = {
     async ensureDepositService(): Promise<string> {
         const t = postgres.getCardTableName('beauty_services', 'beauty');
         const fn = erpFirmNrForRow();
-        // 14.10.2026 — firm_nr filtresi olmadan tüm DEPOSIT varyantlarını
-        // ara. Önceden `getServices` `firm_nr IN (firmCandidates)` ile
-        // filtrelediği için firm_nr NULL olan DEPOSIT kayıtları katalogda
-        // görünmüyordu. Yine de mevcut bir kaydı (firm_nr NULL dahil)
-        // bulursak onu kullanmak için filtre yok.
+        // 14.10.2026 — `rex_*_beauty_services` tablosunda `firm_nr` kolonu
+        // YOK (master schema 4430). Tablo adı zaten firmaya özel; firma
+        // filtresi sorguya eklenmez. SELECT/UPDATE/INSERT'in tüm
+        // `firm_nr` referansları söküldü.
         try {
             const { rows } = await postgres.query(
-                `SELECT id, is_active, firm_nr FROM ${t}
+                `SELECT id, is_active FROM ${t}
                  WHERE LOWER(TRIM(name)) IN (LOWER('DEPOSIT'), LOWER('Depozito'), LOWER('Peşinat'))
                  ORDER BY
-                    CASE WHEN firm_nr IS NOT NULL AND firm_nr = $2 THEN 0
-                         WHEN firm_nr IS NULL THEN 1
-                         ELSE 2 END ASC,
                     is_active DESC NULLS LAST,
-                    created_at ASC
+                    created_at ASC NULLS LAST
                  LIMIT 1`,
-                [null, fn],
+                [],
             );
             const first = rows[0];
             if (first) {
-                // Mevcut kayıt varsa firm_nr boşsa doldur (görünür olsun).
-                if (first.firm_nr == null || first.firm_nr === '') {
-                    try {
-                        await postgres.query(
-                            `UPDATE ${t} SET firm_nr = $1, updated_at = NOW() WHERE id = $2`,
-                            [fn, first.id],
-                        );
-                    } catch {
-                        /* firm_nr kolonu yoksa yoksay */
-                    }
-                }
                 return String(first.id);
             }
         } catch {
             /* tablo yoksa INSERT yoluna düş */
         }
-        // Yoksa oluştur — firm_nr DAHİL edilir (katalog filtresi için şart).
+        // Yoksa oluştur — `firm_nr` kolonu yok, bu yüzden INSERT listesinde yok.
         const newId = uuidv4();
         try {
             if (shouldUseTenantPostgrestApi()) {
@@ -2483,7 +2468,6 @@ export const beautyService = {
                     `/rex_${fn}_beauty_services`,
                     {
                         id: newId,
-                        firm_nr: fn,
                         name: 'DEPOSIT',
                         category: 'beauty',
                         parent_category: 'service',
@@ -2504,10 +2488,10 @@ export const beautyService = {
             } else {
                 await postgres.query(
                     `INSERT INTO ${t}
-                        (id, firm_nr, name, category, parent_category, duration_min, price, cost_price, color, commission_rate,
+                        (id, name, category, parent_category, duration_min, price, cost_price, color, commission_rate,
                          description, requires_device, expected_shots, default_sessions, follow_up_reminder_days, is_active, created_at, updated_at)
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,true,NOW(),NOW())`,
-                    [newId, fn, 'DEPOSIT', 'beauty', 'service', 0, 0, 0, '#a855f7', 0,
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true,NOW(),NOW())`,
+                    [newId, 'DEPOSIT', 'beauty', 'service', 0, 0, 0, '#a855f7', 0,
                      'Rezervasyon tutarı (ön ödeme / kaparo) için otomatik bootstrap hizmeti',
                      false, 0, 1, 0],
                 );
