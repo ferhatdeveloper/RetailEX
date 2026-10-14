@@ -449,13 +449,14 @@ export function AppointmentPOS({
     const [discount, setDiscount] = useState(0);
     // Rezervasyon tutarı (müşteriden peşin alınan tutar; toplamdan düşer)
     const [reservationAmount, setReservationAmount] = useState(0);
-    // 07.10.2026 — `reservationCreateReceipt` kaldırıldı: artık
-    // BEAUTY-PESINAT-* sales fişi kesilmiyor (çift fiş düzeltmesi). Cari
-    // tarafı yalnızca `recordAdvance` ile yazılır; hizmet verildiğinde
-    // beautyService.createSale TEK beauty_sales fişi (BEA-2026-...) keser.
-    // (state referansı başka yerlerde kalmış olabilir; typecheck sırasında
-    // görülecek ve temizlenecek.)
-    const [reservationCreateReceipt, setReservationCreateReceipt] = useState(true);
+    // 14.10.2026 — Default `false`: "Rezervasyon fişi kes" checkbox'ı
+    // varsayılan işaretli OLMASIN. Kullanıcı talebi: yeni randevuda
+    // peşinat alırken ayrı bir rezervasyon sales fişi otomatik
+    // kesilmesin; yalnızca cari bakiye + kasa hareketi yazılsın.
+    // Hizmet verildiğinde tek beauty_sales fişi kesildiği için
+    // çift fiş problemi de böylece önlenir. Kullanıcı isterse
+    // checkbox'ı manuel işaretleyerek eski davranışa dönebilir.
+    const [reservationCreateReceipt, setReservationCreateReceipt] = useState(false);
 
     // ── Customer ─────────────────────────────────────────────────────────
     const [customer, setCustomer] = useState<BeautyCustomer | null>(null);
@@ -1560,7 +1561,7 @@ export function AppointmentPOS({
         setCustomer(null);
         setDiscount(0);
         setReservationAmount(0);
-        setReservationCreateReceipt(true);
+        setReservationCreateReceipt(false);
         setReceiptTreatmentDegree('');
         setReceiptTreatmentShots('');
     };
