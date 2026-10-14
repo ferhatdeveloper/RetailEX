@@ -138,24 +138,13 @@ async function main() {
     log(`  ❌ auth.users: ${e.message}`, COLORS.red);
   }
 
-  // 14.10.2026 — Demo verileri de yükle (002-212 migration'lar sıfır
-  // kurulumda incremental olarak tetiklenir; demo data ise yalnızca bu
-  // noktada çalıştırılır). 001_demo_data.sql idempotent (ON CONFLICT
-  // DO NOTHING).
-  log('\n[Sıfırla] demo data yükleniyor (001_demo_data.sql)...', COLORS.cyan);
-  if (!existsSync(DEMO_DATA)) {
-    log(`  ⚠️  demo data yok: ${DEMO_DATA} (atlanıyor)`, COLORS.yellow);
-  } else {
-    try {
-      const demoSql = readFileSync(DEMO_DATA, 'utf8');
-      await c.query(demoSql);
-      log('  demo data ✅', COLORS.green);
-    } catch (e) {
-      log(`  ⚠️  demo data hatası: ${e.message} (atlanıyor — master temiz)`, COLORS.yellow);
-    }
-  }
+  // 14.10.2026 — Demo veri YÜKLENMİYOR. Sıfır kurulum talep edildi;
+  // 001_demo_data.sql (müşteri/ürün/satış/randevu) bilinçli olarak
+  // atlanıyor. Master schema'nın içindeki minimal config INSERT'leri
+  // (tax rates, units, body_regions, vb.) yeterli — operasyonel
+  // veri (müşteri, satış, randevu) kullanıcı tarafından girilir.
 
-  log('\n✅ guzel sıfırlandı. Yeniden giriş: admin / admin', COLORS.green);
+  log('\n✅ guzel sıfırlandı (demo data yok). Yeniden giriş: admin / admin', COLORS.green);
   await c.end();
 }
 
