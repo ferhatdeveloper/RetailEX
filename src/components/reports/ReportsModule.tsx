@@ -6498,13 +6498,16 @@ export function ReportsModule({
                   // + kalan bilgi satırı. Ciro dışı tahsilat (peşinat)
                   // zaten Peşinat kartında ve Net (Brüt)'e eklenir;
                   // burada yalnızca henüz fatura kesilmemiş hizmetin
-                  // brüt tutarı, adedi ve kalan tutarı görünür.
+                  // brüt tutarı, adedi, peşinat (depozito) ve kalan tutarı görünür.
                   <div className="bg-violet-50/60 rounded-lg p-3 border border-violet-200 text-sm flex flex-wrap gap-x-6 gap-y-1" data-testid="daily-reservation-summary">
                     <span className="text-violet-700 font-semibold">
                       {tm('reservationGrossLabel') || 'Rezervasyon Brüt'}: {formatNumber(reservationAggregate.gross, 2, false)}
                     </span>
                     <span className="text-violet-700 font-semibold">
                       {tm('reservationCountLabel') || 'Rezervasyon Miktarı'}: {reservationAggregate.count} {tm('dailyDepositCountShort') || 'adet'}
+                    </span>
+                    <span className="text-violet-700 font-semibold">
+                      {tm('dailyDepositCollected') || 'Rezervasyon Tutarı'}: {formatNumber(reservationAggregate.deposit, 2, false)}
                     </span>
                     <span className="text-violet-600">
                       {tm('reservationPendingLabel') || 'Kalan'}: {formatNumber(reservationAggregate.pending, 2, false)}
@@ -7175,9 +7178,10 @@ export function ReportsModule({
                             label: tm('dailyDepositCollected') || 'Rezervasyon Tutarı',
                             value: formatNumber(zReport.reservationDeposit ?? 0, 2, false),
                             valueClassName: darkMode ? 'text-amber-400' : 'text-amber-600',
-                            // 14.10.2026 19:18 — Brüt ve adet (miktar) bilgi
+                            // 14.10.2026 19:35 — Brüt + miktar + kalan bilgi
                             // olarak hint'te gösterilir: "Brüt: 50.000 · 1
-                            // adet · Kalan: 35.000".
+                            // adet · Kalan: 35.000". Rezervasyon Tutarı
+                            // (deposit) zaten value'da yazıyor.
                             hint: `${tm('reservationGrossLabel') || 'Brüt'}: ${formatNumber(zReport.reservationGross ?? 0, 2, false)}${(zReport.reservationCount ?? 0) > 0 ? ` · ${zReport.reservationCount} ${tm('dailyDepositCountShort') || 'adet'}` : ''} · ${tm('reservationPendingLabel') || 'Kalan'}: ${formatNumber(Math.max(0, (zReport.reservationGross ?? 0) - (zReport.reservationDeposit ?? 0)), 2, false)}`,
                           },
                           {
