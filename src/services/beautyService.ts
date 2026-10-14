@@ -2838,9 +2838,17 @@ export const beautyService = {
                 -- randevularda total_price indirim sonrası / yanlış
                 -- yazılmış olabilir; raporlarda brüt hizmet tutarı
                 -- olarak service_price fallback olarak kullanılır.
+                --
+                -- 14.10.2026 19:55 — Bug fix: rex_001_services tablosunda
+                -- price kolonu yok (yalniz name, code, vb.). Bu yuzden
+                -- getCompletedAppointmentsForDay ve getAppointmentsInRange
+                -- sorgulari 500 hatasi donuyordu → useAuth must be used
+                -- within AuthProvider + removeChild cascade hatalarini
+                -- tetikliyordu. Fallback zincirinden rs.price cikarildi;
+                -- sadece s.price (beauty_services) veya pr.price (urun
+                -- katalogu) kullanilir.
                 COALESCE(
                     NULLIF(s.price, 0),
-                    NULLIF(rs.price, 0),
                     NULLIF(pr.price, 0)
                 ) AS service_price,
                 COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
@@ -2931,9 +2939,11 @@ export const beautyService = {
                 -- randevularda total_price indirim sonrası / yanlış
                 -- yazılmış olabilir; raporlarda brüt hizmet tutarı
                 -- olarak service_price fallback olarak kullanılır.
+                -- 14.10.2026 19:55 — Bug fix: rex_001_services tablosunda
+                -- price kolonu yok; rs.price 500 hatasina yol aciyordu
+                -- (useAuth/removeChild cascade). rs.price fallback'ten cikarildi.
                 COALESCE(
                     NULLIF(s.price, 0),
-                    NULLIF(rs.price, 0),
                     NULLIF(pr.price, 0)
                 ) AS service_price,
                 COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
