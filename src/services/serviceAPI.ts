@@ -149,9 +149,13 @@ function mapRow(row: Record<string, unknown>): Service {
  * korunur, unit_price service kartındaki `price`'tan gelir.
  */
 function mapBeautyRow(row: Record<string, unknown>): Service {
+    // Beauty tablosunda `code` kolonu yok. Faturada görünmesi için
+    // UUID'nin ilk 8 karakterinden kısa kod üret (örn. "BEA-3F2A89D1").
+    const idStr = String(row.id ?? '');
+    const shortId = idStr.replace(/-/g, '').slice(0, 8).toUpperCase();
     return {
-        id: String(row.id),
-        code: '', // beauty tablosunda code yok
+        id: idStr,
+        code: shortId ? `BEA-${shortId}` : '',
         name: String(row.name ?? ''),
         description: row.description != null ? String(row.description) : undefined,
         category: 'beauty', // ayırt edici — fatura formunda "Beauty" rozeti
@@ -160,8 +164,8 @@ function mapBeautyRow(row: Record<string, unknown>): Service {
         tax_rate: 0, // beauty hizmetlerinde KDV genelde 0
         unit: 'Adet',
         is_active: row.is_active !== false,
-        created_at: '',
-        updated_at: '',
+        created_at: row.created_at != null ? String(row.created_at) : '',
+        updated_at: row.updated_at != null ? String(row.updated_at) : '',
     };
 }
 

@@ -112,6 +112,7 @@ interface CartLine {
      */
     type: 'service' | 'package' | 'product' | 'deposit';
     item_id: string;
+    code?: string;
     name: string;
     unit_price: number;
     qty: number;
@@ -1521,6 +1522,7 @@ export function AppointmentPOS({
                 uid: depositIdx >= 0 ? prevCart[depositIdx].uid : uid(),
                 type: 'deposit',
                 item_id: depositServiceId ?? '__deposit__',
+                code: 'DEPOSIT',
                 name: 'DEPOSIT',
                 unit_price: round(cap),
                 qty: 1,
