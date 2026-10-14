@@ -3468,25 +3468,27 @@ export const beautyService = {
         const apptTable = `beauty.rex_${fn}_${pn}_beauty_appointments`;
         const salesTable = `public.rex_${fn}_${pn}_sales`;
         const itemsTable = `public.rex_${fn}_${pn}_sale_items`;
-        const RES_ITEM_NAME = 'REZARVASYON HİZMETİ';
+        const RES_ITEM_NAME = 'Rezervasyon Ödemesi (Depozito)';
+        const RES_ITEM_TYPE = 'reservation';
 
-        // 1) Appointment'tan total_price al
-        let totalPrice = 0;
+        // 1) Appointment'tan deposit_amount al (rezervasyon tutarı).
+        //    Eğer 0 ise rezervasyon satırı eklemeye gerek yok.
+        let depositAmount = 0;
         let saleGroupId: string | null = null;
         try {
-            const apptRes = await postgres.query<{ total_price: unknown; sale_group_id: unknown }>(
-                `SELECT total_price, sale_group_id FROM ${apptTable} WHERE id = $1`,
+            const apptRes = await postgres.query<{ deposit_amount: unknown; sale_group_id: unknown }>(
+                `SELECT deposit_amount, sale_group_id FROM ${apptTable} WHERE id = $1`,
                 [aid],
             );
             const row = apptRes.rows[0];
             if (!row) return;
-            totalPrice = Number(row.total_price ?? 0);
+            depositAmount = Number(row.deposit_amount ?? 0);
             saleGroupId = row.sale_group_id ? String(row.sale_group_id) : null;
         } catch (e) {
             console.warn('[appendReservationHizmetiLine] appointment read failed:', e);
             return;
         }
-        if (!Number.isFinite(totalPrice) || totalPrice <= 0) return;
+        if (!Number.isFinite(depositAmount) || depositAmount <= 0) return;
 
         // 2) Bağlı sales fişini bul — üç katmanlı arama
         let saleId: string | null = null;
@@ -3531,7 +3533,7 @@ export const beautyService = {
             return;
         }
         if (!saleId) {
-            // Bağlı fiş yoksa REZARVASYON HİZMETİ eklenemez; sessizce çık
+            // Bağlı fiş yoksa REZERVASYON HİZMETİ eklenemez; sessizce çık
             // (randevu tek başına açılmış olabilir, fiş daha sonra oluşur).
             return;
         }
@@ -3555,7 +3557,8 @@ export const beautyService = {
             return;
         }
 
-        // 4) Yeni kalem INSERT — tam tutar (KDV=0, iskonto yok)
+        // 4) Yeni kalem INSERT — depozito tutarı (KDV=0, iskonto yok, K/Z=0)
+        //    Brüt toplamı iki kez saymamak için maliyet ve kâr sıfır yazılır.
         try {
             await postgres.query(
                 `INSERT INTO ${itemsTable} (
@@ -3567,22 +3570,22 @@ export const beautyService = {
                     unit, unit_multiplier, base_quantity, unit_price_fc, currency,
                     linked_appointment_id
                 ) VALUES (
-                    $1, $2, $3::uuid, $4, 'Hizmet',
-                    1, $5, 0,
+                    $1, $2, $3::uuid, $4, $5,
+                    1, $6, 0,
                     0, 0,
-                    $5, $5,
+                    $6, $6,
                     0, 0, 0,
-                    'Adet', 1, 1, $5, 'IQD',
-                    $6::uuid
+                    'Adet', 1, 1, $6, 'IQD',
+                    $7::uuid
                 )`,
-                [fn, pn, saleId, RES_ITEM_NAME, totalPrice, aid],
+                [fn, pn, saleId, RES_ITEM_NAME, RES_ITEM_TYPE, depositAmount, aid],
             );
         } catch (e) {
             console.warn('[appendReservationHizmetiLine] insert failed:', e);
             return;
         }
 
-        // 5) Header recompute — total_net, total_gross, net_amount güncelle
+        // 5) Header recompute — brüt/net tutarı güncelle (K/Z etkilenmez)
         try {
             await postgres.query(
                 `UPDATE ${salesTable}
@@ -3591,7 +3594,7 @@ export const beautyService = {
                         net_amount    = COALESCE(net_amount, 0) + $2,
                         updated_at    = NOW()
                   WHERE id = $1::uuid`,
-                [saleId, totalPrice],
+                [saleId, depositAmount],
             );
         } catch (e) {
             console.warn('[appendReservationHizmetiLine] header update failed:', e);
@@ -11090,9 +11093,42 @@ export const beautyService = {
             const customerId = apt.customer_id ? String(apt.customer_id) : null;
             if (!customerId) return { ok: false, error: 'Randevuya bağlı müşteri yok' };
             const depositSaleId = apt.deposit_sale_id ? String(apt.deposit_sale_id) : null;
-            const saleGroupId = apt.sale_group_id ? String(apt.sale_group_id) : `apt-${aptId}`;
+            // sale_group_id: sales tablosunda UUID tipinde. apt.sale_group_id text
+            // olduğu için ya oradan valid UUID al ya da yeni üret. Geçersiz
+            // string UUID sütununa atanamaz.
+            let saleGroupId: string;
+            const aptSaleGroup = apt.sale_group_id ? String(apt.sale_group_id) : '';
+            if (aptSaleGroup && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(aptSaleGroup)) {
+                saleGroupId = aptSaleGroup;
+            } else {
+                // Yeni UUID üret (gen_random_uuid fonksiyonu PostgreSQL/PostgREST'te mevcut)
+                const newId = await postgres.query<{ id: string }>('SELECT gen_random_uuid()::text AS id');
+                saleGroupId = String(newId.rows?.[0]?.id ?? '').trim();
+            }
+            if (!saleGroupId) {
+                return { ok: false, error: 'sale_group_id üretilemedi' };
+            }
             const serviceName = apt.service_name ? String(apt.service_name) : 'Güzellik Hizmeti';
             const customerName = apt.customer_name ? String(apt.customer_name) : '';
+
+            // 1.5) Hizmet cost_price'ını çek (K/Z dağılımı için).
+            //      appointment.service_id üzerinden beauty_services tablosuna
+            //      bakılır. Bulunamazsa maliyet=0 kabul edilir (güvenli taraf).
+            let serviceCost = 0;
+            try {
+                const svcRes = await postgres.query<{ cost_price: number | string | null }>(
+                    `SELECT cost_price FROM ${appointmentTable.replace(/_appointments$/, '_services')}
+                      WHERE id = (SELECT service_id::text::uuid FROM ${appointmentTable}
+                                   WHERE id = $1::text::uuid)
+                      LIMIT 1`,
+                    [aptId],
+                );
+                const v = svcRes.rows?.[0]?.cost_price;
+                if (v != null) serviceCost = Math.max(0, Number(v));
+            } catch (e) {
+                console.warn('[collectAppointmentRemainder] service cost lookup failed:', e);
+                serviceCost = 0;
+            }
 
             // 2) Hedef kasa: verilen cashRegisterId, yoksa aktif MERKEZ/PATRON kasa
             let targetRegisterId: string | null = input.cashRegisterId ? String(input.cashRegisterId) : null;
@@ -11255,6 +11291,7 @@ export const beautyService = {
                         (id, firm_nr, period_nr, fiche_no, document_no, trcode, fiche_type,
                          customer_id, customer_name, total_net, total_vat, total_gross,
                          total_discount, net_amount,
+                         total_cost, gross_profit, profit_margin,
                          paid_amount, credit_amount,
                          currency, currency_rate,
                          status, payment_method, notes, header_fields,
@@ -11266,30 +11303,34 @@ export const beautyService = {
                          $6::text::uuid, $7::text,
                          $8::numeric, 0::numeric, $8::numeric,
                          0::numeric, $8::numeric,
+                         $11::numeric, $12::numeric, $13::numeric,
                          $9::numeric, $10::numeric,
                          'IQD'::text, 1::numeric,
-                         $11::text, $12::text, $13::text, '{}'::jsonb,
-                         $14::text::uuid, $15::text::uuid, NULL, $16::text,
+                         $14::text, $15::text, $16::text, '{}'::jsonb,
+                         $17::text::uuid, $18::text::uuid, NULL, $19::text,
                          false::boolean, NOW(), NOW())
                      ON CONFLICT (fiche_no) DO NOTHING
                      RETURNING id, fiche_no`,
                     [
-                        firmNr,
-                        periodNr,
-                        mainFicheNo,
-                        trcode,
-                        ficheType,
-                        customerId,
-                        customerName,
-                        saleGross,
-                        paidAfter,
-                        creditAfter,
-                        saleStatus,
-                        paymentMethodLabel,
-                        mainNotes,
-                        aptId,
-                        depositSaleId,
-                        saleGroupId,
+                        firmNr,         // 1
+                        periodNr,       // 2
+                        mainFicheNo,    // 3
+                        trcode,         // 4
+                        ficheType,      // 5
+                        customerId,     // 6
+                        customerName,   // 7
+                        saleGross,      // 8
+                        paidAfter,      // 9
+                        creditAfter,    // 10
+                        serviceCost,    // 11 — total_cost
+                        (saleGross - serviceCost), // 12 — gross_profit
+                        saleGross > 0 ? Math.round(((saleGross - serviceCost) / saleGross) * 10000) / 100 : 0, // 13 — profit_margin (%)
+                        saleStatus,     // 14
+                        paymentMethodLabel, // 15
+                        mainNotes,      // 16
+                        aptId,          // 17 — linked_appointment_id
+                        depositSaleId,  // 18
+                        saleGroupId,    // 19
                     ],
                 );
                 const insertedRows = (salesInsert.rows ?? []) as Array<{ id: string; fiche_no: string }>;
@@ -11298,15 +11339,35 @@ export const beautyService = {
                     // Hizmet toplam tutarı (satır) — yine tam hizmet fiyatı,
                     // `amount` değil; böylece invoice preview / fatura PDF
                     // 75.000'lik tek kalem gösterir.
+                    // K/Z: hizmet satırının maliyeti = serviceCost, kâr = saleGross - serviceCost.
                     await postgres.query(
                         `INSERT INTO ${saleItemsTable}
                             (id, invoice_id, product_id, quantity, unit_price, vat_rate,
-                             discount_rate, discount_amount, total_amount, unit_cost, item_type, name)
+                             discount_rate, discount_amount, total_amount, net_amount,
+                             unit_cost, total_cost, gross_profit, item_type, item_name)
                          VALUES
                             (gen_random_uuid(), $1::text::uuid, NULL, 1, $2::numeric, 0,
-                             0, 0, $2::numeric, 0, 'service'::text, $3::text)`,
-                        [mainSaleId, saleGross, serviceName],
+                             0, 0, $2::numeric, $2::numeric,
+                             $3::numeric, $3::numeric, ($2::numeric - $3::numeric), 'service'::text, $4::text)`,
+                        [mainSaleId, saleGross, serviceCost, serviceName],
                     );
+
+                    // Rezervasyon Ödemesi (Depozito) — 2. satır.
+                    // Sadece deposit_amount > 0 ise eklenir.
+                    // Brüt toplamı iki kez saymamak için K/Z'ye etki etmez (cost=0, profit=0).
+                    if (depositAmtForSale > 0) {
+                        await postgres.query(
+                            `INSERT INTO ${saleItemsTable}
+                                (id, invoice_id, product_id, quantity, unit_price, vat_rate,
+                                 discount_rate, discount_amount, total_amount, net_amount,
+                                 unit_cost, total_cost, gross_profit, item_type, item_name)
+                             VALUES
+                                (gen_random_uuid(), $1::text::uuid, NULL, 1, $2::numeric, 0,
+                                 0, 0, $2::numeric, $2::numeric,
+                                 0, 0, 0, 'reservation'::text, $3::text)`,
+                            [mainSaleId, depositAmtForSale, 'Rezervasyon Ödemesi (Depozito)'],
+                        );
+                    }
                     // randevuya remainder_sale_id + fiche_no geri yaz
                     await postgres.query(
                         `UPDATE ${appointmentTable}
