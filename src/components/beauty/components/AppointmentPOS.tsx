@@ -745,10 +745,15 @@ export function AppointmentPOS({
         // 14.10.2026 — DEPOSIT hizmeti DB'de yoksa oluştur (idempotent).
         // ensureDepositService() önce var mı diye bakar, yoksa INSERT yapar
         // ve ID döndürür; tek seferlik bootstrap — race condition'a karşı
-        // state guard ile korunuyor.
+        // state guard ile korunuyor. Yeni eklenen DEPOSIT hizmetinin
+        // katalogda (sol panel) görünmesi için `loadServices` çağrılır.
         if (!depositServiceId) {
             void beautyService.ensureDepositService()
-                .then(id => setDepositServiceId(id))
+                .then(id => {
+                    setDepositServiceId(id);
+                    // Kataloğu tazele ki DEPOSIT hizmeti sol panelde listelensin.
+                    void loadServices();
+                })
                 .catch((err) => {
                     logger.error('AppointmentPOS', 'ensureDepositService failed', err);
                 });
