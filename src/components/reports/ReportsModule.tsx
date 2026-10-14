@@ -3650,8 +3650,9 @@ export function ReportsModule({
 
     // 14.10.2026 — Rezervasyon kalan (henüz faturası kesilmemiş
     // randevular). Net Kalan'a eklenir. ERP ve Resto branch'lerinin
-    // ikisinde de kullanılır.
-    const reservation = reservationPendingForRange(
+    // ikisinde de kullanılır. Ad: `resvForZReport` (production build
+    // minify çakışmasını önlemek için açık isim).
+    const resvForZReport = reservationPendingForRange(
       dailyAppointments,
       selectedDateFrom,
       selectedDateTo,
@@ -3680,10 +3681,10 @@ export function ReportsModule({
           netSales,
           totalExpensesForReport,
           showDailyCardTotalExpense,
-        ) + reservation.pending,
-        reservationGross: reservation.gross,
-        reservationPending: reservation.pending,
-        reservationCount: reservation.count,
+        ) + resvForZReport.pending,
+        reservationGross: resvForZReport.gross,
+        reservationPending: resvForZReport.pending,
+        reservationCount: resvForZReport.count,
         cashAmount: base.cashAmount,
         cardAmount: base.cardAmount,
         creditAmount: base.creditAmount,
@@ -3746,10 +3747,10 @@ export function ReportsModule({
           totalAmount,
           totalExpensesForReport,
           showDailyCardTotalExpense,
-        ) + reservation.pending,
-        reservationGross: reservation.gross,
-        reservationPending: reservation.pending,
-        reservationCount: reservation.count,
+        ) + resvForZReport.pending,
+        reservationGross: resvForZReport.gross,
+        reservationPending: resvForZReport.pending,
+        reservationCount: resvForZReport.count,
         cashAmount,
         cardAmount,
         creditAmount,
