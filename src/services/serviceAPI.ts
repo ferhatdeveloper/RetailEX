@@ -296,8 +296,9 @@ class ServiceAPI {
                 [firmNr],
             );
             erpRows = rows;
-        } catch {
-            /* tablo yoksa yoksay */
+            console.log('[serviceAPI.getAll] ERP rows:', erpRows.length, 'firmNr:', firmNr);
+        } catch (err) {
+            console.warn('[serviceAPI.getAll] ERP query failed:', err);
         }
         // Beauty hizmetleri (beauty.rex_*_beauty_services)
         let beautyRows: Record<string, unknown>[] = [];
@@ -316,12 +317,14 @@ class ServiceAPI {
                 [firmNr],
             );
             beautyRows = rows;
-        } catch {
-            /* tablo yoksa yoksay */
+            console.log('[serviceAPI.getAll] Beauty rows:', beautyRows.length, 'table:', beautyTableName());
+        } catch (err) {
+            console.warn('[serviceAPI.getAll] Beauty query failed:', err);
         }
         const out: Service[] = [];
         for (const r of erpRows) out.push(mapRow(r));
         for (const r of beautyRows) out.push(mapBeautyRow(r));
+        console.log('[serviceAPI.getAll] Total merged:', out.length);
         // Aktif olanlar önce, sonra isme göre
         out.sort((a, b) => {
             const ai = a.is_active ? 0 : 1;
