@@ -1,12 +1,52 @@
 
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
+import { execSync } from 'node:child_process';
 import { eticaretStaticPlugin } from './vite.eticaret-static';
+
+/**
+ * 14.10.2026 — Cache buster: build edilen index.html'lerdeki
+ * <script type="module" src="..."> ve <link rel="stylesheet" href="...">
+ * öğelerinin src/href'ine `?v={gitSha}` query ekler. Amaç:
+ * CDN veya tarayıcı cache'inde eski HTML kalsa bile, yeni build
+ * deploy edildiğinde farklı SHA ile yeni HTML gelir → yeni JS
+ * hash'leri zorla çekilir, eski immutable JS'ler bypass edilir.
+ * SHA bulunamazsa (örn. tag/release build) `dev` fallback.
+ */
+function htmlCacheBusterPlugin(): Plugin {
+  let sha = 'dev';
+  try {
+    sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim() || 'dev';
+  } catch {
+    sha = 'dev';
+  }
+  return {
+    name: 'html-cache-buster',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        const v = `?v=${sha}`;
+        return html
+          .replace(/<script([^>]*?)\bsrc="([^"]+)"/g, (_m, attrs, src) => {
+            if (/[?&]v=/.test(src)) return _m;
+            return `<script${attrs} src="${src}${v}"`;
+          })
+          .replace(/<link([^>]*?)\bhref="(\/assets\/[^"]+\.css)"/g, (_m, attrs, href) => {
+            if (/[?&]v=/.test(href)) return _m;
+            return `<link${attrs} href="${href}${v}"`;
+          });
+      },
+    },
+  };
+}
 
 export default defineConfig({
   base: '/',
-  plugins: [react(), eticaretStaticPlugin()],
+  plugins: [react(), eticaretStaticPlugin(), htmlCacheBusterPlugin()],
   publicDir: 'src/public',
   resolve: {
     /** Aksi halde bazı paketler ikinci bir React kopyası çeker; useContext(Auth) undefined kalır. */
@@ -65,6 +105,14 @@ export default defineConfig({
     minify: 'esbuild',
     cssMinify: true,
     chunkSizeWarningLimit: 1000,
+    /**
+     * 14.10.2026 — Cache buster: HTML script src'lerine `?v={gitSha}`
+     * query ekler. CDN/tarayıcı cache'inde eski HTML kalsa bile yeni
+     * build deploy edildiğinde farklı SHA ile yeni HTML gelir → yeni
+     * JS hash'leri zorla çekilir. Public dosya; SHA bulunamazsa
+     * `dev` (development) kullanılır.
+     */
+    assetsInlineLimit: 4096,
     rollupOptions: {
       // Dokploy/VPS: rendering chunks bellek zirvesi — paralel dosya işlemini kıs
       ...(process.env.DOCKER_BUILD === '1' ? { maxParallelFileOps: 1 } : {}),
