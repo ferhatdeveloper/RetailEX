@@ -158,15 +158,6 @@ export const salesAPI = {
       const totalCost = invoiceItems.reduce((sum, item) => sum + item.totalCost, 0);
       const totalGrossProfit = invoiceItems.reduce((sum, item) => sum + item.grossProfit, 0);
       const profitMargin = sale.total > 0 ? (totalGrossProfit / sale.total) * 100 : 0;
-      // Brüt Ciro = items brüt toplamı (indirim Hariç, depozito Hariç).
-      // Eski kod `total_gross` kolonunu set etmediği için DB'de 0 kalıyordu;
-      // fatura özet ekranı brüt gösteremiyordu. `invoiceItems` içindeki
-      // `total` alanları brüt tutarları taşır (netAmount DEĞİL — netAmount
-      // satır indirimi sonrası net tutardır). Sale.subtotal brüt ama caller
-      // bazen 0 gönderir, fallback olarak items toplamı.
-      const totalGross = Number(sale.subtotal ?? 0) > 0
-        ? Number(sale.subtotal)
-        : invoiceItems.reduce((sum, item) => sum + Number(item.total ?? 0), 0);
 
       // Safety fallback for receiptNumber to prevent "undefined" in DB
       const finalReceiptNumber = sale.receiptNumber ||
@@ -184,9 +175,6 @@ export const salesAPI = {
         tax: sale.tax || 0,
         total_amount: sale.total,
         total: sale.total,
-        // Brüt Ciro: items brüt toplamı (depozito Hariç, indirim Hariç).
-        // Eski bug: bu alan set edilmediği için DB'de 0 kalıyordu.
-        total_gross: totalGross,
         total_cost: totalCost,
         gross_profit: totalGrossProfit,
         profit_margin: profitMargin,
