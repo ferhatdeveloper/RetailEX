@@ -102,7 +102,15 @@ function readBeautyCategoryRailMode(): BeautyCategoryRailMode {
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CartLine {
     uid: string;
-    type: 'service' | 'package' | 'product';
+    /**
+     * Satır tipi. 14.10.2026 — `'deposit'` eklendi: rezervasyon tutarı
+     * girildiğinde otomatik eklenen DEPOSIT satırı. Sepet render'ında
+     * mor renkli özel kart olarak gösterilir; fatura oluşturma
+     * (`createSale`, `collectAppointmentRemainder`) akışında bu satır
+     * hizmetten düşülen tutarı temsil eder ve `unit_price` = kullanıcının
+     * girdiği rezervasyon tutarı, `qty=1`, `item_id` = sentetik.
+     */
+    type: 'service' | 'package' | 'product' | 'deposit';
     item_id: string;
     name: string;
     unit_price: number;
@@ -110,6 +118,14 @@ interface CartLine {
     staff_id?: string;
     color?: string;
     duration_min?: number;
+    /**
+     * 14.10.2026 — Rezervasyon tutarı girildiğinde `unit_price` orantılı
+     * düşürülür; orijinal fiyat bu alanda saklanır. Tutar 0'a dönünce
+     * `unit_price` tekrar orijinaline çekilir ve alan temizlenir.
+     * Yalnızca `type !== 'deposit'` satırlar için anlamlı; DEPOSIT
+     * satırında undefined.
+     */
+    original_unit_price?: number;
     /**
      * Satır başına prim yüzdesi override'ı. null/undefined = override yok;
      * 0..100 = kullanıcının bu satır için ezdiği yüzde. Öncelik:
@@ -1344,6 +1360,100 @@ export function AppointmentPOS({
         setCart(c => c.map(l => l.uid === uid ? { ...l, qty: Math.max(1, l.qty + d) } : l));
     };
     const remLine = (uid: string) => setCart(c => c.filter(l => l.uid !== uid));
+    /**
+     * 14.10.2026 — Rezervasyon tutarını (deposit) sepete orantılı olarak
+     * yansıt + otomatik DEPOSIT satırı ekle/güncelle/sil.
+     *
+     * Davranış:
+     *   - `amount = 0` → tüm hizmet satırlarını orijinal fiyatına döndür
+     *     (varsa `original_unit_price` alanından), DEPOSIT satırını sil.
+     *   - `amount > 0` → hizmet satırlarının brüt tutarını (line.unit_price *
+     *     line.qty, varsa orijinal) topla, sonra her satırdan
+     *     `amount * (lineGross / totalGross)` kadar orantılı düş.
+     *     DEPOSIT satırı yoksa ekle (qty=1, unit_price=amount); varsa
+     *     güncelle. Son satır kalan farkı yutar (yuvarlama sapmasını önler).
+     *
+     * Yalnızca yeni randevu modunda (existingAppointment?.id yok) çalışır;
+     * mevcut randevuda deposit_amount zaten DB'den geliyor ve input
+     * kilitli, dolayısıyla cart manipülasyonu yapılmaz.
+     */
+    const applyReservationSpread = (amount: number) => {
+        if (existingAppointment?.id) return;
+        setCart(prevCart => {
+            const depositIdx = prevCart.findIndex(l => l.type === 'deposit');
+            const serviceLines = prevCart.filter(l => l.type !== 'deposit');
+            if (serviceLines.length === 0) {
+                return depositIdx >= 0 ? [] : prevCart;
+            }
+            // Orijinal brüt toplam (orijinal fiyattan). original_unit_price
+            // yoksa mevcut unit_price'ı orijinal kabul et.
+            const totalGross = serviceLines.reduce(
+                (s, l) => s + (l.original_unit_price ?? l.unit_price) * l.qty,
+                0,
+            );
+            if (totalGross <= 0) return prevCart;
+            // Para birimi ondalık kuralı (IQD tam sayı, diğerleri 2 hane).
+            const round = (n: number) =>
+                reservationMaxFractionDigits === 0
+                    ? Math.round(n)
+                    : Math.round(n * 100) / 100;
+            if (amount <= 0) {
+                // Tüm hizmetleri orijinaline döndür, deposit sil.
+                const restored = serviceLines.map(l =>
+                    l.original_unit_price !== undefined
+                        ? { ...l, unit_price: l.original_unit_price, original_unit_price: undefined }
+                        : l,
+                );
+                return restored;
+            }
+            // amount brüt toplamı aşamaz (validasyon yukarıda kontrol ediyor).
+            const cap = Math.min(amount, totalGross);
+            // Orantılı dağılım — son satıra kalan farkı yaz.
+            const updatedServices = serviceLines.map((l, idx) => {
+                const orig = l.original_unit_price ?? l.unit_price;
+                if (idx === serviceLines.length - 1) {
+                    // Son satır: kalan deposit tutarı
+                    const prevDeducted = serviceLines
+                        .slice(0, -1)
+                        .reduce(
+                            (s, sl) =>
+                                s +
+                                Math.min(
+                                    cap,
+                                    round((sl.original_unit_price ?? sl.unit_price) * sl.qty * (cap / totalGross)),
+                                ) /
+                                    Math.max(1, sl.qty),
+                            0,
+                        );
+                    const lastShare = Math.max(0, cap - prevDeducted);
+                    const perUnit = round(lastShare / Math.max(1, l.qty));
+                    return {
+                        ...l,
+                        original_unit_price: orig,
+                        unit_price: round(orig - perUnit),
+                    };
+                }
+                const share = round(orig * l.qty * (cap / totalGross));
+                const perUnit = round(share / Math.max(1, l.qty));
+                return {
+                    ...l,
+                    original_unit_price: orig,
+                    unit_price: round(orig - perUnit),
+                };
+            });
+            // DEPOSIT satırı ekle veya güncelle.
+            const newDeposit: CartLine = {
+                uid: depositIdx >= 0 ? prevCart[depositIdx].uid : uid(),
+                type: 'deposit',
+                item_id: '__deposit__',
+                name: 'DEPOSIT',
+                unit_price: round(cap),
+                qty: 1,
+                color: '#a855f7',
+            };
+            return [...updatedServices, newDeposit];
+        });
+    };
     const setStaff = (uid: string, sid: string) => setCart(c => c.map(l => l.uid === uid ? { ...l, staff_id: sid } : l));
     /**
      * Hizmet × personel yüzdesi cache'i. Anahtar: `${service_id}::${staff_id}`.
@@ -4611,15 +4721,24 @@ export function AppointmentPOS({
                                 <Sparkles size={32} />
                                 <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bCartEmptyHint')}</p>
                             </div>
-                        ) : cart.map(line => (
+                        ) : cart.map(line => {
+                            // 14.10.2026 — DEPOSIT satırı özel kompakt kart:
+                            // kaldır butonu YOK (reservationAmount ile bağlı),
+                            // qty +/− YOK, sadece tutar gösterilir. Mor renkli.
+                            const isDeposit = line.type === 'deposit';
+                            return (
                             <div
                                 key={line.uid}
                                 style={{
-                                    margin: '0 10px 8px',
+                                    margin: '0 10px 6px',
                                     padding: 0,
-                                    borderRadius: 16,
-                                    border: '1px solid #e2e8f0',
-                                    background: '#fff',
+                                    borderRadius: 10,
+                                    border: isDeposit
+                                        ? '1px solid #e9d5ff'
+                                        : '1px solid #e2e8f0',
+                                    background: isDeposit
+                                        ? 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)'
+                                        : '#fff',
                                     boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06)',
                                     position: 'relative',
                                     overflow: 'hidden',
@@ -4636,35 +4755,40 @@ export function AppointmentPOS({
                                         top: 0,
                                         left: 0,
                                         bottom: 0,
-                                        width: 4,
+                                        width: 3,
                                         zIndex: 1,
                                         pointerEvents: 'none',
-                                        boxShadow: '2px 0 10px rgba(0,0,0,0.06)',
                                         background: line.color ?? '#7c3aed',
-                                        borderRadius: '16px 0 0 16px',
+                                        borderRadius: '10px 0 0 10px',
                                     }}
                                     aria-hidden
                                 />
                                 <div style={{ display: 'flex', alignItems: 'stretch', gap: 0, position: 'relative', zIndex: 2 }}>
-                                    <div style={{ width: 4, flexShrink: 0 }} aria-hidden />
-                                    <div style={{ flex: 1, minWidth: 0, padding: '10px 10px 10px 8px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                                    <div style={{ width: 3, flexShrink: 0 }} aria-hidden />
+                                    <div style={{ flex: 1, minWidth: 0, padding: '7px 10px 7px 8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <span style={{
-                                                    fontSize: 10,
+                                                    fontSize: 9,
                                                     fontWeight: 800,
                                                     letterSpacing: '0.08em',
-                                                    color: '#64748b',
+                                                    color: isDeposit ? '#7e22ce' : '#64748b',
                                                     display: 'block',
-                                                    marginBottom: 6,
+                                                    marginBottom: 2,
                                                 }}>
-                                                    {line.type === 'product' ? tm('bLineBadgeProduct') : line.type === 'package' ? tm('bLineBadgePackage') : tm('bLineBadgeService')}
+                                                    {line.type === 'product'
+                                                        ? tm('bLineBadgeProduct')
+                                                        : line.type === 'package'
+                                                            ? tm('bLineBadgePackage')
+                                                            : isDeposit
+                                                                ? 'DEPOSIT'
+                                                                : tm('bLineBadgeService')}
                                                 </span>
                                                 <div
                                                     style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        gap: 10,
+                                                        gap: 8,
                                                         flexWrap: 'nowrap',
                                                         width: '100%',
                                                     }}
@@ -4674,7 +4798,7 @@ export function AppointmentPOS({
                                                         style={{
                                                             flex: '1 1 0',
                                                             minWidth: 0,
-                                                            fontSize: 15,
+                                                            fontSize: 13,
                                                             fontWeight: 800,
                                                             color: '#0f172a',
                                                             overflow: 'hidden',
@@ -4682,34 +4806,46 @@ export function AppointmentPOS({
                                                             whiteSpace: 'nowrap',
                                                             margin: 0,
                                                             lineHeight: 1.2,
-                                                            letterSpacing: '-0.02em',
                                                         }}
                                                     >
                                                         {line.name}
+                                                        {isDeposit && line.original_unit_price !== undefined && (
+                                                            <span style={{
+                                                                marginLeft: 6,
+                                                                fontSize: 10,
+                                                                fontWeight: 600,
+                                                                color: '#94a3b8',
+                                                                textDecoration: 'line-through',
+                                                            }}>
+                                                                {fmt(line.original_unit_price * line.qty)}
+                                                            </span>
+                                                        )}
                                                     </p>
-                                                    <div
-                                                        style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}
-                                                    >
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => chgQty(line.uid, -1)}
-                                                            style={{ width: 28, height: 28, border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: '#fff', color: '#64748b' }}
+                                                    {!isDeposit && (
+                                                        <div
+                                                            style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
                                                         >
-                                                            <Minus size={12} />
-                                                        </button>
-                                                        <span style={{ fontSize: 14, fontWeight: 800, color: '#1e293b', minWidth: 22, textAlign: 'center' }}>{line.qty}</span>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => chgQty(line.uid, 1)}
-                                                            style={{ width: 28, height: 28, border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: '#fff', color: '#64748b' }}
-                                                        >
-                                                            <Plus size={12} />
-                                                        </button>
-                                                    </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => chgQty(line.uid, -1)}
+                                                                style={{ width: 22, height: 22, border: '1px solid #e2e8f0', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: '#fff', color: '#64748b' }}
+                                                            >
+                                                                <Minus size={10} />
+                                                            </button>
+                                                            <span style={{ fontSize: 12, fontWeight: 800, color: '#1e293b', minWidth: 18, textAlign: 'center' }}>{line.qty}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => chgQty(line.uid, 1)}
+                                                                style={{ width: 22, height: 22, border: '1px solid #e2e8f0', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: '#fff', color: '#64748b' }}
+                                                            >
+                                                                <Plus size={10} />
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                     <span style={{
-                                                        fontSize: 15,
+                                                        fontSize: 13,
                                                         fontWeight: 800,
-                                                        color: '#0f172a',
+                                                        color: isDeposit ? '#7e22ce' : '#0f172a',
                                                         fontVariantNumeric: 'tabular-nums',
                                                         flexShrink: 0,
                                                     }}>
@@ -4717,6 +4853,7 @@ export function AppointmentPOS({
                                                     </span>
                                                 </div>
                                             </div>
+                                            {!isDeposit && (
                                             <button
                                                 type="button"
                                                 aria-label={tm('bCartLineRemoveAria')}
@@ -4727,13 +4864,14 @@ export function AppointmentPOS({
                                                     cursor: 'pointer',
                                                     color: '#94a3b8',
                                                     flexShrink: 0,
-                                                    padding: 4,
-                                                    margin: '-4px -4px 0 0',
-                                                    borderRadius: 6,
+                                                    padding: 2,
+                                                    margin: '-2px -2px 0 0',
+                                                    borderRadius: 4,
                                                 }}
                                             >
-                                                <X size={16} />
+                                                <X size={12} />
                                             </button>
+                                            )}
                                         </div>
                                         {(line.type === 'service' || line.type === 'product') && (() => {
                                             const sid = String(line.staff_id ?? '').trim();
@@ -4924,7 +5062,8 @@ export function AppointmentPOS({
                                     </div>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     {/* Bottom Fixed Section: Appointment Details + Totals + Actions */}
@@ -5068,6 +5207,7 @@ export function AppointmentPOS({
                                                 const raw = e.target.value;
                                                 if (raw === '') {
                                                     setReservationAmount(0);
+                                                    applyReservationSpread(0);
                                                     return;
                                                 }
                                                 // Para birimi ondalık kuralı: IQD tam sayı,
@@ -5077,6 +5217,7 @@ export function AppointmentPOS({
                                                 const num = Number(cleaned);
                                                 if (!Number.isFinite(num) || num < 0) {
                                                     setReservationAmount(0);
+                                                    applyReservationSpread(0);
                                                     return;
                                                 }
                                                 const fixed =
@@ -5084,6 +5225,7 @@ export function AppointmentPOS({
                                                         ? Math.round(num)
                                                         : Math.round(num * 100) / 100;
                                                 setReservationAmount(fixed);
+                                                applyReservationSpread(fixed);
                                             }}
                                             placeholder="0"
                                             data-testid="appointment-reservation-amount"
