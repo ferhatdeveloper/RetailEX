@@ -5303,6 +5303,7 @@ export function ReportsModule({
           <div class="row"><span class="label">${escHtml(tm('reportsZPrintCashCardCollected'))}</span><span>${formatNumber(posZCollectedAmount(zReport), 2, false)}</span></div>
           <div class="row"><span class="label">${escHtml(tm('reportsZPrintTotalExpense'))}</span><span>- ${formatNumber(zReport.totalExpenses, 2, false)}</span></div>
           <div class="row"><span class="label">${escHtml(tm('dailyDepositCollected') || 'Rezervasyon Tutarı')}</span><span>+ ${formatNumber(zReport.reservationPending ?? 0, 2, false)}</span></div>
+          <div class="row"><span class="label">${escHtml(tm('reservationGrossLabel') || 'Rezervasyon Brüt')}${(zReport.reservationCount ?? 0) > 0 ? ` <span class="muted small">(${zReport.reservationCount} ${escHtml(tm('dailyDepositCountShort') || 'adet')})</span>` : ''}</span><span>${formatNumber(zReport.reservationGross ?? 0, 2, false)}</span></div>
           <div class="row final"><span>${escHtml(tm('reportsZPrintNetAfterExpensesUpper'))}</span><span>${formatNumber(zReport.netAfterExpenses, 2, false)}</span></div>
         </div>
         <div class="center small muted" style="margin-top:1mm">${escHtml(tm('reportsZPrintNetFootnote'))}</div>
@@ -6489,6 +6490,25 @@ export function ReportsModule({
                   return <ReportKpiStrip items={stripItems} />;
                 })()}
 
+                {reservationAggregate.count > 0 ? (
+                  // 14.10.2026 19:12 — Rezervasyon brüt + adet + kalan
+                  // bilgi satırı. Ciro dışı tahsilat (peşinat) zaten
+                  // Peşinat kartında ve Net (Brüt)'e eklenir; burada
+                  // yalnızca henüz fatura kesilmemiş hizmetin brüt tutarı
+                  // ve adedi görünür.
+                  <div className="bg-violet-50/60 rounded-lg p-3 border border-violet-200 text-sm flex flex-wrap gap-x-6 gap-y-1" data-testid="daily-reservation-summary">
+                    <span className="text-violet-700 font-semibold">
+                      {tm('reservationGrossLabel') || 'Rezervasyon Brüt'}: {formatNumber(reservationAggregate.gross, 2, false)}
+                    </span>
+                    <span className="text-violet-600">
+                      {tm('dailyDepositCountShort') || 'Adet'}: {reservationAggregate.count}
+                    </span>
+                    <span className="text-violet-600">
+                      {tm('reservationPendingLabel') || 'Kalan'}: {formatNumber(reservationAggregate.pending, 2, false)}
+                    </span>
+                  </div>
+                ) : null}
+
                 {(showDailyCardCashIn || showDailyCardCashOut) ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {showDailyCardCashIn ? (
@@ -7152,7 +7172,9 @@ export function ReportsModule({
                             label: tm('dailyDepositCollected') || 'Rezervasyon Tutarı',
                             value: formatNumber(zReport.reservationPending ?? 0, 2, false),
                             valueClassName: darkMode ? 'text-amber-400' : 'text-amber-600',
-                            hint: `${tm('reservationGrossLabel') || 'Brüt'}: ${formatNumber(zReport.reservationGross ?? 0, 2, false)} · ${tm('reservationPendingLabel') || 'Kalan'}: ${formatNumber(Math.max(0, (zReport.reservationGross ?? 0) - (zReport.reservationPending ?? 0)), 2, false)}`,
+                            // 14.10.2026 19:12 — Brüt hücresinde adet
+                            // bilgisi gösterilir: "Brüt: 50.000 · 1 adet".
+                            hint: `${tm('reservationGrossLabel') || 'Brüt'}: ${formatNumber(zReport.reservationGross ?? 0, 2, false)}${(zReport.reservationCount ?? 0) > 0 ? ` · ${zReport.reservationCount} ${tm('dailyDepositCountShort') || 'adet'}` : ''} · ${tm('reservationPendingLabel') || 'Kalan'}: ${formatNumber(Math.max(0, (zReport.reservationGross ?? 0) - (zReport.reservationPending ?? 0)), 2, false)}`,
                           },
                           {
                             key: 'netAfter',

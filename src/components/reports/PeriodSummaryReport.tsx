@@ -1108,14 +1108,23 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             {n > 0 ? money(n) : `${money(0)} (yok)`}
           </span>
         ),
-        cell: (row) =>
-          row.reservationGross > 0 ? (
+        // 14.10.2026 19:12 — Brüt hücresinde gerçek tutarın yanında
+        // rezervasyon adedi (miktar) gösterilir: "50.000 · 1 adet".
+        // depositCount = Ciro'ya yansımamış avanslı satış adedi (=
+        // rezervasyon sayısı).
+        cell: (row) => {
+          if (row.reservationGross <= 0) return '—';
+          return (
             <span className="text-violet-700 font-medium">
               {money(row.reservationGross)}
+              {row.depositCount > 0 ? (
+                <span className="text-violet-500 font-normal text-xs ml-1">
+                  · {row.depositCount} {tm('dailyDepositCountShort') || 'adet'}
+                </span>
+              ) : null}
             </span>
-          ) : (
-            '—'
-          ),
+          );
+        },
         meta: { defaultVisible: true },
       },
       // 14.10.2026 — Rezervasyon kalan (brüt − peşinat). Fatura
