@@ -788,6 +788,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // görünmeli, bazen başka gün/iade olabilir". Faturası kesilince
       // Ciro'ya girer ve reservationPending sıfırlanır. Gider kartı/
       // parametresi kapalıysa gider düşülmez.
+      const reservation = reservationMap.get(periodKey) || { gross: 0, pending: 0, count: 0 };
       const ciroTotal = sale.revenue;
       const netRemaining = reportNetCiroMinusGider(
         ciroTotal,
