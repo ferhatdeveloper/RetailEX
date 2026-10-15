@@ -807,6 +807,19 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // 14.10.2026 19:18 — reservationCount = rezervasyon adedi (miktar);
       // brütten ayrı kolon olarak gösterilir. depositCount'tan
       // bağımsız olmalı (depositCount = Ciro'ya yansımamış peşinat adedi).
+      // 14.10.2026 23:25 — DEBUG: Kullanıcı "Kalan Bakiye 0" şikâyeti;
+      // gerçek değer 35.000 olmalı. Console'da ham bucket'ı görelim.
+      if (periodKey === '2026-10-14' && reservation.count > 0) {
+        // eslint-disable-next-line no-console
+        console.log('[PeriodSummaryReport DEBUG 14.10.2026]', {
+          periodKey,
+          gross: reservation.gross,
+          pending: reservation.pending,
+          deposit: reservation.deposit,
+          count: reservation.count,
+          'Beklenen': 'gross=50000, deposit=15000, pending=35000',
+        });
+      }
       const ciroTotal = sale.revenue;
       // Ciro dışı tahsilat (satış kayıtlarından — Ciro'ya yansımamış
       // avanslı satışlar + cari_avans skipInvoice avanslar).
