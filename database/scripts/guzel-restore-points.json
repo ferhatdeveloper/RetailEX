@@ -8,6 +8,17 @@
   "description": "guzel DB geri dönüşüm noktaları. 'restore --label <etiket>' ile seçilen checkpoint'e döndürür. Yeni nokta: 'node guzel-restore-point.mjs create --label <etiket> --note <açıklama>'.",
   "points": [
     {
+      "label": "applied-avans-fix-2026-10-16",
+      "note": "AVANS-2cb39f0e applied edildi, BEA-2026-MVB5BXUE satışına bağlandı, FERHAT balance=0. Manuel müdahale sonrası. Beauty POS'ta avans bağlama akışı eklenecek.",
+      "file": "database/backups/guzel-applied-avans-fix-2026-10-16-2026-10-16T16-13-37.sql",
+      "size_bytes": 840368,
+      "tables": 231,
+      "inserts": 693,
+      "created_at": "2026-10-16T16:14:47.097Z",
+      "created_by": "guzel-restore-point.mjs create",
+      "is_default": false
+    },
+    {
       "label": "pre-rapor-fix-2026-10-16",
       "note": "Rapor düzeltmeleri öncesi (DUBLE BEA-MVAZ674A + FERHAT avansları dahil test verisi). reportsModule TDZ fix öncesi durum. Karşılaştırma için.",
       "file": "database/backups/guzel-pre-rapor-fix-2026-10-16-2026-10-16T15-01-33.sql",
