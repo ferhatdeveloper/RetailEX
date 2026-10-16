@@ -56,6 +56,7 @@ import { PeriodSummaryDayDetailModal } from './PeriodSummaryDayDetailModal';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 import { ReportKpiStrip, type ReportKpiItem } from './shared/ReportKpiStrip';
 import { buildReservationMap } from '../../utils/reportReservationPending';
+import { buildAvansDepositsMap } from '../../utils/avansReservationExclude';
 
 export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
 
@@ -558,11 +559,17 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
         const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
         const table = `rex_${firm}_${period}_cari_avans`;
+        // 16.10.2026 — `notes` kolonu da çekilir; "Randevu No <uuid>" içeren
+        // avanslar için bağlı randevunun status='completed' olup olmadığına
+        // bakılır (avansDepositsMap döngüsünde). Tamamlanmış randevuya bağlı
+        // avans Ciro'ya yansımış sayılır → "Rezervasyon Tutarı" kolonundan
+        // hariç tutulur (kullanıcı talebi 16.10.2026).
         const { rows } = await postgres.query<{
           amount: number | string;
           created_at: string;
+          notes: string | null;
         }>(
-          `SELECT amount, created_at FROM ${table}
+          `SELECT amount, created_at, notes FROM ${table}
             WHERE status = 'open'
               AND created_at >= $1
               AND created_at <  $2`,
@@ -782,20 +789,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     // `saleMap` anahtar yapısıyla eşleşir. `aggregateSales` çıktısındaki
     // depositAmount'a eklenir → Peşinat kolonu skipInvoice modunda da
     // doğru toplam verir.
-    const avansDepositsMap = new Map<string, { count: number; amount: number }>();
-    for (const row of avansDepositsRaw) {
-      const created = String(row.created_at || '').trim();
-      if (!created) continue;
-      const dayKey = created.slice(0, 10); // YYYY-MM-DD
-      const key =
-        mode === 'monthly-days' ? dayKey : dayKey.slice(0, 7); // YYYY-MM
-      const amt = Math.max(0, Number(row.amount) || 0);
-      if (!(amt > 0)) continue;
-      const cur = avansDepositsMap.get(key) || { count: 0, amount: 0 };
-      cur.count += 1;
-      cur.amount += amt;
-      avansDepositsMap.set(key, cur);
-    }
+    const avansDepositsMap = buildAvansDepositsMap(
+      avansDepositsRaw as Array<{ amount: number | string; created_at: string; notes?: string | null }>,
+      completedAppointmentIds,
+      mode,
+    );
 
     const expenseMap =
       mode === 'monthly-days'
