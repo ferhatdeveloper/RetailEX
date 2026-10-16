@@ -8080,6 +8080,10 @@ export const beautyService = {
         const svcTbl = postgres.getCardTableName('beauty_services', 'beauty');
         const svcPublicTbl = postgres.getCardTableName('services');
         const prodTbl = postgres.getCardTableName('products');
+        // 16.10.2026 — cari_avans tablosu: randevuya bağlı olmayan avans
+        // tahsilatlarını da "Alınan Ödeme" toplamına dahil etmek için
+        // LEFT JOIN. Müşteri bazında açık + uygulanmış avans toplamı.
+        const avansTbl = postgres.getMovementTableName('cari_avans');
 
         // Parametre sırası: $1=start, $2=end, sonra opsiyonel filtreler,
         // sonda $N=fn (firm filtresi) JOIN'ler için tek seferlik kullanılır.
@@ -8144,7 +8148,13 @@ export const beautyService = {
                 pas.payment_state                              AS payment_state,
                 NULLIF(LOWER(TRIM(COALESCE(pas.status, ''))), '') AS status,
                 NULLIF(pas.deposit_provider, '')               AS deposit_provider,
-                a.deposit_sale_fiche_no                        AS deposit_sale_fiche_no
+                a.deposit_sale_fiche_no                        AS deposit_sale_fiche_no,
+                -- 16.10.2026 — cari_avans toplamı (müşteri bazında).
+                -- Randevuya deposit fişi bağlanmamış olsa bile cari_avans
+                -- tablosunda açık/uygulanmış avans varsa "Alınan Ödeme"
+                -- kolonuna yansır. "diğer yerdeki gibi" müşteri toplam
+                -- tahsilatı (hizmet + avans) mantığı için.
+                COALESCE(ca.avans_total, 0)::float             AS avans_total
             FROM beauty.beauty_appointment_payment_status pas
             JOIN ${aptTbl} a ON a.id = pas.appointment_id
             LEFT JOIN ${custTbl} c
@@ -8167,6 +8177,14 @@ export const beautyService = {
                     LOWER(TRIM(COALESCE(pr.material_type, ''))) = 'service'
                     OR LOWER(TRIM(COALESCE(pr.materialtype, ''))) = 'service'
                   )
+            -- 16.10.2026 — Müşteri bazında cari_avans toplamı (open + applied).
+            -- "Alınan Ödeme" kolonunda hizmet + avans toplamı gösterilir.
+            LEFT JOIN (
+                SELECT customer_id, SUM(amount)::float AS avans_total
+                FROM ${avansTbl}
+                WHERE LOWER(TRIM(COALESCE(status, ''))) IN ('open', 'applied')
+                GROUP BY customer_id
+            ) ca ON ca.customer_id = pas.customer_id
             WHERE ${where.join(' AND ')}
             ORDER BY pas.appointment_date DESC,
                      a.appointment_time DESC NULLS LAST,

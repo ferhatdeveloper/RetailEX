@@ -43,6 +43,9 @@ type Row = Awaited<ReturnType<typeof beautyService.getDepositPrePaymentReport>>[
     // 14.10.2026 20:00 — Rezervasyon miktarı (adet). Servis tarafında
     // dönüyor; geriye dönük uyum için ?.
     reservation_count?: number;
+    // 16.10.2026 — cari_avans toplamı (müşteri bazında, open+applied).
+    // "Alınan Ödeme" kolonunda hizmet + avans toplamı için.
+    avans_total?: number;
 };
 
 // 10.10.2026 — Rezervasyon / Ön Ödeme Raporu "Kalan" hesabı.
@@ -71,25 +74,29 @@ function computeKalan(r: Row): number {
     return Math.max(0, total - deposit - remainder);
 }
 
-// 10.10.2026 — "Alınan Ödeme" helper'ı.
-// Hizmet tamamlandığında (completed/closed/cancelled/no_show) fiilen
-// tahsil edilen tutar = total - deposit (peşinat zaten tahsil edildiği
-// için geriye kalan bakiye de tahsil kabul edilir). Hizmet henüz
-// tamamlanmadıysa Sadece Peşinat vardır → Alınan = 0 (peşinat ayrı
-// kolonda). DB view `remainder_paid_amount` her zaman 0 olabiliyor
-// (DB tarafında payment_state sadece deposit_only olduğunda remainder
-// henüz kaydedilmediği için); bu yüzden status-aware hesap şart.
+// 16.10.2026 — "Alınan Ödeme" helper'ı.
+// Kullanıcı talebi: "diğer yerdeki gibi" — müşterinin fiilen ödediği
+// toplam tutar = hizmet (total_price) + cari_avans toplamı. Hizmet
+// henüz tamamlanmamış olsa bile avans zaten tahsil edildiği için
+// toplama dahil edilir; müşterinin gerçek ödemesi ne ise o gösterilir.
+// İptal/no_show durumlarında avans iade edileceği için sadece hizmet
+// tarafında fiilen tahsil edilen kısım (remainder) gösterilir.
 function computeTakenPayment(r: Row): number {
     const total = Number(r.total_price) || 0;
     const deposit = Number(r.deposit_amount) || 0;
-    const status = String(r.status ?? '').trim().toLowerCase();
-    if (status === 'completed' || status === 'closed') return Math.max(0, total - deposit);
-    if (status === 'cancelled' || status === 'no_show') return 0;
-    // Sadece Peşinat (deposit_only / scheduled / partial vs.) → Alınan = 0
-    // çünkü kalan ödeme henüz tahsil edilmedi (DB remainder genelde 0).
-    // DB remainder > 0 ise (ör. partial ödeme yapıldıysa) onu ekle.
     const remainder = Number(r.remainder_paid_amount) || 0;
-    return Math.max(0, remainder);
+    const avans = Number(r.avans_total ?? 0) || 0;
+    const status = String(r.status ?? '').trim().toLowerCase();
+    if (status === 'cancelled' || status === 'no_show') {
+        return Math.max(0, remainder);
+    }
+    // Tamamlanmış veya henüz tamamlanmamış farketmez: müşterinin
+    // fiilen ödediği toplam = hizmet (total + deposit) + cari_avans
+    // toplamı. deposit zaten total_price'ın parçası olabilir; bu
+    // nedenle total + avans (cari_avans) gösterilir — deposit
+    // ayrıca eklenirse çift sayım olur. Geriye dönük uyum için
+    // remainder da eklenir (DB'de 0 dışı değer varsa).
+    return Math.max(0, total + avans + remainder);
 }
 
 const PAYMENT_STATE_LABEL_KEY: Record<string, string> = {
