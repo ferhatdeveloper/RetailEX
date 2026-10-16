@@ -1055,6 +1055,202 @@ async function revertInvoiceLedgerSideEffects(existing: Invoice, firmNr: string,
   }
 }
 
+async function writeAccountMovementsForInvoice(inv: Invoice, firmNr: string): Promise<void> {
+  // ===========================================================================
+  // Cari simetri (account_movements) — 16.10.2026 kök düzeltmesi
+  // ===========================================================================
+  // Kök neden (DUBLE BEA-2026-MVAZ674A senaryosu, 16.10.2026):
+  //   `invoicesAPI.create` müşteri/tedarikçi seçili olsa bile nakit/kart
+  //   ödemelerde `account_movements` tablosuna SATIR YAZMIYORDU; yalnızca
+  //   `customers.balance` UPDATE ediliyordu. Bu durum cari ekstresi ile kasa
+  //   defteri arasında mutabakatsızlığa yol açıyordu.
+  //
+  // Düzeltme:
+  //   - Müşteri/tedarikçi seçiliyse → BORÇ satırı (sign=-1, trcode=7/1/3)
+  //   - Nakit/kart peşin ödeme alındıysa → TAHSİLAT satırı (sign=+1, trcode=3)
+  //   - İade faturası → ters yön
+  //   - Veresiye → yalnız borç (cari'de borç kalır)
+  //   - Idempotent: ref_id = hash(fiche_no + 'debt'|'credit') UNIQUE
+  //
+  // Muhasebeci gözüyle (90 yıllık kıdemli denetim):
+  //   - Her ticari işlem çift taraflı kayıt gerektirir
+  //   - Borç = müşteri/tedarikçi alacağı, alacak = ödeme/tahsilat
+  //   - Net = müşterinin/tedarikçinin gerçek bakiyesi
+  //   - cash_lines ↔ account_movements simetrisi zorunlu (kasa defteri mutabakatı)
+  // ===========================================================================
+  const periodNr = normalizePeriodNrForRow(
+    (inv as any).donem_id ?? (inv as any).period_nr ?? ERP_SETTINGS.periodNr,
+  );
+  const totalAmount = Math.abs(Number(inv.total_amount || 0));
+  if (
+    !Number.isFinite(totalAmount)
+    || totalAmount <= 0
+    || String(inv.status || '').toLowerCase() === 'cancelled'
+  ) {
+    return;
+  }
+
+  // Müşteri/tedarikçi seçili mi?
+  const customerId = inv.customer_id && isValidUuid(inv.customer_id) ? String(inv.customer_id) : null;
+  const supplierId = inv.supplier_id && isValidUuid(inv.supplier_id) ? String(inv.supplier_id) : null;
+  if (!customerId && !supplierId) return;
+
+  const trcode = Number((inv as any).trcode ?? inv.invoice_type ?? 0);
+  const purchaseSide = isInvoicePurchaseSide({
+    category: inv.invoice_category,
+    code: trcode,
+    name: String((inv as any).invoice_type_name || (inv as any).fiche_type || ''),
+  });
+  const isReturn = (() => {
+    const cat = String(inv.invoice_category || '').toLocaleLowerCase('tr-TR');
+    if (cat === 'iade' || cat === 'return') return true;
+    return [2, 3, 6].includes(trcode);
+  })();
+
+  // Borç yönü:
+  //   Satış (müşteri): müşteri borçlanır → sign=-1 (borç)
+  //   Alış (tedarikçi): tedarikçi alacaklanır → sign=+1 (alacak, biz borçlanırız)
+  //   İade (müşteri): müşteri alacaklanır → sign=+1
+  //   İade (tedarikçi): tedarikçi borçlanır → sign=-1
+  const debtSign = (purchaseSide ? !isReturn : isReturn) ? 1 : -1;
+  // Tahsilat/ödeme yönü (peşin):
+  //   Satış nakit: müşteri alacağı düşer → sign=+1
+  //   Alış nakit: tedarikçi borcu düşer → sign=-1
+  //   İade (satış iade): müşteriye para çıkar → sign=-1
+  //   İade (alış iade): tedarikçiden para gelir → sign=+1
+  const cashSign = (purchaseSide ? !isReturn : isReturn) ? -1 : 1;
+
+  // Trcode: 7=perakende satış, 8=toptan satış, 1=alış, 3=iade
+  const debtTrcode = isReturn ? 3 : (purchaseSide ? 1 : 7);
+  const cashTrcode = isReturn ? 3 : (purchaseSide ? 1 : 7);
+  const debtTransactionType = isReturn ? 'RETURN_DEBT' : (purchaseSide ? 'PURCHASE_DEBT' : 'SALES_DEBT');
+  const cashTransactionType = isReturn ? 'RETURN_CASH' : (purchaseSide ? 'PURCHASE_CASH' : 'CASH_COLLECT');
+
+  // Fiche_no: payments dağılımında alt fiş numaraları olabilir (BEA-2026-MVAZ674A-T1);
+  // bunların hepsi tek cari hareketine denk gelir → ana fiche_no'yu kullan.
+  const ficheNo = String(inv.invoice_no || '').trim();
+  if (!ficheNo) return;
+
+  // Tarih: aynı yardımcı mantık
+  const tarih =
+    (typeof inv.created_at === 'string' && inv.created_at) ||
+    (typeof inv.invoice_date === 'string' && inv.invoice_date) ||
+    new Date().toISOString();
+
+  const accountMovementsTable = `rex_${firmNr}_${periodNr}_account_movements`;
+  const labelPrefix = isReturn
+    ? (purchaseSide ? 'Alış iade' : 'Satış iade')
+    : (purchaseSide ? 'Alış faturası' : 'Satış faturası');
+
+  // Idempotent ref_id: fiche_no + yön → UNIQUE (ref_id) ile çakışma önlenir
+  const debtRefId = `${ficheNo}::debt`;
+  const cashRefId = `${ficheNo}::credit`;
+
+  // 1) BORÇ SATIRI
+  try {
+    await postgres.query(
+      `INSERT INTO ${accountMovementsTable}
+          (firm_nr, period_nr, customer_id, supplier_id, fiche_no, date,
+           amount, sign, trcode, module_nr, definition, transaction_type,
+           ref_id, created_at)
+       VALUES
+          ($1, $2, $3::uuid, $4::uuid, $5, $6::timestamptz,
+           $7, $8, $9, 4, $10, $11,
+           $12, NOW())
+       ON CONFLICT (ref_id) WHERE ref_id IS NOT NULL DO NOTHING`,
+      [
+        firmNr,
+        periodNr,
+        customerId,
+        supplierId,
+        ficheNo,
+        tarih,
+        totalAmount,
+        debtSign,
+        debtTrcode,
+        `${labelPrefix} — ${ficheNo} (cari borç)`,
+        debtTransactionType,
+        debtRefId,
+      ]
+    );
+  } catch (e: any) {
+    console.warn('[InvoicesAPI] account_movements borç satırı yazılamadı:', {
+      error: e?.message || String(e),
+      invoice_no: ficheNo,
+    });
+  }
+
+  // 2) TAHSİLAT/ÖDEME SATIRI (yalnızca nakit/kart peşin ödeme varsa)
+  const paymentMethodRaw = String(
+    (inv as any).payment_method
+    || (inv as any).header_fields?.payments?.[0]?.method
+    || '',
+  ).toLowerCase().trim();
+  const headerFields = (inv as any)?.header_fields ?? {};
+  const paymentsRaw = Array.isArray(headerFields.payments) ? headerFields.payments : [];
+  // Peşin ödenen kısım: Σ(payments[]) peşin olanlar
+  const isMixedCredit = paymentsRaw.some((r: { method?: string }) =>
+    paymentMethodImpliesCustomerDebt(String(r?.method || '')),
+  );
+  // Tamamen veresiye ise alacak yazılmaz (cari'de borç kalır)
+  if (isMixedCredit && !paymentMethodImpliesCashInKasa(paymentMethodRaw)) {
+    // yalnızca veresiye + belki başka peşin yok → alacak yazma
+  } else {
+    let cashAmount = 0;
+    if (paymentsRaw.length > 0) {
+      // Çoklu ödeme: yalnızca nakit/kart peşin kısmı
+      for (const row of paymentsRaw as Array<{ method?: string; amount?: number }>) {
+        const rm = String(row?.method || '').toLowerCase().trim();
+        if (paymentMethodImpliesCashInKasa(rm)) {
+          cashAmount += Math.abs(Number(row?.amount || 0));
+        }
+      }
+    } else if (paymentMethodImpliesCashInKasa(paymentMethodRaw)) {
+      // Tek-ödeme modu: tam tutar peşin
+      cashAmount = totalAmount;
+    }
+    if (cashAmount > 0 && Number.isFinite(cashAmount)) {
+      // Ödeme yönü: cashLines simetrisi
+      // Satış: sign=+1 (müşteri alacağı azalır / müşteri ödedi)
+      // Alış: sign=-1 (tedarikçiye para çıktı)
+      // İade: tam tersi
+      const finalCashSign = isReturn ? -cashSign : cashSign;
+      try {
+        await postgres.query(
+          `INSERT INTO ${accountMovementsTable}
+              (firm_nr, period_nr, customer_id, supplier_id, fiche_no, date,
+               amount, sign, trcode, module_nr, definition, transaction_type,
+               ref_id, created_at)
+           VALUES
+              ($1, $2, $3::uuid, $4::uuid, $5, $6::timestamptz,
+               $7, $8, $9, 4, $10, $11,
+               $12, NOW())
+           ON CONFLICT (ref_id) WHERE ref_id IS NOT NULL DO NOTHING`,
+          [
+            firmNr,
+            periodNr,
+            customerId,
+            supplierId,
+            ficheNo,
+            tarih,
+            cashAmount,
+            finalCashSign,
+            cashTrcode,
+            `${labelPrefix} — ${ficheNo} (peşin tahsilat/ödeme)`,
+            cashTransactionType,
+            cashRefId,
+          ]
+        );
+      } catch (e: any) {
+        console.warn('[InvoicesAPI] account_movements tahsilat satırı yazılamadı:', {
+          error: e?.message || String(e),
+          invoice_no: ficheNo,
+        });
+      }
+    }
+  }
+}
+
 async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Promise<void> {
   // Satış / alış / hizmet (alınan+verilen) peşin → cash_lines; veresiye atlanır.
   const catRaw = String(inv.invoice_category || '').trim();
@@ -2747,6 +2943,16 @@ export const invoicesAPI = {
         console.warn('[InvoicesAPI] create → kasa helper hata:', cashErr?.message || String(cashErr));
       }
 
+      // 5.1) Cari simetri: account_movements (borç + tahsilat) — 16.10.2026 kök düzeltmesi
+      // (DUBLE BEA-2026-MVAZ674A senaryosu: nakit ödemede cari hareketi yazılmıyordu,
+      // bu fonksiyon cash_lines simetrisini account_movements tarafında da sağlar).
+      try {
+        const createdInvoice: Invoice = { ...invoice, id: invoiceId };
+        await writeAccountMovementsForInvoice(createdInvoice, firmNr);
+      } catch (amErr: any) {
+        console.warn('[InvoicesAPI] create → cari simetri hata:', amErr?.message || String(amErr));
+      }
+
       void import('../messaging/messagingService').then(({ messagingService }) =>
         messagingService.maybeEnqueueInvoiceNotification(invoice, invoiceId, firmNr, periodNr)
       ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
@@ -2788,6 +2994,10 @@ export const invoicesAPI = {
               console.warn('[InvoicesAPI] Fallback cari/kasa bakiye:', e)
             );
             await writeCashRegisterLineForInvoice({ ...invoice, id: saved.id }, firmNr);
+            // Cari simetri (account_movements) — 16.10.2026 kök düzeltmesi
+            await writeAccountMovementsForInvoice({ ...invoice, id: saved.id }, firmNr).catch((e) =>
+              console.warn('[InvoicesAPI] Fallback cari simetri:', e)
+            );
             void import('../messaging/messagingService').then(({ messagingService }) =>
               messagingService.maybeEnqueueInvoiceNotification(invoice, saved.id!, firmNr, periodNr)
             ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
