@@ -4,19 +4,30 @@
   "default_host": "72.60.182.107",
   "default_port": 5432,
   "default_user": "postgres",
-  "created_at": "2026-10-16T11:15:29.000Z",
+  "created_at": "2026-10-16T12:00:00.000Z",
   "description": "guzel DB geri dönüşüm noktaları. 'restore --label <etiket>' ile seçilen checkpoint'e döndürür. Yeni nokta: 'node guzel-restore-point.mjs create --label <etiket> --note <açıklama>'.",
   "points": [
     {
+      "label": "SALON-HIZMET-HAZIR",
+      "note": "Şu anki stabil durum (post-007+008 migration, anon rolü beauty/logic/wms/rest şemalarına erişebilir, admin/admin login hazır, 215/217 migration uygulandı — 195/206 supplier için atlandı, DB operasyonel veri boş). 'guzel geri dön' denince bu yapıya dönmek için YENİ referans nokta. Toplam 231 tablo, 667 INSERT.",
+      "file": "database/backups/guzel-SALON-HIZMET-HAZIR-2026-10-16T12-00-00.sql",
+      "size_bytes": 758570,
+      "tables": 231,
+      "inserts": 667,
+      "created_at": "2026-10-16T12:00:00.000Z",
+      "created_by": "manual (pg_dump)",
+      "is_default": true
+    },
+    {
       "label": "fresh-install-2026-10-16",
-      "note": "İlk sıfır kurulum (master schema + admin/admin, tüm operasyonel veri boş, 191 tablo). 'guzel geri dön' denince bu yapıya dönmek için referans nokta.",
+      "note": "İlk sıfır kurulum (master schema + admin/admin, 007/008 henüz uygulanmamış — anon rolünün beauty/logic/wms/rest şemalarına erişimi YOK). Migration uygulanmadan önceki hal. 191 tablo, 153 INSERT.",
       "file": "database/backups/guzel-fresh-install-2026-10-16T11-15-29.sql",
       "size_bytes": 577896,
       "tables": 202,
       "inserts": 153,
       "created_at": "2026-10-16T11:15:29.000Z",
       "created_by": "manual (node guzel-restore-point.mjs create)",
-      "is_default": true
+      "is_default": false
     },
     {
       "label": "pre-reset-2026-10-16",
