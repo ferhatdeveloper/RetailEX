@@ -471,6 +471,16 @@ export type ExtraCollectionSaleRef = {
 export function extraCustomerCollectionsNotOnSales(
   cashLines: KasaCollectionLine[] | null | undefined,
   sales: Array<ExtraCollectionSaleRef | Pick<Sale, 'total' | 'paymentMethod' | 'payments' | 'receiptNumber'>>,
+  /**
+   * 16.10.2026 — `cari_avans.status='applied'` olan avanslara bağlı
+   * `cash_line_id` Set'i. Yalnızca bu listedeki `CH_TAHSILAT` satırları
+   * Nakit'ten Hariç tutulur (mükerrer sayım önlemi). Avans verildiğinde
+   * yazılan kasa hareketi, satışa uygulandığında `saleCollectedSplit
+   * (appliedAvans=...)` üzerinden Nakit'e zaten dahil edildi; burada
+   * tekrar eklenmesin.
+   * Opsiyonel: geçilirse eski davranış (tüm CH_TAHSILAT'ı say) korunur.
+   */
+  appliedAvansCashLineIds?: Set<string> | null,
 ): number {
   if (!Array.isArray(cashLines) || cashLines.length === 0) return 0;
   const byReceipt = new Map<string, ExtraCollectionSaleRef>();
@@ -484,6 +494,15 @@ export function extraCustomerCollectionsNotOnSales(
     if (tip !== 'CH_TAHSILAT') continue;
     const amt = Math.abs(Number(line.tutar) || 0);
     if (!(amt > 0)) continue;
+    // 16.10.2026 — Uygulanmış avanslara bağlı cash_lines Hariç:
+    // avansın kasa hareketi satış tahsilatına `saleCollectedSplit
+    // (appliedAvans=...)` ile zaten eklendi; burada mükerrer olmasın.
+    if (appliedAvansCashLineIds && appliedAvansCashLineIds.size > 0) {
+      const lid = String(
+        (line as KasaCollectionLine & { id?: string | null }).id ?? '',
+      ).trim();
+      if (lid && appliedAvansCashLineIds.has(lid)) continue;
+    }
     // Rezervasyon avansı Ciro'ya değil, REZERVASYON_AVANS bucket'ına yazılır
     // (`extraReservationCustomerCollections` ile). Burada Nakit'e dahil
     // edilmez (Bug-fix: 25k+25k=50k rapor hatası).

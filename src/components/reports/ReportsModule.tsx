@@ -2899,6 +2899,7 @@ export function ReportsModule({
   const extraCollections = extraCustomerCollectionsNotOnSales(
     kasaLinesForSelectedDate,
     dailySalesForCash,
+    appliedAvansCashLineIds,
   );
   dailyCash += extraCollections;
   /**
@@ -2993,6 +2994,48 @@ export function ReportsModule({
         console.warn('[ReportsModule] daily avans fetch failed:', e);
         setDailyAvansList([]);
         setOpenAvansCashLineIds(new Set());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dailyReportDateRange?.from, dailyReportDateRange?.to]);
+
+  // 16.10.2026 — Bu aralıkta `cari_avans.status='applied'` avanslara bağlı
+  // `cash_line_id` Set'i. `extraCustomerCollectionsNotOnSales`'a geçilir;
+  // avansın kasa hareketi `saleCollectedSplit(appliedAvans=...)` ile Nakit'e
+  // zaten eklendi, burada mükerrer sayılmasın (DUBLE senaryosu: 10k avans
+  // uygulandı → Nakit 60k yerine 50k olmalı).
+  React.useEffect(() => {
+    const fromIso = dailyReportDateRange?.from;
+    const toIso = dailyReportDateRange?.to;
+    if (!fromIso || !toIso) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { postgres, ERP_SETTINGS } = await import('../../services/postgres');
+        const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
+        const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
+        const tbl = `rex_${firm}_${period}_cari_avans`;
+        const { rows } = await postgres.query<{ cash_line_id: string | null }>(
+          `SELECT cash_line_id FROM ${tbl}
+            WHERE created_at >= $1::date
+              AND created_at < ($2::date + INTERVAL '1 day')
+              AND status = 'applied'
+              AND cash_line_id IS NOT NULL`,
+          [fromIso, toIso],
+        );
+        if (cancelled) return;
+        const ids = new Set<string>();
+        for (const r of Array.isArray(rows) ? rows : []) {
+          const cid = String((r as any).cash_line_id || '').trim();
+          if (cid) ids.add(cid);
+        }
+        setAppliedAvansCashLineIds(ids);
+      } catch (e) {
+        if (cancelled) return;
+        console.warn('[ReportsModule] daily applied avans cash_lines fetch failed:', e);
+        setAppliedAvansCashLineIds(new Set());
       }
     })();
     return () => {

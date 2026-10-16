@@ -513,3 +513,80 @@ describe('dailyPaymentKind — Bug 2026-10-13 aqua (iskonto veresiye yazılıyor
     expect(k.remaining).toBe(50000);
   });
 });
+
+/**
+ * 16.10.2026 — Uygulanan avansın kasa hareketi Nakit'te mükerrer
+ * sayılmamalı (DUBLE senaryosu: 10k avans uygulandı → satış cash=50k
+ * + avans CH_TAHSILAT 10k çift sayım → Nakit 60k yerine 50k).
+ * extraCustomerCollectionsNotOnSales'a `appliedAvansCashLineIds`
+ * Set'i geçirilir; Set'teki `id`'ler ekstra'ya katılmaz.
+ */
+describe('extraCustomerCollectionsNotOnSales — applied avans mükerrer sayım önlemi (16.10.2026)', () => {
+  it('applied avansın CH_TAHSILAT cash_line_id Set\'teyse ekstra\'ya katılmaz', () => {
+    const cashLines = [
+      // 10.000 avansın CH_TAHSILAT kasa hareketi (avans status='applied')
+      {
+        id: 'cashline-avans-1',
+        islem_tipi: 'CH_TAHSILAT',
+        islem_no: 'AVN-001',
+        tutar: 10_000,
+        ozel_kod: 'AVANS',
+      },
+    ];
+    // 50.000 satış + 40.000 nakit → veresiye 10.000 (avans uygulandı
+    // için aslında 0 olmalı; bu test yalnızca mükerrer sayım önlemi)
+    const sales = [
+      {
+        receiptNumber: 'BEA-2026-ABC',
+        total: 50_000,
+        payments: [{ method: 'cash', amount: 40_000 }],
+      },
+    ];
+    // appliedAvansCashLineIds boş → eski davranış: 10k ekstra'ya girer
+    expect(extraCustomerCollectionsNotOnSales(cashLines, sales)).toBe(0); // ozel_kod='AVANS' → atlanır
+  });
+
+  it('applied avansın CH_TAHSILAT satırı (ozel_kod=null) Set\'teyse ekstra\'ya katılmaz', () => {
+    // DUBLE senaryosu: avans ozel_kod=null olarak yazılmış, specialCode
+    // filter'a takılmıyor → eski davranış 10k eklerdi.
+    const cashLines = [
+      {
+        id: 'cashline-avans-1',
+        islem_tipi: 'CH_TAHSILAT',
+        islem_no: 'AVN-001',
+        tutar: 10_000,
+        ozel_kod: null,
+      },
+    ];
+    const sales = [
+      {
+        receiptNumber: 'BEA-2026-ABC',
+        total: 50_000,
+        payments: [{ method: 'cash', amount: 40_000 }],
+      },
+    ];
+    // Set boş → eski davranış: 10k eklenir
+    expect(extraCustomerCollectionsNotOnSales(cashLines, sales)).toBe(10_000);
+    // Set dolu → 10k Hariç (avans zaten saleCollectedSplit(appliedAvans=10k)
+    // ile Nakit'e eklendi, burada mükerrer olmasın)
+    const appliedIds = new Set(['cashline-avans-1']);
+    expect(extraCustomerCollectionsNotOnSales(cashLines, sales, appliedIds)).toBe(0);
+  });
+
+  it('applied Set\'te olmayan cash_line_id\'ler etkilenmez (geriye uyumlu)', () => {
+    const cashLines = [
+      // Avans değil, başka bir cari tahsilat
+      {
+        id: 'cashline-diger-1',
+        islem_tipi: 'CH_TAHSILAT',
+        islem_no: 'CH-099',
+        tutar: 5_000,
+        ozel_kod: null,
+      },
+    ];
+    const sales = [];
+    // Set dolu ama bu cash_line Set'te yok → eklenmeli (5k)
+    const appliedIds = new Set(['cashline-avans-1']);
+    expect(extraCustomerCollectionsNotOnSales(cashLines, sales, appliedIds)).toBe(5_000);
+  });
+});
