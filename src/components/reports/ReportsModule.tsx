@@ -2782,6 +2782,16 @@ export function ReportsModule({
     [dailySales],
   );
 
+  // 16.10.2026 — TDZ koruması: `dailyAppliedAvans` Map'i 2810+
+  // satırlarındaki `reduce` çağrılarında kullanılıyor. Hook sırasını
+  // bozmamak için tüm useState/useEffect'ler bu noktadan ÖNCE tanımlanmalı
+  // (Hooks kuralı: hooks her render'da aynı sırada çağrılmalı).
+  // Önce state, sonra effect.
+  const [dailyAppliedAvans, setDailyAppliedAvans] = useState<Map<string, number>>(
+    new Map(),
+  );
+  const [dailyAvansList, setDailyAvansList] = useState<any[]>([]);
+
   /** Seçili takvim gününde kapanan adisyonlar (Z raporu ile aynı mantık; opened_at aralığından bağımsız) */
   const restOrdersClosedOnSelectedDate = useMemo(() => {
     if (businessType !== 'restaurant') return [] as any[];
@@ -2920,7 +2930,10 @@ export function ReportsModule({
   /** Günlük tablo + özet kartlar: restoranda Perakende Satışlar (ERP) ile birebir; ERP yoksa kapalı adisyonlar */
   // AVANS → FATURA (Basit Model): seçilen gün için cari_avans kayıtlarını
   // yükle ve sanal satır olarak dailyUnifiedRows'a ekle.
-  const [dailyAvansList, setDailyAvansList] = useState<any[]>([]);
+  // 16.10.2026 — Yukarıdaki TDZ koruması: state tanımları
+  // `dailySalesForCash`'ten hemen sonra taşındı (useState/useEffect
+  // çağrılarının sayısı ve sırası her render'da AYNI olmalı — Hook
+  // kuralı). Burada sadece effect gövdesi bırakıldı.
   React.useEffect(() => {
     // Rapor tarih filtresi değiştiğinde cari_avans'ı çek
     const fromIso = dailyReportDateRange?.from;
@@ -2960,9 +2973,6 @@ export function ReportsModule({
   // peşinat ile ödenen kısmın "kalan/veresiye" olarak görünmesini
   // engeller. DUBLE senaryosu: 50.000 fatura + 10.000 avans + 40.000
   // nakit → veresiye 0, kalan 0.
-  const [dailyAppliedAvans, setDailyAppliedAvans] = useState<Map<string, number>>(
-    new Map(),
-  );
   React.useEffect(() => {
     const fromIso = dailyReportDateRange?.from;
     const toIso = dailyReportDateRange?.to;
