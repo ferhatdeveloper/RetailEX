@@ -277,13 +277,13 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
     () =>
       filteredCustomerSales.map((item, index) => {
         const customerName = item.customer?.name || unknownCustomerLabel;
-        // "Alınan Tutar" yalnızca hizmet satışından (tamamlanmış ana
-        // fiş) tahsil edilen kısmı gösterir. Rezervasyon peşinatı zaten
-        // ayrı "Rezervasyon Tutarı" kolonunda gösterildiği için buraya
-        // katılmaz; aksi halde Hizmet + Rezervasyon çift sayımı olur.
-        // Kullanıcı onayı (16.10.2026): Alınan Tutar = 50.000 (sadece
-        // hizmet tahsilatı), Rezervasyon Tutarı = 10.000 ayrı sütun.
-        const collectedAmount = item.serviceRevenue;
+        // 16.10.2026 — "Alınan Tutar" = hizmet tahsilatı + rezervasyon
+        // peşinatı (toplam gerçek tahsilat). Önceki sürüm yalnızca
+        // hizmeti gösteriyordu, oysa müşteri 50k ödedi (40k hizmet +
+        // 10k avans). "Rezervasyon Tutarı" ayrı kolon olarak da
+        // gösterilir; burada toplam yansıtılır. Çift sayım değil çünkü
+        // iki ayrı tahsilat (hizmet + avans).
+        const collectedAmount = item.serviceRevenue + item.depositRevenue;
         return {
           id: String(item.customer?.id ?? index),
           customerName,
@@ -296,8 +296,16 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
           depositRevenue: item.depositRevenue,
           collectedAmount,
           returnsRevenue: item.returnsRevenue,
-          totalRevenue: item.totalRevenue,
-          avgSale: item.avgSale,
+          // 16.10.2026 — Toplam Ciro = hizmet + rezervasyon (avans).
+          // SQL'den gelen total_revenue SUM(total_price) yani sadece
+          // hizmet; deposit ayrı kolon. UI'da toplamı birleştiriyoruz.
+          totalRevenue: item.serviceRevenue + item.depositRevenue,
+          // 16.10.2026 — Ortalama Satış = Toplam Ciro / satış sayısı.
+          // Hizmet+avans toplamı 50k / 1 satış = 50k. Önceki sürümde
+          // sadece hizmet (40k) hesaplanıyordu.
+          avgSale: item.salesCount > 0
+            ? (item.serviceRevenue + item.depositRevenue) / item.salesCount
+            : 0,
           lastSaleDate: item.lastSaleDate,
         };
       }),
