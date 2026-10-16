@@ -223,17 +223,34 @@ let pendingRoot: Root | null = null;
 let pendingContainer: HTMLDivElement | null = null;
 
 function cleanup() {
-  // React 18: unmount'u microtask sonrası yap, "synchronously unmount" uyarısını engelle
+  // 15.10.2026 — React 18 manuel portal/createRoot ile sık
+  // "removeChild NotFoundError" hatası çıkıyordu; sebebi: setOpen(false)
+  // senkron çağrıldığında React render'ı bitirmeden DOM siliniyor.
+  // Çözüm: (1) unmount'u microtask sonrası yap, (2) DOM silmeyi
+  // unmount'tan SONRA yap, (3) container.parentNode kontrolü ekle, (4)
+  // hata olursa sessizce yut (chunk recovery devreye girer).
   const root = pendingRoot;
   const container = pendingContainer;
   pendingRoot = null;
   pendingContainer = null;
-  if (root) {
-    Promise.resolve().then(() => {
-      try { root.unmount(); } catch { /* ignore */ }
-      if (container && container.parentNode) container.parentNode.removeChild(container);
-    });
-  }
+  if (!root) return;
+  Promise.resolve().then(() => {
+    try {
+      root.unmount();
+    } catch {
+      /* ignore */
+    }
+    // unmount sonrası DOM silme — React internal DOM'u zaten temizledi,
+    // biz sadece yaratılan container div'i siliyoruz. parentNode kontrolü
+    // ile removeChild NotFoundError engellenir.
+    if (container && container.parentNode) {
+      try {
+        container.parentNode.removeChild(container);
+      } catch {
+        /* zaten silinmiş; ignore */
+      }
+    }
+  });
 }
 
 /**

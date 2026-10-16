@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "db": "guzel",
+  "default_host": "72.60.182.107",
+  "default_port": 5432,
+  "default_user": "postgres",
+  "created_at": "2026-10-16T11:15:29.000Z",
+  "description": "guzel DB geri dönüşüm noktaları. 'restore --label <etiket>' ile seçilen checkpoint'e döndürür. Yeni nokta: 'node guzel-restore-point.mjs create --label <etiket> --note <açıklama>'.",
+  "points": [
+    {
+      "label": "fresh-install-2026-10-16",
+      "note": "İlk sıfır kurulum (master schema + admin/admin, tüm operasyonel veri boş, 191 tablo). 'guzel geri dön' denince bu yapıya dönmek için referans nokta.",
+      "file": "database/backups/guzel-fresh-install-2026-10-16T11-15-29.sql",
+      "size_bytes": 577896,
+      "tables": 202,
+      "inserts": 153,
+      "created_at": "2026-10-16T11:15:29.000Z",
+      "created_by": "manual (node guzel-restore-point.mjs create)",
+      "is_default": true
+    },
+    {
+      "label": "pre-reset-2026-10-16",
+      "note": "Sıfırlamadan HEMEN önceki yedek (2026-10-16 11:07, 232 tablo, 613 INSERT). Geri dönmek için: restore --label pre-reset-2026-10-16",
+      "file": "database/backups/guzel-2026-10-16T11-07-31.sql",
+      "size_bytes": 922741,
+      "tables": 232,
+      "inserts": 613,
+      "created_at": "2026-10-16T11:07:31.000Z",
+      "created_by": "node database/scripts/backup-guzel-db.mjs",
+      "is_default": false
+    },
+    {
+      "label": "manual-2026-10-14",
+      "note": "14.10.2026 11:09 manuel/otomatik yedek. 696 KB.",
+      "file": "database/backups/guzel-2026-10-14T11-09-36.sql",
+      "size_bytes": 696074,
+      "created_at": "2026-10-14T11:09:36.000Z",
+      "created_by": "unknown (mevcut backup)",
+      "is_default": false
+    },
+    {
+      "label": "auto-2026-10-02",
+      "note": "02.10.2026 17:51 otomatik yedek. 1.1 MB.",
+      "file": "database/backups/guzel-2026-10-02T17-51-09.sql",
+      "size_bytes": 1095722,
+      "created_at": "2026-10-02T17:51:09.000Z",
+      "created_by": "unknown (mevcut backup)",
+      "is_default": false
+    },
+    {
+      "label": "auto-2026-10-01",
+      "note": "01.10.2026 10:08 ilk yedek. 1.4 MB.",
+      "file": "database/backups/guzel-2026-10-01T10-08-47.sql",
+      "size_bytes": 1417229,
+      "created_at": "2026-10-01T10:08:47.000Z",
+      "created_by": "unknown (mevcut backup)",
+      "is_default": false
+    }
+  ]
+}

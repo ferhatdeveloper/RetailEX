@@ -1,7 +1,11 @@
 ﻿import { Component, ReactNode, ErrorInfo } from 'react';
 import { AlertCircle, RefreshCw, Trash2 } from 'lucide-react';
 import { LanguageContext } from '../../contexts/LanguageContext';
-import { hardReloadClearingAppCaches, isChunkLoadFailure, tryAutoRecoverFromChunkFailure } from '../../utils/chunkLoadRecovery';
+import {
+  hardReloadClearingAppCaches,
+  isChunkLoadFailure,
+  tryAutoRecoverFromChunkFailure,
+} from '../../utils/chunkLoadRecovery';
 
 interface Props {
   children: ReactNode;
@@ -39,6 +43,18 @@ export class ErrorBoundary extends Component<Props, State> {
     if (isChunkLoadFailure(error)) {
       void tryAutoRecoverFromChunkFailure();
       return;
+    }
+
+    // 15.10.2026 — React 18 + manuel portal/yanlis mount sirasindan
+    // dolayi `NotFoundError: Failed to execute 'removeChild' on 'Node'`
+    // hatasi sikca cikiyor (ConfirmDialog gibi createRoot + document.body
+    // appendChild kullanan bilesenlerde). Uygulama state'i genellikle
+    // tutarsiz (stale DOM ref); kullaniciya hata ekrani göstermek yerine
+    // otomatik hard reload dene — oturum basina 1 kez.
+    if (isRemoveChildError(error)) {
+      void tryAutoRecoverFromRemoveChild();
+      // state'i yine de guncelle ki render fallback'e dussun; reload
+      // asamasinda zaten unmount olacak.
     }
 
     this.setState({

@@ -19,6 +19,55 @@ const CHUNK_ERR_MARKERS = [
 
 const CHUNK_AUTO_RECOVERY_KEY = 'retailex_chunk_auto_recovery';
 
+// 15.10.2026 — React 18 + manuel portal/createRoot bilesenlerinde sik
+// rastlanan `NotFoundError: Failed to execute 'removeChild' on 'Node'`
+// hatasi. Genellikle DOM state'i React'in internal tracker'indan
+// farklilasir (stale ref) ve uygulama yeniden baslatilmadan duzelmez.
+const REMOVE_CHILD_ERR_MARKERS = [
+  "Failed to execute 'removeChild' on 'Node'",
+  'removeChild',
+  'The node to be removed is not a child of this node',
+];
+const REMOVE_CHILD_AUTO_RECOVERY_KEY = 'retailex_removechild_auto_recovery';
+
+/** Hata `removeChild` NotFoundError mi? */
+export function isRemoveChildError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return REMOVE_CHILD_ERR_MARKERS.some((m) => msg.includes(m));
+}
+
+function hasAttemptedRemoveChildAutoRecovery(): boolean {
+  try {
+    return sessionStorage.getItem(REMOVE_CHILD_AUTO_RECOVERY_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markRemoveChildAutoRecoveryAttempted(): void {
+  try {
+    sessionStorage.setItem(REMOVE_CHILD_AUTO_RECOVERY_KEY, '1');
+  } catch {
+    /* yoksay */
+  }
+}
+
+/**
+ * Oturum basina en fazla 1 kez; hard reload + cache temizligi yapar.
+ * Genelde stale build / eski chunk + yeni React tree eslesmesizligi
+ * bu yöntemle çözülür.
+ */
+export async function tryAutoRecoverFromRemoveChild(): Promise<boolean> {
+  if (typeof window === 'undefined' || hasAttemptedRemoveChildAutoRecovery()) return false;
+  markRemoveChildAutoRecoveryAttempted();
+  console.warn(
+    '[RetailEx] removeChild NotFoundError tespit edildi — DOM durumu ' +
+      'tutarsiz; otomatik yenileme deneniyor (oturum basina 1 kez).',
+  );
+  await hardReloadClearingAppCaches();
+  return true;
+}
+
 export function isChunkLoadFailure(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
   const lower = msg.toLowerCase();
@@ -91,12 +140,24 @@ export function installChunkLoadGlobalRecovery(): void {
     void tryAutoRecoverFromChunkFailure();
   };
 
+  // 15.10.2026 — removeChild NotFoundError global yakalama (ErrorBoundary
+  // dışında / event handler'lar içinde fırlatılırsa). Stale DOM ref'i
+  // temizlemek için otomatik hard reload.
+  const handleRemoveChild = (err: unknown) => {
+    if (!isRemoveChildError(err)) return;
+    void tryAutoRecoverFromRemoveChild();
+  };
+
   window.addEventListener('unhandledrejection', (e) => {
     handleChunkFailure(e.reason);
+    handleRemoveChild(e.reason);
   });
 
   window.addEventListener('error', (e) => {
-    if (e.message) handleChunkFailure(new Error(e.message));
+    if (e.message) {
+      handleChunkFailure(new Error(e.message));
+      handleRemoveChild(new Error(e.message));
+    }
   });
 
   window.addEventListener('vite:preloadError', ((e: Event) => {
