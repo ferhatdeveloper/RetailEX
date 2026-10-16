@@ -6958,6 +6958,14 @@ export const beautyService = {
             // (12.10.2026) cari_avans toplamı 20k yerine ~50k dönüyordu → TAHSİLAT
             // KPI 80k (30 KASA_GIRIS + 50 yanlış cari_avans). Yardımcı: `Bug
             // 12.10.2026 — TZ-kayıtsız gün aralığı (root-cause doc yukarıda)`.
+            //
+            // Bug 16.10.2026 — Rezervasyon/Ön Ödeme Raporu'ndaki ile aynı
+            // mantık: TAHSİLAT KPI'sı "müşterinin bugün fiilen ödediği toplam
+            // avans" olmalı. Bu avans ya `open` (henüz satışa bağlanmamış)
+            // ya da `applied` (randevu tamamlanınca satışa uygulanmış) olabilir.
+            // Önceki `status = 'open'` filtresi tamamlanmış randevunun
+            // avansını dışarıda bırakıyordu → TAHSİLAT 40k, REZERVASYON 0
+            // yanlışlığına yol açıyordu. Şimdi her iki status dahil.
             const { startIso, endIso } = localYmdToDayRangeTstz(ymd);
             const firm = String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
             const period = String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
@@ -6969,7 +6977,7 @@ export const beautyService = {
                         COUNT(*)::int         AS total_count
                    FROM ${table}
                   WHERE created_at >= $1 AND created_at < $2
-                    AND LOWER(COALESCE(status, '')) = 'open'`,
+                    AND LOWER(TRIM(COALESCE(status, ''))) IN ('open', 'applied')`,
                 [startIso, endIso]
             );
             const r = (rows ?? [])[0] as { total_amount?: unknown; total_count?: unknown } | undefined;
