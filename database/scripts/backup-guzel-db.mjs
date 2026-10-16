@@ -48,7 +48,7 @@ const args = [
   '-U', USER,
   '-d', DB,
   '--no-owner',
-  '--no-privileges',
+  // --no-privileges KALDIRILDI: anon rolü GRANT'ları yedeklensin (PostgREST 42501 önlemi)
   '--file=' + OUT,
   '--format=plain',
   '--inserts',

@@ -123,7 +123,8 @@ async function createPoint() {
 
   const dump = spawnSync('pg_dump', [
     '-h', HOST, '-p', String(PORT), '-U', USER, '-d', DB,
-    '--no-owner', '--no-privileges',
+    '--no-owner',
+    // --no-privileges KALDIRILDI: anon rolü GRANT'ları yedeklensin (PostgREST 42501 önlemi)
     '--file=' + out,
     '--format=plain', '--inserts', '--column-inserts',
   ], { env: { ...process.env, PGPASSWORD: PASSWORD }, stdio: 'inherit' });
@@ -242,6 +243,23 @@ async function restorePoint() {
     await c3.query(`ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS raw_user_meta_data JSONB DEFAULT '{}'`);
     await c3.query(`ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS encrypted_password TEXT`);
   } catch (e) { /* tablo yoksa yoksay */ }
+
+  // 3b) PostgREST anon rolü GRANT'ları — yedek no-privileges ile alınmışsa bile
+  // PostgREST 401 "permission denied for schema beauty" hatasını önler.
+  // 007_postgrest_anon_role.sql idempotent GRANT komutları içerir.
+  const mig007 = resolve('database/migrations/007_postgrest_anon_role.sql');
+  if (existsSync(mig007)) {
+    log(`\n[3b] PostgREST anon GRANT'ları yenileniyor (007)...`, COLORS.cyan);
+    const grant = spawnSync('psql', [
+      '-h', HOST, '-p', String(PORT), '-U', USER, '-d', DB,
+      '-q', '-f', mig007,
+    ], { env: { ...process.env, PGPASSWORD: PASSWORD }, stdio: 'inherit' });
+    if (grant.status !== 0) {
+      log(`  ⚠️  007 re-apply status=${grant.status} (yoksayıldı)`, COLORS.yellow);
+    } else {
+      log(`  ✅ anon rolü beauty/logic/wms/rest/logistics/pos şemalarına erişebilir`, COLORS.green);
+    }
+  }
   await c3.end();
 
   log(`\n✅ Restore tamamlandı → ${point.label}`, COLORS.green);
