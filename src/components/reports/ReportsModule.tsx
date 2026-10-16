@@ -1119,18 +1119,6 @@ export function ReportsModule({
   const [dailyShowOnlyRemoved, setDailyShowOnlyRemoved] = useState(false);
   const [dailyKindFilter, setDailyKindFilter] = useState<DailyKindFilter>('all');
   const [userNameById, setUserNameById] = useState<Map<string, string>>(() => new Map());
-  // 16.10.2026 — Müşteri ID → ad map (avans sanal satırlarında UUID
-  // yerine gerçek ad gösterimi için). useCustomerStore.customers'tan
-  // türetilir.
-  const customerNameByIdMap = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const c of (reportCustomers as Array<{ id?: string; name?: string }>) || []) {
-      const id = String(c?.id || '').trim();
-      const name = String(c?.name || '').trim();
-      if (id && name) m.set(id, name);
-    }
-    return m;
-  }, [reportCustomers]);
   const [reportConfirmOpen, setReportConfirmOpen] = useState(false);
   const [reportConfirmMessage, setReportConfirmMessage] = useState('');
   const [reportConfirmReason, setReportConfirmReason] = useState('');
@@ -3152,17 +3140,23 @@ export function ReportsModule({
     };
 
     // AVANS → FATURA: cari_avans satırlarını sanal satırlara dönüştür
-    // 16.10.2026 — Müşteri adı customerMap'ten, randevu ID notes'tan
-    // çıkarılır (KL-MVAXA32K-Z4SXMD örneği: "Rezervasyon Tutarı ·
-    // Randevu No a5ca87d8-..."). Randevuya bağlı avans bilgisi
-    // `linkedAppointmentId` alanı ile bırakılır; ileride "tamamlanan
-    // randevuya bağlı avansı otomatik uygula" akışı için temel.
+    // 16.10.2026 — Müşteri adı reportCustomers'tan, randevu ID notes'tan
+    // çıkarılır. Bu useMemo **useEffect ile aynı render'da declare
+    // edildi** (TDZ koruması — ayrı useMemo eklemek React Strict Mode /
+    // HMR'da Cannot access 'X' before initialization hatası üretir).
+    // Map burada lokal oluşturulur (küçük veri, performans sorunu değil).
+    const localCustomerMap = new Map<string, string>();
+    for (const c of (reportCustomers as Array<{ id?: string; name?: string }>) || []) {
+      const id = String(c?.id || '').trim();
+      const name = String(c?.name || '').trim();
+      if (id && name) localCustomerMap.set(id, name);
+    }
     const mapAvans = (a: any): DailyUnifiedRow => {
       const amount = Number(a.amount || 0);
       const ref = a.reference_no || `AVANS-${String(a.id).slice(0, 8)}`;
       const customerId = String(a.customer_id || '').trim();
       const customerName = customerId
-        ? (customerNameByIdMap.get(customerId) || customerId)
+        ? (localCustomerMap.get(customerId) || customerId)
         : '—';
       // notes: "Rezervasyon Tutarı · Randevu No <uuid>" → uuid çıkar
       const noteStr = String(a.notes ?? '');
@@ -3277,6 +3271,7 @@ export function ReportsModule({
     catalogProducts,
     analysisServiceKeys,
     dailyAvansList,
+    reportCustomers,
   ]);
 
   const dailySalesForAi = useMemo((): Sale[] => {
