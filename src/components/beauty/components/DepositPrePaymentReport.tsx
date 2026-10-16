@@ -84,10 +84,15 @@ function computeKalan(r: Row): number {
 // iade edileceği için sadece hizmet tarafında fiilen tahsil edilen
 // kısım (remainder) gösterilir.
 //
+// 16.10.2026 takip — Kullanıcı kararı: randevu henüz tamamlanmadığı
+// için "Alınan Ödeme" kolonu **sadece rezervasyon tutarını (peşinat
+// + cari_avans)** göstersin; remainder_paid_amount hizmet verilmediği
+// için bu kolona dahil edilmesin (bilgi amaçlı).
+//
 // Formül:
 //   cancelled/no_show → remainder
 //   completed/closed  → hizmet + avans (müşteri toplam ödemesi)
-//   Sadece Peşinat    → sadece avans (deposit + cari_avans + remainder)
+//   Sadece Peşinat    → sadece avans (deposit + cari_avans)
 function computeTakenPayment(r: Row): number {
     const total = Number(r.total_price) || 0;
     const deposit = Number(r.deposit_amount) || 0;
@@ -105,9 +110,10 @@ function computeTakenPayment(r: Row): number {
     }
     // Sadece Peşinat / scheduled / partial: hizmet henüz verilmedi.
     // Alınan Ödeme = müşterinin fiilen ödediği avans (randevuya bağlı
-    // deposit + cari_avans + kısmi ödeme varsa remainder). Hizmet
-    // bedeli (total) henüz tahsil edilmedi, dahil edilmez.
-    return Math.max(0, deposit + avans + remainder);
+    // deposit + cari_avans). remainder hizmet verilmeden tahsil
+    // edilmiş olsa bile "henüz verilmemiş hizmet için alınan ödeme"
+    // sayılmaz — kullanıcı kararı.
+    return Math.max(0, deposit + avans);
 }
 
 const PAYMENT_STATE_LABEL_KEY: Record<string, string> = {
