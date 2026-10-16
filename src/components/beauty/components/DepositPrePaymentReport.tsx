@@ -50,28 +50,24 @@ type Row = Awaited<ReturnType<typeof beautyService.getDepositPrePaymentReport>>[
 
 // 10.10.2026 — Rezervasyon / Ön Ödeme Raporu "Kalan" hesabı.
 //
-// Kullanıcı formülü:
-//   remaining = bTotal - (bReservation + takenPayment)
+// Kullanıcı formülü (16.10.2026 güncelleme):
+//   remaining = max(0, totalWithAvans - takenPayment)
+//   totalWithAvans = total_price + cari_avans toplamı
+//   takenPayment   = computeTakenPayment (hizmet + avans)
 //
-// DB view'i `beauty_appointment_payment_status.outstanding_amount`
-//   = total_price - deposit_amount - remainder_paid_amount
-// formülünü kullanıyor; fakat randevu **tamamlandığında** (status =
-// 'completed' / 'closed') kalan bakiye tahsilat akışına bakılmaksızın
-// 0 olmalıdır — hizmet verildiği için artık alacak yoktur. Aynı
-// şekilde 'cancelled' ve 'no_show' durumlarında da alacak kapanır.
-//
-// Bu helper, ekran hücresinde, grup footer'da ve "Toplam Kalan" KPI'ında
-// tek kaynak olarak kullanılır; DB'den gelen ham `outstanding_amount`
-// alanı status-aware düzeltmeyi garanti etmez (ör. hizmet tamamlanmış
-// ama kalan tahsil edilmemiş olabilir).
+// Bu formül, "Toplam Tutar" hizmet + avans ise, "Alınan Ödeme" de
+// hizmet + avans ise, geriye kalan bakiye = Toplam - Alınan olur.
+// Hizmet tamamlandığında (status = completed/closed) veya iptal
+// edildiğinde kalan bakiye 0'dır (alacak kapanır).
 function computeKalan(r: Row): number {
     const total = Number(r.total_price) || 0;
-    const deposit = Number(r.deposit_amount) || 0;
-    const remainder = Number(r.remainder_paid_amount) || 0;
+    const avans = Number(r.avans_total ?? 0) || 0;
+    const totalWithAvans = total + avans;
+    const taken = computeTakenPayment(r);
     const status = String(r.status ?? '').trim().toLowerCase();
     if (status === 'completed' || status === 'closed') return 0;
     if (status === 'cancelled' || status === 'no_show') return 0;
-    return Math.max(0, total - deposit - remainder);
+    return Math.max(0, totalWithAvans - taken);
 }
 
 // 16.10.2026 — "Alınan Ödeme" helper'ı.
@@ -212,7 +208,14 @@ export function DepositPrePaymentReport() {
                 // eşitliği okuyucu için netleşir. Kullanıcı notu:
                 //   "Toplam Kalan, Alınan Ödemenin altına kaydır"
                 // — bu, Kalan'ın Alınan Ödeme'nin sağına alınması anlamına gelir.
-                key: 'total_price',
+                //
+                // 16.10.2026 — "Toplam Tutar" = hizmet bedeli + cari_avans.
+                // Müşterinin ödediği toplam tutar (randevuya bağlı deposit +
+                // cari_avans'taki avanslar dahil). Böylece Toplam Tutar (50k) =
+                // Rezervasyon Tutarı (10k) + Alınan Ödeme (50k - çift sayım
+                // olmasın) eşitliği görsel olarak doğrulanabilir. Önceki
+                // sürümde Toplam Tutar yalnızca hizmet (40k) gösteriyordu.
+                key: 'total_with_avans',
                 // 12.10.2026 — `bTotalAmountCol` artık 4 dilde tanımlı; yine de
                 // eski `tm('total')` ve Türkçe fallback korunur (geriye dönük uyum).
                 header: tm('bTotalAmountCol') || tm('total') || 'Toplam Tutar',
@@ -220,11 +223,24 @@ export function DepositPrePaymentReport() {
                 align: 'right',
                 size: 130,
                 footerSum: true,
+                // 16.10.2026 — Footer için sanal değer: hizmet bedeli +
+                // cari_avans toplamı. `footerGetValue` köprüsü olmadan
+                // DevExDataGrid ham `row[key]` okur; bu köprü zorunlu.
+                footerGetValue: (r) =>
+                    (Number(r.total_price) || 0) + (Number(r.avans_total ?? 0) || 0),
                 footerFormat: (n) => fmtAmt(n),
-                cell: (r) =>
-                    renderZeroAmount(Number(r.total_price) || 0, (v) => (
+                cell: (r) => {
+                    // 16.10.2026 — Toplam Tutar = hizmet + cari_avans.
+                    // Müşterinin fiilen ödediği toplam (hizmet 40k + avans
+                    // 10k = 50k). Önceki sürüm yalnızca hizmet (40k)
+                    // gösteriyordu; "diğer yerdeki gibi" müşteri toplam
+                    // tahsilatı mantığı için avans dahil edilir.
+                    const total =
+                        (Number(r.total_price) || 0) + (Number(r.avans_total ?? 0) || 0);
+                    return renderZeroAmount(total, (v) => (
                         <span className="font-semibold text-gray-700 tabular-nums">{fmt(v)}</span>
-                    )),
+                    ));
+                },
             },
             {
                 // 14.10.2026 20:00 — Rezervasyon Miktarı (adet). Önceki
