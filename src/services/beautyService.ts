@@ -8179,12 +8179,17 @@ export const beautyService = {
                   )
             -- 16.10.2026 — Müşteri bazında cari_avans toplamı (open + applied).
             -- "Alınan Ödeme" kolonunda hizmet + avans toplamı gösterilir.
+            -- 16.10.2026 — İki kez düzeltildi: customer_id tipi pas ile
+            -- uyumlu olmalı (UUID veya firm_nr-tagged). Hem subquery
+            -- hem pas tarafı ::text cast edilir; eski sürümde tip
+            -- uyumsuzluğu nedeniyle LEFT JOIN boş dönüyordu ve
+            -- avans_total her zaman 0 geliyordu.
             LEFT JOIN (
-                SELECT customer_id, SUM(amount)::float AS avans_total
+                SELECT customer_id::text AS customer_id, SUM(amount)::float AS avans_total
                 FROM ${avansTbl}
                 WHERE LOWER(TRIM(COALESCE(status, ''))) IN ('open', 'applied')
                 GROUP BY customer_id
-            ) ca ON ca.customer_id = pas.customer_id
+            ) ca ON ca.customer_id = pas.customer_id::text
             WHERE ${where.join(' AND ')}
             ORDER BY pas.appointment_date DESC,
                      a.appointment_time DESC NULLS LAST,
@@ -8214,6 +8219,12 @@ export const beautyService = {
                 currency: 'IQD',
                 deposit_provider: r.deposit_provider ? String(r.deposit_provider) : null,
                 deposit_sale_fiche_no: r.deposit_sale_fiche_no ? String(r.deposit_sale_fiche_no) : null,
+                // 16.10.2026 — SQL'de `ca.avans_total` seçiliyordu ama
+                // TypeScript row mapping'inde bu alan eksikti; frontend'de
+                // `r.avans_total` her zaman undefined oluyor ve
+                // "Toplam Tutar" / "Alınan Ödeme" hesapları avansı
+                // dahil etmiyordu. Düzeltme: alanı eşle.
+                avans_total: Number(r.avans_total) || 0,
             }));
         } catch (e) {
             console.warn('[beautyService] getDepositPrePaymentReport:', e);
