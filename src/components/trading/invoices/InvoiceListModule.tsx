@@ -1140,7 +1140,18 @@ export function InvoiceListModule({
   );
 
   const totalAmount = useMemo(
-    () => invoices.reduce((sum, inv) => sum + (inv.total ?? inv.total_amount ?? 0), 0),
+    () => invoices.reduce(
+      (sum, inv) =>
+        sum +
+        Number(
+          (inv as any).total_net
+          ?? (inv as any).total_gross
+          ?? inv.total_amount
+          ?? inv.total
+          ?? 0,
+        ),
+      0,
+    ),
     [invoices],
   );
 
@@ -1157,7 +1168,16 @@ export function InvoiceListModule({
       subtotal += Number(inv.subtotal || 0);
       discount += Number(inv.discount || 0);
       tax += Number(inv.tax || 0);
-      total += Number(inv.total_amount ?? inv.total ?? 0);
+      // Öncelik: total_net → total_gross → total_amount → total (DB'de farklı
+      // sürümlerde farklı kolon adları kullanıldı; gösterim `invoiceListColumns`
+      // ile aynı sırayı izlemeli yoksa dip toplam satır toplamıyla eşleşmez).
+      total += Number(
+        (inv as any).total_net
+        ?? (inv as any).total_gross
+        ?? inv.total_amount
+        ?? inv.total
+        ?? 0,
+      );
       totalCost += Number(inv.total_cost || 0);
       grossProfit += Number(inv.gross_profit || 0);
     }
@@ -1185,7 +1205,15 @@ export function InvoiceListModule({
     pushIfVisible('subtotal', columnVisibility.subtotal !== false, (inv) => Number(inv.subtotal || 0));
     pushIfVisible('discount', columnVisibility.discount !== false, (inv) => Number(inv.discount || 0));
     pushIfVisible('tax', columnVisibility.tax !== false, (inv) => Number(inv.tax || 0));
-    pushIfVisible('total', columnVisibility.total !== false, (inv) => Number(inv.total_amount ?? inv.total ?? 0));
+    pushIfVisible('total', columnVisibility.total !== false, (inv) =>
+      Number(
+        (inv as any).total_net
+        ?? (inv as any).total_gross
+        ?? inv.total_amount
+        ?? inv.total
+        ?? 0,
+      ),
+    );
     pushIfVisible('total_cost', columnVisibility.total_cost !== false, (inv) => Number(inv.total_cost || 0));
     pushIfVisible('gross_profit', columnVisibility.gross_profit !== false, (inv) => Number(inv.gross_profit || 0));
     return defs;
