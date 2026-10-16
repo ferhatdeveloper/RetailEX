@@ -2804,6 +2804,15 @@ export function ReportsModule({
   const [openAvansCashLineIds, setOpenAvansCashLineIds] = useState<Set<string>>(
     new Set(),
   );
+  // 16.10.2026 — Bu aralıkta `cari_avans.status='applied'` avanslara bağlı
+  // `cash_line_id` Set'i. `extraCustomerCollectionsNotOnSales`'a geçilir;
+  // avansın kasa hareketi `saleCollectedSplit(appliedAvans=...)` ile Nakit'e
+  // zaten eklendiği için, burada mükerrer sayılmasın (DUBLE senaryosu:
+  // 10k avans uygulandı → satış cash=50k + avans CH_TAHSILAT 10k çift
+  // sayım → Nakit 60k yerine 50k).
+  const [appliedAvansCashLineIds, setAppliedAvansCashLineIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   /** Seçili takvim gününde kapanan adisyonlar (Z raporu ile aynı mantık; opened_at aralığından bağımsız) */
   const restOrdersClosedOnSelectedDate = useMemo(() => {
