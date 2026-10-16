@@ -4,6 +4,7 @@ import {
   beautySaleRemainingCari,
   dailyPaymentKind,
   extraCustomerCollectionsNotOnSales,
+  extraReservationCustomerCollections,
   resolvePosCheckoutSettlement,
   saleCollectedSplit,
   splitPaymentRows,
@@ -588,5 +589,62 @@ describe('extraCustomerCollectionsNotOnSales — applied avans mükerrer sayım 
     // Set dolu ama bu cash_line Set'te yok → eklenmeli (5k)
     const appliedIds = new Set(['cashline-avans-1']);
     expect(extraCustomerCollectionsNotOnSales(cashLines, sales, appliedIds)).toBe(5_000);
+  });
+});
+
+/**
+ * 16.10.2026 — extraReservationCustomerCollections'a
+ * appliedAvansCashLineIds (kara liste) parametresi eklendi. applied
+ * avansın kasa hareketi Nakit'te mükerrer sayılmasın. Set sağlandığında
+ * Set'teki id'ler **her durumda** atlanır (initial render / henüz
+ * yüklenmedi senaryosu dahil).
+ */
+describe('extraReservationCustomerCollections — applied avans kara liste (16.10.2026)', () => {
+  it('applied avansın CH_TAHSILAT satırı (ozel_kod=AVANS) kara listedeyse atlanır', () => {
+    const cashLines = [
+      {
+        id: 'cashline-applied-1',
+        islem_tipi: 'CH_TAHSILAT',
+        islem_no: 'AVN-001',
+        tutar: 10_000,
+        ozel_kod: 'AVANS',
+      },
+    ];
+    // Set boş (initial render senaryosu): eski davranış → 10k eklenir
+    expect(extraReservationCustomerCollections(cashLines)).toBe(10_000);
+    // Kara liste dolu → 10k Hariç (mükerrer önlemi)
+    expect(
+      extraReservationCustomerCollections(
+        cashLines,
+        new Set(), // open liste boş
+        new Set(['cashline-applied-1']),
+      ),
+    ).toBe(0);
+  });
+
+  it('open avans + applied avans birlikte: open sayılır, applied atlanır', () => {
+    const cashLines = [
+      // Open avans (status='open') — sayılmalı
+      {
+        id: 'cashline-open-1',
+        islem_tipi: 'CH_TAHSILAT',
+        islem_no: 'AVN-OPEN',
+        tutar: 5_000,
+        ozel_kod: 'AVANS',
+      },
+      // Applied avans — atlanmalı
+      {
+        id: 'cashline-applied-1',
+        islem_tipi: 'CH_TAHSILAT',
+        islem_no: 'AVN-APPLIED',
+        tutar: 10_000,
+        ozel_kod: 'AVANS',
+      },
+    ];
+    const openIds = new Set(['cashline-open-1']);
+    const appliedIds = new Set(['cashline-applied-1']);
+    expect(
+      extraReservationCustomerCollections(cashLines, openIds, appliedIds),
+    ).toBe(5_000);
   });
 });

@@ -2929,6 +2929,7 @@ export function ReportsModule({
   const extraReservation = extraReservationCustomerCollections(
     kasaLinesForSelectedDate,
     openAvansCashLineIds,
+    appliedAvansCashLineIds,
   );
   // Rezervasyon avansı Ciro'ya değil alınan avans (passif) bucket'ına yazılır;
   // ancak Kasa Para Girişi / Tahsil Edilen / Cebe Giren Nakit'e eklenir.

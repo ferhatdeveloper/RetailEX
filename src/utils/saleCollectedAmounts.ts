@@ -564,12 +564,35 @@ export function extraReservationCustomerCollections(
    * (geriye dönük uyumlu eski davranış).
    */
   openAvansCashLineIds?: Set<string> | null,
+  /**
+   * 16.10.2026 — `cari_avans.status='applied'` olan avanslara bağlı
+   * `cash_line_id` Set'i. Bu listedeki cash_lines **her durumda**
+   * Hariç (kara liste). `applied` avansların kasa hareketi zaten
+   * `saleCollectedSplit(appliedAvans=...)` ile Nakit'e eklendi.
+   * Set sağlanmamışsa eski davranış (sadece beyaz liste kontrolü).
+   */
+  appliedAvansCashLineIds?: Set<string> | null,
 ): number {
   if (!Array.isArray(cashLines) || cashLines.length === 0) return 0;
   let total = 0;
   for (const line of cashLines) {
     const tip = String(line.islem_tipi || '').trim().toUpperCase();
     if (tip !== 'CH_TAHSILAT') continue;
+    const lineId = String(
+      (line as KasaCollectionLine & { id?: string | null }).id ?? '',
+    ).trim();
+    // 16.10.2026 — Kara liste: applied avansların kasa hareketi
+    // mükerrer sayılmasın. Her durumda önce bu kontrol uygulanır
+    // (Set sağlandığında). Set boş olsa bile mükerrer sayım
+    // önlenmiş olur (initial render / henüz yüklenmedi senaryosu).
+    if (
+      appliedAvansCashLineIds &&
+      appliedAvansCashLineIds.size > 0 &&
+      lineId &&
+      appliedAvansCashLineIds.has(lineId)
+    ) {
+      continue;
+    }
     const specialCode = String(
       (line as KasaCollectionLine & { ozel_kod?: string | null; special_code?: string | null }).ozel_kod ??
       (line as KasaCollectionLine & { ozel_kod?: string | null; special_code?: string | null }).special_code ??
@@ -585,10 +608,7 @@ export function extraReservationCustomerCollections(
     // dahil (saleCollectedSplit(appliedAvans=...)). Set sağlanmamışsa
     // eski davranış (tüm REZERVASYON/AVANS sayılır) korunur.
     if (openAvansCashLineIds && openAvansCashLineIds.size > 0) {
-      const cid = String(
-        (line as KasaCollectionLine & { id?: string | null }).id ?? '',
-      ).trim();
-      if (cid && !openAvansCashLineIds.has(cid)) continue;
+      if (lineId && !openAvansCashLineIds.has(lineId)) continue;
     }
     const amt = Math.abs(Number(line.tutar) || 0);
     if (!(amt > 0)) continue;
