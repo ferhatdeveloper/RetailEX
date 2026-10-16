@@ -3067,7 +3067,15 @@ export function ReportsModule({
 
   const dailyUnifiedRows = useMemo((): DailyUnifiedRow[] => {
     const mapErpSale = (s: Sale): DailyUnifiedRow => {
-      const split = saleCollectedSplit(s);
+      // 16.10.2026 — `appliedAvans` parametresi: bu satışa uygulanan cari
+      // avans toplamı (cari_avans.status='applied' AND applied_sale_id).
+      // DUBLE senaryosu: 50k fatura + 10k avans + 40k nakit → split.remaining
+      // 0 olur; aksi halde "Ödeme" kolonunda yanlışlıkla "10.000 veresiye"
+      // yazılırdı.
+      const split = saleCollectedSplit(
+        s,
+        dailyAppliedAvans.get(String(s.id)) || 0,
+      );
       const net = Number(s.total) || 0;
       const discount = Number(s.discount) || 0;
       const before = erpSaleBeforeDiscount(s);
@@ -4078,9 +4086,14 @@ export function ReportsModule({
   const computeDayReportStats = () => {
     const totalSales = dailyActiveRows.reduce((sum, r) => sum + r.total, 0);
     const payments = dailyActiveRows.reduce((acc: Record<string, number>, r) => {
+      // 16.10.2026 — appliedAvans ile DUBLE senaryosu gibi peşinat ile
+      // ödenen kısım veresiye olarak şişmesin.
+      const applied = r.erpSale
+        ? dailyAppliedAvans.get(String(r.erpSale.id)) || 0
+        : 0;
       const split = r.erpSale
-        ? saleCollectedSplit(r.erpSale)
-        : saleCollectedSplit({ total: Number(r.total) || 0, paymentMethod: r.paymentMethod });
+        ? saleCollectedSplit(r.erpSale, applied)
+        : saleCollectedSplit({ total: Number(r.total) || 0, paymentMethod: r.paymentMethod }, applied);
       acc['NAKİT'] = (acc['NAKİT'] || 0) + (split.cash || 0);
       acc['POS'] = (acc['POS'] || 0) + (split.card || 0);
       if (split.remaining > 0) acc['VERESİYE'] = (acc['VERESİYE'] || 0) + split.remaining;
