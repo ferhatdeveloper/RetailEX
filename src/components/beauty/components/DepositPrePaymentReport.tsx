@@ -51,32 +51,34 @@ type Row = Awaited<ReturnType<typeof beautyService.getDepositPrePaymentReport>>[
 // 10.10.2026 — Rezervasyon / Ön Ödeme Raporu "Kalan" hesabı.
 //
 // Kullanıcı formülü (16.10.2026 güncelleme):
-//   remaining = max(0, totalWithAvans - takenPayment)
-//   totalWithAvans = total_price + cari_avans toplamı
-//   takenPayment   = computeTakenPayment (hizmet + avans)
+//   remaining = max(0, total_price - takenPayment)
+//   takenPayment = computeTakenPayment (duruma göre)
 //
-// Bu formül, "Toplam Tutar" hizmet + avans ise, "Alınan Ödeme" de
-// hizmet + avans ise, geriye kalan bakiye = Toplam - Alınan olur.
-// Hizmet tamamlandığında (status = completed/closed) veya iptal
-// edildiğinde kalan bakiye 0'dır (alacak kapanır).
+// "Toplam Tutar" hizmet + avans, "Alınan Ödeme" duruma göre değişir:
+//   Sadece Peşinat: Alınan = sadece avans → Kalan = hizmet bedeli
+//   completed/closed: Alınan = hizmet + avans → Kalan = 0
+//   cancelled/no_show: Kalan = 0 (alacak kapanır)
 function computeKalan(r: Row): number {
     const total = Number(r.total_price) || 0;
-    const avans = Number(r.avans_total ?? 0) || 0;
-    const totalWithAvans = total + avans;
     const taken = computeTakenPayment(r);
     const status = String(r.status ?? '').trim().toLowerCase();
     if (status === 'completed' || status === 'closed') return 0;
     if (status === 'cancelled' || status === 'no_show') return 0;
-    return Math.max(0, totalWithAvans - taken);
+    return Math.max(0, total - taken);
 }
 
 // 16.10.2026 — "Alınan Ödeme" helper'ı.
-// Kullanıcı talebi: "diğer yerdeki gibi" — müşterinin fiilen ödediği
-// toplam tutar = hizmet (total_price) + cari_avans toplamı. Hizmet
-// henüz tamamlanmamış olsa bile avans zaten tahsil edildiği için
-// toplama dahil edilir; müşterinin gerçek ödemesi ne ise o gösterilir.
-// İptal/no_show durumlarında avans iade edileceği için sadece hizmet
-// tarafında fiilen tahsil edilen kısım (remainder) gösterilir.
+// Kullanıcı talebi: hizmet tamamlandığında Alınan Ödeme = hizmet
+// + rezervasyon tutarı (avans). Sadece Peşinat aşamasında avans
+// henüz ayrı sütunda (Rezervasyon Tutarı), hizmet tamamlanmadığı
+// için Alınan Ödeme = sadece avans. İptal/no_show durumunda avans
+// iade edileceği için sadece hizmet tarafında fiilen tahsil edilen
+// kısım (remainder) gösterilir.
+//
+// Formül:
+//   cancelled/no_show → remainder
+//   completed/closed  → hizmet + avans (müşteri toplam ödemesi)
+//   Sadece Peşinat    → sadece avans (deposit + cari_avans + remainder)
 function computeTakenPayment(r: Row): number {
     const total = Number(r.total_price) || 0;
     const deposit = Number(r.deposit_amount) || 0;
@@ -86,13 +88,17 @@ function computeTakenPayment(r: Row): number {
     if (status === 'cancelled' || status === 'no_show') {
         return Math.max(0, remainder);
     }
-    // Tamamlanmış veya henüz tamamlanmamış farketmez: müşterinin
-    // fiilen ödediği toplam = hizmet (total + deposit) + cari_avans
-    // toplamı. deposit zaten total_price'ın parçası olabilir; bu
-    // nedenle total + avans (cari_avans) gösterilir — deposit
-    // ayrıca eklenirse çift sayım olur. Geriye dönük uyum için
-    // remainder da eklenir (DB'de 0 dışı değer varsa).
-    return Math.max(0, total + avans + remainder);
+    if (status === 'completed' || status === 'closed') {
+        // Hizmet tamamlandı: hizmet bedeli + avans (cari_avans) + kalan
+        // ödeme. deposit zaten total_price'ın parçası olabilir; çift
+        // sayımı önlemek için total + avans + remainder yeterli.
+        return Math.max(0, total + avans + remainder);
+    }
+    // Sadece Peşinat / scheduled / partial: hizmet henüz verilmedi.
+    // Alınan Ödeme = müşterinin fiilen ödediği avans (randevuya bağlı
+    // deposit + cari_avans + kısmi ödeme varsa remainder). Hizmet
+    // bedeli (total) henüz tahsil edilmedi, dahil edilmez.
+    return Math.max(0, deposit + avans + remainder);
 }
 
 const PAYMENT_STATE_LABEL_KEY: Record<string, string> = {
