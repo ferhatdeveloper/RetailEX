@@ -534,6 +534,17 @@ export function extraCustomerCollectionsNotOnSales(
  */
 export function extraReservationCustomerCollections(
   cashLines: KasaCollectionLine[] | null | undefined,
+  /**
+   * 16.10.2026 — `cari_avans.status='open'` olan avanslara bağlı
+   * `cash_line_id` Set'i. Yalnızca bu listedeki cash_lines "henüz
+   * hizmet verilmemiş peşinat" sayılır. `applied` avanslar
+   * (DUBLE senaryosu: 10k avans → fatura 50k) artık
+   * `saleCollectedSplit(appliedAvans=10k)` ile **fatura tahsilatına
+   * katılıyor**; burada mükerrer sayılmasın.
+   * Opsiyonel: geçilirse tüm CH_TAHSILAT/REZERVASYON/AVANS sayılır
+   * (geriye dönük uyumlu eski davranış).
+   */
+  openAvansCashLineIds?: Set<string> | null,
 ): number {
   if (!Array.isArray(cashLines) || cashLines.length === 0) return 0;
   let total = 0;
@@ -550,6 +561,16 @@ export function extraReservationCustomerCollections(
     // Hem `special_code='REZERVASYON'` hem `transaction_type='CH_TAHSILAT'+REZERVASYON`
     // durumlarını yakala (UI rename sonrası `transaction_type` hâlâ CH_TAHSILAT).
     if (specialCode !== 'REZERVASYON' && specialCode !== 'AVANS') continue;
+    // 16.10.2026 — Filtre: yalnızca açık avanslara bağlı cash_lines
+    // sayılır. `applied` avansların kasa hareketi zaten fatura tahsilatına
+    // dahil (saleCollectedSplit(appliedAvans=...)). Set sağlanmamışsa
+    // eski davranış (tüm REZERVASYON/AVANS sayılır) korunur.
+    if (openAvansCashLineIds && openAvansCashLineIds.size > 0) {
+      const cid = String(
+        (line as KasaCollectionLine & { id?: string | null }).id ?? '',
+      ).trim();
+      if (cid && !openAvansCashLineIds.has(cid)) continue;
+    }
     const amt = Math.abs(Number(line.tutar) || 0);
     if (!(amt > 0)) continue;
     total += amt;

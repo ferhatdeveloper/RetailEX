@@ -2791,6 +2791,12 @@ export function ReportsModule({
     new Map(),
   );
   const [dailyAvansList, setDailyAvansList] = useState<any[]>([]);
+  // 16.10.2026 — Bu aralıkta `cari_avans.status='open'` avanslara bağlı
+  // `cash_line_id` Set'i. extraReservationCustomerCollections'a geçilir;
+  // uygulanmış avanslar (DUBLE senaryosu 10k) Nakit'te mükerrer sayılmasın.
+  const [openAvansCashLineIds, setOpenAvansCashLineIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   /** Seçili takvim gününde kapanan adisyonlar (Z raporu ile aynı mantık; opened_at aralığından bağımsız) */
   const restOrdersClosedOnSelectedDate = useMemo(() => {
@@ -2898,7 +2904,15 @@ export function ReportsModule({
    + 10k rezervasyon avansı → Kasa Para Girişi 50k, Tahsil Edilen 50k,
    * Cebe Giren Nakit 50k (avans ayrılan ayrı gösterilir).
    */
-  const extraReservation = extraReservationCustomerCollections(kasaLinesForSelectedDate);
+  // 16.10.2026 — openAvansCashLineIds filtresi: uygulanan avanslara bağlı
+  // cash_lines Nakit'te mükerrer sayılmasın. DUBLE senaryosu: 10k avans
+  // status='applied' → cash_lines'taki 10k zaten fatura tahsilatına
+  // dahil (saleCollectedSplit(appliedAvans=10k)); Nakit'te 130k yerine
+  // 100k görünür.
+  const extraReservation = extraReservationCustomerCollections(
+    kasaLinesForSelectedDate,
+    openAvansCashLineIds,
+  );
   // Rezervasyon avansı Ciro'ya değil alınan avans (passif) bucket'ına yazılır;
   // ancak Kasa Para Girişi / Tahsil Edilen / Cebe Giren Nakit'e eklenir.
   dailyCash += extraReservation;
@@ -2947,7 +2961,7 @@ export function ReportsModule({
         const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
         const tbl = `rex_${firm}_${period}_cari_avans`;
         const { rows } = await postgres.query<any>(
-          `SELECT id, customer_id, amount, payment_method, status, reference_no, created_at
+          `SELECT id, customer_id, amount, payment_method, status, reference_no, created_at, cash_line_id
              FROM ${tbl}
             WHERE created_at >= $1::date
               AND created_at < ($2::date + INTERVAL '1 day')
@@ -2957,10 +2971,21 @@ export function ReportsModule({
         );
         if (cancelled) return;
         setDailyAvansList(rows || []);
+        // 16.10.2026 — Açık avanslara bağlı cash_line_id'leri Set'e al.
+        // extraReservationCustomerCollections'a geçilir; uygulanan avanslara
+        // bağlı cash_lines Nakit'te mükerrer sayılmasın (DUBLE senaryosu:
+        // 10k avans status='applied' → fatura tahsilatına zaten dahil).
+        const ids = new Set<string>();
+        for (const r of Array.isArray(rows) ? rows : []) {
+          const cid = String((r as any).cash_line_id || '').trim();
+          if (cid) ids.add(cid);
+        }
+        setOpenAvansCashLineIds(ids);
       } catch (e) {
         if (cancelled) return;
         console.warn('[ReportsModule] daily avans fetch failed:', e);
         setDailyAvansList([]);
+        setOpenAvansCashLineIds(new Set());
       }
     })();
     return () => {
