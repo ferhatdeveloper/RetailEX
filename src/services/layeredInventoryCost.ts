@@ -459,6 +459,7 @@ async function loadCostProfitSaleLinesSql(opts: {
       AND ${SQL_RETAIL_PRODUCT_SALE}
       AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
       AND ${SQL_BEAUTY_APPT_INCLUDED}
+      AND COALESCE(s.is_deposit, false) = false
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) >= $2
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) <= $3
     GROUP BY 1, 2, 3, 4
@@ -493,7 +494,7 @@ async function loadCostProfitSaleLinesRest(opts: {
       .get<Record<string, unknown>[]>(
         `/rex_${fn}_${pn}_sales`,
         {
-          select: 'id,date,fiche_type,is_cancelled,status,trcode,created_at,net_amount',
+          select: 'id,date,fiche_type,is_cancelled,is_deposit,status,trcode,created_at,net_amount',
           order: 'date.desc',
           limit: '12000',
         },
@@ -633,6 +634,10 @@ async function loadCostProfitSaleLinesRest(opts: {
     if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
     const inv = salesById.get(String(it.invoice_id));
     if (!inv) continue;
+    // 16.10.2026 — Peşinat (deposit) satışlarını brüt kâr analizinden
+    // hariç tut. Deposit henüz hizmet verilmemiş avanstır; "Kar/Zarar
+    // Raporu"na "DEPOSIT" adıyla ürün satırı olarak yansıyordu.
+    if (inv.is_deposit === true || inv.is_deposit === 'true' || inv.is_deposit === 1) continue;
     const sgn = isSalesReturnFiche(inv) ? -1 : 1;
     const pid =
       resolveLineProductId(it) ||
@@ -948,6 +953,7 @@ async function loadCustomerCostProfitSaleLinesSql(opts: {
       AND ${SQL_RETAIL_PRODUCT_SALE}
       AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
       AND ${SQL_BEAUTY_APPT_INCLUDED}
+      AND COALESCE(s.is_deposit, false) = false
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) >= $2
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) <= $3
     GROUP BY 1, 2, 3, 4, 5, 6, 7
@@ -1023,7 +1029,7 @@ async function loadCustomerCostProfitSaleLinesRest(opts: {
           `/rex_${fn}_${pn}_sales`,
           {
             select:
-              'id,date,fiche_type,is_cancelled,status,trcode,created_at,net_amount,customer_id,customer_name',
+              'id,date,fiche_type,is_cancelled,is_deposit,status,trcode,created_at,net_amount,customer_id,customer_name',
             order: 'date.desc',
             limit: 12000,
           },
@@ -1193,6 +1199,8 @@ async function loadCustomerCostProfitSaleLinesRest(opts: {
     if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
     const inv = salesById.get(String(it.invoice_id));
     if (!inv) continue;
+    // 16.10.2026 — Müşteri kâr analizinde de peşinat fişleri hariç.
+    if (inv.is_deposit === true || inv.is_deposit === 'true' || inv.is_deposit === 1) continue;
     const cust = inv.customer_id ? customerById.get(String(inv.customer_id)) : undefined;
     const customerId = String(inv.customer_id || '').trim();
     const customerCode = String(cust?.code || '').trim();
