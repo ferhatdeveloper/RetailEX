@@ -2813,10 +2813,13 @@ export function ReportsModule({
       // Bug 24: Kasa/Card tahsilatı `dailySalesForCash` üzerinden — peşinat
       // (`is_deposit=true`) henüz hizmet verilmemiş olsa bile KASAYA
       // girmiştir; TAHSİL EDİLEN / Kasa Para Girişi bu avansı göstermeli.
+      // 16.10.2026: appliedAvans (cari_avans.status='applied' → applied_sale_id)
+      // satışa uygulanan avans tutarı; DUBLE senaryosu gibi peşinat ile
+      // ödenen kısmın "kalan/veresiye" olarak görünmesini engeller.
       dailyCash = dailySalesForCash
-        .reduce((sum, s) => sum + (Number(saleCollectedSplit(s).cash) || 0), 0);
+        .reduce((sum, s) => sum + (Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).cash) || 0), 0);
       dailyCard = dailySalesForCash
-        .reduce((sum, s) => sum + (Number(saleCollectedSplit(s).card) || 0), 0);
+        .reduce((sum, s) => sum + (Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).card) || 0), 0);
       dailyDiscount = dailySalesForCash.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
     } else {
       // Restoran adisyonlarında iade kavramı `trcode=3` ile ayrı ele alınmaz; mevcut brüt toplam korunur.
@@ -2844,10 +2847,12 @@ export function ReportsModule({
     dailyTotal = grossTotal - dailyReturnTotalLocal;
     // Bug 24: Kasa/Card tahsilatı `dailySalesForCash` üzerinden — peşinat
     // dahil edilir (kasaya zaten girmiştir).
+    // 16.10.2026: appliedAvans ile peşinat ödenen kısım veresiye olarak
+    // şişmesin. (cari_avans.status='applied' → applied_sale_id map)
     dailyCash = dailySalesForCash
-      .reduce((sum, s) => sum + (Number(saleCollectedSplit(s).cash) || 0), 0);
+      .reduce((sum, s) => sum + (Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).cash) || 0), 0);
     dailyCard = dailySalesForCash
-      .reduce((sum, s) => sum + (Number(saleCollectedSplit(s).card) || 0), 0);
+      .reduce((sum, s) => sum + (Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).card) || 0), 0);
     dailyDiscount = dailySalesForCash.reduce((sum, s) => sum + s.discount, 0);
   }
 
@@ -2893,18 +2898,23 @@ export function ReportsModule({
   // 10.10.2026: Rezervasyon avansı tahsilatı (henüz hizmet verilmemiş
   // peşinat — CH_TAHSILAT + ozel_kod=REZERVASYON) da kasa bazlı tahsilat
   // olduğundan `dailyCollected`'a eklenir (KPI'ye ayrı izlenir; ciro yok).
+  // 16.10.2026: appliedAvans (cari_avans.status='applied' → applied_sale_id)
+  // tahsil edilen kısma eklenir; DUBLE senaryosu gibi avanslı ödemede
+  // tahsilat gerçek tutarı yansıtır.
   const dailyCollected =
     dailySalesForCash.reduce((sum, s) => {
       if (isReturnSale(s)) return sum;
-      return sum + (Number(saleCollectedSplit(s).collected) || 0);
+      return sum + (Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).collected) || 0);
     }, 0) + extraCollections + extraReservation;
   // VERESİYE (dailyRemaining) ciro/borç tarafıdır; peşinat Hariç
   // (`dailySalesActive` üzerinden). Henüz hizmet verilmemiş rezervasyonun
   // `remaining_amount`'ı caride yazılmaz, ancak yine de ciro/veresiye
   // sütununa katılmaması için `dailySalesActive` (peşinat Hariç) kalır.
+  // 16.10.2026: appliedAvans ile DUBLE senaryosu gibi 50k+10k avans+40k
+  // nakit ödemede remaining=0 olur.
   const dailyRemaining = dailySalesActive.reduce((sum, s) => {
     if (isReturnSale(s)) return sum;
-    return sum + (Number(saleCollectedSplit(s).remaining) || 0);
+    return sum + (Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).remaining) || 0);
   }, 0);
 
   /** Günlük tablo + özet kartlar: restoranda Perakende Satışlar (ERP) ile birebir; ERP yoksa kapalı adisyonlar */
@@ -2938,6 +2948,55 @@ export function ReportsModule({
         if (cancelled) return;
         console.warn('[ReportsModule] daily avans fetch failed:', e);
         setDailyAvansList([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dailyReportDateRange?.from, dailyReportDateRange?.to]);
+
+  // 16.10.2026 — Bu aralıkta `status='applied'` avansları çek
+  // (`sale.id` → appliedAvans) map. saleCollectedSplit zincirinde
+  // peşinat ile ödenen kısmın "kalan/veresiye" olarak görünmesini
+  // engeller. DUBLE senaryosu: 50.000 fatura + 10.000 avans + 40.000
+  // nakit → veresiye 0, kalan 0.
+  const [dailyAppliedAvans, setDailyAppliedAvans] = useState<Map<string, number>>(
+    new Map(),
+  );
+  React.useEffect(() => {
+    const fromIso = dailyReportDateRange?.from;
+    const toIso = dailyReportDateRange?.to;
+    if (!fromIso || !toIso) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { postgres, ERP_SETTINGS } = await import('../../services/postgres');
+        const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
+        const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
+        const tbl = `rex_${firm}_${period}_cari_avans`;
+        const { rows } = await postgres.query<{
+          applied_sale_id: string;
+          amount: number | string;
+        }>(
+          `SELECT applied_sale_id, amount FROM ${tbl}
+            WHERE created_at >= $1::date
+              AND created_at < ($2::date + INTERVAL '1 day')
+              AND status = 'applied'
+              AND applied_sale_id IS NOT NULL`,
+          [fromIso, toIso],
+        );
+        if (cancelled) return;
+        const map = new Map<string, number>();
+        for (const r of Array.isArray(rows) ? rows : []) {
+          const sid = String((r as any).applied_sale_id || '').trim();
+          if (!sid) continue;
+          map.set(sid, (map.get(sid) || 0) + Math.abs(Number((r as any).amount) || 0));
+        }
+        setDailyAppliedAvans(map);
+      } catch (e) {
+        if (cancelled) return;
+        console.warn('[ReportsModule] daily applied avans fetch failed:', e);
+        setDailyAppliedAvans(new Map());
       }
     })();
     return () => {

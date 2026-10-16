@@ -55,6 +55,13 @@ export function splitPaymentRows(
    * 0 geçilebilir; çağıran taraf Sale.discount'i aktarmalıdır.
    */
   discount: number = 0,
+  /**
+   * 16.10.2026 — Bu faturaya uygulanmış cari avans toplamı (IQD, mutlak).
+   * `cash` (tahsilat) hesabına otomatik eklenir; kalan gerçek cari borç
+   * hesaplanırken düşülür. Rezervasyon peşinatı ile ödenen kısım burada
+   * "tahsil edilen" olarak sayılmalı.
+   */
+  appliedAvans: number = 0,
 ): SaleCollectedSplit {
   const signedDoc = Number(documentTotal) || 0;
   const sign = signedDoc < 0 ? -1 : 1;
@@ -85,6 +92,11 @@ export function splitPaymentRows(
       else if (bucket === 'pesinatli') cash += amt;
       else credit += amt;
     }
+    // 16.10.2026 — Rezervasyon peşinatı ile ödenen kısım tahsil edilen
+    // olarak sayılmalı; avans zaten daha önce CH_TAHSILAT olarak
+    // kasaya girmiştir. Aksi halde kalan yanlışlıkla veresiye gibi
+    // görünür (DUBLE BEA-2026-MVAZ674A senaryosu, 16.10.2026).
+    cash += Math.abs(Number(appliedAvans) || 0);
     let collected = cash + card + transfer;
     let remaining = credit;
     let cashOut = cash;
@@ -193,12 +205,23 @@ export function splitPaymentRows(
 
 export function saleCollectedSplit(
   sale: Pick<Sale, 'total' | 'paymentMethod' | 'payments'> & { discount?: number | null },
+  /**
+   * 16.10.2026 — Bu faturaya uygulanmış cari avans toplamı (IQD, mutlak).
+   * Rezervasyon peşinatı ile ödenen kısım burada "tahsil edilen" olarak
+   * sayılmalı; aksi halde DUBLE senaryosu gibi `remaining` faturanın
+   * ödenmemiş kısmı olarak görünür, veresiye/Yapılacak şişer.
+   * Örnek: 50.000 fatura + 10.000 avans + 40.000 nakit → remaining=0
+   * (eski: 50k-40k=10k yanlışlıkla veresiye).
+   * Opsiyonel; geriye dönük uyumlu (default 0).
+   */
+  appliedAvans: number = 0,
 ): SaleCollectedSplit {
   return splitPaymentRows(
     Number(sale.total) || 0,
     sale.payments,
     sale.paymentMethod,
     Number(sale.discount) || 0,
+    appliedAvans,
   );
 }
 

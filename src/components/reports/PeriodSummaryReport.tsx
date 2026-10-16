@@ -198,6 +198,14 @@ function aggregateSales(
   sales: Sale[],
   bucketKey: (s: Sale) => string,
   completedAppointmentIds: Set<string> = new Set(),
+  /**
+   * 16.10.2026 — `sale.id` → uygulanan avans toplamı (IQD, mutlak). Bu
+   * faturaya bağlanmış `cari_avans.status='applied'` satırları toplamı.
+   * saleCollectedSplit'e `appliedAvans` olarak geçirilir; DUBLE senaryosu
+   * gibi kalan tutarın veresiye gibi görünmesini engeller.
+   * Opsiyonel (default boş map) — geriye dönük uyumlu.
+   */
+  appliedAvansBySaleId: Map<string, number> = new Map(),
 ) {
   const map = new Map<string, {
     saleCount: number; revenue: number; cash: number; card: number; veresiye: number; discount: number;
@@ -260,7 +268,10 @@ function aggregateSales(
         // tahsil edildiği için brüt = tahsilat ile aynı şey.
         row.revenue += absTotal;
         row.saleCount += 1;
-        const split = saleCollectedSplit(s);
+        const split = saleCollectedSplit(
+          s,
+          appliedAvansBySaleId.get(String(s.id)) || 0,
+        );
         row.cash += split.cash;
         row.card += split.card;
         row.veresiye += Number(split.remaining) || 0;
@@ -291,7 +302,10 @@ function aggregateSales(
     //
     // Günlük Rapor dailyTotal ile aynı semantik: brüt belge tutarı − iade.
     row.revenue += absTotal;
-    const split = saleCollectedSplit(s);
+    const split = saleCollectedSplit(
+      s,
+      appliedAvansBySaleId.get(String(s.id)) || 0,
+    );
     row.cash += split.cash;
     row.card += split.card;
     // Veresiye verilen = cariye kalan (iade satırında şişirmemek için yalnız satış)
@@ -566,6 +580,46 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   });
   const avansDepositsRaw = avansDepositsQuery.data ?? [];
 
+  // 16.10.2026 — Bu firm/dönem aralığında `status='applied'` ve
+  // `applied_sale_id` dolu olan avansları çek → `sale.id → appliedAvans`
+  // map. `aggregateSales` → `saleCollectedSplit` zincirinde bu değer
+  // tahsil edilen nakit gibi davranır; DUBLE senaryosu gibi
+  // peşinat ile ödenen kısmın "kalan" olarak görünmesini engeller.
+  const appliedAvansQuery = useQuery({
+    queryKey: ['periodSummary', 'appliedAvans', firmKey, periodRange?.start, periodRange?.end],
+    queryFn: async () => {
+      try {
+        const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
+        const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
+        const table = `rex_${firm}_${period}_cari_avans`;
+        const { rows } = await postgres.query<{
+          applied_sale_id: string;
+          amount: number | string;
+        }>(
+          `SELECT applied_sale_id, amount FROM ${table}
+            WHERE status = 'applied'
+              AND applied_sale_id IS NOT NULL
+              AND created_at >= $1
+              AND created_at <  $2`,
+          [`${periodRange!.start}T00:00:00`, `${periodRange!.end}T23:59:59`],
+        );
+        const map = new Map<string, number>();
+        for (const r of Array.isArray(rows) ? rows : []) {
+          const sid = String(r.applied_sale_id || '').trim();
+          if (!sid) continue;
+          map.set(sid, (map.get(sid) || 0) + Math.abs(Number(r.amount) || 0));
+        }
+        return map;
+      } catch (e) {
+        console.warn('[PeriodSummaryReport] cari_avans applied fetch failed:', e);
+        return new Map<string, number>();
+      }
+    },
+    enabled: !!periodRange,
+    ...queryCommon,
+  });
+  const appliedAvansBySaleId = appliedAvansQuery.data ?? new Map<string, number>();
+
   const expenses = useMemo(
     () =>
       mergeExpensesWithCashOuts(
@@ -720,8 +774,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
 
     const saleMap =
       mode === 'monthly-days'
-        ? aggregateSales(sales, (s) => localCalendarDateKey(s.date), completedAppointmentIds)
-        : aggregateSales(sales, (s) => saleMonthKey(s.date), completedAppointmentIds);
+        ? aggregateSales(sales, (s) => localCalendarDateKey(s.date), completedAppointmentIds, appliedAvansBySaleId)
+        : aggregateSales(sales, (s) => saleMonthKey(s.date), completedAppointmentIds, appliedAvansBySaleId);
 
     // AVANS → FATURA (Basit Model): skipInvoice avansları (`cari_avans`,
     // status='open') tarih (YYYY-MM-DD) veya ay (YYYY-MM) bazında
