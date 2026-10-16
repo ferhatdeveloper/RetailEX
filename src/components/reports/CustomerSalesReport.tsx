@@ -277,10 +277,12 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
     () =>
       filteredCustomerSales.map((item, index) => {
         const customerName = item.customer?.name || unknownCustomerLabel;
-        // Bug 28 follow-up — "Alınan Tutar" yalnızca hizmet satışından
-        // (tamamlanmış ana fiş) tahsil edilen kısmı gösterir. Rezervasyon
-        // peşinatı zaten ayrı bir kolonda gösterildiği için buraya katılmaz;
-        // aksi halde "Hizmet + Rezervasyon" çift sayımı olur.
+        // "Alınan Tutar" yalnızca hizmet satışından (tamamlanmış ana
+        // fiş) tahsil edilen kısmı gösterir. Rezervasyon peşinatı zaten
+        // ayrı "Rezervasyon Tutarı" kolonunda gösterildiği için buraya
+        // katılmaz; aksi halde Hizmet + Rezervasyon çift sayımı olur.
+        // Kullanıcı onayı (16.10.2026): Alınan Tutar = 50.000 (sadece
+        // hizmet tahsilatı), Rezervasyon Tutarı = 10.000 ayrı sütun.
         const collectedAmount = item.serviceRevenue;
         return {
           id: String(item.customer?.id ?? index),
@@ -369,7 +371,7 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
         <div className="p-2">
           <ReportColumnTable
             data={detailRows}
-            height={600}
+            height="auto"
             footerLabel={tm('rprTotal') || 'Toplam'}
             columns={[
               {
