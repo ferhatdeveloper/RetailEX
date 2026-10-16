@@ -1,6 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import type { Sale, SaleItem } from '../core/types/models';
+// 16.10.2026 — Beauty POS finalize adımında açık müşteri avanslarını
+// otomatik olarak bu sales fişine bağlamak için kullanılır (kalıcı çözüm).
+import { applyOpenAdvancesToSale } from './avansService';
 import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
 import { postgres, ERP_SETTINGS } from './postgres';
 import { useSaleStore } from '../store/useSaleStore';
@@ -7224,6 +7227,36 @@ export const beautyService = {
         // yapıyor ve `reservationSaleId / reservationSaleFicheNo` her iki
         // yerde null kalıyordu; bu da appointment'a deposit_* alanlarının
         // yazılmamasına yol açıyordu. Şimdi obje döndürüyoruz.
+
+        // 16.10.2026 — KALıcı AVANS BAĞLAMA. Rezervasyon avansı rezervasyon
+        // sales fişine (`isDeposit=true`) bağlanmaz; bu, GERÇEK hizmet
+        // satışı (ana fiş) için çalışır. Müşterinin açık avanslarını FIFO
+        // ile bu satışa bağla → "Veresiye Verilen" yanlışlıkla göstermez.
+        // Hata durumunda logla ve devam et (fatura kesildi; avans kritik
+        // değil, cari alacak bakiyesi olarak raporlara yansır).
+        if (opts?.isDeposit !== true && sale.customer_id) {
+            try {
+                const { appliedCount, appliedAmount } = await applyOpenAdvancesToSale(
+                    String(sale.customer_id),
+                    id,
+                    docTotal,
+                );
+                if (appliedCount > 0) {
+                    // eslint-disable-next-line no-console
+                    console.log(
+                        `[beautyService.createSale] ${appliedCount} açık avans otomatik bağlandı ` +
+                        `(toplam ${appliedAmount} IQD, sale=${invoiceNumber})`,
+                    );
+                }
+            } catch (e) {
+                // eslint-disable-next-line no-console
+                console.error(
+                    `[beautyService.createSale] applyOpenAdvancesToSale hatası (sale=${invoiceNumber}):`,
+                    e,
+                );
+            }
+        }
+
         return { id, invoiceNumber };
     },
 

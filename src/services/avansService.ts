@@ -436,6 +436,78 @@ export async function applyAdvanceToSale(avansId: string, saleId: string): Promi
 }
 
 /* ------------------------------------------------------------------ */
+/* applyOpenAdvancesToSale                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 16.10.2026 — Beauty POS finalize adımında otomatik avans bağlama.
+ * Kullanıcı senaryosu: müşteri rezervasyon için 10.000 avans verdi
+ * (status='open'), sonra 50.000'lik hizmet aldı. Sistem 50.000 - 40.000
+ * peşin = 10.000 veresiye gösteriyordu (avansı görmüyordu). Bu fonksiyon
+ * satış kesildiğinde müşterinin `status='open'` avanslarını FIFO sırayla
+ * satışa bağlar; toplam `saleTotal`'ı aşmaz (kısmi uygulama).
+ *
+ * Davranış:
+ *   - Müşterinin açık avansları `created_at ASC` sırayla alınır.
+ *   - Her avans `applyAdvanceToSale` ile bağlanır (status=applied,
+ *     applied_sale_id=saleId, envanter rezervasyonları finalized).
+ *   - Kümülatif bağlanan tutar `saleTotal`'ı aştığında döngü biter
+ *     (kalan avanslar open kalır → cari alacak bakiyesi).
+ *
+ * Hata yönetimi: Tek bir avans bağlanamazsa logla ve devam et (diğer
+ * avanslar denenir). Fonksiyon exception fırlatmaz; uygulanan avans
+ * sayısını döner.
+ *
+ * @returns Bağlanan avans sayısı ve toplam tutar (IQD, mutlak).
+ */
+export async function applyOpenAdvancesToSale(
+  customerId: string,
+  saleId: string,
+  saleTotal: number,
+): Promise<{ appliedCount: number; appliedAmount: number }> {
+  if (!customerId || !saleId) return { appliedCount: 0, appliedAmount: 0 };
+  const safeTotal = Math.max(0, Number(saleTotal) || 0);
+  if (safeTotal <= 0) return { appliedCount: 0, appliedAmount: 0 };
+
+  const table = getCariAvansTable();
+  // FIFO: en eski avans önce bağlanır (cari bakiyesi mantığıyla uyumlu).
+  const { rows } = await postgres.query<{ id: string; amount: number | string }>(
+    `SELECT id, amount FROM ${table}
+      WHERE customer_id = $1
+        AND status = 'open'
+        AND applied_sale_id IS NULL
+      ORDER BY created_at ASC`,
+    [customerId],
+  );
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { appliedCount: 0, appliedAmount: 0 };
+  }
+
+  let appliedCount = 0;
+  let appliedAmount = 0;
+  for (const row of rows) {
+    if (appliedAmount >= safeTotal) break;
+    const avansId = String(row.id);
+    const amt = Math.max(0, Number(row.amount) || 0);
+    if (amt <= 0) continue;
+    try {
+      await applyAdvanceToSale(avansId, saleId);
+      appliedCount += 1;
+      appliedAmount += amt;
+    } catch (e) {
+      // Tek avans bağlanamazsa logla, diğerlerini dene. Uygulama akışı
+      // kırılmasın (fatura kesildi; avans kritik değil).
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[applyOpenAdvancesToSale] avans bağlanamadı (id=${avansId}, sale=${saleId}):`,
+        e,
+      );
+    }
+  }
+  return { appliedCount, appliedAmount };
+}
+
+/* ------------------------------------------------------------------ */
 /* keepAdvanceOnCancel                                                  */
 /* ------------------------------------------------------------------ */
 
