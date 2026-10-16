@@ -2732,7 +2732,11 @@ export function SmartScheduler() {
                                 const remainderPaidAmount = Number(selectedApt.remainder_paid_amount ?? 0);
                                 const hasDeposit = Number.isFinite(depositAmount) && depositAmount > 0;
                                 if (!hasDeposit) return null;
-                                const remaining = Math.max(0, totalPrice - depositAmount - remainderPaidAmount);
+                                // Kalan = toplam - (kalan ödenen tutar). Depozito zaten ayrı bir kalem
+                                // olarak "Ön Ödeme" kartında gösterilir; toplamdan tekrar düşülmez
+                                // (aksi halde iki kere sayılır). Örn. toplam=30, deposit=20, kalan
+                                // ödenen=0 → kalan=30 (deposit dahil toplam ödeme=50 olmaz).
+                                const remaining = Math.max(0, totalPrice - remainderPaidAmount);
                                 const depositLabel = tm('prePaymentAmount') || 'Ön Ödeme (Peşinat)';
                                 const remainingLabel = tm('remainingAmount') || 'Kalan Tutar';
                                 const depositFicheNo = selectedApt.deposit_sale_fiche_no || selectedApt.deposit_sale_id || '—';
