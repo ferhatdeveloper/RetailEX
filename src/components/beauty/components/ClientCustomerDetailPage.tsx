@@ -2337,6 +2337,34 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                                     {tm('bCustomerBalanceLedgerConsistentHint')}
                                                 </div>
                                             )}
+                                            {/* 16.10.2026 — Veresiye kartına rezervasyon
+                                             * peşinatı + toplam tutar özet satırları. Müşteri
+                                             * özetinde tüm parasal bilgileri tek yerde
+                                             * görmek için: cari bakiyenin altında
+                                             * Rezervasyon avansı ve kümülatif toplam
+                                             * harcama görünür. Tutarlar ayrı KPI kartlarında
+                                             * da var; burada sadece hızlı referans. */}
+                                            <div
+                                                className="mt-2 pt-2 border-t border-dashed border-gray-200 space-y-0.5"
+                                                data-testid="customer-balance-extra"
+                                            >
+                                                <div className="flex items-baseline justify-between text-[11px] leading-tight">
+                                                    <span className="text-cyan-700 font-medium">
+                                                        {tm('bReservationDepositLabel')}
+                                                    </span>
+                                                    <span className="font-semibold text-cyan-700">
+                                                        {formatCurrency(profileStats.depositTotal)}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-baseline justify-between text-[11px] leading-tight">
+                                                    <span className="text-[#722ed1] font-medium">
+                                                        {tm('bTotalSpent')}
+                                                    </span>
+                                                    <span className="font-semibold text-[#722ed1]">
+                                                        {formatCurrency(profileStats.totalSpent)}
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </Card>
                                     </Col>
                                     {/* 09.10.2026 — Rezervasyon peşinatı (henüz hizmet verilmemiş avanslar).
@@ -2398,18 +2426,27 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                             </div>
                                         </Card>
                                     </Col>
+                                    {/* 16.10.2026 — Minimal: Fiş bazında randevu kartı.
+                                     * Eski tam-boy Card+Statistic + ipucu satırı 4'lü
+                                     * KPI ızgarasında görsel ağırlık yaratıyordu.
+                                     * Kompakt inline çubuk: başlık + tek sayı, kart
+                                     * süsü yok; yan yana sıralı diğer 4 ana KPI'ın
+                                     * yanında sadece bilgi taşır. */}
                                     <Col xs={24} sm={12} lg={8} xl={4}>
-                                        <Card size="small" bordered className="!shadow-none h-full">
-                                            <Statistic
-                                                title={tm('bAppointmentCountFicheLabel')}
-                                                value={profileStats.appointmentCount}
-                                                prefix={<RiseOutlined className="text-green-600" />}
-                                            />
-                                            {profileStats.appointmentCountDetail ? (
-                                                <div className="mt-1 text-[10px] font-medium text-gray-400 leading-tight">
-                                                    {profileStats.appointmentCountDetail}
-                                                </div>
-                                            ) : null}
+                                        <Card
+                                            size="small"
+                                            bordered
+                                            className="!shadow-none h-full !border-dashed !border-gray-200"
+                                            styles={{ body: { padding: '8px 12px' } }}
+                                        >
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-[11px] font-medium text-gray-500">
+                                                    {tm('bAppointmentCountFicheLabel')}
+                                                </span>
+                                                <span className="text-[16px] font-semibold text-gray-700 ml-auto">
+                                                    {profileStats.appointmentCount}
+                                                </span>
+                                            </div>
                                         </Card>
                                     </Col>
                                     {/* 12.10.2026 — Randevu Kalan tutarı (status-aware).
