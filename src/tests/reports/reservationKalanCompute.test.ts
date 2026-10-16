@@ -3,18 +3,14 @@ import { describe, expect, it } from 'vitest';
 /**
  * 10.10.2026 — Rezervasyon / Ön Ödeme Raporu "Kalan" hesabı regresyon testi.
  *
- * Kullanıcı şikâyeti:
- *   "EGER RANDEVU KAPANIRSA KALAN TUTAR KOLONUNDAKI RAKAM ALINAN
- *    ODEMEYE GECECEK KALAN TUTAR SIFIR OLACAK. YANI
- *    TOTAL AMOUNT - (REZERVASYON TUTARI + ALINAN TUTAR) = KALAN TUTAR"
- *
- * Formül:
- *   remaining = total - (deposit + takenPayment)
+ * 16.10.2026 — Kullanıcı kararı: "Toplam Kalan" kolonu yalnızca
+ * rezervasyon peşinatını düşer; "Alınan Ödeme" kolonu bilgi amaçlıdır.
+ * Formül: remaining = total - deposit.
  *
  * Edge case'ler:
  *  - Status 'completed' / 'closed' → Kalan = 0 (hizmet verildi).
  *  - Status 'cancelled' / 'no_show' → Kalan = 0 (borç kapanmıştır).
- *  - Status null ya da 'deposit_only' / 'scheduled' → Kalan = total - deposit - remainder_paid.
+ *  - Status null ya da 'deposit_only' / 'scheduled' → Kalan = total - deposit.
  *
  * Bu test, `DepositPrePaymentReport.tsx` içindeki `computeKalan` helper'ının
  * kullanıcı formülünü birebir uyguladığını garanti eder.
@@ -28,14 +24,14 @@ type Row = {
 };
 
 // computeKalan'ın birebir kopyası — UI ile aynı formül, regression için izole.
+// 16.10.2026 — Kalan = total - deposit (Alınan Ödeme bilgi amaçlı; Kalan'dan düşülmez).
 function computeKalan(r: Row): number {
     const total = Number(r.total_price) || 0;
     const deposit = Number(r.deposit_amount) || 0;
-    const remainder = Number(r.remainder_paid_amount) || 0;
     const status = String(r.status ?? '').trim().toLowerCase();
     if (status === 'completed' || status === 'closed') return 0;
     if (status === 'cancelled' || status === 'no_show') return 0;
-    return Math.max(0, total - deposit - remainder);
+    return Math.max(0, total - deposit);
 }
 
 describe('DepositPrePaymentReport — Kalan hesabı (computeKalan)', () => {
@@ -101,14 +97,15 @@ describe('DepositPrePaymentReport — Kalan hesabı (computeKalan)', () => {
         expect(computeKalan(row)).toBe(40000);
     });
 
-    it('partial ödeme → Kalan = total − deposit − remainder_paid', () => {
+    it('partial ödeme → Kalan = total − deposit (peşinat düşülür, remainder görmezden gelinir)', () => {
+        // 16.10.2026 — kullanıcı kararı.
         const row: Row = {
             total_price: 50000,
             deposit_amount: 10000,
             remainder_paid_amount: 20000,
             status: 'partial',
         };
-        expect(computeKalan(row)).toBe(20000);
+        expect(computeKalan(row)).toBe(40000);
     });
 
     it('Kısmi completed olmayan randevu + status büyük harf "Completed" → Kalan = 0', () => {
@@ -143,11 +140,11 @@ describe('DepositPrePaymentReport — Kalan hesabı (computeKalan)', () => {
             { total_price: 50000, deposit_amount: 10000, remainder_paid_amount: 40000, status: 'completed' },
             // cancelled: 0
             { total_price: 80000, deposit_amount: 20000, remainder_paid_amount: 0, status: 'cancelled' },
-            // partial: 80k − 20k − 30k = 30k
+            // 16.10.2026 — partial: 80k − 20k = 60k (peşinat düşülür, remainder görmezden gelinir)
             { total_price: 80000, deposit_amount: 20000, remainder_paid_amount: 30000, status: 'partial' },
         ];
         const totalKalan = rows.reduce((acc, r) => acc + computeKalan(r), 0);
-        // 45k + 40k + 0 + 0 + 30k = 115k
-        expect(totalKalan).toBe(115000);
+        // 16.10.2026 — 45k + 40k + 0 + 0 + 60k = 145k
+        expect(totalKalan).toBe(145000);
     });
 });

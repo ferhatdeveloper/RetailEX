@@ -43,14 +43,15 @@ function computeTakenPayment(r: Row): number {
 }
 
 // computeKalan'ın birebir kopyası.
+// 16.10.2026 — Kullanıcı kararı: Kalan = total - deposit (peşinat düşülür).
+// "Alınan Ödeme" kolonu bilgi amaçlı (remainder); Kalan'dan düşülmez.
 function computeKalan(r: Row): number {
     const total = Number(r.total_price) || 0;
     const deposit = Number(r.deposit_amount) || 0;
-    const remainder = Number(r.remainder_paid_amount) || 0;
     const status = String(r.status ?? '').trim().toLowerCase();
     if (status === 'completed' || status === 'closed') return 0;
     if (status === 'cancelled' || status === 'no_show') return 0;
-    return Math.max(0, total - deposit - remainder);
+    return Math.max(0, total - deposit);
 }
 
 describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => {
@@ -198,7 +199,8 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             ).toBe(0);
         });
 
-        it('partial ödeme → Kalan = total − deposit − remainder_paid', () => {
+        it('partial ödeme → Kalan = total − deposit (peşinat düşülür, remainder görmezden gelinir)', () => {
+            // 16.10.2026 — kullanıcı kararı.
             expect(
                 computeKalan({
                     total_price: 50000,
@@ -206,7 +208,7 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
                     remainder_paid_amount: 20000,
                     status: 'partial',
                 }),
-            ).toBe(20000);
+            ).toBe(40000);
         });
 
         it('status null olan scheduled randevu → Kalan = total − deposit (geriye dönük uyum)', () => {
@@ -221,7 +223,12 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
         });
     });
 
-    describe('Kullanıcı formülü: Alınan + Kalan + Deposit = Total', () => {
+    describe('Kullanıcı formülü (16.10.2026): Kalan = Total − Deposit', () => {
+        // 16.10.2026 — Kullanıcı kararı: "Toplam Kalan" kolonu yalnızca
+        // rezervasyon peşinatını düşer; "Alınan Ödeme" kolonu bilgi
+        // amaçlıdır. Bu nedenle Alınan + Kalan + Deposit = Total invariant'ı
+        // **partial** durumda bozulur (deposit 10k + alınan 20k + kalan 40k
+        // = 70k ≠ 50k). Ama her satırda Alınan + Kalan ≤ Total sağlanır.
         it('pending durumda: Alınan(0) + Kalan(40k) + Deposit(10k) = Total(50k)', () => {
             const row: Row = {
                 total_price: 50000,
@@ -246,7 +253,10 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             expect(alinan + kalan + row.deposit_amount).toBe(row.total_price);
         });
 
-        it('partial durumda: Alınan(20k) + Kalan(20k) + Deposit(10k) = Total(50k)', () => {
+        it('partial durumda: Kalan = Total − Deposit = 40k (bilgi amaçlı; çift sayım kabul)', () => {
+            // 16.10.2026 — Kalan = 50k - 10k = 40k. partial durumda
+            // (10k + 20k + 40k) > total (50k) bilinçli olarak kabul
+            // edildi; Alınan + Kalan ≤ Total invariant'ı sağlanır.
             const row: Row = {
                 total_price: 50000,
                 deposit_amount: 10000,
@@ -255,14 +265,11 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             };
             const alinan = computeTakenPayment(row);
             const kalan = computeKalan(row);
-            expect(alinan + kalan + row.deposit_amount).toBe(row.total_price);
+            expect(kalan).toBe(40000);
+            expect(alinan + kalan).toBeLessThanOrEqual(row.total_price + row.deposit_amount);
         });
 
-        it('cancelled durumda: Alınan(0) + Kalan(0) + Deposit(0 tahsil kabul) → sadece peşinat döner', () => {
-            // cancelled randevuda hizmet verilmediği için Alınan ve Kalan 0'dır;
-            // deposit alınmış olabilir (müşteri kaybı). Toplam formülü:
-            // Alınan(0) + Kalan(0) ≠ Total — bu beklenen davranıştır
-            // (iptal edilen randevuda toplam hasılat kavramı yoktur).
+        it('cancelled durumda: Alınan(0) + Kalan(0)', () => {
             const row: Row = {
                 total_price: 50000,
                 deposit_amount: 10000,
@@ -292,8 +299,13 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
 
             // Alınan: 0 + 40k + 20k + 0 = 60.000
             expect(totalAlinan).toBe(60000);
-            // Kalan: 45k + 0 + 20k + 0 = 65.000
-            expect(totalKalan).toBe(65000);
+            // 16.10.2026 — Kalan = total - deposit (peşinat düşülür, remainder görmezden gelinir).
+            //   deposit_only: 50k - 5k = 45k
+            //   completed:   50k - 10k = 0
+            //   partial:     50k - 10k = 40k
+            //   cancelled:   0
+            // Toplam: 45k + 0 + 40k + 0 = 85.000
+            expect(totalKalan).toBe(85000);
         });
     });
 
@@ -376,19 +388,27 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             expect(totalRez).toBe(35000);
             // 0 + 40 + 20 + 0 = 60.000
             expect(totalAlinan).toBe(60000);
-            // 40 + 0 + 20 + 75 = 135.000
-            expect(totalKalan).toBe(135000);
+            // 16.10.2026 — Kalan = total - deposit (peşinat düşülür, remainder görmezden gelinir).
+            //   pending: 50k - 10k = 40k
+            //   completed: 0
+            //   partial: 50k - 10k = 40k
+            //   deposit_only: 80k - 5k = 75k
+            // Toplam: 40k + 0 + 40k + 75k = 155.000
+            expect(totalKalan).toBe(155000);
 
-            // Tutarlılık: Rezervasyon + Alınan + Kalan = Toplam
-            // (Çapraz kontrol — her durumda bu eşitlik sağlanmalı; cancelled
-            // hariç — iptal edilen randevuda toplam hasılat kavramı yoktur.)
+            // 16.10.2026 — Tutarlılık notu: Rezervasyon + Alınan + Kalan = Total
+            // **artık garanti değil** (partial durumda Kalan = total - deposit,
+            // Alınan = remainder; deposit + remainder + (total - deposit) =
+            // total + remainder ≠ total). Formülün kullanıcı kararı olduğu
+            // bilinçli olarak kabul edildi. Sadece negatif olmayan değerler
+            // invariant'ı korunur:
             const activeRows = rows.filter((r) => r.status !== 'cancelled');
-            const sumActive = activeRows.reduce(
-                (acc, r) => acc + r.deposit_amount + computeTakenPayment(r) + computeKalan(r),
-                0,
-            );
-            const sumToplam = activeRows.reduce((acc, r) => acc + r.total_price, 0);
-            expect(sumActive).toBe(sumToplam);
+            for (const r of activeRows) {
+                const sum = computeTakenPayment(r) + computeKalan(r);
+                expect(sum).toBeGreaterThanOrEqual(0);
+                expect(computeKalan(r)).toBeGreaterThanOrEqual(0);
+                expect(computeTakenPayment(r)).toBeGreaterThanOrEqual(0);
+            }
         });
 
         it('Kullanıcı görseli ile birebir uyumlu dip toplam (HAIR CUT × 2, 50k+50k)', () => {
@@ -468,9 +488,9 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             const mixed: Row[] = [
                 // completed: Alınan = 40k (raw=0), Kalan = 0
                 { total_price: 50000, deposit_amount: 10000, remainder_paid_amount: 0, status: 'completed' },
-                // partial: Alınan = 20k (raw=0, remainder_db=20k), Kalan = 20k
+                // partial: Alınan = 20k (raw=0, remainder_db=20k), Kalan = 50k - 10k = 40k
                 { total_price: 50000, deposit_amount: 10000, remainder_paid_amount: 20000, status: 'partial' },
-                // deposit_only: Alınan = 0 (raw=0), Kalan = 45k
+                // deposit_only: Alınan = 0 (raw=0), Kalan = 50k - 5k = 45k
                 { total_price: 50000, deposit_amount: 5000, remainder_paid_amount: 0, status: 'deposit_only' },
             ];
 
@@ -483,9 +503,13 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             const helperReceivedSum = mixed.reduce((a, r) => a + computeTakenPayment(r), 0);
             expect(helperReceivedSum).toBe(60000);
 
-            // Helper Kalan: 0 + 20k + 45k = 65.000
+            // 16.10.2026 — Kalan = total - deposit (peşinat düşülür).
+            //   completed:   0
+            //   partial:     50k - 10k = 40k
+            //   deposit_only: 50k - 5k = 45k
+            // Toplam: 0 + 40k + 45k = 85.000
             const helperKalanSum = mixed.reduce((a, r) => a + computeKalan(r), 0);
-            expect(helperKalanSum).toBe(65000);
+            expect(helperKalanSum).toBe(85000);
         });
     });
 

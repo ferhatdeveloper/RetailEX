@@ -58,13 +58,22 @@ type Row = Awaited<ReturnType<typeof beautyService.getDepositPrePaymentReport>>[
 //   Sadece Peşinat: Alınan = sadece avans → Kalan = hizmet bedeli
 //   completed/closed: Alınan = hizmet + avans → Kalan = 0
 //   cancelled/no_show: Kalan = 0 (alacak kapanır)
+//
+// 16.10.2026 — Kullanıcı kararı: "Toplam Kalan" yalnızca rezervasyon
+// peşinatını düşsün; "Alınan Ödeme" kolonu bilgi amaçlı (remainder).
+// Kök neden: Kalan = Total − Deposit semantiği (50k − 15k = 35k)
+// kullanıcının gerçek "henüz ödenmemiş peşinat sonrası borç"
+// beklentisine uyuyor; Alınan Ödeme ayrıca gösteriliyor.
+//   Sadece Peşinat: Kalan = total − deposit (peşinat düşülür)
+//   completed/closed: Kalan = 0
+//   cancelled/no_show: Kalan = 0
 function computeKalan(r: Row): number {
     const total = Number(r.total_price) || 0;
-    const taken = computeTakenPayment(r);
+    const deposit = Number(r.deposit_amount) || 0;
     const status = String(r.status ?? '').trim().toLowerCase();
     if (status === 'completed' || status === 'closed') return 0;
     if (status === 'cancelled' || status === 'no_show') return 0;
-    return Math.max(0, total - taken);
+    return Math.max(0, total - deposit);
 }
 
 // 16.10.2026 — "Alınan Ödeme" helper'ı.
