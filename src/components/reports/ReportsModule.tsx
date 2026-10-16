@@ -2904,6 +2904,18 @@ export function ReportsModule({
     (sum, s) => sum + (Number(s.total) || 0),
     0,
   );
+  // 16.10.2026 — AVANS → FATURA (Basit Model): cari_avans kayıtları
+  // (status='open' + 'applied') bilgi amaçlı "Peşinat (Avans)" kartına
+  // eklenir. Deposit sales fişi kesilmemiş peşinatlar burada görünür
+  // (kullanıcı talebi 16.10.2026). Ciro'ya yansıyan avanslar (status='applied')
+  // dahil edilir — kullanıcı "rezervasyon tutarını burda görmek istiyor".
+  const dailyAvansInfoTotal = useMemo(() => {
+    return dailyAvansList.reduce(
+      (sum, a) => sum + Math.abs(Number((a as any).amount) || 0),
+      0,
+    );
+  }, [dailyAvansList]);
+  const dailyAvansInfoCount = dailyAvansList.length;
 
   const extraCollections = extraCustomerCollectionsNotOnSales(
     kasaLinesForSelectedDate,
@@ -2978,27 +2990,37 @@ export function ReportsModule({
         const firm = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
         const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
         const tbl = `rex_${firm}_${period}_cari_avans`;
+        // 16.10.2026 — Tüm avansları çek (open + applied); "Peşinat (Avans)"
+        // kartı bilgi amaçlı tüm alınan avansları gösterir. completed
+        // rezervasyon avansı Ciro'ya yansımış olsa bile kart kullanıcıya
+        // bilgi verir (kullanıcı talebi 16.10.2026).
         const { rows } = await postgres.query<any>(
           `SELECT id, customer_id, amount, payment_method, status, reference_no, created_at, cash_line_id
              FROM ${tbl}
             WHERE created_at >= $1::date
               AND created_at < ($2::date + INTERVAL '1 day')
-              AND status = 'open'
             ORDER BY created_at DESC`,
           [fromIso, toIso],
         );
         if (cancelled) return;
         setDailyAvansList(rows || []);
-        // 16.10.2026 — Açık avanslara bağlı cash_line_id'leri Set'e al.
-        // extraReservationCustomerCollections'a geçilir; uygulanan avanslara
-        // bağlı cash_lines Nakit'te mükerrer sayılmasın (DUBLE senaryosu:
-        // 10k avans status='applied' → fatura tahsilatına zaten dahil).
-        const ids = new Set<string>();
+        // 16.10.2026 — Açık avanslara bağlı cash_line_id'leri Set'e al
+        // (`extraReservationCustomerCollections` beyaz liste).
+        // Uygulanan avanslara bağlı cash_line_id'ler ayrı Set'e alınır
+        // (kara liste, mükerrer sayım önlemi).
+        const openIds = new Set<string>();
         for (const r of Array.isArray(rows) ? rows : []) {
+          const status = String((r as any).status || '').trim().toLowerCase();
           const cid = String((r as any).cash_line_id || '').trim();
-          if (cid) ids.add(cid);
+          if (!cid) continue;
+          if (status === 'open') {
+            openIds.add(cid);
+          } else if (status === 'applied') {
+            // appliedAvansCashLineIds ayrı effect'te dolduruluyor;
+            // burada sadece openIds güncellenir.
+          }
         }
-        setOpenAvansCashLineIds(ids);
+        setOpenAvansCashLineIds(openIds);
       } catch (e) {
         if (cancelled) return;
         console.warn('[ReportsModule] daily avans fetch failed:', e);
@@ -6556,10 +6578,12 @@ export function ReportsModule({
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-gray-600">{tm('dailyDepositCollected') || 'Peşinat (Avans)'}</p>
-                        <p className="text-2xl font-bold mt-1 text-cyan-700">{formatNumber(dailyDepositTotal, 2, false)}</p>
+                        <p className="text-2xl font-bold mt-1 text-cyan-700">{formatNumber(dailyDepositTotal + dailyAvansInfoTotal, 2, false)}</p>
                         <p className="text-xs text-slate-500 mt-1">
-                          {(tm('dailyDepositCountShort') || 'Adet')}: {dailyDepositCount}
-                          {dailyDepositCount > 0 ? ' · ' + (tm('reservationNote') || 'randevu') : ''}
+                          {(tm('dailyDepositCountShort') || 'Adet')}: {dailyDepositCount + dailyAvansInfoCount}
+                          {dailyAvansInfoCount > 0
+                            ? ' · ' + (tm('reservationNote') || 'randevu') + ' (avans ' + dailyAvansInfoCount + ')'
+                            : (dailyDepositCount > 0 ? ' · ' + (tm('reservationNote') || 'randevu') : '')}
                         </p>
                       </div>
                       <Calendar className="w-12 h-12 text-cyan-300 opacity-40" aria-hidden />
