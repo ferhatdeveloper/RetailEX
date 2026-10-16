@@ -723,6 +723,13 @@ type DailyUnifiedRow = {
   productDiscount: number;
   serviceBefore: number;
   productBefore: number;
+  /**
+   * 16.10.2026 — Avans satırının bağlı olduğu randevu ID'si (notes
+   * alanından "Randevu No <uuid>" parse edilir). İleride randevu
+   * tamamlandığında (status='completed') bu avansı otomatik
+   * uygulama / fatura kesme akışı için temel alan.
+   */
+  linkedAppointmentId?: string;
 };
 
 type DailyKindFilter = 'all' | 'service' | 'product';
@@ -1112,6 +1119,18 @@ export function ReportsModule({
   const [dailyShowOnlyRemoved, setDailyShowOnlyRemoved] = useState(false);
   const [dailyKindFilter, setDailyKindFilter] = useState<DailyKindFilter>('all');
   const [userNameById, setUserNameById] = useState<Map<string, string>>(() => new Map());
+  // 16.10.2026 — Müşteri ID → ad map (avans sanal satırlarında UUID
+  // yerine gerçek ad gösterimi için). useCustomerStore.customers'tan
+  // türetilir.
+  const customerNameByIdMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of (reportCustomers as Array<{ id?: string; name?: string }>) || []) {
+      const id = String(c?.id || '').trim();
+      const name = String(c?.name || '').trim();
+      if (id && name) m.set(id, name);
+    }
+    return m;
+  }, [reportCustomers]);
   const [reportConfirmOpen, setReportConfirmOpen] = useState(false);
   const [reportConfirmMessage, setReportConfirmMessage] = useState('');
   const [reportConfirmReason, setReportConfirmReason] = useState('');
@@ -3133,15 +3152,28 @@ export function ReportsModule({
     };
 
     // AVANS → FATURA: cari_avans satırlarını sanal satırlara dönüştür
+    // 16.10.2026 — Müşteri adı customerMap'ten, randevu ID notes'tan
+    // çıkarılır (KL-MVAXA32K-Z4SXMD örneği: "Rezervasyon Tutarı ·
+    // Randevu No a5ca87d8-..."). Randevuya bağlı avans bilgisi
+    // `linkedAppointmentId` alanı ile bırakılır; ileride "tamamlanan
+    // randevuya bağlı avansı otomatik uygula" akışı için temel.
     const mapAvans = (a: any): DailyUnifiedRow => {
       const amount = Number(a.amount || 0);
       const ref = a.reference_no || `AVANS-${String(a.id).slice(0, 8)}`;
+      const customerId = String(a.customer_id || '').trim();
+      const customerName = customerId
+        ? (customerNameByIdMap.get(customerId) || customerId)
+        : '—';
+      // notes: "Rezervasyon Tutarı · Randevu No <uuid>" → uuid çıkar
+      const noteStr = String(a.notes ?? '');
+      const apptMatch = noteStr.match(/Randevu No\s+([0-9a-f-]{8,})/i);
+      const linkedAppointmentId = apptMatch ? apptMatch[1] : null;
       return {
         key: `avans-${a.id}`,
         source: 'avans' as const,
         receiptNumber: ref,
         date: a.created_at,
-        customerName: a.customer_id,
+        customerName,
         beforeDiscount: amount,
         total: amount,
         discount: 0,
@@ -3169,6 +3201,9 @@ export function ReportsModule({
         productDiscount: 0,
         serviceBefore: 0,
         productBefore: amount,
+        // Rezervasyon bağlantısı (kısa vadede salt bilgi; ileride
+        // randevu tamamlandığında avans otomatik uygulama akışı için)
+        linkedAppointmentId: linkedAppointmentId || undefined,
       };
     };
     const avansRows = dailyAvansList.map(mapAvans);
@@ -6901,6 +6936,18 @@ export function ReportsModule({
                             if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) {
                               return '—';
                             }
+                            // 16.10.2026 — Avans sanal satırı (cari_avans):
+                            // Net Tutar = avans tutarı (rezervasyon peşinatı);
+                            // "—" yerine gerçek miktar göster. Footer'da
+                            // hizmet brütünü kirletmemesi için bu satır
+                            // footerFormat'ta zaten Hariç.
+                            if (row.isAvans) {
+                              return (
+                                <div>
+                                  <div>{formatNumber(Number(row.total) || 0, 2, false)}</div>
+                                </div>
+                              );
+                            }
                             // Bug 2026-10-13 aqua: "Net Satış" sütunu brüt
                             // (row.total = total_net, iskonto Hariç) gösteriyordu;
                             // iskonto düşülmemiş hâliyle 100.000 brüt + 50.000 iskonto
@@ -6962,7 +7009,9 @@ export function ReportsModule({
                               (row as { isDeposit?: boolean }).isDeposit === true;
                             const displayLabel = depositRow
                               ? (tm('paymentLabelReservationDeposit') || 'Rezervasyon Tutarı')
-                              : row.paymentLabel;
+                              : row.isAvans
+                                ? `${tm('paymentLabelAvans') || 'Rezervasyon Tutarı'} (${formatNumber(Number(row.total) || 0, 0, false)} ${reportCurrency})`
+                                : row.paymentLabel;
                             const cls = kindInfo.kind === 'mixed'
                               ? 'bg-orange-100 text-orange-800'
                               : depositRow
