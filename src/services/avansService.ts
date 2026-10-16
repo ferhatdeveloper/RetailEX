@@ -391,6 +391,67 @@ export async function listCustomerAdvances(customerId: string): Promise<AvansRec
   return (rows || []).map((r) => rowToAvans(r));
 }
 
+/**
+ * 16.10.2026 — Müşterinin aktif avans özeti (open + applied).
+ * "Rezervasyon Peşinatı" KPI'sı ve Toplam Harcama hesabı için kullanılır.
+ * Randevu tamamlandığında avans `applied` statüsüne geçer ama hâlâ
+ * müşterinin o hizmete yaptığı bir HARCAMA'dır; "Toplam Harcama +
+ * Rezervasyon Peşinat" formülünde yer almalıdır. `kept_on_cancel`
+ * Hariç tutulur çünkü iptal sonrası bakiyede kalan avans bu hizmet
+ * için harcanmış sayılmaz (ayrı cari alacak).
+ */
+export interface CustomerAdvanceSummary {
+    openAmount: number;
+    openCount: number;
+    appliedAmount: number;
+    appliedCount: number;
+    total: number;          // open + applied
+    count: number;          // open + applied
+}
+
+export async function getCustomerAdvanceSummary(
+    customerId: string,
+): Promise<CustomerAdvanceSummary> {
+    if (!customerId) {
+        return { openAmount: 0, openCount: 0, appliedAmount: 0, appliedCount: 0, total: 0, count: 0 };
+    }
+    const table = getCariAvansTable();
+    const { rows } = await postgres.query(
+        `SELECT
+            LOWER(TRIM(COALESCE(status, ''))) AS st,
+            COALESCE(SUM(amount), 0)::numeric   AS amt,
+            COUNT(*)::int                       AS cnt
+           FROM ${table}
+          WHERE customer_id = $1
+            AND LOWER(TRIM(COALESCE(status, ''))) IN ('open', 'applied')
+          GROUP BY LOWER(TRIM(COALESCE(status, '')))`,
+        [customerId],
+    );
+    let openAmount = 0;
+    let openCount = 0;
+    let appliedAmount = 0;
+    let appliedCount = 0;
+    for (const r of rows as Array<{ st: string; amt: unknown; cnt: unknown }>) {
+        const amt = Math.max(0, Number(r.amt) || 0);
+        const cnt = Math.max(0, Number(r.cnt) || 0);
+        if (r.st === 'open') {
+            openAmount = amt;
+            openCount = cnt;
+        } else if (r.st === 'applied') {
+            appliedAmount = amt;
+            appliedCount = cnt;
+        }
+    }
+    return {
+        openAmount,
+        openCount,
+        appliedAmount,
+        appliedCount,
+        total: openAmount + appliedAmount,
+        count: openCount + appliedCount,
+    };
+}
+
 /* ------------------------------------------------------------------ */
 /* applyAdvanceToSale                                                   */
 /* ------------------------------------------------------------------ */

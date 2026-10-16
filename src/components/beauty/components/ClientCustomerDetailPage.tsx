@@ -44,7 +44,7 @@ import {
 } from '@ant-design/icons';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { beautyService, type BeautyCustomerProfileQueryOpts } from '../../../services/beautyService';
-import { getOpenAdvances } from '../../../services/avansService';
+import { getOpenAdvances, getCustomerAdvanceSummary } from '../../../services/avansService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
@@ -344,6 +344,12 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
      */
     const [openAdvanceTotal, setOpenAdvanceTotal] = useState(0);
     const [openAdvanceCount, setOpenAdvanceCount] = useState(0);
+    // 16.10.2026 — Tamamlanmış randevunun avansı `applied` statüsünde.
+    // "Rezervasyon Peşinatı" müşterinin **fiilen ödediği** avansları
+    // göstermeli; sadece `open` olanlar eksik kalıyordu. `applied`
+    // avansları toplamını da state'te tut, depositTotal'a ekle.
+    const [appliedAdvanceTotal, setAppliedAdvanceTotal] = useState(0);
+    const [appliedAdvanceCount, setAppliedAdvanceCount] = useState(0);
     const [leadRecords, setLeadRecords] = useState<BeautyLead[]>([]);
     const [feedbacks, setFeedbacks] = useState<BeautyCustomerFeedback[]>([]);
     const [salesHistory, setSalesHistory] = useState<BeautySale[]>([]);
@@ -459,8 +465,16 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 // olursa sessizce 0 kalır (depositSales zaten ana hizmet
                 // fişlerinden gelir, geriye dönük uyumlu).
                 getOpenAdvances(selected.id).catch(() => []),
+                // 16.10.2026 — Tamamlanan randevuya bağlı `applied`
+                // avansları da dahil et. `getOpenAdvances` yalnız
+                // status='open' döner; randevu kapatılınca avans
+                // 'applied' statüsüne geçer ve Rezervasyon Peşinatı
+                // tutarı 0'a düşerdi. Paralel fetch ile UI'ı bloklamaz.
+                getCustomerAdvanceSummary(selected.id).catch(
+                    () => ({ openAmount: 0, openCount: 0, appliedAmount: 0, appliedCount: 0, total: 0, count: 0 }),
+                ),
             ]);
-            const [rApt, rLead, rFb, rSale, rAdv] = settled;
+            const [rApt, rLead, rFb, rSale, rAdv, rAdvSummary] = settled;
             if (rApt.status === 'fulfilled') setPastAppointments(rApt.value);
             else {
                 logger.error('ClientCustomerDetailPage', 'getAppointmentsByCustomer failed', rApt.reason);
@@ -493,6 +507,15 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             } else {
                 setOpenAdvanceCount(0);
                 setOpenAdvanceTotal(0);
+            }
+            // 16.10.2026 — applied avans state'ini doldur.
+            if (rAdvSummary.status === 'fulfilled' && rAdvSummary.value) {
+                const s = rAdvSummary.value;
+                setAppliedAdvanceTotal(Math.max(0, Number(s.appliedAmount) || 0));
+                setAppliedAdvanceCount(Math.max(0, Number(s.appliedCount) || 0));
+            } else {
+                setAppliedAdvanceTotal(0);
+                setAppliedAdvanceCount(0);
             }
             setHistLoading(false);
         })();
@@ -1119,11 +1142,20 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             0,
             openAdvanceCount - depositInMainSales.count,
         );
+        // 16.10.2026 — `applied` avanslar da Rezervasyon Peşinatı'na
+        // dahil. Randevu tamamlandığında avans `applied` statüsüne
+        // geçer ama müşterinin fiilen ödediği avans hâlâ aynı. Çift
+        // sayım koruması: applied avans zaten ana satış fişine
+        // bağlandıysa (is_deposit=false), tekrar sayılmamalı; bu
+        // durumda ana satışın kendisi `sumDocument`'a yansır.
+        // merge başarısız + applied avans senaryosu: depositInMainSales
+        // boş → applied avans dahil edilir.
+        const appliedNotInMainSales = Math.max(0, appliedAdvanceTotal);
         const depositForTotal =
             depositSales.reduce(
                 (acc, s) => acc + Math.max(0, Number(s.total) || 0),
                 0,
-            ) + adjustedOpenAdvanceTotal;
+            ) + adjustedOpenAdvanceTotal + appliedNotInMainSales;
         /** Belge tutarı + peşinat; ana hizmet satışı yoksa kart total_spent, o da yoksa tamamlanmış randevu fiyatları */
         let totalSpent =
             mainSales.length > 0 ? sumDocument + depositForTotal : Number(selected.total_spent ?? 0);
@@ -1254,12 +1286,24 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             // 09.10.2026 takip — çift sayım koruması: `mainSales`'e deposit
             // olarak giren tutar `openAdvanceTotal/Count`'tan düşülür (merge
             // başarısız + cari_avans güncellenmemiş senaryosu).
+            //
+            // 16.10.2026 takip — `applied` avanslar da dahil. Randevu
+            // tamamlanınca avans `applied` statüsüne geçer; müşterinin
+            // fiilen ödediği avans hâlâ aynı tutar. Çift sayım
+            // koruması: ana satış fişine bağlanmış (merge başarılı) ise
+            // `sumDocument` zaten o tutarı içerir; bu yüzden applied
+            // avans `sumDocument` Hariç, yalnız `appliedNotInMainSales`
+            // katkısı olarak eklenir (depositInMainSales.total=0
+            // senaryosu).
             depositTotal:
                 depositSales.reduce(
                     (acc, s) => acc + Math.max(0, Number(s.total) || 0),
                     0,
-                ) + adjustedOpenAdvanceTotal,
-            depositCount: depositSales.length + adjustedOpenAdvanceCount,
+                ) + adjustedOpenAdvanceTotal + appliedNotInMainSales,
+            depositCount:
+                depositSales.length +
+                adjustedOpenAdvanceCount +
+                (appliedNotInMainSales > 0 ? appliedAdvanceCount : 0),
             appointmentCount: receiptBasedCount,
             appointmentCountDetail,
             lastVisitLabel,
@@ -1267,7 +1311,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             lastSaleCollected,
             lastSaleRemaining,
         };
-    }, [selected, mainSalesHistory, depositSalesHistory, visibleAppointments, openAdvanceTotal, openAdvanceCount, dateLocale, tm]);
+    }, [selected, mainSalesHistory, depositSalesHistory, visibleAppointments, openAdvanceTotal, openAdvanceCount, appliedAdvanceTotal, appliedAdvanceCount, dateLocale, tm]);
 
     const historyColumns: ColumnsType<UnifiedHistoryRow> = useMemo(
         () => [
