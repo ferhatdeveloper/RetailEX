@@ -32,16 +32,14 @@ type Row = {
 };
 
 // computeTakenPayment'ın birebir kopyası.
-// 16.10.2026 — Sadece Peşinat: Alınan = deposit + avans (remainder Hariç).
-// Henüz tamamlanmamış randevuda "henüz verilmemiş hizmet" için
-// remainder sayılmaz; sadece fiilen alınan peşinat gösterilir.
 function computeTakenPayment(r: Row): number {
     const total = Number(r.total_price) || 0;
     const deposit = Number(r.deposit_amount) || 0;
     const status = String(r.status ?? '').trim().toLowerCase();
     if (status === 'completed' || status === 'closed') return Math.max(0, total - deposit);
     if (status === 'cancelled' || status === 'no_show') return 0;
-    return Math.max(0, deposit);
+    const remainder = Number(r.remainder_paid_amount) || 0;
+    return Math.max(0, remainder);
 }
 
 // computeKalan'ın birebir kopyası.
@@ -58,10 +56,7 @@ function computeKalan(r: Row): number {
 
 describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => {
     describe('computeTakenPayment (Alınan Ödeme)', () => {
-        it('Sadece Peşinat (pending/deposit_only) → Alınan = deposit (peşinat), remainder Hariç', () => {
-            // 16.10.2026 — Kullanıcı kararı: randevu henüz tamamlanmadığı
-            // için "Alınan Ödeme" sadece peşinatı gösterir; remainder
-            // hizmet verilmediği için bu kolona dahil edilmez.
+        it('Sadece Peşinat (pending/deposit_only) → Alınan = remainder_paid_amount', () => {
             expect(
                 computeTakenPayment({
                     total_price: 50000,
@@ -69,7 +64,7 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
                     remainder_paid_amount: 0,
                     status: 'pending',
                 }),
-            ).toBe(10000);
+            ).toBe(0);
             expect(
                 computeTakenPayment({
                     total_price: 50000,
@@ -77,13 +72,10 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
                     remainder_paid_amount: 0,
                     status: 'deposit_only',
                 }),
-            ).toBe(10000);
+            ).toBe(0);
         });
 
-        it('partial (kısmi ödeme) → Alınan = deposit (peşinat), remainder Hariç', () => {
-            // 16.10.2026 — Kullanıcı kararı: randevu henüz tamamlanmadığı
-            // için "Alınan Ödeme" sadece peşinatı gösterir; remainder
-            // hizmet verilmediği için bu kolona dahil edilmez.
+        it('partial (kısmi ödeme) → Alınan = remainder_paid_amount', () => {
             expect(
                 computeTakenPayment({
                     total_price: 50000,
@@ -91,7 +83,7 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
                     remainder_paid_amount: 20000,
                     status: 'partial',
                 }),
-            ).toBe(10000);
+            ).toBe(20000);
         });
 
         it('completed → Alınan = total - deposit (kalan bakiye tahsil kabul edilir)', () => {
@@ -150,8 +142,7 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             ).toBe(40000);
         });
 
-        it('status null olan scheduled randevu → Alınan = deposit (peşinat)', () => {
-            // 16.10.2026 — kullanıcı kararı.
+        it('status null olan scheduled randevu → Alınan = 0 (geriye dönük uyum)', () => {
             expect(
                 computeTakenPayment({
                     total_price: 50000,
@@ -159,7 +150,7 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
                     remainder_paid_amount: 0,
                     status: null,
                 }),
-            ).toBe(10000);
+            ).toBe(0);
         });
 
         it('negatif değerleri 0\'a kırpar', () => {
@@ -238,11 +229,7 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
         // amaçlıdır. Bu nedenle Alınan + Kalan + Deposit = Total invariant'ı
         // **partial** durumda bozulur (deposit 10k + alınan 20k + kalan 40k
         // = 70k ≠ 50k). Ama her satırda Alınan + Kalan ≤ Total sağlanır.
-        it('pending durumda: Alınan(10k) + Kalan(40k) = Total(50k) (deposit zaten Alınan\'a dahil)', () => {
-            // 16.10.2026 — Alınan = deposit (peşinat) + avans. Deposit
-            // artık Alınan'a dahil olduğu için Rezervasyon + Alınan + Kalan
-            // formülü **pending** durumda bozulur (çift sayım). Yeni
-            // invariant: Alınan + Kalan = Total (deposit zaten Alınan'da).
+        it('pending durumda: Alınan(0) + Kalan(40k) + Deposit(10k) = Total(50k)', () => {
             const row: Row = {
                 total_price: 50000,
                 deposit_amount: 10000,
@@ -251,7 +238,7 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             };
             const alinan = computeTakenPayment(row);
             const kalan = computeKalan(row);
-            expect(alinan + kalan).toBe(row.total_price);
+            expect(alinan + kalan + row.deposit_amount).toBe(row.total_price);
         });
 
         it('completed durumda: Alınan(40k) + Kalan(0) + Deposit(10k) = Total(50k)', () => {
@@ -297,11 +284,11 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
     describe('Toplam (dip toplam) senaryosu — kullanıcı şikâyetinin dipteki toplamı', () => {
         it('Birden çok satır için Alınan + Kalan dip toplamı doğru hesaplanır', () => {
             const rows: Row[] = [
-                // 16.10.2026 — Sadece Peşinat: Alınan=5k (deposit), Kalan=45k
+                // Sadece Peşinat: Alınan=0, Kalan=45k
                 { total_price: 50000, deposit_amount: 5000, remainder_paid_amount: 0, status: 'deposit_only' },
-                // completed: Alınan=40k (total-deposit), Kalan=0
+                // completed: Alınan=40k, Kalan=0
                 { total_price: 50000, deposit_amount: 10000, remainder_paid_amount: 0, status: 'completed' },
-                // 16.10.2026 — partial: Alınan=10k (deposit, remainder Hariç), Kalan=40k
+                // partial: Alınan=20k, Kalan=20k
                 { total_price: 50000, deposit_amount: 10000, remainder_paid_amount: 20000, status: 'partial' },
                 // cancelled: Alınan=0, Kalan=0
                 { total_price: 80000, deposit_amount: 20000, remainder_paid_amount: 0, status: 'cancelled' },
@@ -310,8 +297,8 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             const totalAlinan = rows.reduce((acc, r) => acc + computeTakenPayment(r), 0);
             const totalKalan = rows.reduce((acc, r) => acc + computeKalan(r), 0);
 
-            // 16.10.2026 — Alınan: 5k (deposit_only) + 40k (completed) + 10k (partial: deposit) + 0 = 55.000
-            expect(totalAlinan).toBe(55000);
+            // Alınan: 0 + 40k + 20k + 0 = 60.000
+            expect(totalAlinan).toBe(60000);
             // 16.10.2026 — Kalan = total - deposit (peşinat düşülür, remainder görmezden gelinir).
             //   deposit_only: 50k - 5k = 45k
             //   completed:   50k - 10k = 0
@@ -399,8 +386,8 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             expect(totalToplam).toBe(230000);
             // 10 + 10 + 10 + 5 = 35.000 (kullanıcı görselindeki dip toplam)
             expect(totalRez).toBe(35000);
-            // 16.10.2026 — Alınan: 10k (pending: deposit) + 40k (completed) + 10k (partial: deposit) + 5k (deposit_only: deposit) = 65.000
-            expect(totalAlinan).toBe(65000);
+            // 0 + 40 + 20 + 0 = 60.000
+            expect(totalAlinan).toBe(60000);
             // 16.10.2026 — Kalan = total - deposit (peşinat düşülür, remainder görmezden gelinir).
             //   pending: 50k - 10k = 40k
             //   completed: 0
@@ -512,9 +499,9 @@ describe('DepositPrePaymentReport — Alınan Ödeme + Kalan kolonları', () => 
             const rawReceivedSum = mixed.reduce((a, r) => a + (Number((r as any).received_payment) || 0), 0);
             expect(rawReceivedSum).toBe(0);
 
-            // 16.10.2026 — Helper: 40k (completed: total - deposit) + 10k (partial: deposit) + 5k (deposit_only: deposit) = 55.000
+            // Helper doğru toplamı verir: 40k + 20k + 0 = 60.000
             const helperReceivedSum = mixed.reduce((a, r) => a + computeTakenPayment(r), 0);
-            expect(helperReceivedSum).toBe(55000);
+            expect(helperReceivedSum).toBe(60000);
 
             // 16.10.2026 — Kalan = total - deposit (peşinat düşülür).
             //   completed:   0
