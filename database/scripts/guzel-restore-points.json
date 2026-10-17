@@ -8,6 +8,28 @@
   "description": "guzel DB geri dönüşüm noktaları. 'restore --label <etiket>' ile seçilen checkpoint'e döndürür. Yeni nokta: 'node guzel-restore-point.mjs create --label <etiket> --note <açıklama>'.",
   "points": [
     {
+      "label": "fresh-after-reset-2026-10-17",
+      "note": "17.10.2026 sıfırlama sonrası: 202 tablo, master schema, demo veri YOK",
+      "file": "database/backups/guzel-fresh-after-reset-2026-10-17-2026-10-16T22-02-58.sql",
+      "size_bytes": 554785,
+      "tables": 202,
+      "inserts": 154,
+      "created_at": "2026-10-16T22:03:58.561Z",
+      "created_by": "guzel-restore-point.mjs create",
+      "is_default": false
+    },
+    {
+      "label": "before-reset-2026-10-17",
+      "note": "Reset öncesi snapshot — sıfırlama yedek",
+      "file": "database/backups/guzel-before-reset-2026-10-17-2026-10-16T21-59-30.sql",
+      "size_bytes": 864806,
+      "tables": 231,
+      "inserts": 705,
+      "created_at": "2026-10-16T22:00:37.577Z",
+      "created_by": "guzel-restore-point.mjs create",
+      "is_default": false
+    },
+    {
       "label": "pre-rapor-fix-2026-10-16",
       "note": "Rapor düzeltmeleri öncesi (DUBLE BEA-MVAZ674A + FERHAT avansları dahil test verisi). reportsModule TDZ fix öncesi durum. Karşılaştırma için.",
       "file": "database/backups/guzel-pre-rapor-fix-2026-10-16-2026-10-16T15-01-33.sql",
@@ -27,7 +49,7 @@
       "inserts": 667,
       "created_at": "2026-10-16T12:00:00.000Z",
       "created_by": "manual (pg_dump)",
-      "is_default": true
+      "is_default": false
     },
     {
       "label": "fresh-install-2026-10-16",
@@ -39,6 +61,17 @@
       "created_at": "2026-10-16T11:15:29.000Z",
       "created_by": "manual (node guzel-restore-point.mjs create)",
       "is_default": false
+    },
+    {
+      "label": "fresh-after-reset-2026-10-17",
+      "note": "17.10.2026 sıfırlama sonrası: 202 tablo, master schema + 007 anon role. Demo veri YOK. Geri dönmek için varsayılan nokta.",
+      "file": "database/backups/guzel-fresh-after-reset-2026-10-17-2026-10-16T22-02-58.sql",
+      "size_bytes": 555008,
+      "tables": 202,
+      "inserts": 154,
+      "created_at": "2026-10-16T22:02:58.000Z",
+      "created_by": "guzel-restore-point.mjs create",
+      "is_default": true
     },
     {
       "label": "pre-reset-2026-10-16",

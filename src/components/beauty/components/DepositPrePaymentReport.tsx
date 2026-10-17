@@ -48,66 +48,64 @@ type Row = Awaited<ReturnType<typeof beautyService.getDepositPrePaymentReport>>[
     avans_total?: number;
 };
 
-// 10.10.2026 — Rezervasyon / Ön Ödeme Raporu "Kalan" hesabı.
+// 17.10.2026 — Rezervasyon / Ön Ödeme Raporu "Kalan" hesabı.
 //
-// Kullanıcı formülü (16.10.2026 güncelleme):
-//   remaining = max(0, total_price - takenPayment)
-//   takenPayment = computeTakenPayment (duruma göre)
+// Kullanıcı kuralı (17.10.2026): "iptal durumunda depozito kalıyor,
+// hizmet tutarı sıfırlanıyor, depozito kalmalı". Durum bazlı mantık:
 //
-// "Toplam Tutar" hizmet + avans, "Alınan Ödeme" duruma göre değişir:
-//   Sadece Peşinat: Alınan = sadece avans → Kalan = hizmet bedeli
-//   completed/closed: Alınan = hizmet + avans → Kalan = 0
-//   cancelled/no_show: Kalan = 0 (alacak kapanır)
+//   status === 'completed'        → hizmet bitti, tüm tutar alındı (kalan = 0)
+//   status === 'cancelled'       → hizmet iptal (tutar sıfır), depozito iade
+//                                  edilmediği sürece alınmış sayılır (kalan = 0)
+//   diğer (scheduled, pre_paid,
+//   in_progress, no_show, …)     → sadece peşinat alınmış; kalan = total − deposit
 //
-// 16.10.2026 — Kullanıcı kararı: "Toplam Kalan" yalnızca rezervasyon
-// peşinatını düşsün; "Alınan Ödeme" kolonu bilgi amaçlı (remainder).
-// Kök neden: Kalan = Total − Deposit semantiği (50k − 15k = 35k)
-// kullanıcının gerçek "henüz ödenmemiş peşinat sonrası borç"
-// beklentisine uyuyor; Alınan Ödeme ayrıca gösteriliyor.
-//   Sadece Peşinat: Kalan = total − deposit (peşinat düşülür)
-//   completed/closed: Kalan = 0
-//   cancelled/no_show: Kalan = 0
+// Negatif sonuçlar Math.max(0, …) ile sıfırlanır (formül/veri bozulması
+// koruması). NULL/eksik alanlar Number() || 0 ile normalize edilir.
+// SQL tarafı `pas.status` ile `a.status` VARCHAR(20) kuyruğundan
+// status doldurulur; burada küçük harfe çevirip karşılaştırıyoruz.
 function computeKalan(r: Row): number {
+    const status = String(r.status ?? '').trim().toLowerCase();
+    if (status === 'completed' || status === 'cancelled') {
+        // Hizmet tamamlandı → tüm tutar alındı; iptal → hizmet tutarı sıfır,
+        // depozito alınmış olarak kabul edilir. Her iki durumda da kalan = 0.
+        return 0;
+    }
+    // Tamamlanmamış/devam eden → kalan = hizmet tutarı − peşinat
     const total = Number(r.total_price) || 0;
     const deposit = Number(r.deposit_amount) || 0;
-    const status = String(r.status ?? '').trim().toLowerCase();
-    if (status === 'completed' || status === 'closed') return 0;
-    if (status === 'cancelled' || status === 'no_show') return 0;
     return Math.max(0, total - deposit);
 }
 
-// 16.10.2026 — "Alınan Ödeme" helper'ı.
-// Kullanıcı talebi: hizmet tamamlandığında Alınan Ödeme = hizmet
-// + rezervasyon tutarı (avans). Sadece Peşinat aşamasında avans
-// henüz ayrı sütunda (Rezervasyon Tutarı), hizmet tamamlanmadığı
-// için Alınan Ödeme = sadece avans. İptal/no_show durumunda avans
-// iade edileceği için sadece hizmet tarafında fiilen tahsil edilen
-// kısım (remainder) gösterilir.
+// 17.10.2026 — "Alınan Ödeme" helper'ı (kullanıcı basitleştirme).
+// Yeni formül (17.10.2026 güncelleme — iptal/depozito kuralı ile uyumlu):
+//   status === 'completed'  → alınan = total_price       (tüm tutar alınmış sayılır)
+//   status === 'cancelled'  → alınan = deposit_amount    (hizmet sıfırlanır, depozito kalır)
+//   diğer (scheduled / pre_paid /
+//   in_progress / no_show /
+//   …)                      → alınan = deposit_amount    (sadece peşinat alınmış)
 //
-// Formül:
-//   cancelled/no_show → remainder
-//   completed/closed  → hizmet + avans (müşteri toplam ödemesi)
-//   Sadece Peşinat    → sadece avans (deposit + cari_avans + remainder)
+// Mantık: `completed` randevunun bitip tüm hizmet bedelinin tahsil
+// edildiği tek durumdur. İptalde hizmet tutarı sıfırlanır; alınmış
+// peşinat `cancelled` satırda "alınan" sayılır (iade ayrı bir akış;
+// `computeKalan` zaten 0 döndürür, böylece Toplam = Alınan + 0 eşitliği
+// görsel olarak da tutarlı kalır). Devam eden durumlarda yalnızca
+// peşinat alınmıştır. NULL/eksik alanlar Number() || 0 ile normalize
+// edilir. SQL tarafında status string olarak gelir (`beauty.beauty_
+// appointment_payment_status` view → `pas.status`). Avans/remainder
+// bilgisi hücrede bilgi amaçlı gösterilir; kalan hesabı bu helper'ın
+// döndürdüğü "alınan" ile total_price arasındaki farktır.
 function computeTakenPayment(r: Row): number {
     const total = Number(r.total_price) || 0;
     const deposit = Number(r.deposit_amount) || 0;
-    const remainder = Number(r.remainder_paid_amount) || 0;
-    const avans = Number(r.avans_total ?? 0) || 0;
     const status = String(r.status ?? '').trim().toLowerCase();
-    if (status === 'cancelled' || status === 'no_show') {
-        return Math.max(0, remainder);
+    if (status === 'completed') {
+        // Hizmet tamamlandı → tüm tutar alınmış sayılır.
+        return Math.max(0, total);
     }
-    if (status === 'completed' || status === 'closed') {
-        // Hizmet tamamlandı: hizmet bedeli + avans (cari_avans) + kalan
-        // ödeme. deposit zaten total_price'ın parçası olabilir; çift
-        // sayımı önlemek için total + avans + remainder yeterli.
-        return Math.max(0, total + avans + remainder);
-    }
-    // Sadece Peşinat / scheduled / partial: hizmet henüz verilmedi.
-    // Alınan Ödeme = müşterinin fiilen ödediği avans (randevuya bağlı
-    // deposit + cari_avans + kısmi ödeme varsa remainder). Hizmet
-    // bedeli (total) henüz tahsil edilmedi, dahil edilmez.
-    return Math.max(0, deposit + avans + remainder);
+    // cancelled / scheduled / pre_paid / in_progress / no_show / …
+    // → alınan = peşinat (iptalde hizmet sıfırlanır; alınmış peşinat
+    //   "alınan" sayılır; iade henüz yapılmadı).
+    return Math.max(0, deposit);
 }
 
 const PAYMENT_STATE_LABEL_KEY: Record<string, string> = {
