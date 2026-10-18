@@ -70,8 +70,11 @@ function computeKalan(r: Row): number {
         // depozito alınmış olarak kabul edilir. Her iki durumda da kalan = 0.
         return 0;
     }
-    // Tamamlanmamış/devam eden → kalan = hizmet tutarı − peşinat
-    const total = Number(r.total_price) || 0;
+    // Tamamlanmamış/devam eden → kalan = toplam tutar − peşinat
+    // 18.10.2026 — "Toplam Tutar" kolonuyla tutarlı olması için avans_total
+    // dahil edildi. Aksi halde Toplam=50k, Rezervasyon=5k iken Kalan 40k
+    // gösteriliyordu (45k olması gerekirken).
+    const total = (Number(r.total_price) || 0) + (Number((r as any).avans_total) || 0);
     const deposit = Number(r.deposit_amount) || 0;
     return Math.max(0, total - deposit);
 }
