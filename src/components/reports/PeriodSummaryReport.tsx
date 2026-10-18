@@ -1123,61 +1123,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             '—'
           ),
       },
-      // Bug 28 — Rezervasyon peşinatı (varsayılan AÇIK). Veresiye
-      // kolonunun yanında yer alır; alt toplam satırında ayın toplamı görünür.
-      // key=`depositAmount` satırdaki alan adıyla aynı → footer accessor
-      // otomatik `row.depositAmount` okur (önce `deposit` kullanıyordu,
-      // undefined→0 yüzünden dip toplam BOŞ kalıyordu).
-      // Footer 0 olduğunda bile somut değer basılır (`0 IQD (yok)`); `—`
-      // yazılırsa kullanıcı "toplam satırı yok" sanıyor — DIP TOPLAM hep belirgin olsun.
-      {
-        key: 'depositAmount',
-        header: `${tm('dailyDepositCollected') || 'Peşinat'} (${currency})`,
-        type: 'number',
-        align: 'right',
-        footerSum: true,
-        footerFormat: (n) => (
-          <span className={n > 0 ? 'text-cyan-700' : 'text-cyan-900/60'}>
-            {n > 0 ? money(n) : `${money(0)} ${tm('rptPeriodFooterZeroHint') || '(yok)'}`}
-          </span>
-        ),
-        cell: (row) =>
-          row.depositAmount > 0 ? (
-            <span
-              className="text-cyan-700 font-medium"
-              title={`${tm('dailyDepositCountShort') || 'adet'}: ${row.depositCount}`}
-            >
-              {money(row.depositAmount)}
-            </span>
-          ) : (
-            '—'
-          ),
-        meta: { defaultVisible: true },
-      },
-      // Bug 28 follow-up — Avans/Peşinat Ödemeleri (adet) kolonu.
-      // Tutarın yanında kaç adet peşinat alındığını gösterir; alt toplam
-      // satırında ayın toplam adedi görünür.
-      {
-        key: 'depositCount',
-        header: tm('avansPesinatPayments') || 'Rezervasyon Miktarı',
-        type: 'number',
-        align: 'right',
-        footerSum: true,
-        footerFormat: (n) => (
-          <span className={n > 0 ? 'text-cyan-700' : 'text-cyan-900/60'}>
-            {n > 0
-              ? Math.round(n)
-              : `${Math.round(n)} ${tm('rptPeriodFooterZeroHint') || '(yok)'}`}
-          </span>
-        ),
-        cell: (row) =>
-          row.depositCount > 0 ? (
-            <span className="text-cyan-700 font-medium">{row.depositCount}</span>
-          ) : (
-            '—'
-          ),
-        meta: { defaultVisible: true },
-      },
+      // 18.10.2026 — depositAmount ve depositCount kolonları KALDIRILDI.
+      // reservationDeposit ve reservationCount ile mükerrer (aynı bilgi).
+      // Kullanıcı şikayeti: "mükerrer kolonlar var". Artık sadece
+      // reservationGross, reservationDeposit, reservationCount, reservationPending
+      // kolonları kullanılıyor.
       // 14.10.2026 — Rezervasyon brüt hizmet tutarı (henüz faturası
       // kesilmemiş randevuların toplam hizmet fiyatı). "Net Kalan"a
       // dahil edilir: günü geldiğinde faturası kesilecek tutar.
