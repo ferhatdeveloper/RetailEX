@@ -4535,9 +4535,11 @@ BEGIN
        )                                     AS outstanding_amount,
        CASE
          WHEN COALESCE(a.total_price, 0) = 0 THEN ''no_amount''
-         WHEN COALESCE(a.deposit_amount, 0) = 0 THEN ''unpaid''
+         WHEN LOWER(TRIM(COALESCE(a.status, ''''))) = ''completed'' THEN ''paid''
          WHEN (COALESCE(a.deposit_amount, 0) + COALESCE(a.remainder_paid_amount, 0))
               >= COALESCE(a.total_price, 0) THEN ''paid''
+         WHEN COALESCE(a.deposit_amount, 0) = 0
+              AND COALESCE(a.remainder_paid_amount, 0) = 0 THEN ''unpaid''
          WHEN COALESCE(a.deposit_amount, 0) > 0
               AND COALESCE(a.remainder_paid_amount, 0) = 0 THEN ''deposit_only''
          ELSE ''partial''

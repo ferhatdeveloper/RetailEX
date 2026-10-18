@@ -27,11 +27,19 @@ SELECT
             2
         )
     )                                     AS outstanding_amount,
+    -- 18.10.2026 — CASE sıralaması düzeltildi: 'paid' kontrolü 'unpaid'
+    -- kontrolünden ÖNCE yapılmalı. Aksi halde rezervasyon olmadan direkt
+    -- satış yapıldığında (deposit=0, remainder=total) 'unpaid' dönüyordu
+    -- çünkü deposit=0 kontrolü remainder kontrolünden önce geliyordu.
+    -- Ayrıca status='completed' durumunda da 'paid' dönmeli (hizmet bitti,
+    -- ödeme tamamlandı kabul edilir).
     CASE
         WHEN COALESCE(a.total_price, 0) = 0                                THEN 'no_amount'
-        WHEN COALESCE(a.deposit_amount, 0) = 0                             THEN 'unpaid'
+        WHEN LOWER(TRIM(COALESCE(a.status, ''))) = 'completed'             THEN 'paid'
         WHEN (COALESCE(a.deposit_amount, 0) + COALESCE(a.remainder_paid_amount, 0))
              >= COALESCE(a.total_price, 0)                                 THEN 'paid'
+        WHEN COALESCE(a.deposit_amount, 0) = 0
+             AND COALESCE(a.remainder_paid_amount, 0) = 0                  THEN 'unpaid'
         WHEN COALESCE(a.deposit_amount, 0) > 0
              AND COALESCE(a.remainder_paid_amount, 0) = 0                  THEN 'deposit_only'
         ELSE 'partial'
