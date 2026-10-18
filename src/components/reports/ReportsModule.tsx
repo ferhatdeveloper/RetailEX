@@ -3275,7 +3275,12 @@ export function ReportsModule({
         linkedAppointmentId: linkedAppointmentId || undefined,
       };
     };
-    const avansRows = dailyAvansList.map(mapAvans);
+    // Bug-fix: `applied` statüslü avanslar zaten satış fişine uygulanmış —
+    // tabloda çift sayılmaması için hariç tut. Sadece `open` (henüz
+    // uygulanmamış) avanslar ayrı satır olarak gösterilir.
+    const avansRows = dailyAvansList
+      .filter((a) => String((a as any).status || '').trim().toLowerCase() !== 'applied')
+      .map(mapAvans);
 
     if (businessType !== 'restaurant') {
       return [...dailySales.map(mapErpSale), ...avansRows].sort(
