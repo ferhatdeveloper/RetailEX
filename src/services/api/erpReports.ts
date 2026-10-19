@@ -3689,10 +3689,11 @@ export async function getCustomerSalesFromAppointments(opts: {
   const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
   const custTable = postgres.getCardTableName('customers');
   const avansTable = postgres.getMovementTableName('cari_avans');
+  // Avans alt sorgusu tablo yoksa tüm raporu düşürür. Randevu listesi ayrı okunur.
   const sql = `
     SELECT
       a.id::text                                              AS id,
-      c.id::text                                              AS customer_id,
+      COALESCE(c.id, a.client_id)::text                       AS customer_id,
       COALESCE(c.code, '')                                    AS customer_code,
       COALESCE(c.name, '')                                    AS customer_name,
       COALESCE(c.phone, '')                                   AS phone,
@@ -3701,35 +3702,77 @@ export async function getCustomerSalesFromAppointments(opts: {
       COALESCE(a.total_price, 0)::float8                      AS total_price,
       COALESCE(a.deposit_amount, 0)::float8                   AS deposit_amount,
       COALESCE(a.remainder_paid_amount, 0)::float8            AS remainder_paid,
-      LOWER(TRIM(COALESCE(a.status::text, '')))               AS status_lc,
-      COALESCE((
-        SELECT SUM(ABS(av.amount))
-        FROM ${avansTable} av
-        WHERE av.notes ILIKE '%rex_appt:' || a.id::text || '%'
-          AND av.created_at >= $1::date
-          AND av.created_at < ($2::date + INTERVAL '1 day')
-      ), 0)::float8                                           AS linked_avans
+      LOWER(TRIM(COALESCE(a.status::text, '')))               AS status_lc
     FROM ${aptTable} a
-    INNER JOIN ${custTable} c ON c.id = a.client_id
-    WHERE a.appointment_date >= $1
-      AND a.appointment_date <= $2
+    LEFT JOIN ${custTable} c ON c.id = a.client_id
+    WHERE a.appointment_date::date >= $1::date
+      AND a.appointment_date::date <= $2::date
   `;
-  const { rows } = await postgres.query(sql, [startDate, endDate]);
+  const narrowSql = `
+    SELECT
+      a.id::text                                              AS id,
+      COALESCE(c.id, a.client_id)::text                       AS customer_id,
+      COALESCE(c.code, '')                                    AS customer_code,
+      COALESCE(c.name, '')                                    AS customer_name,
+      COALESCE(c.phone, '')                                   AS phone,
+      a.appointment_date::text                                AS appointment_date,
+      NULL::text                                              AS created_at,
+      COALESCE(a.total_price, 0)::float8                      AS total_price,
+      COALESCE(a.deposit_amount, 0)::float8                   AS deposit_amount,
+      0::float8                                               AS remainder_paid,
+      LOWER(TRIM(COALESCE(a.status::text, '')))               AS status_lc
+    FROM ${aptTable} a
+    LEFT JOIN ${custTable} c ON c.id = a.client_id
+    WHERE a.appointment_date::date >= $1::date
+      AND a.appointment_date::date <= $2::date
+  `;
+  let rows: any[] = [];
+  try {
+    const full = await postgres.query(sql, [startDate, endDate]);
+    rows = full.rows || [];
+  } catch (err) {
+    console.warn('[getCustomerSalesFromAppointments] daraltılmış sorguya düşüldü:', err);
+    const narrow = await postgres.query(narrowSql, [startDate, endDate]);
+    rows = narrow.rows || [];
+  }
+  const avansByAppointment = new Map<string, number>();
+  try {
+    const avansRes = await postgres.query(
+      `SELECT notes, ABS(amount)::float8 AS amount
+         FROM ${avansTable}
+        WHERE created_at >= $1::date
+          AND created_at < ($2::date + INTERVAL '1 day')`,
+      [startDate, endDate],
+    );
+    for (const row of avansRes.rows || []) {
+      const notes = String((row as { notes?: string }).notes ?? '');
+      const match = notes.match(/rex_appt:([0-9a-f-]{36})/i);
+      const amount = Math.abs(Number((row as { amount?: number }).amount) || 0);
+      if (!match || amount <= 0.004) continue;
+      const id = match[1].toLowerCase();
+      avansByAppointment.set(id, (avansByAppointment.get(id) || 0) + amount);
+    }
+  } catch (err) {
+    console.warn('[getCustomerSalesFromAppointments] cari avans okunamadı:', err);
+  }
   const aggregated = aggregateCustomerAppointmentSales(
-    (rows || []).map((r: any) => ({
-      id: String(r.id ?? ''),
-      customerId: String(r.customer_id ?? ''),
-      customerCode: String(r.customer_code ?? ''),
-      customerName: String(r.customer_name ?? ''),
-      phone: String(r.phone ?? ''),
-      date: String(r.appointment_date ?? ''),
-      createdAt: r.created_at ? String(r.created_at) : null,
-      totalPrice: Number(r.total_price ?? 0),
-      depositAmount: Number(r.deposit_amount ?? 0),
-      remainderPaid: Number(r.remainder_paid ?? 0),
-      linkedAvans: Number(r.linked_avans ?? 0),
-      status: String(r.status_lc ?? ''),
-    })),
+    (rows || []).map((r: any) => {
+      const id = String(r.id ?? '');
+      return {
+        id,
+        customerId: String(r.customer_id ?? ''),
+        customerCode: String(r.customer_code ?? ''),
+        customerName: String(r.customer_name ?? ''),
+        phone: String(r.phone ?? ''),
+        date: String(r.appointment_date ?? '').slice(0, 10),
+        createdAt: r.created_at ? String(r.created_at) : null,
+        totalPrice: Number(r.total_price ?? 0),
+        depositAmount: Number(r.deposit_amount ?? 0),
+        remainderPaid: Number(r.remainder_paid ?? 0),
+        linkedAvans: avansByAppointment.get(id.toLowerCase()) || 0,
+        status: String(r.status_lc ?? ''),
+      };
+    }),
   );
   return aggregated.map((row) => ({
     customerId: row.customerId,

@@ -61,7 +61,7 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
    * burada `beauty_appointments` aggregate'inden doğrudan çekiyoruz.
    */
   const [beautyRows, setBeautyRows] = useState<BeautyCustomerSalesRow[]>([]);
-  const [beautyLoading, setBeautyLoading] = useState(false);
+  const [beautyLoading, setBeautyLoading] = useState(isBeauty);
   // Rapor filtreleri — diğer raporlarla paylaşılan ortak bağlam (Bug rapor bağlantı kopukluğu).
   const {
     dateStart,
@@ -126,7 +126,8 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
     // Bug 32 — Beauty müşterileri için randevu bazlı (appointment) veri
     // kaynağı. Invoice (sales_invoice) zinciri avansı kaçırıyordu; burada
     // `beauty_appointments` aggregate doğrudan kullanılıyor.
-    if (isBeauty) {
+    // Randevu sorgusu boş veya hatalıysa satış fişleri listelenir.
+    if (isBeauty && beautyRows.length > 0) {
       beautyRows.forEach((row) => {
         if (!row.customerId) return;
         const matchedCustomer =
@@ -157,6 +158,7 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
         (a, b) => b.totalRevenue - a.totalRevenue,
       );
     }
+    if (isBeauty && beautyLoading) return [];
 
     sales.forEach((sale) => {
       if (!isSaleInDateRange(sale, dateRange.start, dateRange.end)) return;
@@ -229,15 +231,8 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
           existing.lastSaleDate = saleDate;
         }
       } else {
-        const serviceInit = isReturn ? 0 : absTotal;
-        // 16.10.2026 — Deposit Ciro'ya HER ZAMAN katılır (kullanıcı
-        // talebi: tamamlanmış randevuya bağlı avans da "Toplam Ciro"da
-        // görünmeli). Önceki mantık "tamamlanmış randevuya bağlı deposit'i
-        // depositRevenue'ya yazma" → 10k avans Ciro'dan düşüyordu, kullanıcı
-        // 50k görmek istiyordu. Rezervasyon Tutarı kolonu zaten ayrı
-        // gösterildiği için çift sayım riski yok (depositRevenue Ciro'ya
-        // katılır ama Hizmet+Rezervasyon ayrı kolonlar).
-        const depositInit = isReturn ? 0 : absTotal;
+        const serviceInit = !isReturn && !isDeposit && !isPending && !isLinkedOpen ? absTotal : 0;
+        const depositInit = !isReturn && isDeposit ? absTotal : 0;
         const returnsInit = isReturn ? serviceContribution : 0;
         const serviceCountInit = !isReturn && !isDeposit && !isPending && !isLinkedOpen ? 1 : 0;
         const depositCountInit = !isReturn && isDeposit ? 1 : 0;
@@ -265,8 +260,18 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
       }
     });
 
+    if (isBeauty) {
+      for (const row of customerMap.values()) {
+        if (row.serviceRevenue > 0.004) {
+          row.depositInsideService = true;
+          row.totalRevenue = row.serviceRevenue + row.returnsRevenue;
+          row.collectedAmount = row.totalRevenue;
+          row.avgSale = row.salesCount > 0 ? row.totalRevenue / row.salesCount : 0;
+        }
+      }
+    }
     return Array.from(customerMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
-  }, [sales, customers, unknownCustomerLabel, dateRange.start, dateRange.end]);
+  }, [isBeauty, beautyLoading, beautyRows, sales, customers, unknownCustomerLabel, dateRange.start, dateRange.end]);
 
   const filterTerm = trNorm(customerFilter);
   const filteredCustomerSales = useMemo(() => {
