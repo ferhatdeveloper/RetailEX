@@ -81,6 +81,7 @@ import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections
 import { saleCollected as saleActualCollected } from '../../utils/computeActualCollected';
 import { filterForRevenue, filterForCash, filterForDeposit, isCompletedAppointmentStatus, isDepositSale } from '../../utils/reportDepositFilter';
 import { allocateBeautyVisitDeposits } from '../../utils/beautyDepositAllocation';
+import { offsetSaleRemainingWithReservation } from '../../utils/reservationVeresiyeOffset';
 import { renderCustomerCell, customerNameText } from '../../utils/customerDisplay';
 import {
   buildPaymentTypeDistribution,
@@ -2983,14 +2984,29 @@ export function ReportsModule({
       if (isReturnSale(s)) return sum;
       return sum + (Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).collected) || 0);
     }, 0) + extraCollections + extraReservation;
-  // VERESİYE (dailyRemaining) ciro/borç tarafıdır; peşinat Hariç
-  // (`dailySalesActive` üzerinden). Henüz hizmet verilmemiş rezervasyonun
-  // `remaining_amount`'ı caride yazılmaz, ancak yine de ciro/veresiye
-  // sütununa katılmaması için `dailySalesActive` (peşinat Hariç) kalır.
-  // 16.10.2026: appliedAvans ile DUBLE senaryosu gibi 50k+10k avans+40k
-  // nakit ödemede remaining=0 olur.
+  // Veresiye = belge kalanı − aynı gün rezervasyon avansı.
+  // 50.000 hizmet, 35.000 nakit, 15.000 rezervasyon → veresiye 0.
+  // Avans tahsilata eklenmez; Rezervasyon kartında durur.
+  const reservationRemainingBySale = offsetSaleRemainingWithReservation(
+    dailySalesActive
+      .filter((s) => !isReturnSale(s))
+      .map((s) => ({
+        id: String(s.id),
+        customerId: String(s.customerId || ''),
+        remaining: Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).remaining) || 0,
+      })),
+    dailyAvansList.map((a) => ({
+      customerId: String((a as { customer_id?: string }).customer_id || ''),
+      amount: Number((a as { amount?: number }).amount) || 0,
+      status: (a as { status?: string }).status,
+      appliedSaleId: (a as { applied_sale_id?: string | null }).applied_sale_id,
+    })),
+    dailyAppliedAvans,
+  );
   const dailyRemaining = dailySalesActive.reduce((sum, s) => {
     if (isReturnSale(s)) return sum;
+    const adjusted = reservationRemainingBySale.get(String(s.id));
+    if (adjusted != null) return sum + adjusted;
     return sum + (Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).remaining) || 0);
   }, 0);
 
@@ -3018,7 +3034,7 @@ export function ReportsModule({
         // rezervasyon avansı Ciro'ya yansımış olsa bile kart kullanıcıya
         // bilgi verir (kullanıcı talebi 16.10.2026).
         const { rows } = await postgres.query<any>(
-          `SELECT id, customer_id, amount, payment_method, status, reference_no, created_at, cash_line_id
+          `SELECT id, customer_id, amount, payment_method, status, reference_no, created_at, cash_line_id, applied_sale_id
              FROM ${tbl}
             WHERE created_at >= $1::date
               AND created_at < ($2::date + INTERVAL '1 day')
@@ -3459,6 +3475,14 @@ export function ReportsModule({
         payments: erpForKind?.payments ?? undefined,
         discount: Number(erpForKind?.discount ?? row.discount ?? 0) || 0,
       });
+      const reservationAdjusted = erpForKind?.id
+        ? reservationRemainingBySale.get(String(erpForKind.id))
+        : undefined;
+      if (reservationAdjusted != null && reservationAdjusted + 0.004 < kindInfo.remaining) {
+        kindInfo.remaining = reservationAdjusted;
+        if (reservationAdjusted <= 0.004 && kindInfo.collected > 0) kindInfo.kind = 'cash';
+        else if (reservationAdjusted > 0.004 && kindInfo.collected > 0) kindInfo.kind = 'mixed';
+      }
       let paymentLabelText = tm(paymentMethodBucketTranslationKey(bucket));
       if (kindInfo.total > 0 && kindInfo.kind === 'mixed') {
         // X peşin + Y veresiye — sıra: önce peşin (tahsil edilen), sonra kalan
@@ -3503,7 +3527,7 @@ export function ReportsModule({
               : tm('reportsDetStatusCompleted'),
       };
     });
-  }, [dailyKindVisibleRows, tm]);
+  }, [dailyKindVisibleRows, tm, reservationRemainingBySale]);
 
   /** Param kapalıysa CH_ODEME (tedarikçi/cari ödeme) günlük giderden çıkarılır */
   const showDailySupplierPayments = isReportMenuParamEnabled(
