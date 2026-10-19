@@ -80,6 +80,7 @@ import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMEN
 import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections, saleCollectedSplit, dailyPaymentKind, beautySalePocketCollected } from '../../utils/saleCollectedAmounts';
 import { saleCollected as saleActualCollected } from '../../utils/computeActualCollected';
 import { filterForRevenue, filterForCash, filterForDeposit, isCompletedAppointmentStatus, isDepositSale } from '../../utils/reportDepositFilter';
+import { allocateBeautyVisitDeposits } from '../../utils/beautyDepositAllocation';
 import { renderCustomerCell, customerNameText } from '../../utils/customerDisplay';
 import {
   buildPaymentTypeDistribution,
@@ -2285,6 +2286,12 @@ export function ReportsModule({
 
   const serviceBreakdownGrouped = businessType === 'beauty' ? beautyServiceGrouped : erpServiceBreakdownGrouped;
 
+  const beautyDepositShareById = useMemo(() => {
+    if (businessType !== 'beauty') return new Map<string, number>();
+    const completed = beautyServiceAppointments.filter((a) => isCompletedAppointmentStatus(a.status));
+    return allocateBeautyVisitDeposits(completed);
+  }, [businessType, beautyServiceAppointments]);
+
   const serviceBreakdownFlatRows = useMemo((): ServiceBreakdownFlatRow[] => {
     const rows: ServiceBreakdownFlatRow[] = [];
     for (const g of serviceBreakdownGrouped) {
@@ -2292,6 +2299,9 @@ export function ReportsModule({
         if (businessType === 'beauty') {
           const a = item as BeautyAppointment;
           const cats = resolveBeautyServiceCategoryLabels(a.service_id, beautyServiceById);
+          const rawDeposit = Number((a as BeautyAppointment & { deposit_amount?: number }).deposit_amount ?? 0);
+          const depositAmount = beautyDepositShareById.get(String(a.id ?? '')) ?? rawDeposit;
+          const amount = Number(a.total_price ?? 0);
           rows.push({
             id: String(a.id ?? `${g.serviceName}-${rows.length}`),
             serviceName: g.serviceName,
@@ -2303,12 +2313,9 @@ export function ReportsModule({
             staffName: String(a.specialist_name ?? a.staff_name ?? '').trim() || '—',
             deviceName: String(a.device_name ?? '').trim() || '—',
             receiptNumber: '',
-            amount: Number(a.total_price ?? 0),
-            // 19.10.2026 — Depozito/rezervasyon tutarı
-            depositAmount: Number((a as BeautyAppointment & { deposit_amount?: number }).deposit_amount ?? 0),
-            lineTotal:
-              Number(a.total_price ?? 0) +
-              Number((a as BeautyAppointment & { deposit_amount?: number }).deposit_amount ?? 0),
+            amount,
+            depositAmount,
+            lineTotal: amount + depositAmount,
             appointment: a,
           });
         } else {
@@ -2332,7 +2339,7 @@ export function ReportsModule({
       }
     }
     return rows;
-  }, [serviceBreakdownGrouped, businessType, beautyServiceById]);
+  }, [serviceBreakdownGrouped, businessType, beautyServiceById, beautyDepositShareById]);
 
   /** Randevu iptalleri — flat DevEx satırları (ciro raporundan ayrı; ödeme alınmış olsa bile) */
   const beautyCancelledAppointmentRows = useMemo((): BeautyCancelledAppointmentRow[] => {
