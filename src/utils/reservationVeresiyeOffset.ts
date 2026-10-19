@@ -72,6 +72,30 @@ export function absorbReservationFromRemainings(
  * Ödeme dağılımındaki açık cariden, satış kırılımına girmemiş rezervasyonu çıkarır.
  * Dağılım toplamı aynı tutarda azalır; nakit / kart değişmez.
  */
+/**
+ * Kasaya giren rezervasyon, nakit / kasa girişine eklenir.
+ * Satış kırılımına işlenmiş avans tekrar eklenmez.
+ * 35.000 hizmet tahsilatı + 15.000 rezervasyon → kasa 50.000.
+ * Kasa satırı ile avans kartı aynı tutarsa bir kez yazılır.
+ */
+export function reservationRegisterTopUp(args: {
+  avansCashShown: number;
+  avansCardShown: number;
+  appliedCashIncrease: number;
+  cashLineReservation: number;
+}): { cash: number; card: number } {
+  const avansCash = Math.max(0, Number(args.avansCashShown) || 0);
+  const avansCard = Math.max(0, Number(args.avansCardShown) || 0);
+  const applied = Math.max(0, Number(args.appliedCashIncrease) || 0);
+  const lines = Math.max(0, Number(args.cashLineReservation) || 0);
+  const cashFromAvans = Math.max(0, round2(avansCash - applied));
+  const orphanLines = Math.max(0, round2(lines - avansCash - avansCard));
+  return {
+    cash: round2(cashFromAvans + orphanLines),
+    card: round2(avansCard),
+  };
+}
+
 export function detachReservationFromOpenAccount(args: {
   openAccount: number;
   distributionTotal: number;

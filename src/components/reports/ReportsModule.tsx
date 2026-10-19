@@ -85,6 +85,7 @@ import {
   absorbReservationFromRemainings,
   detachReservationFromOpenAccount,
   reservationOutsideSaleSplit,
+  reservationRegisterTopUp,
 } from '../../utils/reservationVeresiyeOffset';
 import { renderCustomerCell, customerNameText } from '../../utils/customerDisplay';
 import {
@@ -2829,7 +2830,7 @@ export function ReportsModule({
   // 16.10.2026 — Bu aralıkta `cari_avans.status='open'` avanslara bağlı
   // `cash_line_id` Set'i. extraReservationCustomerCollections'a geçilir;
   // uygulanmış avanslar (DUBLE senaryosu 10k) Nakit'te mükerrer sayılmasın.
-  const [openAvansCashLineIds, setOpenAvansCashLineIds] = useState<Set<string>>(
+  const [, setOpenAvansCashLineIds] = useState<Set<string>>(
     new Set(),
   );
   // 16.10.2026 — Bu aralıkta `cari_avans.status='applied'` avanslara bağlı
@@ -2966,14 +2967,57 @@ export function ReportsModule({
   // status='applied' → cash_lines'taki 10k zaten fatura tahsilatına
   // dahil (saleCollectedSplit(appliedAvans=10k)); Nakit'te 130k yerine
   // 100k görünür.
+  // Satış nakitine işlenmiş avansın kasa satırı ikinci kez eklenmez.
+  // İşlenmemiş rezervasyon (kasa satırı filtrelense bile) kasaya yazılır:
+  // 35.000 hizmet + 15.000 rezervasyon = 50.000.
+  const appliedCashBySaleId = new Map<string, number>();
+  for (const s of dailySalesForCash) {
+    if (isReturnSale(s)) continue;
+    const id = String(s.id);
+    const applied = dailyAppliedAvans.get(id) || 0;
+    if (applied <= 0.004) continue;
+    const withCash = Number(saleCollectedSplit(s, applied).cash) || 0;
+    const withoutCash = Number(saleCollectedSplit(s, 0).cash) || 0;
+    const increase = Math.max(0, withCash - withoutCash);
+    if (increase > 0.004) appliedCashBySaleId.set(id, increase);
+  }
+  const creditedAppliedCashLineIds = new Set<string>();
+  let appliedCashIncrease = 0;
+  for (const increase of appliedCashBySaleId.values()) appliedCashIncrease += increase;
+  let avansCashShown = 0;
+  let avansCardShown = 0;
+  let avansCashCount = 0;
+  for (const row of dailyAvansList) {
+    const amount = Math.abs(Number((row as { amount?: number }).amount) || 0);
+    if (amount <= 0.004) continue;
+    const bucket = normalizePaymentMethodBucket((row as { payment_method?: string }).payment_method);
+    if (bucket === 'card') {
+      avansCardShown += amount;
+      continue;
+    }
+    avansCashShown += amount;
+    avansCashCount += 1;
+    const status = String((row as { status?: string }).status || '').trim().toLowerCase();
+    const saleId = String((row as { applied_sale_id?: string }).applied_sale_id || '').trim();
+    const cashLineId = String((row as { cash_line_id?: string }).cash_line_id || '').trim();
+    if (status === 'applied' && saleId && cashLineId && (appliedCashBySaleId.get(saleId) || 0) > 0.004) {
+      creditedAppliedCashLineIds.add(cashLineId);
+    }
+  }
   const extraReservation = extraReservationCustomerCollections(
     kasaLinesForSelectedDate,
-    openAvansCashLineIds,
-    appliedAvansCashLineIds,
+    null,
+    creditedAppliedCashLineIds,
   );
-  // Rezervasyon avansı Ciro'ya değil alınan avans (passif) bucket'ına yazılır;
-  // ancak Kasa Para Girişi / Tahsil Edilen / Cebe Giren Nakit'e eklenir.
-  dailyCash += extraReservation;
+  const reservationTopUp = reservationRegisterTopUp({
+    avansCashShown,
+    avansCardShown,
+    appliedCashIncrease,
+    cashLineReservation: extraReservation,
+  });
+  // Rezervasyon avansı ciroya eklenmez. Kasaya giren tutar nakit, tahsil ve kasa girişine yazılır.
+  dailyCash += reservationTopUp.cash;
+  dailyCard += reservationTopUp.card;
 
   // Bug 24: TAHSİL EDİLEN, peşinat dahil. dailyCollected kasa bazlıdır;
   // peşinat tahsilatı zaten kasaya yansımıştır (cash_lines / split.paid).
@@ -2987,7 +3031,7 @@ export function ReportsModule({
     dailySalesForCash.reduce((sum, s) => {
       if (isReturnSale(s)) return sum;
       return sum + (Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).collected) || 0);
-    }, 0) + extraCollections + extraReservation;
+    }, 0) + extraCollections + reservationTopUp.cash + reservationTopUp.card;
   // Veresiye = satış kalanı − rezervasyon kartı.
   // Rezervasyon tutarı (avans veya peşinat) asla kalan cariye yazılmaz.
   // Satış kırılımına zaten işlenmiş avans ikinci kez düşülmez.
@@ -3609,9 +3653,10 @@ export function ReportsModule({
    * (pasif) olarak ayrı izlenir. */
   const totalDailyCashIn = useMemo(
     () =>
-      dailyCashInRows.reduce((s, cl) => s + (Math.abs(Number(cl.tutar) || 0)), 0) + extraReservation,
-    [dailyCashInRows, extraReservation],
+      dailyCashInRows.reduce((s, cl) => s + (Math.abs(Number(cl.tutar) || 0)), 0) + reservationTopUp.cash,
+    [dailyCashInRows, reservationTopUp.cash],
   );
+  const dailyCashInCount = dailyCashInRows.length + (reservationTopUp.cash > 0.004 ? avansCashCount : 0);
   /**
    * Gider kartı kapalıysa net'ten gider düşülmez.
    * Muhasebe çift yönü: veresiye satış → cari alacak (+) / gelir (+); tahsil edilene kadar
@@ -3975,8 +4020,8 @@ export function ReportsModule({
         reservationPending: resvForZReport.pending,
         reservationCount: resvForZReport.count,
         reservationDeposit: resvForZReport.deposit,
-        cashAmount: base.cashAmount,
-        cardAmount: base.cardAmount,
+        cashAmount: base.cashAmount + reservationTopUp.cash,
+        cardAmount: base.cardAmount + reservationTopUp.card,
         creditAmount: dailyRemaining,
         otherAmount: base.otherAmount,
         totalDiscount: base.totalDiscount,
@@ -4009,7 +4054,8 @@ export function ReportsModule({
         creditAmount += Number(split.credit) || 0;
       });
       const extraCash = extraCustomerCollectionsNotOnSales(kasaLinesForSelectedDate, reportRangeSales);
-      cashAmount += extraCash;
+      cashAmount += extraCash + reservationTopUp.cash;
+      cardAmount += reservationTopUp.card;
       creditAmount = Math.max(0, creditAmount - extraCash - reservationOutsideSplit);
       const totalDiscount = restOrdersClosedOnSelectedDate.reduce(
         (sum, o) => sum + Number((o as any).discount_amount || 0),
@@ -6834,7 +6880,7 @@ export function ReportsModule({
                       <div>
                         <p className="text-sm text-gray-600">{tm('dailyCashIn')}</p>
                         <p className="text-2xl font-bold mt-1 text-emerald-700">{formatNumber(totalDailyCashIn, 2, false)}</p>
-                        <p className="text-xs text-slate-500 mt-1">{tm('dailyCount')}: {dailyCashInRows.length}</p>
+                        <p className="text-xs text-slate-500 mt-1">{tm('dailyCount')}: {dailyCashInCount}</p>
                       </div>
                       <Banknote className="w-12 h-12 text-emerald-400 opacity-40" />
                     </div>

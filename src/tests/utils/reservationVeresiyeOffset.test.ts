@@ -5,6 +5,7 @@ import {
   detachReservationFromOpenAccount,
   offsetSaleRemainingWithReservation,
   reservationOutsideSaleSplit,
+  reservationRegisterTopUp,
 } from '../../utils/reservationVeresiyeOffset';
 
 describe('dailyVeresiyeAfterReservation', () => {
@@ -34,6 +35,35 @@ describe('absorbReservationFromRemainings', () => {
     );
     expect(map.get('s1')).toBe(20000);
     expect(reservationOutsideSaleSplit(15000, 15000)).toBe(0);
+  });
+});
+
+describe('reservationRegisterTopUp', () => {
+  it('35.000 hizmet tahsilatı + 15.000 rezervasyon → kasaya 15.000 eklenir', () => {
+    expect(reservationRegisterTopUp({
+      avansCashShown: 15000,
+      avansCardShown: 0,
+      appliedCashIncrease: 0,
+      cashLineReservation: 0,
+    })).toEqual({ cash: 15000, card: 0 });
+  });
+
+  it('kasa satırı ile avans kartı aynı tutarı iki kez yazmaz', () => {
+    expect(reservationRegisterTopUp({
+      avansCashShown: 15000,
+      avansCardShown: 0,
+      appliedCashIncrease: 0,
+      cashLineReservation: 15000,
+    })).toEqual({ cash: 15000, card: 0 });
+  });
+
+  it('satış nakitine işlenmiş avansı tekrar eklemez', () => {
+    expect(reservationRegisterTopUp({
+      avansCashShown: 15000,
+      avansCardShown: 0,
+      appliedCashIncrease: 15000,
+      cashLineReservation: 15000,
+    })).toEqual({ cash: 0, card: 0 });
   });
 });
 
