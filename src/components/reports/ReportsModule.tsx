@@ -3382,6 +3382,10 @@ export function ReportsModule({
   const dailyKindVisibleRows = useMemo(() => {
     const out: DailyUnifiedRow[] = [];
     for (const row of dailyVisibleRows) {
+      // 19.10.2026 — Avans satırları Satış Detayları listesinden gizlendi.
+      // Avanslar REZERVASYON KPI kartında ayrı gösterilir; listede tekrar
+      // gösterilmesi mükerrer algısı yaratıyor.
+      if ((row as { isAvans?: boolean }).isAvans === true) continue;
       const next = applyDailyKindFilter(row, dailyKindFilter);
       if (next) out.push(next);
     }
@@ -3396,6 +3400,8 @@ export function ReportsModule({
   const dailyKindActiveRows = useMemo(() => {
     const out: DailyUnifiedRow[] = [];
     for (const row of dailyActiveRows) {
+      // 19.10.2026 — Avans satırları Satış Detayları listesinden gizlendi
+      if ((row as { isAvans?: boolean }).isAvans === true) continue;
       const next = applyDailyKindFilter(row, dailyKindFilter);
       if (next) out.push(next);
     }
