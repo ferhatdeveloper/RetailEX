@@ -12076,6 +12076,47 @@ export const excelModuleTranslations = {
   transferLabel: { tr: 'Transfer', en: 'Transfer', ar: 'تحويل', ku: 'گواستنەوە' },
   transactionLabel_rep: { tr: 'işlem', en: 'transaction', ar: 'عملية', ku: 'کار' },
   totalLabel_rep: { tr: 'Toplam', en: 'Total', ar: 'الإجمالي', ku: 'کۆ' },
+  rptGrandTotal: { tr: 'Genel Toplam', en: 'Grand Total', ar: 'المجموع الكلي', ku: 'کۆی گشتی' },
+  cashStatusIncludesReservation: {
+    tr: 'rezervasyon nakdi dahil',
+    en: 'includes reservation cash',
+    ar: 'يشمل نقد الحجز',
+    ku: 'نەقدی نۆرە لەخۆدەگرێت',
+  },
+  cashStatusReservationInfo: {
+    tr: 'bilgi — günlük nakde dahildir',
+    en: 'info — included in daily cash',
+    ar: 'معلومة — ضمن النقد اليومي',
+    ku: 'زانیاری — لە کاشی ڕۆژانەدا',
+  },
+  cashStatusGrandTotalHint: {
+    tr: 'Genel toplam nakit (rezervasyon dahil), kart, açık cari ve havaleyi bir kez sayar. Rezervasyon satırı toplama eklenmez.',
+    en: 'Grand total counts cash (including reservation), card, open account and transfer once. The reservation row is not added again.',
+    ar: 'المجموع يحسب النقد (شامل الحجز) والبطاقة والحساب المفتوح والحوالة مرة واحدة. سطر الحجز لا يُضاف مرة أخرى.',
+    ku: 'کۆی گشتی نەقد (نۆرە لەخۆدەگرێت)، کارت، هەژماری کراوە و حەواڵە یەک جار دەژمێرێت. ڕیزی نۆرە دووبارە زیاد ناکرێت.',
+  },
+  cashStatusInfoBadge: { tr: 'bilgi', en: 'info', ar: 'معلومة', ku: 'زانیاری' },
+  cashStatusTabRegisters: { tr: 'Kasalar', en: 'Cash Registers', ar: 'الصناديق', ku: 'سندوقەکان' },
+  cashStatusRegistersEmpty: {
+    tr: 'Seçili dönemde kasa kaydı yok.',
+    en: 'No cash register in the selected period.',
+    ar: 'لا يوجد صندوق في الفترة المحددة.',
+    ku: 'لە ماوەی هەڵبژێردراو سندوق نییە.',
+  },
+  cashStatusUnassignedRegister: {
+    tr: 'Kasaya bağlanmayan',
+    en: 'Not linked to a register',
+    ar: 'غير مرتبط بصندوق',
+    ku: 'بە سندوقەوە نەبەستراوە',
+  },
+  cashStatusOpeningPastHint: {
+    tr: 'Geçmiş gün seçili: açılış tutarı yalnızca bugün ve bu cihazdaki kasa açılışından okunur.',
+    en: 'A past day is selected: opening cash is read only for today on this device.',
+    ar: 'تم اختيار يوم سابق: يُقرأ النقد الافتتاحي لليوم فقط وعلى هذا الجهاز.',
+    ku: 'ڕۆژێکی ڕابردوو هەڵبژێردراوە: سندوقی کردنەوە تەنها بۆ ئەمڕۆ لەم ئامێرە دەخوێندرێتەوە.',
+  },
+  rptCashRegisters: { tr: 'Kasalar', en: 'Cash Registers', ar: 'الصناديق', ku: 'سندوقەکان' },
+  rptCashRegisterName: { tr: 'Kasa', en: 'Cash Register', ar: 'الصندوق', ku: 'سندوق' },
 
   // Beauty module shell (sidebar / header) + POS strings
   bShellBrandTitle: { tr: 'ClinicERP', en: 'ClinicERP', ar: 'ClinicERP', ku: 'ClinicERP' },

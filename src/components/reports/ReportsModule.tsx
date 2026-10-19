@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed, Wallet, X, Trash2, HandCoins } from 'lucide-react';
+import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed, Wallet, X, Trash2 } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
@@ -38,6 +38,7 @@ import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import { DailyCashFlowModal } from './DailyCashFlowModal';
+import { CashStatusFigures, type CashStatusFigureLabels } from './CashStatusFigures';
 import {
   displayUserCashierName,
   isPlaceholderCashierName,
@@ -99,6 +100,15 @@ import {
   buildPaymentTypeMovements,
   type PaymentTypeMovement,
 } from '../../utils/paymentTypeDistribution';
+import {
+  listCashRegisterStatus,
+  mergeRegisterSeeds,
+  seedsFromCashStatusSales,
+  seedsFromRegisterCashLines,
+  foldReservationIntoCashStatus,
+  type CashRegisterStatusRow,
+  type CashStatusPaymentLine,
+} from '../../utils/cashStatusTotals';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
 import {
   CariAgingReport,
@@ -1119,6 +1129,7 @@ export function ReportsModule({
   const [selectedTab, setSelectedTab] = useState<ReportTab>(() =>
     resolveInitialReportTab(initialBusinessType, initialReportTab),
   );
+  const [cashStatusPane, setCashStatusPane] = useState<'summary' | 'registers'>('summary');
   const [reportMenuParams, setReportMenuParams] = useState<ReportMenuParams>(() =>
     getRuntimeReportMenuParams(),
   );
@@ -4311,30 +4322,49 @@ export function ReportsModule({
     const card = dist.byCode.KREDIKARTI;
     const transfer = dist.byCode.HAVAL;
     const hidden = new Set(['CEK', 'SENET']);
-    const types = dist.types
+    const visible = dist.types
       .filter((t) => !hidden.has(t.code))
       .map((t) => ({ ...t, label: tm(t.nameKey) }));
-    const listedTotal = types.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-    for (const row of types) {
-      row.percentage = listedTotal !== 0 ? (row.amount / listedTotal) * 100 : 0;
-    }
-    const chartData = dist.chartData
-      .filter((d) => !hidden.has(d.code))
-      .map((d) => ({
-        name: tm(d.nameKey),
-        value: d.value,
-        count: d.count,
-        code: d.code,
-        color: d.color,
+    const serviceCash = dist.byCode.NAKIT?.amount ?? 0;
+    const reservationDeposit = dist.byCode.REZERVASYON_AVANS?.amount ?? 0;
+    // Rezervasyon nakdi çekmecedeki nakittir. Nakit satırına bir kez eklenir.
+    // Ayrı satır bilgi olarak kalır; listedTotal ikinci kez saymaz.
+    const folded = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash,
+      cardAmount: dist.byCode.KREDIKARTI?.amount ?? 0,
+      transferAmount: dist.byCode.HAVAL?.amount ?? 0,
+      reservationCash: reservationDeposit,
+      cashOut: 0,
+      paymentTypes: visible,
+    });
+    const types = folded.paymentTypes.map((row) => {
+      const source = visible.find((item) => item.code === row.code);
+      return {
+        ...(source || {}),
+        ...row,
+        label: source?.label || row.label || row.code,
+      };
+    });
+    const chartData = types
+      .filter((row) => !row.informational && Math.abs(Number(row.amount) || 0) > 1e-9)
+      .map((row) => ({
+        name: row.label,
+        value: row.amount,
+        count: row.count || 0,
+        code: row.code,
+        color: row.color,
       }));
     return {
       ...dist,
       chartData,
-      cash,
+      cash: cash ? { ...cash, amount: folded.todayCash } : cash,
       card,
       transfer,
       types,
-      listedTotal,
+      listedTotal: folded.grandTotal,
+      serviceCash,
+      reservationDeposit,
     };
   };
 
@@ -4360,12 +4390,23 @@ export function ReportsModule({
       isDeposit: false,
       notes: row.erpSale?.notes,
     }));
-    return buildPaymentTypeMovements(saleInputs, code, {
+    const rows = buildPaymentTypeMovements(saleInputs, code, {
       extraCash: extraCollections,
       extraCashLabel: tm('reportsExtraCashCollections') || 'Ek tahsilat (CH)',
       extraReservation,
       extraReservationLabel: tm('reportsExtraReservationCollections') || 'Rezervasyon avansı tahsilatı',
     });
+    // Nakit satırı rezervasyonu içerir; hareket dökümü de aynı tutarı göstermeli.
+    if (code === 'NAKIT' && Math.abs(extraReservation) > 0.004) {
+      const reservationRows = buildPaymentTypeMovements(saleInputs, 'REZERVASYON_AVANS', {
+        extraReservation,
+        extraReservationLabel: tm('reportsExtraReservationCollections') || 'Rezervasyon avansı tahsilatı',
+      });
+      for (const row of reservationRows) {
+        rows.push({ ...row, id: `${row.id}-in-cash`, methodCode: 'NAKIT' });
+      }
+    }
+    return rows;
   };
 
   const getCashierPerformance = () => {
@@ -4728,35 +4769,22 @@ export function ReportsModule({
   // Cash Status Report — seçili dönem + getPaymentDistribution ile aynı ödeme tipi listesi
   const getCashStatus = () => {
     const dist = getPaymentDistribution();
-    const cashTotal = dist.cash.amount;
     const cardTotal = dist.card.amount;
     const transferTotal = dist.transfer.amount;
     /**
-     * Rezervasyon avansı (henüz hizmet verilmemiş peşinat). Ciro'ya değil,
-     * ayrı "Alınan Avans" kalemidir. Kasa bakiyesi fiziksel olarak bu tutarı
-     * içerir ama Kapanış Kasası'ndan ayrı tutulur — kullanıcı şikâyeti:
-     * 25.000 nakit + 25.000 avans = 50.000 yanlış toplam.
+     * Rezervasyon peşinatı kasadaki gerçek nakittir. Günlük nakit ve kapanış
+     * bu tutarı bir kez içerir. Ayrı kart bilgi olarak kalır; ciroya eklenmez.
+     * 35.000 hizmet + 15.000 rezervasyon → günlük nakit 50.000, genel toplam 50.000.
      */
-    const reservationDeposit = dist.byCode.REZERVASYON_AVANS?.amount ?? 0;
+    const serviceCash = Number(dist.serviceCash) || 0;
+    const reservationDeposit = Number(dist.reservationDeposit) || 0;
+    const todayCash = serviceCash + reservationDeposit;
     /**
-     * Bugün toplam tahsilat — Rezervasyon avansı **ve Açık Cari** hariç.
-     *
-     *   - REZERVASYON_AVANS → ayrı pasif KPI kartında gösterilir; TOPLAM
-     *     satırına dahil edilirse çift sayım izlenimi alınır (100k nakit +
-     *     15k avans → 115k yerine 100k olmalı).
-     *   - ACIK_CARI (veresiye) → müşteriden henüz tahsil edilmemiş alacak;
-     *     kasa fiilen tahsil edilen tutarı yansıtmaz. Ciro brüt belge
-     *     tutarıdır (veresiye dahil); kullanıcı beklentisi "kasa nakit
-     *     parayı" görmek (150k nakit + 35k açık cari → toplam 150k, 185k
-     *     değil). 2026-10-12 Kasa Durumu düzeltmesi.
-     *
-     * `dist.totalAmount` altta yatan API'de tüm form kodlarını toplar
-     * (REZERVASYON_AVANS + ACIK_CARI dahil); KPI semantiği burada ikisini
-     * de ayıkırır — Senaryo A (rezervasyon) + Senaryo B (açık cari).
+     * Açık cari henüz tahsil edilmemiş alacaktır; kasa toplamına girmez.
+     * Rezervasyon nakdi ise tahsil edilmiştir ve todayCash içindedir.
      */
     const acikCariAmount = dist.byCode.ACIK_CARI?.amount ?? 0;
-    const todayTotal =
-      dist.totalAmount - reservationDeposit - acikCariAmount;
+    const todayTotal = (Number(dist.listedTotal) || 0) - acikCariAmount;
 
     const todayKey = localTodayDateKey();
     const openingCash =
@@ -4765,11 +4793,9 @@ export function ReportsModule({
         : 0;
     const expenses = cashExpensesForReport;
 
-    // E1: Kapanış bakiyesi — avans Hariç. Yalnızca gerçek nakit tahsilat
-    // (Ciro + sonradan ek nakit tahsilat). Rezervasyon avansı Ciro değil.
-    const closingCash = openingCash + cashTotal - expenses;
-    const netCashMovement = cashTotal - expenses;
-    const totalCollection = cashTotal + cardTotal + transferTotal + reservationDeposit;
+    const closingCash = openingCash + todayCash - expenses;
+    const netCashMovement = todayCash - expenses;
+    const totalCollection = todayCash + cardTotal + transferTotal;
 
     const map = new Map<string, number>();
     for (const row of dailyUnifiedRows) {
@@ -4788,19 +4814,133 @@ export function ReportsModule({
 
     return {
       openingCash,
-      todayCash: cashTotal,
+      todayCash,
       todayCard: cardTotal,
       todayTransfer: transferTotal,
       todayTotal,
       reservationDeposit,
+      serviceCash,
       totalCollection,
       netCashMovement,
       expenses,
       closingCash,
       cashDifference: 0,
       cards,
-      paymentTypes: dist.types,
+      paymentTypes: dist.types as CashStatusPaymentLine[],
+      distributionTotal: Number(dist.listedTotal) || 0,
     };
+  };
+
+  const cashStatusFigureLabels = (openingHint?: string): CashStatusFigureLabels => ({
+    opening: tm('openingCash'),
+    openingHint,
+    todayCash: tm('todayCash'),
+    todayCashHint: tm('cashStatusIncludesReservation'),
+    reservation: tm('cashStatusReservationDeposit') || 'Alınan Avans (Rezervasyon)',
+    reservationHint: tm('cashStatusReservationInfo'),
+    todayCard: tm('todayCard'),
+    closing: tm('closingCash'),
+    closingHint: tm('cashStatusIncludesReservation'),
+    distribution: tm('paymentDistribution'),
+    grandTotal: tm('rptGrandTotal'),
+    grandHint: tm('cashStatusGrandTotalHint'),
+    infoBadge: tm('cashStatusInfoBadge'),
+  });
+
+  const buildRegisterPaymentRows = (row: CashRegisterStatusRow): CashStatusPaymentLine[] => {
+    const line = (code: PaymentFormCode, amount: number, informational = false): CashStatusPaymentLine => {
+      const meta = PAYMENT_FORM_CODE_META[code];
+      return {
+        code,
+        amount,
+        label: tm(meta.nameKey),
+        color: meta.color,
+        informational,
+      };
+    };
+    return [
+      line('NAKIT', row.payCash),
+      line('KREDIKARTI', row.payCard),
+      line('ACIK_CARI', row.payOpen),
+      line('HAVAL', row.payTransfer),
+      line('REZERVASYON_AVANS', row.reservationDeposit, true),
+    ];
+  };
+
+  const getCashRegisterStatusRows = (): CashRegisterStatusRow[] => {
+    const status = getCashStatus();
+    const nonDepositRows = dailyActiveRows.filter(
+      (row) => !isDepositSale(row.erpSale as Partial<Sale> | undefined) && row.isDeposit !== true,
+    );
+    const saleSeeds = seedsFromCashStatusSales(
+      nonDepositRows.map((row) => {
+        const sale = row.erpSale as (Partial<Sale> & {
+          cash_register_id?: string | null;
+          cashRegisterId?: string | null;
+        }) | undefined;
+        return {
+          total: Number(row.total) || 0,
+          paymentMethod: sale?.paymentMethod ?? row.paymentMethod,
+          payments: sale?.payments ?? null,
+          cashRegisterId: sale?.cash_register_id || sale?.cashRegisterId || null,
+          isDeposit: false,
+          notes: sale?.notes,
+        };
+      }),
+    );
+    const lineSeeds = seedsFromRegisterCashLines(kasaLinesForSelectedDate, creditedAppliedCashLineIds);
+    const openRow = status.paymentTypes.find((row) => row.code === 'ACIK_CARI' && !row.informational);
+    return listCashRegisterStatus({
+      registers: cashRegisterCards.map((kasa) => ({
+        id: kasa.id,
+        code: kasa.kasa_kodu,
+        name: kasa.kasa_adi || kasa.kasa_kodu || kasa.id,
+      })),
+      seeds: mergeRegisterSeeds([saleSeeds, lineSeeds]),
+      company: {
+        openingCash: status.openingCash,
+        serviceCash: status.serviceCash,
+        card: status.todayCard,
+        transfer: status.todayTransfer,
+        openAccount: Number(openRow?.amount) || 0,
+        reservationCash: status.reservationDeposit,
+        cashOut: status.expenses,
+      },
+      unassignedLabel: tm('cashStatusUnassignedRegister'),
+    });
+  };
+
+  const renderCashRegisterPanels = () => {
+    const rows = getCashRegisterStatusRows();
+    if (rows.length === 0) {
+      return (
+        <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
+          {tm('cashStatusRegistersEmpty')}
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-6">
+        {rows.map((row) => (
+          <section key={row.id} className="space-y-3">
+            <h3 className="text-lg font-semibold text-slate-800">
+              {row.code ? `${row.code} — ${row.name}` : row.name}
+            </h3>
+            <CashStatusFigures
+              openingCash={row.openingCash}
+              todayCash={row.todayCash}
+              reservationDeposit={row.reservationDeposit}
+              todayCard={row.todayCard}
+              closingCash={row.closingCash}
+              currency={reportCurrency}
+              paymentRows={buildRegisterPaymentRows(row)}
+              grandTotal={row.grandTotal}
+              labels={cashStatusFigureLabels()}
+            />
+          </section>
+        ))}
+      </div>
+    );
   };
 
   // Discount Report
@@ -8221,113 +8361,63 @@ export function ReportsModule({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                    <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-gray-600">{tm('openingCash')}</p>
-                          <p className="text-2xl text-blue-600 mt-1 font-bold">{formatNumber(cashStatus.openingCash, 2, false)} {reportCurrency}</p>
-                          {(selectedDateFrom !== localTodayDateKey() || selectedDateTo !== localTodayDateKey()) && (
-                            <p className="text-xs text-amber-700 mt-1 max-w-[14rem] leading-snug">
-                              Geçmiş gün seçili: açılış tutarı yalnızca bugün ve bu cihazdaki kasa açılışından okunur.
-                            </p>
-                          )}
-                        </div>
-                        <Banknote className="w-12 h-12 text-blue-600 opacity-20" />
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg border-2 border-green-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-gray-600">{tm('todayCash')}</p>
-                          <p className="text-2xl text-green-600 mt-1 font-bold">{formatNumber(cashStatus.todayCash, 2, false)} {reportCurrency}</p>
-                          <p className="text-xs text-slate-500 mt-1">avans hariç gerçek tahsilat</p>
-                        </div>
-                        <Banknote className="w-12 h-12 text-green-600 opacity-20" />
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg border-2 border-cyan-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-gray-600">{tm('cashStatusReservationDeposit') || 'Alınan Avans (Rezervasyon)'}</p>
-                          <p className="text-2xl text-cyan-600 mt-1 font-bold">{formatNumber(cashStatus.reservationDeposit, 2, false)} {reportCurrency}</p>
-                          <p className="text-xs text-slate-500 mt-1">henüz hizmet verilmemiş peşinat — pasif</p>
-                        </div>
-                        <HandCoins className="w-12 h-12 text-cyan-600 opacity-20" />
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg border-2 border-purple-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-gray-600">{tm('todayCard')}</p>
-                          <p className="text-2xl text-purple-600 mt-1 font-bold">{formatNumber(cashStatus.todayCard, 2, false)} {reportCurrency}</p>
-                        </div>
-                        <CreditCard className="w-12 h-12 text-purple-600 opacity-20" />
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-gray-600">{tm('closingCash')}</p>
-                          <p className="text-2xl text-orange-600 mt-1 font-bold">{formatNumber(cashStatus.closingCash, 2, false)} {reportCurrency}</p>
-                          <p className="text-xs text-slate-500 mt-1">avans Hariç Kapanış</p>
-                        </div>
-                        <Banknote className="w-12 h-12 text-orange-600 opacity-20" />
-                      </div>
-                    </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCashStatusPane('summary')}
+                      className={`px-4 py-2 rounded-lg text-sm font-semibold border ${cashStatusPane === 'summary' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'}`}
+                    >
+                      {tm('kasaDurumu')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCashStatusPane('registers')}
+                      className={`px-4 py-2 rounded-lg text-sm font-semibold border ${cashStatusPane === 'registers' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'}`}
+                    >
+                      {tm('cashStatusTabRegisters')}
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white rounded-lg border p-4">
-                      <h3 className="text-lg mb-4">{tm('paymentDistribution')}</h3>
-                      <div className="space-y-3">
-                        {cashStatus.paymentTypes.map((pt) => (
-                          <button
-                            key={pt.code}
-                            type="button"
-                            onClick={() => setPaymentTypeDetailCode(pt.code)}
-                            className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-slate-100 hover:border-slate-200 border border-transparent transition-colors text-left cursor-pointer"
-                          >
-                            <span className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded" style={{ backgroundColor: pt.color }} />
-                              {pt.label}
-                            </span>
-                            <span className="font-semibold tabular-nums" style={{ color: pt.color }}>
-                              {formatNumber(pt.amount, 2, false)} {reportCurrency}
-                            </span>
-                          </button>
-                        ))}
-                        <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
-                          <span className="font-semibold">{tm('rptGrandTotal') || 'Genel Toplam'}</span>
-                          <span className="font-bold text-green-700 text-lg">{formatNumber(cashStatus.paymentTypes.reduce((sum, pt) => sum + (Number(pt.amount) || 0), 0), 2, false)} {reportCurrency}</span>
-                        </div>
-                        <p className="text-xs text-slate-500 px-1">
-                          Genel toplam, listedeki ödeme tiplerinin toplamıdır.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-lg border p-4">
-                      <h3 className="text-lg mb-4">{tm('cardTypes')}</h3>
-                      <p className="text-xs text-gray-500 mb-3">
-                        Fişlerde kart markası yok; ödeme tipine göre (kredi kartı / sanal POS) gruplanır.
-                      </p>
-                      <div className="space-y-3">
-                        {cashStatus.cards.length === 0 ? (
-                          <div className="p-4 text-center text-sm text-gray-500 bg-gray-50 rounded-lg">
-                            Seçili günde kartlı ödeme yok veya tutar sıfır.
+                  {cashStatusPane === 'registers' ? renderCashRegisterPanels() : (
+                    <CashStatusFigures
+                      openingCash={cashStatus.openingCash}
+                      todayCash={cashStatus.todayCash}
+                      reservationDeposit={cashStatus.reservationDeposit}
+                      todayCard={cashStatus.todayCard}
+                      closingCash={cashStatus.closingCash}
+                      currency={reportCurrency}
+                      paymentRows={cashStatus.paymentTypes}
+                      grandTotal={cashStatus.distributionTotal}
+                      labels={cashStatusFigureLabels(
+                        selectedDateFrom !== localTodayDateKey() || selectedDateTo !== localTodayDateKey()
+                          ? tm('cashStatusOpeningPastHint')
+                          : undefined,
+                      )}
+                      onPaymentClick={(code) => setPaymentTypeDetailCode(code as PaymentFormCode)}
+                      aside={(
+                        <div className="bg-white rounded-lg border p-4">
+                          <h3 className="text-lg mb-4">{tm('cardTypes')}</h3>
+                          <p className="text-xs text-gray-500 mb-3">
+                            Fişlerde kart markası yok; ödeme tipine göre (kredi kartı / sanal POS) gruplanır.
+                          </p>
+                          <div className="space-y-3">
+                            {cashStatus.cards.length === 0 ? (
+                              <div className="p-4 text-center text-sm text-gray-500 bg-gray-50 rounded-lg">
+                                Seçili günde kartlı ödeme yok veya tutar sıfır.
+                              </div>
+                            ) : (
+                              cashStatus.cards.map((card) => (
+                                <div key={card.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                  <span>{card.name}</span>
+                                  <span className="font-semibold text-blue-600">{formatNumber(card.amount, 2, false)} {reportCurrency}</span>
+                                </div>
+                              ))
+                            )}
                           </div>
-                        ) : (
-                          cashStatus.cards.map((card) => (
-                            <div key={card.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                              <span>{card.name}</span>
-                              <span className="font-semibold text-blue-600">{formatNumber(card.amount, 2, false)} {reportCurrency}</span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                        </div>
+                      )}
+                    />
+                  )}
                 </div>
               );
             })()}
@@ -8355,9 +8445,9 @@ export function ReportsModule({
                       <button
                         key={pt.code}
                         type="button"
-                        onClick={() => setPaymentTypeDetailCode(pt.code)}
-                        className="bg-white rounded-lg border-2 p-4 text-left hover:shadow-md transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                        style={{ borderColor: `${pt.color}55` }}
+                        onClick={() => setPaymentTypeDetailCode(pt.code as PaymentFormCode)}
+                        className={`rounded-lg border-2 p-4 text-left hover:shadow-md transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${pt.informational ? 'bg-slate-50 border-dashed' : 'bg-white'}`}
+                        style={{ borderColor: pt.informational ? '#a5f3fc' : `${pt.color}55` }}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
@@ -8366,9 +8456,11 @@ export function ReportsModule({
                               {formatNumber(pt.amount, 2, false)} {reportCurrency}
                             </p>
                             <p className="text-xs text-gray-500 mt-1">
-                              {tm('reportsPaymentTxnLine')
-                                .replace('{count}', String(pt.count))
-                                .replace('{pct}', pt.percentage.toFixed(1))}
+                              {pt.informational
+                                ? tm('cashStatusReservationInfo')
+                                : tm('reportsPaymentTxnLine')
+                                  .replace('{count}', String(pt.count))
+                                  .replace('{pct}', (pt.percentage ?? 0).toFixed(1))}
                             </p>
                           </div>
                           <CreditCard className="w-10 h-10 opacity-20 shrink-0" style={{ color: pt.color }} />
@@ -8377,11 +8469,12 @@ export function ReportsModule({
                     ))}
                   </div>
                   <div className="flex items-center justify-between rounded-lg border-2 border-green-200 bg-green-50 px-4 py-3">
-                    <span className="font-semibold">{tm('rptGrandTotal') || 'Genel Toplam'}</span>
+                    <span className="font-semibold">{tm('rptGrandTotal')}</span>
                     <span className="text-lg font-bold text-green-700 tabular-nums">
                       {formatNumber(paymentDist.listedTotal, 2, false)} {reportCurrency}
                     </span>
                   </div>
+                  <p className="text-xs text-slate-500 px-1 -mt-2">{tm('cashStatusGrandTotalHint')}</p>
 
                   <div className="bg-white rounded-lg border p-4">
                     <h3 className="text-lg mb-4 flex items-center gap-2">
@@ -8418,21 +8511,30 @@ export function ReportsModule({
                             <button
                               key={item.code}
                               type="button"
-                              onClick={() => setPaymentTypeDetailCode(item.code)}
-                              className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-slate-100 transition-colors text-left cursor-pointer"
+                              onClick={() => setPaymentTypeDetailCode(item.code as PaymentFormCode)}
+                              className={`w-full flex items-center justify-between p-3 rounded-lg hover:bg-slate-100 transition-colors text-left cursor-pointer ${item.informational ? 'bg-slate-50 border border-dashed border-cyan-200' : 'bg-gray-50'}`}
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 <div className="w-4 h-4 rounded shrink-0" style={{ backgroundColor: item.color }} />
                                 <span className="font-medium truncate">{item.label}</span>
+                                {item.informational ? (
+                                  <span className="text-[10px] uppercase tracking-wide text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
+                                    {tm('cashStatusInfoBadge')}
+                                  </span>
+                                ) : null}
                               </div>
                               <div className="text-right shrink-0">
                                 <p className="font-semibold tabular-nums">{formatNumber(item.amount, 2, false)} {reportCurrency}</p>
-                                <p className="text-xs text-gray-500">{tm('reportsPaymentTxnShort').replace('{n}', String(item.count))}</p>
+                                <p className="text-xs text-gray-500">
+                                  {item.informational
+                                    ? tm('cashStatusReservationInfo')
+                                    : tm('reportsPaymentTxnShort').replace('{n}', String(item.count))}
+                                </p>
                               </div>
                             </button>
                           ))}
                           <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
-                            <span className="font-semibold">{tm('rptGrandTotal') || 'Genel Toplam'}</span>
+                            <span className="font-semibold">{tm('rptGrandTotal')}</span>
                             <span className="font-bold text-green-700 text-lg tabular-nums">
                               {formatNumber(paymentDist.listedTotal, 2, false)} {reportCurrency}
                             </span>
@@ -8445,146 +8547,24 @@ export function ReportsModule({
               );
             })()}
 
-            {selectedTab === 'cash-registers' && (() => {
-              const CASH_IN = new Set([
-                'CH_TAHSILAT', 'KASA_GIRIS', 'BANKADAN_CEKILEN', 'ACILIS_ALACAK',
-                'ORTAK_SERMAYE_TAHSILAT', 'ORTAK_PARA_GIRIS', 'SATIS_FATURASI',
-                'HIZMET_FATURASI', 'KUR_FARKI_ALACAK', 'ALINAN_SERBEST_MESLEK',
-              ]);
-              const CASH_OUT = new Set([
-                'CH_ODEME', 'KASA_CIKIS', 'BANKA_YATIRILAN', 'ACILIS_BORC',
-                'GIDER_PUSULASI', 'VERILEN_SERBEST_MESLEK', 'ALIS_FATURASI',
-                'MAAS_ODEME', 'AVANS_ODEME', 'ORTAK_SERMAYE_ODEME', 'ORTAK_PARA_CIKIS',
-                'KUR_FARKI_BORC', 'MUSTAHSIL_MAKBUZU',
-              ]);
-              type RegisterRow = {
-                id: string;
-                code: string;
-                name: string;
-                incoming: number;
-                outgoing: number;
-                net: number;
-                balance: number;
-              };
-              const byId = new Map<string, RegisterRow>();
-              for (const kasa of cashRegisterCards) {
-                byId.set(kasa.id, {
-                  id: kasa.id,
-                  code: kasa.kasa_kodu || '',
-                  name: kasa.kasa_adi || kasa.kasa_kodu || kasa.id,
-                  incoming: 0,
-                  outgoing: 0,
-                  net: 0,
-                  balance: Number(kasa.bakiye) || 0,
-                });
-              }
-              const ensure = (id: string, name: string) => {
-                const key = id || '—';
-                if (!byId.has(key)) {
-                  byId.set(key, {
-                    id: key,
-                    code: '',
-                    name: name || key,
-                    incoming: 0,
-                    outgoing: 0,
-                    net: 0,
-                    balance: 0,
-                  });
-                }
-                return byId.get(key)!;
-              };
-              for (const line of kasaLinesForSelectedDate) {
-                const type = String(line.islem_tipi || '').trim().toUpperCase();
-                const amount = Math.abs(Number(line.tutar) || 0);
-                if (amount <= 0.004) continue;
-                const row = ensure(String(line.kasa_id || ''), line.kasa_aciklamasi || '');
-                if (type === 'VIRMAN') {
-                  row.outgoing += amount;
-                  const targetId = String(line.target_register_id || '').trim();
-                  if (targetId) ensure(targetId, line.target_register_name || '').incoming += amount;
-                  continue;
-                }
-                if (CASH_IN.has(type)) row.incoming += amount;
-                else if (CASH_OUT.has(type)) row.outgoing += amount;
-              }
-              const rows = Array.from(byId.values())
-                .map((row) => ({ ...row, net: row.incoming - row.outgoing }))
-                .sort((a, b) => a.name.localeCompare(b.name, 'tr'));
-              return (
-                <div className="space-y-4">
-                  <div className="bg-white rounded-lg border p-4">
-                    <div className="flex flex-row flex-wrap items-center gap-3 sm:gap-4 min-w-0">
-                      <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
-                      <ReportDateRangePresets
-                        value={dailyReportDateRange}
-                        onChange={setDailyReportDateRange}
-                        tm={tm}
-                        min={reportDateInputMin}
-                        max={reportDateInputMax}
-                        className="min-w-0 flex-1"
-                      />
-                    </div>
-                  </div>
-                  <div className="bg-white rounded-lg border">
-                    <div className="p-4 border-b">
-                      <h3 className="text-lg">{tm('rptCashRegisters') || 'Kasalar'}</h3>
-                    </div>
-                    <div className="p-2">
-                      <ReportColumnTable
-                        data={rows}
-                        height={560}
-                        storageNamespace="cash-registers"
-                        footerLabel={tm('rptGrandTotal') || 'Genel Toplam'}
-                        columns={[
-                          { key: 'code', header: tm('code') || 'Kod', size: 120 },
-                          { key: 'name', header: tm('rptCashRegisterName') || 'Kasa', size: 220 },
-                          {
-                            key: 'incoming',
-                            header: tm('rptCashIn') || 'Giriş',
-                            type: 'number',
-                            align: 'right',
-                            size: 140,
-                            footerSum: true,
-                            footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
-                            cell: (row) => formatNumber(row.incoming, 2, false),
-                          },
-                          {
-                            key: 'outgoing',
-                            header: tm('rptCashOut') || 'Çıkış',
-                            type: 'number',
-                            align: 'right',
-                            size: 140,
-                            footerSum: true,
-                            footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
-                            cell: (row) => formatNumber(row.outgoing, 2, false),
-                          },
-                          {
-                            key: 'net',
-                            header: tm('rptCashNet') || 'Net',
-                            type: 'number',
-                            align: 'right',
-                            size: 140,
-                            footerSum: true,
-                            footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
-                            cell: (row) => formatNumber(row.net, 2, false),
-                          },
-                          {
-                            key: 'balance',
-                            header: tm('balance') || 'Bakiye',
-                            type: 'number',
-                            align: 'right',
-                            size: 140,
-                            footerSum: true,
-                            footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
-                            cell: (row) => formatNumber(row.balance, 2, false),
-                          },
-                        ]}
-                      />
-                    </div>
+            {selectedTab === 'cash-registers' && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-lg border p-4">
+                  <div className="flex flex-row flex-wrap items-center gap-3 sm:gap-4 min-w-0">
+                    <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
+                    <ReportDateRangePresets
+                      value={dailyReportDateRange}
+                      onChange={setDailyReportDateRange}
+                      tm={tm}
+                      min={reportDateInputMin}
+                      max={reportDateInputMax}
+                      className="min-w-0 flex-1"
+                    />
                   </div>
                 </div>
-              );
-            })()}
+                {renderCashRegisterPanels()}
+              </div>
+            )}
 
             {selectedTab === 'discount-report' && (() => {
               const discounts = getDiscountReport();

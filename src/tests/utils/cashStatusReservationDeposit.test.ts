@@ -16,6 +16,7 @@ import {
   buildPaymentTypeDistribution,
 } from '../../utils/paymentTypeDistribution';
 import { SYSTEM_PAYMENT_FORM_CODES } from '../../utils/paymentMethodUtils';
+import { foldReservationIntoCashStatus } from '../../utils/cashStatusTotals';
 
 describe('Kasa Durumu — Rezervasyon Avansı ayrıştırma', () => {
   it('REZERVASYON_AVANS form kodu SYSTEM_PAYMENT_FORM_CODES içinde', () => {
@@ -206,19 +207,11 @@ describe('Kasa Durumu — Rezervasyon Avansı ayrıştırma', () => {
   });
 
   /**
-   * Kullanıcı şikâyeti 2026-10-10:
-   *   "toplam yanlis nakit dogru giren dogru rezervasyon toplama dahil
-   *    etmesin yada rezervasyonu eksi olarak yazdir toplamdan duserse
-   *    115-15 =100 olur yine"
-   *
-   * Senaryo: gün içinde 100.000 Nakit tahsilat + 15.000 Rezervasyon avansı
-   * (cash_lines CH_TAHSILAT + ozel_kod=REZERVASYON). Altta yatan API
-   * `dist.totalAmount` Rezervasyon'u dahil eder (115.000); Kasa Durumu KPI
-   * semantiği Rezervasyon'u ayrı pasif kartta gösterdiği için TOPLAM satırı
-   * Rezervasyon hariç olmalı (100.000). Düzeltme: `getCashStatus` artık
-   * `todayTotal = dist.totalAmount - reservationDeposit` formu ediyor.
+   * Kaynak dağılım bucket'ları ayrıdır (NAKIT 100.000, REZERVASYON 15.000).
+   * Kasa durumu katmanı rezervasyon nakdini günlük nakde bir kez ekler.
+   * Bilgi satırı genel toplama ikinci kez girmez: 115.000, 130.000 değil.
    */
-  it('KPI toplamı (Senaryo A): 100k nakit + 15k rezervasyon → toplam 100k (rezervasyon hariç)', () => {
+  it('Kasa durumu: 100k hizmet nakdi + 15k rezervasyon → günlük nakit 115k, genel toplam 115k', () => {
     const kasaLines = [
       // 100.000 nakit (BEA fiş) — cash_lines genel tahsilat
       {
@@ -263,21 +256,29 @@ describe('Kasa Durumu — Rezervasyon Avansı ayrıştırma', () => {
 
     const reservationDeposit = dist.byCode.REZERVASYON_AVANS?.amount ?? 0;
 
-    // ✅ Bireysel kalemler doğru
+    // Kaynak bucket'lar ayrı durur (çift yazım burada olmaz).
     expect(dist.byCode.NAKIT.amount).toBe(100000);
     expect(dist.byCode.REZERVASYON_AVANS.amount).toBe(15000);
-
-    // ✅ Altta yatan API: dist.totalAmount hala tüm form kodlarını toplar
-    // (REZERVASYON_AVANS dahil) — 115.000. Bu, Senaryo A düzeltmesinin
-    // ayrı bir katmanda yapılması gerektiğini doğrular.
     expect(dist.totalAmount).toBe(115000);
 
-    // ✅ KPI semantiği: TOPLAM satırı Rezervasyon hariç → 100.000
-    const todayTotal = dist.totalAmount - reservationDeposit;
-    expect(todayTotal).toBe(100000);
+    // Kasa durumu: rezervasyon nakdi günlük nakde bir kez girer.
+    // Genel toplam 115.000 kalır; 130.000 (ikinci kez) olmaz.
+    const folded = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash: dist.byCode.NAKIT.amount,
+      reservationCash: reservationDeposit,
+      cashOut: 0,
+      paymentTypes: dist.types,
+    });
+    expect(folded.todayCash).toBe(115000);
+    expect(folded.closingCash).toBe(115000);
+    expect(folded.grandTotal).toBe(115000);
+    expect(folded.grandTotal).not.toBe(130000);
+    expect(folded.paymentTypes.find((row) => row.code === 'NAKIT')?.amount).toBe(115000);
+    expect(folded.paymentTypes.find((row) => row.code === 'REZERVASYON_AVANS')?.informational).toBe(true);
   });
 
-  it('KPI toplamı (Senaryo A): 50k nakit + 30k kart + 10k rezervasyon → toplam 80k', () => {
+  it('Kasa durumu: 50k nakit + 30k kart + 10k rezervasyon → nakit 60k, genel toplam 90k', () => {
     const kasaLines = [
       {
         id: '1',
@@ -311,15 +312,23 @@ describe('Kasa Durumu — Rezervasyon Avansı ayrıştırma', () => {
     );
 
     const reservationDeposit = dist.byCode.REZERVASYON_AVANS?.amount ?? 0;
-    const todayTotal = dist.totalAmount - reservationDeposit;
     expect(dist.byCode.NAKIT.amount).toBe(50000);
     expect(dist.byCode.KREDIKARTI.amount).toBe(30000);
     expect(dist.byCode.REZERVASYON_AVANS.amount).toBe(10000);
-    expect(dist.totalAmount).toBe(90000); // 50k + 30k + 10k
-    expect(todayTotal).toBe(80000); // 90k - 10k rezervasyon = 80k
+    expect(dist.totalAmount).toBe(90000);
+    const folded = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash: dist.byCode.NAKIT.amount,
+      reservationCash: reservationDeposit,
+      cashOut: 0,
+      paymentTypes: dist.types,
+    });
+    expect(folded.todayCash).toBe(60000);
+    expect(folded.grandTotal).toBe(90000);
+    expect(folded.grandTotal).not.toBe(100000);
   });
 
-  it('KPI toplamı (Senaryo A): sadece 10k rezervasyon (nakit yok) → toplam 0', () => {
+  it('Kasa durumu: yalnız 10k rezervasyon → günlük nakit 10k, genel toplam 10k', () => {
     const kasaLines = [
       {
         id: '1',
@@ -340,10 +349,19 @@ describe('Kasa Durumu — Rezervasyon Avansı ayrıştırma', () => {
     );
 
     const reservationDeposit = dist.byCode.REZERVASYON_AVANS?.amount ?? 0;
-    const todayTotal = dist.totalAmount - reservationDeposit;
     expect(dist.byCode.NAKIT.amount).toBe(0);
     expect(dist.byCode.REZERVASYON_AVANS.amount).toBe(10000);
     expect(dist.totalAmount).toBe(10000);
-    expect(todayTotal).toBe(0);
+    const folded = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash: dist.byCode.NAKIT.amount,
+      reservationCash: reservationDeposit,
+      cashOut: 0,
+      paymentTypes: dist.types,
+    });
+    expect(folded.todayCash).toBe(10000);
+    expect(folded.grandTotal).toBe(10000);
+    expect(folded.grandTotal).not.toBe(0);
+    expect(folded.grandTotal).not.toBe(20000);
   });
 });

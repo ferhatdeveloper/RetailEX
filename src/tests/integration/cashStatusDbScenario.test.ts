@@ -1,10 +1,11 @@
 /**
  * Entegrasyon testi — DB verisi ile Kasa Durumu senaryosunun doğrulanması.
  *
- * Senaryo (kullanıcı şikâyeti):
- *   25.000 IQD nakit + 25.000 IQD rezervasyon avansı
- *   Beklenen: Nakit KPI = 25.000 (avans Hariç),
- *             REZERVASYON_AVANS = 25.000 (ayrı kalem).
+ * Senaryo:
+ *   25.000 IQD hizmet nakdi + 25.000 IQD rezervasyon avansı.
+ *   Kaynak bucket'lar ayrı kalır (NAKIT 25.000, REZERVASYON_AVANS 25.000).
+ *   Kasa durumu katmanı rezervasyonu nakde bir kez ekler: günlük nakit 50.000,
+ *   genel toplam 50.000 (75.000 değil).
  *
  * Bu test vitest config'i içinde `integration` glob'u ile ayrı çalışır.
  */
@@ -15,6 +16,7 @@ import {
   type KasaCollectionLine,
 } from '../../utils/saleCollectedAmounts';
 import { buildPaymentTypeDistribution } from '../../utils/paymentTypeDistribution';
+import { foldReservationIntoCashStatus } from '../../utils/cashStatusTotals';
 
 describe('DB senaryosu — 25k avans + 25k nakit (Kasa Durumu)', () => {
   const kasaLinesToday: KasaCollectionLine[] = [
@@ -88,7 +90,19 @@ describe('DB senaryosu — 25k avans + 25k nakit (Kasa Durumu)', () => {
     // ✅ Nakit şişmedi (avans Nakit'e katılmadı)
     expect(dist.byCode.NAKIT.amount).not.toBe(50000);
 
-    // ✅ Toplam = 50.000 (avans + nakit doğru toplam)
+    // ✅ Kaynak toplam = 50.000 (bucket'lar ayrı; henüz ekran katmanı değil)
     expect(dist.totalAmount).toBe(50000);
+
+    const folded = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash: dist.byCode.NAKIT.amount,
+      reservationCash: dist.byCode.REZERVASYON_AVANS.amount,
+      cashOut: 0,
+      paymentTypes: dist.types,
+    });
+    expect(folded.todayCash).toBe(50000);
+    expect(folded.closingCash).toBe(50000);
+    expect(folded.grandTotal).toBe(50000);
+    expect(folded.grandTotal).not.toBe(75000);
   });
 });
