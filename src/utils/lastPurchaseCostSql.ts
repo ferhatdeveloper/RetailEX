@@ -95,6 +95,21 @@ COALESCE(
 )
 `.trim();
 
+/** Ürün adı UUID ise kart adına düş. Aksi halde ekranda ham UUID görünür. */
+export const SQL_DISPLAY_ITEM_NAME = `
+COALESCE(
+  CASE
+    WHEN NULLIF(TRIM(si.item_name), '') IS NULL THEN NULL
+    WHEN TRIM(si.item_name) ~* '${SQL_UUID_TEXT_RE}' THEN NULL
+    ELSE NULLIF(TRIM(si.item_name), '')
+  END,
+  NULLIF(TRIM(p.name), ''),
+  NULLIF(TRIM(svc.name), ''),
+  NULLIF(TRIM(bsvc.name), ''),
+  'Bilinmeyen'
+)
+`.trim();
+
 /** Satış/alış satırından ürün UUID (product_id veya UUID item_code) */
 export const SQL_LINE_RESOLVED_PRODUCT_ID = `
 COALESCE(
@@ -364,13 +379,13 @@ export const SQL_SALES_SIGN = `
 CASE WHEN ${SQL_IS_SALES_RETURN} THEN -1 ELSE 1 END
 `.trim();
 
-/** Satırın bağlı randevusundaki depozito. Satır yoksa 0. */
+/** Satırın bağlı randevusundaki depozito. Satır yoksa 0. Kimlikler metin olarak karşılaştırılır. */
 export const SQL_SERVICE_DEPOSIT_AMOUNT = `
 COALESCE((
   SELECT ba.deposit_amount
   FROM beauty_appointments ba
   WHERE si.linked_appointment_id IS NOT NULL
-    AND ba.id = si.linked_appointment_id
+    AND ba.id::text = si.linked_appointment_id::text
   LIMIT 1
 ), 0)
 `.trim();
@@ -387,12 +402,13 @@ COALESCE((
     FROM beauty_appointments ba
     WHERE COALESCE(ba.deposit_amount, 0) <> 0
       AND (
-        ba.id = s.linked_appointment_id
-        OR ba.remainder_sale_id = s.id
-        OR ba.deposit_sale_id = s.id
+        (s.linked_appointment_id IS NOT NULL AND ba.id::text = s.linked_appointment_id::text)
+        OR (ba.remainder_sale_id IS NOT NULL AND ba.remainder_sale_id::text = s.id::text)
+        OR (ba.deposit_sale_id IS NOT NULL AND ba.deposit_sale_id::text = s.id::text)
         OR (
-          COALESCE(s.sale_group_id, '') <> ''
-          AND ba.sale_group_id = s.sale_group_id
+          s.sale_group_id IS NOT NULL
+          AND NULLIF(TRIM(ba.sale_group_id::text), '') IS NOT NULL
+          AND ba.sale_group_id::text = s.sale_group_id::text
         )
       )
   ) d

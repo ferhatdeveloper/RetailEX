@@ -31,7 +31,7 @@ import {
 import { RestaurantService } from '../../services/restaurant';
 import { beautyService } from '../../services/beautyService';
 import { expenseAPI } from '../../services/api/expenses';
-import { fetchKasaIslemleri, deleteKasaIslemi, type KasaIslemi } from '../../services/api/kasa';
+import { fetchKasaIslemleri, fetchKasalar, deleteKasaIslemi, type Kasa, type KasaIslemi } from '../../services/api/kasa';
 import { userAPI } from '../../services/api/users';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
@@ -89,6 +89,7 @@ import {
 import {
   absorbReservationFromRemainings,
   detachReservationFromOpenAccount,
+  reservationCashByCashier,
   reservationOutsideSaleSplit,
   reservationRegisterTopUp,
 } from '../../utils/reservationVeresiyeOffset';
@@ -929,7 +930,7 @@ type ReportTab =
   // Stok Raporları
   'stock-status' | 'stock-aging' | 'stock-turnover' | 'stock-abc' | 'materials' | 'purchase-promotion-report' | 'expiring-products' | 'critical-stock' | 'warehouse-stock' |
   // Ödeme & İşlem
-  'payment-distribution' | 'discount-report' | 'cash-status' | 'commission' |
+  'payment-distribution' | 'discount-report' | 'cash-status' | 'cash-registers' | 'commission' |
   // Güzellik özel
   'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-staff-treatment-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report' | 'beauty-overdue-uncalled-report' | 'beauty-deposit-prepayment-report';
 
@@ -1161,6 +1162,7 @@ export function ReportsModule({
   const [reportConfirmReason, setReportConfirmReason] = useState('');
   const reportConfirmResolverRef = useRef<((result: { approved: boolean; reason: string }) => void) | null>(null);
   const [kasaLinesForSelectedDate, setKasaLinesForSelectedDate] = useState<KasaIslemi[]>([]);
+  const [cashRegisterCards, setCashRegisterCards] = useState<Kasa[]>([]);
   const [dailyExpenseRows, setDailyExpenseRows] = useState<DailyExpenseRow[]>([]);
   const [dailyCashInRows, setDailyCashInRows] = useState<KasaIslemi[]>([]);
   // Bug 29 follow-up: CH_TAHSILAT (cari tahsilatları) — Kasa Para Girişi
@@ -1187,6 +1189,20 @@ export function ReportsModule({
     }
     prevIsMobileRef.current = isMobile;
   }, [isMobile]);
+  useEffect(() => {
+    let cancelled = false;
+    const firmNr = selectedFirm?.firm_nr != null ? String(selectedFirm.firm_nr) : undefined;
+    void fetchKasalar({ aktif: true, firm_nr: firmNr })
+      .then((rows) => {
+        if (!cancelled) setCashRegisterCards(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setCashRegisterCards([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFirm?.firm_nr]);
   const [businessType, setBusinessType] = useState<BusinessType>(() =>
     resolveInitialReportsBusinessType(initialBusinessType)
   );
@@ -4294,20 +4310,31 @@ export function ReportsModule({
     const cash = dist.byCode.NAKIT;
     const card = dist.byCode.KREDIKARTI;
     const transfer = dist.byCode.HAVAL;
-    const chartData = dist.chartData.map((d) => ({
-      name: tm(d.nameKey),
-      value: d.value,
-      count: d.count,
-      code: d.code,
-      color: d.color,
-    }));
+    const hidden = new Set(['CEK', 'SENET']);
+    const types = dist.types
+      .filter((t) => !hidden.has(t.code))
+      .map((t) => ({ ...t, label: tm(t.nameKey) }));
+    const listedTotal = types.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    for (const row of types) {
+      row.percentage = listedTotal !== 0 ? (row.amount / listedTotal) * 100 : 0;
+    }
+    const chartData = dist.chartData
+      .filter((d) => !hidden.has(d.code))
+      .map((d) => ({
+        name: tm(d.nameKey),
+        value: d.value,
+        count: d.count,
+        code: d.code,
+        color: d.color,
+      }));
     return {
       ...dist,
       chartData,
       cash,
       card,
       transfer,
-      types: dist.types.map((t) => ({ ...t, label: tm(t.nameKey) })),
+      types,
+      listedTotal,
     };
   };
 
@@ -4343,6 +4370,7 @@ export function ReportsModule({
 
   const getCashierPerformance = () => {
     const cashierMap = new Map<string, any>();
+    const saleCashierById = new Map<string, string>();
     dailyActiveRows.forEach((row) => {
       // Rezervasyon avansı (henüz hizmet verilmemiş peşinat) Ciro/işlem
       // sayacına katılmamalı — kullanıcı isteği: "işlem sayısı 1 ama
@@ -4380,8 +4408,31 @@ export function ReportsModule({
         : saleCollectedSplit({ total: net, paymentMethod: row.paymentMethod });
       existing.cashSales += Number(split.cash) || 0;
       existing.cardSales += Number(split.card) || 0;
+      const saleId = String(row.erpSale?.id || '').trim();
+      if (saleId) saleCashierById.set(saleId, name);
       cashierMap.set(name, existing);
     });
+    // Kasaya giren rezervasyon nakdi, fiş kırılımında yoksa kasiyere yazılır.
+    // Toplam ciro ve işlem sayısı aynı kalır (50.000 ciro, nakit 35.000 + 15.000).
+    const shares = reservationCashByCashier({
+      cashierNames: Array.from(cashierMap.keys()),
+      avans: dailyAvansList.map((row) => ({
+        amount: Number((row as { amount?: number }).amount) || 0,
+        method: (row as { payment_method?: string }).payment_method,
+        appliedSaleId: (row as { applied_sale_id?: string }).applied_sale_id,
+        status: (row as { status?: string }).status,
+      })),
+      saleCashierById,
+      appliedCashBySaleId,
+      topUp: reservationTopUp,
+      isCard: (method) => normalizePaymentMethodBucket(method) === 'card',
+    });
+    for (const [name, share] of shares) {
+      const existing = cashierMap.get(name);
+      if (!existing) continue;
+      existing.cashSales += share.cash;
+      existing.cardSales += share.card;
+    }
     return Array.from(cashierMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
   };
 
@@ -6482,6 +6533,7 @@ export function ReportsModule({
           { key: 'payment-distribution', label: tm('odemeDagilimi'), icon: <CreditCardOutlined /> },
           { key: 'discount-report', label: tm('indirimRaporu'), icon: <TagsOutlined /> },
           { key: 'cash-status', label: tm('kasaDurumu'), icon: <BankOutlined /> },
+          { key: 'cash-registers', label: tm('rptCashRegisters') || 'Kasalar', icon: <BankOutlined /> },
           { key: 'commission', label: tm('komisyonRaporu'), icon: <SafetyCertificateOutlined /> },
         ],
       },
@@ -8246,11 +8298,11 @@ export function ReportsModule({
                           </button>
                         ))}
                         <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
-                          <span className="font-semibold">{tm('totalLabel_rep')}</span>
-                          <span className="font-bold text-green-700 text-lg">{formatNumber(cashStatus.todayTotal, 2, false)} {reportCurrency}</span>
+                          <span className="font-semibold">{tm('rptGrandTotal') || 'Genel Toplam'}</span>
+                          <span className="font-bold text-green-700 text-lg">{formatNumber(cashStatus.paymentTypes.reduce((sum, pt) => sum + (Number(pt.amount) || 0), 0), 2, false)} {reportCurrency}</span>
                         </div>
                         <p className="text-xs text-slate-500 px-1">
-                          Açık Cari Hesap ve Rezervasyon Avansı toplama dahil değildir (henüz tahsil edilmemiş alacaklar).
+                          Genel toplam, listedeki ödeme tiplerinin toplamıdır.
                         </p>
                       </div>
                     </div>
@@ -8324,6 +8376,12 @@ export function ReportsModule({
                       </button>
                     ))}
                   </div>
+                  <div className="flex items-center justify-between rounded-lg border-2 border-green-200 bg-green-50 px-4 py-3">
+                    <span className="font-semibold">{tm('rptGrandTotal') || 'Genel Toplam'}</span>
+                    <span className="text-lg font-bold text-green-700 tabular-nums">
+                      {formatNumber(paymentDist.listedTotal, 2, false)} {reportCurrency}
+                    </span>
+                  </div>
 
                   <div className="bg-white rounded-lg border p-4">
                     <h3 className="text-lg mb-4 flex items-center gap-2">
@@ -8373,9 +8431,156 @@ export function ReportsModule({
                               </div>
                             </button>
                           ))}
+                          <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
+                            <span className="font-semibold">{tm('rptGrandTotal') || 'Genel Toplam'}</span>
+                            <span className="font-bold text-green-700 text-lg tabular-nums">
+                              {formatNumber(paymentDist.listedTotal, 2, false)} {reportCurrency}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'cash-registers' && (() => {
+              const CASH_IN = new Set([
+                'CH_TAHSILAT', 'KASA_GIRIS', 'BANKADAN_CEKILEN', 'ACILIS_ALACAK',
+                'ORTAK_SERMAYE_TAHSILAT', 'ORTAK_PARA_GIRIS', 'SATIS_FATURASI',
+                'HIZMET_FATURASI', 'KUR_FARKI_ALACAK', 'ALINAN_SERBEST_MESLEK',
+              ]);
+              const CASH_OUT = new Set([
+                'CH_ODEME', 'KASA_CIKIS', 'BANKA_YATIRILAN', 'ACILIS_BORC',
+                'GIDER_PUSULASI', 'VERILEN_SERBEST_MESLEK', 'ALIS_FATURASI',
+                'MAAS_ODEME', 'AVANS_ODEME', 'ORTAK_SERMAYE_ODEME', 'ORTAK_PARA_CIKIS',
+                'KUR_FARKI_BORC', 'MUSTAHSIL_MAKBUZU',
+              ]);
+              type RegisterRow = {
+                id: string;
+                code: string;
+                name: string;
+                incoming: number;
+                outgoing: number;
+                net: number;
+                balance: number;
+              };
+              const byId = new Map<string, RegisterRow>();
+              for (const kasa of cashRegisterCards) {
+                byId.set(kasa.id, {
+                  id: kasa.id,
+                  code: kasa.kasa_kodu || '',
+                  name: kasa.kasa_adi || kasa.kasa_kodu || kasa.id,
+                  incoming: 0,
+                  outgoing: 0,
+                  net: 0,
+                  balance: Number(kasa.bakiye) || 0,
+                });
+              }
+              const ensure = (id: string, name: string) => {
+                const key = id || '—';
+                if (!byId.has(key)) {
+                  byId.set(key, {
+                    id: key,
+                    code: '',
+                    name: name || key,
+                    incoming: 0,
+                    outgoing: 0,
+                    net: 0,
+                    balance: 0,
+                  });
+                }
+                return byId.get(key)!;
+              };
+              for (const line of kasaLinesForSelectedDate) {
+                const type = String(line.islem_tipi || '').trim().toUpperCase();
+                const amount = Math.abs(Number(line.tutar) || 0);
+                if (amount <= 0.004) continue;
+                const row = ensure(String(line.kasa_id || ''), line.kasa_aciklamasi || '');
+                if (type === 'VIRMAN') {
+                  row.outgoing += amount;
+                  const targetId = String(line.target_register_id || '').trim();
+                  if (targetId) ensure(targetId, line.target_register_name || '').incoming += amount;
+                  continue;
+                }
+                if (CASH_IN.has(type)) row.incoming += amount;
+                else if (CASH_OUT.has(type)) row.outgoing += amount;
+              }
+              const rows = Array.from(byId.values())
+                .map((row) => ({ ...row, net: row.incoming - row.outgoing }))
+                .sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+              return (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg border p-4">
+                    <div className="flex flex-row flex-wrap items-center gap-3 sm:gap-4 min-w-0">
+                      <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
+                      <ReportDateRangePresets
+                        value={dailyReportDateRange}
+                        onChange={setDailyReportDateRange}
+                        tm={tm}
+                        min={reportDateInputMin}
+                        max={reportDateInputMax}
+                        className="min-w-0 flex-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-lg border">
+                    <div className="p-4 border-b">
+                      <h3 className="text-lg">{tm('rptCashRegisters') || 'Kasalar'}</h3>
+                    </div>
+                    <div className="p-2">
+                      <ReportColumnTable
+                        data={rows}
+                        height={560}
+                        storageNamespace="cash-registers"
+                        footerLabel={tm('rptGrandTotal') || 'Genel Toplam'}
+                        columns={[
+                          { key: 'code', header: tm('code') || 'Kod', size: 120 },
+                          { key: 'name', header: tm('rptCashRegisterName') || 'Kasa', size: 220 },
+                          {
+                            key: 'incoming',
+                            header: tm('rptCashIn') || 'Giriş',
+                            type: 'number',
+                            align: 'right',
+                            size: 140,
+                            footerSum: true,
+                            footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                            cell: (row) => formatNumber(row.incoming, 2, false),
+                          },
+                          {
+                            key: 'outgoing',
+                            header: tm('rptCashOut') || 'Çıkış',
+                            type: 'number',
+                            align: 'right',
+                            size: 140,
+                            footerSum: true,
+                            footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                            cell: (row) => formatNumber(row.outgoing, 2, false),
+                          },
+                          {
+                            key: 'net',
+                            header: tm('rptCashNet') || 'Net',
+                            type: 'number',
+                            align: 'right',
+                            size: 140,
+                            footerSum: true,
+                            footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                            cell: (row) => formatNumber(row.net, 2, false),
+                          },
+                          {
+                            key: 'balance',
+                            header: tm('balance') || 'Bakiye',
+                            type: 'number',
+                            align: 'right',
+                            size: 140,
+                            footerSum: true,
+                            footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                            cell: (row) => formatNumber(row.balance, 2, false),
+                          },
+                        ]}
+                      />
+                    </div>
                   </div>
                 </div>
               );

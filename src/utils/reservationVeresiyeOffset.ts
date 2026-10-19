@@ -96,6 +96,75 @@ export function reservationRegisterTopUp(args: {
   };
 }
 
+/**
+ * Kasaya giren rezervasyon, satış kırılımında yoksa kasiyerin nakdine yazılır.
+ * Ciro ve işlem sayısı değişmez. Günlük kasa kimliği (topUp) aşılmaz.
+ * Tek kasiyer varsa tutarın tamamı ona yazılır.
+ */
+export function reservationCashByCashier(args: {
+  cashierNames: string[];
+  avans: Array<{
+    amount: number;
+    method?: string | null;
+    appliedSaleId?: string | null;
+    status?: string | null;
+  }>;
+  saleCashierById: ReadonlyMap<string, string>;
+  appliedCashBySaleId: ReadonlyMap<string, number>;
+  topUp: { cash: number; card: number };
+  isCard?: (method: string | null | undefined) => boolean;
+}): Map<string, { cash: number; card: number }> {
+  const out = new Map<string, { cash: number; card: number }>();
+  const add = (name: string, cash: number, card: number) => {
+    if (!name || (cash <= 0.004 && card <= 0.004)) return;
+    const cur = out.get(name) || { cash: 0, card: 0 };
+    cur.cash = round2(cur.cash + cash);
+    cur.card = round2(cur.card + card);
+    out.set(name, cur);
+  };
+  const names = args.cashierNames.map((n) => String(n || '').trim()).filter(Boolean);
+  const only = names.length === 1 ? names[0] : '';
+  const cardOf = args.isCard || ((method) => {
+    const m = String(method || '').trim().toLowerCase();
+    return m === 'card' || m === 'kart' || m === 'pos' || m.includes('kredi');
+  });
+  let assignedCash = 0;
+  let assignedCard = 0;
+  for (const row of args.avans) {
+    const amount = Math.abs(Number(row.amount) || 0);
+    if (amount <= 0.004) continue;
+    const saleId = String(row.appliedSaleId || '').trim();
+    const status = String(row.status || '').trim().toLowerCase();
+    const applied = saleId ? Number(args.appliedCashBySaleId.get(saleId) || 0) : 0;
+    if (status === 'applied' && applied > 0.004) continue;
+    const name = (saleId && args.saleCashierById.get(saleId)) || only;
+    if (!name) continue;
+    if (cardOf(row.method)) {
+      add(name, 0, amount);
+      assignedCard += amount;
+    } else {
+      add(name, amount, 0);
+      assignedCash += amount;
+    }
+  }
+  const topCash = Math.max(0, Number(args.topUp.cash) || 0);
+  const topCard = Math.max(0, Number(args.topUp.card) || 0);
+  if (assignedCash > topCash + 0.004 && assignedCash > 0) {
+    const factor = topCash / assignedCash;
+    for (const value of out.values()) value.cash = round2(value.cash * factor);
+    assignedCash = topCash;
+  }
+  if (assignedCard > topCard + 0.004 && assignedCard > 0) {
+    const factor = topCard / assignedCard;
+    for (const value of out.values()) value.card = round2(value.card * factor);
+    assignedCard = topCard;
+  }
+  const cashLeft = round2(topCash - Math.min(assignedCash, topCash));
+  const cardLeft = round2(topCard - Math.min(assignedCard, topCard));
+  if (only) add(only, cashLeft, cardLeft);
+  return out;
+}
+
 export function detachReservationFromOpenAccount(args: {
   openAccount: number;
   distributionTotal: number;

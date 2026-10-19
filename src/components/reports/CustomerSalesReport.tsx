@@ -117,6 +117,9 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
         depositCount: number;
         avgSale: number;
         lastSaleDate: string;
+        collectedAmount: number;
+        /** Depozito payı hizmet tutarının içinde; toplama tekrar eklenmez. */
+        depositInsideService: boolean;
       }
     >();
 
@@ -143,9 +146,11 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
           returnsRevenue: 0,
           totalRevenue: row.totalRevenue,
           serviceCount: row.appointmentCount,
-          depositCount: 0, // appointment tablosunda ayrı peşinat sayımı yok
+          depositCount: row.depositRevenue > 0.004 ? 1 : 0,
           avgSale: row.avgServiceRevenue,
           lastSaleDate: row.lastAppointmentDate || '',
+          collectedAmount: row.collectedAmount,
+          depositInsideService: true,
         });
       });
       return Array.from(customerMap.values()).sort(
@@ -217,6 +222,8 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
           existing.serviceCount > 0
             ? existing.serviceRevenue / existing.serviceCount
             : 0;
+        existing.collectedAmount = existing.serviceRevenue + existing.depositRevenue;
+        existing.depositInsideService = false;
         const saleDate = localCalendarDateKey(sale.date);
         if (saleDate && saleDate > existing.lastSaleDate) {
           existing.lastSaleDate = saleDate;
@@ -252,6 +259,8 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
           depositCount: depositCountInit,
           avgSale: serviceCountInit > 0 ? serviceInit : 0,
           lastSaleDate: localCalendarDateKey(sale.date),
+          collectedAmount: serviceInit + depositInit,
+          depositInsideService: false,
         });
       }
     });
@@ -283,7 +292,17 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
         // 10k avans). "Rezervasyon Tutarı" ayrı kolon olarak da
         // gösterilir; burada toplam yansıtılır. Çift sayım değil çünkü
         // iki ayrı tahsilat (hizmet + avans).
-        const collectedAmount = item.serviceRevenue + item.depositRevenue;
+        const collectedAmount = item.depositInsideService
+          ? item.collectedAmount
+          : item.serviceRevenue + item.depositRevenue;
+        const totalRevenue = item.depositInsideService
+          ? item.totalRevenue
+          : item.serviceRevenue + item.depositRevenue;
+        const avgSale = item.depositInsideService
+          ? item.avgSale
+          : item.salesCount > 0
+            ? (item.serviceRevenue + item.depositRevenue) / item.salesCount
+            : 0;
         return {
           id: String(item.customer?.id ?? index),
           customerName,
@@ -299,13 +318,8 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
           // 16.10.2026 — Toplam Ciro = hizmet + rezervasyon (avans).
           // SQL'den gelen total_revenue SUM(total_price) yani sadece
           // hizmet; deposit ayrı kolon. UI'da toplamı birleştiriyoruz.
-          totalRevenue: item.serviceRevenue + item.depositRevenue,
-          // 16.10.2026 — Ortalama Satış = Toplam Ciro / satış sayısı.
-          // Hizmet+avans toplamı 50k / 1 satış = 50k. Önceki sürümde
-          // sadece hizmet (40k) hesaplanıyordu.
-          avgSale: item.salesCount > 0
-            ? (item.serviceRevenue + item.depositRevenue) / item.salesCount
-            : 0,
+          totalRevenue,
+          avgSale,
           lastSaleDate: item.lastSaleDate,
         };
       }),

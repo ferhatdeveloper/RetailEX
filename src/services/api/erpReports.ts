@@ -3669,8 +3669,10 @@ export interface BeautyCustomerSalesRow {
   depositRevenue: number;
   /** Hizmet tamamlandıktan sonra tahsil edilen kalan tutar. */
   remainderRevenue: number;
-  /** Toplam ciro = serviceRevenue (avans dahil brüt). */
+  /** Toplam ciro = hizmet (depozito payı içeride; ikinci kez eklenmez). */
   totalRevenue: number;
+  /** Tahsil edilen: kalan ödeme + rezervasyon payı, ciroyu aşmaz. */
+  collectedAmount: number;
   /** Ortalama hizmet tutarı. */
   avgServiceRevenue: number;
   /** Son randevu tarihi (YYYY-MM-DD). */
@@ -3683,58 +3685,64 @@ export async function getCustomerSalesFromAppointments(opts: {
 }): Promise<BeautyCustomerSalesRow[]> {
   const { startDate, endDate } = opts;
   if (!startDate || !endDate) return [];
+  const { aggregateCustomerAppointmentSales } = await import('../../utils/customerSalesDeposit');
   const aptTable = postgres.getMovementTableName('beauty_appointments', 'beauty');
   const custTable = postgres.getCardTableName('customers');
+  const avansTable = postgres.getMovementTableName('cari_avans');
   const sql = `
-    WITH appts AS (
-      SELECT
-        a.client_id,
-        a.appointment_date,
-        COALESCE(a.total_price, 0)        AS total_price,
-        COALESCE(a.deposit_amount, 0)     AS deposit_amount,
-        COALESCE(a.remainder_paid_amount, 0) AS remainder_paid_amount,
-        LOWER(TRIM(COALESCE(a.status::text, ''))) AS status_lc
-      FROM ${aptTable} a
-      WHERE a.appointment_date >= $1
-        AND a.appointment_date <= $2
-    )
     SELECT
-      c.id::text                                                   AS customer_id,
-      COALESCE(c.code, '')                                         AS customer_code,
-      COALESCE(c.name, '')                                         AS customer_name,
-      COALESCE(c.phone, '')                                        AS phone,
-      COUNT(*)::int                                                AS appointment_count,
-      COALESCE(SUM(appts.total_price), 0)::float8                 AS service_revenue,
-      COALESCE(SUM(appts.deposit_amount), 0)::float8               AS deposit_revenue,
-      COALESCE(SUM(appts.remainder_paid_amount), 0)::float8        AS remainder_revenue,
-      COALESCE(SUM(appts.total_price), 0)::float8                 AS total_revenue,
-      CASE
-        WHEN COUNT(*) > 0
-          THEN COALESCE(SUM(appts.total_price), 0)::float8 / COUNT(*)
-        ELSE 0
-      END                                                          AS avg_service_revenue,
-      MAX(appts.appointment_date::text)                            AS last_appointment_date
-    FROM appts
-    INNER JOIN ${custTable} c ON c.id = appts.client_id
-    WHERE appts.status_lc NOT IN (
-      'cancelled', 'canceled', 'refunded', 'void',
-      'silindi', 'iptal', 'deleted', 'no_show'
-    )
-    GROUP BY c.id, c.code, c.name, c.phone
-    ORDER BY total_revenue DESC, c.name ASC
+      a.id::text                                              AS id,
+      c.id::text                                              AS customer_id,
+      COALESCE(c.code, '')                                    AS customer_code,
+      COALESCE(c.name, '')                                    AS customer_name,
+      COALESCE(c.phone, '')                                   AS phone,
+      a.appointment_date::text                                AS appointment_date,
+      a.created_at::text                                      AS created_at,
+      COALESCE(a.total_price, 0)::float8                      AS total_price,
+      COALESCE(a.deposit_amount, 0)::float8                   AS deposit_amount,
+      COALESCE(a.remainder_paid_amount, 0)::float8            AS remainder_paid,
+      LOWER(TRIM(COALESCE(a.status::text, '')))               AS status_lc,
+      COALESCE((
+        SELECT SUM(ABS(av.amount))
+        FROM ${avansTable} av
+        WHERE av.notes ILIKE '%rex_appt:' || a.id::text || '%'
+          AND av.created_at >= $1::date
+          AND av.created_at < ($2::date + INTERVAL '1 day')
+      ), 0)::float8                                           AS linked_avans
+    FROM ${aptTable} a
+    INNER JOIN ${custTable} c ON c.id = a.client_id
+    WHERE a.appointment_date >= $1
+      AND a.appointment_date <= $2
   `;
   const { rows } = await postgres.query(sql, [startDate, endDate]);
-  return (rows || []).map((r: any) => ({
-    customerId: String(r.customer_id ?? ''),
-    customerCode: String(r.customer_code ?? ''),
-    customerName: String(r.customer_name ?? ''),
-    phone: String(r.phone ?? ''),
-    appointmentCount: Number(r.appointment_count ?? 0),
-    serviceRevenue: Number(r.service_revenue ?? 0),
-    depositRevenue: Number(r.deposit_revenue ?? 0),
-    remainderRevenue: Number(r.remainder_revenue ?? 0),
-    totalRevenue: Number(r.total_revenue ?? 0),
-    avgServiceRevenue: Number(r.avg_service_revenue ?? 0),
-    lastAppointmentDate: String(r.last_appointment_date ?? ''),
+  const aggregated = aggregateCustomerAppointmentSales(
+    (rows || []).map((r: any) => ({
+      id: String(r.id ?? ''),
+      customerId: String(r.customer_id ?? ''),
+      customerCode: String(r.customer_code ?? ''),
+      customerName: String(r.customer_name ?? ''),
+      phone: String(r.phone ?? ''),
+      date: String(r.appointment_date ?? ''),
+      createdAt: r.created_at ? String(r.created_at) : null,
+      totalPrice: Number(r.total_price ?? 0),
+      depositAmount: Number(r.deposit_amount ?? 0),
+      remainderPaid: Number(r.remainder_paid ?? 0),
+      linkedAvans: Number(r.linked_avans ?? 0),
+      status: String(r.status_lc ?? ''),
+    })),
+  );
+  return aggregated.map((row) => ({
+    customerId: row.customerId,
+    customerCode: row.customerCode,
+    customerName: row.customerName,
+    phone: row.phone,
+    appointmentCount: row.salesCount,
+    serviceRevenue: row.serviceRevenue,
+    depositRevenue: row.depositRevenue,
+    remainderRevenue: Math.max(0, row.collectedAmount - row.depositRevenue),
+    totalRevenue: row.totalRevenue,
+    collectedAmount: row.collectedAmount,
+    avgServiceRevenue: row.avgSale,
+    lastAppointmentDate: row.lastSaleDate,
   }));
 }

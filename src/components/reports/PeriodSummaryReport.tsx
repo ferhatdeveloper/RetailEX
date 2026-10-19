@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, FileSearch, Loader2, RefreshCw } from 'lucide-react';
+import { Eye, Loader2, RefreshCw } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatNumber } from '../../utils/formatNumber';
 import { expenseAPI, type Expense } from '../../services/api/expenses';
@@ -1042,9 +1042,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   type PeriodSummaryGridRow = PeriodSummaryRow & Record<string, number | string | Record<string, number>>;
 
   const gridRows = useMemo((): PeriodSummaryGridRow[] => {
-    // Boş gün/ay satırları ızgarayı tire ile doldurur; ciro ve rezervasyon
-    // tutarı yalnız dip toplamda kalır. Hareketi olan dönem satırda görünür.
-    return rows.filter((r) => hasPeriodActivity(r)).map((r) => ({
+    // Ayın her günü ve yılın her ayı listelenir. Tutarı olmayan satır hücrede
+    // tire gösterir. Sıfır satırlar dip toplamı değiştirmez.
+    return rows.map((r) => ({
       // 14.10.2026 — DevExDataGrid `getRowId` `row.id` okur; index-key
       // kullanmak React 18 reconciliation'da "NotFoundError: removeChild"
       // hatasına yol açıyor (rows array yeniden hesaplandığında DOM node
@@ -1064,31 +1064,6 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         key: 'periodLabel',
         header: mode === 'monthly-days' ? tm('rptPeriodColDay') : tm('rptPeriodColMonth'),
         size: 160,
-      },
-      {
-        key: 'dayDetailAction',
-        header: tm('rptPeriodDayDetailOpen') || 'Detay',
-        size: 88,
-        cell: (row) => {
-          if (!hasPeriodActivity(row)) return '—';
-          return (
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
-              title={tm('rptPeriodDayDetailOpen')}
-              onClick={(e) => {
-                e.stopPropagation();
-                setDayDetail({
-                  title: `${row.periodLabel} · ${tm('rptPeriodDayDetailTitle')}`,
-                  date: row.periodKey,
-                });
-              }}
-            >
-              <FileSearch className="w-3 h-3" aria-hidden />
-              {tm('rptPeriodDayDetailOpen')}
-            </button>
-          );
-        },
       },
       {
         key: 'saleCount',
