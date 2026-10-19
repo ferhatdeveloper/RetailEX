@@ -68,6 +68,7 @@ import { toast } from 'sonner';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import { findBeautyAppointmentsSameQueueGroup } from '../../../utils/beautyQueueOrder';
+import { roundReservationMoney, spreadReservationAcrossLines } from '../../../utils/beautyDepositAllocation';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { safeInvoke } from '../../../utils/env';
 import { splitProportionalLineDiscount } from '../../../utils/beautySaleLineDiscount';
@@ -1462,16 +1463,9 @@ export function AppointmentPOS({
                 0,
             );
             if (totalGross <= 0) return prevCart;
-            // 14.10.2026 — Rezervasyon tutarı her zaman tam sayı para birimi
-            // (IQD) olarak girilir (`step=1`). Orantılı düşüm sonucu
-            // hizmet tutarları 1000'in katlarına yuvarlanır (örn. 61.538
-            // → 62.000, 38.462 → 38.000). Kullanıcı geri bildirimi:
-            // düz/düzgün tutarlar (binliklere yuvarlanmış) gösterilmeli.
-            // Son satıra kalan fark yazılır; bu yüzden yuvarlama farkı
-            // DEPOSIT satırına yansımaz, depositAmount sabit kalır.
-            const round = (n: number) => Math.round(n / 1000) * 1000;
+            // Rezervasyon düşümü `spreadReservationAcrossLines` ile yapılır:
+            // orantılı pay, 1.000'e yuvarlama, son satır kalanı alır.
             if (amount <= 0) {
-                // Tüm hizmetleri orijinaline döndür, deposit sil.
                 const restored = serviceLines.map(l =>
                     l.original_unit_price !== undefined
                         ? { ...l, unit_price: l.original_unit_price, original_unit_price: undefined }
@@ -1479,41 +1473,20 @@ export function AppointmentPOS({
                 );
                 return restored;
             }
-            // amount brüt toplamı aşamaz (validasyon yukarıda kontrol ediyor).
             const cap = Math.min(amount, totalGross);
-            // Orantılı dağılım — son satıra kalan farkı yaz.
-            const updatedServices = serviceLines.map((l, idx) => {
-                const orig = l.original_unit_price ?? l.unit_price;
-                if (idx === serviceLines.length - 1) {
-                    // Son satır: kalan deposit tutarı
-                    const prevDeducted = serviceLines
-                        .slice(0, -1)
-                        .reduce(
-                            (s, sl) =>
-                                s +
-                                Math.min(
-                                    cap,
-                                    round((sl.original_unit_price ?? sl.unit_price) * sl.qty * (cap / totalGross)),
-                                ) /
-                                    Math.max(1, sl.qty),
-                            0,
-                        );
-                    const lastShare = Math.max(0, cap - prevDeducted);
-                    const perUnit = round(lastShare / Math.max(1, l.qty));
-                    return {
-                        ...l,
-                        original_unit_price: orig,
-                        unit_price: round(orig - perUnit),
-                    };
-                }
-                const share = round(orig * l.qty * (cap / totalGross));
-                const perUnit = round(share / Math.max(1, l.qty));
-                return {
-                    ...l,
-                    original_unit_price: orig,
-                    unit_price: round(orig - perUnit),
-                };
-            });
+            const spread = spreadReservationAcrossLines(
+                serviceLines.map((l) => ({
+                    unitPrice: l.unit_price,
+                    qty: l.qty,
+                    originalUnitPrice: l.original_unit_price,
+                })),
+                amount,
+            );
+            const updatedServices = serviceLines.map((l, idx) => ({
+                ...l,
+                original_unit_price: l.original_unit_price ?? l.unit_price,
+                unit_price: spread[idx]?.unitPrice ?? l.unit_price,
+            }));
             // DEPOSIT satırı ekle veya güncelle.
             // item_id için `depositServiceId` (DB'de bootstrap edilen gerçek
             // hizmet) kullanılır; hazır değilse sentetik `__deposit__` ID'si
@@ -1524,7 +1497,7 @@ export function AppointmentPOS({
                 item_id: depositServiceId ?? '__deposit__',
                 code: 'DEPOSIT',
                 name: 'DEPOSIT',
-                unit_price: round(cap),
+                unit_price: roundReservationMoney(cap),
                 qty: 1,
                 color: '#a855f7',
             };
@@ -2395,13 +2368,21 @@ export function AppointmentPOS({
             const statusForCreate = hasReservation
                 ? AppointmentStatus.PRE_PAID
                 : (aptStatus ?? AppointmentStatus.SCHEDULED);
-            const planned = buildServiceAppointmentPayloads(statusForCreate).map((p) => {
+            const reservationShares = hasReservation
+                ? spreadReservationAcrossLines(
+                    appointmentBookLines.map((l) => ({
+                        unitPrice: l.unit_price,
+                        qty: Math.max(1, Number(l.qty) || 1),
+                        originalUnitPrice: l.original_unit_price,
+                    })),
+                    reservationForSubmit,
+                ).map((s) => s.depositShare)
+                : [];
+            const planned = buildServiceAppointmentPayloads(statusForCreate).map((p, idx) => {
                 if (!hasReservation) return p;
-                // Yalnızca ilk satıra deposit tutarını yaz; sonraki satırlar
-                // paket seansı vb. için 0 kalır (toplam zaten ilk satırda).
                 return {
                     ...p,
-                    deposit_amount: reservationForSubmit,
+                    deposit_amount: reservationShares[idx] ?? 0,
                     deposit_date: new Date().toISOString(),
                     deposit_provider: 'pos' as const,
                 };
@@ -2441,6 +2422,13 @@ export function AppointmentPOS({
                     // yukarıdaki `recordAdvance` ile yazıldı. Hizmet
                     // verildiğinde beautyService.createSale TEK beauty_sales
                     // fişi keser (BEA-2026-...).
+                    await Promise.all(
+                        createdIds.map((id, idx) => updateAppointment(id, {
+                            deposit_amount: reservationShares[idx] ?? 0,
+                            deposit_date: new Date().toISOString(),
+                            deposit_provider: 'pos',
+                        })),
+                    );
                     toast.success(
                         tm('bReservationRecordedToast')
                             .replace('{amount}', fmt(reservationForSubmit))
@@ -3097,21 +3085,26 @@ export function AppointmentPOS({
                     createdAppointmentIds.length > 0
                 ) {
                     try {
-                        await updateAppointment(createdAppointmentIds[0], {
-                            deposit_amount: skipInvoice ? effectiveDepositAmt : reservationAmt,
+                        const pool = skipInvoice ? effectiveDepositAmt : reservationAmt;
+                        const shares = spreadReservationAcrossLines(
+                            appointmentBookLines.map((l) => ({
+                                unitPrice: l.unit_price,
+                                qty: Math.max(1, Number(l.qty) || 1),
+                                originalUnitPrice: l.original_unit_price,
+                            })),
+                            pool,
+                        );
+                        await Promise.all(createdAppointmentIds.map((id, idx) => updateAppointment(id, {
+                            deposit_amount: shares[idx]?.depositShare ?? 0,
                             deposit_date: new Date().toISOString(),
                             deposit_provider: 'pos',
-                            // Rezervasyon fişi appointment oluşturulduktan sonra
-                            // yazıldığı için deposit_sale_id (UUID) burada geri
-                            // bağlanıyor; sonraki girişte bu bağlantı korunur.
-                            // skipInvoice=true ise fiche_no/sale_id BOŞ kalır.
-                            ...(shouldRecordReservation && reservationSaleFicheNo
+                            ...(idx === 0 && shouldRecordReservation && reservationSaleFicheNo
                                 ? {
                                     deposit_sale_fiche_no: reservationSaleFicheNo,
                                     deposit_sale_id: reservationSaleId,
                                 }
                                 : {}),
-                        });
+                        })));
                     } catch (depErr: unknown) {
                         logger.warn('AppointmentPOS', 'deposit update yazılamadı', depErr);
                     }

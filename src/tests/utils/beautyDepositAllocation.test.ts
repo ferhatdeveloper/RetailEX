@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BeautyAppointment } from '../../types/beauty';
-import { allocateBeautyVisitDeposits, splitAmountByWeight } from '../../utils/beautyDepositAllocation';
+import { allocateBeautyVisitDeposits, spreadReservationAcrossLines } from '../../utils/beautyDepositAllocation';
 
 function apt(partial: Partial<BeautyAppointment> & { id: string }): BeautyAppointment {
   return {
@@ -12,16 +12,17 @@ function apt(partial: Partial<BeautyAppointment> & { id: string }): BeautyAppoin
   } as BeautyAppointment;
 }
 
-describe('splitAmountByWeight', () => {
-  it('payların toplamı depozitoya eşittir', () => {
-    const shares = splitAmountByWeight(5000, [20000, 15000]);
-    expect(shares.reduce((s, n) => s + n, 0)).toBe(5000);
-    expect(shares[0]).toBeGreaterThan(shares[1]);
-  });
-
-  it('üç eşit hizmette kuruş artığı kaybolmaz', () => {
-    const shares = splitAmountByWeight(5000, [10000, 10000, 10000]);
-    expect(shares.reduce((s, n) => s + n, 0)).toBe(5000);
+describe('spreadReservationAcrossLines', () => {
+  it('randevu düşümü gibi 1000 e yuvarlar ve son satıra kalanı yazar', () => {
+    const spread = spreadReservationAcrossLines(
+      [
+        { unitPrice: 20000, qty: 1 },
+        { unitPrice: 15000, qty: 1 },
+      ],
+      5000,
+    );
+    expect(spread.map((s) => s.depositShare)).toEqual([3000, 2000]);
+    expect(spread.map((s) => s.unitPrice)).toEqual([17000, 13000]);
   });
 });
 
@@ -60,9 +61,33 @@ describe('allocateBeautyVisitDeposits', () => {
         deposit_amount: 0,
       }),
     ]);
-    expect(map.get('svc-a')).toBe(2857.14);
-    expect(map.get('svc-b')).toBe(2142.86);
+    expect(map.get('svc-a')).toBe(3000);
+    expect(map.get('svc-b')).toBe(2000);
     expect((map.get('svc-a') || 0) + (map.get('svc-b') || 0)).toBe(5000);
+  });
+
+  it('aynı depozito her satıra kopyalandıysa bir kez bölünür', () => {
+    const created = '2026-10-19T09:00:00.000Z';
+    const map = allocateBeautyVisitDeposits([
+      apt({
+        id: 'a',
+        customer_id: 'c1',
+        appointment_date: '2026-10-19',
+        created_at: created,
+        total_price: 20000,
+        deposit_amount: 5000,
+      }),
+      apt({
+        id: 'b',
+        customer_id: 'c1',
+        appointment_date: '2026-10-19',
+        created_at: created,
+        total_price: 15000,
+        deposit_amount: 5000,
+      }),
+    ]);
+    expect(map.get('a')).toBe(3000);
+    expect(map.get('b')).toBe(2000);
   });
 
   it('her satırın kendi depozitosu varsa yeniden bölmez', () => {
