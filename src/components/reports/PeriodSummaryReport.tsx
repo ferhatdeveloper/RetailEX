@@ -1042,7 +1042,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   type PeriodSummaryGridRow = PeriodSummaryRow & Record<string, number | string | Record<string, number>>;
 
   const gridRows = useMemo((): PeriodSummaryGridRow[] => {
-    return rows.map((r) => ({
+    // Boş gün/ay satırları ızgarayı tire ile doldurur; ciro ve rezervasyon
+    // tutarı yalnız dip toplamda kalır. Hareketi olan dönem satırda görünür.
+    return rows.filter((r) => hasPeriodActivity(r)).map((r) => ({
       // 14.10.2026 — DevExDataGrid `getRowId` `row.id` okur; index-key
       // kullanmak React 18 reconciliation'da "NotFoundError: removeChild"
       // hatasına yol açıyor (rows array yeniden hesaplandığında DOM node
