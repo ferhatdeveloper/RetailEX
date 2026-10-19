@@ -217,6 +217,8 @@ type ServiceBreakdownFlatRow = {
   amount: number;
   // 19.10.2026 — Depozito/rezervasyon tutarı
   depositAmount: number;
+  // Hizmet tutarı + depozito
+  lineTotal: number;
   appointment?: BeautyAppointment;
 };
 
@@ -2304,6 +2306,9 @@ export function ReportsModule({
             amount: Number(a.total_price ?? 0),
             // 19.10.2026 — Depozito/rezervasyon tutarı
             depositAmount: Number((a as BeautyAppointment & { deposit_amount?: number }).deposit_amount ?? 0),
+            lineTotal:
+              Number(a.total_price ?? 0) +
+              Number((a as BeautyAppointment & { deposit_amount?: number }).deposit_amount ?? 0),
             appointment: a,
           });
         } else {
@@ -2321,6 +2326,7 @@ export function ReportsModule({
             receiptNumber: a.receiptNumber,
             amount: a.amount,
             depositAmount: 0, // ERP'de depozito alanı yok
+            lineTotal: a.amount,
           });
         }
       }
@@ -9774,6 +9780,18 @@ export function ReportsModule({
                                     footerSum: true,
                                     footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
                                     cell: (row) => formatLedgerAmount(row.amount, reportCurrency),
+                                  },
+                                  {
+                                    key: 'lineTotal',
+                                    header: tm('bTotalAmountCol') || 'Toplam',
+                                    type: 'number',
+                                    align: 'right',
+                                    size: 140,
+                                    footerSum: true,
+                                    footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                    cell: (row) => (
+                                      <span className="font-semibold">{formatLedgerAmount(row.lineTotal, reportCurrency)}</span>
+                                    ),
                                   },
                                 ]) as ReportColumnTableCol<ServiceBreakdownFlatRow>[]
                           }
