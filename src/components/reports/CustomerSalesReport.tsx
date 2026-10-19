@@ -7,6 +7,11 @@ import { formatNumber } from '../../utils/formatNumber';
 import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { isReturnSale } from '../../utils/posZReport';
+import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
+import {
+  aggregateCustomerSaleReceipts,
+  type CustomerSaleReceiptInput,
+} from '../../utils/customerSalesDeposit';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useReportFilters } from '../../contexts/ReportFiltersContext';
@@ -34,6 +39,17 @@ interface CustomerSalesReportProps {
   businessType?: 'market' | 'restaurant' | 'beauty' | string;
 }
 
+const COMPLETED_SALE_STATUSES = new Set([
+  'completed',
+  'complete',
+  'done',
+  'finished',
+  'tamamlandi',
+  'tamamlandı',
+  'paid',
+  'closed',
+]);
+
 function trNorm(value: string | undefined | null): string {
   return String(value ?? '').trim().toLocaleLowerCase('tr-TR');
 }
@@ -49,6 +65,58 @@ function matchesSearchBlob(term: string, fields: Array<string | undefined | null
   if (!term) return true;
   const blob = fields.map((f) => String(f ?? '').trim()).filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
   return blob.includes(term);
+}
+
+function saleReceiptCollected(sale: Sale): { collected?: number; collectedKnown: boolean } {
+  const hasPayments = Array.isArray(sale.payments) && sale.payments.length > 0;
+  const method = String(sale.paymentMethod || '').trim();
+  if (!hasPayments && !method) return { collectedKnown: false };
+  return {
+    collected: Math.abs(Number(saleCollectedSplit(sale).collected) || 0),
+    collectedKnown: true,
+  };
+}
+
+/** Satış fişi yedeği: satırlar varsa dağıtım motoru, yoksa fiş başlığı. */
+function saleToCustomerReceipt(sale: Sale): CustomerSaleReceiptInput {
+  const rawItems = (sale.items || []).map((item) => ({
+    productName: item.productName,
+    productCode: item.productCode,
+    productId: item.productId,
+    lineType: item.lineType,
+    quantity: item.quantity,
+    total: Number(item.total) || 0,
+    depositAmount: (item as { depositAmount?: number | null }).depositAmount ?? null,
+  }));
+  const itemSum = rawItems.reduce((sum, item) => sum + item.total, 0);
+  const items =
+    Number(sale.total) < 0 && itemSum > 0.004
+      ? rawItems.map((item) => ({
+          ...item,
+          total: -Math.abs(item.total),
+          depositAmount:
+            item.depositAmount == null ? null : -Math.abs(Number(item.depositAmount) || 0),
+        }))
+      : rawItems;
+  const collected = saleReceiptCollected(sale);
+  return {
+    id: String(sale.id || ''),
+    customerId: String(sale.customerId || sale.customerName || 'unknown'),
+    customerName: sale.customerName,
+    customerCode: sale.customerCode,
+    phone: sale.customerPhone,
+    date: localCalendarDateKey(sale.date),
+    total: Number(sale.total) || 0,
+    items,
+    collected: collected.collected,
+    collectedKnown: collected.collectedKnown,
+    status: sale.status,
+    isDeposit: isDepositSale(sale),
+    linkedAppointmentId: sale.linkedAppointmentId,
+    saleGroupId: sale.saleGroupId,
+    depositSaleId: sale.depositSaleId,
+    parentSaleId: sale.parentSaleId,
+  };
 }
 
 export function CustomerSalesReport({ sales, customers, businessType = 'market' }: CustomerSalesReportProps) {
@@ -160,6 +228,55 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
     }
     if (isBeauty && beautyLoading) return [];
 
+    // Randevu satırı yoksa satış fişleri listelenir. Depozito ayrı ürün değildir;
+    // aynı fişin hizmetlerine dağıtılır, ciroya ikinci kez eklenmez.
+    if (isBeauty) {
+      const receipts: CustomerSaleReceiptInput[] = [];
+      for (const sale of sales) {
+        if (!isSaleInDateRange(sale, dateRange.start, dateRange.end)) continue;
+        const ps = (sale as Sale & { payment_status?: string }).payment_status;
+        const st = String(sale.status ?? '').toLowerCase();
+        if (st === 'cancelled' || st === 'canceled' || st === 'silindi' || st === 'iptal' || st === 'refunded') continue;
+        if (ps === 'cancelled' || ps === 'canceled') continue;
+        const deposit = isDepositSale(sale);
+        const isPending = ps === 'pending' || ps === 'awaiting_service' || ps === 'partial';
+        const linkedAppt = sale.linkedAppointmentId;
+        const isLinkedOpen = Boolean(linkedAppt) && !COMPLETED_SALE_STATUSES.has(st);
+        if (!deposit && (isPending || isLinkedOpen)) continue;
+        receipts.push(saleToCustomerReceipt(sale));
+      }
+      const aggregated = aggregateCustomerSaleReceipts(receipts);
+      aggregated.forEach((row) => {
+        if (!row.customerId) return;
+        const matchedCustomer =
+          customers?.find((c) => String(c.id) === String(row.customerId)) || null;
+        const customerName = row.customerName || matchedCustomer?.name || unknownCustomerLabel;
+        customerMap.set(row.customerId, {
+          customer: {
+            ...(matchedCustomer || { id: row.customerId, name: customerName }),
+            id: matchedCustomer?.id || row.customerId,
+            name: customerName,
+            code: row.customerCode || matchedCustomer?.code,
+            phone: row.phone || matchedCustomer?.phone || '',
+          } as Customer,
+          salesCount: row.salesCount,
+          serviceRevenue: row.serviceRevenue,
+          depositRevenue: row.depositRevenue,
+          returnsRevenue: 0,
+          totalRevenue: row.totalRevenue,
+          serviceCount: row.salesCount,
+          depositCount: row.depositRevenue > 0.004 ? 1 : 0,
+          avgSale: row.avgSale,
+          lastSaleDate: row.lastSaleDate || '',
+          collectedAmount: row.collectedAmount,
+          depositInsideService: true,
+        });
+      });
+      return Array.from(customerMap.values()).sort(
+        (a, b) => b.totalRevenue - a.totalRevenue,
+      );
+    }
+
     sales.forEach((sale) => {
       if (!isSaleInDateRange(sale, dateRange.start, dateRange.end)) return;
       // iptal edilmiş kayıtları tamamen Hariç tut
@@ -175,11 +292,8 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
       // değilse hizmet ciroya dahil edilmez (henüz hizmet verilmedi). Bu
       // sayede ROZA gibi "30.000 veresiye + 20.000 peşinat" senaryosunda
       // tamamlanmış ana satış doğru toplama katılır.
-      const COMPLETED_STATUSES = new Set([
-        'completed', 'complete', 'done', 'finished', 'tamamlandi', 'tamamlandı', 'paid', 'closed',
-      ]);
       const linkedAppt = (sale as Sale).linkedAppointmentId;
-      const isLinkedOpen = Boolean(linkedAppt) && !COMPLETED_STATUSES.has(st);
+      const isLinkedOpen = Boolean(linkedAppt) && !COMPLETED_SALE_STATUSES.has(st);
       // 16.10.2026 — Deposit Ciro'ya HER ZAMAN katılır (kullanıcı
       // talebi: tamamlanmış randevuya bağlı avans da Ciro'da
       // görünmeli). Hizmet + Rezervasyon ayrı kolonlar olduğu için
@@ -260,16 +374,6 @@ export function CustomerSalesReport({ sales, customers, businessType = 'market' 
       }
     });
 
-    if (isBeauty) {
-      for (const row of customerMap.values()) {
-        if (row.serviceRevenue > 0.004) {
-          row.depositInsideService = true;
-          row.totalRevenue = row.serviceRevenue + row.returnsRevenue;
-          row.collectedAmount = row.totalRevenue;
-          row.avgSale = row.salesCount > 0 ? row.totalRevenue / row.salesCount : 0;
-        }
-      }
-    }
     return Array.from(customerMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
   }, [isBeauty, beautyLoading, beautyRows, sales, customers, unknownCustomerLabel, dateRange.start, dateRange.end]);
 
