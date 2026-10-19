@@ -421,16 +421,6 @@ export function DepositPrePaymentReport() {
                     );
                 },
             },
-            {
-                key: 'deposit_sale_fiche_no',
-                header: tm('bFicheNoCol') || 'Fiş No',
-                size: 150,
-                cell: (r) => (
-                    <span className="font-mono text-[11px] text-slate-600">
-                        {r.deposit_sale_fiche_no || '—'}
-                    </span>
-                ),
-            },
         ],
         [tm],
     );
