@@ -10,8 +10,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAvansDepositsMap,
+  buildClosedReservationInfoMap,
   type AvansDepositRow,
 } from './avansReservationExclude';
+import { buildClosedAppointmentDepositMap } from './reportReservationPending';
 
 const COMPLETED_APT = 'b687d081-343f-41d4-bb6c-c0971500e7ef';
 const OPEN_APT = '99999999-9999-9999-9999-999999999999';
@@ -88,6 +90,19 @@ describe('avansReservationExclude — tamamlanmış randevu avansı hariç (16.1
     expect(bucket).toEqual({ count: 1, amount: 10_000 });
   });
 
+  it('uygulanmış avans net haritasına girmez', () => {
+    const rows: AvansDepositRow[] = [
+      {
+        amount: 15_000,
+        created_at: '2026-10-19T10:00:00+03:00',
+        notes: `Rezervasyon Tutarı · Randevu No ${COMPLETED_APT}`,
+        status: 'applied',
+      },
+    ];
+    const map = buildAvansDepositsMap(rows, completedIds, 'monthly-days');
+    expect(map.size).toBe(0);
+  });
+
   it('sıfır/negatif tutar atlanır', () => {
     const rows: AvansDepositRow[] = [
       { amount: 0, created_at: '2026-10-16T10:00:00+03:00', notes: null },
@@ -97,5 +112,67 @@ describe('avansReservationExclude — tamamlanmış randevu avansı hariç (16.1
     const map = buildAvansDepositsMap(rows, completedIds, 'monthly-days');
     const bucket = map.get('2026-10-16');
     expect(bucket).toEqual({ count: 1, amount: 3_000 });
+  });
+});
+
+describe('buildClosedReservationInfoMap — kapanan rezervasyonun alınan tutarı', () => {
+  it('kapanmış randevunun 15.000 avansı bilgi kolonunda kalır', () => {
+    const rows: AvansDepositRow[] = [
+      {
+        amount: 15_000,
+        created_at: '2026-10-19T10:00:00+03:00',
+        notes: `Rezervasyon Tutarı · Randevu No ${COMPLETED_APT}`,
+        status: 'applied',
+      },
+    ];
+    const map = buildClosedReservationInfoMap(rows, completedIds, 'monthly-days');
+    expect(map.get('2026-10-19')).toEqual({ count: 1, amount: 15_000 });
+  });
+
+  it('açık randevu avansı bilgi kapanış haritasına girmez', () => {
+    const rows: AvansDepositRow[] = [
+      {
+        amount: 15_000,
+        created_at: '2026-10-19T10:00:00+03:00',
+        notes: `Rezervasyon Tutarı · Randevu No ${OPEN_APT}`,
+        status: 'open',
+      },
+    ];
+    const map = buildClosedReservationInfoMap(rows, completedIds, 'monthly-days');
+    expect(map.size).toBe(0);
+  });
+
+  it('randevu depozitosu sayıldıysa aynı avans ikinci kez eklenmez', () => {
+    const rows: AvansDepositRow[] = [
+      {
+        amount: 15_000,
+        created_at: '2026-10-19T10:00:00+03:00',
+        notes: `Rezervasyon Tutarı · Randevu No ${COMPLETED_APT}`,
+        status: 'applied',
+      },
+    ];
+    const map = buildClosedReservationInfoMap(
+      rows,
+      completedIds,
+      'monthly-days',
+      new Set([COMPLETED_APT]),
+    );
+    expect(map.size).toBe(0);
+  });
+});
+
+describe('buildClosedAppointmentDepositMap', () => {
+  it('kapanmış randevunun depozitosunu brüt eklemeden yazar', () => {
+    const { map, appointmentIds } = buildClosedAppointmentDepositMap(
+      [{
+        id: COMPLETED_APT,
+        appointment_date: '2026-10-19',
+        status: 'completed',
+        deposit_amount: 15_000,
+      }],
+      'monthly-days',
+    );
+    expect(map.get('2026-10-19')).toEqual({ deposit: 15_000, count: 1 });
+    expect(appointmentIds.has(COMPLETED_APT)).toBe(true);
   });
 });

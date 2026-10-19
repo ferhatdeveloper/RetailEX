@@ -55,8 +55,8 @@ import { PeriodCashInDetailModal } from './PeriodCashInDetailModal';
 import { PeriodSummaryDayDetailModal } from './PeriodSummaryDayDetailModal';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 import { ReportKpiStrip, type ReportKpiItem } from './shared/ReportKpiStrip';
-import { buildReservationMap } from '../../utils/reportReservationPending';
-import { buildAvansDepositsMap } from '../../utils/avansReservationExclude';
+import { buildClosedAppointmentDepositMap, buildReservationMap } from '../../utils/reportReservationPending';
+import { buildAvansDepositsMap, buildClosedReservationInfoMap } from '../../utils/avansReservationExclude';
 
 export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
 
@@ -568,9 +568,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           amount: number | string;
           created_at: string;
           notes: string | null;
+          status: string | null;
         }>(
-          `SELECT amount, created_at, notes FROM ${table}
-            WHERE status = 'open'
+          `SELECT amount, created_at, notes, status FROM ${table}
+            WHERE status IN ('open', 'applied')
               AND created_at >= $1
               AND created_at <  $2`,
           [`${periodRange!.start}T00:00:00`, `${periodRange!.end}T23:59:59`],
@@ -773,9 +774,13 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     // İlgili firm/dönem kapsamındaki beauty_appointments.status = 'completed'
     // id'leri.
     const completedAppointmentIds = new Set<string>();
+    const closedAppointmentIds = new Set<string>();
     for (const apt of (appointments as Array<{ id?: string; status?: string }>) || []) {
-      if (String(apt?.status ?? '').toLowerCase() === 'completed' && apt.id) {
-        completedAppointmentIds.add(String(apt.id));
+      const st = String(apt?.status ?? '').toLowerCase();
+      if (!apt.id) continue;
+      if (st === 'completed') completedAppointmentIds.add(String(apt.id));
+      if (st === 'completed' || st === 'cancelled' || st === 'canceled') {
+        closedAppointmentIds.add(String(apt.id));
       }
     }
 
@@ -789,10 +794,23 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     // `saleMap` anahtar yapısıyla eşleşir. `aggregateSales` çıktısındaki
     // depositAmount'a eklenir → Peşinat kolonu skipInvoice modunda da
     // doğru toplam verir.
+    const avansRows = avansDepositsRaw as Array<{
+      amount: number | string;
+      created_at: string;
+      notes?: string | null;
+      status?: string | null;
+    }>;
     const avansDepositsMap = buildAvansDepositsMap(
-      avansDepositsRaw as Array<{ amount: number | string; created_at: string; notes?: string | null }>,
+      avansRows,
       completedAppointmentIds,
       mode,
+    );
+    const closedAppointmentDeposits = buildClosedAppointmentDepositMap(appointments, mode);
+    const closedAvansInfoMap = buildClosedReservationInfoMap(
+      avansRows,
+      closedAppointmentIds,
+      mode,
+      closedAppointmentDeposits.appointmentIds,
     );
 
     const expenseMap =
@@ -856,6 +874,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // Rezervasyon brüt/kalan henüz Ciro'ya yansımaz (fatura kesilmedi);
       // sadece bilgi kolonu olarak gösterilir, Net Kalan'a katılmaz.
       const reservation = reservationMap.get(periodKey) || { gross: 0, pending: 0, deposit: 0, count: 0 };
+      const closedDeposit = closedAppointmentDeposits.map.get(periodKey) || { deposit: 0, count: 0 };
+      const closedAvans = closedAvansInfoMap.get(periodKey) || { count: 0, amount: 0 };
+      const reservationDepositInfo = reservation.deposit + closedDeposit.deposit + closedAvans.amount;
+      const reservationCountInfo = reservation.count + closedDeposit.count + closedAvans.count;
       // 14.10.2026 19:18 — reservationCount = rezervasyon adedi (miktar);
       // brütten ayrı kolon olarak gösterilir. depositCount'tan
       // bağımsız olmalı (depositCount = Ciro'ya yansımamış peşinat adedi).
@@ -914,8 +936,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         // skipInvoiceAvans + sale.depositAmount üzerinden eklenir
         // (çift sayım önlemek için reservation.deposit KULLANILMAZ).
         reservationGross: reservation.gross,
-        reservationCount: reservation.count,
-        reservationDeposit: reservation.deposit,
+        reservationCount: reservationCountInfo,
+        reservationDeposit: reservationDepositInfo,
         reservationPending: reservation.pending,
         expenses: exp,
         cashIn,
@@ -1176,11 +1198,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ),
         meta: { defaultVisible: true },
       },
-      // 14.10.2026 19:35 — Rezervasyon Tutarı (peşinat/depozito).
-      // Brütten ayrı kolon; Ciro'ya yansımaz (ayrı bilgi kolonu).
-      // "Net Kalan" formülü zaten Ciro Dışı Tahsilat üzerinden
-      // satış.depositAmount + skipInvoiceAvans olarak ekleniyor
-      // (çift sayım önlemek için reservation.deposit KULLANILMAZ).
+      // Rezervasyon Tutarı (peşinat). Açık ve kapanmış rezervasyonun
+      // alınan tutarı burada bilgi olarak durur. Kapanmış tutar ciroya
+      // ve net kalana ikinci kez yazılmaz.
       {
         key: 'reservationDeposit',
         header: `${tm('dailyDepositCollected') || 'Rezervasyon Tutarı'} (${currency})`,

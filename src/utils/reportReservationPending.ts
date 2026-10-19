@@ -99,6 +99,44 @@ export function buildReservationMap(
     return map;
 }
 
+function isClosedAppointmentStatus(status: unknown): boolean {
+  const st = String(status ?? '').trim().toLowerCase();
+  return st === 'completed' || st === 'cancelled' || st === 'canceled';
+}
+
+/**
+ * Kapanmış randevuda duran depozito. Brüt ve kalan eklenmez; hizmet tutarı
+ * kapanınca cirodadır. Alınan rezervasyon tutarı bilgi kolonunda kalır.
+ */
+export function buildClosedAppointmentDepositMap(
+  appointments: Array<{
+    id?: string | null;
+    appointment_date?: string;
+    status?: string;
+    deposit_amount?: number | string | null;
+  }> | null | undefined,
+  mode: 'monthly-days' | 'yearly-months',
+): { map: Map<string, { deposit: number; count: number }>; appointmentIds: Set<string> } {
+  const map = new Map<string, { deposit: number; count: number }>();
+  const appointmentIds = new Set<string>();
+  if (!Array.isArray(appointments)) return { map, appointmentIds };
+  for (const a of appointments) {
+    if (!isClosedAppointmentStatus(a.status)) continue;
+    const dep = Math.max(0, Number(a.deposit_amount) || 0);
+    if (!(dep > 0)) continue;
+    const id = String(a.id || '').trim();
+    if (id) appointmentIds.add(id);
+    const d = String(a.appointment_date ?? '').slice(0, 10);
+    if (!d) continue;
+    const key = mode === 'monthly-days' ? d : d.slice(0, 7);
+    const cur = map.get(key) || { deposit: 0, count: 0 };
+    cur.deposit += dep;
+    cur.count += 1;
+    map.set(key, cur);
+  }
+  return { map, appointmentIds };
+}
+
 /**
  * Tek gün için rezervasyon toplamı. Günlük Rapor / POS Z Raporu gibi
  * tek tarihli raporlarda kullanılır.
