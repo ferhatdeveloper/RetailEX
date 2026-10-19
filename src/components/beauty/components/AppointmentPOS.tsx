@@ -2244,7 +2244,13 @@ export function AppointmentPOS({
         }
 
         if (isExistingPaidComplete || !existingEditDirty) return;
-        if (!canSave) return;
+        // 19.10.2026 — Sepet boş ama iptal durumunda (depozito korunarak)
+        // güncelleme yapılabilmeli. canSave (cart.length > 0) kontrolünü
+        // iptal durumunda bypass et.
+        const isCancellingWithDeposit =
+            aptStatus === AppointmentStatus.CANCELLED &&
+            (Number(existingAppointment.deposit_amount) || 0) > 0;
+        if (!canSave && !isCancellingWithDeposit) return;
         if (appointmentBookLines.length > 0 && !allBookLinesStaffed) {
             openBookingBlockModal('staff');
             return;
@@ -2579,7 +2585,21 @@ export function AppointmentPOS({
             openBookingBlockModal('customer');
             return;
         }
-        if (!cart.length && !terminalFromCompleted) return;
+        // 19.10.2026 — Hizmet iptal edilip sepet boşaldığında ve sadece depozito
+        // kaldığında randevu otomatik iptal edilir. Kullanıcı isteği: "Randevuda
+        // hizmeti iptal edip güncellediğimde sadece depozito kaldığında iptal
+        // edilmiş randevu olacak, depozito tutarı tek kalacak."
+        if (!cart.length && !terminalFromCompleted) {
+            const hasDeposit = (Number(existingAppointment.deposit_amount) || 0) > 0;
+            if (hasDeposit) {
+                // Depozito var ama hizmet kaldırıldı → otomatik iptal
+                setAptStatus(AppointmentStatus.CANCELLED);
+                toast.info(tm('bServiceRemovedDepositOnly') || 'Hizmet kaldırıldı, randevu iptal edildi. Depozito korunuyor.');
+                // İptal güncellemeye devam et
+            } else {
+                return;
+            }
+        }
         if (appointmentBookLines.length > 0 && activeSpecialists.length === 0) {
             openBookingBlockModal('no_specialists');
             return;
