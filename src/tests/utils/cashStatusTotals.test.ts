@@ -5,7 +5,10 @@
  * Günlük nakit 50.000, kapanış 50.000, nakit satırı 50.000, genel toplam 50.000.
  */
 import { describe, expect, it } from 'vitest';
+import { computeCashBalanceForRegister } from '../../utils/cashBalance';
+import type { KasaIslemi } from '../../services/api/kasa';
 import {
+  cashRegisterStatusFromLedger,
   foldReservationIntoCashStatus,
   listCashRegisterStatus,
   mergeRegisterSeeds,
@@ -241,5 +244,246 @@ describe('listCashRegisterStatus', () => {
       },
     ]);
     expect(seeds).toEqual([]);
+  });
+});
+
+describe('cashRegisterStatusFromLedger — kasa kartı nakit/kart', () => {
+  const day = '2026-10-19';
+  const merkez = [{ id: 'k1', code: 'KASA.001', name: 'MERKEZ KASA' }];
+
+  function line(partial: {
+    kasa_id?: string;
+    islem_tipi?: string;
+    tutar: number;
+    payment_method?: string | null;
+    ozel_kod?: string;
+    islem_tarihi?: string;
+    is_reservation_deposit?: boolean;
+  }) {
+    return {
+      kasa_id: partial.kasa_id ?? 'k1',
+      islem_tipi: partial.islem_tipi ?? 'CH_TAHSILAT',
+      tutar: partial.tutar,
+      payment_method: partial.payment_method,
+      ozel_kod: partial.ozel_kod,
+      islem_tarihi: partial.islem_tarihi ?? day,
+      is_reservation_deposit: partial.is_reservation_deposit,
+    };
+  }
+
+  it('bakiye 50.000 nakit tahsilat → nakit 50.000, kart 0, kapanış 50.000', () => {
+    const lines = [line({ tutar: 50000, payment_method: 'cash' })];
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines,
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const balance = computeCashBalanceForRegister('k1', lines as unknown as KasaIslemi[]);
+
+    expect(balance).toBe(50000);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].code).toBe('KASA.001');
+    expect(rows[0].name).toBe('MERKEZ KASA');
+    expect(rows[0].openingCash).toBe(0);
+    expect(rows[0].todayCash).toBe(50000);
+    expect(rows[0].payCash).toBe(50000);
+    expect(rows[0].todayCard).toBe(0);
+    expect(rows[0].payCard).toBe(0);
+    expect(rows[0].closingCash).toBe(50000);
+    expect(rows[0].closingCash).toBe(balance);
+    expect(rows[0].grandTotal).toBe(50000);
+  });
+
+  it('ödeme yöntemi boş kasa girişi de nakittir', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines: [line({ islem_tipi: 'KASA_GIRIS', tutar: 50000, payment_method: null })],
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    expect(rows[0].todayCash).toBe(50000);
+    expect(rows[0].todayCard).toBe(0);
+    expect(rows[0].closingCash).toBe(50000);
+  });
+
+  it('kart tahsilatı nakde yazılmaz', () => {
+    const lines = [
+      line({ tutar: 40000, payment_method: 'cash' }),
+      line({ tutar: 10000, payment_method: 'card' }),
+    ];
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines,
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const balance = computeCashBalanceForRegister('k1', lines as unknown as KasaIslemi[]);
+
+    expect(rows[0].todayCash).toBe(40000);
+    expect(rows[0].todayCard).toBe(10000);
+    expect(rows[0].payCard).toBe(10000);
+    expect(rows[0].todayCash).not.toBe(50000);
+    expect(rows[0].closingCash).toBe(50000);
+    expect(rows[0].closingCash).toBe(balance);
+    expect(rows[0].grandTotal).toBe(50000);
+  });
+
+  it('yalnız kart satırı nakit alanını doldurmaz', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines: [line({ tutar: 50000, payment_method: 'Kredi Kartı' })],
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    expect(rows[0].todayCash).toBe(0);
+    expect(rows[0].todayCard).toBe(50000);
+    expect(rows[0].payCash).toBe(0);
+    expect(rows[0].closingCash).toBe(50000);
+  });
+
+  it('çıkış bakiyeden düşer, nakit tahsilatı brüt kalır', () => {
+    const lines = [
+      line({ tutar: 50000, payment_method: 'cash' }),
+      line({ islem_tipi: 'CH_ODEME', tutar: 10000, payment_method: 'cash' }),
+    ];
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines,
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const balance = computeCashBalanceForRegister('k1', lines as unknown as KasaIslemi[]);
+    expect(rows[0].todayCash).toBe(50000);
+    expect(rows[0].todayCard).toBe(0);
+    expect(rows[0].closingCash).toBe(40000);
+    expect(rows[0].closingCash).toBe(balance);
+  });
+
+  it('rezervasyon nakdi günlük nakde bir kez girer, genel toplam 65.000 olmaz', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines: [
+        line({ tutar: 35000, payment_method: 'cash' }),
+        line({ tutar: 15000, payment_method: 'Nakit', ozel_kod: 'REZERVASYON' }),
+      ],
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    expect(rows[0].todayCash).toBe(50000);
+    expect(rows[0].reservationDeposit).toBe(15000);
+    expect(rows[0].todayCard).toBe(0);
+    expect(rows[0].grandTotal).toBe(50000);
+    expect(rows[0].grandTotal).not.toBe(65000);
+    expect(rows[0].closingCash).toBe(50000);
+  });
+
+  it('iki kasa birbirinin hareketini almaz', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: [
+        { id: 'k1', code: 'KASA.001', name: 'MERKEZ KASA' },
+        { id: 'k2', code: 'KASA.002', name: 'ŞUBE KASA' },
+      ],
+      lines: [
+        line({ kasa_id: 'k1', tutar: 50000, payment_method: 'cash' }),
+        line({ kasa_id: 'k2', tutar: 8000, payment_method: 'card' }),
+      ],
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const a = rows.find((row) => row.id === 'k1');
+    const b = rows.find((row) => row.id === 'k2');
+    expect(a?.todayCash).toBe(50000);
+    expect(a?.todayCard).toBe(0);
+    expect(a?.closingCash).toBe(50000);
+    expect(b?.todayCash).toBe(0);
+    expect(b?.todayCard).toBe(8000);
+    expect(b?.closingCash).toBe(8000);
+  });
+
+  it('kasaya bağlanmayan tutar tek kasaya yapışmaz', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines: [
+        line({ tutar: 50000, payment_method: 'cash' }),
+        line({ kasa_id: '', tutar: 15000, payment_method: 'cash' }),
+      ],
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const merkezRow = rows.find((row) => row.id === 'k1');
+    const loose = rows.find((row) => row.id === '__unassigned__');
+    expect(merkezRow?.todayCash).toBe(50000);
+    expect(merkezRow?.closingCash).toBe(50000);
+    expect(loose?.todayCash).toBe(15000);
+    expect(loose?.name).toBe('Kasaya bağlanmayan');
+  });
+
+  it('önceki gün bakiyesi açılıştır, bugünkü kart nakde karışmaz', () => {
+    const lines = [
+      line({ tutar: 20000, payment_method: 'cash', islem_tarihi: '2026-10-18' }),
+      line({ tutar: 50000, payment_method: 'cash', islem_tarihi: day }),
+      line({ tutar: 7000, payment_method: 'card', islem_tarihi: day }),
+    ];
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines,
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const balance = computeCashBalanceForRegister('k1', lines as unknown as KasaIslemi[]);
+    expect(rows[0].openingCash).toBe(20000);
+    expect(rows[0].todayCash).toBe(50000);
+    expect(rows[0].todayCard).toBe(7000);
+    expect(rows[0].closingCash).toBe(77000);
+    expect(rows[0].closingCash).toBe(balance);
+  });
+
+  it('Date olarak gelen önceki gün bugünkü nakde katılmaz', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines: [
+        line({
+          tutar: 20000,
+          payment_method: 'cash',
+          islem_tarihi: new Date(2026, 9, 18) as unknown as string,
+        }),
+        line({ tutar: 50000, payment_method: 'cash' }),
+      ],
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    expect(rows[0].openingCash).toBe(20000);
+    expect(rows[0].todayCash).toBe(50000);
+    expect(rows[0].todayCard).toBe(0);
+    expect(rows[0].closingCash).toBe(70000);
+  });
+
+  it('çek tahsilatı nakit veya kart olmaz', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines: [
+        line({ tutar: 50000, payment_method: 'cash' }),
+        line({ tutar: 8000, payment_method: 'cek' }),
+      ],
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    expect(rows[0].todayCash).toBe(50000);
+    expect(rows[0].todayCard).toBe(0);
+    expect(rows[0].payCash).toBe(50000);
+    expect(rows[0].payCard).toBe(0);
+    expect(rows[0].grandTotal).toBe(50000);
   });
 });

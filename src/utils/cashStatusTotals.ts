@@ -10,6 +10,8 @@
  *   günlük nakit 50.000, kapanış 50.000, genel toplam 50.000 (65.000 değil).
  */
 
+import { computeKasaIslemiSign, type KasaIslemi } from '../services/api/kasa';
+import { computeCashBalanceForRegister } from './cashBalance';
 import { dbPaymentMethodToFormCode, type PaymentFormCode } from './paymentMethodUtils';
 
 const CASH_CODE = 'NAKIT';
@@ -263,10 +265,9 @@ function hasMovement(bucket: Bucket): boolean {
 }
 
 /**
- * Kasalar sekmesi: her kasa, kasa durumundaki aynı tutarları taşır.
- * Tek kasa varsa şirketin kalanı (fişte kasa seçilmemiş tahsilat) o kasaya yazılır;
- * böylece sekme özet kartla aynı toplamı gösterir.
- * Birden fazla kasada kalan, "kasaya bağlanmayan" satırında durur.
+ * Şirket özetini kasa tohumlarına yayar (eski dağıtım).
+ * Kasalar sekmesi bunu kullanmaz. Sekme `cashRegisterStatusFromLedger`
+ * ile her kasanın kendi kasa kartı hareketini okur.
  * Çek ve senet dağılıma girmez.
  */
 export function listCashRegisterStatus(args: {
@@ -380,6 +381,9 @@ export interface CashStatusRegisterLine {
   ozel_kod?: string | null;
   special_code?: string | null;
   is_reservation_deposit?: boolean | null;
+  /** cash_lines.payment_method — nakit / kart ayrımı */
+  payment_method?: string | null;
+  islem_tarihi?: string | null;
 }
 
 function formCodeOf(raw: unknown): PaymentFormCode | '' {
@@ -506,4 +510,172 @@ export function mergeRegisterSeeds(groups: CashRegisterSeed[][]): CashRegisterSe
     }
   }
   return Array.from(map.values());
+}
+
+type DrawerKind = 'cash' | 'card' | 'transfer' | 'open' | 'skip';
+
+/** Kasa kartı satırının nakit / kart ayrımı. Boş yöntem nakittir; kart ayrıca yazılır. */
+function drawerKind(line: CashStatusRegisterLine): DrawerKind {
+  const raw = String(line.payment_method ?? '').trim().toLowerCase();
+  if (raw === 'gateway' || raw.includes('sanal')) return 'card';
+  const code = formCodeOf(line.payment_method);
+  if (code === 'CEK' || code === 'SENET') return 'skip';
+  if (code === 'KREDIKARTI') return 'card';
+  if (code === 'HAVAL') return 'transfer';
+  if (code === 'ACIK_CARI') return 'open';
+  if (code === 'NAKIT') return 'cash';
+  if (!raw || raw === 'cash' || raw === 'nakit') return 'cash';
+  if (raw === 'credit' || raw === 'veresiye' || raw === 'open' || raw === 'open_account') return 'open';
+  return 'cash';
+}
+
+function signedLedgerAmount(line: CashStatusRegisterLine): number {
+  const amount = Math.abs(num(line.tutar));
+  if (!(amount > 0)) return 0;
+  const sign = computeKasaIslemiSign(String(line.islem_tipi || ''));
+  if (!sign) return 0;
+  return amount * sign;
+}
+
+function formatLocalDay(value: Date): string {
+  if (Number.isNaN(value.getTime())) return '';
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${value.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * Kasa satırının takvim günü.
+ * `YYYY-MM-DD` olduğu gibi kalır. Date nesnesi ve saatli dizge yerel güne çevrilir
+ * (Kasa Yönetimi bugün hesabı ile aynı yerel takvim).
+ */
+function ledgerDay(value: unknown): string {
+  if (value instanceof Date) return formatLocalDay(value);
+  const raw = String(value ?? '').trim();
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (!match) return '';
+  if (raw.length === 10) return match[1];
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return match[1];
+  return formatLocalDay(parsed);
+}
+
+function balanceOf(registerId: string, lines: CashStatusRegisterLine[]): number {
+  if (registerId === CASH_REGISTER_UNASSIGNED_ID) {
+    return round2(lines.reduce((sum, line) => sum + signedLedgerAmount(line), 0));
+  }
+  return round2(computeCashBalanceForRegister(registerId, lines as unknown as KasaIslemi[]));
+}
+
+/**
+ * Kasalar sekmesi — her kasanın kendi kasa kartı hareketi.
+ *
+ * Günlük nakit / kart, Kasa Yönetimi tahsilatı ile aynı işaret kuralından
+ * (`computeKasaIslemiSign`) ve ödeme yönteminden ayrılır. Aynı satır hem
+ * nakde hem karta yazılmaz. Kapanış, aynı formülle kasa bakiyesidir
+ * (KALAN). Çıkış bakiyeden düşer. Rezervasyon bilgi tutarı genel toplama
+ * ikinci kez eklenmez. Çek ve senet dağılım satırı değildir.
+ * Kasaya bağlanmayan satır ayrı kalır; şirket satış özeti kasaya yapıştırılmaz.
+ */
+export function cashRegisterStatusFromLedger(args: {
+  registers: Array<{ id: string; code?: string | null; name?: string | null }>;
+  lines: CashStatusRegisterLine[];
+  dateFrom: string;
+  dateTo: string;
+  unassignedLabel: string;
+}): CashRegisterStatusRow[] {
+  const dateFrom = String(args.dateFrom || '').slice(0, 10);
+  const dateTo = String(args.dateTo || '').slice(0, 10);
+  const known = new Set<string>();
+  const byId = new Map<string, { code: string; name: string; lines: CashStatusRegisterLine[] }>();
+
+  const ensure = (id: string, code: string, name: string) => {
+    const key = id || CASH_REGISTER_UNASSIGNED_ID;
+    if (!byId.has(key)) {
+      byId.set(key, { code, name: name || code || key, lines: [] });
+    }
+    return byId.get(key)!;
+  };
+
+  for (const register of args.registers) {
+    const id = String(register.id || '').trim();
+    if (!id) continue;
+    known.add(id);
+    ensure(id, String(register.code || '').trim(), String(register.name || register.code || id));
+  }
+
+  for (const line of args.lines || []) {
+    const id = String(line.kasa_id || '').trim() || CASH_REGISTER_UNASSIGNED_ID;
+    const row = ensure(
+      id,
+      '',
+      id === CASH_REGISTER_UNASSIGNED_ID ? args.unassignedLabel : id,
+    );
+    row.lines.push(line);
+  }
+
+  const rows: CashRegisterStatusRow[] = [];
+  for (const [id, bucket] of byId) {
+    const before: CashStatusRegisterLine[] = [];
+    const through: CashStatusRegisterLine[] = [];
+    let cashIn = 0;
+    let cardIn = 0;
+    let transferIn = 0;
+    let openIn = 0;
+    let reservationCash = 0;
+
+    for (const line of bucket.lines) {
+      const day = ledgerDay(line.islem_tarihi);
+      if (day && dateTo && day > dateTo) continue;
+      through.push(line);
+      if (day && dateFrom && day < dateFrom) {
+        before.push(line);
+        continue;
+      }
+      const signed = signedLedgerAmount(line);
+      if (!(signed > 0.004)) continue;
+      const kind = drawerKind(line);
+      if (kind === 'skip') continue;
+      if (kind === 'card') {
+        cardIn = round2(cardIn + signed);
+        continue;
+      }
+      if (kind === 'transfer') {
+        transferIn = round2(transferIn + signed);
+        continue;
+      }
+      if (kind === 'open') {
+        openIn = round2(openIn + signed);
+        continue;
+      }
+      cashIn = round2(cashIn + signed);
+      if (isReservationCashLine(line)) reservationCash = round2(reservationCash + signed);
+    }
+
+    const openingCash = balanceOf(id, before);
+    const closingCash = balanceOf(id, through);
+    const moved = Math.abs(openingCash) + Math.abs(closingCash) + cashIn + cardIn
+      + transferIn + openIn + reservationCash > 0.004;
+    if (id === CASH_REGISTER_UNASSIGNED_ID && !moved) continue;
+    if (!known.has(id) && id !== CASH_REGISTER_UNASSIGNED_ID && !moved) continue;
+
+    rows.push({
+      id,
+      code: bucket.code,
+      name: bucket.name,
+      openingCash,
+      todayCash: cashIn,
+      reservationDeposit: reservationCash,
+      todayCard: cardIn,
+      closingCash,
+      payCash: cashIn,
+      payCard: cardIn,
+      payOpen: openIn,
+      payTransfer: transferIn,
+      grandTotal: round2(cashIn + cardIn + openIn + transferIn),
+    });
+  }
+
+  rows.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  return rows;
 }
