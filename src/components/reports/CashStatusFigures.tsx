@@ -1,11 +1,17 @@
 /**
  * Kasa Durumu kartları ve ödeme dağılımı.
- * Özet sekmesi ve her kasa satırı aynı görünümü kullanır.
+ * Ödeme tipi satırları bu blokta kalır. Hemen altında kasa kartları
+ * (kod — ad, içindeki bakiye) ızgarada listelenir.
  */
 import type { ReactNode } from 'react';
 import { Banknote, CreditCard, HandCoins } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
-import type { CashStatusPaymentLine } from '../../utils/cashStatusTotals';
+import type {
+  CashRegisterDistributionLine,
+  CashRegisterDrawerLine,
+  CashStatusPaymentLine,
+} from '../../utils/cashStatusTotals';
+import { ReportColumnTable } from './shared/ReportDataGrid';
 
 export interface CashStatusFigureLabels {
   opening: string;
@@ -21,6 +27,12 @@ export interface CashStatusFigureLabels {
   grandTotal: string;
   grandHint: string;
   infoBadge: string;
+  registersTitle: string;
+  registerName: string;
+  registerAmount: string;
+  registersTotal: string;
+  registersEmpty: string;
+  registerListHint: string;
 }
 
 export function CashStatusFigures({
@@ -31,9 +43,11 @@ export function CashStatusFigures({
   closingCash,
   currency,
   paymentRows,
+  registerLines,
   grandTotal,
   labels,
   onPaymentClick,
+  onRegisterRowClick,
   aside,
 }: {
   openingCash: number;
@@ -43,9 +57,12 @@ export function CashStatusFigures({
   closingCash: number;
   currency: string;
   paymentRows: CashStatusPaymentLine[];
+  /** Ödeme tipi satırlarının hemen altındaki kasa listesi. Boş dizi boş durumdur. */
+  registerLines?: CashRegisterDistributionLine[];
   grandTotal: number;
   labels: CashStatusFigureLabels;
   onPaymentClick?: (code: string) => void;
+  onRegisterRowClick?: (id: string) => void;
   /** Özet ekranında dağılımın yanında duran ek panel (kart türleri). */
   aside?: ReactNode;
 }) {
@@ -149,6 +166,45 @@ export function CashStatusFigures({
               </button>
             );
           })}
+          {registerLines ? (
+            registerLines.length === 0 ? (
+              <div className="p-4 text-center text-sm text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                {labels.registersEmpty}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold text-slate-700">{labels.registersTitle}</h4>
+                <ReportColumnTable
+                  data={registerLines}
+                  height={Math.min(420, 260 + registerLines.length * 36)}
+                  storageNamespace="cash-status-register-distribution"
+                  footerLabel={labels.registersTotal}
+                  onRowClick={onRegisterRowClick ? (row) => onRegisterRowClick(row.id) : undefined}
+                  columns={[
+                    {
+                      key: 'label',
+                      header: labels.registerName,
+                      size: 280,
+                      cell: (row) => <span className="font-medium text-slate-800">{row.label}</span>,
+                    },
+                    {
+                      key: 'amount',
+                      header: labels.registerAmount,
+                      type: 'number',
+                      align: 'right',
+                      size: 160,
+                      footerSum: true,
+                      footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+                      cell: (row) => (
+                        <span className="font-semibold tabular-nums">{money(row.amount)}</span>
+                      ),
+                    },
+                  ]}
+                />
+                <p className="text-xs text-slate-500 px-1">{labels.registerListHint}</p>
+              </div>
+            )
+          ) : null}
           <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
             <span className="font-semibold">{labels.grandTotal}</span>
             <span className="font-bold text-green-700 text-lg tabular-nums">{money(grandTotal)}</span>
@@ -158,6 +214,83 @@ export function CashStatusFigures({
       </div>
       {aside}
       </div>
+    </div>
+  );
+}
+
+export interface CashRegisterDrawerLabels {
+  registerName: string;
+  cash: string;
+  card: string;
+  openAccount: string;
+  transfer: string;
+  reservation: string;
+  balance: string;
+  footer: string;
+  hint: string;
+  empty: string;
+}
+
+/**
+ * Kasalar sekmesi — her kasanın içindeki nakit, kart ve diğer kırılım.
+ * Kasa durumu KPI kartlarının kopyası değildir.
+ */
+export function CashRegisterDrawerGrid({
+  rows,
+  currency,
+  labels,
+}: {
+  rows: CashRegisterDrawerLine[];
+  currency: string;
+  labels: CashRegisterDrawerLabels;
+}) {
+  const money = (amount: number) => `${formatNumber(amount, 2, false)} ${currency}`;
+  if (rows.length === 0) {
+    return (
+      <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
+        {labels.empty}
+      </div>
+    );
+  }
+  const amountCol = (
+    key: keyof CashRegisterDrawerLine & string,
+    header: string,
+    footer: boolean,
+  ) => ({
+    key,
+    header,
+    type: 'number' as const,
+    align: 'right' as const,
+    size: 140,
+    footerSum: footer,
+    footerFormat: (n: number) => money(n),
+    cell: (row: CashRegisterDrawerLine) => (
+      <span className="tabular-nums">{money(Number(row[key]) || 0)}</span>
+    ),
+  });
+  return (
+    <div className="bg-white rounded-lg border p-2 space-y-2">
+      <ReportColumnTable
+        data={rows}
+        height={Math.min(560, 280 + rows.length * 40)}
+        storageNamespace="cash-status-register-drawers"
+        footerLabel={labels.footer}
+        columns={[
+          {
+            key: 'label',
+            header: labels.registerName,
+            size: 240,
+            cell: (row) => <span className="font-medium text-slate-800">{row.label}</span>,
+          },
+          amountCol('cash', labels.cash, true),
+          amountCol('card', labels.card, true),
+          amountCol('openAccount', labels.openAccount, true),
+          amountCol('transfer', labels.transfer, true),
+          amountCol('reservation', labels.reservation, false),
+          amountCol('balance', labels.balance, true),
+        ]}
+      />
+      <p className="text-xs text-slate-500 px-2 pb-2">{labels.hint}</p>
     </div>
   );
 }

@@ -12115,6 +12115,36 @@ export const excelModuleTranslations = {
     ar: 'تم اختيار يوم سابق: يُقرأ النقد الافتتاحي لليوم فقط وعلى هذا الجهاز.',
     ku: 'ڕۆژێکی ڕابردوو هەڵبژێردراوە: سندوقی کردنەوە تەنها بۆ ئەمڕۆ لەم ئامێرە دەخوێندرێتەوە.',
   },
+  cashStatusRegisterAmount: {
+    tr: 'İçindeki tutar',
+    en: 'Amount inside',
+    ar: 'المبلغ داخل الصندوق',
+    ku: 'بڕی ناو سندوق',
+  },
+  cashStatusRegisterBalance: {
+    tr: 'Kalan',
+    en: 'Balance',
+    ar: 'المتبقي',
+    ku: 'ماوە',
+  },
+  cashStatusRegistersTotal: {
+    tr: 'Kasalar toplamı',
+    en: 'Registers total',
+    ar: 'مجموع الصناديق',
+    ku: 'کۆی سندوقەکان',
+  },
+  cashStatusRegisterListHint: {
+    tr: 'Her satır kasanın bakiyesidir. Genel toplama ikinci kez eklenmez. Rezervasyon bilgi satırı toplama girmez.',
+    en: 'Each row is the register balance. It is not added to the grand total again. The reservation info row is not included.',
+    ar: 'كل سطر هو رصيد الصندوق ولا يُضاف مرة أخرى إلى المجموع. سطر الحجز المعلوماتي لا يدخل في المجموع.',
+    ku: 'هەر ڕیزێک باڵانسی سندوقە. دووبارە بۆ کۆی گشتی زیاد ناکرێت. ڕیزی زانیاریی نۆرە ناچێتە کۆ.',
+  },
+  cashStatusDrawerHint: {
+    tr: 'Kırılım kasa kartı hareketidir. Nakit ve kart aynı satırı iki kez saymaz. Rezervasyon nakde dahildir, toplama eklenmez.',
+    en: 'The split comes from register movements. Cash and card do not count the same line twice. Reservation is inside cash and is not added again.',
+    ar: 'التفصيل من حركات الصندوق. النقد والبطاقة لا يحسبان نفس السطر مرتين. الحجز ضمن النقد ولا يُضاف مرة أخرى.',
+    ku: 'دابەشبوون لە جووڵەی سندوقە. نەقد و کارت هەمان ڕیز دوو جار ناژمێرن. نۆرە لە نەقددایە و دووبارە زیاد ناکرێت.',
+  },
   rptCashRegisters: { tr: 'Kasalar', en: 'Cash Registers', ar: 'الصناديق', ku: 'سندوقەکان' },
   rptCashRegisterName: { tr: 'Kasa', en: 'Cash Register', ar: 'الصندوق', ku: 'سندوق' },
 

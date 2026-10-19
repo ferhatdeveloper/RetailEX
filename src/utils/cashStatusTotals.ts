@@ -679,3 +679,101 @@ export function cashRegisterStatusFromLedger(args: {
   rows.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
   return rows;
 }
+
+/** Kasa Yönetimi kartı: `KASA.001 — MERKEZ KASA`. */
+export function formatCashRegisterDistributionLabel(code: string, name: string): string {
+  const registerCode = String(code || '').trim();
+  const registerName = String(name || '').trim();
+  if (registerCode && registerName && registerCode !== registerName) {
+    return `${registerCode} — ${registerName}`;
+  }
+  return registerName || registerCode;
+}
+
+export interface CashRegisterDistributionLine {
+  id: string;
+  code: string;
+  name: string;
+  /** `KASA.001 — MERKEZ KASA` */
+  label: string;
+  /**
+   * Kasanın içindeki tutar: dönem sonu bakiyesi
+   * (`computeCashBalanceForRegister`, dateTo'ya kadar).
+   * Nakit ve kart aynı hareketi iki kez saymaz. Rezervasyon bu bakiyenin
+   * içindedir; satır tutarına ikinci kez eklenmez.
+   */
+  amount: number;
+}
+
+/**
+ * Ödeme dağılımı bloğundaki kasa listesi.
+ * Her kasa kartı ayrı satırdır. Kasaya bağlanmayan tutar, defter satırı varsa
+ * ayrı satırda kalır. Boş defter boş dizi döner.
+ */
+export function cashRegisterDistributionLines(
+  rows: CashRegisterStatusRow[],
+): CashRegisterDistributionLine[] {
+  return (rows || []).map((row) => ({
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    label: formatCashRegisterDistributionLabel(row.code, row.name),
+    amount: round2(row.closingCash),
+  }));
+}
+
+export function sumCashRegisterDistribution(lines: CashRegisterDistributionLine[]): number {
+  return round2((lines || []).reduce((sum, line) => sum + num(line.amount), 0));
+}
+
+export interface CashRegisterDrawerLine {
+  id: string;
+  code: string;
+  name: string;
+  label: string;
+  /** Dönem içi nakit tahsilatı. Rezervasyon nakdi bunun içindedir. */
+  cash: number;
+  /** Dönem içi kart. Nakit satırına yazılmaz. */
+  card: number;
+  openAccount: number;
+  transfer: number;
+  /** Bilgi — nakde dahildir, genel toplama eklenmez. */
+  reservation: number;
+  /** Kapanış / kalan. Dağılım listesindeki tutarla aynı bakiyedir. */
+  balance: number;
+}
+
+/**
+ * Kasalar sekmesi — kasanın içindeki ödeme kırılımı.
+ * Satış fişi özeti değil; `cashRegisterStatusFromLedger` çıktısı.
+ * Çek ve senet kolon değildir.
+ */
+export function cashRegisterDrawerLines(rows: CashRegisterStatusRow[]): CashRegisterDrawerLine[] {
+  return (rows || []).map((row) => ({
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    label: formatCashRegisterDistributionLabel(row.code, row.name),
+    cash: round2(row.payCash),
+    card: round2(row.payCard),
+    openAccount: round2(row.payOpen),
+    transfer: round2(row.payTransfer),
+    reservation: round2(row.reservationDeposit),
+    balance: round2(row.closingCash),
+  }));
+}
+
+/**
+ * Yeşil genel toplam ödeme dağılımıdır. Kasa listesi aynı paranın kasa
+ * bakiyesidir; genel toplama ikinci kez eklenmez. Rezervasyon bilgi
+ * tutarı `paymentGrand` dışında tutulmuş olmalıdır.
+ */
+export function cashStatusBlockTotals(
+  paymentGrand: number,
+  registerRows: CashRegisterStatusRow[],
+): { grandTotal: number; registerTotal: number } {
+  return {
+    grandTotal: round2(num(paymentGrand)),
+    registerTotal: sumCashRegisterDistribution(cashRegisterDistributionLines(registerRows)),
+  };
+}

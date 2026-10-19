@@ -8,12 +8,16 @@ import { describe, expect, it } from 'vitest';
 import { computeCashBalanceForRegister } from '../../utils/cashBalance';
 import type { KasaIslemi } from '../../services/api/kasa';
 import {
+  cashRegisterDistributionLines,
+  cashRegisterDrawerLines,
   cashRegisterStatusFromLedger,
+  cashStatusBlockTotals,
   foldReservationIntoCashStatus,
   listCashRegisterStatus,
   mergeRegisterSeeds,
   seedsFromCashStatusSales,
   seedsFromRegisterCashLines,
+  sumCashRegisterDistribution,
 } from '../../utils/cashStatusTotals';
 
 const SCREEN_TYPES = [
@@ -467,6 +471,128 @@ describe('cashRegisterStatusFromLedger — kasa kartı nakit/kart', () => {
     expect(rows[0].todayCash).toBe(50000);
     expect(rows[0].todayCard).toBe(0);
     expect(rows[0].closingCash).toBe(70000);
+  });
+
+  it('dağılım listesinde kasa 50.000, sekmede nakit 50.000 kart 0; rezervasyon toplama eklenmez', () => {
+    const lines = [
+      line({ tutar: 35000, payment_method: 'cash' }),
+      line({ tutar: 15000, payment_method: 'Nakit', ozel_kod: 'REZERVASYON' }),
+    ];
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines,
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const balance = computeCashBalanceForRegister('k1', lines as unknown as KasaIslemi[]);
+    const listed = cashRegisterDistributionLines(rows);
+    const drawer = cashRegisterDrawerLines(rows);
+
+    expect(balance).toBe(50000);
+    expect(listed).toHaveLength(1);
+    expect(listed[0].label).toBe('KASA.001 — MERKEZ KASA');
+    expect(listed[0].amount).toBe(50000);
+    expect(listed[0].amount).toBe(balance);
+    expect(sumCashRegisterDistribution(listed)).toBe(50000);
+    expect(sumCashRegisterDistribution(listed)).not.toBe(65000);
+
+    expect(drawer).toHaveLength(1);
+    expect(drawer[0].cash).toBe(50000);
+    expect(drawer[0].card).toBe(0);
+    expect(drawer[0].reservation).toBe(15000);
+    expect(drawer[0].balance).toBe(50000);
+    expect(drawer[0].cash + drawer[0].card).toBe(50000);
+    expect(drawer[0].cash + drawer[0].card + drawer[0].reservation).not.toBe(drawer[0].balance);
+
+    const block = cashStatusBlockTotals(50000, rows);
+    expect(block.grandTotal).toBe(50000);
+    expect(block.registerTotal).toBe(50000);
+    expect(block.grandTotal).not.toBe(65000);
+    expect(block.grandTotal).not.toBe(block.registerTotal + 15000);
+    expect(block.grandTotal).not.toBe(block.registerTotal + block.grandTotal);
+  });
+
+  it('ikinci kasanın kart tahsilatı birinci kasanın nakdine yazılmaz', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: [
+        { id: 'k1', code: 'KASA.001', name: 'MERKEZ KASA' },
+        { id: 'k2', code: 'KASA.002', name: 'ŞUBE KASA' },
+      ],
+      lines: [
+        line({ kasa_id: 'k1', tutar: 50000, payment_method: 'cash' }),
+        line({ kasa_id: 'k2', tutar: 8000, payment_method: 'card' }),
+      ],
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const listed = cashRegisterDistributionLines(rows);
+    const drawer = cashRegisterDrawerLines(rows);
+    const merkezRow = drawer.find((row) => row.id === 'k1');
+    const sube = drawer.find((row) => row.id === 'k2');
+    const merkezLine = listed.find((row) => row.id === 'k1');
+    const subeLine = listed.find((row) => row.id === 'k2');
+
+    expect(merkezLine?.label).toBe('KASA.001 — MERKEZ KASA');
+    expect(merkezLine?.amount).toBe(50000);
+    expect(subeLine?.label).toBe('KASA.002 — ŞUBE KASA');
+    expect(subeLine?.amount).toBe(8000);
+    expect(merkezRow?.cash).toBe(50000);
+    expect(merkezRow?.card).toBe(0);
+    expect(sube?.cash).toBe(0);
+    expect(sube?.card).toBe(8000);
+    expect(sumCashRegisterDistribution(listed)).toBe(58000);
+    expect(sumCashRegisterDistribution(listed)).not.toBe(50000 + 8000 + 8000);
+  });
+
+  it('kasaya bağlanmayan tutar dağılım listesinde ayrı satırdır', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines: [
+        line({ tutar: 50000, payment_method: 'cash' }),
+        line({ kasa_id: '', tutar: 12000, payment_method: 'cash' }),
+      ],
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const listed = cashRegisterDistributionLines(rows);
+    expect(listed.find((row) => row.id === 'k1')?.amount).toBe(50000);
+    expect(listed.find((row) => row.id === '__unassigned__')?.label).toBe('Kasaya bağlanmayan');
+    expect(listed.find((row) => row.id === '__unassigned__')?.amount).toBe(12000);
+  });
+
+  it('kasa kartı ve hareket yoksa dağılım listesi ve sekme boştur', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: [],
+      lines: [],
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    expect(cashRegisterDistributionLines(rows)).toEqual([]);
+    expect(cashRegisterDrawerLines(rows)).toEqual([]);
+    expect(sumCashRegisterDistribution([])).toBe(0);
+  });
+
+  it('çek tahsilatı sekmede nakit veya kart olmaz', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines: [
+        line({ tutar: 50000, payment_method: 'cash' }),
+        line({ tutar: 8000, payment_method: 'cek' }),
+      ],
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const drawer = cashRegisterDrawerLines(rows);
+    expect(drawer[0].cash).toBe(50000);
+    expect(drawer[0].card).toBe(0);
+    expect(drawer[0].openAccount).toBe(0);
+    expect(drawer[0].transfer).toBe(0);
+    expect('check' in drawer[0]).toBe(false);
   });
 
   it('çek tahsilatı nakit veya kart olmaz', () => {

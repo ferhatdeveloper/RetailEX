@@ -38,7 +38,7 @@ import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import { DailyCashFlowModal } from './DailyCashFlowModal';
-import { CashStatusFigures, type CashStatusFigureLabels } from './CashStatusFigures';
+import { CashRegisterDrawerGrid, CashStatusFigures, type CashStatusFigureLabels } from './CashStatusFigures';
 import {
   displayUserCashierName,
   isPlaceholderCashierName,
@@ -101,9 +101,11 @@ import {
   type PaymentTypeMovement,
 } from '../../utils/paymentTypeDistribution';
 import {
+  cashRegisterDistributionLines,
+  cashRegisterDrawerLines,
   cashRegisterStatusFromLedger,
+  cashStatusBlockTotals,
   foldReservationIntoCashStatus,
-  type CashRegisterStatusRow,
   type CashStatusPaymentLine,
 } from '../../utils/cashStatusTotals';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
@@ -4869,29 +4871,15 @@ export function ReportsModule({
     grandTotal: tm('rptGrandTotal'),
     grandHint: tm('cashStatusGrandTotalHint'),
     infoBadge: tm('cashStatusInfoBadge'),
+    registersTitle: tm('cashStatusTabRegisters'),
+    registerName: tm('rptCashRegisterName'),
+    registerAmount: tm('cashStatusRegisterAmount'),
+    registersTotal: tm('cashStatusRegistersTotal'),
+    registersEmpty: tm('cashStatusRegistersEmpty'),
+    registerListHint: tm('cashStatusRegisterListHint'),
   });
 
-  const buildRegisterPaymentRows = (row: CashRegisterStatusRow): CashStatusPaymentLine[] => {
-    const line = (code: PaymentFormCode, amount: number, informational = false): CashStatusPaymentLine => {
-      const meta = PAYMENT_FORM_CODE_META[code];
-      return {
-        code,
-        amount,
-        label: tm(meta.nameKey),
-        color: meta.color,
-        informational,
-      };
-    };
-    return [
-      line('NAKIT', row.payCash),
-      line('KREDIKARTI', row.payCard),
-      line('ACIK_CARI', row.payOpen),
-      line('HAVAL', row.payTransfer),
-      line('REZERVASYON_AVANS', row.reservationDeposit, true),
-    ];
-  };
-
-  const getCashRegisterStatusRows = (): CashRegisterStatusRow[] => {
+  const getCashRegisterStatusRows = () => {
     const ledger = cashRegisterLedgerLines.length > 0
       ? cashRegisterLedgerLines
       : kasaLinesForSelectedDate;
@@ -4910,34 +4898,23 @@ export function ReportsModule({
 
   const renderCashRegisterPanels = () => {
     const rows = getCashRegisterStatusRows();
-    if (rows.length === 0) {
-      return (
-        <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
-          {tm('cashStatusRegistersEmpty')}
-        </div>
-      );
-    }
     return (
-      <div className="space-y-6">
-        {rows.map((row) => (
-          <section key={row.id} className="space-y-3">
-            <h3 className="text-lg font-semibold text-slate-800">
-              {row.code ? `${row.code} — ${row.name}` : row.name}
-            </h3>
-            <CashStatusFigures
-              openingCash={row.openingCash}
-              todayCash={row.todayCash}
-              reservationDeposit={row.reservationDeposit}
-              todayCard={row.todayCard}
-              closingCash={row.closingCash}
-              currency={reportCurrency}
-              paymentRows={buildRegisterPaymentRows(row)}
-              grandTotal={row.grandTotal}
-              labels={cashStatusFigureLabels()}
-            />
-          </section>
-        ))}
-      </div>
+      <CashRegisterDrawerGrid
+        rows={cashRegisterDrawerLines(rows)}
+        currency={reportCurrency}
+        labels={{
+          registerName: tm('rptCashRegisterName'),
+          cash: tm('paymentCash'),
+          card: tm('paymentCreditCard'),
+          openAccount: tm('paymentOpenAccount'),
+          transfer: tm('paymentTransfer'),
+          reservation: tm('paymentReservationDeposit'),
+          balance: tm('cashStatusRegisterBalance'),
+          footer: tm('cashStatusRegistersTotal'),
+          hint: tm('cashStatusDrawerHint'),
+          empty: tm('cashStatusRegistersEmpty'),
+        }}
+      />
     );
   };
 
@@ -8378,6 +8355,8 @@ export function ReportsModule({
 
             {selectedTab === 'cash-status' && (() => {
               const cashStatus = getCashStatus();
+              const registerRows = getCashRegisterStatusRows();
+              const blockTotals = cashStatusBlockTotals(cashStatus.distributionTotal, registerRows);
               return (
                 <div className="space-y-4">
                   <div className="bg-white rounded-lg border p-4">
@@ -8420,7 +8399,9 @@ export function ReportsModule({
                       closingCash={cashStatus.closingCash}
                       currency={reportCurrency}
                       paymentRows={cashStatus.paymentTypes}
-                      grandTotal={cashStatus.distributionTotal}
+                      registerLines={cashRegisterDistributionLines(registerRows)}
+                      grandTotal={blockTotals.grandTotal}
+                      onRegisterRowClick={() => setCashStatusPane('registers')}
                       labels={cashStatusFigureLabels(
                         selectedDateFrom !== localTodayDateKey() || selectedDateTo !== localTodayDateKey()
                           ? tm('cashStatusOpeningPastHint')
