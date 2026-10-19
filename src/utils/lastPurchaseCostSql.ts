@@ -364,6 +364,41 @@ export const SQL_SALES_SIGN = `
 CASE WHEN ${SQL_IS_SALES_RETURN} THEN -1 ELSE 1 END
 `.trim();
 
+/** Satırın bağlı randevusundaki depozito. Satır yoksa 0. */
+export const SQL_SERVICE_DEPOSIT_AMOUNT = `
+COALESCE((
+  SELECT ba.deposit_amount
+  FROM beauty_appointments ba
+  WHERE si.linked_appointment_id IS NOT NULL
+    AND ba.id = si.linked_appointment_id
+  LIMIT 1
+), 0)
+`.trim();
+
+/**
+ * Fişe bağlı randevu depozitoları, virgülle. Aynı tutar birden fazla randevuda
+ * kopyalanmış olabilir; dağıtım tarafı bunu bir kez böler.
+ */
+export const SQL_FICHE_DEPOSIT_LIST = `
+COALESCE((
+  SELECT string_agg(d.deposit_amount::text, ',')
+  FROM (
+    SELECT DISTINCT ba.id, COALESCE(ba.deposit_amount, 0) AS deposit_amount
+    FROM beauty_appointments ba
+    WHERE COALESCE(ba.deposit_amount, 0) <> 0
+      AND (
+        ba.id = s.linked_appointment_id
+        OR ba.remainder_sale_id = s.id
+        OR ba.deposit_sale_id = s.id
+        OR (
+          COALESCE(s.sale_group_id, '') <> ''
+          AND ba.sale_group_id = s.sale_group_id
+        )
+      )
+  ) d
+), '')
+`.trim();
+
 /**
  * Dip indirim: satır net toplamı fatura net_amount’tan büyükse oransal ölçek.
  * Satır indirimi zaten si.net_amount içinde varsayılır.
@@ -469,6 +504,29 @@ export const LINE_COST_EXPR = `
 
 export const SIGNED_LINE_QTY_EXPR = `(${SQL_SALES_SIGN}) * COALESCE(si.quantity, 0)`;
 export const SIGNED_LINE_REVENUE_EXPR = `(${SQL_SALES_SIGN}) * ${LINE_REVENUE_EXPR}`;
+
+/**
+ * Depozito satırı BEA fişinde randevu brütüyle değişmesin.
+ * Dağıtım, satırın kendi net tutarını görsün.
+ */
+export const SQL_IS_DEPOSIT_LINE = `
+(
+  lower(trim(coalesce(si.item_type, ''))) IN ('deposit', 'depozito')
+  OR lower(trim(coalesce(si.item_name, ''))) IN ('deposit', 'depozito', 'peşinat', 'pesinat', 'rezervasyon')
+  OR lower(trim(coalesce(si.item_name, ''))) LIKE 'depozito%'
+  OR lower(trim(coalesce(si.item_name, ''))) LIKE 'deposit%'
+  OR lower(trim(coalesce(si.item_name, ''))) LIKE 'peşinat%'
+  OR lower(trim(coalesce(si.item_name, ''))) LIKE 'pesinat%'
+  OR lower(trim(coalesce(si.item_code, ''))) IN ('deposit', 'depozito')
+)
+`.trim();
+
+export const SIGNED_FOLD_LINE_REVENUE_EXPR = `
+CASE
+  WHEN ${SQL_IS_DEPOSIT_LINE} THEN (${SQL_SALES_SIGN}) * COALESCE(si.net_amount, 0)
+  ELSE ${SIGNED_LINE_REVENUE_EXPR}
+END
+`.trim();
 export const SIGNED_LINE_COST_EXPR = `(${SQL_SALES_SIGN}) * (${LINE_COST_EXPR})`;
 export const SIGNED_LINE_PROFIT_EXPR = `(${SIGNED_LINE_REVENUE_EXPR}) - (${SIGNED_LINE_COST_EXPR})`;
 

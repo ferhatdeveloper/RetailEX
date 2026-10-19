@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { BeautyAppointment } from '../../types/beauty';
 import {
   allocateBeautyVisitDeposits,
+  appointmentDepositRef,
+  foldDepositLinesByInvoice,
   foldDepositRevenueIntoServices,
+  foldSaleItemsWithDeposits,
   isDepositProductLine,
   spreadReservationAcrossLines,
 } from '../../utils/beautyDepositAllocation';
@@ -80,8 +83,101 @@ describe('foldDepositRevenueIntoServices', () => {
     expect(isDepositProductLine({ productName: 'DEPOSIT' })).toBe(true);
     expect(isDepositProductLine({ productName: 'Peşinat' })).toBe(true);
     expect(isDepositProductLine({ productName: 'PEŞİNAT' })).toBe(true);
+    expect(isDepositProductLine({ productName: 'Depozito (Peşinat Avansı)' })).toBe(true);
     expect(isDepositProductLine({ productId: 'DEPOSIT' })).toBe(true);
     expect(isDepositProductLine({ lineType: 'DEPOSIT', productName: 'Avans' })).toBe(true);
+  });
+
+  it('satır yoksa fiş depozitosunu hizmete yazar', () => {
+    const lines = foldDepositRevenueIntoServices(
+      [{ productName: 'HAIR CUT', quantity: 1, total: 35000 }],
+      { ficheDeposit: 15000, invoiceNet: 50000 },
+    );
+    expect(lines).toEqual([{ productName: 'HAIR CUT', quantity: 1, total: 50000 }]);
+  });
+
+  it('hizmet tutarı fiş netine eşitse depozitoyu ikinci kez eklemez', () => {
+    const lines = foldDepositRevenueIntoServices(
+      [{ productName: 'HAIR CUT', quantity: 1, total: 50000 }],
+      { ficheDeposit: 15000, invoiceNet: 50000 },
+    );
+    expect(lines.map((line) => line.total)).toEqual([50000]);
+  });
+
+  it('fişteki tek depozitoyu iki hizmete böler', () => {
+    const lines = foldDepositRevenueIntoServices(
+      [
+        { productName: 'Kesim', quantity: 1, total: 17000 },
+        { productName: 'Boya', quantity: 1, total: 13000 },
+      ],
+      { ficheDeposits: [5000, 5000], invoiceNet: 35000 },
+    );
+    expect(lines.map((line) => line.total)).toEqual([20000, 15000]);
+  });
+
+  it('hizmetin kendi depozitosunu o hizmette bırakır', () => {
+    const lines = foldDepositRevenueIntoServices(
+      [
+        { productName: 'Kesim', quantity: 1, total: 20000, depositAmount: 1000 },
+        { productName: 'Boya', quantity: 1, total: 15000, depositAmount: 4000 },
+      ],
+      { invoiceNet: 40000 },
+    );
+    expect(lines.map((line) => line.total)).toEqual([21000, 19000]);
+  });
+
+  it('yalnızca bir hizmetin depozitosu diğer hizmete bölünmez', () => {
+    const lines = foldDepositRevenueIntoServices(
+      [
+        { productName: 'Kesim', quantity: 1, total: 20000, depositAmount: 5000 },
+        { productName: 'Boya', quantity: 1, total: 15000, depositAmount: 0 },
+      ],
+      { invoiceNet: 40000 },
+    );
+    expect(lines.map((line) => line.total)).toEqual([25000, 15000]);
+  });
+
+  it('randevu depozitosunu fiş satırına adıyla bağlar', () => {
+    const ref = appointmentDepositRef({
+      id: 'apt-1',
+      deposit_amount: 15000,
+      service_name: 'HAIR CUT',
+      remainder_sale_id: 'sale-1',
+    });
+    const lines = foldSaleItemsWithDeposits(
+      [{ productName: 'HAIR CUT', quantity: 1, total: 35000 }],
+      { id: 'sale-1', total: 50000 },
+      ref ? [ref] : [],
+    );
+    expect(lines.map((line) => line.total)).toEqual([50000]);
+  });
+
+  it('iade fişinde depozito payı eksi yönde yazılır', () => {
+    const lines = foldDepositRevenueIntoServices(
+      [{ productName: 'HAIR CUT', quantity: -1, total: -35000 }],
+      { ficheDeposit: -15000, invoiceNet: -50000 },
+    );
+    expect(lines.map((line) => line.total)).toEqual([-50000]);
+  });
+
+  it('iade tutarı fiş netine eşitse depozitoyu ikinci kez düşmez', () => {
+    const lines = foldDepositRevenueIntoServices(
+      [{ productName: 'HAIR CUT', quantity: -1, total: -50000 }],
+      { ficheDeposit: -15000, invoiceNet: -50000 },
+    );
+    expect(lines.map((line) => line.total)).toEqual([-50000]);
+  });
+
+  it('aynı fişteki satırları birlikte dağıtır', () => {
+    const lines = foldDepositLinesByInvoice([
+      { invoiceId: 's1', invoiceNet: 50000, productName: 'HAIR CUT', quantity: 1, total: 35000, ficheDeposits: [15000] },
+      { invoiceId: 's1', invoiceNet: 50000, productName: 'DEPOSIT', quantity: 1, total: 15000, ficheDeposits: [15000] },
+      { invoiceId: 's2', invoiceNet: 20000, productName: 'Boya', quantity: 1, total: 20000, ficheDeposits: [5000] },
+    ]);
+    expect(lines.map((line) => `${line.invoiceId}:${line.productName}:${line.total}`)).toEqual([
+      's1:HAIR CUT:50000',
+      's2:Boya:20000',
+    ]);
   });
 });
 

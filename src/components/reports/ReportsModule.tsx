@@ -80,7 +80,12 @@ import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMEN
 import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections, saleCollectedSplit, dailyPaymentKind, beautySalePocketCollected } from '../../utils/saleCollectedAmounts';
 import { saleCollected as saleActualCollected } from '../../utils/computeActualCollected';
 import { filterForRevenue, filterForCash, filterForDeposit, isCompletedAppointmentStatus, isDepositSale } from '../../utils/reportDepositFilter';
-import { allocateBeautyVisitDeposits, foldDepositRevenueIntoServices } from '../../utils/beautyDepositAllocation';
+import {
+  allocateBeautyVisitDeposits,
+  appointmentDepositRef,
+  foldSaleItemsWithDeposits,
+  type FicheDepositRef,
+} from '../../utils/beautyDepositAllocation';
 import {
   absorbReservationFromRemainings,
   detachReservationFromOpenAccount,
@@ -640,7 +645,20 @@ function buildRestaurantDetailedSaleLines(orders: any[], tm: (key: string) => st
 }
 
 /** ERP fişlerinden detaylı satış kalemleri (perakende / market / güzellik). */
-function buildErpDetailedSaleLines(salesDay: Sale[], tm: (key: string) => string): DetailedSaleLineRow[] {
+function foldedErpSaleItems(sale: Sale, refs: FicheDepositRef[]) {
+  return foldSaleItemsWithDeposits(sale.items || [], {
+    id: sale.id,
+    total: Number(sale.total) || 0,
+    linkedAppointmentId: sale.linkedAppointmentId,
+    saleGroupId: sale.saleGroupId,
+  }, refs);
+}
+
+function buildErpDetailedSaleLines(
+  salesDay: Sale[],
+  tm: (key: string) => string,
+  refs: FicheDepositRef[] = [],
+): DetailedSaleLineRow[] {
   const out: DetailedSaleLineRow[] = [];
   salesDay.forEach((sale, saleIdx) => {
     // Bug 28 follow-up — Rezervasyon peşinatı ve hizmet verilmemiş randevu
@@ -664,7 +682,9 @@ function buildErpDetailedSaleLines(salesDay: Sale[], tm: (key: string) => string
     let statusLabel = tm('reportsDetStatusCompleted');
     if (sale.status === 'cancelled') statusLabel = tm('reportsDetStatusCancelled');
     else if (sale.status === 'refunded') statusLabel = tm('reportsDetStatusRefunded');
-    (sale.items || []).forEach((it, lineIdx) => {
+    foldedErpSaleItems(sale, refs).forEach((it, lineIdx) => {
+      const qty = Number(it.quantity ?? 0);
+      const total = Number(it.total ?? 0);
       out.push({
         id: `${invoiceNo}-${saleIdx}-${lineIdx}`,
         open,
@@ -673,9 +693,9 @@ function buildErpDetailedSaleLines(salesDay: Sale[], tm: (key: string) => string
         table: tableLabel,
         product: String(it.productName ?? '—'),
         cari,
-        qty: Number(it.quantity ?? 0),
-        price: Number(it.price ?? 0),
-        total: Number(it.total ?? 0),
+        qty,
+        price: qty ? total / qty : Number(it.price ?? 0),
+        total,
         status: statusLabel,
         note: '—',
       });
@@ -1127,6 +1147,7 @@ export function ReportsModule({
   const [loadingReportRangeSales, setLoadingReportRangeSales] = useState(false);
   /** Karşılaştırma / analiz sekmeleri — bellekteki son 500 satış yerine DB */
   const [comparisonSales, setComparisonSales] = useState<Sale[]>([]);
+  const [rangeDepositRefs, setRangeDepositRefs] = useState<FicheDepositRef[]>([]);
   const [analysisRangeSales, setAnalysisRangeSales] = useState<Sale[]>([]);
   /** Trend/hedef/müşteri raporları — son 12 ay DB (bellekteki son 500 kayıt yeterli değil) */
   const [catalogSales, setCatalogSales] = useState<Sale[]>([]);
@@ -1227,11 +1248,32 @@ export function ReportsModule({
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [detailedSalesSearch, setDetailedSalesSearch] = useState('');
 
+  const rememberDepositRefs = useCallback(async (from: string, to: string) => {
+    if (!from || !to) return;
+    try {
+      const rows = await beautyService.getAppointmentsInRange(from, to);
+      const next = (Array.isArray(rows) ? rows : [])
+        .map((row) => appointmentDepositRef(row))
+        .filter((row): row is FicheDepositRef => !!row);
+      if (next.length === 0) return;
+      setRangeDepositRefs((prev) => {
+        const map = new Map(prev.map((row) => [row.id, row]));
+        for (const row of next) map.set(row.id, row);
+        return Array.from(map.values());
+      });
+    } catch (err) {
+      console.warn('[ReportsModule] Depozito dağıtımı için randevular okunamadı:', err);
+    }
+  }, []);
+
   const loadReportRangeSales = useCallback(async () => {
     setLoadingReportRangeSales(true);
     try {
       const { salesAPI } = await import('../../services/api/sales');
-      const rows = await salesAPI.getByDateRange(selectedDateFrom, selectedDateTo);
+      const [rows] = await Promise.all([
+        salesAPI.getByDateRange(selectedDateFrom, selectedDateTo),
+        rememberDepositRefs(selectedDateFrom, selectedDateTo),
+      ]);
       setReportRangeSales(Array.isArray(rows) ? rows : []);
     } catch (err) {
       console.error('[ReportsModule] Seçili dönem satışları yüklenemedi:', err);
@@ -1239,20 +1281,23 @@ export function ReportsModule({
     } finally {
       setLoadingReportRangeSales(false);
     }
-  }, [selectedDateFrom, selectedDateTo]);
+  }, [selectedDateFrom, selectedDateTo, rememberDepositRefs]);
 
   const loadComparisonSales = useCallback(async () => {
     try {
       const { salesAPI } = await import('../../services/api/sales');
       const todayKey = localTodayDateKey();
       const w = buildComparisonWindows(comparisonPeriod, todayKey);
-      const rows = await salesAPI.getByDateRange(w.previousFrom, w.currentTo);
+      const [rows] = await Promise.all([
+        salesAPI.getByDateRange(w.previousFrom, w.currentTo),
+        rememberDepositRefs(w.previousFrom, w.currentTo),
+      ]);
       setComparisonSales(Array.isArray(rows) ? rows : []);
     } catch (err) {
       console.error('[ReportsModule] Karşılaştırma satışları yüklenemedi:', err);
       setComparisonSales([]);
     }
-  }, [comparisonPeriod]);
+  }, [comparisonPeriod, rememberDepositRefs]);
 
   const loadCashExpenses = useCallback(async () => {
     try {
@@ -1477,6 +1522,15 @@ export function ReportsModule({
   }, []);
   const [beautySurveyReloadKey, setBeautySurveyReloadKey] = useState(0);
   const [beautyServiceAppointments, setBeautyServiceAppointments] = useState<BeautyAppointment[]>([]);
+  const depositRefs = useMemo(() => {
+    const map = new Map<string, FicheDepositRef>();
+    for (const row of rangeDepositRefs) map.set(row.id, row);
+    for (const row of beautyServiceAppointments) {
+      const ref = appointmentDepositRef(row);
+      if (ref) map.set(ref.id, ref);
+    }
+    return Array.from(map.values());
+  }, [rangeDepositRefs, beautyServiceAppointments]);
   const [beautyServiceSales, setBeautyServiceSales] = useState<BeautySale[]>([]);
   const [erpServiceBreakdownSales, setErpServiceBreakdownSales] = useState<Sale[]>([]);
   const [erpHizmetSaleIds, setErpHizmetSaleIds] = useState<Set<string>>(() => new Set());
@@ -1687,6 +1741,7 @@ export function ReportsModule({
           ]);
           setErpServiceBreakdownSales(source.sales);
           setErpHizmetSaleIds(source.hizmetSaleIds);
+          void rememberDepositRefs(beautyServiceFrom, beautyServiceTo);
           setErpServiceCards(
             cards.map((c) => ({
               id: String(c.id ?? ''),
@@ -1730,7 +1785,7 @@ export function ReportsModule({
         setErpHizmetSaleIds(new Set());
       })
       .finally(() => setLoadingBeautyServiceReport(false));
-  }, [businessType, selectedTab, selectedFirm, beautyServiceFrom, beautyServiceTo]);
+  }, [businessType, selectedTab, selectedFirm, beautyServiceFrom, beautyServiceTo, rememberDepositRefs]);
 
   const reloadPurchasePromoReport = useCallback((): Promise<void> => {
     if (selectedTab !== 'purchase-promotion-report' || !selectedFirm) {
@@ -1958,13 +2013,16 @@ export function ReportsModule({
   const loadAnalysisRangeSales = useCallback(async () => {
     try {
       const { salesAPI } = await import('../../services/api/sales');
-      const rows = await salesAPI.getByDateRange(analysisDateFrom, analysisDateTo);
+      const [rows] = await Promise.all([
+        salesAPI.getByDateRange(analysisDateFrom, analysisDateTo),
+        rememberDepositRefs(analysisDateFrom, analysisDateTo),
+      ]);
       setAnalysisRangeSales(Array.isArray(rows) ? rows : []);
     } catch (err) {
       console.error('[ReportsModule] Analiz dönemi satışları yüklenemedi:', err);
       setAnalysisRangeSales([]);
     }
-  }, [analysisDateFrom, analysisDateTo]);
+  }, [analysisDateFrom, analysisDateTo, rememberDepositRefs]);
 
   const loadCatalogSales = useCallback(async () => {
     try {
@@ -2273,7 +2331,10 @@ export function ReportsModule({
   const erpServiceBreakdownGrouped = useMemo(
     () =>
       buildErpServiceBreakdownGroups(
-        erpServiceBreakdownSales,
+        erpServiceBreakdownSales.map((sale) => ({
+          ...sale,
+          items: foldedErpSaleItems(sale, depositRefs),
+        })),
         catalogProducts,
         erpServiceCards,
         beautyServiceFrom,
@@ -2282,6 +2343,7 @@ export function ReportsModule({
       ),
     [
       erpServiceBreakdownSales,
+      depositRefs,
       catalogProducts,
       erpServiceCards,
       beautyServiceFrom,
@@ -2649,7 +2711,7 @@ export function ReportsModule({
       const avgSale = totalSales > 0 ? totalRevenue / totalSales : 0;
       const productMap = new Map<string, { qty: number; revenue: number }>();
       for (const s of list) {
-        const lines = foldDepositRevenueIntoServices(s.items || []);
+        const lines = foldedErpSaleItems(s, depositRefs);
         for (const it of lines) {
           const name = (it.productName && String(it.productName).trim()) || String(it.productId || '—');
           const cur = productMap.get(name) || { qty: 0, revenue: 0 };
@@ -2773,7 +2835,7 @@ export function ReportsModule({
       chartMoneyData,
       productRows,
     };
-  }, [comparisonSales, sales, comparisonPeriod, businessType, comparisonOrders, language]);
+  }, [comparisonSales, sales, comparisonPeriod, businessType, comparisonOrders, language, depositRefs]);
 
   const salesForAnalysis = useMemo(() => {
     if (analysisRangeSales.length > 0) return analysisRangeSales;
@@ -3291,7 +3353,7 @@ export function ReportsModule({
         isAvans: isAvansRow,
         erpSale: s,
         ...kindFieldsFromItems(
-          (s.items || []).map((it) => ({
+          foldedErpSaleItems(s, depositRefs).map((it) => ({
             productId: it.productId,
             productName: it.productName,
             lineType: it.lineType,
@@ -4148,7 +4210,7 @@ export function ReportsModule({
     }>();
 
     erpSalesForReportPeriod.forEach(sale => {
-      sale.items.forEach(item => {
+      foldedErpSaleItems(sale, depositRefs).forEach(item => {
         const existing = productMap.get(item.productId);
         if (existing) {
           existing.quantity += item.quantity;
@@ -4471,7 +4533,7 @@ export function ReportsModule({
       if (linkedAppt && String(linkedAppt).trim() !== '') {
         if (!isCompletedAppointmentStatus(sale.status)) return;
       }
-      (sale.items || []).forEach((item) => {
+      foldedErpSaleItems(sale, depositRefs).forEach((item) => {
         const lineIn = {
           productId: String(item.productId ?? (item as { product_id?: string }).product_id ?? '').trim(),
           productName: String(item.productName ?? (item as { product_name?: string }).product_name ?? '').trim(),
@@ -6021,8 +6083,9 @@ export function ReportsModule({
         for (const s of retailSales) {
           const mk = saleMonthKeyFromDate(s.date);
           if (!mk) continue;
-          const items = s.items || [];
-          if (items.length === 0) {
+          const rawCount = (s.items || []).length;
+          const items = foldedErpSaleItems(s, depositRefs);
+          if (rawCount === 0) {
             addAnalysisSplitAmount(map, mk, 'product', Number(s.total ?? 0));
             continue;
           }
@@ -6068,7 +6131,7 @@ export function ReportsModule({
         for (const s of retailSales) {
           const mk = saleMonthKeyFromDate(s.date);
           if (!mk) continue;
-          for (const it of s.items || []) {
+          for (const it of foldedErpSaleItems(s, depositRefs)) {
             const cat = categoryOfItem(it);
             const k = `${mk}\t${cat}`;
             addAnalysisSplitAmount(map, k, classifyItem(it), Number(it.total ?? 0));
@@ -6101,7 +6164,7 @@ export function ReportsModule({
         for (const s of retailSales) {
           const mk = saleMonthKeyFromDate(s.date);
           if (!mk) continue;
-          for (const it of s.items || []) {
+          for (const it of foldedErpSaleItems(s, depositRefs)) {
             const name = String(it.productName ?? '—').trim() || '—';
             const k = `${mk}\t${name}`;
             map.set(k, (map.get(k) || 0) + Number(it.quantity ?? 0));
@@ -6127,7 +6190,7 @@ export function ReportsModule({
         const kindMaterial = tm('resProductKindMaterial') || tm('material') || 'Malzeme';
         const map = new Map<string, { product: string; productCode: string; kind: AnalysisSaleLineKind; qty: number; revenue: number }>();
         for (const s of retailSales) {
-          for (const it of s.items || []) {
+          for (const it of foldedErpSaleItems(s, depositRefs)) {
             const pid = it.productId != null && String(it.productId).trim() !== '' ? String(it.productId) : '';
             const pname = String(it.productName ?? '—').trim() || '—';
             const kind = classifyItem(it);
@@ -6194,7 +6257,7 @@ export function ReportsModule({
         for (const s of retailSales) {
           const mk = saleMonthKeyFromDate(s.date);
           if (!mk) continue;
-          for (const it of s.items || []) {
+          for (const it of foldedErpSaleItems(s, depositRefs)) {
             const cat = categoryOfItem(it);
             const k = `${mk}\t${cat}`;
             addAnalysisSplitAmount(map, k, classifyItem(it), Number(it.quantity ?? 0));
@@ -6234,7 +6297,7 @@ export function ReportsModule({
       case 'section-turnover': {
         const map = new Map<string, { service: number; product: number }>();
         for (const s of retailSales) {
-          for (const it of s.items || []) {
+          for (const it of foldedErpSaleItems(s, depositRefs)) {
             const sec = categoryOfItem(it);
             addAnalysisSplitAmount(map, sec, classifyItem(it), Number(it.total ?? 0));
           }
@@ -10723,7 +10786,7 @@ export function ReportsModule({
               const allLines: DetailedSaleLineRow[] =
                 businessType === 'restaurant'
                   ? buildRestaurantDetailedSaleLines(restOrders, tm)
-                  : buildErpDetailedSaleLines(dailySales, tm);
+                  : buildErpDetailedSaleLines(dailySales, tm, depositRefs);
 
               const q = detailedSalesSearch.trim().toLocaleLowerCase('tr-TR');
               const detailedLines = !q

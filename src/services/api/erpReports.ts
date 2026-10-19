@@ -36,14 +36,16 @@ import {
   SERVICE_COST_JOINS,
   resolveLineProductId,
   scaleLineRevenueToInvoiceNet,
+  SIGNED_FOLD_LINE_REVENUE_EXPR,
   SIGNED_LINE_COST_EXPR,
-  SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
-  SIGNED_LINE_REVENUE_EXPR,
   SQL_DISPLAY_ITEM_CODE,
+  SQL_FICHE_DEPOSIT_LIST,
   SQL_IS_SERVICE_LINE,
   SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
+  SQL_SALES_SIGN,
+  SQL_SERVICE_DEPOSIT_AMOUNT,
   unitCostFromPurchaseLine,
   BEAUTY_APPOINTMENT_BRIDGE_JOIN,
   SQL_BEAUTY_APPT_INCLUDED,
@@ -54,6 +56,7 @@ import {
 } from '../../utils/productCardUnitCost';
 import { lookupWeightedAvgUnitCost } from '../weightedAverageUnitCost';
 import { inferQtyFromRevenue } from '../../utils/lineGrossProfit';
+import { appointmentDepositRef, foldDepositLinesByInvoice, foldSaleItemsWithDeposits, parseFicheDepositList, type FicheDepositRef } from '../../utils/beautyDepositAllocation';
 
 const ROW_LIMIT = 3000;
 
@@ -1694,12 +1697,6 @@ export const erpReportsAPI = {
     if (!start || !end) return [];
     const firmNr = padFirm();
     const lineKind = opts.lineKind ?? 'product';
-    const lineKindSql =
-      lineKind === 'service'
-        ? `AND (${SQL_IS_SERVICE_LINE})`
-        : lineKind === 'product'
-          ? `AND NOT (${SQL_IS_SERVICE_LINE})`
-          : '';
 
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
@@ -1710,7 +1707,7 @@ export const erpReportsAPI = {
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_sales`,
             {
-              select: 'id,date,fiche_no,fiche_type,is_cancelled,status,trcode,created_at,net_amount,is_deposit,linked_appointment_id',
+              select: 'id,date,fiche_no,fiche_type,is_cancelled,status,trcode,created_at,net_amount,is_deposit,linked_appointment_id,sale_group_id',
               order: 'date.desc',
               limit: 8000,
             },
@@ -1766,7 +1763,7 @@ export const erpReportsAPI = {
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_beauty_appointments`,
-            { select: 'id,status,total_price', limit: 8000 },
+            { select: 'id,status,total_price,deposit_amount,service_name,remainder_sale_id,deposit_sale_id,sale_group_id', limit: 8000 },
             { schema: 'beauty' },
           )
           .catch(() => [] as Record<string, unknown>[]),
@@ -1922,11 +1919,93 @@ export const erpReportsAPI = {
           .map((s) => String(s.id)),
       );
 
+      const depositRefs = (beautyAppointments || [])
+        .map((a) => appointmentDepositRef({
+          id: String(a.id || ''),
+          deposit_amount: Number(a.deposit_amount) || 0,
+          service_name: a.service_name == null ? null : String(a.service_name),
+          remainder_sale_id: a.remainder_sale_id == null ? null : String(a.remainder_sale_id),
+          deposit_sale_id: a.deposit_sale_id == null ? null : String(a.deposit_sale_id),
+          sale_group_id: a.sale_group_id == null ? null : String(a.sale_group_id),
+        }))
+        .filter((row): row is FicheDepositRef => !!row);
+
+      type GrossFoldLine = {
+        index: number;
+        invoiceId: string;
+        productName: string;
+        lineType: string;
+        quantity: number;
+        total: number;
+        rawRevenue: number;
+        isBeautyFiche: boolean;
+        apptTotal: number;
+        sgn: number;
+      };
+      const prepared: GrossFoldLine[] = [];
+      (items || []).forEach((it, index) => {
+        if (!saleOk.has(String(it.invoice_id))) return;
+        const itemType = String(it.item_type || 'Malzeme');
+        if (itemType === 'Promosyon' || itemType === 'İndirim') return;
+        const inv = salesById.get(String(it.invoice_id));
+        if (!inv) return;
+        const sgn = isSalesReturnFiche(inv) ? -1 : 1;
+        const rawLineNet = Number(it.net_amount ?? 0) || 0;
+        const rawRevenue = sgn * scaleLineRevenueToInvoiceNet(
+          rawLineNet,
+          linesNetByInvoice.get(String(it.invoice_id)) || 0,
+          Number(inv.net_amount ?? 0) || 0,
+        );
+        const ficheNo = String(inv.fiche_no || '').trim();
+        const isBeautyFiche = ficheNo.startsWith('BEA-');
+        prepared.push({
+          index,
+          invoiceId: String(it.invoice_id),
+          productName: String(it.item_name ?? ''),
+          lineType: itemType,
+          quantity: Number(it.quantity ?? 0) || 0,
+          total: rawRevenue,
+          rawRevenue,
+          isBeautyFiche,
+          apptTotal: isBeautyFiche ? (beautyApptByFiche.get(ficheNo)?.totalPrice ?? 0) : 0,
+          sgn,
+        });
+      });
+      const byInvoice = new Map<string, GrossFoldLine[]>();
+      for (const line of prepared) {
+        const bucket = byInvoice.get(line.invoiceId);
+        if (bucket) bucket.push(line);
+        else byInvoice.set(line.invoiceId, [line]);
+      }
+      const revenueByIndex = new Map<number, number>();
+      for (const [invoiceId, group] of byInvoice) {
+        const inv = salesById.get(invoiceId);
+        const sgn = inv && isSalesReturnFiche(inv) ? -1 : 1;
+        const folded = foldSaleItemsWithDeposits(group, {
+          id: invoiceId,
+          total: sgn * (Number(inv?.net_amount ?? 0) || 0),
+          linkedAppointmentId: inv?.linked_appointment_id == null ? null : String(inv.linked_appointment_id),
+          saleGroupId: inv?.sale_group_id == null ? null : String(inv.sale_group_id),
+        }, depositRefs);
+        const only = folded.length === 1 ? folded[0] : null;
+        const uplift = !!only
+          && only.isBeautyFiche
+          && only.apptTotal > 0
+          && Math.abs(Math.abs(only.total) - Math.abs(only.rawRevenue)) < 1
+          && Math.abs(only.rawRevenue) + 1 < only.apptTotal;
+        for (const line of folded) {
+          revenueByIndex.set(line.index, uplift ? line.sgn * line.apptTotal : line.total);
+        }
+      }
+
       const map = new Map<string, ProductGrossProfitRow>();
-      for (const it of items || []) {
+      const saleItems = items || [];
+      for (let lineIndex = 0; lineIndex < saleItems.length; lineIndex++) {
+        const it = saleItems[lineIndex];
         if (!saleOk.has(String(it.invoice_id))) continue;
         const itemType = String(it.item_type || 'Malzeme');
         if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
+        if (!revenueByIndex.has(lineIndex)) continue;
         const pid = resolveLineProductId(it);
         const prod = pid ? productById.get(pid) : undefined;
         const beauty = pid ? beautyById.get(pid) : undefined;
@@ -1951,24 +2030,7 @@ export const erpReportsAPI = {
           unitPrice,
         );
         const qty = sgn * absQty;
-        // Bug 32 (2026-10-09 guzel DB) — BEA-* (güzellik) satışlarında
-        // `sales.net_amount` yalnızca `remainder_paid_amount` (avans sonrası
-        // kalan ödeme) — brüt hizmet tutarı (`appointment.total_price`)
-        // içermez. Bu yüzden ciro = appointment.total_price (avans dahil).
-        const ficheNo = String(inv.fiche_no || '').trim();
-        const isBeautyFiche = ficheNo.startsWith('BEA-');
-        const apptTotal = isBeautyFiche
-          ? (beautyApptByFiche.get(ficheNo)?.totalPrice ?? 0)
-          : 0;
-        const revenue =
-          sgn *
-          (apptTotal > 0
-            ? apptTotal
-            : scaleLineRevenueToInvoiceNet(
-                rawLineNet,
-                linesNetByInvoice.get(String(it.invoice_id)) || 0,
-                Number(inv.net_amount ?? 0) || 0,
-              ));
+        const revenue = revenueByIndex.get(lineIndex) ?? 0;
         const resolvedPid =
           pid ||
           (String(it.item_code || '').trim() &&
@@ -2044,20 +2106,24 @@ export const erpReportsAPI = {
       `
       WITH ${profitCtes}
       SELECT
+        s.id::text AS invoice_id,
+        (${SQL_SALES_SIGN}) * COALESCE(s.net_amount, 0) AS invoice_net,
         COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
         ${SQL_DISPLAY_ITEM_CODE} AS product_code,
-        MAX(COALESCE(
+        COALESCE(
           NULLIF(TRIM(si.item_name), ''),
           p.name,
           svc.name,
           bsvc.name,
           '—'
-        )) AS product_name,
+        ) AS product_name,
+        COALESCE(si.item_type, '') AS item_type,
         CASE WHEN ${SQL_IS_SERVICE_LINE} THEN 'service' ELSE 'product' END AS line_kind,
-        COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0) AS quantity,
-        COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0) AS revenue,
-        COALESCE(SUM(${SIGNED_LINE_COST_EXPR}), 0) AS cost,
-        COALESCE(SUM(${SIGNED_LINE_PROFIT_EXPR}), 0) AS gross_profit
+        ${SIGNED_LINE_QTY_EXPR} AS quantity,
+        ${SIGNED_FOLD_LINE_REVENUE_EXPR} AS revenue,
+        ${SIGNED_LINE_COST_EXPR} AS cost,
+        (${SQL_SALES_SIGN}) * (${SQL_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
+        ${SQL_FICHE_DEPOSIT_LIST} AS fiche_deposits
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.invoice_id
       ${PRODUCTS_JOIN}
@@ -2071,33 +2137,70 @@ export const erpReportsAPI = {
         AND ${SQL_PL_SALES_OR_RETURN}
         AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
         AND ${SQL_BEAUTY_APPT_INCLUDED}
-        ${lineKindSql}
         AND ${sqlUtcDate('s.date')} >= $2::date
         AND ${sqlUtcDate('s.date')} <= $3::date
-      GROUP BY 1, 2, 4
-      HAVING ABS(COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0)) > 0.009
-         OR ABS(COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0)) > 0.0001
-      ORDER BY gross_profit DESC
-      LIMIT ${ROW_LIMIT}
       `,
       [firmNr, start, end],
+      { firmNr, periodNr: padPeriod() },
     );
+    const folded = foldDepositLinesByInvoice((rows || []).map((r: any) => {
+      const invoiceNet = Number(r.invoice_net) || 0;
+      const sign = invoiceNet < 0 ? -1 : 1;
+      return {
+        invoiceId: String(r.invoice_id || ''),
+        invoiceNet,
+        productId: String(r.product_id ?? ''),
+        productCode: displayItemCode(r.product_code),
+        productName: String(r.product_name ?? ''),
+        lineType: String(r.item_type || ''),
+        lineKind: r.line_kind === 'service' ? 'service' as const : 'product' as const,
+        quantity: Number(r.quantity ?? 0),
+        total: Number(r.revenue ?? 0),
+        cost: Number(r.cost ?? 0),
+        depositAmount: sign * Math.abs(Number(r.service_deposit) || 0),
+        ficheDeposits: parseFicheDepositList(r.fiche_deposits).map((n) => sign * Math.abs(n)),
+      };
+    })).filter((line) => lineKind === 'all' || line.lineKind === lineKind);
+
+    const grouped = new Map<string, {
+      productId: string;
+      productCode: string;
+      productName: string;
+      quantity: number;
+      revenue: number;
+      cost: number;
+      lineKind: 'service' | 'product';
+    }>();
+    for (const line of folded) {
+      const key = `${line.lineKind}|${line.productId}|${line.productCode}|${line.productName}`;
+      const cur = grouped.get(key) || {
+        productId: line.productId,
+        productCode: line.productCode,
+        productName: line.productName,
+        quantity: 0,
+        revenue: 0,
+        cost: 0,
+        lineKind: line.lineKind,
+      };
+      cur.quantity += line.quantity;
+      cur.revenue += line.total;
+      cur.cost += line.cost;
+      if (!cur.productId && line.productId) cur.productId = line.productId;
+      grouped.set(key, cur);
+    }
+    const aggregated = Array.from(grouped.values())
+      .filter((row) => Math.abs(row.revenue) > 0.009 || Math.abs(row.quantity) > 0.0001)
+      .sort((a, b) => (b.revenue - b.cost) - (a.revenue - a.cost))
+      .slice(0, ROW_LIMIT);
+
     return applyWeightedAvgCostToGrossProfit(
       mergeProductGrossProfitRows(
-        (rows || []).map((r: any) => {
-          const revenue = Number(r.revenue ?? 0);
-          const cost = Number(r.cost ?? 0);
-          const grossProfit = Number(r.gross_profit ?? revenue - cost);
+        aggregated.map((r) => {
+          const grossProfit = r.revenue - r.cost;
           return {
-            productId: String(r.product_id ?? ''),
-            productCode: displayItemCode(r.product_code),
-            productName: String(r.product_name ?? ''),
-            quantity: Number(r.quantity ?? 0),
-            revenue,
-            cost,
+            ...r,
             grossProfit,
-            marginPct: Math.abs(revenue) > 0.009 ? (grossProfit / revenue) * 100 : 0,
-            lineKind: r.line_kind === 'service' ? 'service' : 'product',
+            marginPct: Math.abs(r.revenue) > 0.009 ? (grossProfit / r.revenue) * 100 : 0,
           };
         }),
       ),

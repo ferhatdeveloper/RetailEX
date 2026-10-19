@@ -14,20 +14,22 @@ import {
   LAST_PURCHASE_JOIN,
   PRODUCTS_JOIN,
   SERVICE_COST_JOINS,
+  SIGNED_FOLD_LINE_REVENUE_EXPR,
   SIGNED_LINE_COST_EXPR,
-  SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
-  SIGNED_LINE_REVENUE_EXPR,
   SQL_DISPLAY_ITEM_CODE,
   SQL_LINE_KIND_EXPR,
   SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
   SQL_SERVICE_CATEGORY_EXPR,
   displayItemCode,
-  sqlLineKindFilter,
   BEAUTY_APPOINTMENT_BRIDGE_JOIN,
   SQL_BEAUTY_APPT_INCLUDED,
+  SQL_FICHE_DEPOSIT_LIST,
+  SQL_SALES_SIGN,
+  SQL_SERVICE_DEPOSIT_AMOUNT,
 } from '../../utils/lastPurchaseCostSql';
+import { foldDepositLinesByInvoice, parseFicheDepositList } from '../../utils/beautyDepositAllocation';
 import {
   ProductMovementHistoryModal,
   type ProductMovementTarget,
@@ -122,147 +124,145 @@ export function ProfitLossReport() {
       .padStart(3, '0')
       .slice(0, 10);
     const periodNr = String(selectedDonem.nr ?? ERP_SETTINGS.periodNr).padStart(2, '0');
-    const kindFilter = sqlLineKindFilter(lineKind);
-
     setLoading(true);
     try {
-      let sql: string;
-      switch (reportType) {
-        case 'category':
-          sql = `
-            WITH ${PROFIT_CTES}
-            SELECT
-              ''::text AS product_id,
-              ${CATEGORY_CODE_EXPR} AS product_code,
-              ${CATEGORY_NAME_EXPR} AS product_name,
-              ${SQL_LINE_KIND_EXPR} AS line_kind,
-              SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
-              SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
-              SUM(${SIGNED_LINE_COST_EXPR}) AS cost,
-              SUM(${SIGNED_LINE_PROFIT_EXPR}) AS profit
-            FROM sale_items si
-            INNER JOIN sales s ON s.id = si.invoice_id
-            ${PRODUCTS_JOIN}
-            ${SERVICE_COST_JOINS}
-            LEFT JOIN categories leaf_cat ON leaf_cat.id = p.category_id
-            ${LAST_PURCHASE_JOIN}
-            ${INVOICE_LINE_SCALE_JOIN}
-            ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
-            WHERE ${SALES_FILTER}
-              AND ${SQL_BEAUTY_APPT_INCLUDED}
-            ${kindFilter}
-            GROUP BY
-              ${SQL_LINE_KIND_EXPR},
-              ${CATEGORY_CODE_EXPR},
-              ${CATEGORY_NAME_EXPR}
-            HAVING SUM(ABS(si.quantity)) > 0
-            ORDER BY SUM(${SIGNED_LINE_PROFIT_EXPR}) DESC
-          `;
-          break;
-        case 'daily':
-          sql = `
-            WITH ${PROFIT_CTES}
-            SELECT
-              ''::text AS product_id,
-              to_char((s.date::timestamptz AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS product_code,
-              to_char((s.date::timestamptz AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS product_name,
-              ${SQL_LINE_KIND_EXPR} AS line_kind,
-              SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
-              SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
-              SUM(${SIGNED_LINE_COST_EXPR}) AS cost,
-              SUM(${SIGNED_LINE_PROFIT_EXPR}) AS profit
-            FROM sale_items si
-            INNER JOIN sales s ON s.id = si.invoice_id
-            ${PRODUCTS_JOIN}
-            ${SERVICE_COST_JOINS}
-            ${LAST_PURCHASE_JOIN}
-            ${INVOICE_LINE_SCALE_JOIN}
-            ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
-            WHERE ${SALES_FILTER}
-              AND ${SQL_BEAUTY_APPT_INCLUDED}
-            ${kindFilter}
-            GROUP BY (s.date::timestamptz AT TIME ZONE 'UTC')::date, ${SQL_LINE_KIND_EXPR}
-            HAVING SUM(ABS(si.quantity)) > 0
-            ORDER BY (s.date::timestamptz AT TIME ZONE 'UTC')::date DESC, ${SQL_LINE_KIND_EXPR}
-          `;
-          break;
-        case 'monthly':
-          sql = `
-            WITH ${PROFIT_CTES}
-            SELECT
-              ''::text AS product_id,
-              to_char(date_trunc('month', s.date::timestamptz AT TIME ZONE 'UTC'), 'YYYY-MM') AS product_code,
-              to_char(date_trunc('month', s.date::timestamptz AT TIME ZONE 'UTC'), 'YYYY-MM') AS product_name,
-              ${SQL_LINE_KIND_EXPR} AS line_kind,
-              SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
-              SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
-              SUM(${SIGNED_LINE_COST_EXPR}) AS cost,
-              SUM(${SIGNED_LINE_PROFIT_EXPR}) AS profit
-            FROM sale_items si
-            INNER JOIN sales s ON s.id = si.invoice_id
-            ${PRODUCTS_JOIN}
-            ${SERVICE_COST_JOINS}
-            ${LAST_PURCHASE_JOIN}
-            ${INVOICE_LINE_SCALE_JOIN}
-            ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
-            WHERE ${SALES_FILTER}
-              AND ${SQL_BEAUTY_APPT_INCLUDED}
-            ${kindFilter}
-            GROUP BY date_trunc('month', s.date::timestamptz AT TIME ZONE 'UTC'), ${SQL_LINE_KIND_EXPR}
-            HAVING SUM(ABS(si.quantity)) > 0
-            ORDER BY date_trunc('month', s.date::timestamptz AT TIME ZONE 'UTC') DESC, ${SQL_LINE_KIND_EXPR}
-          `;
-          break;
-        default:
-          sql = `
-            WITH ${PROFIT_CTES}
-            SELECT
-              MAX(COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '')) AS product_id,
-              ${SQL_DISPLAY_ITEM_CODE} AS product_code,
-              COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, svc.name, bsvc.name, 'Bilinmeyen') AS product_name,
-              ${SQL_LINE_KIND_EXPR} AS line_kind,
-              SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
-              SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
-              SUM(${SIGNED_LINE_COST_EXPR}) AS cost,
-              SUM(${SIGNED_LINE_PROFIT_EXPR}) AS profit
-            FROM sale_items si
-            INNER JOIN sales s ON s.id = si.invoice_id
-            ${PRODUCTS_JOIN}
-            ${SERVICE_COST_JOINS}
-            ${LAST_PURCHASE_JOIN}
-            ${INVOICE_LINE_SCALE_JOIN}
-            ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
-            WHERE ${SALES_FILTER}
-              AND ${SQL_BEAUTY_APPT_INCLUDED}
-            ${kindFilter}
-            GROUP BY
-              ${SQL_LINE_KIND_EXPR},
-              ${SQL_DISPLAY_ITEM_CODE},
-              COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, svc.name, bsvc.name, 'Bilinmeyen')
-            HAVING SUM(ABS(si.quantity)) > 0
-            ORDER BY SUM(${SIGNED_LINE_PROFIT_EXPR}) DESC
-          `;
-      }
+      const sql = `
+        WITH ${PROFIT_CTES}
+        SELECT
+          s.id::text AS invoice_id,
+          (${SQL_SALES_SIGN}) * COALESCE(s.net_amount, 0) AS invoice_net,
+          COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
+          ${SQL_DISPLAY_ITEM_CODE} AS product_code,
+          COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, svc.name, bsvc.name, 'Bilinmeyen') AS product_name,
+          COALESCE(si.item_type, '') AS item_type,
+          ${SQL_LINE_KIND_EXPR} AS line_kind,
+          ${CATEGORY_CODE_EXPR} AS category_code,
+          ${CATEGORY_NAME_EXPR} AS category_name,
+          to_char((s.date::timestamptz AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS sale_date,
+          ${SIGNED_LINE_QTY_EXPR} AS quantity,
+          ${SIGNED_FOLD_LINE_REVENUE_EXPR} AS revenue,
+          ${SIGNED_LINE_COST_EXPR} AS cost,
+          (${SQL_SALES_SIGN}) * (${SQL_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
+          ${SQL_FICHE_DEPOSIT_LIST} AS fiche_deposits
+        FROM sale_items si
+        INNER JOIN sales s ON s.id = si.invoice_id
+        ${PRODUCTS_JOIN}
+        ${SERVICE_COST_JOINS}
+        LEFT JOIN categories leaf_cat ON leaf_cat.id = p.category_id
+        ${LAST_PURCHASE_JOIN}
+        ${INVOICE_LINE_SCALE_JOIN}
+        ${BEAUTY_APPOINTMENT_BRIDGE_JOIN}
+        WHERE ${SALES_FILTER}
+          AND ${SQL_BEAUTY_APPT_INCLUDED}
+      `;
 
       const { rows } = await postgres.query<{
+        invoice_id: string;
+        invoice_net: string | number;
         product_id?: string;
         product_code: string;
         product_name: string;
+        item_type?: string;
         line_kind?: string;
+        category_code?: string;
+        category_name?: string;
+        sale_date?: string;
         quantity: string | number;
         revenue: string | number;
         cost: string | number;
-        profit: string | number;
+        service_deposit?: string | number;
+        fiche_deposits?: string;
       }>(sql, [firmNr, dateFrom, dateTo], { firmNr, periodNr });
 
-      const mapped: SalesData[] = rows.map((r, idx) => {
-        const revenue = parseFloat(String(r.revenue)) || 0;
-        const cost = parseFloat(String(r.cost)) || 0;
-        const profit = r.profit != null ? parseFloat(String(r.profit)) : revenue - cost;
-        const code = displayItemCode(r.product_code);
-        const name = r.product_name || '';
-        const productId = String(r.product_id || '').trim();
-        const kind = normalizeLineKind(r.line_kind);
+      const folded = foldDepositLinesByInvoice(rows.map((r) => {
+        const invoiceNet = Number(r.invoice_net) || 0;
+        const sign = invoiceNet < 0 ? -1 : 1;
+        return {
+          invoiceId: String(r.invoice_id || ''),
+          invoiceNet,
+          productId: String(r.product_id || '').trim(),
+          productCode: displayItemCode(r.product_code),
+          productName: r.product_name || '',
+          itemType: String(r.item_type || ''),
+          lineType: String(r.item_type || ''),
+          lineKind: normalizeLineKind(r.line_kind),
+          categoryCode: String(r.category_code || ''),
+          categoryName: String(r.category_name || ''),
+          saleDate: String(r.sale_date || ''),
+          quantity: Number(r.quantity) || 0,
+          total: Number(r.revenue) || 0,
+          cost: Number(r.cost) || 0,
+          depositAmount: sign * Math.abs(Number(r.service_deposit) || 0),
+          ficheDeposits: parseFicheDepositList(r.fiche_deposits).map((n) => sign * Math.abs(n)),
+        };
+      })).filter((line) => lineKind === 'all' || line.lineKind === lineKind);
+
+      type Agg = {
+        productId: string;
+        productCode: string;
+        productName: string;
+        lineKind: 'product' | 'service';
+        quantity: number;
+        revenue: number;
+        cost: number;
+      };
+      const agg = new Map<string, Agg>();
+      for (const line of folded) {
+        const month = line.saleDate.slice(0, 7);
+        const key = reportType === 'category'
+          ? `${line.lineKind}|${line.categoryCode}|${line.categoryName}`
+          : reportType === 'daily'
+            ? `${line.saleDate}|${line.lineKind}`
+            : reportType === 'monthly'
+              ? `${month}|${line.lineKind}`
+              : `${line.lineKind}|${line.productCode}|${line.productName}`;
+        const name = reportType === 'category'
+          ? line.categoryName
+          : reportType === 'daily'
+            ? line.saleDate
+            : reportType === 'monthly'
+              ? month
+              : line.productName;
+        const code = reportType === 'category'
+          ? line.categoryCode
+          : reportType === 'daily' || reportType === 'monthly'
+            ? name
+            : line.productCode;
+        const cur = agg.get(key) || {
+          productId: reportType === 'product' ? line.productId : '',
+          productCode: code,
+          productName: name,
+          lineKind: line.lineKind,
+          quantity: 0,
+          revenue: 0,
+          cost: 0,
+        };
+        cur.quantity += line.quantity;
+        cur.revenue += line.total;
+        cur.cost += line.cost;
+        if (!cur.productId && line.productId) cur.productId = line.productId;
+        agg.set(key, cur);
+      }
+      const aggregated = Array.from(agg.values()).filter(
+        (row) => Math.abs(row.quantity) > 0.0001 || Math.abs(row.revenue) > 0.009,
+      );
+      aggregated.sort((a, b) => {
+        if (reportType === 'daily' || reportType === 'monthly') {
+          const byName = b.productName.localeCompare(a.productName);
+          if (byName !== 0) return byName;
+          return a.lineKind.localeCompare(b.lineKind);
+        }
+        return (b.revenue - b.cost) - (a.revenue - a.cost);
+      });
+
+      const mapped: SalesData[] = aggregated.map((r, idx) => {
+        const revenue = r.revenue;
+        const cost = r.cost;
+        const profit = revenue - cost;
+        const code = r.productCode;
+        const name = r.productName;
+        const productId = r.productId;
+        const kind = r.lineKind;
         let displayName = name;
         const loc =
           language === 'ar' ? 'ar-SA' : language === 'ku' ? 'ku-IQ' : language === 'en' ? 'en-GB' : 'tr-TR';

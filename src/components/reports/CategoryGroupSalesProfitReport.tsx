@@ -16,9 +16,9 @@ import {
   LAST_PURCHASE_JOIN,
   PRODUCTS_JOIN,
   SERVICE_COST_JOINS,
-  SIGNED_LINE_PROFIT_EXPR,
+  SIGNED_FOLD_LINE_REVENUE_EXPR,
+  SIGNED_LINE_COST_EXPR,
   SIGNED_LINE_QTY_EXPR,
-  SIGNED_LINE_REVENUE_EXPR,
   SQL_DISPLAY_ITEM_CODE,
   SQL_IS_SERVICE_LINE,
   SQL_LINE_KIND_EXPR,
@@ -27,10 +27,13 @@ import {
   SQL_SERVICE_CATEGORY_EXPR,
   displayItemCode,
   isUuidText,
-  sqlLineKindFilter,
   BEAUTY_APPOINTMENT_BRIDGE_JOIN,
   SQL_BEAUTY_APPT_INCLUDED,
+  SQL_FICHE_DEPOSIT_LIST,
+  SQL_SALES_SIGN,
+  SQL_SERVICE_DEPOSIT_AMOUNT,
 } from '../../utils/lastPurchaseCostSql';
+import { foldDepositLinesByInvoice, parseFicheDepositList } from '../../utils/beautyDepositAllocation';
 import { toast } from 'sonner';
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
 import { ReportColumnTable } from './shared/ReportDataGrid';
@@ -133,22 +136,27 @@ export function CategoryGroupSalesProfitReport() {
         .padStart(3, '0')
         .slice(0, 10);
 
-      const lineKindSql = sqlLineKindFilter(lineKind);
-
       const { rows: qrows } = await postgres.query<{
+        invoice_id: string;
+        invoice_net: string | number;
         group_name: string;
         category_name: string;
         product_id: string;
         product_code: string;
         product_name: string;
+        item_type?: string;
         line_kind: string;
         qty: string | number;
         revenue: string | number;
-        gross_profit: string | number;
+        cost: string | number;
+        service_deposit?: string | number;
+        fiche_deposits?: string;
       }>(
         `
         WITH ${buildProfitCostCtes('$1')}
         SELECT
+          s.id::text AS invoice_id,
+          (${SQL_SALES_SIGN}) * COALESCE(s.net_amount, 0) AS invoice_net,
           COALESCE(
             parent_cat.name,
             pg.name,
@@ -160,13 +168,16 @@ export function CategoryGroupSalesProfitReport() {
             NULLIF(TRIM(COALESCE(p.category_code, '')), ''),
             CASE WHEN ${SQL_IS_SERVICE_LINE} THEN ${SQL_SERVICE_CATEGORY_EXPR} ELSE 'Diğer' END
           ) AS category_name,
-          MAX(COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '')) AS product_id,
+          COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
           ${SQL_DISPLAY_ITEM_CODE} AS product_code,
           COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, svc.name, bsvc.name, 'Bilinmeyen') AS product_name,
+          COALESCE(si.item_type, '') AS item_type,
           ${SQL_LINE_KIND_EXPR} AS line_kind,
-          SUM(${SIGNED_LINE_QTY_EXPR}) AS qty,
-          SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
-          SUM(${SIGNED_LINE_PROFIT_EXPR}) AS gross_profit
+          ${SIGNED_LINE_QTY_EXPR} AS qty,
+          ${SIGNED_FOLD_LINE_REVENUE_EXPR} AS revenue,
+          ${SIGNED_LINE_COST_EXPR} AS cost,
+          (${SQL_SALES_SIGN}) * (${SQL_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
+          ${SQL_FICHE_DEPOSIT_LIST} AS fiche_deposits
         FROM sale_items si
         INNER JOIN sales s ON s.id = si.invoice_id
         ${PRODUCTS_JOIN}
@@ -183,42 +194,60 @@ export function CategoryGroupSalesProfitReport() {
           AND ${SQL_PL_SALES_OR_RETURN}
           AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
           AND ${SQL_BEAUTY_APPT_INCLUDED}
-          ${lineKindSql}
           AND (s.date::timestamptz AT TIME ZONE 'UTC')::date >= $2::date
           AND (s.date::timestamptz AT TIME ZONE 'UTC')::date <= $3::date
-        GROUP BY
-          COALESCE(
-            parent_cat.name,
-            pg.name,
-            NULLIF(TRIM(COALESCE(p.group_code, '')), ''),
-            CASE WHEN ${SQL_IS_SERVICE_LINE} THEN ${SQL_SERVICE_CATEGORY_EXPR} ELSE 'Genel' END
-          ),
-          COALESCE(
-            leaf_cat.name,
-            NULLIF(TRIM(COALESCE(p.category_code, '')), ''),
-            CASE WHEN ${SQL_IS_SERVICE_LINE} THEN ${SQL_SERVICE_CATEGORY_EXPR} ELSE 'Diğer' END
-          ),
-          ${SQL_DISPLAY_ITEM_CODE},
-          COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, svc.name, bsvc.name, 'Bilinmeyen'),
-          ${SQL_LINE_KIND_EXPR}
-        HAVING SUM(ABS(si.quantity)) <> 0
-        ORDER BY 1, 2, SUM(${SIGNED_LINE_REVENUE_EXPR}) DESC
         `,
         [firmNr, from, to],
         { firmNr: firmNr, periodNr: String(selectedDonem.nr ?? ERP_SETTINGS.periodNr).padStart(2, '0') }
       );
 
-      const mapped: CategoryGroupProductRow[] = qrows.map((r) => ({
-        groupName: r.group_name,
-        categoryName: r.category_name,
-        productId: String(r.product_id || '').trim(),
-        productCode: displayItemCode(r.product_code),
-        productName: r.product_name,
-        lineKind: r.line_kind === 'service' ? 'service' : 'product',
-        quantity: Number(r.qty) || 0,
-        revenue: Number(r.revenue) || 0,
-        grossProfit: Number(r.gross_profit) || 0,
-      }));
+      const folded = foldDepositLinesByInvoice(qrows.map((r) => {
+        const invoiceNet = Number(r.invoice_net) || 0;
+        const sign = invoiceNet < 0 ? -1 : 1;
+        const revenue = Number(r.revenue) || 0;
+        const cost = Number(r.cost) || 0;
+        return {
+          invoiceId: String(r.invoice_id || ''),
+          invoiceNet,
+          groupName: r.group_name,
+          categoryName: r.category_name,
+          productId: String(r.product_id || '').trim(),
+          productCode: displayItemCode(r.product_code),
+          productName: r.product_name,
+          lineType: String(r.item_type || ''),
+          lineKind: r.line_kind === 'service' ? 'service' as const : 'product' as const,
+          quantity: Number(r.qty) || 0,
+          total: revenue,
+          cost,
+          depositAmount: sign * Math.abs(Number(r.service_deposit) || 0),
+          ficheDeposits: parseFicheDepositList(r.fiche_deposits).map((n) => sign * Math.abs(n)),
+        };
+      })).filter((line) => lineKind === 'all' || line.lineKind === lineKind);
+
+      const grouped = new Map<string, CategoryGroupProductRow>();
+      for (const line of folded) {
+        const key = `${line.groupName}|${line.categoryName}|${line.lineKind}|${line.productCode}|${line.productName}`;
+        const cur = grouped.get(key) || {
+          groupName: line.groupName,
+          categoryName: line.categoryName,
+          productId: line.productId,
+          productCode: line.productCode,
+          productName: line.productName,
+          lineKind: line.lineKind,
+          quantity: 0,
+          revenue: 0,
+          grossProfit: 0,
+        };
+        cur.quantity += line.quantity;
+        cur.revenue += line.total;
+        cur.grossProfit += line.total - line.cost;
+        if (!cur.productId && line.productId) cur.productId = line.productId;
+        grouped.set(key, cur);
+      }
+      const mapped = Array.from(grouped.values()).filter(
+        (row) => Math.abs(row.quantity) > 0.0001 || Math.abs(row.revenue) > 0.009,
+      );
+      mapped.sort((a, b) => b.revenue - a.revenue);
 
       setRows(mapped);
       const allG = new Set(mapped.map((x) => x.groupName));

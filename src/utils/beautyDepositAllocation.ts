@@ -38,16 +38,20 @@ function createdAtMs(a: BeautyAppointment): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-const DEPOSIT_LINE_NAMES = new Set(['deposit', 'depozito', 'peşinat', 'pesinat']);
+const DEPOSIT_LINE_NAMES = new Set(['deposit', 'depozito', 'peşinat', 'pesinat', 'rezervasyon']);
+const DEPOSIT_PREFIXES = ['deposit', 'depozito', 'deposıt', 'peşinat', 'pesinat'];
 
 /**
  * DEPOSIT içindeki I, Türkçe küçük harfte ı olur. Hem tr hem Unicode
- * katlaması bakılır; aksi halde ürün satırı "DEPOSIT" olarak kalır.
+ * katlaması bakılır. "Depozito (Peşinat Avansı)" gibi uzun adlar da satırdır.
  */
 function isDepositToken(value: string | null | undefined): boolean {
   const raw = String(value || '').trim();
   if (!raw) return false;
-  return DEPOSIT_LINE_NAMES.has(raw.toLocaleLowerCase('tr')) || DEPOSIT_LINE_NAMES.has(raw.toLowerCase());
+  const forms = [raw.toLocaleLowerCase('tr'), raw.toLowerCase()];
+  return forms.some(
+    (form) => DEPOSIT_LINE_NAMES.has(form) || DEPOSIT_PREFIXES.some((prefix) => form.startsWith(prefix)),
+  );
 }
 
 /** Ürün karşılaştırmasında depozito kendi satırı değildir. */
@@ -67,11 +71,19 @@ export function isDepositProductLine(item: {
   );
 }
 
-/**
- * Depozito satırını gizler; tutarını aynı fişteki hizmetlere randevu düşümüyle dağıtır.
- * Hizmet satırı yoksa depozito raporda görünmez.
- */
-export function foldDepositRevenueIntoServices<T extends {
+export interface DepositFoldSource {
+  /** Fişte tek depozito tutarı (satır yoksa hizmetlere bölünür). */
+  ficheDeposit?: number | null;
+  /**
+   * Aynı fişe bağlı randevu depozitoları. Hepsi aynıysa tutar bir kez bölünür;
+   * farklıysa toplam, hizmet bedeline oranla dağıtılır.
+   */
+  ficheDeposits?: Array<number | null> | null;
+  /** Fiş başlığı. Hizmetler bu tutara zaten eşitse depozito ikinci kez eklenmez. */
+  invoiceNet?: number | null;
+}
+
+type DepositFoldItem = {
   productName?: string | null;
   productCode?: string | null;
   productId?: string | null;
@@ -79,30 +91,219 @@ export function foldDepositRevenueIntoServices<T extends {
   item_type?: string | null;
   quantity?: number | null;
   total?: number | null;
-}>(items: T[]): T[] {
-  const services: T[] = [];
-  let depositAmount = 0;
-  for (const item of items) {
-    if (isDepositProductLine(item)) {
-      depositAmount += Number(item.total) || 0;
-      continue;
-    }
-    services.push(item);
-  }
-  if (services.length === 0 || Math.abs(depositAmount) <= 0.004) return services;
-  const sign = depositAmount < 0 ? -1 : 1;
+  /** Hizmetin kendi depozitosu. Satır yoksa bu tutar kullanılır. */
+  depositAmount?: number | null;
+};
+
+function serviceMoneySum(items: DepositFoldItem[]): number {
+  return round2(items.reduce((sum, item) => sum + (Number(item.total) || 0), 0));
+}
+
+function depositFitsDocument(serviceSum: number, pool: number, invoiceNet?: number | null): boolean {
+  if (!(Math.abs(pool) > 0.004)) return false;
+  if (invoiceNet == null || !Number.isFinite(Number(invoiceNet))) return true;
+  const net = Number(invoiceNet);
+  const tol = Math.max(1, Math.abs(net) * 0.002);
+  if (Math.abs(serviceSum - net) <= tol) return false;
+  if (Math.abs(serviceSum - pool - net) <= tol) return false;
+  return true;
+}
+
+/** Aynı tutar her hizmete kopyalandıysa bir kez döner; işaret korunur. */
+function sameCopiedAmount(values: number[]): number | null {
+  const list = values.filter((n) => Math.abs(n) > 0.004);
+  if (list.length === 0) return null;
+  const keys = [...new Set(list.map((n) => Math.abs(n).toFixed(2)))];
+  if (keys.length !== 1) return null;
+  const mag = Number(keys[0]);
+  const neg = list.some((n) => n < 0);
+  const pos = list.some((n) => n > 0);
+  if (neg && pos) return null;
+  return (neg ? -1 : 1) * mag;
+}
+
+function fichePoolAmount(source?: DepositFoldSource | null): number {
+  const list = (source?.ficheDeposits || []).map((n) => Number(n) || 0);
+  const copied = sameCopiedAmount(list);
+  if (copied != null) return copied;
+  const present = list.filter((n) => Math.abs(n) > 0.004);
+  if (present.length > 0) return round2(present.reduce((sum, n) => sum + n, 0));
+  return Number(source?.ficheDeposit) || 0;
+}
+
+function addDepositShares<T extends DepositFoldItem>(services: T[], pool: number, sign: number): T[] {
   const spread = spreadReservationAcrossLines(
     services.map((item) => {
       const qty = Math.max(1, Number(item.quantity) || 1);
       const total = Math.abs(Number(item.total) || 0);
       return { unitPrice: total / qty, qty };
     }),
-    Math.abs(depositAmount),
+    Math.abs(pool),
   );
   return services.map((item, idx) => ({
     ...item,
     total: round2((Number(item.total) || 0) + sign * (spread[idx]?.depositShare || 0)),
   }));
+}
+
+/**
+ * Depozito satırını gizler. Tutar, satırdan, hizmetin kendi depozitosundan
+ * veya fiş depozitosundan gelir ve randevu düşümüyle hizmetlere yazılır.
+ * Hizmet satırı yoksa depozito raporda görünmez.
+ */
+export function foldDepositRevenueIntoServices<T extends DepositFoldItem>(
+  items: T[],
+  source?: DepositFoldSource | null,
+): T[] {
+  const services: T[] = [];
+  let lineDeposit = 0;
+  for (const item of items) {
+    if (isDepositProductLine(item)) {
+      lineDeposit += Number(item.total) || 0;
+      continue;
+    }
+    services.push(item);
+  }
+  if (services.length === 0) return services;
+
+  const serviceSum = serviceMoneySum(services);
+  const invoiceNet = source?.invoiceNet;
+
+  if (Math.abs(lineDeposit) > 0.004) {
+    if (!depositFitsDocument(serviceSum, lineDeposit, invoiceNet)) return services;
+    const sign = lineDeposit < 0 ? -1 : 1;
+    return addDepositShares(services, lineDeposit, sign);
+  }
+
+  const owns = services.map((item) => Number(item.depositAmount) || 0);
+  if (owns.some((n) => Math.abs(n) > 0.004)) {
+    const everyLine = owns.every((n) => Math.abs(n) > 0.004);
+    const copied = everyLine ? sameCopiedAmount(owns) : null;
+    if (copied != null) {
+      if (!depositFitsDocument(serviceSum, copied, invoiceNet)) return services;
+      return addDepositShares(services, copied, copied < 0 ? -1 : 1);
+    }
+    const pool = round2(owns.reduce((sum, n) => sum + n, 0));
+    if (!depositFitsDocument(serviceSum, pool, invoiceNet)) return services;
+    return services.map((item) => ({
+      ...item,
+      total: round2((Number(item.total) || 0) + (Number(item.depositAmount) || 0)),
+    }));
+  }
+
+  const fichePool = fichePoolAmount(source);
+  if (Math.abs(fichePool) > 0.004 && depositFitsDocument(serviceSum, fichePool, invoiceNet)) {
+    return addDepositShares(services, fichePool, fichePool < 0 ? -1 : 1);
+  }
+  return services;
+}
+
+export interface FicheDepositRef {
+  id: string;
+  deposit: number;
+  serviceName?: string | null;
+  saleId?: string | null;
+  remainderSaleId?: string | null;
+  depositSaleId?: string | null;
+  saleGroupId?: string | null;
+}
+
+export function appointmentDepositRef(appointment: {
+  id?: string | null;
+  deposit_amount?: number | null;
+  service_name?: string | null;
+  remainder_sale_id?: string | null;
+  deposit_sale_id?: string | null;
+  sale_group_id?: string | null;
+}): FicheDepositRef | null {
+  const id = String(appointment.id || '').trim();
+  const deposit = Number(appointment.deposit_amount) || 0;
+  if (!id || Math.abs(deposit) <= 0.004) return null;
+  return {
+    id,
+    deposit,
+    serviceName: appointment.service_name ?? null,
+    remainderSaleId: appointment.remainder_sale_id ? String(appointment.remainder_sale_id) : null,
+    depositSaleId: appointment.deposit_sale_id ? String(appointment.deposit_sale_id) : null,
+    saleGroupId: appointment.sale_group_id ? String(appointment.sale_group_id) : null,
+  };
+}
+
+export function parseFicheDepositList(raw: unknown): number[] {
+  if (Array.isArray(raw)) {
+    return raw.map((n) => Number(n) || 0).filter((n) => Math.abs(n) > 0.004);
+  }
+  return String(raw || '')
+    .split(',')
+    .map((part) => Number(part.trim()) || 0)
+    .filter((n) => Math.abs(n) > 0.004);
+}
+
+/**
+ * Fişin satış satırlarına, bağlı randevu depozitosunu yazar.
+ * Satır adı hizmet adıyla eşleşirse depozito o hizmete aittir.
+ */
+export function foldSaleItemsWithDeposits<T extends DepositFoldItem>(
+  items: T[],
+  sale: {
+    id?: string | null;
+    total?: number | null;
+    linkedAppointmentId?: string | null;
+    saleGroupId?: string | null;
+  },
+  refs: FicheDepositRef[],
+): T[] {
+  const saleId = String(sale.id || '').trim();
+  const group = String(sale.saleGroupId || '').trim();
+  const linked = String(sale.linkedAppointmentId || '').trim();
+  const matched = (refs || []).filter((ref) => {
+    if (linked && ref.id === linked) return true;
+    if (saleId && (ref.saleId === saleId || ref.remainderSaleId === saleId || ref.depositSaleId === saleId)) return true;
+    if (group && ref.saleGroupId && ref.saleGroupId === group) return true;
+    return false;
+  });
+  const used = new Set<string>();
+  const withOwn = (items || []).map((item) => {
+    if (isDepositProductLine(item)) return item;
+    const name = String(item.productName || '').trim().toLocaleLowerCase('tr');
+    if (!name) return item;
+    const hit = matched.find((ref) => {
+      if (used.has(ref.id)) return false;
+      const serviceName = String(ref.serviceName || '').trim().toLocaleLowerCase('tr');
+      return !!serviceName && serviceName === name;
+    });
+    if (!hit) return item;
+    used.add(hit.id);
+    return { ...item, depositAmount: hit.deposit };
+  });
+  const unmatched = matched.filter((ref) => !used.has(ref.id));
+  return foldDepositRevenueIntoServices(withOwn, {
+    invoiceNet: sale.total,
+    ficheDeposits: unmatched.map((ref) => ref.deposit),
+  });
+}
+
+export function foldDepositLinesByInvoice<T extends DepositFoldItem & {
+  invoiceId?: string | null;
+  invoiceNet?: number | null;
+  ficheDeposits?: Array<number | null> | null;
+}>(lines: T[]): T[] {
+  const groups = new Map<string, T[]>();
+  for (const line of lines) {
+    const key = String(line.invoiceId || '');
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(line);
+    else groups.set(key, [line]);
+  }
+  const out: T[] = [];
+  for (const group of groups.values()) {
+    const netLine = group.find((line) => line.invoiceNet != null && Number.isFinite(Number(line.invoiceNet)));
+    out.push(...foldDepositRevenueIntoServices(group, {
+      invoiceNet: netLine ? Number(netLine.invoiceNet) : null,
+      ficheDeposits: group[0]?.ficheDeposits,
+    }));
+  }
+  return out;
 }
 
 /** Randevu sepetindeki rezervasyon düşümü ile aynı: en yakın 1.000. */

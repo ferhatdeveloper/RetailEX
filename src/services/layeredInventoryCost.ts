@@ -15,9 +15,13 @@ import {
   SQL_IS_SERVICE_LINE,
   SQL_DISPLAY_ITEM_CODE,
   SQL_PL_SALES_OR_RETURN,
-  SIGNED_LINE_QTY_EXPR,
+  SIGNED_FOLD_LINE_REVENUE_EXPR,
   SIGNED_LINE_REVENUE_EXPR,
+  SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_COST_EXPR,
+  SQL_FICHE_DEPOSIT_LIST,
+  SQL_SALES_SIGN,
+  SQL_SERVICE_DEPOSIT_AMOUNT,
   buildProfitCostCtes,
   PRODUCTS_JOIN,
   SERVICE_COST_JOINS,
@@ -31,6 +35,7 @@ import {
   BEAUTY_APPOINTMENT_BRIDGE_JOIN,
   SQL_BEAUTY_APPT_INCLUDED,
 } from '../utils/lastPurchaseCostSql';
+import { appointmentDepositRef, foldDepositLinesByInvoice, foldSaleItemsWithDeposits, parseFicheDepositList, type FicheDepositRef } from '../utils/beautyDepositAllocation';
 import { localCalendarDateKey, localTodayDateKey, toSqlDateInputString } from '../utils/localCalendarDate';
 import {
   applyFifoLayers,
@@ -435,6 +440,8 @@ async function loadCostProfitSaleLinesSql(opts: {
     `
     WITH ${profitCtes}
     SELECT
+      s.id::text AS invoice_id,
+      (${SQL_SALES_SIGN}) * COALESCE(s.net_amount, 0) AS invoice_net,
       COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
       ${SQL_DISPLAY_ITEM_CODE} AS product_code,
       COALESCE(
@@ -444,10 +451,13 @@ async function loadCostProfitSaleLinesSql(opts: {
         bsvc.name,
         '—'
       ) AS product_name,
+      COALESCE(si.item_type, '') AS item_type,
       CASE WHEN ${SQL_IS_SERVICE_LINE} THEN 'service' ELSE 'product' END AS line_kind,
-      COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0) AS quantity,
-      COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0) AS revenue,
-      COALESCE(SUM(${SIGNED_LINE_COST_EXPR}), 0) AS fallback_cogs
+      ${SIGNED_LINE_QTY_EXPR} AS quantity,
+      ${SIGNED_FOLD_LINE_REVENUE_EXPR} AS revenue,
+      ${SIGNED_LINE_COST_EXPR} AS fallback_cogs,
+      (${SQL_SALES_SIGN}) * (${SQL_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
+      ${SQL_FICHE_DEPOSIT_LIST} AS fiche_deposits
     FROM sale_items si
     INNER JOIN sales s ON s.id = si.invoice_id
     ${PRODUCTS_JOIN}
@@ -462,22 +472,49 @@ async function loadCostProfitSaleLinesSql(opts: {
       AND COALESCE(s.is_deposit, false) = false
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) >= $2
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) <= $3
-    GROUP BY 1, 2, 3, 4
-    HAVING ABS(COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0)) > 0.0001
-        OR ABS(COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0)) > 0.009
     `,
     [opts.firmNr, opts.start, opts.end],
     { firmNr: opts.firmNr, periodNr: opts.periodNr },
   );
-  return (rows || []).map((r) => ({
-    productId: String(r.product_id ?? ''),
-    productCode: displayItemCode(r.product_code),
-    productName: String(r.product_name ?? ''),
-    quantity: Number(r.quantity ?? 0) || 0,
-    revenue: Number(r.revenue ?? 0) || 0,
-    fallbackCogs: Number(r.fallback_cogs ?? 0) || 0,
-    lineKind: r.line_kind === 'service' ? ('service' as const) : ('product' as const),
+  const folded = foldDepositLinesByInvoice((rows || []).map((r) => {
+    const invoiceNet = Number(r.invoice_net) || 0;
+    const sign = invoiceNet < 0 ? -1 : 1;
+    return {
+      invoiceId: String(r.invoice_id ?? ''),
+      invoiceNet,
+      productId: String(r.product_id ?? ''),
+      productCode: displayItemCode(r.product_code),
+      productName: String(r.product_name ?? ''),
+      lineType: String(r.item_type ?? ''),
+      lineKind: r.line_kind === 'service' ? 'service' as const : 'product' as const,
+      quantity: Number(r.quantity ?? 0) || 0,
+      total: Number(r.revenue ?? 0) || 0,
+      fallbackCogs: Number(r.fallback_cogs ?? 0) || 0,
+      depositAmount: sign * Math.abs(Number(r.service_deposit) || 0),
+      ficheDeposits: parseFicheDepositList(r.fiche_deposits).map((n) => sign * Math.abs(n)),
+    };
   }));
+  const grouped = new Map<string, SaleLineRaw>();
+  for (const line of folded) {
+    const key = `${line.lineKind}|${line.productId}|${line.productCode}|${line.productName}`;
+    const cur = grouped.get(key) || {
+      productId: line.productId,
+      productCode: line.productCode,
+      productName: line.productName,
+      quantity: 0,
+      revenue: 0,
+      fallbackCogs: 0,
+      lineKind: line.lineKind,
+    };
+    cur.quantity += line.quantity;
+    cur.revenue += line.total;
+    cur.fallbackCogs += line.fallbackCogs;
+    if (!cur.productId && line.productId) cur.productId = line.productId;
+    grouped.set(key, cur);
+  }
+  return Array.from(grouped.values()).filter(
+    (row) => Math.abs(row.quantity) > 0.0001 || Math.abs(row.revenue) > 0.009,
+  );
 }
 
 async function loadCostProfitSaleLinesRest(opts: {
@@ -489,12 +526,12 @@ async function loadCostProfitSaleLinesRest(opts: {
   const { postgrest } = await import('./api/postgrestClient');
   const fn = opts.firmNr;
   const pn = opts.periodNr;
-  const [sales, items, products, services, beautyServices, consumables] = await Promise.all([
+  const [sales, items, products, services, beautyServices, consumables, beautyAppointments] = await Promise.all([
     postgrest
       .get<Record<string, unknown>[]>(
         `/rex_${fn}_${pn}_sales`,
         {
-          select: 'id,date,fiche_type,is_cancelled,is_deposit,status,trcode,created_at,net_amount',
+          select: 'id,date,fiche_type,is_cancelled,is_deposit,status,trcode,created_at,net_amount,linked_appointment_id,sale_group_id',
           order: 'date.desc',
           limit: '12000',
         },
@@ -537,6 +574,16 @@ async function loadCostProfitSaleLinesRest(opts: {
       .get<Record<string, unknown>[]>(
         `/rex_${fn}_beauty_service_consumables`,
         { select: 'service_id,product_id,qty_per_service', limit: '12000' },
+        { schema: 'beauty' },
+      )
+      .catch(() => [] as Record<string, unknown>[]),
+    postgrest
+      .get<Record<string, unknown>[]>(
+        `/rex_${fn}_${pn}_beauty_appointments`,
+        {
+          select: 'id,deposit_amount,service_name,remainder_sale_id,deposit_sale_id,sale_group_id',
+          limit: '8000',
+        },
         { schema: 'beauty' },
       )
       .catch(() => [] as Record<string, unknown>[]),
@@ -627,8 +674,70 @@ async function loadCostProfitSaleLinesRest(opts: {
     linesNetByInvoice.set(iid, (linesNetByInvoice.get(iid) || 0) + (Number(it.net_amount ?? 0) || 0));
   }
 
+  const depositRefs = (beautyAppointments || [])
+    .map((a) => appointmentDepositRef({
+      id: String(a.id || ''),
+      deposit_amount: Number(a.deposit_amount) || 0,
+      service_name: a.service_name == null ? null : String(a.service_name),
+      remainder_sale_id: a.remainder_sale_id == null ? null : String(a.remainder_sale_id),
+      deposit_sale_id: a.deposit_sale_id == null ? null : String(a.deposit_sale_id),
+      sale_group_id: a.sale_group_id == null ? null : String(a.sale_group_id),
+    }))
+    .filter((row): row is FicheDepositRef => !!row);
+  type CostFoldLine = {
+    index: number;
+    invoiceId: string;
+    productName: string;
+    lineType: string;
+    quantity: number;
+    total: number;
+  };
+  const prepared: CostFoldLine[] = [];
+  (items || []).forEach((it, index) => {
+    if (!saleOk.has(String(it.invoice_id))) return;
+    const itemType = String(it.item_type || 'Malzeme');
+    if (itemType === 'Promosyon' || itemType === 'İndirim') return;
+    const inv = salesById.get(String(it.invoice_id));
+    if (!inv) return;
+    if (inv.is_deposit === true || inv.is_deposit === 'true' || inv.is_deposit === 1) return;
+    const sgn = isSalesReturnFiche(inv) ? -1 : 1;
+    const rawLineNet = Number(it.net_amount ?? 0) || 0;
+    prepared.push({
+      index,
+      invoiceId: String(it.invoice_id),
+      productName: String(it.item_name ?? ''),
+      lineType: itemType,
+      quantity: Number(it.quantity ?? 0) || 0,
+      total: sgn * scaleLineRevenueToInvoiceNet(
+        rawLineNet,
+        linesNetByInvoice.get(String(it.invoice_id)) || 0,
+        Number(inv.net_amount ?? 0) || 0,
+      ),
+    });
+  });
+  const costByInvoice = new Map<string, CostFoldLine[]>();
+  for (const line of prepared) {
+    const bucket = costByInvoice.get(line.invoiceId);
+    if (bucket) bucket.push(line);
+    else costByInvoice.set(line.invoiceId, [line]);
+  }
+  const revenueByIndex = new Map<number, number>();
+  for (const [invoiceId, group] of costByInvoice) {
+    const inv = salesById.get(invoiceId);
+    const sgn = inv && isSalesReturnFiche(inv) ? -1 : 1;
+    const folded = foldSaleItemsWithDeposits(group, {
+      id: invoiceId,
+      total: sgn * (Number(inv?.net_amount ?? 0) || 0),
+      linkedAppointmentId: inv?.linked_appointment_id == null ? null : String(inv.linked_appointment_id),
+      saleGroupId: inv?.sale_group_id == null ? null : String(inv.sale_group_id),
+    }, depositRefs);
+    for (const line of folded) revenueByIndex.set(line.index, line.total);
+  }
+
   const map = new Map<string, SaleLineRaw>();
-  for (const it of items || []) {
+  const saleItems = items || [];
+  for (let lineIndex = 0; lineIndex < saleItems.length; lineIndex++) {
+    const it = saleItems[lineIndex];
     if (!saleOk.has(String(it.invoice_id))) continue;
     const itemType = String(it.item_type || 'Malzeme');
     if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
@@ -638,6 +747,7 @@ async function loadCostProfitSaleLinesRest(opts: {
     // hariç tut. Deposit henüz hizmet verilmemiş avanstır; "Kar/Zarar
     // Raporu"na "DEPOSIT" adıyla ürün satırı olarak yansıyordu.
     if (inv.is_deposit === true || inv.is_deposit === 'true' || inv.is_deposit === 1) continue;
+    if (!revenueByIndex.has(lineIndex)) continue;
     const sgn = isSalesReturnFiche(inv) ? -1 : 1;
     const pid =
       resolveLineProductId(it) ||
@@ -653,14 +763,7 @@ async function loadCostProfitSaleLinesRest(opts: {
     const lineKind: CostProfitLineKind = isService ? 'service' : 'product';
     const code = displayItemCode(prod?.code, svc?.code, it.item_code);
     const qty = sgn * (Number(it.quantity ?? 0) || 0);
-    const rawLineNet = Number(it.net_amount ?? 0) || 0;
-    const revenue =
-      sgn *
-      scaleLineRevenueToInvoiceNet(
-        rawLineNet,
-        linesNetByInvoice.get(String(it.invoice_id)) || 0,
-        Number(inv.net_amount ?? 0) || 0,
-      );
+    const revenue = revenueByIndex.get(lineIndex) ?? 0;
     const lpc =
       (pid && lastById.get(pid)?.unitCost) ||
       (String(it.item_code || '').trim() &&
