@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { BeautyAppointment } from '../../types/beauty';
-import { allocateBeautyVisitDeposits, spreadReservationAcrossLines } from '../../utils/beautyDepositAllocation';
+import {
+  allocateBeautyVisitDeposits,
+  foldDepositRevenueIntoServices,
+  isDepositProductLine,
+  spreadReservationAcrossLines,
+} from '../../utils/beautyDepositAllocation';
 
 function apt(partial: Partial<BeautyAppointment> & { id: string }): BeautyAppointment {
   return {
@@ -23,6 +28,60 @@ describe('spreadReservationAcrossLines', () => {
     );
     expect(spread.map((s) => s.depositShare)).toEqual([3000, 2000]);
     expect(spread.map((s) => s.unitPrice)).toEqual([17000, 13000]);
+  });
+});
+
+describe('foldDepositRevenueIntoServices', () => {
+  it('DEPOSIT satırını gizler ve tutarını tek hizmete ekler', () => {
+    const lines = foldDepositRevenueIntoServices([
+      { productName: 'HAIR CUT', quantity: 1, total: 35000 },
+      { productName: 'DEPOSIT', productCode: 'DEPOSIT', quantity: 1, total: 15000 },
+    ]);
+    expect(lines).toEqual([{ productName: 'HAIR CUT', quantity: 1, total: 50000 }]);
+    expect(lines.some((line) => isDepositProductLine(line))).toBe(false);
+  });
+
+  it('iki hizmete depozitoyu randevu düşümüyle böler', () => {
+    const lines = foldDepositRevenueIntoServices([
+      { productName: 'Kesim', quantity: 1, total: 20000 },
+      { productName: 'Boya', quantity: 1, total: 15000 },
+      { productName: 'Depozito', quantity: 1, total: 5000 },
+    ]);
+    expect(lines.map((line) => line.productName)).toEqual(['Kesim', 'Boya']);
+    expect(lines.map((line) => line.total)).toEqual([23000, 17000]);
+    expect(lines.reduce((sum, line) => sum + (line.total || 0), 0)).toBe(40000);
+  });
+
+  it('düşülmüş hizmet satırına payı geri yazınca fiş toplamı korunur', () => {
+    const lines = foldDepositRevenueIntoServices([
+      { productName: 'Kesim', quantity: 1, total: 17000 },
+      { productName: 'Boya', quantity: 1, total: 13000 },
+      { productName: 'DEPOSIT', quantity: 1, total: 5000 },
+    ]);
+    expect(lines.map((line) => line.total)).toEqual([20000, 15000]);
+    expect(lines.reduce((sum, line) => sum + (line.total || 0), 0)).toBe(35000);
+  });
+
+  it('yalnız depozito fişini ürün tablosundan çıkarır', () => {
+    expect(
+      foldDepositRevenueIntoServices([
+        { productName: 'DEPOSIT', quantity: 1, total: 15000 },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('depozito yoksa satırları olduğu gibi bırakır', () => {
+    const items = [{ productName: 'HAIR CUT', quantity: 1, total: 50000 }];
+    expect(foldDepositRevenueIntoServices(items)).toEqual(items);
+  });
+
+  it('ad ve tür ile depozito satırını tanır', () => {
+    expect(isDepositProductLine({ productName: 'HAIR CUT' })).toBe(false);
+    expect(isDepositProductLine({ productName: 'DEPOSIT' })).toBe(true);
+    expect(isDepositProductLine({ productName: 'Peşinat' })).toBe(true);
+    expect(isDepositProductLine({ productName: 'PEŞİNAT' })).toBe(true);
+    expect(isDepositProductLine({ productId: 'DEPOSIT' })).toBe(true);
+    expect(isDepositProductLine({ lineType: 'DEPOSIT', productName: 'Avans' })).toBe(true);
   });
 });
 

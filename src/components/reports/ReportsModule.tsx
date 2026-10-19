@@ -80,7 +80,7 @@ import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMEN
 import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections, saleCollectedSplit, dailyPaymentKind, beautySalePocketCollected } from '../../utils/saleCollectedAmounts';
 import { saleCollected as saleActualCollected } from '../../utils/computeActualCollected';
 import { filterForRevenue, filterForCash, filterForDeposit, isCompletedAppointmentStatus, isDepositSale } from '../../utils/reportDepositFilter';
-import { allocateBeautyVisitDeposits } from '../../utils/beautyDepositAllocation';
+import { allocateBeautyVisitDeposits, foldDepositRevenueIntoServices } from '../../utils/beautyDepositAllocation';
 import {
   absorbReservationFromRemainings,
   detachReservationFromOpenAccount,
@@ -2649,7 +2649,8 @@ export function ReportsModule({
       const avgSale = totalSales > 0 ? totalRevenue / totalSales : 0;
       const productMap = new Map<string, { qty: number; revenue: number }>();
       for (const s of list) {
-        for (const it of s.items || []) {
+        const lines = foldDepositRevenueIntoServices(s.items || []);
+        for (const it of lines) {
           const name = (it.productName && String(it.productName).trim()) || String(it.productId || '—');
           const cur = productMap.get(name) || { qty: 0, revenue: 0 };
           cur.qty += Number(it.quantity) || 0;

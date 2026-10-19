@@ -38,6 +38,73 @@ function createdAtMs(a: BeautyAppointment): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+const DEPOSIT_LINE_NAMES = new Set(['deposit', 'depozito', 'peşinat', 'pesinat']);
+
+/**
+ * DEPOSIT içindeki I, Türkçe küçük harfte ı olur. Hem tr hem Unicode
+ * katlaması bakılır; aksi halde ürün satırı "DEPOSIT" olarak kalır.
+ */
+function isDepositToken(value: string | null | undefined): boolean {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  return DEPOSIT_LINE_NAMES.has(raw.toLocaleLowerCase('tr')) || DEPOSIT_LINE_NAMES.has(raw.toLowerCase());
+}
+
+/** Ürün karşılaştırmasında depozito kendi satırı değildir. */
+export function isDepositProductLine(item: {
+  productName?: string | null;
+  productCode?: string | null;
+  productId?: string | null;
+  lineType?: string | null;
+  item_type?: string | null;
+}): boolean {
+  return (
+    isDepositToken(item.lineType) ||
+    isDepositToken(item.item_type) ||
+    isDepositToken(item.productName) ||
+    isDepositToken(item.productCode) ||
+    isDepositToken(item.productId)
+  );
+}
+
+/**
+ * Depozito satırını gizler; tutarını aynı fişteki hizmetlere randevu düşümüyle dağıtır.
+ * Hizmet satırı yoksa depozito raporda görünmez.
+ */
+export function foldDepositRevenueIntoServices<T extends {
+  productName?: string | null;
+  productCode?: string | null;
+  productId?: string | null;
+  lineType?: string | null;
+  item_type?: string | null;
+  quantity?: number | null;
+  total?: number | null;
+}>(items: T[]): T[] {
+  const services: T[] = [];
+  let depositAmount = 0;
+  for (const item of items) {
+    if (isDepositProductLine(item)) {
+      depositAmount += Number(item.total) || 0;
+      continue;
+    }
+    services.push(item);
+  }
+  if (services.length === 0 || Math.abs(depositAmount) <= 0.004) return services;
+  const sign = depositAmount < 0 ? -1 : 1;
+  const spread = spreadReservationAcrossLines(
+    services.map((item) => {
+      const qty = Math.max(1, Number(item.quantity) || 1);
+      const total = Math.abs(Number(item.total) || 0);
+      return { unitPrice: total / qty, qty };
+    }),
+    Math.abs(depositAmount),
+  );
+  return services.map((item, idx) => ({
+    ...item,
+    total: round2((Number(item.total) || 0) + sign * (spread[idx]?.depositShare || 0)),
+  }));
+}
+
 /** Randevu sepetindeki rezervasyon düşümü ile aynı: en yakın 1.000. */
 export function roundReservationMoney(n: number): number {
   return Math.round(n / 1000) * 1000;
