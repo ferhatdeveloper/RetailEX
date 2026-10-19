@@ -215,6 +215,8 @@ type ServiceBreakdownFlatRow = {
   deviceName: string;
   receiptNumber: string;
   amount: number;
+  // 19.10.2026 — Depozito/rezervasyon tutarı
+  depositAmount: number;
   appointment?: BeautyAppointment;
 };
 
@@ -2300,6 +2302,8 @@ export function ReportsModule({
             deviceName: String(a.device_name ?? '').trim() || '—',
             receiptNumber: '',
             amount: Number(a.total_price ?? 0),
+            // 19.10.2026 — Depozito/rezervasyon tutarı
+            depositAmount: Number((a as BeautyAppointment & { deposit_amount?: number }).deposit_amount ?? 0),
             appointment: a,
           });
         } else {
@@ -2316,6 +2320,7 @@ export function ReportsModule({
             deviceName: a.deviceName,
             receiptNumber: a.receiptNumber,
             amount: a.amount,
+            depositAmount: 0, // ERP'de depozito alanı yok
           });
         }
       }
@@ -9735,9 +9740,8 @@ export function ReportsModule({
                                   },
                                 ]
                               : [
-                                  { key: 'serviceName', header: tm('service'), size: 180 },
-                                  { key: 'categoryName', header: tm('categoryLabel'), size: 140 },
-                                  { key: 'subCategoryName', header: tm('beautySubCategoryFilterLabel'), size: 140 },
+                                  { key: 'categoryName', header: tm('categoryLabel'), size: 120 },
+                                  { key: 'subCategoryName', header: tm('beautySubCategoryFilterLabel'), size: 120 },
                                   {
                                     key: 'date',
                                     header: tm('date'),
@@ -9747,7 +9751,20 @@ export function ReportsModule({
                                   },
                                   { key: 'customerName', header: tm('customer'), size: 160 },
                                   { key: 'staffName', header: tm('bStaffView'), size: 140 },
-                                  { key: 'deviceName', header: tm('bDeviceView'), size: 140 },
+                                  { key: 'deviceName', header: tm('bDeviceView'), size: 120 },
+                                  // 19.10.2026 — Depozito/rezervasyon tutarı kolonu
+                                  {
+                                    key: 'depositAmount',
+                                    header: tm('dailyDepositCollected') || 'Depozito',
+                                    type: 'number',
+                                    align: 'right',
+                                    size: 120,
+                                    footerSum: true,
+                                    footerFormat: (n) => n > 0 ? formatLedgerAmount(n, reportCurrency) : '—',
+                                    cell: (row) => row.depositAmount > 0
+                                      ? <span className="text-cyan-700 font-semibold">{formatLedgerAmount(row.depositAmount, reportCurrency)}</span>
+                                      : <span className="text-slate-300">—</span>,
+                                  },
                                   {
                                     key: 'amount',
                                     header: tm('amount'),
