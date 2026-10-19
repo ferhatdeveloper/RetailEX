@@ -81,7 +81,11 @@ import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections
 import { saleCollected as saleActualCollected } from '../../utils/computeActualCollected';
 import { filterForRevenue, filterForCash, filterForDeposit, isCompletedAppointmentStatus, isDepositSale } from '../../utils/reportDepositFilter';
 import { allocateBeautyVisitDeposits } from '../../utils/beautyDepositAllocation';
-import { offsetSaleRemainingWithReservation } from '../../utils/reservationVeresiyeOffset';
+import {
+  absorbReservationFromRemainings,
+  detachReservationFromOpenAccount,
+  reservationOutsideSaleSplit,
+} from '../../utils/reservationVeresiyeOffset';
 import { renderCustomerCell, customerNameText } from '../../utils/customerDisplay';
 import {
   buildPaymentTypeDistribution,
@@ -2984,30 +2988,35 @@ export function ReportsModule({
       if (isReturnSale(s)) return sum;
       return sum + (Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).collected) || 0);
     }, 0) + extraCollections + extraReservation;
-  // Veresiye = belge kalanı − aynı gün rezervasyon avansı.
-  // 50.000 hizmet, 35.000 nakit, 15.000 rezervasyon → veresiye 0.
-  // Avans tahsilata eklenmez; Rezervasyon kartında durur.
-  const reservationRemainingBySale = offsetSaleRemainingWithReservation(
-    dailySalesActive
-      .filter((s) => !isReturnSale(s))
-      .map((s) => ({
-        id: String(s.id),
-        customerId: String(s.customerId || ''),
-        remaining: Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).remaining) || 0,
-      })),
-    dailyAvansList.map((a) => ({
-      customerId: String((a as { customer_id?: string }).customer_id || ''),
-      amount: Number((a as { amount?: number }).amount) || 0,
-      status: (a as { status?: string }).status,
-      appliedSaleId: (a as { applied_sale_id?: string | null }).applied_sale_id,
-    })),
-    dailyAppliedAvans,
+  // Veresiye = satış kalanı − rezervasyon kartı.
+  // Rezervasyon tutarı (avans veya peşinat) asla kalan cariye yazılmaz.
+  // Satış kırılımına zaten işlenmiş avans ikinci kez düşülmez.
+  // 50.000 belge, 35.000 nakit, kalan 15.000, rezervasyon 15.000 → veresiye 0.
+  const rawSaleRemainings = dailySalesActive
+    .filter((s) => !isReturnSale(s))
+    .map((s) => {
+      const id = String(s.id);
+      const applied = dailyAppliedAvans.get(id) || 0;
+      const withApplied = Number(saleCollectedSplit(s, applied).remaining) || 0;
+      const withoutApplied = applied > 0.004
+        ? Number(saleCollectedSplit(s, 0).remaining) || 0
+        : withApplied;
+      return {
+        id,
+        remaining: withApplied,
+        appliedCredited: Math.max(0, withoutApplied - withApplied),
+      };
+    });
+  const reservationShown = Math.max(0, dailyDepositTotal + dailyAvansInfoTotal);
+  const appliedAlreadyCredited = rawSaleRemainings.reduce(
+    (sum, row) => sum + row.appliedCredited,
+    0,
   );
-  const dailyRemaining = dailySalesActive.reduce((sum, s) => {
-    if (isReturnSale(s)) return sum;
-    const adjusted = reservationRemainingBySale.get(String(s.id));
-    if (adjusted != null) return sum + adjusted;
-    return sum + (Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).remaining) || 0);
+  const reservationOutsideSplit = reservationOutsideSaleSplit(reservationShown, appliedAlreadyCredited);
+  const reservationRemainingBySale = absorbReservationFromRemainings(rawSaleRemainings, reservationShown);
+  const dailyRemaining = rawSaleRemainings.reduce((sum, row) => {
+    const adjusted = reservationRemainingBySale.get(row.id);
+    return sum + (adjusted != null ? adjusted : Math.max(0, row.remaining));
   }, 0);
 
   /** Günlük tablo + özet kartlar: restoranda Perakende Satışlar (ERP) ile birebir; ERP yoksa kapalı adisyonlar */
@@ -3480,8 +3489,8 @@ export function ReportsModule({
         : undefined;
       if (reservationAdjusted != null && reservationAdjusted + 0.004 < kindInfo.remaining) {
         kindInfo.remaining = reservationAdjusted;
-        if (reservationAdjusted <= 0.004 && kindInfo.collected > 0) kindInfo.kind = 'cash';
-        else if (reservationAdjusted > 0.004 && kindInfo.collected > 0) kindInfo.kind = 'mixed';
+        if (reservationAdjusted <= 0.004) kindInfo.kind = 'cash';
+        else if (kindInfo.collected > 0) kindInfo.kind = 'mixed';
       }
       let paymentLabelText = tm(paymentMethodBucketTranslationKey(bucket));
       if (kindInfo.total > 0 && kindInfo.kind === 'mixed') {
@@ -3968,7 +3977,7 @@ export function ReportsModule({
         reservationDeposit: resvForZReport.deposit,
         cashAmount: base.cashAmount,
         cardAmount: base.cardAmount,
-        creditAmount: base.creditAmount,
+        creditAmount: dailyRemaining,
         otherAmount: base.otherAmount,
         totalDiscount: base.totalDiscount,
         refundAmount: base.refundAmount,
@@ -4001,7 +4010,7 @@ export function ReportsModule({
       });
       const extraCash = extraCustomerCollectionsNotOnSales(kasaLinesForSelectedDate, reportRangeSales);
       cashAmount += extraCash;
-      creditAmount = Math.max(0, creditAmount - extraCash);
+      creditAmount = Math.max(0, creditAmount - extraCash - reservationOutsideSplit);
       const totalDiscount = restOrdersClosedOnSelectedDate.reduce(
         (sum, o) => sum + Number((o as any).discount_amount || 0),
         0
@@ -4152,6 +4161,27 @@ export function ReportsModule({
       extraReservation,
       includeZero: true,
     });
+    const acik = dist.byCode.ACIK_CARI;
+    if (acik && reservationOutsideSplit > 0.004 && acik.amount > 0.004) {
+      const detached = detachReservationFromOpenAccount({
+        openAccount: acik.amount,
+        distributionTotal: dist.totalAmount,
+        reservationOutsideSplit,
+      });
+      acik.amount = detached.openAccount;
+      if (detached.openAccount <= 0.004) acik.count = 0;
+      dist.totalAmount = detached.distributionTotal;
+      for (const row of dist.types) {
+        if (row.code === 'ACIK_CARI') {
+          row.amount = detached.openAccount;
+          if (detached.openAccount <= 0.004) row.count = 0;
+        }
+        row.percentage = dist.totalAmount !== 0 ? (row.amount / dist.totalAmount) * 100 : 0;
+      }
+      dist.chartData = dist.chartData
+        .map((row) => (row.code === 'ACIK_CARI' ? { ...row, value: detached.openAccount } : row))
+        .filter((row) => Math.abs(row.value) > 1e-9);
+    }
     const cash = dist.byCode.NAKIT;
     const card = dist.byCode.KREDIKARTI;
     const transfer = dist.byCode.HAVAL;
@@ -5107,7 +5137,11 @@ export function ReportsModule({
         printCard += (Number(split.card) || 0) * share;
         printCollected += (Number(split.collected) || 0) * share;
         if (row.erpSale ? !isReturnSale(row.erpSale) : String(row.status || '').toLowerCase() !== 'return') {
-          printVeresiye += (Number(split.remaining) || 0) * share;
+          const adjustedRem = row.erpSale?.id != null
+            ? reservationRemainingBySale.get(String(row.erpSale.id))
+            : undefined;
+          const rem = adjustedRem != null ? adjustedRem : (Number(split.remaining) || 0);
+          printVeresiye += Math.max(0, rem) * share;
         }
       }
     }
@@ -6641,8 +6675,8 @@ export function ReportsModule({
                         <p className="text-xs text-slate-500 mt-1">
                           {(tm('dailyDepositCountShort') || 'Adet')}: {dailyDepositCount + dailyAvansInfoCount}
                           {dailyAvansInfoCount > 0
-                            ? ' · ' + (tm('reservationNote') || 'randevu') + ' (avans ' + dailyAvansInfoCount + ')'
-                            : (dailyDepositCount > 0 ? ' · ' + (tm('reservationNote') || 'randevu') : '')}
+                            ? ' · rezervasyon (avans ' + dailyAvansInfoCount + ')'
+                            : (dailyDepositCount > 0 ? ' · rezervasyon' : '')}
                         </p>
                       </div>
                       <Calendar className="w-12 h-12 text-cyan-300 opacity-40" aria-hidden />

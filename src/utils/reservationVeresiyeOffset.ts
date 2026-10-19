@@ -1,8 +1,11 @@
 /**
- * Günlük raporda rezervasyon avansı veresiye değildir.
- * Belge kalanından, aynı müşterinin henüz satış kırılımına yazılmamış
- * avansı düşülür. Tahsilat ve kasa toplamına eklenmez; rezervasyon kartı
- * ayrı kalır.
+ * Günlük raporda rezervasyon tutarı veresiye değildir.
+ * Rezervasyon kartındaki tutar, satış kalanından düşülür. Tahsilat ve
+ * kasa toplamına eklenmez. Satış kırılımına zaten yazılmış avans ikinci
+ * kez düşülmez.
+ *
+ * 50.000 belge, 35.000 nakit, kalan 15.000, rezervasyon kartı 15.000
+ * ve avans satışa yazılmamış → veresiye 0.
  */
 
 export interface SaleRemainingRow {
@@ -20,6 +23,68 @@ export interface ReservationAvansRow {
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Günlük kart: rezervasyon tutarı veresiye değildir.
+ * Satış kalanlarının toplamından rezervasyon kartındaki tutar düşülür.
+ * 50.000 belge, 35.000 nakit, kalan 15.000 ve rezervasyon 15.000 → veresiye 0.
+ */
+export function dailyVeresiyeAfterReservation(rawRemaining: number, reservationAmount: number): number {
+  return Math.max(0, round2(Math.max(0, rawRemaining) - Math.max(0, reservationAmount)));
+}
+
+/**
+ * Rezervasyon kartından, satış kalanına zaten işlenmiş avans çıkarılır.
+ * Kalan tutar veresiyeden düşülür; tahsilata eklenmez.
+ */
+export function reservationOutsideSaleSplit(
+  reservationShown: number,
+  appliedAlreadyCredited: number,
+): number {
+  return Math.max(
+    0,
+    round2(Math.max(0, Number(reservationShown) || 0) - Math.max(0, Number(appliedAlreadyCredited) || 0)),
+  );
+}
+
+/** Satır kalanlarından rezervasyon tutarını sırayla düşer. Toplam, kart ile aynıdır. */
+export function absorbReservationFromRemainings(
+  rows: Array<{ id: string; remaining: number; appliedCredited?: number }>,
+  reservationAmount: number,
+): Map<string, number> {
+  const alreadyInSplit = rows.reduce(
+    (sum, row) => sum + Math.max(0, Number(row.appliedCredited) || 0),
+    0,
+  );
+  let left = reservationOutsideSaleSplit(reservationAmount, alreadyInSplit);
+  const out = new Map<string, number>();
+  for (const row of rows) {
+    const remaining = Math.max(0, Number(row.remaining) || 0);
+    const used = Math.min(remaining, left);
+    left = round2(left - used);
+    out.set(String(row.id), round2(remaining - used));
+  }
+  return out;
+}
+
+/**
+ * Ödeme dağılımındaki açık cariden, satış kırılımına girmemiş rezervasyonu çıkarır.
+ * Dağılım toplamı aynı tutarda azalır; nakit / kart değişmez.
+ */
+export function detachReservationFromOpenAccount(args: {
+  openAccount: number;
+  distributionTotal: number;
+  reservationOutsideSplit: number;
+}): { openAccount: number; distributionTotal: number; removed: number } {
+  const openAccount = Math.max(0, Number(args.openAccount) || 0);
+  const total = Number(args.distributionTotal) || 0;
+  const cut = Math.min(openAccount, Math.max(0, Number(args.reservationOutsideSplit) || 0));
+  return {
+    openAccount: round2(openAccount - cut),
+    distributionTotal: round2(total - cut),
+    removed: round2(cut),
+  };
 }
 
 export function offsetSaleRemainingWithReservation(

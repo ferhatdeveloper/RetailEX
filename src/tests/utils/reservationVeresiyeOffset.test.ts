@@ -1,5 +1,54 @@
 import { describe, expect, it } from 'vitest';
-import { offsetSaleRemainingWithReservation } from '../../utils/reservationVeresiyeOffset';
+import {
+  absorbReservationFromRemainings,
+  dailyVeresiyeAfterReservation,
+  detachReservationFromOpenAccount,
+  offsetSaleRemainingWithReservation,
+  reservationOutsideSaleSplit,
+} from '../../utils/reservationVeresiyeOffset';
+
+describe('dailyVeresiyeAfterReservation', () => {
+  it('rezervasyon tutarı veresiyeden düşer', () => {
+    expect(dailyVeresiyeAfterReservation(15000, 15000)).toBe(0);
+  });
+
+  it('rezervasyondan büyük kalan gerçek veresiyedir', () => {
+    expect(dailyVeresiyeAfterReservation(40000, 15000)).toBe(25000);
+  });
+
+  it('rezervasyon kalandan büyükse veresiye sıfırdır', () => {
+    expect(dailyVeresiyeAfterReservation(0, 15000)).toBe(0);
+  });
+});
+
+describe('absorbReservationFromRemainings', () => {
+  it('tek satışın 15.000 kalanını rezervasyon kapatır', () => {
+    const map = absorbReservationFromRemainings([{ id: 's1', remaining: 15000 }], 15000);
+    expect(map.get('s1')).toBe(0);
+  });
+
+  it('satış kırılımına yazılmış avansı ikinci kez düşmez', () => {
+    const map = absorbReservationFromRemainings(
+      [{ id: 's1', remaining: 20000, appliedCredited: 15000 }],
+      15000,
+    );
+    expect(map.get('s1')).toBe(20000);
+    expect(reservationOutsideSaleSplit(15000, 15000)).toBe(0);
+  });
+});
+
+describe('detachReservationFromOpenAccount', () => {
+  it('açık cariden rezervasyonu çıkarır, nakit toplamını bozmaz', () => {
+    const out = detachReservationFromOpenAccount({
+      openAccount: 15000,
+      distributionTotal: 50000,
+      reservationOutsideSplit: 15000,
+    });
+    expect(out.openAccount).toBe(0);
+    expect(out.distributionTotal).toBe(35000);
+    expect(out.removed).toBe(15000);
+  });
+});
 
 describe('offsetSaleRemainingWithReservation', () => {
   it('50.000 belge, 35.000 nakit, 15.000 rezervasyon → veresiye 0', () => {
