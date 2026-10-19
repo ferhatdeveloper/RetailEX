@@ -300,6 +300,80 @@ export function posZCollectedAmount(report: Pick<PosZReport, 'cashAmount' | 'car
   );
 }
 
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+export interface DayEndZReservationInput {
+  /**
+   * Kasa durumundaki rezervasyon nakdi (REZERVASYON_AVANS).
+   * İşaret korunur: iade eksi kalır. Ciroya eklenmez.
+   */
+  reservationCash: number;
+  /** Henüz faturası kesilmemiş randevu. Yoksa 0. */
+  openGross?: number;
+  openPending?: number;
+  openDeposit?: number;
+  openCount?: number;
+}
+
+export interface DayEndZTotals {
+  netSales: number;
+  /** Ciro − gider. Rezervasyon tutarı eklenmez. */
+  netAfterExpenses: number;
+  /** Kasadaki nakit. Rezervasyon zaten içindeyse ikinci kez eklenmez. */
+  cashAmount: number;
+  /** Bilgi. Net ciroya ve gider sonrası nete yazılmaz. */
+  reservationDeposit: number;
+  reservationGross: number;
+  reservationPending: number;
+  reservationCount: number;
+}
+
+/**
+ * Gün sonu Z özeti.
+ * Rezervasyon peşinatı kazanılmamış avanstır: kasa durumundaki rezervasyon
+ * nakdiyle aynı tutar bilgi kolonunda durur. Net ciro ve gider sonrası net
+ * bu tutarı ikinci kez almaz. Nakit, çağıranın verdiği kasa tutarıdır
+ * (rezervasyon dahilse bir kez).
+ *
+ * Açık randevu varsa brüt ve kalan o randevunun gerçek tutarıdır.
+ * Hizmet ciroya girmişse (açık brüt yok) bilgi brütü alınan peşinatın
+ * kendisidir; kalan 0'dır — peşinat kasadadır, ayrıca borç yazılmaz.
+ */
+export function composeDayEndZTotals(input: {
+  netSales: number;
+  totalExpenses?: number;
+  subtractExpenses?: boolean;
+  cashAmount: number;
+  reservation: DayEndZReservationInput;
+}): DayEndZTotals {
+  const netSales = round2(Number(input.netSales) || 0);
+  const expenses = input.subtractExpenses === false ? 0 : (Number(input.totalExpenses) || 0);
+  const cashAmount = round2(Number(input.cashAmount) || 0);
+  const src = input.reservation || { reservationCash: 0 };
+  const signedCash = Number(src.reservationCash) || 0;
+  const openGross = Math.max(0, Number(src.openGross) || 0);
+  const openPending = Math.max(0, Number(src.openPending) || 0);
+  const openDeposit = Math.max(0, Number(src.openDeposit) || 0);
+  const openCount = Math.max(0, Math.trunc(Number(src.openCount) || 0));
+
+  const deposit = Math.abs(signedCash) > 0.004 ? round2(signedCash) : round2(openDeposit);
+  const gross = openGross > 0.004 ? round2(openGross) : round2(deposit);
+  const pending = openGross > 0.004 ? round2(openPending) : 0;
+  const count = openCount > 0 ? openCount : (Math.abs(deposit) > 0.004 ? 1 : 0);
+
+  return {
+    netSales,
+    netAfterExpenses: round2(netSales - expenses),
+    cashAmount,
+    reservationDeposit: deposit,
+    reservationGross: gross,
+    reservationPending: pending,
+    reservationCount: count,
+  };
+}
+
 function escHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')

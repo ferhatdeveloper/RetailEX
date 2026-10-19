@@ -76,7 +76,7 @@ import {
   summarizePurchasePromotionReport,
   type PurchasePromotionReportLine,
 } from '../../utils/purchasePromotionReport';
-import { applyExtraCashCollections, buildPosZReportForRange, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
+import { applyExtraCashCollections, buildPosZReportForRange, composeDayEndZTotals, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
 import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections, saleCollectedSplit, dailyPaymentKind, beautySalePocketCollected } from '../../utils/saleCollectedAmounts';
 import { saleCollected as saleActualCollected } from '../../utils/computeActualCollected';
@@ -101,10 +101,7 @@ import {
   type PaymentTypeMovement,
 } from '../../utils/paymentTypeDistribution';
 import {
-  listCashRegisterStatus,
-  mergeRegisterSeeds,
-  seedsFromCashStatusSales,
-  seedsFromRegisterCashLines,
+  cashRegisterStatusFromLedger,
   foldReservationIntoCashStatus,
   type CashRegisterStatusRow,
   type CashStatusPaymentLine,
@@ -1173,6 +1170,8 @@ export function ReportsModule({
   const [reportConfirmReason, setReportConfirmReason] = useState('');
   const reportConfirmResolverRef = useRef<((result: { approved: boolean; reason: string }) => void) | null>(null);
   const [kasaLinesForSelectedDate, setKasaLinesForSelectedDate] = useState<KasaIslemi[]>([]);
+  /** Kasalar sekmesi — dönem sonuna kadar kasa kartı. Z raporu bu listeyi okumaz. */
+  const [cashRegisterLedgerLines, setCashRegisterLedgerLines] = useState<KasaIslemi[]>([]);
   const [cashRegisterCards, setCashRegisterCards] = useState<Kasa[]>([]);
   const [dailyExpenseRows, setDailyExpenseRows] = useState<DailyExpenseRow[]>([]);
   const [dailyCashInRows, setDailyCashInRows] = useState<KasaIslemi[]>([]);
@@ -1328,12 +1327,15 @@ export function ReportsModule({
 
   const loadCashExpenses = useCallback(async () => {
     try {
-      const [expenseRows, cashLines] = await Promise.all([
+      const [expenseRows, cashLines, ledgerLines] = await Promise.all([
         expenseAPI.getAll({ startDate: selectedDateFrom, endDate: selectedDateTo }),
         fetchKasaIslemleri({
           baslangic_tarihi: selectedDateFrom,
           bitis_tarihi: `${selectedDateTo}T23:59:59`,
         }).catch(() => []),
+        fetchKasaIslemleri({
+          bitis_tarihi: `${selectedDateTo}T23:59:59`,
+        }).catch(() => null),
       ]);
       const unifiedSrc = mergeExpensesWithCashOuts(
         Array.isArray(expenseRows) ? expenseRows : [],
@@ -1391,11 +1393,15 @@ export function ReportsModule({
         : [];
       setDailyCariTahsilatRows(cariTahsilatList);
       setKasaLinesForSelectedDate(Array.isArray(cashLines) ? cashLines : []);
+      setCashRegisterLedgerLines(
+        Array.isArray(ledgerLines) ? ledgerLines : (Array.isArray(cashLines) ? cashLines : []),
+      );
     } catch {
       setDailyExpenseRows([]);
       setDailyCashInRows([]);
       setDailyCariTahsilatRows([]);
       setKasaLinesForSelectedDate([]);
+      setCashRegisterLedgerLines([]);
     }
   }, [selectedDateFrom, selectedDateTo]);
 
@@ -4081,6 +4087,9 @@ export function ReportsModule({
     const canceledSalesRows = allDaySales.filter((s) => isRemovedSaleStatus(s.status) && !isReturnSale(s));
 
     const resvForZReport = reservationAggregate;
+    // Kasa durumundaki rezervasyon nakdi. Açık randevu 0 olsa da
+    // aynı gün alınan peşinat burada durur. Net ciroya eklenmez.
+    const reservationCash = Number(getPaymentDistribution().reservationDeposit) || 0;
 
     const buildFromErpSales = () => {
       const extraCash = extraCustomerCollectionsNotOnSales(kasaLinesForSelectedDate, reportRangeSales);
@@ -4089,6 +4098,20 @@ export function ReportsModule({
         extraCash,
       );
       const netSales = base.totalAmount - base.refundAmount;
+      const cashAmount = base.cashAmount + reservationTopUp.cash;
+      const dayEnd = composeDayEndZTotals({
+        netSales,
+        totalExpenses: totalExpensesForReport,
+        subtractExpenses: showDailyCardTotalExpense,
+        cashAmount,
+        reservation: {
+          reservationCash,
+          openGross: resvForZReport.gross,
+          openPending: resvForZReport.pending,
+          openDeposit: resvForZReport.deposit,
+          openCount: resvForZReport.count,
+        },
+      });
       return {
         dateFrom: selectedDateFrom,
         dateTo: selectedDateTo,
@@ -4097,20 +4120,14 @@ export function ReportsModule({
         returnCount: allDaySales.filter((s) => isReturnSale(s)).length,
         amountBeforeDiscount: base.amountBeforeDiscount,
         totalAmount: base.totalAmount,
-        netSales,
+        netSales: dayEnd.netSales,
         totalExpenses: totalExpensesForReport,
-        // 14.10.2026 — Rezervasyon kalan (henüz faturası kesilmemiş
-        // randevular). Net Kalan'a eklenir.
-        netAfterExpenses: reportNetAfterOptionalExpense(
-          netSales,
-          totalExpensesForReport,
-          showDailyCardTotalExpense,
-        ) + resvForZReport.deposit,
-        reservationGross: resvForZReport.gross,
-        reservationPending: resvForZReport.pending,
-        reservationCount: resvForZReport.count,
-        reservationDeposit: resvForZReport.deposit,
-        cashAmount: base.cashAmount + reservationTopUp.cash,
+        netAfterExpenses: dayEnd.netAfterExpenses,
+        reservationGross: dayEnd.reservationGross,
+        reservationPending: dayEnd.reservationPending,
+        reservationCount: dayEnd.reservationCount,
+        reservationDeposit: dayEnd.reservationDeposit,
+        cashAmount: dayEnd.cashAmount,
         cardAmount: base.cardAmount + reservationTopUp.card,
         creditAmount: dailyRemaining,
         otherAmount: base.otherAmount,
@@ -4157,6 +4174,19 @@ export function ReportsModule({
           new Date(a.closed_at || a.closedAt || a.opened_at).getTime() -
           new Date(b.closed_at || b.closedAt || b.opened_at).getTime()
       );
+      const dayEnd = composeDayEndZTotals({
+        netSales: totalAmount,
+        totalExpenses: totalExpensesForReport,
+        subtractExpenses: showDailyCardTotalExpense,
+        cashAmount,
+        reservation: {
+          reservationCash,
+          openGross: resvForZReport.gross,
+          openPending: resvForZReport.pending,
+          openDeposit: resvForZReport.deposit,
+          openCount: resvForZReport.count,
+        },
+      });
       return {
         dateFrom: selectedDateFrom,
         dateTo: selectedDateTo,
@@ -4165,20 +4195,14 @@ export function ReportsModule({
         returnCount: 0,
         amountBeforeDiscount,
         totalAmount,
-        netSales: totalAmount,
+        netSales: dayEnd.netSales,
         totalExpenses: totalExpensesForReport,
-        // 14.10.2026 — Rezervasyon kalan (henüz faturası kesilmemiş
-        // randevular). Net Kalan'a eklenir.
-        netAfterExpenses: reportNetAfterOptionalExpense(
-          totalAmount,
-          totalExpensesForReport,
-          showDailyCardTotalExpense,
-        ) + resvForZReport.deposit,
-        reservationGross: resvForZReport.gross,
-        reservationPending: resvForZReport.pending,
-        reservationCount: resvForZReport.count,
-        reservationDeposit: resvForZReport.deposit,
-        cashAmount,
+        netAfterExpenses: dayEnd.netAfterExpenses,
+        reservationGross: dayEnd.reservationGross,
+        reservationPending: dayEnd.reservationPending,
+        reservationCount: dayEnd.reservationCount,
+        reservationDeposit: dayEnd.reservationDeposit,
+        cashAmount: dayEnd.cashAmount,
         cardAmount,
         creditAmount,
         otherAmount: 0,
@@ -4868,44 +4892,18 @@ export function ReportsModule({
   };
 
   const getCashRegisterStatusRows = (): CashRegisterStatusRow[] => {
-    const status = getCashStatus();
-    const nonDepositRows = dailyActiveRows.filter(
-      (row) => !isDepositSale(row.erpSale as Partial<Sale> | undefined) && row.isDeposit !== true,
-    );
-    const saleSeeds = seedsFromCashStatusSales(
-      nonDepositRows.map((row) => {
-        const sale = row.erpSale as (Partial<Sale> & {
-          cash_register_id?: string | null;
-          cashRegisterId?: string | null;
-        }) | undefined;
-        return {
-          total: Number(row.total) || 0,
-          paymentMethod: sale?.paymentMethod ?? row.paymentMethod,
-          payments: sale?.payments ?? null,
-          cashRegisterId: sale?.cash_register_id || sale?.cashRegisterId || null,
-          isDeposit: false,
-          notes: sale?.notes,
-        };
-      }),
-    );
-    const lineSeeds = seedsFromRegisterCashLines(kasaLinesForSelectedDate, creditedAppliedCashLineIds);
-    const openRow = status.paymentTypes.find((row) => row.code === 'ACIK_CARI' && !row.informational);
-    return listCashRegisterStatus({
+    const ledger = cashRegisterLedgerLines.length > 0
+      ? cashRegisterLedgerLines
+      : kasaLinesForSelectedDate;
+    return cashRegisterStatusFromLedger({
       registers: cashRegisterCards.map((kasa) => ({
         id: kasa.id,
         code: kasa.kasa_kodu,
         name: kasa.kasa_adi || kasa.kasa_kodu || kasa.id,
       })),
-      seeds: mergeRegisterSeeds([saleSeeds, lineSeeds]),
-      company: {
-        openingCash: status.openingCash,
-        serviceCash: status.serviceCash,
-        card: status.todayCard,
-        transfer: status.todayTransfer,
-        openAccount: Number(openRow?.amount) || 0,
-        reservationCash: status.reservationDeposit,
-        cashOut: status.expenses,
-      },
+      lines: ledger,
+      dateFrom: selectedDateFrom,
+      dateTo: selectedDateTo,
       unassignedLabel: tm('cashStatusUnassignedRegister'),
     });
   };
@@ -5823,6 +5821,8 @@ export function ReportsModule({
           .small { font-size: 9px; color: #444; }
           .section-title { text-align: center; font-weight: 700; margin: 1mm 0 2mm; }
           .muted { color: #555; }
+          .badge { display: inline-block; border: 1px solid #0891b2; color: #0e7490; font-size: 9px; padding: 0 1.2mm; margin-left: 1mm; text-transform: uppercase; }
+          .info { background: #ecfeff; }
           .formula { border: 1px dashed #222; padding: 2mm; border-radius: 2mm; margin-top: 2mm; }
           .formula .row { margin: 0.8mm 0; }
           .final { border-top: 1px solid #000; padding-top: 1.2mm; margin-top: 1.2mm; font-size: 13px; font-weight: 700; }
@@ -5877,6 +5877,19 @@ export function ReportsModule({
           <span class="label">${escHtml(tm('reportsZPrintNetTurnover'))}:</span>
           <span>${formatNumber(zReport.netSales ?? (zReport.totalAmount - zReport.refundAmount), 2, false)}</span>
         </div>
+        <div class="row info">
+          <span class="label">${escHtml(tm('dailyDepositCollected'))} <span class="badge">${escHtml(tm('cashStatusInfoBadge'))}</span></span>
+          <span>${formatNumber(zReport.reservationDeposit ?? 0, 2, false)}</span>
+        </div>
+        <div class="row small">
+          <span class="label">${escHtml(tm('reservationGrossLabel'))}</span>
+          <span>${formatNumber(zReport.reservationGross ?? 0, 2, false)}</span>
+        </div>
+        <div class="row small">
+          <span class="label">${escHtml(tm('reservationPendingLabel'))}</span>
+          <span>${formatNumber(zReport.reservationPending ?? 0, 2, false)}</span>
+        </div>
+        <div class="center small muted">${escHtml(tm('cashStatusReservationInfo'))}</div>
         <div class="row">
           <span class="label">${escHtml(tm('reportsZPrintFirstReceiptNo'))}:</span>
           <span>${zReport.firstSale}</span>
@@ -5909,9 +5922,6 @@ export function ReportsModule({
         <div class="formula">
           <div class="row"><span class="label">${escHtml(tm('reportsZPrintCashCardCollected'))}</span><span>${formatNumber(posZCollectedAmount(zReport), 2, false)}</span></div>
           <div class="row"><span class="label">${escHtml(tm('reportsZPrintTotalExpense'))}</span><span>- ${formatNumber(zReport.totalExpenses, 2, false)}</span></div>
-          <div class="row"><span class="label">${escHtml(tm('dailyDepositCollected') || 'Rezervasyon Tutarı')}</span><span>+ ${formatNumber(zReport.reservationDeposit ?? 0, 2, false)}</span></div>
-          <div class="row"><span class="label">${escHtml(tm('reservationGrossLabel') || 'Rezervasyon Brüt')}</span><span>${formatNumber(zReport.reservationGross ?? 0, 2, false)}</span></div>
-          <div class="row"><span class="label">${escHtml(tm('reservationCountLabel') || 'Rezervasyon Miktarı')}</span><span>${zReport.reservationCount ?? 0} ${escHtml(tm('dailyDepositCountShort') || 'adet')}</span></div>
           <div class="row final"><span>${escHtml(tm('reportsZPrintNetAfterExpensesUpper'))}</span><span>${formatNumber(zReport.netAfterExpenses, 2, false)}</span></div>
         </div>
         <div class="center small muted" style="margin-top:1mm">${escHtml(tm('reportsZPrintNetFootnote'))}</div>
@@ -7748,18 +7758,12 @@ export function ReportsModule({
                       <h4 className={`text-sm mb-2 ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>
                         {tm('reportsSalesSummarySection')}
                       </h4>
-                      <ReportKpiStrip
-                        columns={8}
-                        itemClassName={
-                          darkMode
-                            ? 'bg-slate-800/80 border-slate-600 shadow-none'
-                            : 'bg-white border-slate-200 shadow-none'
-                        }
-                        items={[
+                      <div className={`rounded-lg border divide-y ${darkMode ? 'border-slate-600 divide-slate-700 bg-slate-900/40' : 'border-slate-200 divide-slate-100 bg-white'}`}>
+                        {([
                           {
                             key: 'tx',
                             label: tm('reportsTotalTransactions'),
-                            value: zReport.totalSales,
+                            value: String(zReport.totalSales),
                             valueClassName: darkMode ? 'text-blue-400' : 'text-blue-600',
                           },
                           {
@@ -7789,6 +7793,7 @@ export function ReportsModule({
                               false,
                             ),
                             valueClassName: darkMode ? 'text-emerald-400' : 'text-emerald-700',
+                            emphasize: true,
                           },
                           {
                             key: 'expense',
@@ -7797,42 +7802,70 @@ export function ReportsModule({
                             valueClassName: darkMode ? 'text-rose-400' : 'text-rose-600',
                           },
                           {
-                            key: 'reservation',
-                            label: tm('dailyDepositCollected') || 'Rezervasyon Tutarı',
-                            value: formatNumber(zReport.reservationDeposit ?? 0, 2, false),
-                            valueClassName: darkMode ? 'text-amber-400' : 'text-amber-600',
-                            // 14.10.2026 19:35 — Brüt + miktar + kalan bilgi
-                            // olarak hint'te gösterilir: "Brüt: 50.000 · 1
-                            // adet · Kalan: 35.000". Rezervasyon Tutarı
-                            // (deposit) zaten value'da yazıyor.
-                            hint: `${tm('reservationGrossLabel') || 'Brüt'}: ${formatNumber(zReport.reservationGross ?? 0, 2, false)}${(zReport.reservationCount ?? 0) > 0 ? ` · ${zReport.reservationCount} ${tm('dailyDepositCountShort') || 'adet'}` : ''} · ${tm('reservationPendingLabel') || 'Kalan'}: ${formatNumber(Math.max(0, (zReport.reservationGross ?? 0) - (zReport.reservationDeposit ?? 0)), 2, false)}`,
-                          },
-                          {
                             key: 'netAfter',
                             label: tm('reportsNetAfterExpenses'),
                             value: formatNumber(zReport.netAfterExpenses, 2, false),
                             valueClassName: darkMode ? 'text-indigo-400' : 'text-indigo-700',
+                            emphasize: true,
                           },
-                        ]}
-                      />
+                        ] as Array<{
+                          key: string;
+                          label: string;
+                          value: string;
+                          valueClassName?: string;
+                          hint?: string;
+                          emphasize?: boolean;
+                        }>).map((row) => (
+                          <div key={row.key} className="flex items-center justify-between gap-4 px-4 py-2.5">
+                            <div className="min-w-0">
+                              <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{row.label}</span>
+                              {row.hint ? (
+                                <p className={`text-xs mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{row.hint}</p>
+                              ) : null}
+                            </div>
+                            <span className={`text-base font-semibold tabular-nums shrink-0 ${row.emphasize ? 'text-lg' : ''} ${row.valueClassName || (darkMode ? 'text-slate-100' : 'text-slate-900')}`}>
+                              {row.value}
+                            </span>
+                          </div>
+                        ))}
+                        <div className={`flex items-start justify-between gap-4 px-4 py-2.5 border-dashed ${darkMode ? 'bg-cyan-950/30' : 'bg-cyan-50/70'}`}>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-sm ${darkMode ? 'text-cyan-200' : 'text-cyan-900'}`}>{tm('dailyDepositCollected')}</span>
+                              <span className="text-[10px] uppercase tracking-wide text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
+                                {tm('cashStatusInfoBadge')}
+                              </span>
+                            </div>
+                            <p className={`text-xs mt-1 ${darkMode ? 'text-cyan-300/80' : 'text-cyan-800/80'}`}>
+                              {`${tm('reservationGrossLabel')}: ${formatNumber(zReport.reservationGross ?? 0, 2, false)}${(zReport.reservationCount ?? 0) > 0 ? ` · ${zReport.reservationCount} ${tm('dailyDepositCountShort')}` : ''} · ${tm('reservationPendingLabel')}: ${formatNumber(zReport.reservationPending ?? 0, 2, false)}`}
+                            </p>
+                            <p className={`text-[11px] mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{tm('cashStatusReservationInfo')}</p>
+                          </div>
+                          <span className={`text-base font-semibold tabular-nums shrink-0 ${darkMode ? 'text-cyan-300' : 'text-cyan-800'}`}>
+                            {formatNumber(zReport.reservationDeposit ?? 0, 2, false)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Payment Summary */}
                     <div>
-                      <h4 className="text-sm text-gray-600 mb-3">{tm('reportsPaymentSummarySection')}</h4>
+                      <h4 className={`text-sm mb-2 ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>{tm('reportsPaymentSummarySection')}</h4>
+                      <div className={`rounded-lg border divide-y ${darkMode ? 'border-slate-600 divide-slate-700' : 'border-slate-200 divide-slate-100'}`}>
+                        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+                          <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{tm('reportsCashPayments')}</span>
+                          <span className="text-base font-semibold tabular-nums shrink-0">{formatNumber(zReport.cashAmount, 2, false)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+                          <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{tm('reportsCardPayments')}</span>
+                          <span className="text-base font-semibold tabular-nums shrink-0">{formatNumber(zReport.cardAmount, 2, false)}</span>
+                        </div>
+                        <div className={`flex items-center justify-between gap-4 px-4 py-2.5 ${darkMode ? 'bg-amber-950/20' : 'bg-amber-50'}`}>
+                          <span className={`text-sm ${darkMode ? 'text-amber-200' : 'text-amber-900'}`}>{tm('veresiyeVerilen')}</span>
+                          <span className="text-base font-semibold tabular-nums shrink-0 text-amber-700">{formatNumber(zReport.creditAmount ?? 0, 2, false)}</span>
+                        </div>
+                      </div>
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                          <span>{tm('reportsCashPayments')}</span>
-                          <span className="text-lg">{formatNumber(zReport.cashAmount, 2, false)}</span>
-                        </div>
-                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                          <span>{tm('reportsCardPayments')}</span>
-                          <span className="text-lg">{formatNumber(zReport.cardAmount, 2, false)}</span>
-                        </div>
-                        <div className="flex items-center justify-between p-4 bg-amber-50 rounded-lg border border-amber-100">
-                          <span>{tm('veresiyeVerilen')}</span>
-                          <span className="text-lg font-semibold text-amber-700">{formatNumber(zReport.creditAmount ?? 0, 2, false)}</span>
-                        </div>
                         {(zReport.cashierStats?.length ?? 0) > 0 && (
                           <div className="mt-4">
                             <h4 className="text-sm text-gray-600 mb-3">Kasiyer / personel cirosu</h4>
