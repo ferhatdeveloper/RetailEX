@@ -732,7 +732,7 @@ type DailyUnifiedRow = {
   linkedAppointmentId?: string;
 };
 
-type DailyKindFilter = 'all' | 'service' | 'product';
+type DailyKindFilter = 'all' | 'service' | 'product' | 'reservation';
 
 function dailyKindAmountShare(row: DailyUnifiedRow, filter: DailyKindFilter): number {
   if (filter === 'all') return 1;
@@ -745,6 +745,11 @@ function dailyKindAmountShare(row: DailyUnifiedRow, filter: DailyKindFilter): nu
 
 function applyDailyKindFilter(row: DailyUnifiedRow, filter: DailyKindFilter): DailyUnifiedRow | null {
   if (filter === 'all') return row;
+  // 19.10.2026 — Rezervasyon sekmesi: sadece avans satırlarını göster
+  if (filter === 'reservation') {
+    if (row.isAvans === true) return row;
+    return null;
+  }
   // 09.10.2026 — Kullanıcı isteği: cari_avans satırları (rezervasyon
   // avansı) Hizmet veya Ürün filtresinde **Hariç** tutulmalı. Avans bir
   // hizmet rezervasyonunun peşinatıdır; ürün satışı değildir. Hizmet
@@ -3382,10 +3387,11 @@ export function ReportsModule({
   const dailyKindVisibleRows = useMemo(() => {
     const out: DailyUnifiedRow[] = [];
     for (const row of dailyVisibleRows) {
-      // 19.10.2026 — Avans satırları Satış Detayları listesinden gizlendi.
-      // Avanslar REZERVASYON KPI kartında ayrı gösterilir; listede tekrar
-      // gösterilmesi mükerrer algısı yaratıyor.
-      if ((row as { isAvans?: boolean }).isAvans === true) continue;
+      // 19.10.2026 — Avans satırları:
+      // - "Tümü" sekmesinde gizli (mükerrer algısı önlenir)
+      // - "Rezervasyon" sekmesinde görünür (ayrı liste)
+      // - "Hizmet" / "Ürün" sekmesinde gizli (applyDailyKindFilter zaten hariç tutuyor)
+      if ((row as { isAvans?: boolean }).isAvans === true && dailyKindFilter === 'all') continue;
       const next = applyDailyKindFilter(row, dailyKindFilter);
       if (next) out.push(next);
     }
