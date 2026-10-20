@@ -12015,6 +12015,9 @@ export const excelModuleTranslations = {
   reportsDailyKindService: { tr: 'Hizmet', en: 'Service', ar: 'خدمة', ku: 'خزمەتگوزاری' },
   reportsDailyKindProduct: { tr: 'Ürün', en: 'Product', ar: 'منتج', ku: 'بەرهەم' },
   reportsDailyKindMixed: { tr: 'Karma', en: 'Mixed', ar: 'مختلط', ku: 'تێکەڵ' },
+  // Satış Detayları Tür kolonu: iade fişi. Arapça ve Kürtçe, kısa İade
+  // etiketi olan reportsDetStatusRefunded ile aynıdır.
+  reportsDailyKindReturn: { tr: 'İade', en: 'Return', ar: 'مرتجع', ku: 'گەڕێندراوەتەوە' },
   // 09.10.2026 — Kullanıcı isteği: cari_avans satırları günlük rapor TÜR
   // kolonunda artık "Rezervasyon" rozeti görsün; "Ürün/Hizmet" filtresinden
   // otomatik olarak Hariç tutulur (avans bir hizmet rezervasyonu, ürün

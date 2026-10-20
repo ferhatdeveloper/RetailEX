@@ -12,6 +12,8 @@ import {
   dailySalesDetailNetAmount,
   sumDailySalesDetailNet,
 } from '../../utils/dailySalesDetailNet';
+import { dailySalesDetailKindLabel } from '../../utils/dailySalesDetailKind';
+import { moduleTranslations } from '../../locales/module-translations';
 
 const service = { beforeDiscount: 110_000, total: 110_000, discount: 0 };
 const product = { beforeDiscount: 20_000, total: 20_000, discount: 0 };
@@ -75,5 +77,106 @@ describe('dailySalesDetailNet — iade net işareti', () => {
       { beforeDiscount: 5_000, total: 5_000, discount: 0, isDeposit: true },
     ];
     expect(sumDailySalesDetailNet(rows)).toBe(110_000);
+  });
+});
+
+const kindLabels = {
+  service: 'Hizmet',
+  product: 'Ürün',
+  mixed: 'Karma',
+  all: 'Tümü',
+  reservation: 'Rezervasyon',
+  return: 'İade',
+};
+
+describe('dailySalesDetailKind — iade tür etiketi', () => {
+  it('ürün iadesi Tür İade, ürün satışı Ürün; net −10.000 ve toplam 120.000 kalır', () => {
+    const productSale = {
+      kind: 'product',
+      status: 'completed',
+      beforeDiscount: 20_000,
+      total: 20_000,
+      discount: 0,
+    };
+    const productReturn = {
+      kind: 'product',
+      status: 'return',
+      beforeDiscount: -10_000,
+      total: -10_000,
+      discount: 0,
+    };
+    expect(dailySalesDetailKindLabel(productSale, kindLabels)).toBe('Ürün');
+    expect(dailySalesDetailKindLabel(productReturn, kindLabels)).toBe('İade');
+    expect(dailySalesDetailNetAmount(productReturn)).toBe(-10_000);
+    expect(sumDailySalesDetailNet([service, product, productReturn])).toBe(120_000);
+    expect(productReturn.beforeDiscount).toBe(-10_000);
+    expect(productReturn.total).toBe(-10_000);
+  });
+
+  it('hizmet iadesi İade, normal hizmet Hizmet', () => {
+    expect(dailySalesDetailKindLabel({
+      kind: 'service',
+      status: 'completed',
+      beforeDiscount: 110_000,
+      total: 110_000,
+    }, kindLabels)).toBe('Hizmet');
+    expect(dailySalesDetailKindLabel({
+      kind: 'service',
+      status: 'return',
+      beforeDiscount: -8_000,
+      total: -8_000,
+    }, kindLabels)).toBe('İade');
+    expect(dailySalesDetailNetAmount(service)).toBe(110_000);
+  });
+
+  it('indirim öncesi eksi ise tür ürün kalsa da etiket İade, net −10.000', () => {
+    const ret = {
+      kind: 'product',
+      status: 'completed',
+      beforeDiscount: -10_000,
+      total: 10_000,
+      discount: 0,
+    };
+    expect(dailySalesDetailKindLabel(ret, kindLabels)).toBe('İade');
+    expect(dailySalesDetailNetAmount(ret)).toBe(-10_000);
+    expect(ret.beforeDiscount).toBe(-10_000);
+    expect(ret.total).toBe(10_000);
+  });
+
+  it('çeviri: Türkçe İade, İngilizce Return, Arapça ve Kürtçe mevcut iade etiketi', () => {
+    const ret = { kind: 'product', status: 'return', beforeDiscount: -10_000, total: -10_000 };
+    const pack = moduleTranslations.reportsDailyKindReturn;
+    const existing = moduleTranslations.reportsDetStatusRefunded;
+    expect(pack.tr).toBe('İade');
+    expect(pack.en).toBe('Return');
+    expect(pack.ar).toBe(existing.ar);
+    expect(pack.ku).toBe(existing.ku);
+    expect(dailySalesDetailKindLabel(ret, { ...kindLabels, return: pack.tr })).toBe('İade');
+    expect(dailySalesDetailKindLabel(ret, { ...kindLabels, return: pack.en })).toBe('Return');
+    expect(dailySalesDetailKindLabel(ret, { ...kindLabels, return: pack.ar })).toBe(existing.ar);
+    expect(dailySalesDetailKindLabel(ret, { ...kindLabels, return: pack.ku })).toBe(existing.ku);
+    expect(dailySalesDetailKindLabel(ret, { ...kindLabels, return: 'reportsDailyKindReturn' })).toBe('İade');
+  });
+
+  it('avans Rezervasyon, karma satış Karma, iade edilmiş hizmet İade', () => {
+    expect(dailySalesDetailKindLabel({
+      isAvans: true,
+      kind: 'product',
+      status: 'avans_open',
+      beforeDiscount: 20_000,
+      total: 20_000,
+    }, kindLabels)).toBe('Rezervasyon');
+    expect(dailySalesDetailKindLabel({
+      kind: 'mixed',
+      status: 'completed',
+      beforeDiscount: 30_000,
+      total: 30_000,
+    }, kindLabels)).toBe('Karma');
+    expect(dailySalesDetailKindLabel({
+      kind: 'service',
+      status: 'refunded',
+      beforeDiscount: 4_000,
+      total: 4_000,
+    }, kindLabels)).toBe('İade');
   });
 });

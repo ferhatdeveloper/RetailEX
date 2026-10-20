@@ -9,6 +9,7 @@ import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
 import { formatNumber } from '../../utils/formatNumber';
 import { dailySalesDetailNetAmount, sumDailySalesDetailNet } from '../../utils/dailySalesDetailNet';
+import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
 import { getCurrencyDecimalPlaces, getFirmLedgerCurrency, formatLedgerAmount } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { useProductStore, useCustomerStore } from '../../store';
@@ -3607,11 +3608,13 @@ export function ReportsModule({
   }, [dailyActiveRows, dailyKindFilter]);
 
   const dailyKindGridRows = useMemo(() => {
-    const kindLabel = (kind: SaleKindBucket) => {
-      if (kind === 'service') return tm('reportsDailyKindService');
-      if (kind === 'product') return tm('reportsDailyKindProduct');
-      if (kind === 'mixed') return tm('reportsDailyKindMixed');
-      return tm('reportsDailyKindAll');
+    const kindLabels = {
+      service: tm('reportsDailyKindService'),
+      product: tm('reportsDailyKindProduct'),
+      mixed: tm('reportsDailyKindMixed'),
+      all: tm('reportsDailyKindAll'),
+      reservation: tm('reportsDailyKindReservation') || 'Rezervasyon',
+      return: tm('reportsDailyKindReturn') || 'İade',
     };
     return dailyKindVisibleRows.map((row) => {
       const hour = formatSaleWallClockTime(dailyRowWallClockSource(row));
@@ -3669,12 +3672,9 @@ export function ReportsModule({
         hour,
         // 09.10.2026 — cari_avans satırları için TÜR kolonu "Rezervasyon"
         // rozeti gösterir (eskiden `kind='product'` üzerinden "Ürün"
-        // yazıyordu — kullanıcı şikayeti: "avanslar ürün satışlarına
-        // dahil oluyor"). `kind` alanı ürün filtresinin çalışması için
-        // korunur; TÜR etiketi sadece `isAvans` ile override edilir.
-        kindLabel: row.isAvans
-          ? tm('reportsDailyKindReservation') || 'Rezervasyon'
-          : kindLabel(row.kind),
+        // yazıyordu). İade fişi de ürün/hizmet kind'inde kalır; etiket
+        // "İade" olur. Tutar alanları burada değişmez.
+        kindLabel: dailySalesDetailKindLabel(row, kindLabels),
         paymentLabel: paymentLabelText,
         statusLabel: isReturn
           ? 'Satış İade'
@@ -5325,12 +5325,15 @@ export function ReportsModule({
       selectedDateFrom === selectedDateTo ? selectedDateFrom : `${selectedDateFrom} – ${selectedDateTo}`;
 
     const removedRows = dailyUnifiedRows.filter((r) => isRemovedSaleStatus(r.status));
-    const kindPrintLabel = (kind: SaleKindBucket) => {
-      if (kind === 'service') return L('reportsDailyKindService');
-      if (kind === 'product') return L('reportsDailyKindProduct');
-      if (kind === 'mixed') return L('reportsDailyKindMixed');
-      return L('reportsDailyKindAll');
-    };
+    const kindPrintLabel = (row: DailyUnifiedRow) =>
+      dailySalesDetailKindLabel(row, {
+        service: L('reportsDailyKindService'),
+        product: L('reportsDailyKindProduct'),
+        mixed: L('reportsDailyKindMixed'),
+        all: L('reportsDailyKindAll'),
+        reservation: L('reportsDailyKindReservation'),
+        return: L('reportsDailyKindReturn'),
+      });
     const printKindFilterLabel =
       dailyKindFilter === 'service'
         ? L('reportsDailyKindService')
@@ -5395,7 +5398,7 @@ export function ReportsModule({
         <tr>
           <td>${escHtml(row.receiptNumber)}</td>
           <td>${escHtml(formatSaleWallClockTime(dailyRowWallClockSource(row)))}</td>
-          <td>${escHtml(kindPrintLabel(row.kind))}</td>
+          <td>${escHtml(kindPrintLabel(row))}</td>
           <td>${escHtml(cashier)}</td>
           <td>${escHtml(device)}</td>
           <td>${escHtml(customerNameText(row.customerName))}</td>
@@ -5453,7 +5456,7 @@ export function ReportsModule({
         return `
     <div class="sale-block">
       <div class="row"><span class="wrap">${escHtml(row.receiptNumber)}</span><span>${escHtml(formatSaleWallClockTime(dailyRowWallClockSource(row)))}</span></div>
-      <div class="sub wrap">${escHtml(kindPrintLabel(row.kind))} · ${escHtml(cashier)} · ${escHtml(device)} · ${escHtml(customerNameText(row.customerName))}</div>
+      <div class="sub wrap">${escHtml(kindPrintLabel(row))} · ${escHtml(cashier)} · ${escHtml(device)} · ${escHtml(customerNameText(row.customerName))}</div>
       <div class="row"><span>${escHtml(L('reportsPrintBefore'))}</span><span>${before}</span></div>
       <div class="row"><span>${escHtml(L('reportsColDiscount'))}</span><span>${disc}</span></div>
       <div class="row bold"><span>${escHtml(L('reportsPrintNetWithPm').replace('{pm}', pm))}</span><span>${net}</span></div>
@@ -7223,6 +7226,13 @@ export function ReportsModule({
                             if (row.isAvans) {
                               return (
                                 <span className="px-2 py-0.5 rounded text-xs font-semibold bg-cyan-100 text-cyan-800">
+                                  {row.kindLabel}
+                                </span>
+                              );
+                            }
+                            if (isDailySalesDetailReturn(row)) {
+                              return (
+                                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-rose-100 text-rose-800">
                                   {row.kindLabel}
                                 </span>
                               );
