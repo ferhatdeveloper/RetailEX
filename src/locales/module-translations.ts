@@ -11758,6 +11758,8 @@ export const excelModuleTranslations = {
   reportsPlCategoryBased: { tr: 'Kategori Bazlı', en: 'Category-based', ar: 'حسب الفئة', ku: 'بەپێی هاوپۆل' },
   reportsPlDaily: { tr: 'Günlük', en: 'Daily', ar: 'يومي', ku: 'ڕۆژانە' },
   reportsPlMonthly: { tr: 'Aylık', en: 'Monthly', ar: 'شهري', ku: 'مانگانە' },
+  reportsPlGrossSales: { tr: 'Brüt satış', en: 'Gross sales', ar: 'إجمالي المبيعات', ku: 'فرۆشتنی گشتی' },
+  reportsPlReturnAmount: { tr: 'İade', en: 'Returns', ar: 'مرتجعات', ku: 'گەڕانەوەکان' },
   reportsPlTotalRevenue: { tr: 'Net Satış', en: 'Net sales', ar: 'صافي المبيعات', ku: 'فرۆشتنی خاوێن' },
   reportsPlTotalCost: { tr: 'SMM (COGS)', en: 'COGS', ar: 'تكلفة البضاعة المباعة', ku: 'تێچووی کاڵای فرۆشراو' },
   reportsPlProductCost: { tr: 'Ürün maliyeti', en: 'Product cost', ar: 'تكلفة المنتج', ku: 'تێچووی بەرهەم' },

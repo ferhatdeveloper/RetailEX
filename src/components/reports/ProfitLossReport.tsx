@@ -5,7 +5,6 @@ import { postgres, ERP_SETTINGS, getAppDefaultCurrency } from '../../services/po
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { toast } from 'sonner';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
-import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
@@ -22,6 +21,7 @@ import {
   SQL_LINE_KIND_EXPR,
   SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
+  SQL_PL_STATUS_WITH_RETURNS,
   SQL_SERVICE_CATEGORY_EXPR,
   displayItemCode,
   BEAUTY_APPOINTMENT_BRIDGE_JOIN,
@@ -32,7 +32,13 @@ import {
   SQL_SERVICE_DEPOSIT_AMOUNT,
 } from '../../utils/lastPurchaseCostSql';
 import { parseFicheDepositList } from '../../utils/beautyDepositAllocation';
-import { filterProfitLossByKind, foldProfitLossLines, isExplicitProfitLossProductLine } from '../../utils/profitLossDeposit';
+import {
+  filterProfitLossByKind,
+  foldProfitLossLines,
+  isExplicitProfitLossProductLine,
+  settleProfitLossReturn,
+  splitProfitLossLineReturn,
+} from '../../utils/profitLossDeposit';
 import { productCogsFromUnitPurchase } from '../../utils/productSaleCogs';
 import { makeInventoryPurchaseUnitLookup } from '../../services/layeredInventoryCost';
 import {
@@ -49,6 +55,8 @@ interface SalesData {
   productName: string;
   lineKind: 'product' | 'service';
   quantity: number;
+  grossRevenue: number;
+  returnAmount: number;
   revenue: number;
   cost: number;
   profit: number;
@@ -62,7 +70,7 @@ const PROFIT_CTES = buildProfitCostCtes('$1');
 const SALES_FILTER = `
   s.firm_nr = $1
   AND COALESCE(s.is_cancelled, false) = false
-  AND ${SQL_COUNTABLE_SALE_STATUS}
+  AND ${SQL_PL_STATUS_WITH_RETURNS}
   AND ${SQL_PL_SALES_OR_RETURN}
   AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
   AND (s.date::timestamptz AT TIME ZONE 'UTC')::date >= $2::date
@@ -230,7 +238,8 @@ export function ProfitLossReport() {
         productName: string;
         lineKind: 'product' | 'service';
         quantity: number;
-        revenue: number;
+        grossRevenue: number;
+        returnAmount: number;
         cost: number;
       };
       const agg = new Map<string, Agg>();
@@ -261,17 +270,22 @@ export function ProfitLossReport() {
           productName: name,
           lineKind: line.lineKind,
           quantity: 0,
-          revenue: 0,
+          grossRevenue: 0,
+          returnAmount: 0,
           cost: 0,
         };
+        const part = splitProfitLossLineReturn(Number(line.total) || 0);
         cur.quantity += line.quantity;
-        cur.revenue += line.total;
+        cur.grossRevenue += part.grossRevenue;
+        cur.returnAmount += part.returnAmount;
         cur.cost += line.cost;
         if (!cur.productId && line.productId) cur.productId = line.productId;
         agg.set(key, cur);
       }
       const aggregated = Array.from(agg.values()).filter(
-        (row) => Math.abs(row.quantity) > 0.0001 || Math.abs(row.revenue) > 0.009,
+        (row) => Math.abs(row.quantity) > 0.0001
+          || Math.abs(row.grossRevenue) > 0.009
+          || Math.abs(row.returnAmount) > 0.009,
       );
       aggregated.sort((a, b) => {
         if (reportType === 'daily' || reportType === 'monthly') {
@@ -279,11 +293,14 @@ export function ProfitLossReport() {
           if (byName !== 0) return byName;
           return a.lineKind.localeCompare(b.lineKind);
         }
-        return (b.revenue - b.cost) - (a.revenue - a.cost);
+        const aNet = settleProfitLossReturn(a.grossRevenue, a.returnAmount).netRevenue;
+        const bNet = settleProfitLossReturn(b.grossRevenue, b.returnAmount).netRevenue;
+        return (bNet - b.cost) - (aNet - a.cost);
       });
 
       const mapped: SalesData[] = aggregated.map((r, idx) => {
-        const revenue = r.revenue;
+        const settled = settleProfitLossReturn(r.grossRevenue, r.returnAmount);
+        const revenue = settled.netRevenue;
         const cost = r.cost;
         const profit = revenue - cost;
         const code = r.productCode;
@@ -314,6 +331,8 @@ export function ProfitLossReport() {
           productName: displayName,
           lineKind: kind,
           quantity: parseFloat(String(r.quantity)) || 0,
+          grossRevenue: settled.grossRevenue,
+          returnAmount: settled.returnAmount,
           revenue,
           cost,
           profit,
@@ -335,6 +354,8 @@ export function ProfitLossReport() {
     void loadData();
   }, [loadData]);
 
+  const totalGross = salesData.reduce((sum, item) => sum + item.grossRevenue, 0);
+  const totalReturn = salesData.reduce((sum, item) => sum + item.returnAmount, 0);
   const totalRevenue = salesData.reduce((sum, item) => sum + item.revenue, 0);
   const totalCost = salesData.reduce((sum, item) => sum + item.cost, 0);
   const totalProfit = salesData.reduce((sum, item) => sum + item.profit, 0);
@@ -399,6 +420,34 @@ export function ProfitLossReport() {
         footerSum: true,
         footerFormat: (n) => formatNumber(n, 2, false),
         cell: (row) => formatNumber(row.quantity, 2, false),
+      },
+      {
+        key: 'grossRevenue',
+        header: tm('reportsPlGrossSales'),
+        type: 'number',
+        align: 'right',
+        size: 150,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${reportCurrency}`,
+        cell: (row) => `${formatNumber(row.grossRevenue, 2, false)} ${reportCurrency}`,
+      },
+      {
+        key: 'returnAmount',
+        header: tm('reportsPlReturnAmount'),
+        type: 'number',
+        align: 'right',
+        size: 140,
+        footerSum: true,
+        footerFormat: (n) => (
+          <span className={n > 0.004 ? 'text-orange-600' : undefined}>
+            {`${formatNumber(n, 2, false)} ${reportCurrency}`}
+          </span>
+        ),
+        cell: (row) => (
+          <span className={row.returnAmount > 0.004 ? 'font-medium text-orange-600' : undefined}>
+            {`${formatNumber(row.returnAmount, 2, false)} ${reportCurrency}`}
+          </span>
+        ),
       },
       {
         key: 'revenue',
@@ -552,9 +601,21 @@ export function ProfitLossReport() {
       </div>
 
       <ReportKpiStrip
-        columns={3}
+        columns={5}
         itemClassName={darkMode ? 'border-gray-700 bg-gray-800 shadow-none' : 'shadow-none'}
         items={[
+          {
+            key: 'gross',
+            label: tm('reportsPlGrossSales'),
+            value: `${formatNumber(totalGross, 2, false)} ${reportCurrency}`,
+            valueClassName: 'text-slate-800 dark:text-slate-100',
+          },
+          {
+            key: 'return',
+            label: tm('reportsPlReturnAmount'),
+            value: `${formatNumber(totalReturn, 2, false)} ${reportCurrency}`,
+            valueClassName: 'text-orange-600 dark:text-orange-400',
+          },
           {
             key: 'revenue',
             label: tm('reportsPlTotalRevenue'),

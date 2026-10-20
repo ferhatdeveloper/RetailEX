@@ -121,6 +121,44 @@ export function periodSummaryNetRemaining(input: {
   return reportNetCiroMinusGider(revenue, expenses, input.expenseEnabled) - returns + outside;
 }
 
+export type PeriodSummaryHeadline = {
+  /** Brüt ciro. İade buna eklenmez. */
+  grossRevenue: number;
+  /** Görünen iade. Artı büyüklük. */
+  returnAmount: number;
+  /** Brüt − iade − masraf. Peşinat eklenmez ve düşülmez. */
+  netRevenue: number;
+  /** Rezervasyon avansı. Yalnızca bilgi. */
+  depositInfo: number;
+};
+
+/**
+ * Aylık / yıllık başlık.
+ * İade kartta görünür ve netten bir kez düşülür.
+ * Peşinat `depositInfo` olarak kalır; brüte ve nete yazılmaz.
+ */
+export function periodSummaryHeadline(input: {
+  revenue: number;
+  returnsAmount: number;
+  returnDeduction: number;
+  expenses: number;
+  expenseEnabled: boolean;
+  reservationDeposit?: number;
+}): PeriodSummaryHeadline {
+  const grossRevenue = Number(input.revenue) || 0;
+  const returnAmount = Math.abs(Number(input.returnsAmount) || 0);
+  const depositInfo = Math.abs(Number(input.reservationDeposit) || 0);
+  const netRevenue = periodSummaryNetRemaining({
+    revenue: grossRevenue,
+    returnDeduction: input.returnDeduction,
+    expenses: input.expenses,
+    expenseEnabled: input.expenseEnabled,
+    ciroDisiTahsilat: 0,
+    reservationDeposit: depositInfo,
+  });
+  return { grossRevenue, returnAmount, netRevenue, depositInfo };
+}
+
 export function sumPeriodSaleBuckets(map: Map<string, PeriodSaleBucket>): PeriodSaleBucket {
   const total = emptyPeriodSaleBucket();
   for (const row of map.values()) {

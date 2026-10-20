@@ -3,6 +3,7 @@ import type { Sale } from '../../core/types';
 import { localCalendarDateKey } from '../../utils/localCalendarDate';
 import {
   aggregatePeriodSalesAndReturns,
+  periodSummaryHeadline,
   periodSummaryNetRemaining,
   sumPeriodSaleBuckets,
 } from '../../utils/periodSummaryNet';
@@ -157,5 +158,35 @@ describe('Aylık Gün Özeti — ürün iadesi netten bir kez düşülür', () =
       expenses: 0,
       expenseEnabled: true,
     })).toBe(0);
+  });
+
+  it('aylık ve yıllık başlık iadeyi gösterir: brüt 130.000, iade 10.000, net 120.000, peşinat ciro dışı', () => {
+    const deposit = sale({
+      id: 'pesinat',
+      total: 20_000,
+      isDeposit: true,
+      date: '2026-10-02T12:00:00',
+      notes: 'deposit:1',
+    });
+    const map = aggregatePeriodSalesAndReturns([service, boya, deposit], [boyaReturn], dayKey);
+    const total = sumPeriodSaleBuckets(map);
+    const head = periodSummaryHeadline({
+      revenue: total.revenue,
+      returnsAmount: total.returnsAmount,
+      returnDeduction: total.returnDeduction,
+      expenses: 0,
+      expenseEnabled: true,
+      reservationDeposit: total.depositAmount,
+    });
+
+    expect(head.grossRevenue).toBe(130_000);
+    expect(head.returnAmount).toBe(10_000);
+    expect(head.netRevenue).toBe(120_000);
+    expect(head.depositInfo).toBe(20_000);
+    expect(head.netRevenue).not.toBe(130_000);
+    expect(head.netRevenue).not.toBe(110_000);
+    expect(head.netRevenue).not.toBe(140_000);
+    expect(head.netRevenue).not.toBe(100_000);
+    expect(head.grossRevenue + head.depositInfo).not.toBe(head.netRevenue);
   });
 });

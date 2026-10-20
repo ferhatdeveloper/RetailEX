@@ -3,6 +3,7 @@ import { isDepositProductLine } from '../../utils/beautyDepositAllocation';
 import {
   filterProfitLossByKind,
   foldProfitLossLines,
+  summarizeProfitLossReturns,
   type ProfitLossDepositLine,
 } from '../../utils/profitLossDeposit';
 import { resolveBeautyLineNet } from '../../utils/lastPurchaseCostSql';
@@ -484,5 +485,85 @@ describe('foldProfitLossLines', () => {
     expect(sum(filterProfitLossByKind(lines, 'all'), 'total')).toBe(-75000);
     const product = filterProfitLossByKind(lines, 'product')[0];
     expect((product.total || 0) - (product.cost || 0)).toBe(-17000);
+  });
+
+  it('BOYA iadesi görünür: brüt 130.000, iade 10.000, net 120.000; peşinat ciroya girmez', () => {
+    const lines = foldProfitLossLines([
+      {
+        invoiceId: 'cut',
+        invoiceNet: 50000,
+        productName: 'HAIR CUT',
+        lineType: 'Hizmet',
+        lineKind: 'service',
+        quantity: 1,
+        total: 50000,
+        cost: 0,
+      },
+      {
+        invoiceId: 'pink',
+        invoiceNet: 60000,
+        productName: 'HAIR PINK COLOR',
+        lineType: 'Hizmet',
+        lineKind: 'service',
+        quantity: 1,
+        total: 60000,
+        cost: 0,
+      },
+      {
+        invoiceId: 'boya-1',
+        invoiceNet: 10000,
+        productName: 'BOYA',
+        lineType: 'Malzeme',
+        lineKind: 'product',
+        quantity: 1,
+        total: 10000,
+        cost: 0,
+      },
+      {
+        invoiceId: 'boya-2',
+        invoiceNet: 10000,
+        productName: 'BOYA',
+        lineType: 'Malzeme',
+        lineKind: 'product',
+        quantity: 1,
+        total: 10000,
+        cost: 0,
+      },
+      {
+        invoiceId: 'boya-iade',
+        invoiceNet: -10000,
+        productName: 'BOYA',
+        lineType: 'Malzeme',
+        lineKind: 'product',
+        quantity: -1,
+        total: -10000,
+        cost: 0,
+      },
+      {
+        invoiceId: 'pesinat',
+        invoiceNet: 20000,
+        productName: 'Depozito (Peşinat Avansı)',
+        lineType: 'deposit',
+        lineKind: 'product',
+        quantity: 1,
+        total: 20000,
+        cost: 0,
+      },
+    ]);
+
+    const summary = summarizeProfitLossReturns(lines);
+    const boya = summary.byProduct.get('BOYA');
+
+    expect(boya).toEqual({ grossRevenue: 20_000, returnAmount: 10_000, netRevenue: 10_000 });
+    expect(summary.grossRevenue).toBe(130_000);
+    expect(summary.returnAmount).toBe(10_000);
+    expect(summary.netRevenue).toBe(120_000);
+    expect(summary.byProduct.has('Depozito (Peşinat Avansı)')).toBe(false);
+    expect(summary.netRevenue).not.toBe(130_000);
+    expect(summary.netRevenue).not.toBe(110_000);
+    expect(summary.netRevenue).not.toBe(140_000);
+    expect(summary.netRevenue).not.toBe(100_000);
+    expect(boya?.netRevenue).not.toBe(0);
+    expect(boya?.netRevenue).not.toBe(20_000);
   });
 });

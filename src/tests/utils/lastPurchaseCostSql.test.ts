@@ -12,6 +12,7 @@ import {
   isServiceLineType,
   isUuidText,
   LINE_COST_EXPR,
+  SQL_PL_STATUS_WITH_RETURNS,
   lineCostAmount,
   resolveLineProductId,
   restServiceUnitCost,
@@ -30,6 +31,14 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
     expect(LINE_COST_EXPR).toContain("IN ('hizmet', 'service', 'package', 'paket')");
     // Malzeme kolunda kart/satış cost yok; hizmet kolunda unit_cost / p.cost yedek
     expect(LINE_COST_EXPR).not.toContain('si.total_cost');
+  });
+
+  it('kar-zarar iade fişini durum return iken alır, iptali almaz', () => {
+    expect(SQL_PL_STATUS_WITH_RETURNS).toContain("IN ('completed', 'approved')");
+    expect(SQL_PL_STATUS_WITH_RETURNS).toContain('IN (2, 3)');
+    expect(SQL_PL_STATUS_WITH_RETURNS).toContain("'cancelled'");
+    expect(SQL_PL_STATUS_WITH_RETURNS).not.toContain("'return'");
+    expect(SQL_PL_STATUS_WITH_RETURNS).not.toContain("'refunded'");
   });
 
   it('isServiceLineType paket/package kabul eder', () => {

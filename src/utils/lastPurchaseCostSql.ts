@@ -387,6 +387,24 @@ export const SQL_SALES_SIGN = `
 CASE WHEN ${SQL_IS_SALES_RETURN} THEN -1 ELSE 1 END
 `.trim();
 
+/**
+ * Kar-zarar durum süzgeci.
+ * Tamamlanmış satış kalır. Müşteri iadesinin durumu çoğu kayıtta `return`
+ * olduğu için yalnız completed/approved listesi iadeyi düşürür ve ciro
+ * 130.000'de kalır. İade fişi bu yüzden ayrıca alınır. İptal fişi alınmaz.
+ */
+export const SQL_PL_STATUS_WITH_RETURNS = `
+(
+  COALESCE(s.status, 'approved') IN ('completed', 'approved')
+  OR (
+    ${SQL_IS_SALES_RETURN}
+    AND LOWER(TRIM(COALESCE(s.status, ''))) NOT IN (
+      'iptal', 'silindi', 'cancelled', 'canceled', 'deleted', 'void'
+    )
+  )
+)
+`.trim();
+
 /** Satırın bağlı randevusundaki depozito. Satır yoksa 0. Kimlikler metin olarak karşılaştırılır. */
 export const SQL_SERVICE_DEPOSIT_AMOUNT = `
 COALESCE((

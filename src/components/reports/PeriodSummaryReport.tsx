@@ -11,7 +11,7 @@ import { fetchKasaIslemleri, type KasaIslemi } from '../../services/api/kasa';
 import { postgres, ERP_SETTINGS } from '../../services/postgres';
 import {
   aggregatePeriodSalesAndReturns,
-  periodSummaryNetRemaining,
+  periodSummaryHeadline,
 } from '../../utils/periodSummaryNet';
 import {
   mergeExpensesWithCashOuts,
@@ -749,14 +749,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // ancak "Net Kalan = Ciro − Gider" doğru olur. CH_TAHSILAT ayrı
       // "Kasa Para Girişi" kolonunda izlenir, Ciro'ya katılmaz.
       //
-      // 14.10.2026 17:03 — kullanıcı kararı (Net Kalan formülü):
-      //   Net Kalan = Ciro − Gider + Ciro Dışı Tahsilat
-      // Ciro dışı tahsilat = Ciro'ya henüz yansımamış peşinatlar
-      // (avanslı satışlar için fatura/randevu tamamlanmamış):
-      //   - sale.depositAmount (Ciro'ya yansımamış avanslı satış)
-      //   - skipInvoiceAvans (cari_avans'tan gelen skipInvoice avans)
-      // Rezervasyon brüt/kalan henüz Ciro'ya yansımaz (fatura kesilmedi);
-      // sadece bilgi kolonu olarak gösterilir, Net Kalan'a katılmaz.
+      // Net kalan = brüt ciro − iade − masraf.
+      // Peşinat ve rezervasyon avansı bilgi kolonudur: ciroya eklenmez, netten düşülmez.
+      // Rezervasyon brüt/kalan da fatura kesilene kadar yalnız bilgi kolonudur.
       const reservation = reservationMap.get(periodKey) || { gross: 0, pending: 0, deposit: 0, count: 0 };
       const closedDeposit = closedAppointmentDeposits.map.get(periodKey) || { deposit: 0, count: 0 };
       const closedAvans = closedAvansInfoMap.get(periodKey) || { count: 0, amount: 0 };
@@ -779,23 +774,18 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         });
       }
       const ciroTotal = sale.revenue;
-      // Ciro dışı tahsilat (satış kayıtlarından — Ciro'ya yansımamış
-      // avanslı satışlar + cari_avans skipInvoice avanslar).
-      // reservation.deposit burada KULLANILMAZ çünkü zaten
-      // sale.depositAmount içinde aynı avanslanmış satışa bağlı olarak
-      // sayılıyor; çift sayımı önlemek için Ciro dışı tahsilat = Ciro'ya
-      // yansımamış satış depositleri olarak alınır.
-      const ciroDisiTahsilat = sale.depositAmount + skipInvoiceAvans.amount;
-      // Net kalan = brüt ciro − iade − masraf. Peşinat (rezervasyon tutarı)
-      // bilgi kolonudur; bu farka eklenmez ve düşülmez.
-      const netRemaining = periodSummaryNetRemaining({
+      // Peşinat ve rezervasyon avansı bilgi kolonudur.
+      // Brüt ciroya eklenmez, netten düşülmez.
+      // Net kalan = brüt ciro − iade − masraf.
+      const headline = periodSummaryHeadline({
         revenue: ciroTotal,
+        returnsAmount: sale.returnsAmount,
         returnDeduction: sale.returnDeduction,
         expenses: exp,
         expenseEnabled: showPeriodCardExpenses,
-        ciroDisiTahsilat,
         reservationDeposit: reservationDepositInfo,
       });
+      const netRemaining = headline.netRevenue;
       // 14.10.2026 — DEBUG kaldırıldı
       const shareList = splitAmountByPartners(netRemaining, partnerSlices);
       const partnerShareMap: Record<string, number> = {};
@@ -1359,6 +1349,14 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         hint: `${totals.saleCount} ${tm('rptPeriodColSaleCount').toLowerCase()}`,
       });
     }
+
+    items.push({
+      key: 'returns',
+      label: tm('rptPeriodColReturns') || 'İade',
+      value: money(totals.returnsAmount),
+      valueClassName: 'text-orange-600 dark:text-orange-400',
+      hint: `${totals.returnsCount} ${tm('rptPeriodColReturnsCount') || 'iade adedi'}`,
+    });
 
     if (showPeriodCardExpenses) {
       items.push({

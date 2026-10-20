@@ -272,3 +272,70 @@ export function foldProfitLossLines<T extends ProfitLossDepositLine>(lines: T[])
   }
   return out;
 }
+
+export type ProfitLossReturnSplit = {
+  /** Satış fişleri. İade bu tutara yazılmaz. */
+  grossRevenue: number;
+  /** Görünen iade. Artı büyüklük. Netten bir kez düşülür. */
+  returnAmount: number;
+  /** Brüt satış − iade. İade ikinci kez çıkarılmaz. */
+  netRevenue: number;
+};
+
+/**
+ * İşaretli satır tutarı.
+ * Eksi tutar iadedir ve bir kez artı büyüklüğe çevrilir.
+ * Artı tutar brüttür. Sıfır her iki kovaya da yazılmaz.
+ */
+export function splitProfitLossLineReturn(total: number): {
+  grossRevenue: number;
+  returnAmount: number;
+} {
+  const n = Number(total) || 0;
+  if (!(Math.abs(n) > 0.004)) return { grossRevenue: 0, returnAmount: 0 };
+  if (n < 0) return { grossRevenue: 0, returnAmount: round2(Math.abs(n)) };
+  return { grossRevenue: round2(n), returnAmount: 0 };
+}
+
+/** Net = brüt − |iade|. İade zaten büyüklükse ikinci kez mutlak alınmaz. */
+export function settleProfitLossReturn(
+  grossRevenue: number,
+  returnAmount: number,
+): ProfitLossReturnSplit {
+  const gross = round2(Number(grossRevenue) || 0);
+  const returned = round2(Math.abs(Number(returnAmount) || 0));
+  return {
+    grossRevenue: gross,
+    returnAmount: returned,
+    netRevenue: round2(gross - returned),
+  };
+}
+
+/**
+ * Kar-zarar başlığı ve ürün kırılımı.
+ * Depozito satırı brüte, iadeye ve nete yazılmaz.
+ * İade eksi satırdan bir kez okunur; net = brüt − iade.
+ */
+export function summarizeProfitLossReturns(lines: ProfitLossDepositLine[]): ProfitLossReturnSplit & {
+  byProduct: Map<string, ProfitLossReturnSplit>;
+} {
+  let gross = 0;
+  let returned = 0;
+  const buckets = new Map<string, { gross: number; returned: number }>();
+  for (const line of lines || []) {
+    if (isDepositProductLine(line)) continue;
+    const part = splitProfitLossLineReturn(Number(line.total) || 0);
+    gross += part.grossRevenue;
+    returned += part.returnAmount;
+    const name = String(line.productName || '').trim() || '—';
+    const cur = buckets.get(name) || { gross: 0, returned: 0 };
+    cur.gross += part.grossRevenue;
+    cur.returned += part.returnAmount;
+    buckets.set(name, cur);
+  }
+  const byProduct = new Map<string, ProfitLossReturnSplit>();
+  for (const [name, cur] of buckets) {
+    byProduct.set(name, settleProfitLossReturn(cur.gross, cur.returned));
+  }
+  return { ...settleProfitLossReturn(gross, returned), byProduct };
+}
