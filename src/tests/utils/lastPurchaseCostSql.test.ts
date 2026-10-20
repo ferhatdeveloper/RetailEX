@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildInvoiceLineScaleCte,
   buildProfitCostCtes,
   classifyProductHistoryType,
   displayItemCode,
@@ -195,6 +196,11 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
     expect(LINE_REVENUE_EXPR).toContain('fiche_no LIKE');
     expect(LINE_REVENUE_EXPR).toContain("'BEA-%'");
     expect(LINE_REVENUE_EXPR).toContain('ba_total.total_price');
+    expect(LINE_REVENUE_EXPR).toContain('service_line_count');
+    expect(LINE_REVENUE_EXPR).toContain('si.net_amount');
+    const bridge = buildInvoiceLineScaleCte();
+    expect(bridge).toContain('DISTINCT ON (s.fiche_no)');
+    expect(bridge).toContain('service_line_count');
     expect(SQL_BEAUTY_APPT_INCLUDED).toContain('BEA-%');
     expect(SQL_BEAUTY_APPT_INCLUDED).toContain("'no_show'");
     expect(SQL_BEAUTY_APPT_INCLUDED).toContain("'cancelled'");

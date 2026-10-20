@@ -258,6 +258,7 @@ export function buildLastPurchaseCte(firmNrParam = '$1'): string {
 
 /** Fatura dip indirimi için satır net toplamı (kar-zarar CTE zinciri) */
 export function buildInvoiceLineScaleCte(): string {
+  const nonDepositLine = SQL_IS_DEPOSIT_LINE.replace(/\bsi\b/g, 'si_n');
   return `
   inv_line_scale AS (
     SELECT
@@ -267,14 +268,21 @@ export function buildInvoiceLineScaleCte(): string {
     GROUP BY si.invoice_id
   ),
   beauty_appt_bridge AS (
-    SELECT
+    SELECT DISTINCT ON (s.fiche_no)
       s.fiche_no,
       bs.linked_appointment_id,
       a.total_price,
-      LOWER(TRIM(COALESCE(a.status::text, ''))) AS appt_status
+      LOWER(TRIM(COALESCE(a.status::text, ''))) AS appt_status,
+      (
+        SELECT COUNT(*)::int
+        FROM sale_items si_n
+        WHERE si_n.invoice_id = s.id
+          AND NOT ${nonDepositLine}
+      ) AS service_line_count
     FROM sales s
     INNER JOIN beauty_sales bs ON bs.invoice_number = s.fiche_no
     INNER JOIN beauty_appointments a ON a.id = bs.linked_appointment_id
+    ORDER BY s.fiche_no, bs.created_at DESC NULLS LAST
   )
 `.trim();
 }
@@ -445,14 +453,19 @@ COALESCE((
  * Dip indirim: satır net toplamı fatura net_amount’tan büyükse oransal ölçek.
  * Satır indirimi zaten si.net_amount içinde varsayılır.
  *
- * BEA-* (güzellik) satışları: fatura `net_amount`'ı yalnızca `remainder_paid_amount`
- * (avans sonrası kalan ödeme) — `appointment.total_price` brüt hizmet tutarını
- * içermez. Ölçekleme uygularsak ciro eksik (avans hariç) raporlanır.
- * Bu nedenle BEA fişlerinde `appointment.total_price` brüt tutarı kullanılır.
+ * BEA-* tek hizmet: fatura `net_amount`'ı kalan ödeme olabilir. Tek satırda
+ * `appointment.total_price` brüt hizmet tutarıdır; ölçek ciroyu eksik bırakır.
+ *
+ * BEA-* birden fazla hizmet: köprü tek randevuya bağlıdır. O randevunun
+ * fiyatını her satıra yazmak diğer hizmeti eksiltir (50.000 + 60.000 fişte
+ * ikinci satır 50.000 görünür, toplam 10.000 eksik kalır). Çok satırda her
+ * hizmet kendi `si.net_amount` tutarıdır. Depozito bu tutara eklenmez.
  */
 export const LINE_REVENUE_EXPR = `
 (
   CASE
+    WHEN s.fiche_no LIKE 'BEA-%' AND COALESCE(ba_total.service_line_count, 0) > 1 THEN
+      COALESCE(si.net_amount, 0)
     WHEN s.fiche_no LIKE 'BEA-%' THEN
       COALESCE(ba_total.total_price, COALESCE(si.net_amount, 0))
     ELSE

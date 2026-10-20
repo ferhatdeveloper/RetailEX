@@ -207,11 +207,24 @@ export function foldProfitLossLines<T extends ProfitLossDepositLine>(lines: T[])
     const services = collapsed.filter((line) => !isDepositProductLine(line));
     if (services.length === 0) continue;
     const pool = depositPoolOf(collapsed);
+    const serviceSum = serviceMoneySum(collapsed);
+    const remainder = remainderOf(collapsed);
+    let header = headerNetOf(collapsed);
+    // Depozito satırı kasa tahsilatıdır. Birden fazla hizmetin kendi tutarı
+    // zaten cirodur; kalan yazılmamışsa başlık depozitoyu da içerse ikinci
+    // kez eklenmez (50.000 + 60.000 = 110.000, 130.000 olmaz).
+    if (
+      services.length >= 2
+      && collapsed.some((line) => isDepositProductLine(line))
+      && !(Math.abs(remainder) > 0.004)
+    ) {
+      header = serviceSum;
+    }
     const commercial = resolveProfitLossInvoiceNet(
-      serviceMoneySum(collapsed),
+      serviceSum,
       pool,
-      headerNetOf(collapsed),
-      remainderOf(collapsed),
+      header,
+      remainder,
     );
     const fiche = moneyList(
       collapsed.find((line) => moneyList(line.ficheDeposits).length > 0)?.ficheDeposits,
