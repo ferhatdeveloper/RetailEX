@@ -8,6 +8,7 @@ import { ReportChatAI } from './ReportChatAI';
 import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
 import { formatNumber } from '../../utils/formatNumber';
+import { dailySalesDetailNetAmount, sumDailySalesDetailNet } from '../../utils/dailySalesDetailNet';
 import { getCurrencyDecimalPlaces, getFirmLedgerCurrency, formatLedgerAmount } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { useProductStore, useCustomerStore } from '../../store';
@@ -76,6 +77,7 @@ import { buildErpServiceBreakdownGroups, type ErpServiceBreakdownLine } from '..
   type AnalysisSaleLineKind,
   type SaleKindBucket,
 } from '../../utils/analysisSaleLine';
+import { summarizeRankNet } from '../../utils/analysisRankNet';
 import {
   summarizePurchasePromotionReport,
   type PurchasePromotionReportLine,
@@ -7379,16 +7381,19 @@ export function ReportsModule({
                           footerSum: true,
                           // Deposit satırlarda net tutar "—" gösterilir ve footer'a
                           // katılmaz (ciro zaten randevu tamamlanınca ana hizmete
-                          // yansıyacak). Bug 2026-10-13 aqua: footer brüt
-                          // (row.total) topluyordu; iskonto düşülünce net 660.000
-                          // çıkmalı (eskiden 780.000 brüt gösteriliyordu).
+                          // yansıyacak). Pozitif satışta net = brüt − indirim.
+                          // İade eksi kalır; Math.max(0, …) iadeyi 0 yapıp
+                          // 110.000 + 20.000 = 130.000 bırakıyordu.
                           footerFormat: (_n, rows) => {
-                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; total?: number; discount?: number }>).reduce(
-                              (acc, r) => {
-                                if (isDepositSale(r.erpSale as Partial<Sale> | undefined) || r.isDeposit === true) return acc;
-                                return acc + Math.max(0, (Number(r.total) || 0) - (Number(r.discount) || 0));
-                              },
-                              0,
+                            const total = sumDailySalesDetailNet(
+                              rows as Array<{
+                                erpSale?: Sale;
+                                isDeposit?: boolean;
+                                beforeDiscount?: number;
+                                total?: number;
+                                discount?: number;
+                              }>,
+                              (r) => isDepositSale(r.erpSale as Partial<Sale> | undefined) || r.isDeposit === true,
                             );
                             return formatLedgerAmount(total, reportCurrency);
                           },
@@ -7408,14 +7413,10 @@ export function ReportsModule({
                                 </div>
                               );
                             }
-                            // Bug 2026-10-13 aqua: "Net Satış" sütunu brüt
-                            // (row.total = total_net, iskonto Hariç) gösteriyordu;
-                            // iskonto düşülmemiş hâliyle 100.000 brüt + 50.000 iskonto
-                            // satırı 100.000 yazıyordu. Doğrusu: net = brüt - iskonto.
-                            const netAmount = Math.max(
-                              0,
-                              (Number(row.total) || 0) - (Number(row.discount) || 0),
-                            );
+                            // Net = indirim öncesi − indirim. İndirim 0 iken net = indirim öncesi.
+                            // İade satırında indirim öncesi eksi ise net de eksi (−10.000).
+                            // Math.max(0, row.total − indirim) iadeyi 0 veya +10.000 yapıyordu.
+                            const netAmount = dailySalesDetailNetAmount(row);
                             const remaining = Number(row.remaining) > 0.009
                               ? Number(row.remaining)
                               : dailyRowShowsCreditSplit(row)
