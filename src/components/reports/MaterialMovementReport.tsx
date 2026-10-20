@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Package, TrendingUp, TrendingDown, ArrowRight, Filter, Calendar, Loader2 } from 'lucide-react';
+import { Package, TrendingUp, TrendingDown, ArrowRight, RotateCcw, Filter, Calendar, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatNumber } from '../../utils/formatNumber';
 import { postgres, getAppDefaultCurrency } from '../../services/postgres';
@@ -20,6 +20,16 @@ import {
   productCardGroupHeader,
   DEFAULT_PRODUCT_CARD_COLUMN_VISIBILITY,
 } from '../../utils/productCardReportFields';
+import {
+  summarizeMaterialMovementKpis,
+  valueMaterialMovementLine,
+  type MaterialCostBucket,
+  type MaterialMovementUiType,
+} from '../../utils/materialMovementValuation';
+import {
+  fetchWeightedAverageUnitCosts,
+  lookupWeightedAvgUnitCost,
+} from '../../services/weightedAverageUnitCost';
 
 interface Movement {
   id: string;
@@ -36,7 +46,8 @@ interface Movement {
   brand: string;
   group: string;
   category: string;
-  type: 'purchase' | 'sale' | 'transfer' | 'adjustment' | 'return';
+  type: MaterialMovementUiType;
+  costBucket: MaterialCostBucket;
   quantity: number;
   unit: string;
   unitCost: number;
@@ -52,25 +63,6 @@ interface Warehouse {
 }
 
 const REPORT_ROW_LIMIT = 5_000;
-
-function dbTypeToUiType(dbType: string, ficheType?: string): Movement['type'] {
-  const fiche = String(ficheType || '').trim().toLowerCase();
-  if (fiche === 'return_invoice') return 'return';
-  switch (String(dbType || '').toLowerCase()) {
-    case 'in':
-    case 'purchase':
-      return 'purchase';
-    case 'out':
-    case 'sale':
-      return 'sale';
-    case 'transfer':
-      return 'transfer';
-    case 'adjustment':
-      return 'adjustment';
-    default:
-      return 'purchase';
-  }
-}
 
 function uiTypeToDbType(uiType: string): string | null {
   switch (uiType) {
@@ -94,31 +86,6 @@ function displayUnit(unit: string | undefined): string {
   return u || 'Adet';
 }
 
-/** Giriş +, çıkış − — Malzeme ekstresi / stok in-out ile aynı yön. */
-function signedQuantity(opts: {
-  qty: number;
-  dbType: string;
-  selectedWarehouse: string;
-  sourceWh: string;
-  targetWh: string;
-}): number {
-  const absQty = Math.abs(opts.qty);
-  const dbType = String(opts.dbType || '').toLowerCase();
-  if (dbType === 'in' || dbType === 'purchase') return absQty;
-  if (dbType === 'out' || dbType === 'sale') return -absQty;
-  if (dbType === 'transfer') {
-    if (opts.selectedWarehouse === 'all') return -absQty;
-    if (opts.sourceWh && opts.sourceWh === opts.selectedWarehouse) return -absQty;
-    if (opts.targetWh && opts.targetWh === opts.selectedWarehouse) return absQty;
-    return -absQty;
-  }
-  if (dbType === 'adjustment') {
-    // Sayım farkı DB'de işaretli gelebilir; olduğu gibi bırak.
-    return opts.qty;
-  }
-  return opts.qty;
-}
-
 function matchesMovementTypeFilter(
   filter: string,
   dbType: string,
@@ -131,14 +98,21 @@ function matchesMovementTypeFilter(
   const dbWanted = uiTypeToDbType(filter);
   if (!dbWanted) return true;
   const mt = String(dbType || '').toLowerCase();
-  if (filter === 'purchase') return mt === 'in' || mt === 'purchase';
-  if (filter === 'sale') return mt === 'out' || mt === 'sale';
+  const fiche = String(ficheType || '').toLowerCase();
+  if (filter === 'purchase') {
+    if (fiche === 'return_invoice') return false;
+    return mt === 'in' || mt === 'purchase';
+  }
+  if (filter === 'sale') {
+    if (fiche === 'return_invoice') return false;
+    return mt === 'out' || mt === 'sale';
+  }
   return mt === dbWanted;
 }
 
 export function MaterialMovementReport() {
   const { tm } = useLanguage();
-  const { selectedFirm } = useFirmaDonem();
+  const { selectedFirm, selectedPeriod } = useFirmaDonem();
   const currency = getFirmLedgerCurrency(
     selectedFirm,
     getAppDefaultCurrency() || getGlobalCurrency(),
@@ -207,6 +181,16 @@ export function MaterialMovementReport() {
         warehouseId: selectedWarehouse === 'all' ? null : selectedWarehouse,
       });
 
+      let avgMaps = { byProductId: new Map<string, number>(), byCode: new Map<string, number>() };
+      try {
+        avgMaps = await fetchWeightedAverageUnitCosts({
+          firmNr: selectedFirm?.firm_nr,
+          periodNr: selectedPeriod?.nr,
+        });
+      } catch (avgErr) {
+        console.warn('[MaterialMovementReport] ağırlıklı ortalama maliyet alınamadı:', avgErr);
+      }
+
       const mapped: Movement[] = [];
       for (const r of result.rows) {
         const dbTypeRow = String(r.movement_type || r.movement?.movement_type || 'in');
@@ -216,19 +200,29 @@ export function MaterialMovementReport() {
         const qty = parseFloat(String(r.quantity)) || 0;
         const sourceWh = r.warehouse_id != null ? String(r.warehouse_id) : '';
         const targetWh = r.target_warehouse_id != null ? String(r.target_warehouse_id) : '';
-        const displayQty = signedQuantity({
-          qty,
-          dbType: dbTypeRow,
+        const productCode = displayItemCode(r.product_code);
+        const codeKey = productCode && productCode !== '—' ? productCode : String(r.item_code || '').trim();
+        const itemCode = String(r.item_code || '').trim();
+        const avgUnitCost =
+          lookupWeightedAvgUnitCost(avgMaps, {
+            id: String(r.product_id || ''),
+            code: codeKey,
+            barcode: String(r.barcode || ''),
+          }) ||
+          lookupWeightedAvgUnitCost(avgMaps, { code: itemCode });
+        const valued = valueMaterialMovementLine({
+          quantity: qty,
+          unitPrice: parseFloat(String(r.unit_price)) || 0,
+          costPrice: parseFloat(String(r.cost_price ?? r.unit_cost)) || 0,
+          avgUnitCost,
+          movementType: dbTypeRow,
+          ficheType,
+          trcode: Number(r.trcode ?? r.movement?.trcode ?? 0) || 0,
+          sourceType: String(r.source_type || r.movement?.source_type || ''),
           selectedWarehouse,
           sourceWh,
           targetWh,
         });
-        // Birim tutar: satışta unit_price, yoksa cost_price (giriş maliyet)
-        const unitCost =
-          parseFloat(String(r.unit_price)) ||
-          parseFloat(String(r.cost_price)) ||
-          0;
-        const totalCost = displayQty * unitCost;
         const noteRaw = receiptNotesForDisplay(
           r.notes || r.slip_description || r.description || '',
         );
@@ -238,18 +232,19 @@ export function MaterialMovementReport() {
         mapped.push({
           id: String(r.id || `${r.movement_id}-${mapped.length}`),
           date: formatReportDateCell(r.movement_date || r.created_at || r.movement?.movement_date),
-          productCode: displayItemCode(r.product_code),
+          productCode,
           productName: r.product_name || '',
           ...codes,
           specialCode: card.specialCode1,
           brand: card.brand,
           group: card.group,
           category: card.category,
-          type: dbTypeToUiType(dbTypeRow, ficheType),
-          quantity: displayQty,
+          type: valued.uiType,
+          costBucket: valued.bucket,
+          quantity: valued.quantity,
           unit: displayUnit(r.unit_name || r.unit),
-          unitCost,
-          totalCost,
+          unitCost: valued.unitCost,
+          totalCost: valued.totalCost,
           warehouse: r.warehouse_name || r.movement?.warehouses?.name || '-',
           reference: r.document_no || r.movement?.document_no || '',
           note: noteRaw || undefined,
@@ -265,7 +260,7 @@ export function MaterialMovementReport() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, movementType, selectedWarehouse, selectedFirm?.firm_nr]);
+  }, [startDate, endDate, movementType, selectedWarehouse, selectedFirm?.firm_nr, selectedPeriod?.nr]);
 
   useEffect(() => {
     loadMovements();
@@ -290,12 +285,20 @@ export function MaterialMovementReport() {
     }
   };
 
-  // displayQty zaten işaretli (+ giriş, − çıkış); totalCost = displayQty * unitCost yine işaretli.
-  const totalInflow = movements.filter((m) => m.quantity > 0).reduce((sum, m) => sum + m.totalCost, 0);
-
-  const totalOutflow = movements.filter((m) => m.quantity < 0).reduce((sum, m) => sum + Math.abs(m.totalCost), 0);
-
-  const netMovement = totalInflow - totalOutflow;
+  // Alış girişi satış iadesini içermez. İade kartı maliyeti bir kez gösterir.
+  // Net = alış − satış çıkışı + iade. İade ikinci kez düşülmez.
+  const movementKpis = useMemo(
+    () =>
+      summarizeMaterialMovementKpis(
+        movements.map((m) => ({
+          bucket: m.costBucket,
+          quantity: m.quantity,
+          totalCost: m.totalCost,
+        })),
+      ),
+    [movements],
+  );
+  const netMovement = movementKpis.net;
 
   return (
     <div className="space-y-4">
@@ -354,13 +357,13 @@ export function MaterialMovementReport() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg border-2 border-green-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">{tm('totalIn')}</p>
+              <p className="text-sm text-gray-600">{tm('mmKpiPurchaseIn')}</p>
               <p className="text-2xl font-bold text-green-600">
-                {formatNumber(totalInflow, 2, false)} {currency}
+                {formatNumber(movementKpis.purchaseIn, 2, false)} {currency}
               </p>
             </div>
             <div className="bg-green-100 rounded-full p-3">
@@ -372,13 +375,27 @@ export function MaterialMovementReport() {
         <div className="bg-white rounded-lg border-2 border-red-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">{tm('totalOut')}</p>
+              <p className="text-sm text-gray-600">{tm('mmKpiSaleOut')}</p>
               <p className="text-2xl font-bold text-red-600">
-                {formatNumber(totalOutflow, 2, false)} {currency}
+                {formatNumber(movementKpis.saleOut, 2, false)} {currency}
               </p>
             </div>
             <div className="bg-red-100 rounded-full p-3">
               <TrendingDown className="w-6 h-6 text-red-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border-2 border-amber-200 p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">{tm('mmMovTypeReturn')}</p>
+              <p className="text-2xl font-bold text-amber-700">
+                {formatNumber(movementKpis.salesReturn, 2, false)} {currency}
+              </p>
+            </div>
+            <div className="bg-amber-100 rounded-full p-3">
+              <RotateCcw className="w-6 h-6 text-amber-700" />
             </div>
           </div>
         </div>

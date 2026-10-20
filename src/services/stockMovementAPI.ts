@@ -1618,8 +1618,8 @@ class StockMovementAPI {
                     CASE
                         WHEN sl.fiche_type = 'purchase_invoice' THEN 'in'
                         WHEN sl.fiche_type = 'sales_invoice' THEN 'out'
-                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode = 3 THEN 'in'
-                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode IN (2, 6) THEN 'out'
+                        WHEN sl.fiche_type = 'return_invoice' AND COALESCE(sl.trcode, 0) = 6 THEN 'out'
+                        WHEN sl.fiche_type = 'return_invoice' THEN 'in'
                         ELSE 'out'
                     END AS movement_type,
                     sl.date AS movement_date,

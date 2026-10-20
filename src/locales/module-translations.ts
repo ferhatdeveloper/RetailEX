@@ -14121,6 +14121,8 @@ export const excelModuleTranslations = {
   mmMovTypeTransfer: { tr: 'Transfer', en: 'Transfer', ar: 'نقل', ku: 'گواستنەوە' },
   mmMovTypeAdjustment: { tr: 'Düzeltme', en: 'Adjustment', ar: 'تسوية', ku: 'ڕاستکردنەوە' },
   mmMovTypeReturn: { tr: 'İade', en: 'Return', ar: 'إرجاع', ku: 'گەڕاندنەوە' },
+  mmKpiPurchaseIn: { tr: 'Alış Girişi', en: 'Purchase inflow', ar: 'دخول المشتريات', ku: 'هاتنی کڕین' },
+  mmKpiSaleOut: { tr: 'Satış Çıkışı', en: 'Sales outflow', ar: 'خروج المبيعات', ku: 'دەرچوونی فرۆشتن' },
 
   // ERP Reports — 5 yeni rapor (Earnings/CashLedger/ContactLegacy/StaffAttendance/InvoiceItemsDetail)
   rprEarningsByProjectTitle: {
