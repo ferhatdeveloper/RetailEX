@@ -9,7 +9,7 @@ import {
 import { ColumnDef, createColumnHelper } from '@tanstack/react-table';
 import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import { PlusOutlined, UserOutlined } from '@ant-design/icons';
-import { Crown, Edit, Phone, Mail, Search, User, Printer } from 'lucide-react';
+import { Edit, Phone, Mail, Search, User, Printer } from 'lucide-react';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -44,7 +44,6 @@ import {
 import { phoneQueryDigits } from '../../../shared/utils/validators';
 import {
     readCrmActivityParam,
-    useClinicShellV2,
     writeCrmActivityParam,
     type CrmActivityParam,
 } from '../clinicShellV2';
@@ -56,7 +55,6 @@ const columnHelper = createColumnHelper<BeautyCustomer>();
 export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const { customers, isLoading, loadCustomers, createCustomer, updateCustomer } = useBeautyStore();
     const { tm } = useLanguage();
-    const shellV2 = useClinicShellV2();
     const [activityParam, setActivityParam] = useState<CrmActivityParam>(readCrmActivityParam);
     const [search, setSearch] = useState('');
     const [fileIdRange, setFileIdRange] = useState<FileIdRangeKey>('all');
@@ -422,7 +420,6 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                                     className="!mb-0.5 !text-base !font-semibold"
                                     style={{ color: RETAILEX_TEXT_PRIMARY }}
                                 >
-                                    {shellV2 ? <Crown className="mr-1 inline h-4 w-4" aria-hidden style={{ color: '#db2777' }} /> : null}
                                     {tm('bClientCRM')}
                                 </Typography.Title>
                                 <Typography.Text type="secondary" className="text-xs">

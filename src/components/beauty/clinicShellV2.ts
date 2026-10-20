@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 
-/** Klinik kabuğu V2 (pembe taç paleti). Klasik panel `0`. */
+/** Klinik panosu V2 açık/kapalı. Kabuk rengi değişmez. */
 export const CLINIC_V2_STORAGE_KEY = 'retailex_clinic_shell_v2';
 export const CLINIC_V2_EVENT = 'retailex-clinic-shell-v2';
+export const CLINIC_V2_SURVEY_PANEL_KEY = 'retailex_clinic_v2_survey_panel';
+export const CLINIC_V2_CRM_PANEL_KEY = 'retailex_clinic_v2_crm_panel';
 
 /** CRM liste parametresi: tümü / aktif / pasif. */
 export const CRM_ACTIVITY_PARAM_KEY = 'retailex_beauty_crm_activity_param';
@@ -11,18 +13,19 @@ export const SURVEY_DAY_PARAM_KEY = 'retailex_beauty_survey_day_param';
 
 export type CrmActivityParam = 'all' | 'active' | 'passive';
 
+/** Açık tahta. Pembe yalnız seçili gün ve birincil düğme. */
 export const CLINIC_V2_PALETTE = {
-    bg: '#fff5f8',
+    bg: '#f3f4f6',
     surface: '#ffffff',
-    border: '#fbcfe8',
-    pink: '#db2777',
-    pinkDeep: '#9d174d',
-    pinkSoft: '#fce7f3',
-    text: '#1f2937',
+    line: '#e5e7eb',
+    lineSoft: '#eef0f3',
+    text: '#111827',
     muted: '#6b7280',
+    accent: '#db2777',
     completed: '#059669',
     pending: '#d97706',
     cancelled: '#e11d48',
+    block: '#f8fafc',
 } as const;
 
 export const CLINIC_CLASSIC_SHELL = {
@@ -31,14 +34,6 @@ export const CLINIC_CLASSIC_SHELL = {
     accent: '#7c3aed',
     accentEdge: '#a78bfa',
     focusRing: 'rgba(124,58,237,0.12)',
-} as const;
-
-export const CLINIC_V2_SHELL = {
-    sidebar: '#3b1024',
-    sidebarLine: '#5b1a38',
-    accent: '#db2777',
-    accentEdge: '#f9a8d4',
-    focusRing: 'rgba(219,39,119,0.16)',
 } as const;
 
 export function readClinicShellV2(): boolean {
@@ -101,6 +96,38 @@ export function readSurveyDayParam(fallbackYmd: string): string {
         /* yoksay */
     }
     return fallbackYmd;
+}
+
+function readPanelFlag(key: string): boolean {
+    try {
+        return localStorage.getItem(key) === '1';
+    } catch {
+        return false;
+    }
+}
+
+function writePanelFlag(key: string, on: boolean): void {
+    try {
+        localStorage.setItem(key, on ? '1' : '0');
+    } catch {
+        /* yoksay */
+    }
+}
+
+export function readClinicV2SurveyPanel(): boolean {
+    return readPanelFlag(CLINIC_V2_SURVEY_PANEL_KEY);
+}
+
+export function writeClinicV2SurveyPanel(on: boolean): void {
+    writePanelFlag(CLINIC_V2_SURVEY_PANEL_KEY, on);
+}
+
+export function readClinicV2CrmPanel(): boolean {
+    return readPanelFlag(CLINIC_V2_CRM_PANEL_KEY);
+}
+
+export function writeClinicV2CrmPanel(on: boolean): void {
+    writePanelFlag(CLINIC_V2_CRM_PANEL_KEY, on);
 }
 
 export function writeSurveyDayParam(ymd: string): void {

@@ -23,10 +23,10 @@ import {
     HolderOutlined,
     BarChartOutlined,
 } from '@ant-design/icons';
-import { ClipboardList, Crown } from 'lucide-react';
+import { ClipboardList } from 'lucide-react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
-import { readSurveyDayParam, useClinicShellV2, writeSurveyDayParam } from '../clinicShellV2';
+import { readSurveyDayParam, writeSurveyDayParam } from '../clinicShellV2';
 import dayjs, { type Dayjs } from 'dayjs';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -78,7 +78,6 @@ export function SatisfactionSurveyManagement({
     const canExecuteSurvey =
         hasPermission('beauty.surveys', 'EXECUTE') || hasPermission('beauty.surveys', 'READ');
     const dateLocale = tm('localeCode');
-    const shellV2 = useClinicShellV2();
     const [surveys, setSurveys] = useState<BeautySatisfactionSurvey[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -410,9 +409,8 @@ export function SatisfactionSurveyManagement({
                                 <Typography.Title
                                     level={5}
                                     className="!mb-0.5 !text-base !font-semibold"
-                                    style={{ color: shellV2 ? '#db2777' : RETAILEX_PRIMARY }}
+                                    style={{ color: RETAILEX_PRIMARY }}
                                 >
-                                    {shellV2 ? <Crown className="mr-1 inline h-4 w-4" aria-hidden /> : null}
                                     {tm('bSatisfactionSurveysTitle')}
                                 </Typography.Title>
                                 <Typography.Text type="secondary" className="text-xs">

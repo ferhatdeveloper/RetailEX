@@ -42,7 +42,7 @@ import { DietitianScreen } from './specialty/DietitianScreen';
 import { AppointmentPOS } from './components/AppointmentPOS';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import { BeautyShellChromeButtons } from './components/BeautyShellChrome';
-import { CLINIC_CLASSIC_SHELL, CLINIC_V2_SHELL, useClinicShellV2 } from './clinicShellV2';
+import { CLINIC_CLASSIC_SHELL } from './clinicShellV2';
 import { FirmSelector } from '../system/FirmSelector';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { normalizeFirmEnabledModules } from '../../utils/firmShellModules';
@@ -109,8 +109,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const showNavText = !isMobile ? !collapsed : mobileNavOpen;
     const [showLanguageModal, setShowLanguageModal] = useState(false);
-    const shellV2 = useClinicShellV2();
-    const shell = shellV2 ? CLINIC_V2_SHELL : CLINIC_CLASSIC_SHELL;
+    const shell = CLINIC_CLASSIC_SHELL;
     const [rtlMode, setRtlMode] = useState(() => localStorage.getItem('retailos_rtl_mode') === 'true');
     const { specialists, devices, loadSpecialists, loadServices, loadAppointments, loadDevices } = useBeautyStore();
     const { selectedFirm } = useFirmaDonem();
@@ -455,7 +454,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                         style={{
                             width: 28,
                             height: 28,
-                            background: specialty === 'dental' && !shellV2 ? '#0ea5e9' : shell.accent,
+                            background: specialty === 'dental' ? '#0ea5e9' : shell.accent,
                             borderRadius: 6,
                         }}
                     >
@@ -704,7 +703,11 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
 
                 {/* Content — min-h-0 + overflow-y-auto so long pages (e.g. Hizmetler grid) can scroll inside the shell */}
                 <main className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-                    {activeTab === 'dashboard' && <ClinicDashboard />}
+                    {activeTab === 'dashboard' && (
+                        <div className="h-full min-h-0">
+                            <ClinicDashboard />
+                        </div>
+                    )}
                     {activeTab === 'calendar' && <SmartScheduler />}
                     {activeTab === 'clients' && (
                         beautyClientDetailId ? (

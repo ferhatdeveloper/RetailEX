@@ -11,6 +11,12 @@ import { AppointmentStatus } from '../../../types/beauty';
 import type { BeautyAppointment, BeautySpecialist } from '../../../types/beauty';
 import { ClinicDashboardV2 } from '../../../components/beauty/components/ClinicDashboardV2';
 
+vi.mock('../../../services/beautyService', () => ({
+    beautyService: {
+        getAppointmentsInRange: () => new Promise(() => {}),
+    },
+}));
+
 vi.mock('../../../contexts/LanguageContext', () => ({
     useLanguage: () => ({
         language: 'tr',
@@ -32,6 +38,16 @@ vi.mock('../../../contexts/LanguageContext', () => ({
                 bCustomerFallbackName: 'Müşteri',
                 localeCode: 'tr-TR',
                 time: 'Saat',
+                bClinicV2Today: 'Bugün',
+                bClinicV2Day: 'Gün',
+                bClinicV2Week: 'Hafta',
+                bClinicV2AllStaff: 'Tüm personel',
+                bClinicV2ApptCount: '{n} randevu',
+                bClinicV2EmptySlots: '{n} boş',
+                bClinicV2Prev: 'Önceki',
+                bClinicV2Next: 'Sonraki',
+                bClinicV2SurveyToggle: 'Anket',
+                bClinicV2CrmToggle: 'CRM',
             };
             return dict[key] ?? key;
         },
@@ -71,10 +87,15 @@ describe('ClinicDashboardV2', () => {
             />,
         );
         expect(screen.getByText('Bugünkü randevu')).toBeTruthy();
+        expect(screen.getByText('Bugün')).toBeTruthy();
+        expect(screen.getAllByText('Roza').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('08:00').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('09:00').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('Nihat').length).toBeGreaterThan(0);
         expect(screen.getAllByText('2').length).toBeGreaterThan(0);
         expect(screen.getByText('85.000')).toBeTruthy();
-        expect(screen.getByText('HAIR CUT')).toBeTruthy();
-        expect(screen.getByText('HAIR PINK COLOR')).toBeTruthy();
+        expect(screen.getAllByText('HAIR CUT').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('HAIR PINK COLOR').length).toBeGreaterThan(0);
         expect(screen.getByText('50.000')).toBeTruthy();
         expect(screen.getByText('60.000')).toBeTruthy();
     });
@@ -91,6 +112,8 @@ describe('ClinicDashboardV2', () => {
             />,
         );
         expect(screen.getAllByText('0').length).toBeGreaterThan(0);
+        expect(screen.getByText('08:00')).toBeTruthy();
+        expect(screen.getByText('Atanmamış')).toBeTruthy();
         expect(screen.queryByText('HAIR CUT')).toBeNull();
     });
 });
