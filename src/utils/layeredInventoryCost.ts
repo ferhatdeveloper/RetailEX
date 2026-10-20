@@ -1,12 +1,16 @@
 /**
- * Envanter maliyeti: FIFO katmanları (fiş / fatura satır birim fiyatı).
- * Kart alış fiyatı (items.purchase_price / products.cost) kullanılmaz.
+ * Envanter katman maliyeti: FIFO (fiş / fatura satır birim fiyatı).
+ * Kalan stok katmanı kart alışını kendiliğinden yazmaz.
+ * Ürün karlılık SMM'si ayrıdır: envanter birim alış × satılan miktar
+ * (`buildCostProfitRows`, `purchaseUnitCost`). Satışın yüzdesi maliyet değildir.
  *
  * Yöntem: Girişler (alış fişi, alış faturası) birim maliyetle katman açar;
  * çıkışlar (satış, sarf, alış iade) en eski katmanı tüketir (FIFO).
  * Satılan malın maliyeti (COGS) = tüketilen katman tutarı — yalnızca cogsKind='sale'.
  * Alış iade stok çıkarır ama SMM/kâr sayılmaz; satış iade (cogsKind='return') SMM geri alır.
  */
+
+import { productCogsFromUnitPurchase } from './productSaleCogs';
 
 export type LayerDirection = 'in' | 'out';
 
@@ -333,11 +337,16 @@ export type CostProfitAggLine = {
   quantity: number;
   revenue: number;
   /**
-   * Malzeme: satır unit_cost × miktar (katman yoksa yedek; kart alış değil).
+   * Malzeme yedeği: son alış × miktar (envanter birimi yoksa).
    * Hizmet: unit_cost → purchase_price → beauty cost_price → reçete × miktar.
    */
   fallbackCogs: number;
-  /** Hizmet | Malzeme — stoklu FIFO yalnızca product için */
+  /**
+   * Envanter listesindeki birim alış. Üründe doluysa SMM = miktar × bu birim.
+   * FIFO katman tüketimi ve satış gelirinin yüzdesi bunu ezmez.
+   */
+  purchaseUnitCost?: number;
+  /** Hizmet | Malzeme — hizmette stok katmanı kullanılmaz */
   lineKind?: CostProfitLineKind;
 };
 
@@ -346,7 +355,7 @@ export type CostProfitRow = CostProfitAggLine & {
   profit: number;
   marginPercent: number;
   lineKind: CostProfitLineKind;
-  costSource: 'fifo_layers' | 'movement_unit_cost' | 'service_cost' | 'none';
+  costSource: 'inventory_purchase' | 'fifo_layers' | 'movement_unit_cost' | 'service_cost' | 'none';
 };
 
 export function lookupPeriodCogs(
@@ -368,7 +377,9 @@ export function lookupPeriodCogs(
 
 /**
  * Satış satırları + SMM.
- * Malzeme: dönem FIFO katman; yoksa fallback. Hizmet: stok yok — yalnızca fallback (kart/reçete).
+ * Malzeme: envanter birim alış × miktar. Birim yoksa dönem FIFO, o da yoksa son alış.
+ * Satış gelirinin oranı (ör. %50 → 5.000) maliyet sayılmaz.
+ * Hizmet: stok katmanı yok — yalnızca fallback (kart/reçete). FIFO ile ezilmez.
  * Katman 0 olsa bile gelir gösterilir.
  */
 export function buildCostProfitRows(
@@ -391,18 +402,24 @@ export function buildCostProfitRows(
           costSource = 'service_cost';
         }
       } else {
-        const layered = lookupPeriodCogs(
-          periodCogsByProductId,
-          aliases,
-          line.productId,
-          line.productCode,
-        );
-        if (Math.abs(layered) > COST_EPS) {
-          cogs = layered;
-          costSource = 'fifo_layers';
-        } else if (Math.abs(fallback) > COST_EPS) {
-          cogs = fallback;
-          costSource = 'movement_unit_cost';
+        const purchaseUnit = Number(line.purchaseUnitCost) || 0;
+        if (purchaseUnit > COST_EPS) {
+          cogs = productCogsFromUnitPurchase(line.quantity, purchaseUnit);
+          costSource = 'inventory_purchase';
+        } else {
+          const layered = lookupPeriodCogs(
+            periodCogsByProductId,
+            aliases,
+            line.productId,
+            line.productCode,
+          );
+          if (Math.abs(layered) > COST_EPS) {
+            cogs = layered;
+            costSource = 'fifo_layers';
+          } else if (Math.abs(fallback) > COST_EPS) {
+            cogs = fallback;
+            costSource = 'movement_unit_cost';
+          }
         }
       }
 

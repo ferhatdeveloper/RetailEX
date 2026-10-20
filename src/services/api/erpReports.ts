@@ -218,35 +218,30 @@ export interface ProductGrossProfitRow {
 }
 
 /**
- * Malzeme satırlarında maliyet = ağırlıklı ortalama birim maliyet × miktar.
- * Ortalama = Σ(alış tutarı) / Σ(alış miktarı); alış iadesi düşülür; satış ortalamaya girmez.
- * Hizmet satırları ve ortalaması 0 olanlar önceki maliyeti korur.
- * Miktar işaretli (satış +, iade −) — COGS iadede geri alınır.
+ * Malzeme satırlarında maliyet = envanter birim alış × işaretli miktar.
+ * Birim, envanter listesiyle aynıdır (ağırlıklı ortalama → katman → kart alış).
+ * Satış gelirinin yüzdesi maliyet sayılmaz. Hizmet satırı olduğu gibi kalır.
+ * Birim bulunamazsa satırın önceki maliyeti korunur.
  */
 async function applyWeightedAvgCostToGrossProfit(
   rows: ProductGrossProfitRow[],
   firmNr?: string | number | null,
-  asOfDate?: string | null,
+  _asOfDate?: string | null,
 ): Promise<ProductGrossProfitRow[]> {
   if (!rows.length) return rows;
+  if (!rows.some((r) => r.lineKind !== 'service')) return rows;
   try {
-    const {
-      fetchWeightedAverageUnitCosts,
-      lookupWeightedAvgUnitCost,
-    } = await import('../weightedAverageUnitCost');
-    const maps = await fetchWeightedAverageUnitCosts({
+    const { makeInventoryPurchaseUnitLookup } = await import('../layeredInventoryCost');
+    const { productCogsFromUnitPurchase } = await import('../../utils/productSaleCogs');
+    const unitOf = await makeInventoryPurchaseUnitLookup({
       firmNr: firmNr ?? ERP_SETTINGS.firmNr,
-      asOfDate: asOfDate || undefined,
+      periodNr: ERP_SETTINGS.periodNr,
     });
     return rows.map((r) => {
       if (r.lineKind === 'service') return r;
-      const avg = lookupWeightedAvgUnitCost(maps, {
-        id: r.productId,
-        code: r.productCode,
-      });
-      if (!(avg > 0)) return r;
-      // İşaretli miktar × ortalama = işaretli COGS (iade negatif)
-      const cost = avg * r.quantity;
+      const unit = unitOf({ id: r.productId, code: r.productCode });
+      if (!(unit > 0)) return r;
+      const cost = productCogsFromUnitPurchase(r.quantity, unit);
       const grossProfit = r.revenue - cost;
       return {
         ...r,
@@ -256,7 +251,7 @@ async function applyWeightedAvgCostToGrossProfit(
       };
     });
   } catch (e) {
-    console.warn('[erpReports] weighted avg cost overlay failed:', e);
+    console.warn('[erpReports] inventory purchase cost overlay failed:', e);
     return rows;
   }
 }
@@ -2224,11 +2219,11 @@ export const erpReportsAPI = {
   /**
    * Dashboard KPI özet toplamları — Ürün Brüt Kârı raporuyla **aynı formül**:
    *   Ciro    = Σ (satış tutarı) − Σ (iade tutarı)  (işaretli)
-   *   Maliyet = Σ (WAC × satılan miktar)            (işaretli; WAC = Σ alış tutarı / Σ alış miktarı)
+   *   Maliyet = Σ (envanter birim alış × satılan miktar)  (işaretli; hizmet formülü ayrı)
    *   Brüt Kâr = Ciro − Maliyet
    *   Marj %   = (Brüt Kâr / Ciro) × 100
    *
-   * Ürün Brüt Kârı raporundaki `getProductGrossProfit` zaten WAC overlay uyguluyor;
+   * Ürün Brüt Kârı raporundaki `getProductGrossProfit` envanter birim alışını uygular;
    * bu yardımcı onun satırlarını toplayıp özet döner — tek formül, tek SQL zinciri.
    */
   async getProductGrossProfitTotals(opts: {

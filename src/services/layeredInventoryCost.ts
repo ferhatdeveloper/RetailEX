@@ -4,6 +4,14 @@
  */
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from './postgres';
+import { productAPI } from './api/products';
+import {
+  fetchWeightedAverageUnitCosts,
+  lookupWeightedAvgUnitCost,
+} from './weightedAverageUnitCost';
+import { inventoryListUnitPurchaseCost } from '../utils/inventoryListValue';
+import { productCardUnitCost } from '../utils/productCardUnitCost';
+import { productCogsFromUnitPurchase } from '../utils/productSaleCogs';
 import {
   isPurchaseFiche,
   isPlSalesOrReturnFiche,
@@ -68,6 +76,67 @@ function padFirm(raw?: string | number | null): string {
 
 function padPeriod(raw?: string | number | null): string {
   return String(raw || ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0');
+}
+
+/**
+ * Envanter listesindeki birim alış (ağırlıklı ortalama → katman ortalaması → kart).
+ * Karlılık ve kar-zarar ürün satırı bu birimi kullanır.
+ */
+export async function makeInventoryPurchaseUnitLookup(opts?: {
+  firmNr?: string | number | null;
+  periodNr?: string | number | null;
+  valuation?: LayeredInventoryValuation | null;
+}): Promise<(ref: { id?: string | null; code?: string | null }) => number> {
+  const firmNr = padFirm(opts?.firmNr);
+  const periodNr = padPeriod(opts?.periodNr);
+  const [avgMaps, products, valuation] = await Promise.all([
+    fetchWeightedAverageUnitCosts({ firmNr, periodNr }).catch(() => ({
+      byProductId: new Map<string, number>(),
+      byCode: new Map<string, number>(),
+    })),
+    productAPI.getAllForReports({ firmNr }).catch(() => []),
+    opts?.valuation !== undefined
+      ? Promise.resolve(opts.valuation)
+      : fetchLayeredInventoryValuation({ firmNr, periodNr }).catch(() => null),
+  ]);
+  const cardById = new Map<string, number>();
+  const cardByCode = new Map<string, number>();
+  for (const product of products || []) {
+    const unit = productCardUnitCost(product);
+    const id = String(product.id || '').trim();
+    const code = String(product.code || '').trim();
+    if (id) cardById.set(id, unit);
+    if (code) cardByCode.set(code, unit);
+  }
+  return (ref) => {
+    const id = String(ref.id || '').trim();
+    const code = String(ref.code || '').trim();
+    const card = (id && cardById.get(id)) || (code && cardByCode.get(code)) || 0;
+    const weighted = lookupWeightedAvgUnitCost(avgMaps, { id, code });
+    const layered = layeredAvgForProduct(valuation, { id, code });
+    return inventoryListUnitPurchaseCost({
+      weightedAvg: weighted,
+      layeredAvg: layered,
+      cardUnit: card,
+    });
+  };
+}
+
+function stampProductPurchaseUnit<T extends {
+  lineKind?: string;
+  productId?: string;
+  productCode?: string;
+  purchaseUnitCost?: number;
+}>(
+  lines: T[],
+  unitOf: (ref: { id?: string | null; code?: string | null }) => number,
+): T[] {
+  return lines.map((line) => {
+    if (line.lineKind === 'service') return line;
+    const unit = unitOf({ id: line.productId, code: line.productCode });
+    if (!(unit > 0)) return line;
+    return { ...line, purchaseUnitCost: unit };
+  });
 }
 
 function asIsoDate(value: unknown): string {
@@ -426,6 +495,8 @@ type SaleLineRaw = {
   quantity: number;
   revenue: number;
   fallbackCogs: number;
+  /** Envanter birim alış. Ürün SMM = miktar × bu birim. */
+  purchaseUnitCost?: number;
   lineKind: CostProfitLineKind;
 };
 
@@ -812,8 +883,8 @@ async function loadCostProfitSaleLinesRest(opts: {
 
 /**
  * Maliyet ve Karlılık Analizi: satış satırları (perakende/POS/güzellik) + SMM.
- * Malzeme: FIFO katman; Hizmet: kart cost_price / alış / reçete (stok yok).
- * getPaginated items:[] kullanılmaz; ürün kartı cost kullanılmaz.
+ * Malzeme: envanter birim alış × miktar (satışın yüzdesi değil).
+ * Hizmet: kart cost_price / alış / reçete (stok yok). getPaginated items:[] kullanılmaz.
  */
 export async function getCostProfitAnalysis(opts: {
   startDate: string;
@@ -856,8 +927,16 @@ export async function getCostProfitAnalysis(opts: {
     console.warn('[layeredInventoryCost] FIFO layers unavailable; SMM yedek/0', err);
   }
 
+  let priced = lines;
+  try {
+    const unitOf = await makeInventoryPurchaseUnitLookup({ firmNr, periodNr, valuation });
+    priced = stampProductPurchaseUnit(lines, unitOf);
+  } catch (err) {
+    console.warn('[layeredInventoryCost] envanter birim alış okunamadı', err);
+  }
+
   return buildCostProfitRows(
-    lines,
+    priced,
     valuation?.periodCogsByProductId || new Map(),
     valuation?.aliases,
   );
@@ -945,26 +1024,31 @@ function buildCustomerCostProfitRows(
     if (line.lineKind === 'service') {
       cogs = Math.abs(fallback) > CUSTOMER_COST_EPS ? fallback : 0;
     } else {
-      const layered = lookupPeriodCogs(
-        periodCogsByProductId,
-        aliases,
-        line.productId,
-        line.productCode,
-      );
-      if (Math.abs(layered) > CUSTOMER_COST_EPS) {
-        const tot = productTotals.get(productAllocKey(line));
-        const totalQty = tot?.qty ?? 0;
-        const totalRev = tot?.revenue ?? 0;
-        const qty = Number(line.quantity) || 0;
-        if (Math.abs(totalQty) > CUSTOMER_COST_EPS) {
-          cogs = layered * (qty / totalQty);
-        } else if (Math.abs(totalRev) > 0.009) {
-          cogs = layered * (revenue / totalRev);
-        } else {
-          cogs = fallback;
-        }
+      const purchaseUnit = Number(line.purchaseUnitCost) || 0;
+      if (purchaseUnit > CUSTOMER_COST_EPS) {
+        cogs = productCogsFromUnitPurchase(line.quantity, purchaseUnit);
       } else {
-        cogs = Math.abs(fallback) > CUSTOMER_COST_EPS ? fallback : 0;
+        const layered = lookupPeriodCogs(
+          periodCogsByProductId,
+          aliases,
+          line.productId,
+          line.productCode,
+        );
+        if (Math.abs(layered) > CUSTOMER_COST_EPS) {
+          const tot = productTotals.get(productAllocKey(line));
+          const totalQty = tot?.qty ?? 0;
+          const totalRev = tot?.revenue ?? 0;
+          const qty = Number(line.quantity) || 0;
+          if (Math.abs(totalQty) > CUSTOMER_COST_EPS) {
+            cogs = layered * (qty / totalQty);
+          } else if (Math.abs(totalRev) > 0.009) {
+            cogs = layered * (revenue / totalRev);
+          } else {
+            cogs = fallback;
+          }
+        } else {
+          cogs = Math.abs(fallback) > CUSTOMER_COST_EPS ? fallback : 0;
+        }
       }
     }
 
@@ -1433,8 +1517,16 @@ export async function getCustomerCostProfitAnalysis(opts: {
     console.warn('[layeredInventoryCost] FIFO layers unavailable (customer); SMM yedek/0', err);
   }
 
+  let priced = lines;
+  try {
+    const unitOf = await makeInventoryPurchaseUnitLookup({ firmNr, periodNr, valuation });
+    priced = stampProductPurchaseUnit(lines, unitOf);
+  } catch (err) {
+    console.warn('[layeredInventoryCost] envanter birim alış okunamadı (müşteri)', err);
+  }
+
   return buildCustomerCostProfitRows(
-    lines,
+    priced,
     valuation?.periodCogsByProductId || new Map(),
     valuation?.aliases,
     txnByKey,

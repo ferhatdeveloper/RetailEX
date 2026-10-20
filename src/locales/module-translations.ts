@@ -5567,20 +5567,20 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
 
   cogs: { tr: 'SMM (Maliyet)', en: 'COGS (Cost)', ar: 'تكلفة البضاعة المباعة', ku: 'تێچووی کاڵای فرۆشراو' },
   costProfitCogsLayerNote: {
-    tr: 'SMM: FIFO alış katmanları (kart alış kullanılmaz). Kâr = satış − SMM. Kaynak: perakende / POS / güzellik satışları.',
-    en: 'COGS: FIFO purchase layers (card cost unused). Profit = sales − COGS. Sources: retail / POS / beauty sales.',
+    tr: 'Ürün SMM: envanter birim alış × satılan miktar. Kâr = satış − SMM. Kaynak: perakende / POS / güzellik satışları.',
+    en: 'Product COGS: inventory purchase unit × quantity sold. Profit = sales − COGS. Sources: retail / POS / beauty sales.',
     ar: 'التكلفة: طبقات الشراء FIFO. الربح = المبيعات − التكلفة.',
     ku: 'SMM: چینەکانی کڕینی FIFO. قازانج = فرۆشتن − SMM.',
   },
   costProfitCogsMixedNote: {
-    tr: 'Malzeme SMM: FIFO katman. Hizmet SMM: satır unit_cost → hizmet alış → güzellik cost_price → reçete. Kâr = satış − SMM.',
-    en: 'Product COGS: FIFO layers. Service COGS: line unit_cost → service purchase → beauty cost_price → recipe. Profit = sales − COGS.',
+    tr: 'Malzeme SMM: envanter birim alış × satılan miktar. Hizmet SMM: satır unit_cost → hizmet alış → güzellik cost_price → reçete. Kâr = satış − SMM.',
+    en: 'Product COGS: inventory purchase unit × quantity sold. Service COGS: line unit_cost → service purchase → beauty cost_price → recipe. Profit = sales − COGS.',
     ar: 'تكلفة المنتج: FIFO. تكلفة الخدمة: سعر التكلفة / الوصفة. الربح = المبيعات − التكلفة.',
     ku: 'کاڵا SMM: FIFO. خزمەتگوزاری: cost_price / ڕەچەتە. قازانج = فرۆشتن − SMM.',
   },
   costProfitCogsMissingNote: {
-    tr: 'SMM: katman / hareket / hizmet maliyeti yoksa 0 — satış geliri yine gösterilir. Malzeme kart alış kullanılmaz.',
-    en: 'COGS: 0 if no layer/movement/service cost — revenue still shown. Product card purchase unused.',
+    tr: 'SMM: envanter alış / hizmet maliyeti yoksa 0 — satış geliri yine gösterilir. Satışın yüzdesi maliyet sayılmaz.',
+    en: 'COGS: 0 if inventory purchase or service cost is missing — revenue still shown. A percent of sales is not used as cost.',
     ar: 'التكلفة = 0 إن لم توجد — الإيراد يظهر.',
     ku: 'SMM: نەبێت = 0 — داهات هەر نیشان دەدرێت.',
   },
@@ -11874,8 +11874,8 @@ export const excelModuleTranslations = {
     ku: 'بارکردنی ڕاپۆرتی قازانج و زەرەر سەرکەوتوو نەبوو',
   },
   reportsPlCostSourceNote: {
-    tr: 'Net satış = satış − satış iadesi; dip indirim satırlara oranlanır. Ürün SMM: son alış birim × miktar (alış iadesi hariç). Alış yoksa 0 — ürün kartı cost kullanılmaz. Hizmet maliyeti: satır unit_cost → hizmet kartı alış fiyatı → güzellik cost_price → reçete (sarf × son alış).',
-    en: 'Net sales = sales − sales returns; footer discount is prorated. Product COGS: last purchase unit × qty (excl. purchase returns). No purchase → 0 (card cost unused). Service cost: line unit_cost → service purchase_price → beauty cost_price → recipe (consumable × last purchase).',
+    tr: 'Net satış = satış − satış iadesi; dip indirim satırlara oranlanır. Ürün SMM: envanter listesindeki birim alış × satılan miktar. Alış yoksa 0. Hizmet maliyeti: satır unit_cost → hizmet kartı alış fiyatı → güzellik cost_price → reçete (sarf × son alış).',
+    en: 'Net sales = sales − sales returns; footer discount is prorated. Product COGS: inventory list purchase unit × quantity sold. No purchase unit → 0. Service cost: line unit_cost → service purchase_price → beauty cost_price → recipe (consumable × last purchase).',
     ar: 'صافي المبيعات = المبيعات − مرتجعات المبيعات؛ يُوزع خصم الفاتورة على الأسطر. تكلفة البضاعة (قطعة/كغ): آخر شراء × الكمية فقط (باستثناء مرتجع الشراء). بلا شراء = 0.',
     ku: 'فرۆشتنی خاوێن = فرۆشتن − گەڕاندنەوە؛ داشکاندنی کۆتایی بەسەر هێڵەکان دابەش دەکرێت. تێچوون (دانە/کگ): تەنها دوایین کڕین × بڕ (بێ گەڕاندنەوەی کڕین). کڕین نەبێت = 0.',
   },
@@ -13397,8 +13397,8 @@ export const excelModuleTranslations = {
     ku: 'بەپێی ژمارەی مامەڵە',
   },
   rptProfitCustomerCogsNote: {
-    tr: 'Brüt kâr = satış − SMM. Malzeme SMM: FIFO katman (müşteri payına orantılı). Hizmet: kart/reçete maliyeti. Toplam, ürün sekmesi / üst brüt kâr ile aynı tarih aralığında uyumludur.',
-    en: 'Gross profit = sales − COGS. Product COGS: FIFO layers (allocated by customer share). Service: card/recipe cost. Totals align with the product tab / header gross profit for the same date range.',
+    tr: 'Brüt kâr = satış − SMM. Malzeme SMM: envanter birim alış × miktar. Hizmet: kart/reçete maliyeti. Toplam, ürün sekmesi / üst brüt kâr ile aynı tarih aralığında uyumludur.',
+    en: 'Gross profit = sales − COGS. Product COGS: inventory purchase unit × quantity. Service: card/recipe cost. Totals align with the product tab / header gross profit for the same date range.',
     ar: 'الربح الإجمالي = المبيعات − تكلفة البضاعة. المواد: طبقات FIFO حسب حصة العميل. الخدمة: تكلفة البطاقة/الوصفة.',
     ku: 'قازانجی گشتی = فرۆشتن − تێچوو. ماددە: FIFO بەپێی پشکی کڕیار. خزمەت: تێچووی کارت/ڕێسپی.',
   },

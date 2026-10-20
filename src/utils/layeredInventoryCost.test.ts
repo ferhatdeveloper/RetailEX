@@ -325,6 +325,50 @@ describe('buildCostProfitRows — kâr = satış − SMM', () => {
     expect(rows[0].revenue).toBe(201000);
   });
 
+  it('BOYA: envanter alış 5.500, FIFO katmanı 5.000 olsa da SMM 5.500 ve brüt kâr 4.500', () => {
+    const rows = buildCostProfitRows(
+      [
+        {
+          productId: 'boya',
+          productCode: '0000001',
+          productName: 'BOYA',
+          quantity: 1,
+          revenue: 10000,
+          fallbackCogs: 5000,
+          purchaseUnitCost: 5500,
+        },
+      ],
+      new Map([['boya', 5000]]),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].cogs).toBe(5500);
+    expect(rows[0].profit).toBe(4500);
+    expect(rows[0].marginPercent).toBe(45);
+    expect(rows[0].costSource).toBe('inventory_purchase');
+    expect(rows[0].cogs).not.toBe(5000);
+  });
+
+  it('hizmet satırında envanter alış birimi SMM’yi değiştirmez', () => {
+    const rows = buildCostProfitRows(
+      [
+        {
+          productId: 'hair-cut',
+          productCode: 'CUT',
+          productName: 'HAIR CUT',
+          quantity: 1,
+          revenue: 48909,
+          fallbackCogs: 20000,
+          purchaseUnitCost: 5500,
+          lineKind: 'service',
+        },
+      ],
+      new Map([['hair-cut', 5500]]),
+    );
+    expect(rows[0].cogs).toBe(20000);
+    expect(rows[0].profit).toBe(28909);
+    expect(rows[0].costSource).toBe('service_cost');
+  });
+
   it('katman yoksa geliri düşmez; SMM 0 ve kaynak none', () => {
     const rows = buildCostProfitRows(
       [

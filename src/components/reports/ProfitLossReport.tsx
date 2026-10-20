@@ -32,7 +32,9 @@ import {
   SQL_SERVICE_DEPOSIT_AMOUNT,
 } from '../../utils/lastPurchaseCostSql';
 import { parseFicheDepositList } from '../../utils/beautyDepositAllocation';
-import { filterProfitLossByKind, foldProfitLossLines } from '../../utils/profitLossDeposit';
+import { filterProfitLossByKind, foldProfitLossLines, isExplicitProfitLossProductLine } from '../../utils/profitLossDeposit';
+import { productCogsFromUnitPurchase } from '../../utils/productSaleCogs';
+import { makeInventoryPurchaseUnitLookup } from '../../services/layeredInventoryCost';
 import {
   ProductMovementHistoryModal,
   type ProductMovementTarget,
@@ -208,7 +210,19 @@ export function ProfitLossReport() {
           ficheRemainders: parseFicheDepositList(r.fiche_remainders).map((n) => sign * Math.abs(n)),
         };
       }));
-      const foldedView = filterProfitLossByKind(folded, lineKind);
+      let priced = folded;
+      try {
+        const unitOf = await makeInventoryPurchaseUnitLookup({ firmNr, periodNr });
+        priced = folded.map((line) => {
+          if (!isExplicitProfitLossProductLine(line)) return line;
+          const unit = unitOf({ id: line.productId, code: line.productCode });
+          if (!(unit > 0)) return line;
+          return { ...line, cost: productCogsFromUnitPurchase(line.quantity, unit) };
+        });
+      } catch (err) {
+        console.warn('[ProfitLossReport] envanter birim alış okunamadı', err);
+      }
+      const foldedView = filterProfitLossByKind(priced, lineKind);
 
       type Agg = {
         productId: string;

@@ -76,7 +76,7 @@ function mapAnalysisRow(
 /**
  * Maliyet ve Karlılık Analizi — tenant-aware.
  * Satış kalemleri sale_items JOIN sales (perakende / POS / güzellik).
- * Malzeme SMM = FIFO alış katmanı; Hizmet SMM = unit_cost → kart alış/cost_price → reçete.
+ * Malzeme SMM = envanter birim alış × satılan miktar; Hizmet SMM = unit_cost → kart alış/cost_price → reçete.
  * getPaginated items:[] kullanılmaz — aksi halde tablo her zaman boş kalır.
  */
 export function CostReport() {
@@ -153,21 +153,22 @@ export function CostReport() {
         const hasLayer = rows.some((r) => r.cost_source === 'fifo_layers');
         const hasService = rows.some((r) => r.cost_source === 'service_cost');
         const hasMove = rows.some((r) => r.cost_source === 'movement_unit_cost');
-        if (hasService && !hasNone) {
+        const hasPurchase = rows.some((r) => r.cost_source === 'inventory_purchase');
+        if ((hasService || hasPurchase) && !hasNone) {
             return (
                 tm('costProfitCogsMixedNote') ||
-                'Malzeme SMM: FIFO katman. Hizmet SMM: kart cost_price / alış / reçete. Kâr = satış − SMM.'
+                'Malzeme SMM: envanter birim alış × satılan miktar. Hizmet SMM: kart cost_price / alış / reçete. Kâr = satış − SMM.'
             );
         }
-        if (hasLayer && !hasNone && !hasMove && !hasService) {
-            return tm('costProfitCogsLayerNote') || 'SMM: FIFO alış katmanları (kart alış kullanılmaz). Kâr = satış − SMM.';
+        if (hasLayer && !hasNone && !hasMove && !hasService && !hasPurchase) {
+            return tm('costProfitCogsLayerNote') || 'Ürün SMM: envanter birim alış × satılan miktar. Kâr = satış − SMM.';
         }
         if (hasNone) {
-            return tm('costProfitCogsMissingNote') || 'SMM: katman/hareket/hizmet maliyeti yoksa 0 — gelir yine gösterilir.';
+            return tm('costProfitCogsMissingNote') || 'SMM: envanter alış / hizmet maliyeti yoksa 0 — gelir yine gösterilir.';
         }
         return (
             tm('costProfitCogsMixedNote') ||
-            'Malzeme SMM: FIFO veya hareket birim maliyeti. Hizmet: kart/reçete. Kâr = satış − SMM.'
+            'Malzeme SMM: envanter birim alış × satılan miktar. Hizmet: kart/reçete. Kâr = satış − SMM.'
         );
     }, [rows, tm]);
 
