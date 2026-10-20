@@ -96,6 +96,7 @@ import {
 } from '../../utils/purchasePromotionReport';
 import { accumulateComparisonProducts } from '../../utils/periodComparisonProducts';
 import { applyExtraCashCollections, buildPosZReportForRange, composeDayEndZTotals, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
+import { detailedSalesLineMoney } from '../../utils/detailedSalesLineSign';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
 import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections, saleCollectedSplit, dailyPaymentKind, beautySalePocketCollected } from '../../utils/saleCollectedAmounts';
 import { saleCollected as saleActualCollected } from '../../utils/computeActualCollected';
@@ -709,12 +710,15 @@ function buildErpDetailedSaleLines(
       sale.customerName != null && String(sale.customerName).trim() !== ''
         ? String(sale.customerName)
         : tm('resTicketWalkIn');
-    let statusLabel = tm('reportsDetStatusCompleted');
-    if (sale.status === 'cancelled') statusLabel = tm('reportsDetStatusCancelled');
-    else if (sale.status === 'refunded') statusLabel = tm('reportsDetStatusRefunded');
     foldedErpSaleItems(sale, refs).forEach((it, lineIdx) => {
-      const qty = Number(it.quantity ?? 0);
-      const total = Number(it.total ?? 0);
+      // Kalemler artı durur. Satış iadesi (trcode 2/3 veya durum return)
+      // miktar ve satır toplamında bir kez eksi yazılır; grup ve genel
+      // toplam bu eksi tutarı düşer. Birim fiyat satış fiyatı kalır.
+      const money = detailedSalesLineMoney(sale, it);
+      let statusLabel = tm('reportsDetStatusCompleted');
+      if (money.isReturn) statusLabel = tm('reportsDetStatusRefunded');
+      else if (sale.status === 'cancelled') statusLabel = tm('reportsDetStatusCancelled');
+      else if (sale.status === 'refunded') statusLabel = tm('reportsDetStatusRefunded');
       out.push({
         id: `${invoiceNo}-${saleIdx}-${lineIdx}`,
         open,
@@ -723,9 +727,9 @@ function buildErpDetailedSaleLines(
         table: tableLabel,
         product: String(it.productName ?? '—'),
         cari,
-        qty,
-        price: qty ? total / qty : Number(it.price ?? 0),
-        total,
+        qty: money.qty,
+        price: money.price,
+        total: money.total,
         status: statusLabel,
         note: '—',
       });
