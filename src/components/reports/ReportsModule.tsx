@@ -9,6 +9,12 @@ import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
 import { formatNumber } from '../../utils/formatNumber';
 import { dailySalesDetailNetAmount, sumDailySalesDetailNet } from '../../utils/dailySalesDetailNet';
+import {
+  dailyNetCollected,
+  dailyNetSaleRevenue,
+  listCashReturnOutflows,
+  sumCashReturnOutflow,
+} from '../../utils/dailyReportKpis';
 import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
 import { getCurrencyDecimalPlaces, getFirmLedgerCurrency, formatLedgerAmount } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
@@ -2964,18 +2970,13 @@ export function ReportsModule({
   let dailyCash: number;
   let dailyCard: number;
   let dailyDiscount: number;
-  // B1: Net ciro = brüt − iade (iade satırları `dailySalesActive` içinde kalmaya devam eder;
-  // burada `dailyReturnTotal` ile brüt satış toplamından düşürülür).
-  const dailyReturnRowsLocal = dailySalesActive.filter((s) => isReturnSale(s));
-  const dailyReturnTotalLocal = dailyReturnRowsLocal.reduce(
-    (sum, s) => sum + Math.abs(Number(s.total) || 0),
-    0,
-  );
+  // Net ciro = brüt satış − iade, bir kez. Eksi iade satırı toplama
+  // katılıp bir de mutlak değeri düşülmez (110 + 20 − 10 − 10 = 110 hatası).
+  // Peşinat bu toplama girmez.
   if (businessType === 'restaurant') {
     /** Perakende Satışlar / fatura listesi ile aynı tutar: önce ERP `sales` (REST-* dahil); yoksa yalnız kapalı adisyon */
     if (dailySalesActive.length > 0) {
-      const grossTotal = dailySalesActive.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-      dailyTotal = grossTotal - dailyReturnTotalLocal;
+      dailyTotal = dailyNetSaleRevenue(dailySalesActive);
       // İade satırında total negatif; split.cash zaten işaretli — tekrar düşme
       // Bug 24: Kasa/Card tahsilatı `dailySalesForCash` üzerinden — peşinat
       // (`is_deposit=true`) henüz hizmet verilmemiş olsa bile KASAYA
@@ -3010,8 +3011,7 @@ export function ReportsModule({
       );
     }
   } else {
-    const grossTotal = dailySalesActive.reduce((sum, s) => sum + s.total, 0);
-    dailyTotal = grossTotal - dailyReturnTotalLocal;
+    dailyTotal = dailyNetSaleRevenue(dailySalesActive);
     // Bug 24: Kasa/Card tahsilatı `dailySalesForCash` üzerinden — peşinat
     // dahil edilir (kasaya zaten girmiştir).
     // 16.10.2026: appliedAvans ile peşinat ödenen kısım veresiye olarak
@@ -3125,19 +3125,6 @@ export function ReportsModule({
   dailyCash += reservationTopUp.cash;
   dailyCard += reservationTopUp.card;
 
-  // Bug 24: TAHSİL EDİLEN, peşinat dahil. dailyCollected kasa bazlıdır;
-  // peşinat tahsilatı zaten kasaya yansımıştır (cash_lines / split.paid).
-  // 10.10.2026: Rezervasyon avansı tahsilatı (henüz hizmet verilmemiş
-  // peşinat — CH_TAHSILAT + ozel_kod=REZERVASYON) da kasa bazlı tahsilat
-  // olduğundan `dailyCollected`'a eklenir (KPI'ye ayrı izlenir; ciro yok).
-  // 16.10.2026: appliedAvans (cari_avans.status='applied' → applied_sale_id)
-  // tahsil edilen kısma eklenir; DUBLE senaryosu gibi avanslı ödemede
-  // tahsilat gerçek tutarı yansıtır.
-  const dailyCollected =
-    dailySalesForCash.reduce((sum, s) => {
-      if (isReturnSale(s)) return sum;
-      return sum + (Number(saleCollectedSplit(s, dailyAppliedAvans.get(String(s.id)) || 0).collected) || 0);
-    }, 0) + extraCollections + reservationTopUp.cash + reservationTopUp.card;
   // Veresiye = satış kalanı − rezervasyon kartı.
   // Rezervasyon tutarı (avans veya peşinat) asla kalan cariye yazılmaz.
   // Satış kırılımına zaten işlenmiş avans ikinci kez düşülmez.
@@ -3772,20 +3759,57 @@ export function ReportsModule({
   /**
    * Net (Brüt) ve Net (Nakit) kartları her zaman ciro/tahsilattan gideri düşer
    * — parametre (`showDailyCardTotalExpense`) kapansa bile AVANS_ODEME /
-   * CH_ODEME gibi kasa çıkışları kârı azaltır. 2026-10-13 kullanıcı geri
-   * bildirimi: "Net satırında gizli giderlerin de yansımasını istiyorum".
+   * CH_ODEME gibi kasa çıkışları kârı azaltır.
    *
-   * 14.10.2026 17:03 — Ciro dışı tahsilat (rezervasyon peşinatı) Net
-   * (Brüt)'e eklenir. Ciro'ya henüz yansımamış avanslı satış toplamı
-   * Ciro dışı tahsilat olarak kabul edilir (PeriodSummaryReport ile aynı
-   * semantik; çift sayım önlemek için reservationAggregate.deposit
-   * KULLANILMAZ çünkü aynı avanslı satışı gösterir).
-   * Rezervasyon brüt/kalan Ciro'ya yansımaz (fatura kesilmedi);
-   * sadece tahsil edilen peşinat Ciro dışı tahsilat olarak Net'e eklenir.
+   * Peşinat kazanç değildir. Net (Brüt) = net ciro − gider. Peşinat kartta
+   * durur, buraya eklenmez. Net (Nakit) = tahsil edilen − gider. Tahsil
+   * edilen nakit iadeyi zaten düştüğü için çıkış burada ikinci kez düşülmez.
    */
+  const dailyCashOutBookedReceipts = new Set(
+    dailyExpenseRowsForReport
+      .map((row) => String(row.ficheNo || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const dailyCashReturnOutflows = listCashReturnOutflows(
+    dailySalesForCash,
+    dailyAppliedAvans,
+    dailyCashOutBookedReceipts,
+  );
+  // Tahsil edilen = kasada kalan para. Nakit iade bir kez düşülür.
+  // Aynı fiş gider çıkışına yazıldıysa burada tekrar düşülmez; gider
+  // kartı onu zaten net nakitten indirir. Peşinat hizmetin içindeyse
+  // reservationTopUp 0 kalır. Eski 130.000 iadeyi atlıyordu.
+  const dailyCollected = dailyNetCollected({
+    sales: dailySalesForCash,
+    appliedAvansBySaleId: dailyAppliedAvans,
+    extraCollections,
+    reservationCash: reservationTopUp.cash,
+    reservationCard: reservationTopUp.card,
+    expenseReceiptKeys: dailyCashOutBookedReceipts,
+  });
+  const dailyCashReturnOutTotal = sumCashReturnOutflow(dailyCashReturnOutflows);
+  const dailyCashOutTotal = cashExpensesForReport + dailyCashReturnOutTotal;
+  const dailyCashOutCount = dailyExpenseRowsForReport.length + dailyCashReturnOutflows.length;
+  const dailyCashOutRows = useMemo(() => {
+    const returns: DailyExpenseRow[] = dailyCashReturnOutflows.map((row) => ({
+      key: `sale-return-${row.id}`,
+      sourceKind: 'cash',
+      sourceId: row.id,
+      date: row.date,
+      ficheNo: row.receiptNumber || '—',
+      typeCode: 'SATIS_IADE',
+      category: 'Satış İade',
+      description: 'Nakit iade',
+      partyName: row.customerName,
+      amount: row.amount,
+      paymentMethod: 'cash',
+      isCash: true,
+    }));
+    return [...dailyExpenseRowsForReport, ...returns];
+  }, [dailyCashReturnOutflows, dailyExpenseRowsForReport]);
   const dailyNetBrutAlways = useMemo(
-    () => dailyTotal - totalExpensesForReport + dailyDepositTotal,
-    [dailyTotal, totalExpensesForReport, dailyDepositTotal],
+    () => dailyTotal - totalExpensesForReport,
+    [dailyTotal, totalExpensesForReport],
   );
   const dailyNetNakitAlways = useMemo(
     () => dailyCollected - totalExpensesForReport,
@@ -7040,11 +7064,8 @@ export function ReportsModule({
                 })()}
 
                 {reservationAggregate.count > 0 ? (
-                  // 14.10.2026 19:18 — Rezervasyon brüt + miktar (adet)
-                  // + kalan bilgi satırı. Ciro dışı tahsilat (peşinat)
-                  // zaten Peşinat kartında ve Net (Brüt)'e eklenir;
-                  // burada yalnızca henüz fatura kesilmemiş hizmetin
-                  // brüt tutarı, adedi, peşinat (depozito) ve kalan tutarı görünür.
+                  // Rezervasyon brüt, adet ve kalan. Peşinat ayrı karttadır;
+                  // ciroya ve Net (Brüt)'e eklenmez.
                   <div className="bg-violet-50/60 rounded-lg p-3 border border-violet-200 text-sm flex flex-wrap gap-x-6 gap-y-1" data-testid="daily-reservation-summary">
                     <span className="text-violet-700 font-semibold">
                       {tm('reservationGrossLabel') || 'Rezervasyon Brüt'}: {formatNumber(reservationAggregate.gross, 2, false)}
@@ -7088,8 +7109,8 @@ export function ReportsModule({
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-gray-600">{tm('dailyCashOut')}</p>
-                        <p className="text-2xl font-bold mt-1 text-rose-700">{formatNumber(cashExpensesForReport, 2, false)}</p>
-                        <p className="text-xs text-slate-500 mt-1">{tm('dailyCount')}: {dailyExpenseRowsForReport.length}</p>
+                        <p className="text-2xl font-bold mt-1 text-rose-700">{formatNumber(dailyCashOutTotal, 2, false)}</p>
+                        <p className="text-xs text-slate-500 mt-1">{tm('dailyCount')}: {dailyCashOutCount}</p>
                       </div>
                       <Wallet className="w-12 h-12 text-rose-400 opacity-40" />
                     </div>
@@ -7162,7 +7183,7 @@ export function ReportsModule({
                 {dailyCashOutModalOpen ? (
                   <DailyCashFlowModal
                     kind="cash-out"
-                    expenseRows={dailyExpenseRowsForReport}
+                    expenseRows={dailyCashOutRows}
                     title={tm('dailyCashOut')}
                     currency={reportCurrency}
                     onClose={() => setDailyCashOutModalOpen(false)}
