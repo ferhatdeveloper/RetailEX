@@ -33,7 +33,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronDown, ChevronUp, Filter, Download, Printer, Layers, GripVertical, BarChart3, RefreshCw, Minimize2, Maximize2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Filter, Download, Printer, Layers, GripVertical, BarChart3, RefreshCw } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -2368,20 +2368,6 @@ export function DevExDataGrid<T>({
     pageSize,
   }));
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>(selectedRowIds || {});
-  // Toolbar: tablo yoğunluğu (fit | vertical). Tercih localStorage'da saklanır.
-  // 'fit' (varsayılan): mevcut davranış — sütunlar içeriğe göre, gerekirse yatay scroll.
-  // 'vertical': sabit max-h-[60vh] ile dikey scroll + tüm sütunlar için daima yatay scroll görünür.
-  const [scrollMode, setScrollMode] = useState<'fit' | 'vertical'>(() => {
-    if (typeof window === 'undefined') return 'fit';
-    const stored = window.localStorage.getItem('retailex_devex_density');
-    return stored === 'vertical' ? 'vertical' : 'fit';
-  });
-  const updateScrollMode = useCallback((mode: 'fit' | 'vertical') => {
-    setScrollMode(mode);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('retailex_devex_density', mode);
-    }
-  }, []);
   const [internalColumnVisibility, setInternalColumnVisibility] = useState<Record<string, boolean>>(() =>
     mergeDevExDefaultColumnVisibility(columns as ColumnDef<any, any>[], columnVisibility),
   );
@@ -2808,8 +2794,7 @@ export function DevExDataGrid<T>({
     (enableColumnVisibility && showColumnVisibilityToolbar) ||
     enableExcelExport ||
     printEnabled ||
-    Boolean(resolvedGroupByColumnId) ||
-    true; // Sığdır / Dikey scroll toggle her zaman görünür (mevcut butonlar yoksa bile)
+    Boolean(resolvedGroupByColumnId);
 
   const footerSumFormats = useMemo(() => {
     const map = new Map<string, (sum: number, rows: T[]) => ReactNode>();
@@ -3273,35 +3258,6 @@ export function DevExDataGrid<T>({
               {tm('filterRefresh') || 'Yenile'}
             </button>
           )}
-          {/* Yoğunluk toggle: Sığdır (mevcut) / Dikey scroll (sabit max-h + her iki scrollbar) */}
-          <button
-            type="button"
-            onClick={() => updateScrollMode('fit')}
-            aria-pressed={scrollMode === 'fit'}
-            className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border ${
-              scrollMode === 'fit'
-                ? 'bg-slate-200 text-slate-900 border-slate-400'
-                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-            }`}
-            title={tm('gridDensityFitTitle') || 'Sığdır — sütunlar içeriğe göre, dikey scroll yok'}
-          >
-            <Minimize2 className="w-3 h-3" />
-            {tm('bFit') || 'Sığdır'}
-          </button>
-          <button
-            type="button"
-            onClick={() => updateScrollMode('vertical')}
-            aria-pressed={scrollMode === 'vertical'}
-            className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded border ${
-              scrollMode === 'vertical'
-                ? 'bg-slate-200 text-slate-900 border-slate-400'
-                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-            }`}
-            title={tm('gridDensityVerticalTitle') || 'Dikey scroll — sabit yükseklik, her iki scrollbar görünür'}
-          >
-            <Maximize2 className="w-3 h-3" />
-            {tm('bVerticalScroll') || 'Dikey scroll'}
-          </button>
           {resolvedGroupByColumnId && (
             <button
               type="button"
@@ -3400,11 +3356,6 @@ export function DevExDataGrid<T>({
       <div
         className={`relative z-0 flex-1 overflow-auto border isolate ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'} ${
           isColumnResizing ? 'select-none cursor-col-resize' : ''
-        } ${
-          // Dikey scroll modunda: sabit max-h, daima her iki scrollbar görünür.
-          scrollMode === 'vertical'
-            ? 'max-h-[60vh] min-h-[260px] overflow-x-scroll overflow-y-auto'
-            : ''
         }`}
       >
         <DndContext

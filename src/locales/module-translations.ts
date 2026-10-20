@@ -14349,26 +14349,6 @@ export const excelModuleTranslations = {
   exportExcel: { tr: 'Excel', en: 'Excel', ar: 'إكسل', ku: 'ئێکسڵ' },
   filterRefresh: { tr: 'Yenile', en: 'Refresh', ar: 'تحديث', ku: 'نوێکردنەوە' },
   filterLoading: { tr: 'Yükleniyor...', en: 'Loading...', ar: 'جار التحميل...', ku: 'بارکردن...' },
-  // DevExDataGrid toolbar — tablo yoğunluğu / scroll davranışı
-  bFit: { tr: 'Sığdır', en: 'Fit', ar: 'ملاءمة', ku: 'لەبارکردن' },
-  bVerticalScroll: {
-    tr: 'Dikey scroll',
-    en: 'Vertical scroll',
-    ar: 'تمرير عمودي',
-    ku: 'سکڕۆڵی ستوونی',
-  },
-  gridDensityFitTitle: {
-    tr: 'Sığdır — sütunlar içeriğe göre, dikey scroll yok',
-    en: 'Fit — columns by content, no vertical scroll',
-    ar: 'ملاءمة — الأعمدة حسب المحتوى، لا تمرير عمودي',
-    ku: 'لەبارکردن — ستوونەکان بەپێی ناوەڕۆک، سکڕۆڵی ستوونی نییە',
-  },
-  gridDensityVerticalTitle: {
-    tr: 'Dikey scroll — sabit yükseklik, her iki scrollbar görünür',
-    en: 'Vertical scroll — fixed height, both scrollbars visible',
-    ar: 'تمرير عمودي — ارتفاع ثابت، كلا الشريطين مرئيان',
-    ku: 'سکڕۆڵی ستوونی — بەرزی جێگیر، هەردوو شریتەکە دیارن',
-  },
   // DevExDataGrid — Sığdır / Dikey scroll option menüsü
   fitModeMenuTitle: {
     tr: 'Sığdırma modu',
