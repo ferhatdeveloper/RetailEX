@@ -193,18 +193,23 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
   let effectiveCashRegisterCode = input.cashRegisterCode || null;
   let effectiveCashRegisterName = input.cashRegisterName || null;
   if (!effectiveCashRegisterId) {
+    const selected = ERP_SETTINGS.selected_cash_registers?.[0];
+    if (selected) effectiveCashRegisterId = String(selected);
+  }
+  if (!effectiveCashRegisterId) {
     try {
+      // Tablo adı sorgu yeniden yazıcısından geçer. firm_nr süzgeci
+      // karttaki değer farklı yazıldıysa kasayı kaçırıp nakdi düşürüyordu.
       const { rows: kasaRows } = await postgres.query<{
         id: string;
         code?: string;
         name?: string;
       }>(
         `SELECT id, code, name
-           FROM rex_${firm}_cash_registers
-          WHERE firm_nr = $1 AND is_active = TRUE
-          ORDER BY created_at ASC
+           FROM cash_registers
+          WHERE COALESCE(is_active, TRUE) = TRUE
+          ORDER BY created_at ASC NULLS LAST
           LIMIT 1`,
-        [firm],
       );
       if (kasaRows && kasaRows[0]?.id) {
         effectiveCashRegisterId = String(kasaRows[0].id);

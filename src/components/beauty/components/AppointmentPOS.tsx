@@ -40,6 +40,7 @@ import { salesAPI } from '../../../services/api/sales';
 // için `recordAdvance` (avans + cari bakiye + kasa hareketi + stok rezervasyonu).
 // Fatura oluşturmaz; müşteri sonraki gelişinde kalan ödemeyi yapar.
 import { getOpenAdvances, recordAdvance } from '../../../services/avansService';
+import { fetchKasalar } from '../../../services/api/kasa';
 // 07.10.2026 — `createAppointmentDeposit` import'u kaldırıldı.
 // Artık BEAUTY-PESINAT-* sales fişi kesilmiyor (çift fiş düzeltmesi). Cari
 // tarafı yalnızca `recordAdvance` ile yazılır; hizmet verildiğinde
@@ -73,8 +74,8 @@ import {
     appointmentRemainingAfterDeposit,
     appointmentReservationField,
     appointmentServiceGross,
-    depositAmountsForNewAppointments,
     isAppointmentDepositCartLine,
+    planNewAppointmentDeposit,
 } from '../../../utils/appointmentFormReservation';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { safeInvoke } from '../../../utils/env';
@@ -738,6 +739,8 @@ export function AppointmentPOS({
     /** Çift tıklama / üst üste tıklamada aynı randevunun iki kez oluşmasını engeller */
     const bookingSubmitRef = useRef(false);
     const checkoutSubmitRef = useRef(false);
+    /** Bu ödemede cari avans zaten yazıldıysa ikinci 20.000 nakdi kesilmez. */
+    const checkoutAdvanceAmountRef = useRef(0);
     /** prefillServiceId ile otomatik eklenen satırı yalnızca bir kez */
     const didAddPrefillServiceRef = useRef(false);
     const [bookingBusy, setBookingBusy] = useState(false);
@@ -2273,6 +2276,148 @@ export function AppointmentPOS({
 
     const resolveBeautyCashierName = () => resolveWriteCashierName(currentLoginCashierName());
 
+    /**
+     * Rezervasyon tutarını peşinat olarak yazar.
+     * Hizmet fiyatına bölünmez. Kutu boşsa fiş kesilmez; tutar randevuda kalır.
+     * Kutu işaretliyse ayrıca rezervasyon fişi kesilir. Tutar 0 ise hiçbir şey yazılmaz.
+     */
+    const persistReservationDeposit = async (
+        appointmentIds: string[],
+        opts?: {
+            fatal?: boolean;
+            amount?: number;
+            existingFiche?: { id: string; invoiceNumber: string } | null;
+        },
+    ) => {
+        const plan = planNewAppointmentDeposit({
+            lines: appointmentBookLines.map((line) => ({
+                type: line.type,
+                name: line.name,
+                code: line.code,
+                itemId: line.item_id,
+                unitPrice: Number(line.original_unit_price ?? line.unit_price) || 0,
+                qty: line.qty,
+            })),
+            discountPercent: discount,
+            reservationAmount: opts?.amount ?? reservationAmount,
+            cutReceipt: reservationCreateReceipt,
+        });
+        if (!plan.recordCustomerAdvance || !customer?.id || !appointmentIds[0]) return plan;
+
+        // Aynı tutar bu kasada az önce yazıldıysa ikinci kez yazma.
+        // Kalan tahsilat (ör. 90.000) depozito (20.000) değildir; onu atlama.
+        const sameDepositAlreadyPosted =
+            Math.abs(checkoutAdvanceAmountRef.current - plan.depositAmount) <= 0.01;
+        if (!sameDepositAlreadyPosted) {
+            let cashRegisterId: string | undefined;
+            let cashRegisterCode: string | undefined;
+            let cashRegisterName: string | undefined;
+            try {
+                const kasalar = await fetchKasalar({ aktif: true });
+                const kasa = kasalar[0];
+                if (kasa?.id) {
+                    cashRegisterId = String(kasa.id);
+                    cashRegisterCode = kasa.kasa_kodu || undefined;
+                    cashRegisterName = kasa.kasa_adi || undefined;
+                }
+            } catch (kasaErr) {
+                logger.warn('AppointmentPOS', 'rezervasyon kasası bulunamadı', kasaErr);
+            }
+            try {
+                await recordAdvance({
+                    customerId: customer.id,
+                    amount: plan.depositAmount,
+                    paymentMethod: 'cash',
+                    currency: reservationCurrency,
+                    cashRegisterId,
+                    cashRegisterCode,
+                    cashRegisterName,
+                    notes:
+                        `${tm('bReservationAmount')} · ${tm('bAppointmentNo') || 'Randevu'} ${appointmentIds[0]}`.slice(
+                            0,
+                            250,
+                        ),
+                    userId: currentLoginUserId?.() ?? undefined,
+                    userName: currentLoginCashierName() || undefined,
+                    appointmentId: appointmentIds[0],
+                });
+                checkoutAdvanceAmountRef.current = Math.max(
+                    checkoutAdvanceAmountRef.current,
+                    plan.depositAmount,
+                );
+            } catch (avansErr) {
+                logger.error('AppointmentPOS', 'recordAdvance failed', avansErr);
+                if (opts?.fatal) throw avansErr;
+                const msg = avansErr instanceof Error ? avansErr.message : String(avansErr);
+                toast.error(
+                    (tm('bAvansFailed') || 'Rezervasyon tutarı kaydı başarısız').replace('{message}', msg),
+                );
+            }
+        }
+
+        let fiche = opts?.existingFiche ?? null;
+        if (plan.cutReservationReceipt && !fiche?.invoiceNumber) {
+            try {
+                const created = await beautyService.createSale(
+                    {
+                        customer_id: customer.id,
+                        customer_name: customer.name,
+                        subtotal: plan.depositAmount,
+                        discount: 0,
+                        tax: 0,
+                        total: plan.depositAmount,
+                        payment_method: 'cash',
+                        payment_status: 'paid',
+                        paid_amount: plan.depositAmount,
+                        remaining_amount: 0,
+                        notes: tm('bReservationSaleNote')
+                            || `Rezervasyon peşinatı — ${plan.depositAmount}`,
+                    },
+                    [],
+                    {
+                        skipErpAndLoyalty: true,
+                        isDeposit: true,
+                        linkedAppointmentId: appointmentIds[0],
+                    },
+                );
+                const saleId = String(created?.id ?? '').trim();
+                const invoiceNumber = String(created?.invoiceNumber ?? '').trim();
+                if (saleId && invoiceNumber) fiche = { id: saleId, invoiceNumber };
+            } catch (ficheErr) {
+                logger.warn('AppointmentPOS', 'rezervasyon fişi kesilemedi', ficheErr);
+                toast.warning(tm('bReservationSaleFailed') || 'Rezervasyon fişi kesilemedi');
+            }
+        }
+
+        const depositDate = new Date().toISOString();
+        await Promise.all(
+            appointmentIds.map((id, idx) => updateAppointment(id, {
+                deposit_amount: plan.depositByAppointment[idx] ?? 0,
+                deposit_date: depositDate,
+                deposit_provider: 'pos',
+                ...(idx === 0 && fiche?.invoiceNumber
+                    ? {
+                        deposit_sale_id: fiche.id,
+                        deposit_sale_fiche_no: fiche.invoiceNumber,
+                    }
+                    : {}),
+            })),
+        );
+        const advanceLanded =
+            sameDepositAlreadyPosted
+            || Math.abs(checkoutAdvanceAmountRef.current - plan.depositAmount) <= 0.01
+            || checkoutAdvanceAmountRef.current + 0.004 >= plan.depositAmount;
+        if (advanceLanded) {
+            toast.success(
+                tm('bReservationRecordedToast')
+                    .replace('{amount}', fmt(plan.depositAmount))
+                    .replace('{currency}', reservationCurrency),
+                { duration: 5000 },
+            );
+        }
+        return plan;
+    };
+
     const handleBookOnly = async () => {
         if (isExistingPaidComplete) {
             toast.info(tm('bPaymentAlreadyReceived'));
@@ -2281,25 +2426,35 @@ export function AppointmentPOS({
         if (!canSave || !canBookAptWithReservation) return;
         if (bookingSubmitRef.current) return;
         bookingSubmitRef.current = true;
+        checkoutAdvanceAmountRef.current = 0;
         setBookingBusy(true);
         try {
-            // Rezervasyon tutarı > 0 ise randevuyu PRE_PAID olarak oluştur
-            // (deposit_amount + deposit_date + deposit_provider='pos' alanları
-            // createAppointment INSERT'ine yazılır → randevu paneli sonraki
-            // girişte kalan tutarı doğru hesaplar). Aksi halde normal SCHEDULED.
+            // Rezervasyon tutarı peşinattır. Hizmet fiyatına bölünmez.
+            // Kutu boş olsa da tutar randevuda, cari avansta ve kasada durur.
+            // Kutu işaretliyse ayrıca rezervasyon fişi kesilir.
             const reservationForSubmit = Math.max(0, Number(reservationAmount) || 0);
-            const hasReservation = reservationForSubmit > 0 && reservationValidation.ok;
+            const reservationPlan = planNewAppointmentDeposit({
+                lines: appointmentBookLines.map((line) => ({
+                    type: line.type,
+                    name: line.name,
+                    code: line.code,
+                    itemId: line.item_id,
+                    unitPrice: Number(line.original_unit_price ?? line.unit_price) || 0,
+                    qty: line.qty,
+                })),
+                discountPercent: discount,
+                reservationAmount: reservationForSubmit,
+                cutReceipt: reservationCreateReceipt,
+            });
+            const hasReservation = reservationPlan.recordCustomerAdvance && reservationValidation.ok;
             const statusForCreate = hasReservation
                 ? AppointmentStatus.PRE_PAID
                 : (aptStatus ?? AppointmentStatus.SCHEDULED);
-            const reservationAmounts = hasReservation
-                ? depositAmountsForNewAppointments(reservationForSubmit, appointmentBookLines.length)
-                : [];
             const planned = buildServiceAppointmentPayloads(statusForCreate).map((p, idx) => {
                 if (!hasReservation) return p;
                 return {
                     ...p,
-                    deposit_amount: reservationAmounts[idx] ?? 0,
+                    deposit_amount: reservationPlan.depositByAppointment[idx] ?? 0,
                     deposit_date: new Date().toISOString(),
                     deposit_provider: 'pos' as const,
                 };
@@ -2308,57 +2463,8 @@ export function AppointmentPOS({
             for (const p of planned) {
                 createdIds.push(await createAppointment(p));
             }
-            // Rezervasyon/ön ödeme: cari avans + kasa hareketi YAZ.
-            // recordAdvance `appointmentId` opsiyonel parametresiyle
-            // beauty_appointments.deposit_amount alanını da günceller (ek
-            // güvenlik katmanı — INSERT sırasında yazılsa bile). Ayrıca
-            // kullanıcı "Peşinat fişi kes"i işaretlediyse createAppointmentDeposit
-            // ile BEAUTY-PESINAT-* sales fişi kesilir; carideki avans zaten
-            // recordAdvance ile yazıldığı için sales fişi sadece muhasebe
-            // defterine audit trail düşer.
             if (hasReservation && customer?.id && createdIds[0]) {
-                try {
-                    await recordAdvance({
-                        customerId: customer.id,
-                        amount: reservationForSubmit,
-                        paymentMethod: 'cash',
-                        currency: reservationCurrency,
-                        notes:
-                            `${tm('bReservationAmount')} · ${tm('bAppointmentNo') || 'Randevu'} ${createdIds[0]}`.slice(
-                                0,
-                                250,
-                            ),
-                        userId: currentLoginUserId?.() ?? undefined,
-                        userName: currentLoginCashierName() || undefined,
-                        appointmentId: createdIds[0],
-                    });
-                    // 07.10.2026 — sales fişi kesme bloğu kaldırıldı.
-                    // `createAppointmentDeposit` artık yalnızca audit trail
-                    // yazıyor (beauty_appointment_payments). Cari tarafı
-                    // (cari_avans + cash_lines + account_movements) zaten
-                    // yukarıdaki `recordAdvance` ile yazıldı. Hizmet
-                    // verildiğinde beautyService.createSale TEK beauty_sales
-                    // fişi keser (BEA-2026-...).
-                    await Promise.all(
-                        createdIds.map((id, idx) => updateAppointment(id, {
-                            deposit_amount: idx === 0 ? reservationForSubmit : 0,
-                            deposit_date: new Date().toISOString(),
-                            deposit_provider: 'pos',
-                        })),
-                    );
-                    toast.success(
-                        tm('bReservationRecordedToast')
-                            .replace('{amount}', fmt(reservationForSubmit))
-                            .replace('{currency}', reservationCurrency),
-                        { duration: 5000 },
-                    );
-                } catch (avansErr) {
-                    // Avans yazılamadı → randevu DB'ye yazıldı ama deposit
-                    // eksik. Kullanıcıya bildir; parent state'i temizlenmeden
-                    // catch'e düşüp ekrana hata modalı açılır.
-                    logger.error('AppointmentPOS', 'recordAdvance failed (handleBookOnly)', avansErr);
-                    throw avansErr;
-                }
+                await persistReservationDeposit(createdIds, { fatal: true });
             }
             const productLines = cart.filter((l) => l.type === 'product');
             if (productLines.length > 0 && createdIds[0]) {
@@ -2413,8 +2519,14 @@ export function AppointmentPOS({
             setReceiptHeaderBanner(tm('bAppointmentReceiptBanner'));
             setCompletedSale(bookingSale);
             setCompletedPaymentData({
-                payments: [],
-                totalPaid: 0,
+                payments: hasReservation
+                    ? [{
+                        method: 'cash',
+                        amount: reservationPlan.depositAmount,
+                        currency: reservationCurrency,
+                    }]
+                    : [],
+                totalPaid: hasReservation ? reservationPlan.depositAmount : 0,
                 change: 0,
                 language: payLang,
             });
@@ -2474,6 +2586,7 @@ export function AppointmentPOS({
             openBookingBlockModal('staff');
             return;
         }
+        checkoutAdvanceAmountRef.current = 0;
         setShowPay(true);
     };
 
@@ -2787,7 +2900,11 @@ export function AppointmentPOS({
             // boş olsa bile); aksi durumda randevu panelindeki rezervasyon
             // tutarı kullanılır. effectiveDepositAmt yukarıda hesaplandı.
             const shouldRecordReservation =
-                isPesinatliPrePayment && !skipInvoice && reservationAmt > 0 && !!customer?.id;
+                reservationCreateReceipt
+                && isPesinatliPrePayment
+                && !skipInvoice
+                && reservationAmt > 0
+                && !!customer?.id;
             if (shouldRecordReservation) {
                 try {
                     const resPayRows = Array.isArray(paymentData.payments)
@@ -2976,7 +3093,31 @@ export function AppointmentPOS({
             } else if (!isStandaloneProductSales && canBookApt) {
                 // Direkt ödeme ile açılan işlemde randevu kapatılır (completed veya
                 // peşinatlı ise "başladı").
-                const planned = buildServiceAppointmentPayloads(finalAptStatus);
+                const payReservationPlan = planNewAppointmentDeposit({
+                    lines: appointmentBookLines.map((line) => ({
+                        type: line.type,
+                        name: line.name,
+                        code: line.code,
+                        itemId: line.item_id,
+                        unitPrice: Number(line.original_unit_price ?? line.unit_price) || 0,
+                        qty: line.qty,
+                    })),
+                    discountPercent: discount,
+                    // Formdaki tutar esas. Boşsa fişsiz ödemede fiilen alınan peşinat.
+                    reservationAmount: reservationAmt > 0
+                        ? reservationAmt
+                        : (skipInvoice ? effectiveDepositAmt : 0),
+                    cutReceipt: reservationCreateReceipt,
+                });
+                const planned = buildServiceAppointmentPayloads(finalAptStatus).map((p, idx) => {
+                    if (!payReservationPlan.recordCustomerAdvance) return p;
+                    return {
+                        ...p,
+                        deposit_amount: payReservationPlan.depositByAppointment[idx] ?? 0,
+                        deposit_date: new Date().toISOString(),
+                        deposit_provider: 'pos' as const,
+                    };
+                });
                 if (planned.length > 0) {
                     const ids = await Promise.all(planned.map((p) => createAppointment(p)));
                     for (const id of ids) {
@@ -2986,35 +3127,19 @@ export function AppointmentPOS({
                     }
                 }
 
-                // Rezervasyon ön ödeme kaydı → oluşturulan ilk randevuya yaz.
-                // Sadece peşinatlı modda ve rezervasyon tutarı > 0 ise.
-                // skipInvoice=true durumunda ayrı bir rezervasyon sales fişi
-                // oluşturulmaz (avans caride); sadece deposit_amount +
-                // deposit_date + deposit_provider yazılır, fiş bağlantı
-                // alanları (fiche_no, sale_id) boş kalır.
-                //
-                // skipInvoice modunda deposit tutarı `effectiveDepositAmt`
-                // (POS'ta fiilen ödenen peşinat) kullanılır — randevu panelinde
-                // "Rezervasyon Tutarı" girilmemiş olsa bile.
-                if (
-                    isPesinatliPrePayment &&
-                    (skipInvoice ? effectiveDepositAmt > 0 : reservationAmt > 0) &&
-                    createdAppointmentIds.length > 0
-                ) {
+                // Formdaki rezervasyon tutarı peşinattır. Ödeme Al da aynı
+                // tutarı ilk randevuya yazar; hizmet fiyatına bölmez.
+                // Kutu boşsa fiş yok, tutar yine kayıtlı kalır.
+                if (payReservationPlan.recordCustomerAdvance && createdAppointmentIds.length > 0) {
                     try {
-                        const pool = skipInvoice ? effectiveDepositAmt : reservationAmt;
-                        const amounts = depositAmountsForNewAppointments(pool, createdAppointmentIds.length);
-                        await Promise.all(createdAppointmentIds.map((id, idx) => updateAppointment(id, {
-                            deposit_amount: amounts[idx] ?? 0,
-                            deposit_date: new Date().toISOString(),
-                            deposit_provider: 'pos',
-                            ...(idx === 0 && shouldRecordReservation && reservationSaleFicheNo
-                                ? {
-                                    deposit_sale_fiche_no: reservationSaleFicheNo,
-                                    deposit_sale_id: reservationSaleId,
-                                }
-                                : {}),
-                        })));
+                        await persistReservationDeposit(createdAppointmentIds, {
+                            fatal: false,
+                            amount: payReservationPlan.depositAmount,
+                            existingFiche:
+                                shouldRecordReservation && reservationSaleId && reservationSaleFicheNo
+                                    ? { id: reservationSaleId, invoiceNumber: reservationSaleFicheNo }
+                                    : null,
+                        });
                     } catch (depErr: unknown) {
                         logger.warn('AppointmentPOS', 'deposit update yazılamadı', depErr);
                     }
@@ -3025,9 +3150,9 @@ export function AppointmentPOS({
             // Avans `onAvansRecorded` → `recordAdvance` ile caride + kasa + cari
             // bakiye yazıldı; hizmet verildiğinde `beautyService.collectAppointmentRemainder`
             // kalan + avansı birleştirip tek fiş yazar. Randevu DB kaydı yukarıda
-            // zaten oluştu / güncellendi (deposit_amount alanları boş — sales
-            // fişi olmadığı için fiche_no / sale_id yazılmadı); stok düşümü de
-            // sıfır (hizmet verilmedi).
+            // zaten oluştu / güncellendi. Rezervasyon tutarı ilk randevunun
+            // deposit_amount alanındadır; fiş yalnızca kutu işaretliyse kesilir.
+            // Stok düşümü sıfır (hizmet verilmedi).
             //
             // separateLineInvoices scope dışında tanımlanıyor; aşağıdaki
             // `splitInvoiceCount` toast dalı tarafından okunuyor. skipInvoice
@@ -3323,6 +3448,7 @@ export function AppointmentPOS({
             openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
         } finally {
             checkoutSubmitRef.current = false;
+            checkoutAdvanceAmountRef.current = 0;
         }
     };
 
@@ -5258,10 +5384,9 @@ export function AppointmentPOS({
                                             {tm(reservationValidation.key)}
                                         </div>
                                     )}
-                                    {/* Onay kutusu: rezervasyon tutarı > 0 ise ve
-                                        validasyon geçerliyse göster; kullanıcı isterse
-                                        yalnızca cari avans + kasa yazılsın, sales fişi
-                                        kesilmesin. Varsayılan: işaretli. */}
+                                    {/* Onay kutusu: tutar > 0 ise görünür. Boş kutu fiş kesmez;
+                                        peşinat yine randevuya, cari avansa ve kasaya yazılır.
+                                        İşaretli kutu ayrıca rezervasyon fişi keser. Tutar 0 ise kutu yok. */}
                                     {reservationAmount > 0 && reservationValidation.ok && (
                                         <label
                                             data-testid="appointment-reservation-create-receipt"
@@ -5913,6 +6038,10 @@ export function AppointmentPOS({
                                 // girilmemiş olsa bile.
                                 appointmentId: existingAppointment?.id || undefined,
                             });
+                            checkoutAdvanceAmountRef.current = Math.max(
+                                checkoutAdvanceAmountRef.current,
+                                Math.max(0, Number(avans.amount) || 0),
+                            );
                             toast.success(
                                 tm('bAvansRecorded') ||
                                 `Avans alındı (${avans.amount.toLocaleString('tr-TR')} IQD). Fatura oluşturulmadı; kalan ödeme hizmet verildiğinde alınır.`,

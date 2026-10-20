@@ -127,3 +127,56 @@ export function depositAmountsForNewAppointments(reservation: number, lineCount:
   const amount = round2(Math.max(0, Number(reservation) || 0));
   return Array.from({ length: count }, (_, idx) => (idx === 0 ? amount : 0));
 }
+
+/**
+ * Yeni randevuda depozito kararı.
+ * Hizmet fiyatı değişmez. Tutar sepete eklenmez, fiyattan düşülmez,
+ * kardeş hizmete bölünmez. Kutu yalnızca fişi keser.
+ */
+export interface NewAppointmentDepositPlan {
+  /** Hizmet birim fiyatları, girildiği gibi. */
+  serviceUnitPrices: number[];
+  serviceGross: number;
+  /** Ara toplam / toplam. Depozito eklenmez ve düşülmez. */
+  formTotal: number;
+  /** Tek randevuda duran peşinat. */
+  depositAmount: number;
+  /** İlk randevu tam tutar, diğerleri 0. */
+  depositByAppointment: number[];
+  /** Sepete ayrı depozito hizmet satırı yazılmaz. */
+  includeDepositCartLine: false;
+  /** Tutar > 0 ise cari avans yazılır. Kutu buna bağlı değildir. */
+  recordCustomerAdvance: boolean;
+  /** Kasaya girecek nakit. Hizmet bedeli değildir. */
+  cashIn: number;
+  /** Kutu işaretli ve tutar > 0 ise rezervasyon fişi kesilir. */
+  cutReservationReceipt: boolean;
+  /** Cariye hizmet borcu açılmaz. Depozito bakiyeyi borç gibi şişirmez. */
+  customerServiceDebt: 0;
+}
+
+export function planNewAppointmentDeposit(input: {
+  lines: AppointmentMoneyLine[];
+  discountPercent?: number;
+  reservationAmount: number;
+  cutReceipt?: boolean;
+}): NewAppointmentDepositPlan {
+  const serviceLines = (input.lines || []).filter((line) => !isAppointmentDepositCartLine(line));
+  const serviceUnitPrices = serviceLines.map((line) => round2(Number(line.unitPrice) || 0));
+  const serviceGross = appointmentServiceGross(serviceLines);
+  const formTotal = appointmentFormTotal(serviceGross, input.discountPercent ?? 0);
+  const depositAmount = round2(Math.max(0, Number(input.reservationAmount) || 0));
+  const recordCustomerAdvance = depositAmount > 0.004;
+  return {
+    serviceUnitPrices,
+    serviceGross,
+    formTotal,
+    depositAmount,
+    depositByAppointment: depositAmountsForNewAppointments(depositAmount, serviceLines.length),
+    includeDepositCartLine: false,
+    recordCustomerAdvance,
+    cashIn: recordCustomerAdvance ? depositAmount : 0,
+    cutReservationReceipt: recordCustomerAdvance && input.cutReceipt === true,
+    customerServiceDebt: 0,
+  };
+}
