@@ -48,6 +48,7 @@ import {
     suggestQueuePrefillTime,
 } from '../../../utils/beautyQueueOrder';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
+import { appointmentDepositCardAmounts } from '../../../utils/depositPrePaymentAllocation';
 import '../ClinicStyles.css';
 import { CLINIC } from '../clinicDesignTokens';
 import { buildBeautySpanPlacements, isBeautySpanContinuation } from '../../../utils/beautyScheduleGrid';
@@ -2725,20 +2726,35 @@ export function SmartScheduler() {
                                     );
                                 })()}
                             </div>
-                            {/* Peşinat / Kalan bilgi kartı — peşinat alınmışsa göster */}
+                            {/* Peşinat / Kalan — aynı fişin depozitosu hizmetlere bir kez paylaştırılır (gösterim). */}
                             {(() => {
-                                const totalPrice = Number(selectedApt.total_price ?? 0);
-                                const depositAmount = Number(selectedApt.deposit_amount ?? 0);
-                                const remainderPaidAmount = Number(selectedApt.remainder_paid_amount ?? 0);
-                                const hasDeposit = Number.isFinite(depositAmount) && depositAmount > 0;
-                                if (!hasDeposit) return null;
-                                // Kalan = toplam - (kalan ödenen tutar). Depozito zaten ayrı bir kalem
-                                // olarak "Ön Ödeme" kartında gösterilir; toplamdan tekrar düşülmez
-                                // (aksi halde iki kere sayılır). Örn. toplam=30, deposit=20, kalan
-                                // ödenen=0 → kalan=30 (deposit dahil toplam ödeme=50 olmaz).
-                                const remaining = Math.max(0, totalPrice - remainderPaidAmount);
-                                const depositLabel = tm('prePaymentAmount') || 'Ön Ödeme (Peşinat)';
-                                const remainingLabel = tm('remainingAmount') || 'Kalan Tutar';
+                                const pool = appointments.some((apt) => apt.id === selectedApt.id)
+                                    ? appointments
+                                    : [...appointments, selectedApt];
+                                const card = appointmentDepositCardAmounts(
+                                    pool.map((apt) => ({
+                                        appointment_id: apt.id,
+                                        customer_id: apt.customer_id ?? apt.client_id ?? null,
+                                        customer_name: apt.customer_name ?? null,
+                                        appointment_date: beautyAppointmentDateKey(apt),
+                                        appointment_time: apt.appointment_time ?? apt.time ?? null,
+                                        created_at: apt.created_at ?? null,
+                                        total_price: Number(apt.total_price) || 0,
+                                        deposit_amount: Number(apt.deposit_amount) || 0,
+                                        remainder_paid_amount: Number(apt.remainder_paid_amount) || 0,
+                                        status: apt.status ?? null,
+                                        sale_group_id: apt.sale_group_id ?? null,
+                                        deposit_sale_id: apt.deposit_sale_id ?? null,
+                                        deposit_sale_fiche_no: apt.deposit_sale_fiche_no ?? null,
+                                    })),
+                                    selectedApt.id,
+                                );
+                                // Ücret hizmet bedelidir. Ön ödenen bu satırın payıdır.
+                                // Kalan = ücret − pay. Depozito ücrete eklenmez ve kayda yazılmaz.
+                                if (!card || !(card.prepaid > 0.004)) return null;
+                                const remaining = card.remaining;
+                                const depositLabel = tm('prePaymentAmount') || 'Ön Ödenen Tutar';
+                                const remainingLabel = tm('bRemainingAmount') || 'Kalan Tutar';
                                 const depositFicheNo = selectedApt.deposit_sale_fiche_no || selectedApt.deposit_sale_id || '—';
                                 return (
                                     <div
@@ -2774,7 +2790,7 @@ export function SmartScheduler() {
                                                 data-testid="appointment-detail-deposit-amount"
                                                 style={{ fontSize: 14, fontWeight: 700, color: '#047857', fontFamily: 'monospace' }}
                                             >
-                                                {formatMoneyAmount(depositAmount, { minFrac: 0, maxFrac: 0 })}
+                                                {formatMoneyAmount(card.prepaid, { minFrac: 0, maxFrac: 0 })}
                                             </p>
                                             <p style={{ fontSize: 10, color: '#047857', marginTop: 2 }}>
                                                 Fiş: <span style={{ fontFamily: 'monospace' }}>{depositFicheNo}</span>

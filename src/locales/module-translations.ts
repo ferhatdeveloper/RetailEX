@@ -12400,6 +12400,18 @@ export const excelModuleTranslations = {
   // dinamik Kalan Tutar satırı: hizmet tamamlandıysa gerçek tutar, aksi
   // hâlde "Henüz gerçekleşmedi" notu.
   bRemainingAmount: { tr: 'Kalan Tutar', en: 'Remaining Amount', ar: 'المبلغ المتبقي', ku: 'بڕی ماوە' },
+  pesinatPartialNotCari: {
+    tr: 'Kalan tutar cariye yazılmaz.',
+    en: 'Remainder is not posted to the customer account.',
+    ar: 'لا يتم تسجيل المبلغ المتبقي في حساب العميل.',
+    ku: 'ماوەکە لە هەژماری کڕیار تۆمارناکرێت.',
+  },
+  appointmentFullyPaid: {
+    tr: 'Tamamı ödendi',
+    en: 'Fully paid',
+    ar: 'تم الدفع بالكامل',
+    ku: 'بە تەواوی دراوە',
+  },
   bAppointmentNotYetDone: { tr: 'Henüz gerçekleşmedi', en: 'Not yet completed', ar: 'لم يتم بعد', ku: 'هێشتا تەواو نەبووە' },
   bPaymentCollect: { tr: 'Ödeme Al', en: 'Take Payment', ar: 'تحصيل الدفع', ku: 'وەرگرتنی پارە' },
   bPaymentCollectComplete: { tr: 'Ödeme Al ve Tamamla', en: 'Take Payment & Complete', ar: 'تحصيل وإتمام', ku: 'پارە و تەواوکردن' },

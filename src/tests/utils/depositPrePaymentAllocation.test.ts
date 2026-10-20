@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { translate } from '../../locales/module-translations';
 import { spreadReservationAcrossLines } from '../../utils/beautyDepositAllocation';
 import {
+  appointmentDepositCardAmounts,
   prePaymentReceived,
   prePaymentRemaining,
   prePaymentServiceTotal,
@@ -180,5 +182,93 @@ describe('spreadPrePaymentDepositRows', () => {
     const remaining = lines.reduce((sum, line) => sum + prePaymentRemaining(line), 0);
     expect(remaining).toBe(-90_000);
     expect(lines.reduce((sum, line) => sum + prePaymentServiceTotal(line), 0)).toBe(-110_000);
+  });
+});
+
+describe('appointmentDepositCardAmounts', () => {
+  const created = '2026-10-20T06:00:00.000Z';
+
+  function visit(): PrePaymentDepositSource[] {
+    return [
+      row({
+        appointment_id: 'cut',
+        appointment_time: '09:00',
+        created_at: created,
+        total_price: 50_000,
+        deposit_amount: 20_000,
+        payment_state: 'deposit_only',
+        deposit_sale_fiche_no: 'RZV-1',
+      }),
+      row({
+        appointment_id: 'pink',
+        appointment_time: '10:00',
+        created_at: '2026-10-20T06:00:01.000Z',
+        total_price: 60_000,
+        deposit_amount: 0,
+        payment_state: 'unpaid',
+      }),
+    ];
+  }
+
+  it('aynı fişte kart tutarları 9.000/41.000 ve 11.000/49.000 olur', () => {
+    const raw = visit();
+    const cut = appointmentDepositCardAmounts(raw, 'cut');
+    const pink = appointmentDepositCardAmounts(raw, 'pink');
+
+    expect(cut).toEqual({ fee: 50_000, prepaid: 9_000, remaining: 41_000 });
+    expect(pink).toEqual({ fee: 60_000, prepaid: 11_000, remaining: 49_000 });
+    expect((cut?.prepaid || 0) + (pink?.prepaid || 0)).toBe(20_000);
+    expect((cut?.remaining || 0) + (pink?.remaining || 0)).toBe(90_000);
+    expect((cut?.fee || 0) + (pink?.fee || 0)).toBe(110_000);
+    expect(cut?.fee).not.toBe(70_000);
+    expect(pink?.fee).not.toBe(80_000);
+    expect(raw[0].deposit_amount).toBe(20_000);
+    expect(raw[0].total_price).toBe(50_000);
+    expect(raw[1].deposit_amount).toBe(0);
+    expect(raw[1].total_price).toBe(60_000);
+  });
+
+  it('farklı fişin depozitosu kartta karışmaz', () => {
+    const raw = [
+      ...visit(),
+      row({
+        appointment_id: 'other',
+        created_at: created,
+        appointment_time: '11:00',
+        total_price: 40_000,
+        deposit_amount: 10_000,
+        payment_state: 'deposit_only',
+        deposit_sale_fiche_no: 'RZV-B',
+      }),
+    ];
+    expect(appointmentDepositCardAmounts(raw, 'cut')).toEqual({
+      fee: 50_000,
+      prepaid: 9_000,
+      remaining: 41_000,
+    });
+    expect(appointmentDepositCardAmounts(raw, 'pink')).toEqual({
+      fee: 60_000,
+      prepaid: 11_000,
+      remaining: 49_000,
+    });
+    expect(appointmentDepositCardAmounts(raw, 'other')).toEqual({
+      fee: 40_000,
+      prepaid: 10_000,
+      remaining: 30_000,
+    });
+  });
+
+  it('özet kartı ham anahtar yerine dört dilde metin gösterir', () => {
+    expect(translate('bRemainingAmount', 'tr')).toBe('Kalan Tutar');
+    expect(translate('bRemainingAmount', 'en')).toBe('Remaining Amount');
+    expect(translate('bRemainingAmount', 'ar')).toBe('المبلغ المتبقي');
+    expect(translate('bRemainingAmount', 'ku')).toBe('بڕی ماوە');
+    expect(translate('pesinatPartialNotCari', 'tr')).toBe('Kalan tutar cariye yazılmaz.');
+    expect(translate('pesinatPartialNotCari', 'en')).toBe('Remainder is not posted to the customer account.');
+    expect(translate('pesinatPartialNotCari', 'ar')).toBe('لا يتم تسجيل المبلغ المتبقي في حساب العميل.');
+    expect(translate('pesinatPartialNotCari', 'ku')).toBe('ماوەکە لە هەژماری کڕیار تۆمارناکرێت.');
+    expect(translate('bRemainingAmount', 'tr')).not.toBe('bRemainingAmount');
+    expect(translate('pesinatPartialNotCari', 'tr')).not.toBe('pesinatPartialNotCari');
+    expect(translate('remainingAmount', 'tr')).toBe('remainingAmount');
   });
 });

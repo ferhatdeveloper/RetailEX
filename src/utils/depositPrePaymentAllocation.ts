@@ -259,3 +259,32 @@ export function prePaymentRemaining(row: PrePaymentDepositSource): number {
   if (total < -0.004 || deposit < -0.004) return rem;
   return Math.max(0, rem);
 }
+
+export interface AppointmentDepositCardAmounts {
+  /** Hizmet bedeli. Depozito bu tutara eklenmez. */
+  fee: number;
+  /** Fiş depozitosunun bu hizmete düşen payı. */
+  prepaid: number;
+  /** Hizmet bedeli − bu satırın payı. */
+  remaining: number;
+}
+
+/**
+ * Randevu özet kartı. Aynı fişin depozitosunu hizmetlere bir kez böler.
+ * Yalnızca gösterim tutarları döner; gelen satırların fiyatı ve depozitosu değişmez.
+ */
+export function appointmentDepositCardAmounts<T extends PrePaymentDepositSource>(
+  rows: T[],
+  appointmentId: string,
+): AppointmentDepositCardAmounts | null {
+  const id = String(appointmentId ?? '').trim();
+  if (!id) return null;
+  const shared = spreadPrePaymentDepositRows(rows);
+  const row = shared.find((item) => item.appointment_id === id);
+  if (!row) return null;
+  return {
+    fee: prePaymentServiceTotal(row),
+    prepaid: round2(Number(row.deposit_amount) || 0),
+    remaining: prePaymentRemaining(row),
+  };
+}
