@@ -21,6 +21,7 @@ import { sortCariBalanceForReport } from './cariBalanceSort';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { localTodayDateKey } from '../../utils/localCalendarDate';
 import { SQL_PRODUCT_SALES_MATERIAL_ONLY } from '../../utils/productSalesReportFilters';
+import { settleProductPeriodSalesNet } from '../../utils/productPeriodSalesNet';
 import {
   buildProfitCostCtes,
   INVOICE_LINE_SCALE_JOIN,
@@ -3402,15 +3403,16 @@ export const erpReportsAPI = {
    *
    * Brüt / İade / Net ayrı:
    *   - **gross_amount** = sadece satış (iade olmayan kalem) tutar toplamı
-   *   - **return_amount** = iade kalemleri (negatif işaretli)
-   *   - **net_amount** = gross + return
+   *   - **return_amount** = iade kalemleri (fişte artı da olabilir)
+   *   - **net** = brüt − |iade| (`settleProductPeriodSalesNet`, bir kez)
    *
    * Miktar:
    *   - **gross_quantity** = iade hariç kalem miktarı
-   *   - **return_quantity** = iade miktarı (negatif)
+   *   - **return_quantity** = iade miktarı (bilgi kolonu, artı büyüklük)
+   *   - **net miktar** = brüt miktar − |iade miktarı|
    *
    * `distinct_customers` ürünü kaç farklı müşteri almış (benzersiz customer_id).
-   * `avg_unit_price` = net_amount / net_quantity (ağırlıklı ortalama).
+   * `avg_unit_price` = net tutar / net miktar (ağırlıklı ortalama).
    */
   async getProductSalesByPeriod(opts: {
     startDate: string; // YYYY-MM-DD
@@ -3478,8 +3480,6 @@ export const erpReportsAPI = {
           SUM(CASE WHEN fiche_type_norm = 'return_invoice' THEN quantity ELSE 0 END) AS return_quantity,
           SUM(CASE WHEN fiche_type_norm <> 'return_invoice' THEN line_amount ELSE 0 END) AS gross_amount,
           SUM(CASE WHEN fiche_type_norm = 'return_invoice' THEN line_amount ELSE 0 END) AS return_amount,
-          SUM(CASE WHEN fiche_type_norm <> 'return_invoice' THEN line_amount ELSE 0 END)
-            + SUM(CASE WHEN fiche_type_norm = 'return_invoice' THEN line_amount ELSE 0 END) AS net_amount,
           COUNT(DISTINCT buyer_id) AS distinct_customers,
           MIN(doc_date)::text AS first_sale_date,
           MAX(doc_date)::text AS last_sale_date
@@ -3498,12 +3498,7 @@ export const erpReportsAPI = {
         COALESCE(pt.return_quantity, 0) AS return_quantity,
         COALESCE(pt.gross_amount, 0) AS gross_amount,
         COALESCE(pt.return_amount, 0) AS return_amount,
-        COALESCE(pt.net_amount, 0) AS net_amount,
         COALESCE(pt.distinct_customers, 0)::int AS distinct_customers,
-        CASE WHEN ABS(COALESCE(pt.gross_quantity, 0) + COALESCE(pt.return_quantity, 0)) > 0.0001
-          THEN COALESCE(pt.net_amount, 0) / (COALESCE(pt.gross_quantity, 0) + COALESCE(pt.return_quantity, 0))
-          ELSE 0
-        END AS avg_unit_price,
         COALESCE(pt.first_sale_date, '') AS first_sale_date,
         COALESCE(pt.last_sale_date, '') AS last_sale_date
       FROM product_totals pt
@@ -3514,23 +3509,31 @@ export const erpReportsAPI = {
     if (partyIds && partyIds.length > 0) params.push(partyIds);
     if (productIds && productIds.length > 0) params.push(productIds);
     const { rows } = await postgres.query(sql, params);
-    return (rows || []).map((r: any) => ({
-      productId: String(r.product_id ?? ''),
-      productCode: String(r.product_code ?? ''),
-      productName: String(r.product_name ?? ''),
-      unit: String(r.unit ?? ''),
-      grossCount: Number(r.gross_count ?? 0),
-      returnCount: Number(r.return_count ?? 0),
-      grossQuantity: Number(r.gross_quantity ?? 0),
-      returnQuantity: Number(r.return_quantity ?? 0),
-      grossAmount: Number(r.gross_amount ?? 0),
-      returnAmount: Number(r.return_amount ?? 0),
-      netAmount: Number(r.net_amount ?? 0),
-      distinctCustomers: Number(r.distinct_customers ?? 0),
-      avgUnitPrice: Number(r.avg_unit_price ?? 0),
-      firstSaleDate: String(r.first_sale_date ?? '').slice(0, 10),
-      lastSaleDate: String(r.last_sale_date ?? '').slice(0, 10),
-    }));
+    return (rows || []).map((r: any) => {
+      const net = settleProductPeriodSalesNet({
+        grossAmount: Number(r.gross_amount ?? 0),
+        returnAmount: Number(r.return_amount ?? 0),
+        grossQuantity: Number(r.gross_quantity ?? 0),
+        returnQuantity: Number(r.return_quantity ?? 0),
+      });
+      return {
+        productId: String(r.product_id ?? ''),
+        productCode: String(r.product_code ?? ''),
+        productName: String(r.product_name ?? ''),
+        unit: String(r.unit ?? ''),
+        grossCount: Number(r.gross_count ?? 0),
+        returnCount: Number(r.return_count ?? 0),
+        grossQuantity: net.grossQuantity,
+        returnQuantity: net.returnQuantity,
+        grossAmount: net.grossAmount,
+        returnAmount: net.returnAmount,
+        netAmount: net.netAmount,
+        distinctCustomers: Number(r.distinct_customers ?? 0),
+        avgUnitPrice: net.avgUnitPrice,
+        firstSaleDate: String(r.first_sale_date ?? '').slice(0, 10),
+        lastSaleDate: String(r.last_sale_date ?? '').slice(0, 10),
+      };
+    });
   },
 };
 
@@ -3576,17 +3579,17 @@ export interface ProductSalesByPeriodRow {
   returnCount: number;
   /** Brüt miktar (iade hariç) */
   grossQuantity: number;
-  /** İade miktarı (negatif işaretli) */
+  /** İade miktarı (bilgi kolonu, artı büyüklük) */
   returnQuantity: number;
   /** Brüt tutar (iade hariç) */
   grossAmount: number;
-  /** İade tutarı (negatif işaretli) */
+  /** İade tutarı (bilgi kolonu, artı büyüklük) */
   returnAmount: number;
-  /** Net tutar (gross + return) */
+  /** Net tutar = brüt − |iade| (iade bir kez düşülür) */
   netAmount: number;
   /** Benzersiz müşteri sayısı */
   distinctCustomers: number;
-  /** Ağırlıklı ortalama birim fiyat (net / net miktar) */
+  /** Ağırlıklı ortalama birim fiyat (net tutar / net miktar) */
   avgUnitPrice: number;
   /** İlk satış tarihi */
   firstSaleDate: string;

@@ -9,8 +9,9 @@
  * Altta 4 KPI strip:
  *   Toplam satış adedi | Toplam brüt tutar | Toplam net tutar | Benzersiz müşteri
  *
- * Brüt / İade / Net işaretli:
- *   gross = iade olmayan, return = negatif, net = gross + return
+ * Brüt / İade / Net:
+ *   brüt = satış, iade = bilgi kolonu (artı büyüklük),
+ *   net = brüt − |iade| (iade ciroya eklenmez, bir kez düşülür)
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, RefreshCw, Download, Package } from 'lucide-react';
@@ -188,7 +189,12 @@ export function ProductSalesByPeriodReport() {
     }
     // Brüt tutara göre azalan sırala — okunabilirlik
     const unitBreakdown = Array.from(qtyByUnit.entries())
-      .map(([unit, v]) => ({ unit, gross: v.gross, ret: v.ret, net: v.gross + v.ret }))
+      .map(([unit, v]) => ({
+        unit,
+        gross: v.gross,
+        ret: v.ret,
+        net: v.gross - Math.abs(v.ret),
+      }))
       .sort((a, b) => b.gross - a.gross);
     return {
       grossCount,
