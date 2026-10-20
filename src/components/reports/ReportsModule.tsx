@@ -4,7 +4,11 @@ import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
 import { PeriodSummaryReport } from './PeriodSummaryReport';
-import { omitRepeatedPeriodSummaryUnderFinance } from '../../utils/reportMenuPeriodSummary';
+import {
+  omitRepeatedPeriodSummaryUnderFinance,
+  omitUnlistedFinancialReports,
+  UNLISTED_FINANCIAL_REPORT_KEYS,
+} from '../../utils/reportMenuPeriodSummary';
 import { ReportChatAI } from './ReportChatAI';
 import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
@@ -978,6 +982,8 @@ const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
   'stock-abc', // Stok ABC Analizi — menüden gizlendi; rapor kodu duruyor
   'end-of-day', // Gün Sonu Raporu — menüden gizlendi; rapor kodu duruyor
   'customer-sales', // Müşteri Satış — menü ve sayfa bağı kesildi; bileşen dosyası duruyor
+  // Eski müşteriler / devam eden alacaklar — menüden kaldırıldı; bileşen dosyası duruyor
+  ...UNLISTED_FINANCIAL_REPORT_KEYS,
 ]);
 
 /** Yalnızca iş kolu Restoran iken menüde / sekmede anlamlı */
@@ -6590,7 +6596,6 @@ export function ReportsModule({
           { key: 'cari-extract', label: tm('erpCariExtractTitle'), icon: <AuditOutlined /> },
           { key: 'collection-due', label: tm('erpCollectionDueTitle'), icon: <HourglassOutlined /> },
           { key: 'cash-ledger', label: tm('rprCashLedgerTitle') || 'Kasa Defteri', icon: <TransactionOutlined /> },
-          { key: 'contact-account-legacy', label: tm('rprContactLegacyTitle') || 'Eski Cari / Alacak', icon: <AuditOutlined /> },
           { key: 'invoice-items-detail', label: tm('rprInvoiceItemsDetailTitle') || 'Fatura Kalem Detayı', icon: <ShoppingCart className="w-4 h-4" /> },
         ],
       },
@@ -6634,38 +6639,40 @@ export function ReportsModule({
     ];
 
     return filterReportMenuGroups(
-      omitRepeatedPeriodSummaryUnderFinance([
-        ...(businessType === 'beauty'
-          ? [
-              {
-                key: 'grp-beauty-reports',
-                label: tm('bBeautyReportsMenu'),
-                type: 'group',
-                children: beautyReportMenuItems(tm, reportMenuParams),
-              },
-            ]
-          : []),
-        ...commonGroups,
-        {
-          key: 'grp-business-specific',
-          label: bizConfig.groupLabel,
-          type: 'group',
-          children: businessType === 'restaurant' ? [
-            { key: 'product-reports', label: tm('resProductQtyReportTitle'), icon: <ShoppingCart className="w-4 h-4" /> },
-            { key: 'category-reports', label: tm('kategoriRaporlari'), icon: <PieChartIcon className="w-4 h-4" /> },
-            { key: 'staff-reports', label: tm('personelRaporlari'), icon: <User className="w-4 h-4" /> },
-            { key: 'staff-performance', label: tm('staffPerformance'), icon: <TrendingUp className="w-4 h-4" /> },
-            { key: 'table-reports', label: tm('masaRaporlari'), icon: <ApartmentOutlined /> },
-            { key: 'payment-reports', label: tm('odemeRaporlari'), icon: <CreditCard className="w-4 h-4" /> },
-            { key: 'discount-reports', label: tm('indirimRaporlari'), icon: <Percent className="w-4 h-4" /> },
-            { key: 'sales-movements', label: tm('satisHareketRaporu'), icon: <RiseOutlined /> },
-            { key: 'receipts', label: tm('adisyonlar'), icon: <FileText className="w-4 h-4" /> },
-            { key: 'courier-reports', label: tm('kuryeRaporlari'), icon: <Package className="w-4 h-4" /> },
-            { key: 'cash-register-reports', label: tm('yazarkasaRaporlari'), icon: <PrinterOutlined /> },
-            { key: 'turnover-reports', label: tm('ciroRaporlari'), icon: <Banknote className="w-4 h-4" /> },
-          ] : []
-        }
-      ]),
+      omitUnlistedFinancialReports(
+        omitRepeatedPeriodSummaryUnderFinance([
+          ...(businessType === 'beauty'
+            ? [
+                {
+                  key: 'grp-beauty-reports',
+                  label: tm('bBeautyReportsMenu'),
+                  type: 'group',
+                  children: beautyReportMenuItems(tm, reportMenuParams),
+                },
+              ]
+            : []),
+          ...commonGroups,
+          {
+            key: 'grp-business-specific',
+            label: bizConfig.groupLabel,
+            type: 'group',
+            children: businessType === 'restaurant' ? [
+              { key: 'product-reports', label: tm('resProductQtyReportTitle'), icon: <ShoppingCart className="w-4 h-4" /> },
+              { key: 'category-reports', label: tm('kategoriRaporlari'), icon: <PieChartIcon className="w-4 h-4" /> },
+              { key: 'staff-reports', label: tm('personelRaporlari'), icon: <User className="w-4 h-4" /> },
+              { key: 'staff-performance', label: tm('staffPerformance'), icon: <TrendingUp className="w-4 h-4" /> },
+              { key: 'table-reports', label: tm('masaRaporlari'), icon: <ApartmentOutlined /> },
+              { key: 'payment-reports', label: tm('odemeRaporlari'), icon: <CreditCard className="w-4 h-4" /> },
+              { key: 'discount-reports', label: tm('indirimRaporlari'), icon: <Percent className="w-4 h-4" /> },
+              { key: 'sales-movements', label: tm('satisHareketRaporu'), icon: <RiseOutlined /> },
+              { key: 'receipts', label: tm('adisyonlar'), icon: <FileText className="w-4 h-4" /> },
+              { key: 'courier-reports', label: tm('kuryeRaporlari'), icon: <Package className="w-4 h-4" /> },
+              { key: 'cash-register-reports', label: tm('yazarkasaRaporlari'), icon: <PrinterOutlined /> },
+              { key: 'turnover-reports', label: tm('ciroRaporlari'), icon: <Banknote className="w-4 h-4" /> },
+            ] : []
+          },
+        ]),
+      ),
       reportMenuParams,
     );
   };
