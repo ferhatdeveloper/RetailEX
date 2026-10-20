@@ -7,6 +7,7 @@ import {
   depositAmountsForNewAppointments,
   planNewAppointmentDeposit,
   resolveVisitReservationAmount,
+  syncAutomaticDepositCart,
 } from '../../utils/appointmentFormReservation';
 
 describe('randevu formu rezervasyon', () => {
@@ -114,7 +115,7 @@ describe('randevu formu rezervasyon', () => {
     expect(plan.depositAmount).toBe(20_000);
     expect(plan.depositByAppointment).toEqual([20_000, 0]);
     expect(plan.depositByAppointment).not.toContain(13_000);
-    expect(plan.includeDepositCartLine).toBe(false);
+    expect(plan.includeDepositCartLine).toBe(true);
     expect(plan.recordCustomerAdvance).toBe(true);
     expect(plan.cashIn).toBe(20_000);
     expect(plan.cutReservationReceipt).toBe(false);
@@ -150,6 +151,47 @@ describe('randevu formu rezervasyon', () => {
     expect(empty.recordCustomerAdvance).toBe(false);
     expect(empty.cashIn).toBe(0);
     expect(empty.depositAmount).toBe(0);
+    expect(empty.includeDepositCartLine).toBe(false);
     expect(empty.formTotal).toBe(110_000);
+  });
+
+  it('rezervasyon 20.000 yazılınca sepette tek DEPOSIT satırı 20.000 olur', () => {
+    const hairPink = { type: 'service', name: 'HAIR PINK COLOR', unitPrice: 60_000, qty: 1 };
+    const makeDeposit = (amount: number) => ({
+      type: 'deposit' as const,
+      name: 'DEPOSIT',
+      code: 'DEPOSIT',
+      itemId: 'DEPOSIT',
+      unitPrice: amount,
+      qty: 1,
+    });
+    const withLine = syncAutomaticDepositCart([hairCut, hairPink], 20_000, makeDeposit);
+    expect(withLine.map((line) => line.unitPrice)).toEqual([50_000, 60_000, 20_000]);
+    expect(withLine[0]).toBe(hairCut);
+    expect(withLine[1]).toBe(hairPink);
+    expect(withLine[2]?.name).toBe('DEPOSIT');
+    expect(appointmentServiceGross(withLine)).toBe(110_000);
+    expect(appointmentFormTotal(appointmentServiceGross(withLine), 0)).toBe(110_000);
+    expect(appointmentFormTotal(appointmentServiceGross(withLine), 0)).not.toBe(130_000);
+
+    const updated = syncAutomaticDepositCart(withLine, 15_000, makeDeposit);
+    expect(updated.filter((line) => line.name === 'DEPOSIT')).toHaveLength(1);
+    expect(updated[2]?.unitPrice).toBe(15_000);
+    expect(updated[0]?.unitPrice).toBe(50_000);
+    expect(updated[1]?.unitPrice).toBe(60_000);
+
+    const cleared = syncAutomaticDepositCart(updated, 0, makeDeposit);
+    expect(cleared.map((line) => line.name)).toEqual(['HAIR CUT', 'HAIR PINK COLOR']);
+    expect(cleared.some((line) => line.name === 'DEPOSIT')).toBe(false);
+
+    const stray = syncAutomaticDepositCart(
+      [hairCut, hairPink, { ...makeDeposit(13_000) }],
+      20_000,
+      makeDeposit,
+    );
+    expect(stray.map((line) => line.unitPrice)).toEqual([50_000, 60_000, 20_000]);
+    expect(stray.filter((line) => line.name === 'DEPOSIT')).toHaveLength(1);
+    expect(stray.some((line) => line.unitPrice === 13_000)).toBe(false);
+    expect(stray.some((line) => line.unitPrice === 42_000 || line.unitPrice === 25_000)).toBe(false);
   });
 });

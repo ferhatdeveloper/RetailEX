@@ -2,7 +2,8 @@
  * Canlı randevu formu: hizmet bedeli ve rezervasyon tutarı.
  *
  * Depozito peşinattır. Hizmet satırının fiyatından düşülmez, sepet
- * toplamına eklenmez. Raporlardaki pay dağıtımı bu dosyada yapılmaz.
+ * toplamına eklenmez. Tutar yazılınca hizmetlerin altında tek görsel
+ * DEPOSIT satırı durur. Raporlardaki pay dağıtımı bu dosyada yapılmaz.
  */
 
 export interface AppointmentMoneyLine {
@@ -130,8 +131,9 @@ export function depositAmountsForNewAppointments(reservation: number, lineCount:
 
 /**
  * Yeni randevuda depozito kararı.
- * Hizmet fiyatı değişmez. Tutar sepete eklenmez, fiyattan düşülmez,
- * kardeş hizmete bölünmez. Kutu yalnızca fişi keser.
+ * Hizmet fiyatı değişmez. Tutar fiyattan düşülmez, kardeş hizmete
+ * bölünmez, ara toplama eklenmez. Kutu yalnızca fişi keser.
+ * Tutar sıfırdan büyükse sepette tek görsel DEPOSIT satırı durur.
  */
 export interface NewAppointmentDepositPlan {
   /** Hizmet birim fiyatları, girildiği gibi. */
@@ -143,8 +145,8 @@ export interface NewAppointmentDepositPlan {
   depositAmount: number;
   /** İlk randevu tam tutar, diğerleri 0. */
   depositByAppointment: number[];
-  /** Sepete ayrı depozito hizmet satırı yazılmaz. */
-  includeDepositCartLine: false;
+  /** Tutar > 0 ve hizmet varsa sepette tek görsel satır. Toplama girmez. */
+  includeDepositCartLine: boolean;
   /** Tutar > 0 ise cari avans yazılır. Kutu buna bağlı değildir. */
   recordCustomerAdvance: boolean;
   /** Kasaya girecek nakit. Hizmet bedeli değildir. */
@@ -173,10 +175,55 @@ export function planNewAppointmentDeposit(input: {
     formTotal,
     depositAmount,
     depositByAppointment: depositAmountsForNewAppointments(depositAmount, serviceLines.length),
-    includeDepositCartLine: false,
+    includeDepositCartLine: recordCustomerAdvance && serviceLines.length > 0,
     recordCustomerAdvance,
     cashIn: recordCustomerAdvance ? depositAmount : 0,
     cutReservationReceipt: recordCustomerAdvance && input.cutReceipt === true,
     customerServiceDebt: 0,
   };
+}
+
+/**
+ * Rezervasyon tutarını sepete tek DEPOSIT satırı olarak yerleştirir.
+ * Hizmet birim fiyatı aynı kalır. Tutar 0 ise satır kalkar.
+ * Tutar değişince mevcut satırın tutarı güncellenir; ikinci satır açılmaz.
+ * Rapor payı burada yazılmaz.
+ */
+export function syncAutomaticDepositCart<T extends AppointmentMoneyLine>(
+  lines: T[],
+  reservationAmount: number,
+  createDeposit: (amount: number) => T,
+): T[] {
+  const services = lines.filter((line) => !isAppointmentDepositCartLine(line));
+  const deposits = lines.filter((line) => isAppointmentDepositCartLine(line));
+  const amount = round2(Math.max(0, Number(reservationAmount) || 0));
+  if (amount <= 0.004 || services.length === 0) {
+    return deposits.length === 0 ? lines : services;
+  }
+  const current = deposits.length === 1 ? deposits[0] : undefined;
+  const price = Number(current?.unitPrice) || 0;
+  const qty = Math.max(1, Number(current?.qty) || 1);
+  const name = String(current?.name || '').trim();
+  const code = String(current?.code || '').trim();
+  const already =
+    !!current &&
+    Math.abs(price - amount) <= 0.004 &&
+    qty === 1 &&
+    name.toLowerCase() === 'deposit' &&
+    (code === '' || code.toLowerCase() === 'deposit') &&
+    lines[lines.length - 1] === current &&
+    lines.length === services.length + 1;
+  if (already) return lines;
+  const deposit: T = current
+    ? {
+        ...current,
+        type: 'deposit',
+        name: 'DEPOSIT',
+        code: 'DEPOSIT',
+        itemId: current.itemId || 'DEPOSIT',
+        unitPrice: amount,
+        qty: 1,
+      }
+    : createDeposit(amount);
+  return [...services, deposit];
 }

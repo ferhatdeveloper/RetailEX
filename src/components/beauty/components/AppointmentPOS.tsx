@@ -76,6 +76,8 @@ import {
     appointmentServiceGross,
     isAppointmentDepositCartLine,
     planNewAppointmentDeposit,
+    syncAutomaticDepositCart,
+    type AppointmentMoneyLine,
 } from '../../../utils/appointmentFormReservation';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { safeInvoke } from '../../../utils/env';
@@ -112,8 +114,8 @@ function readBeautyCategoryRailMode(): BeautyCategoryRailMode {
 interface CartLine {
     uid: string;
     /**
-     * Satır tipi. `'deposit'` eski sepet kartıdır; canlı form bunu
-     * hizmete katmaz ve toplama eklemez. Rezervasyon tutarı ayrı alandadır.
+     * Satır tipi. `'deposit'` rezervasyon tutarının görsel kartıdır.
+     * Hizmet fiyatına katılmaz ve ara toplama eklenmez.
      */
     type: 'service' | 'package' | 'product' | 'deposit';
     item_id: string;
@@ -219,6 +221,66 @@ const uid = () =>
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? `ln_${crypto.randomUUID()}`
         : `ln_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+
+/**
+ * Rezervasyon tutarını hizmetlerin altına tek DEPOSIT satırı olarak koyar.
+ * Hizmet birim fiyatı aynı nesnede kalır. Tutar 0 ise satır kalkar.
+ */
+function syncCartDepositLines(cart: CartLine[], reservationAmount: number): CartLine[] {
+    type Row = AppointmentMoneyLine & { source: CartLine | null };
+    const rows: Row[] = cart.map((line) => ({
+        type: line.type,
+        name: line.name,
+        code: line.code ?? null,
+        itemId: line.item_id,
+        unitPrice: line.unit_price,
+        qty: line.qty,
+        source: line,
+    }));
+    const next = syncAutomaticDepositCart(rows, reservationAmount, (amount) => ({
+        type: 'deposit',
+        name: 'DEPOSIT',
+        code: 'DEPOSIT',
+        itemId: 'DEPOSIT',
+        unitPrice: amount,
+        qty: 1,
+        source: null,
+    }));
+    if (next === rows) return cart;
+    return next.map((row) => {
+        if (row.source && !isAppointmentDepositCartLine(row)) return row.source;
+        if (row.source) {
+            const same =
+                row.source.type === 'deposit' &&
+                row.source.name === 'DEPOSIT' &&
+                row.source.code === 'DEPOSIT' &&
+                row.source.unit_price === row.unitPrice &&
+                row.source.qty === 1;
+            if (same) return row.source;
+            return {
+                ...row.source,
+                type: 'deposit',
+                name: 'DEPOSIT',
+                code: 'DEPOSIT',
+                item_id: 'DEPOSIT',
+                unit_price: row.unitPrice,
+                qty: 1,
+                color: row.source.color ?? '#a855f7',
+                original_unit_price: undefined,
+            };
+        }
+        return {
+            uid: uid(),
+            type: 'deposit',
+            item_id: 'DEPOSIT',
+            code: 'DEPOSIT',
+            name: 'DEPOSIT',
+            unit_price: row.unitPrice,
+            qty: 1,
+            color: '#a855f7',
+        };
+    });
+}
 
 const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
@@ -886,7 +948,7 @@ export function AppointmentPOS({
 
     // ── Derived ──────────────────────────────────────────────────────────
     // Toplam = hizmet bedeli. Depozito peşinattır: satır fiyatından düşülmez,
-    // ara toplama eklenmez. DEPOSIT kartı sepette hizmet gibi durmaz.
+    // ara toplama eklenmez. DEPOSIT kartı hizmetlerin altında görünür.
     const billableCart = useMemo(
         () => cart.filter((line) => !isAppointmentDepositCartLine({
             type: line.type,
@@ -929,6 +991,23 @@ export function AppointmentPOS({
         completed: existingIsCompleted,
     }) ?? 0;
     const totalDur = billableCart.filter(l => l.type === 'service').reduce((s, l) => s + (l.duration_min ?? 0) * l.qty, 0);
+    const visualCart = useMemo(() => {
+        const deposits = cart.filter((line) => isAppointmentDepositCartLine({
+            type: line.type,
+            name: line.name,
+            code: line.code,
+            itemId: line.item_id,
+        }));
+        return deposits.length > 0 ? [...billableCart, ...deposits] : billableCart;
+    }, [cart, billableCart]);
+
+    // Yeni randevuda rezervasyon tutarı sepette tek DEPOSIT satırı olur.
+    // Kutu bu satırı açmaz; kutu yalnızca fiş keser. Mevcut randevuda
+    // sepet hidrasyonu fiyatı olduğu gibi bırakır.
+    useEffect(() => {
+        if (existingAppointment?.id) return;
+        setCart((prev) => syncCartDepositLines(prev, reservationAmount));
+    }, [reservationAmount, existingAppointment?.id, cart]);
 
     useEffect(() => {
         if (existingAppointment?.id) return;
@@ -4852,7 +4931,7 @@ export function AppointmentPOS({
                                 <Sparkles size={32} />
                                 <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bCartEmptyHint')}</p>
                             </div>
-                        ) : billableCart.map(line => {
+                        ) : visualCart.map(line => {
                             // 14.10.2026 — DEPOSIT satırı özel kompakt kart:
                             // kaldır butonu YOK (reservationAmount ile bağlı),
                             // qty +/− YOK, sadece tutar gösterilir. Mor renkli.
@@ -4860,6 +4939,7 @@ export function AppointmentPOS({
                             return (
                             <div
                                 key={line.uid}
+                                data-testid={isDeposit ? 'appointment-deposit-line' : undefined}
                                 style={{
                                     margin: '0 10px 6px',
                                     padding: 0,
@@ -5463,8 +5543,9 @@ export function AppointmentPOS({
                                 tutarı gösterir; henüz gerçekleşmemiş randevularda
                                 (SCHEDULED/CONFIRMED/IN_PROGRESS) "Henüz gerçekleşmedi"
                                 notu ile değişir (kalan borç hizmet tamamlandıktan
-                                sonra tahsil edilir). */}
-                            {existingAppointment?.id && existingDeposit > 0 && (
+                                sonra tahsil edilir). Yeni randevuda da peşinat
+                                toplamın dışında, ayrı satırda durur. */}
+                            {existingDeposit > 0 && (
                                 <div
                                     data-testid="appointment-prepaid-amount-row"
                                     style={{
