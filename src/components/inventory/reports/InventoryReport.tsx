@@ -14,11 +14,15 @@ import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalida
 import { formatNumber } from '../../../utils/formatNumber';
 import {
     fetchLayeredInventoryValuation,
-    layeredCostForProduct,
     layeredAvgForProduct,
     type LayeredInventoryValuation,
 } from '../../../services/layeredInventoryCost';
 import { productCardUnitCost } from '../../../utils/productCardUnitCost';
+import {
+    inventoryListSalesValue,
+    inventoryListStockValue,
+    inventoryListUnitPurchaseCost,
+} from '../../../utils/inventoryListValue';
 import {
     fetchWeightedAverageUnitCosts,
     lookupWeightedAvgUnitCost,
@@ -136,6 +140,19 @@ export function InventoryReport() {
         value != null && String(value).trim() !== '' ? String(value).trim() : '—';
 
     const columns = useMemo<ColumnDef<InventoryRow, any>[]>(() => {
+        /** Alış kolonu ile toplam değer aynı birim: miktar × görünen alış. Katman brütü değil. */
+        const unitPurchaseOf = (row: InventoryRow) =>
+            inventoryListUnitPurchaseCost({
+                weightedAvg: lookupWeightedAvgUnitCost(
+                    { byProductId: avgByProduct, byCode: avgByCode },
+                    row,
+                ),
+                layeredAvg: layeredAvgForProduct(valuation, row),
+                cardUnit: productCardUnitCost(
+                    row as Product & { cost?: number; purchase_price?: number },
+                ),
+            });
+
         const base: ColumnDef<InventoryRow, any>[] = [
             columnHelper.accessor('code', {
                 header: tm('materialCode'),
@@ -218,18 +235,7 @@ export function InventoryReport() {
                 header: tm('minStock'),
                 cell: info => info.getValue() || 0,
             }),
-            columnHelper.accessor((row) => {
-                const fromAvg = lookupWeightedAvgUnitCost(
-                    { byProductId: avgByProduct, byCode: avgByCode },
-                    row,
-                );
-                if (fromAvg > 0) return fromAvg;
-                const layered = layeredAvgForProduct(valuation, row);
-                if (layered > 0) return layered;
-                return productCardUnitCost(
-                    row as Product & { cost?: number; purchase_price?: number },
-                );
-            }, {
+            columnHelper.accessor((row) => unitPurchaseOf(row), {
                 id: 'unit_purchase_cost',
                 header: tm('purchasePrice') || 'Alış Fiyatı',
                 cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
@@ -240,25 +246,13 @@ export function InventoryReport() {
                 cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
                 size: 140
             }),
-            columnHelper.accessor(row => {
-                const qty = Number(row.stock) || 0;
-                const layeredTotal = layeredCostForProduct(valuation, row);
-                if (layeredTotal > 0) return layeredTotal;
-                const fromAvg = lookupWeightedAvgUnitCost(
-                    { byProductId: avgByProduct, byCode: avgByCode },
-                    row,
-                );
-                if (fromAvg > 0) return qty * fromAvg;
-                return qty * productCardUnitCost(
-                    row as Product & { cost?: number; purchase_price?: number },
-                );
-            }, {
+            columnHelper.accessor(row => inventoryListStockValue(row.stock, unitPurchaseOf(row)), {
                 id: 'total_cost',
                 header: tm('totalValue') || 'Toplam Değer',
                 cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
                 size: 160
             }),
-            columnHelper.accessor(row => (Number(row.price) || 0) * (Number(row.stock) || 0), {
+            columnHelper.accessor(row => inventoryListSalesValue(row.stock, row.price), {
                 id: 'total_sales_value',
                 header: t('totalSalesValue', 'Toplam Satış Değeri'),
                 cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
