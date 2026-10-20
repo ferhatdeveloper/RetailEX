@@ -9,7 +9,7 @@ import {
 import { ColumnDef, createColumnHelper } from '@tanstack/react-table';
 import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import { PlusOutlined, UserOutlined } from '@ant-design/icons';
-import { Edit, Phone, Mail, Search, User, Printer } from 'lucide-react';
+import { Crown, Edit, Phone, Mail, Search, User, Printer } from 'lucide-react';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -42,6 +42,12 @@ import {
     type PhoneMatchCustomer,
 } from '../../../utils/customerPhoneDuplicate';
 import { phoneQueryDigits } from '../../../shared/utils/validators';
+import {
+    readCrmActivityParam,
+    useClinicShellV2,
+    writeCrmActivityParam,
+    type CrmActivityParam,
+} from '../clinicShellV2';
 
 export type ClientCRMProps = { onOpenCustomer: (customerId: string) => void };
 
@@ -50,6 +56,8 @@ const columnHelper = createColumnHelper<BeautyCustomer>();
 export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const { customers, isLoading, loadCustomers, createCustomer, updateCustomer } = useBeautyStore();
     const { tm } = useLanguage();
+    const shellV2 = useClinicShellV2();
+    const [activityParam, setActivityParam] = useState<CrmActivityParam>(readCrmActivityParam);
     const [search, setSearch] = useState('');
     const [fileIdRange, setFileIdRange] = useState<FileIdRangeKey>('all');
     const [showModal, setShowModal] = useState(false);
@@ -134,6 +142,8 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
             if (!fileIdInRange(c.file_id, activeFileRange?.from ?? null, activeFileRange?.to ?? null)) {
                 return false;
             }
+            if (activityParam === 'active' && c.is_active === false) return false;
+            if (activityParam === 'passive' && c.is_active !== false) return false;
             if (!q) return true;
             const textHit =
                 c.name?.toLowerCase().includes(q) ||
@@ -146,7 +156,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                 phoneMatchesQuery(c.phone2, trimmed)
             );
         });
-    }, [mergedCustomers, search, activeFileRange]);
+    }, [mergedCustomers, search, activeFileRange, activityParam]);
 
     const openCreate = () => {
         setEditing(BEAUTY_CUSTOMER_EMPTY_FORM);
@@ -412,6 +422,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                                     className="!mb-0.5 !text-base !font-semibold"
                                     style={{ color: RETAILEX_TEXT_PRIMARY }}
                                 >
+                                    {shellV2 ? <Crown className="mr-1 inline h-4 w-4" aria-hidden style={{ color: '#db2777' }} /> : null}
                                     {tm('bClientCRM')}
                                 </Typography.Title>
                                 <Typography.Text type="secondary" className="text-xs">
@@ -489,6 +500,23 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                                 aria-label={tm('bSearchPlaceholderCustomer')}
                             />
                         </div>
+                        <label className="flex items-center gap-2 shrink-0 text-xs text-gray-600">
+                            <span className="whitespace-nowrap font-medium">{tm('bCrmActivityParam')}</span>
+                            <select
+                                value={activityParam}
+                                onChange={e => {
+                                    const next = e.target.value as CrmActivityParam;
+                                    setActivityParam(next);
+                                    writeCrmActivityParam(next);
+                                }}
+                                className="min-w-[7.5rem] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+                                aria-label={tm('bCrmActivityParam')}
+                            >
+                                <option value="all">{tm('bCrmActivityAll')}</option>
+                                <option value="active">{tm('active')}</option>
+                                <option value="passive">{tm('inactive')}</option>
+                            </select>
+                        </label>
                         <label className="flex items-center gap-2 shrink-0 text-xs text-gray-600">
                             <span className="whitespace-nowrap font-medium">{tm('bFileIdRangeLabel')}</span>
                             <select

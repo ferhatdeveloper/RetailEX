@@ -21,6 +21,8 @@ import type { BeautySale } from '../../../types/beauty';
 import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
 import { clinicDashboardTahsilatTotal } from '../../../utils/clinicDashboardKasaGiris';
 import { BeautyServiceReportCrmModal } from '../../reports/BeautyServiceReportCrmModal';
+import { useClinicShellV2 } from '../clinicShellV2';
+import { ClinicDashboardV2 } from './ClinicDashboardV2';
 import '../ClinicStyles.css';
 
 // ─── Design tokens (flat) ────────────────────────────────────────────────────
@@ -72,6 +74,7 @@ type CallTab = 'today' | 'tomorrow' | 'week' | 'month' | 'range';
 
 export function ClinicDashboard() {
     const { tm, language } = useLanguage();
+    const shellV2 = useClinicShellV2();
     const { formatTime } = useBeautyTimeFormat();
     const {
         appointments, services, specialists, devices,
@@ -595,6 +598,19 @@ export function ClinicDashboard() {
     const activeStaff = useMemo(() => specialists.filter(s => s.is_active), [specialists]);
 
     const topServices = services.slice(0, 6);
+
+    if (shellV2) {
+        return (
+            <ClinicDashboardV2
+                revenue={stats.revenue}
+                appointmentCount={stats.total}
+                cancelledCount={stats.cancelled}
+                appointments={appointments}
+                specialists={specialists}
+                todayStr={todayStr}
+            />
+        );
+    }
 
     return (
         <div

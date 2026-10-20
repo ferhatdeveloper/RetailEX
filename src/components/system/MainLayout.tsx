@@ -37,6 +37,7 @@ import {
 } from '../../store/usePosDateOverrideStore';
 import { isCapacitorAndroid as detectCapacitorAndroid } from '../../utils/capacitorPlatform';
 import { lazyWithChunkRecovery } from '../../utils/chunkLoadRecovery';
+import { APP_ZOOM_EVENT } from '../../utils/appZoomCompensation';
 
 const MobilePOS = lazyWithChunkRecovery(() =>
   import('../pos/MobilePOS').then((m) => ({ default: m.MobilePOS })),
@@ -637,6 +638,15 @@ export function MainLayout({
     setZoomLevel(normalized);
     localStorage.setItem('retailos_zoom_level', String(normalized));
   }, []);
+  useEffect(() => {
+    const onZoom = (event: Event) => {
+      const level = (event as CustomEvent<{ level?: number }>).detail?.level;
+      if (typeof level !== 'number') return;
+      applyZoomLevel(level);
+    };
+    window.addEventListener(APP_ZOOM_EVENT, onZoom);
+    return () => window.removeEventListener(APP_ZOOM_EVENT, onZoom);
+  }, [applyZoomLevel]);
 
   // Yönetim modülü sidebar açık/kapalı — ManagementModule'dan event ile gelir.
   // Doğrudan tetiklemiyoruz; sadece üst bar toggle butonunun ikonu için izliyoruz.

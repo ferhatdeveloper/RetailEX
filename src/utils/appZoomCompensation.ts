@@ -2,6 +2,8 @@ import type { CSSProperties } from 'react';
 
 /** MainLayout / ScreenSettings ile aynı anahtar ve sınırlar */
 export const APP_ZOOM_STORAGE_KEY = 'retailos_zoom_level';
+/** Klinik kabuğu zoom düğmesi → MainLayout uygulaması */
+export const APP_ZOOM_EVENT = 'retailex-app-zoom';
 export const APP_ZOOM_MIN = 50;
 export const APP_ZOOM_MAX = 200;
 export const APP_ZOOM_STEP = 10;
@@ -12,6 +14,21 @@ export function normalizeAppZoomLevel(rawValue: unknown): number {
     if (!Number.isFinite(parsed)) return APP_ZOOM_DEFAULT;
     const stepped = Math.round(parsed / APP_ZOOM_STEP) * APP_ZOOM_STEP;
     return Math.min(APP_ZOOM_MAX, Math.max(APP_ZOOM_MIN, stepped));
+}
+
+export function publishAppZoomLevel(level: number): number {
+    const normalized = normalizeAppZoomLevel(level);
+    try {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(APP_ZOOM_STORAGE_KEY, String(normalized));
+        }
+    } catch {
+        /* depolama kapalı */
+    }
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(APP_ZOOM_EVENT, { detail: { level: normalized } }));
+    }
+    return normalized;
 }
 
 export function readAppZoomLevel(): number {

@@ -41,6 +41,8 @@ import { ObstetricsScreen } from './specialty/ObstetricsScreen';
 import { DietitianScreen } from './specialty/DietitianScreen';
 import { AppointmentPOS } from './components/AppointmentPOS';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
+import { BeautyShellChromeButtons } from './components/BeautyShellChrome';
+import { CLINIC_CLASSIC_SHELL, CLINIC_V2_SHELL, useClinicShellV2 } from './clinicShellV2';
 import { FirmSelector } from '../system/FirmSelector';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { normalizeFirmEnabledModules } from '../../utils/firmShellModules';
@@ -107,6 +109,8 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const showNavText = !isMobile ? !collapsed : mobileNavOpen;
     const [showLanguageModal, setShowLanguageModal] = useState(false);
+    const shellV2 = useClinicShellV2();
+    const shell = shellV2 ? CLINIC_V2_SHELL : CLINIC_CLASSIC_SHELL;
     const [rtlMode, setRtlMode] = useState(() => localStorage.getItem('retailos_rtl_mode') === 'true');
     const { specialists, devices, loadSpecialists, loadServices, loadAppointments, loadDevices } = useBeautyStore();
     const { selectedFirm } = useFirmaDonem();
@@ -437,21 +441,21 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                 style={{
                     width: isMobile ? SIDEBAR_W : collapsed ? COLLAPSED_W : SIDEBAR_W,
                     transform: isMobile && !mobileNavOpen ? 'translateX(-100%)' : undefined,
-                    background: '#12082a',
-                    borderRight: '1px solid #1f0f3a',
+                    background: shell.sidebar,
+                    borderRight: `1px solid ${shell.sidebarLine}`,
                 }}
             >
                 {/* Brand */}
                 <div
                     className="flex items-center shrink-0 overflow-hidden"
-                    style={{ height: 52, padding: collapsed ? '0 14px' : '0 16px', borderBottom: '1px solid #1f0f3a' }}
+                    style={{ height: 52, padding: collapsed ? '0 14px' : '0 16px', borderBottom: `1px solid ${shell.sidebarLine}` }}
                 >
                     <div
                         className="flex items-center justify-center shrink-0"
                         style={{
                             width: 28,
                             height: 28,
-                            background: specialty === 'dental' ? '#0ea5e9' : '#7c3aed',
+                            background: specialty === 'dental' && !shellV2 ? '#0ea5e9' : shell.accent,
                             borderRadius: 6,
                         }}
                     >
@@ -510,8 +514,8 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                                             marginBottom: 1,
                                             justifyContent: !showNavText ? 'center' : 'flex-start',
                                             gap: 9,
-                                            background: active ? '#7c3aed' : 'transparent',
-                                            borderLeft: active ? '2px solid #a78bfa' : '2px solid transparent',
+                                            background: active ? shell.accent : 'transparent',
+                                            borderLeft: active ? `2px solid ${shell.accentEdge}` : '2px solid transparent',
                                             color: active ? '#fff' : 'rgba(196,181,253,0.65)',
                                             fontSize: 13, fontWeight: active ? 700 : 500,
                                             cursor: 'pointer', border: 'none', outline: 'none',
@@ -519,7 +523,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                                         }}
                                         onMouseEnter={e => {
                                             if (!active) {
-                                                e.currentTarget.style.background = 'rgba(124,58,237,0.12)';
+                                                e.currentTarget.style.background = shell.focusRing;
                                                 e.currentTarget.style.color = 'rgba(221,214,254,0.9)';
                                             }
                                         }}
@@ -562,7 +566,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                                 transition: 'background 0.12s, color 0.12s',
                             }}
                             onMouseEnter={e => {
-                                e.currentTarget.style.background = 'rgba(124,58,237,0.12)';
+                                e.currentTarget.style.background = shell.focusRing;
                                 e.currentTarget.style.color = 'rgba(221,214,254,0.9)';
                             }}
                             onMouseLeave={e => {
@@ -577,10 +581,10 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                 )}
 
                 {/* User */}
-                <div style={{ borderTop: '1px solid #1f0f3a', padding: '10px 12px' }}>
+                <div style={{ borderTop: `1px solid ${shell.sidebarLine}`, padding: '10px 12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{
-                            width: 30, height: 30, background: '#7c3aed', borderRadius: 6,
+                            width: 30, height: 30, background: shell.accent, borderRadius: 6,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             color: '#fff', fontWeight: 800, fontSize: 12, flexShrink: 0,
                         }}>C</div>
@@ -668,7 +672,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                                     borderRadius: 6, fontSize: 12, fontWeight: 500, color: '#374151',
                                     width: 220, outline: 'none',
                                 }}
-                                onFocus={e => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(124,58,237,0.1)'; }}
+                                onFocus={e => { e.currentTarget.style.borderColor = shell.accent; e.currentTarget.style.boxShadow = `0 0 0 2px ${shell.focusRing}`; }}
                                 onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.boxShadow = 'none'; }}
                             />
                         </div>
@@ -682,12 +686,14 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                             <span style={{ position: 'absolute', top: 6, right: 6, width: 6, height: 6, background: '#ef4444', borderRadius: '50%', border: '1.5px solid #fff' }} />
                         </button>
 
+                        <BeautyShellChromeButtons />
+
                         {/* Language Selector */}
                         <button
                             onClick={() => setShowLanguageModal(true)}
                             className="flex items-center justify-center transition-colors"
                             style={{ width: 32, height: 32, borderRadius: 6, background: '#f9fafb', border: '1px solid #e5e7eb', color: '#6b7280', cursor: 'pointer' }}
-                            onMouseEnter={e => (e.currentTarget.style.borderColor = '#7c3aed')}
+                            onMouseEnter={e => (e.currentTarget.style.borderColor = shell.accent)}
                             onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
                         >
                             <Globe size={14} />
