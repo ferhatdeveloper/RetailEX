@@ -89,6 +89,7 @@ import {
   summarizePurchasePromotionReport,
   type PurchasePromotionReportLine,
 } from '../../utils/purchasePromotionReport';
+import { accumulateComparisonProducts } from '../../utils/periodComparisonProducts';
 import { applyExtraCashCollections, buildPosZReportForRange, composeDayEndZTotals, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
 import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections, saleCollectedSplit, dailyPaymentKind, beautySalePocketCollected } from '../../utils/saleCollectedAmounts';
@@ -2760,17 +2761,8 @@ export function ReportsModule({
       }
       const customerCount = ids.size > 0 ? ids.size : totalSales;
       const avgSale = totalSales > 0 ? totalRevenue / totalSales : 0;
-      const productMap = new Map<string, { qty: number; revenue: number }>();
-      for (const s of list) {
-        const lines = foldedErpSaleItems(s, depositRefs);
-        for (const it of lines) {
-          const name = (it.productName && String(it.productName).trim()) || String(it.productId || '—');
-          const cur = productMap.get(name) || { qty: 0, revenue: 0 };
-          cur.qty += Number(it.quantity) || 0;
-          cur.revenue += Number(it.total) || 0;
-          productMap.set(name, cur);
-        }
-      }
+      // Ürün tablosu: iade kalemi artı gelse bile bir kez düşülür. KPI başlığı ayrı kalır.
+      const productMap = accumulateComparisonProducts(list, (s) => foldedErpSaleItems(s, depositRefs));
       return { totalSales, totalRevenue, avgSale, customerCount, productMap };
     };
 
