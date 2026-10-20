@@ -5,7 +5,6 @@ import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
 import { PeriodSummaryReport } from './PeriodSummaryReport';
 import { ReportChatAI } from './ReportChatAI';
-import { CustomerSalesReport } from './CustomerSalesReport';
 import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
 import { formatNumber } from '../../utils/formatNumber';
@@ -181,7 +180,6 @@ import {
   PieChartOutlined,
   ClockCircleOutlined,
   TeamOutlined,
-  UserOutlined,
   RiseOutlined,
   ThunderboltOutlined,
   AccountBookOutlined,
@@ -931,7 +929,7 @@ type ReportTab =
   // Restoran Otomasyon Özel
   'end-of-day' | 'product-reports' | 'category-reports' | 'staff-reports' | 'table-reports' | 'payment-reports' | 'discount-reports' | 'detailed-sales' | 'sales-movements' | 'receipts' | 'courier-reports' | 'cash-register-reports' | 'turnover-reports' | 'analysis' |
   // Satış Raporları
-  'top-products' | 'category-analysis' | 'hourly-analysis' | 'cashiers' | 'customer-sales' | 'sales-trend' | 'sales-target' | 'sales-returns' | 'product-gross-profit' |
+  'top-products' | 'category-analysis' | 'hourly-analysis' | 'cashiers' | 'sales-trend' | 'sales-target' | 'sales-returns' | 'product-gross-profit' |
   // Finansal Raporlar
   'profit-loss' | 'cash-flow' | 'debt-aging' | 'cari-debtors' | 'cari-creditors' | 'purchase-summary' | 'supplier-purchase-returns' | 'collection-due' | 'cari-extract' | 'party-customer-sales' | 'party-supplier-purchases' | 'product-sales-by-period' |
   // VIVA SOLAR — yeni ERP raporları
@@ -959,6 +957,7 @@ const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
   'turnover-reports',
   'stock-abc', // Stok ABC Analizi — menüden gizlendi; rapor kodu duruyor
   'end-of-day', // Gün Sonu Raporu — menüden gizlendi; rapor kodu duruyor
+  'customer-sales', // Müşteri Satış — menü ve sayfa bağı kesildi; bileşen dosyası duruyor
 ]);
 
 /** Yalnızca iş kolu Restoran iken menüde / sekmede anlamlı */
@@ -1014,7 +1013,7 @@ function resolveInitialReportTab(
   initialBusinessType: BusinessType,
   initialReportTab?: ReportTab,
 ): ReportTab {
-  if (initialReportTab) return initialReportTab;
+  if (initialReportTab && String(initialReportTab) !== 'customer-sales') return initialReportTab;
   if (initialBusinessType === 'beauty') return 'beauty-service-report';
   if (initialBusinessType === 'restaurant') return 'product-reports';
   return 'daily';
@@ -1240,7 +1239,7 @@ export function ReportsModule({
   );
 
   useEffect(() => {
-    if (initialReportTab) {
+    if (initialReportTab && String(initialReportTab) !== 'customer-sales') {
       setSelectedTab(initialReportTab);
     }
   }, [initialReportTab]);
@@ -1891,8 +1890,6 @@ export function ReportsModule({
   const loadProducts = useProductStore((s) => s.loadProducts);
   const stockReportLoading = useProductStore((s) => s.isLoading);
   const reportCustomers = useCustomerStore((s) => s.customers);
-  const loadCustomers = useCustomerStore((s) => s.loadCustomers);
-  const customerSalesLoadedRef = useRef(false);
 
   // Stok raporlarında ürünleri DB’den tazele (isim/stok mağaza cache’inden sapmasın)
   useEffect(() => {
@@ -1936,13 +1933,6 @@ export function ReportsModule({
       cancelled = true;
     };
   }, [selectedTab, selectedFirm?.firm_nr, selectedPeriod?.nr]);
-
-  // Müşteri satış: kart adı / telefon eşlemesi için store listesini bir kez yükle
-  useEffect(() => {
-    if (selectedTab !== 'customer-sales' || customerSalesLoadedRef.current) return;
-    customerSalesLoadedRef.current = true;
-    void loadCustomers();
-  }, [selectedTab, loadCustomers]);
 
   const mapExpiringPurchaseToReportRow = useCallback((
     item: ExpiringPurchaseItem,
@@ -6594,7 +6584,6 @@ export function ReportsModule({
           { key: 'category-analysis', label: tm('kategoriAnalizi'), icon: <PieChartOutlined /> },
           { key: 'hourly-analysis', label: tm('saatlikAnaliz'), icon: <ClockCircleOutlined /> },
           { key: 'cashiers', label: tm('kasiyerPerformansi'), icon: <TeamOutlined /> },
-          { key: 'customer-sales', label: tm('musteriSatis'), icon: <UserOutlined /> },
           { key: 'sales-trend', label: tm('satisTrendAnalizi'), icon: <RiseOutlined /> },
           { key: 'sales-target', label: tm('hedefVsGerceklesen'), icon: <ThunderboltOutlined /> },
           { key: 'sales-returns', label: tm('erpSalesReturnsTitle'), icon: <RetweetOutlined /> },
@@ -6809,7 +6798,9 @@ export function ReportsModule({
               selectedKeys={[selectedTab]}
               defaultOpenKeys={defaultOpenKeys}
               onClick={({ key }) => {
-                setSelectedTab(key as ReportTab);
+                const tabKey = String(key);
+                if (tabKey === 'customer-sales' || REPORT_TABS_HIDDEN_FROM_MENU.has(tabKey)) return;
+                setSelectedTab(tabKey as ReportTab);
                 if (isMobile) setCollapsed(true);
               }}
               items={menuItems}
@@ -9535,14 +9526,6 @@ export function ReportsModule({
             {selectedTab === 'cash-ledger' && <CashLedgerReport />}
             {selectedTab === 'contact-account-legacy' && <ContactAccountLegacyReport />}
             {selectedTab === 'invoice-items-detail' && <InvoiceItemsDetailReport />}
-
-            {selectedTab === 'customer-sales' && (
-              <CustomerSalesReport
-                sales={effectiveCatalogSales}
-                customers={reportCustomers}
-                businessType={businessType}
-              />
-            )}
 
             {selectedTab === 'sales-trend' && (
               <SalesTrendReport sales={effectiveCatalogSales} />
