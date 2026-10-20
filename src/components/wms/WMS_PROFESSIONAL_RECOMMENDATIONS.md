@@ -731,7 +731,7 @@ Bu WMS sistemi **Irak pazarına özel** optimize edilmiş, **enterprise-grade** 
 ✅ Scalable architecture
 
 ### Competitive Advantage:
-ğŸ† Nebim V3'ten daha modern UI/UX
+ğŸ† Modern UI/UX
 ğŸ† Daha hızlı performans
 ğŸ† Daha akıllı otomasyon
 ğŸ† Daha iyi mobil deneyim
