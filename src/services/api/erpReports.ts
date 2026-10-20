@@ -58,6 +58,11 @@ import {
   SQL_BEAUTY_APPT_INCLUDED,
 } from '../../utils/lastPurchaseCostSql';
 import {
+  mergeCashLedgerRefunds,
+  signInvoiceDetailAmounts,
+  type SalesCashRefundSource,
+} from '../../utils/reportReturnCashSign';
+import {
   productCardUnitCost,
   SQL_PRODUCT_CARD_UNIT_COST,
 } from '../../utils/productCardUnitCost';
@@ -636,6 +641,80 @@ function mapCashBankMovementRow(r: {
     netAmount: amount * sign,
     accountName: String(r.account_name ?? r.accountName ?? ''),
   };
+}
+
+/**
+ * Kasaya satır yazılmamış nakit satış iadeleri.
+ * Peşinat fişi (is_deposit) ve alış iadesi (trcode 6) bu listeye girmez.
+ * Sorgu başarısızsa kasa defteri mevcut cash_lines ile devam eder.
+ */
+async function fetchSalesCashRefundSources(params: {
+  from: string;
+  to: string;
+  cariId?: string;
+}): Promise<SalesCashRefundSource[]> {
+  const firmNr = padFirm();
+  const values: unknown[] = [firmNr, params.from, params.to];
+  let cariSql = '';
+  if (params.cariId) {
+    values.push(String(params.cariId));
+    cariSql = ` AND s.customer_id = $${values.length}::uuid`;
+  }
+  try {
+    const { rows } = await postgres.query(
+      `
+      SELECT
+        s.id::text AS id,
+        ${sqlUtcDate('s.date')}::text AS date,
+        COALESCE(s.fiche_no, '') AS fiche_no,
+        COALESCE(s.trcode, 0) AS trcode,
+        LOWER(TRIM(COALESCE(s.fiche_type, ''))) AS fiche_type,
+        COALESCE(s.payment_method, '') AS payment_method,
+        COALESCE(s.net_amount, s.total_net, 0) AS net_amount,
+        COALESCE(s.total_net, 0) AS total_net,
+        COALESCE(s.is_deposit, false) AS is_deposit,
+        s.header_fields AS header_fields,
+        COALESCE(s.customer_id::text, '') AS customer_id,
+        COALESCE(c.name, s.customer_name, '') AS customer_name
+      FROM sales s
+      LEFT JOIN customers c ON c.id = s.customer_id
+      WHERE s.firm_nr = $1::text
+        AND ${sqlUtcDate('s.date')} BETWEEN $2::date AND $3::date
+        AND COALESCE(s.is_cancelled, false) = false
+        AND ${SQL_COUNTABLE_SALE_STATUS}
+        AND COALESCE(s.is_deposit, false) = false
+        AND (
+          COALESCE(s.trcode, 0) IN (2, 3)
+          OR (
+            LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('return_invoice', 'i')
+            AND COALESCE(s.trcode, 0) NOT IN (1, 4, 5, 6, 13, 26, 41, 42)
+          )
+        )
+        ${cariSql}
+      ORDER BY ${sqlUtcDate('s.date')} ASC, s.fiche_no ASC
+      LIMIT ${ROW_LIMIT}
+      `,
+      values,
+    );
+    return (rows || []).map((r: any) => ({
+      id: String(r.id ?? ''),
+      date: String(r.date ?? '').slice(0, 10),
+      ficheNo: String(r.fiche_no ?? ''),
+      ficheType: String(r.fiche_type ?? ''),
+      trcode: Number(r.trcode ?? 0),
+      paymentMethod: String(r.payment_method ?? ''),
+      netAmount: Number(r.net_amount ?? 0),
+      totalNet: Number(r.total_net ?? 0),
+      isDeposit: r.is_deposit === true,
+      headerFields: r.header_fields,
+      customerId: String(r.customer_id ?? ''),
+      customerName: String(r.customer_name ?? ''),
+    }));
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[erpReportsAPI] nakit iade kasa satırı okunamadı:', msg);
+    return [];
+  }
 }
 
 export const erpReportsAPI = {
@@ -2740,8 +2819,9 @@ export const erpReportsAPI = {
   /**
    * CashLedger — kasa defteri (kümülatif bakiye).
    * VIVA SOLAR `TOTAL EXPENDITURE PER` + `total incoming` karşılığı.
-   * Kaynak: `cash_lines` (firm-period) UNION `bank_lines` (firm-period).
-   * `cumulative` TS tarafında running total olarak hesaplanır (DB sıralama değişse bile tutarlı).
+   * Kaynak: `cash_lines` UNION `bank_lines`, artı kasaya yazılmamış nakit satış iadesi.
+   * Gelen brüt giriştir (peşinat dahil). Nakit iade giden satırdır; peşinat düşülmez.
+   * `cumulative` birleşik satırlar üzerinde yürüyen bakiyedir.
    */
   async getCashLedger(params: {
     from: string;
@@ -2837,28 +2917,28 @@ export const erpReportsAPI = {
       cash_register_id: string;
       cash_register_name: string;
     };
-    let cumulative = 0;
-    return ((rows || []) as Raw[]).map((r) => {
-      const incoming = Number(r.incoming ?? 0);
-      const outgoing = Number(r.outgoing ?? 0);
-      cumulative += incoming - outgoing;
-      return {
-        id: String(r.id ?? ''),
-        date: String(r.date ?? '').slice(0, 10),
-        ficheNo: String(r.fiche_no ?? ''),
-        sequence: Number(r.sequence ?? 1),
-        group: String(r.grp ?? 'OFFICE'),
-        subGroup: String(r.sub_group ?? ''),
-        description: String(r.description ?? ''),
-        incoming,
-        outgoing,
-        cumulative,
-        cariId: String(r.cari_id ?? ''),
-        cariName: String(r.cari_name ?? ''),
-        cashRegisterId: String(r.cash_register_id ?? ''),
-        cashRegisterName: String(r.cash_register_name ?? ''),
-      };
+    const movements = ((rows || []) as Raw[]).map((r) => ({
+      id: String(r.id ?? ''),
+      date: String(r.date ?? '').slice(0, 10),
+      ficheNo: String(r.fiche_no ?? ''),
+      sequence: Number(r.sequence ?? 1),
+      group: String(r.grp ?? 'OFFICE'),
+      subGroup: String(r.sub_group ?? ''),
+      description: String(r.description ?? ''),
+      incoming: Number(r.incoming ?? 0),
+      outgoing: Number(r.outgoing ?? 0),
+      cumulative: 0,
+      cariId: String(r.cari_id ?? ''),
+      cariName: String(r.cari_name ?? ''),
+      cashRegisterId: String(r.cash_register_id ?? ''),
+      cashRegisterName: String(r.cash_register_name ?? ''),
+    }));
+    const refunds = await fetchSalesCashRefundSources({
+      from,
+      to,
+      cariId: params.cariId,
     });
+    return mergeCashLedgerRefunds(movements, refunds);
   },
 
   /**
@@ -3218,12 +3298,14 @@ export const erpReportsAPI = {
         COALESCE(c.name, s.customer_name, '') AS customer,
         COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, '') AS product,
         COALESCE(NULLIF(TRIM(si.item_type), ''), '') AS item_type,
+        COALESCE(s.trcode, 0) AS trcode,
+        LOWER(TRIM(COALESCE(s.fiche_type, ''))) AS fiche_type,
         COALESCE(si.quantity, 0) AS qty,
         COALESCE(si.unit_price, 0) AS unit_price,
         COALESCE(si.discount_amount, 0) AS discount,
         COALESCE(si.total_amount, 0) AS line_gross,
         COALESCE(si.net_amount, 0) AS line_total,
-        -- Fatura toplamı: brüt hizmet/ürün değeri (avans/ödemeler hariç).
+        -- Fatura başlığı satırda gösterilir. Satış iadesi işaretli mapper'da bir kez eksi olur.
         COALESCE(s.total_net, 0) AS invoice_total,
         COALESCE(c.phone, '') AS phone
       FROM sale_items si
@@ -3240,22 +3322,31 @@ export const erpReportsAPI = {
     // Frontend `InvoiceItemsDetailRow` tipi camelCase bekler; backend SQL snake_case
     // döndürür. Burada iki katman arasında tip uyumunu koruyoruz — aksi halde
     // ürün adı boş, miktar 0 görünür (UI sızdıran alanlar).
-    return (rows || []).map((r: any) => ({
-      id: String(r.id ?? ''),
-      date: String(r.date ?? '').slice(0, 10),
-      invoiceNo: String(r.invoice_no ?? ''),
-      customerId: String(r.customer_id ?? ''),
-      customerName: String(r.customer ?? ''),
-      productName: String(r.product ?? ''),
-      itemType: String(r.item_type ?? ''),
-      quantity: Number(r.qty ?? 0),
-      unitPrice: Number(r.unit_price ?? 0),
-      discount: Number(r.discount ?? 0),
-      lineGross: Number(r.line_gross ?? 0),
-      lineTotal: Number(r.line_total ?? 0),
-      invoiceTotal: Number(r.invoice_total ?? 0),
-      phone: String(r.phone ?? ''),
-    }));
+    return (rows || []).map((r: any) => {
+      const isReturn = isSalesReturnFiche({ fiche_type: r.fiche_type, trcode: r.trcode });
+      const signed = signInvoiceDetailAmounts({
+        quantity: Number(r.qty ?? 0),
+        lineGross: Number(r.line_gross ?? 0),
+        lineTotal: Number(r.line_total ?? 0),
+        invoiceTotal: Number(r.invoice_total ?? 0),
+      }, isReturn);
+      return {
+        id: String(r.id ?? ''),
+        date: String(r.date ?? '').slice(0, 10),
+        invoiceNo: String(r.invoice_no ?? ''),
+        customerId: String(r.customer_id ?? ''),
+        customerName: String(r.customer ?? ''),
+        productName: String(r.product ?? ''),
+        itemType: String(r.item_type ?? ''),
+        quantity: signed.quantity,
+        unitPrice: Number(r.unit_price ?? 0),
+        discount: Number(r.discount ?? 0),
+        lineGross: signed.lineGross,
+        lineTotal: signed.lineTotal,
+        invoiceTotal: signed.invoiceTotal,
+        phone: String(r.phone ?? ''),
+      };
+    });
   },
 
   /**

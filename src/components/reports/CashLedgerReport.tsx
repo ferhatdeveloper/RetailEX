@@ -4,10 +4,9 @@
  * Mevcut `ErpCoreReports.tsx` mimarisiyle aynı kalıp.
  *
  * Mali denetim notu:
- *  - `incoming` = kasa/banka giriş (cash_lines/bank_lines net pozitif).
- *  - `outgoing` = kasa/banka çıkış (cash_lines/bank_lines net negatif).
- *  - Kümülatif bakiye `vorperiode` (dönem başı) ile başlatılmalı; iade çıkışları ve
- *    düzeltme satırları çift yönlü yazılmaz.
+ *  - `incoming` = brüt kasa girişi (tahsilat ve peşinat). Peşinat iade değildir.
+ *  - `outgoing` = kasa çıkışı. Nakit satış iadesi ayrı giden satırdır.
+ *  - Net ve son bakiye = gelen − giden. Gelen kolonuna net yazılmaz.
  *  - Kategori (GASOLINE / OFFICE / PERSONEL / WAREHOUSE / INCOMING / OUT) çapraz tablo
  *    (group/subGroup) ile gruplanır; alt grup boş = ana gruptaki tüm alt gruplar.
  */
@@ -31,6 +30,7 @@ import {
 } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { erpReportsAPI, type CashLedgerRow, type CashLedgerGroup } from '../../services/api/erpReports';
+import { cashLedgerTotals, withCashLedgerCumulative } from '../../utils/reportReturnCashSign';
 import { supplierAPI } from '../../services/api/suppliers';
 import type { Supplier } from '../../core/types';
 
@@ -207,29 +207,9 @@ export function CashLedgerReport() {
     });
   }, [rows, groups, subGroups, cariId]);
 
-  // Kümülatif bakiye, filtre uygulandıktan sonra yeniden hesaplanır.
-  const recalculated = useMemo(() => {
-    let running = 0;
-    return filtered.map((r) => {
-      running += r.incoming - r.outgoing;
-      return { ...r, cumulative: running };
-    });
-  }, [filtered]);
-
-  const totals = useMemo(() => {
-    let incoming = 0;
-    let outgoing = 0;
-    for (const r of recalculated) {
-      incoming += r.incoming;
-      outgoing += r.outgoing;
-    }
-    return {
-      incoming,
-      outgoing,
-      net: incoming - outgoing,
-      finalBalance: recalculated.length > 0 ? recalculated[recalculated.length - 1].cumulative : 0,
-    };
-  }, [recalculated]);
+  // Kümülatif, filtre sonrası gelen − giden yürüyen bakiyedir. Gelen brüt kalır.
+  const recalculated = useMemo(() => withCashLedgerCumulative(filtered), [filtered]);
+  const totals = useMemo(() => cashLedgerTotals(recalculated), [recalculated]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
 

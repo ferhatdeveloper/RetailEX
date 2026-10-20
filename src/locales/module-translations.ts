@@ -14297,6 +14297,8 @@ export const excelModuleTranslations = {
 
   // Footer / Misc
   rprTotal: { tr: 'TOPLAM', en: 'TOTAL', ar: 'الإجمالي', ku: 'TEVAHÎ' },
+  rprInvoiceCount: { tr: 'Fatura sayısı', en: 'Invoice count', ar: 'عدد الفواتير', ku: 'Hejmara fatûreyê' },
+  rprRowCount: { tr: 'Satır sayısı', en: 'Row count', ar: 'عدد الأسطر', ku: 'Hejmara rêzan' },
   rprDailyPresence: { tr: 'Günlük Gelen', en: 'Daily presence', ar: 'الحضور اليومي', ku: 'Hatina rojane' },
   rprPerson: { tr: 'kişi', en: 'people', ar: 'أشخاص', ku: 'kes' },
 

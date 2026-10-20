@@ -4,9 +4,9 @@
  * Mevcut `ErpCoreReports.tsx` mimarisiyle aynı kalıp.
  *
  * Mali denetim notu:
- *  - `lineTotal` = miktar × birimFiyat × (1 - iskonto/100).
- *  - `invoiceTotal` = faturadaki tüm kalemlerin `lineTotal` toplamı; (subtotal > 0 ise o, değilse net + indirim).
- *  - Cari türü 'customer' olmalı; supplier verisi filtre dışı.
+ *  - Satış iadesi miktar, satır neti ve fatura başlığı bir kez eksidir.
+ *  - Kartlardaki satır toplam ve fatura toplam, satır netlerinin toplamıdır.
+ *    Fatura başlığı iki hizmet satırında tekrar toplanmaz.
  *  - Telefon araması case-insensitive `ILIKE` benzeri içerir.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -29,6 +29,7 @@ import { erpReportsAPI } from '../../services/api/erpReports';
 import { supplierAPI } from '../../services/api/suppliers';
 import type { Supplier } from '../../core/types';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
+import { invoiceItemsDetailCards } from '../../utils/reportReturnCashSign';
 
 type SelectOption = { value: string; label: string };
 
@@ -215,30 +216,7 @@ export function InvoiceItemsDetailReport() {
     });
   }, [rows, cariIds, search, priceMin, priceMax]);
 
-  const totals = useMemo(() => {
-    let qty = 0;
-    let lineTotal = 0;
-    // A6: Footer'da "fatura toplamı" her satırda tekrar ettiği için 3-5× şişiyordu.
-    // Burada yalnızca benzersiz faturaların `invoiceTotal` toplamı "gerçek fatura
-    // toplamı" olarak hesaplanır; `lineTotal` ise kalem satırı toplamıdır.
-    const seenInvoices = new Set<string>();
-    let invoiceTotal = 0;
-    for (const r of filtered) {
-      qty += r.quantity;
-      lineTotal += r.lineTotal;
-      const key = r.invoiceNo || r.id;
-      if (!seenInvoices.has(key)) {
-        seenInvoices.add(key);
-        invoiceTotal += r.invoiceTotal;
-      }
-    }
-    return {
-      qty,
-      lineTotal,
-      invoiceTotal,
-      invoiceCount: seenInvoices.size,
-    };
-  }, [filtered]);
+  const totals = useMemo(() => invoiceItemsDetailCards(filtered), [filtered]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const filterLabelClass = darkMode ? 'text-gray-400' : 'text-slate-500';
@@ -316,15 +294,8 @@ export function InvoiceItemsDetailReport() {
         size: 130,
         footerSum: true,
         footerFormat: (_sum, rows) => {
-          const seen = new Set<string>();
-          let total = 0;
-          for (const r of rows) {
-            const key = r.invoiceNo || r.id;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            total += r.invoiceTotal;
-          }
-          return `${formatNumber(total, 2, false)} ${currency}`;
+          const cards = invoiceItemsDetailCards(rows);
+          return `${formatNumber(cards.lineTotal, 2, false)} ${currency}`;
         },
         cell: (r) => (
           <span className={`font-semibold ${r.invoiceTotal < 0 ? 'text-red-500' : ''}`}>
