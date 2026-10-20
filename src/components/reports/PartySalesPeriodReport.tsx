@@ -6,8 +6,12 @@
  * - `cardType = 'supplier'` → tedarikçi alışları (`purchase_invoice`, `return_invoice`)
  *
  * Kolonlar:
- *   Brüt satış adedi | Brüt tutar | İade adedi | İade tutarı | Net tutar |
- *   Toplam miktar (kg/adet) | Son satış tarihi
+ *   Brüt satış adedi | Miktar (net) | Brüt tutar | İade tutarı | Net tutar |
+ *   Son satış tarihi
+ *
+ * Net tutar = brüt tutar − |iade tutarı| (bir kez).
+ * İade tutarı bilgi kolonunda artı kalır; ikinci kez düşülmez.
+ * Net miktar = brüt miktar − |iade miktarı|.
  *
  * Altta 4 KPI strip:
  *   Brüt satış adedi | Brüt tutar | Net tutar | Kalan borç
@@ -15,11 +19,10 @@
  * Borç yönü (muhasebe denetimi):
  *   - Müşteri: credit_amount − paid_amount (kalan borç)
  *   - Tedarikçi: aynı formül; cari kart.balance ile çapraz referans
+ *   Kalan borç işaretine mutlak değer uygulanmaz.
  *
  * Not: Grid'de Ödenen / Kalan Borç kolonları kaldırıldı (KPI strip'te tutulur);
  * aynı borç/alacak yönü korunur.
- *
- * "ABS + her zaman +1" kısayolu YASAK; işaret korunur.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, RefreshCw, Download, ShoppingCart } from 'lucide-react';

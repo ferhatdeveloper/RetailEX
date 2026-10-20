@@ -22,6 +22,11 @@ import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { localTodayDateKey } from '../../utils/localCalendarDate';
 import { SQL_PRODUCT_SALES_MATERIAL_ONLY } from '../../utils/productSalesReportFilters';
 import { settleProductPeriodSalesNet } from '../../utils/productPeriodSalesNet';
+import { mapPartySalesPeriodAmounts } from '../../utils/partySalesPeriodNet';
+import {
+  buildPartySalesByPeriodSql,
+  normalizePartySalesPartyIds,
+} from '../../utils/partySalesPeriodQuery';
 import {
   buildProfitCostCtes,
   INVOICE_LINE_SCALE_JOIN,
@@ -3261,17 +3266,18 @@ export const erpReportsAPI = {
    * - `cardType = 'supplier'` → `purchase_invoice`, `return_invoice` ve ilgili trcode'lar.
    *
    * Brüt / İade / Net ayrı:
-   *   - **gross_amount** = sadece satış (iade olmayan) net_amount toplamı
-   *   - **return_amount** = iade net_amount toplamı (negatif)
-   *   - **net_amount** = gross + return (işaretli)
+   *   - **gross_amount** = sadece satış (iade olmayan) belge tutarı
+   *   - **return_amount** = iade kovası (artı veya eksi olabilir)
+   *   - **net** = brüt − |iade| (`mapPartySalesPeriodAmounts`, bir kez)
+   *
+   * Miktar: brüt miktar − |iade miktarı|. İade adedi brüte eklenmez.
    *
    * Borç yönü (muhasebe denetimi):
    *   - Müşteri: `credit_amount − paid_amount` (cari kart bakiyesiyle çapraz kontrol)
    *   - Tedarikçi: aynı formül; supplierAPI.getAll ile uyumlu.
+   *   Kalan borç işaretine mutlak değer uygulanmaz.
    *
-   * `total_quantity` `sale_items.quantity` toplamıdır (kg / adet birim karışık).
-   *
-   * İade brüt toplamı negatiftir; net_amount her zaman `gross + return` formülüne eşittir.
+   * Kimlik eşlemesi metindir. Tarih parametresi uuid dizisine bağlanmaz.
    */
   async getPartySalesByPeriod(opts: {
     cardType: 'customer' | 'supplier';
@@ -3282,112 +3288,38 @@ export const erpReportsAPI = {
     const { cardType, startDate, endDate, partyIds } = opts;
     if (!startDate || !endDate) return [];
 
-    const partyCol = cardType === 'supplier' ? 'suppliers' : 'customers';
-    const partyAlias = cardType === 'supplier' ? 'sup' : 'c';
-    const partyIdCol = 'customer_id'; // sales tablosunda FK
-    // Sales/purchase filtreleri
-    const ficheFilter =
-      cardType === 'customer'
-        ? `s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice')`
-        : `(s.fiche_type IN ('purchase_invoice', 'return_invoice') OR s.trcode IN (1, 4, 5, 6, 13, 26, 41, 42))`;
-    // iade tanımı
-    const returnFType = `'return_invoice'`;
-    const partyFilter = partyIds && partyIds.length > 0
-      ? `AND s.${partyIdCol} = ANY($2::uuid[])`
-      : '';
-
-    const sql = `
-      WITH sale_lines AS (
-        SELECT
-          s.id,
-          s.${partyIdCol} AS party_id,
-          COALESCE(NULLIF(TRIM(s.fiche_type), ''), '') AS fiche_type,
-          -- Bug 29 follow-up (12.10.2026) — Brüt Ciro kaynağı total_net (DB'de
-          -- total_gross=0 invariant, indirim Hariç brüt belge tutarı). Eski
-          -- kod net_amount aggregate ediyordu; bu alan indirim düşülmüş
-          -- NET tahsilat tutarıydı (örn. 50000 brüt → 30000 net). Brüt
-          -- kolonu 65.000 (30000+35000) gösteriyordu.
-          -- NULLIF(total_net,0) → eski kayıtlarda total_net boşsa net_amount'a
-          -- geri düş (geriye dönük uyum).
-          COALESCE(NULLIF(s.total_net, 0), s.net_amount, 0) AS net_amount,
-          COALESCE(s.paid_amount, 0) AS paid_amount,
-          COALESCE(s.credit_amount, 0) AS credit_amount,
-          COALESCE(s.date, s.created_at) AS doc_date,
-          COALESCE((
-            SELECT SUM(COALESCE(si.quantity, 0))
-            FROM sale_items si WHERE si.invoice_id = s.id
-          ), 0) AS total_quantity
-        FROM sales s
-        WHERE COALESCE(s.is_cancelled, false) = false
-          AND ${SQL_COUNTABLE_SALE_STATUS}
-          AND ${ficheFilter}
-          AND ${sqlUtcDate('COALESCE(s.date, s.created_at)')} BETWEEN $1 AND $2
-          ${partyFilter}
-      ),
-      party_totals AS (
-        SELECT
-          party_id,
-          -- Brüt: iade olmayan (sale_lines.net_amount = total_net fallback)
-          SUM(CASE WHEN fiche_type <> ${returnFType} THEN net_amount ELSE 0 END) AS gross_amount,
-          -- İade: negatif (iade fişlerinin total_net değeri negatif işaretlidir)
-          SUM(CASE WHEN fiche_type = ${returnFType} THEN net_amount ELSE 0 END) AS return_amount,
-          -- Brüt adet (iade satırları dahil miktar)
-          SUM(total_quantity) AS total_quantity,
-          -- Brüt satış adedi (iade olmayan belge sayısı)
-          COUNT(*) FILTER (WHERE fiche_type <> ${returnFType}) AS gross_count,
-          -- İade adedi
-          COUNT(*) FILTER (WHERE fiche_type = ${returnFType}) AS return_count,
-          -- Ödenen tutar (sadece brüt satışlardan)
-          SUM(CASE WHEN fiche_type <> ${returnFType} THEN paid_amount ELSE 0 END) AS paid_amount,
-          -- Kalan borç (credit - paid)
-          SUM(CASE WHEN fiche_type <> ${returnFType} THEN credit_amount ELSE 0 END)
-            - SUM(CASE WHEN fiche_type <> ${returnFType} THEN paid_amount ELSE 0 END) AS remaining_debt,
-          MAX(${sqlUtcDate('doc_date')}) AS last_sale_date
-        FROM sale_lines
-        WHERE party_id IS NOT NULL
-        GROUP BY party_id
-      )
-      SELECT
-        ${partyAlias}.id::text AS party_id,
-        COALESCE(${partyAlias}.code, '') AS party_code,
-        COALESCE(${partyAlias}.name, '') AS party_name,
-        COALESCE(${partyAlias}.phone, '') AS phone,
-        COALESCE(${partyAlias}.balance, 0) AS current_balance,
-        COALESCE(pt.gross_amount, 0) AS gross_amount,
-        COALESCE(pt.return_amount, 0) AS return_amount,
-        COALESCE(pt.gross_amount, 0) + COALESCE(pt.return_amount, 0) AS net_amount,
-        COALESCE(pt.total_quantity, 0) AS total_quantity,
-        COALESCE(pt.gross_count, 0) AS gross_count,
-        COALESCE(pt.return_count, 0) AS return_count,
-        COALESCE(pt.paid_amount, 0) AS paid_amount,
-        COALESCE(pt.remaining_debt, 0) AS remaining_debt,
-        COALESCE(pt.last_sale_date::text, '') AS last_sale_date
-      FROM ${partyCol} ${partyAlias}
-      LEFT JOIN party_totals pt ON pt.party_id = ${partyAlias}.id
-      WHERE COALESCE(${partyAlias}.is_active, true) = true
-        ${partyIds && partyIds.length > 0 ? `AND ${partyAlias}.id = ANY($2::uuid[])` : ''}
-      ORDER BY COALESCE(pt.gross_amount, 0) DESC, ${partyAlias}.name ASC
-    `;
-
+    const normalizedPartyIds = normalizePartySalesPartyIds(partyIds);
+    const sql = buildPartySalesByPeriodSql({
+      cardType,
+      partyIds: normalizedPartyIds,
+    });
     const params: unknown[] = [startDate, endDate];
-    if (partyIds && partyIds.length > 0) params.push(partyIds);
+    if (normalizedPartyIds.length > 0) params.push(normalizedPartyIds);
     const { rows } = await postgres.query(sql, params);
-    return (rows || []).map((r: any) => ({
-      partyId: String(r.party_id ?? ''),
-      partyCode: String(r.party_code ?? ''),
-      partyName: String(r.party_name ?? ''),
-      phone: String(r.phone ?? ''),
-      currentBalance: Number(r.current_balance ?? 0),
-      grossAmount: Number(r.gross_amount ?? 0),
-      returnAmount: Number(r.return_amount ?? 0),
-      netAmount: Number(r.net_amount ?? 0),
-      totalQuantity: Number(r.total_quantity ?? 0),
-      grossCount: Number(r.gross_count ?? 0),
-      returnCount: Number(r.return_count ?? 0),
-      paidAmount: Number(r.paid_amount ?? 0),
-      remainingDebt: Number(r.remaining_debt ?? 0),
-      lastSaleDate: String(r.last_sale_date ?? '').slice(0, 10),
-    }));
+    return (rows || []).map((r: any) => {
+      const amounts = mapPartySalesPeriodAmounts({
+        grossAmount: r.gross_amount,
+        returnAmount: r.return_amount,
+        grossQuantity: r.gross_quantity,
+        returnQuantity: r.return_quantity,
+      });
+      return {
+        partyId: String(r.party_id ?? ''),
+        partyCode: String(r.party_code ?? ''),
+        partyName: String(r.party_name ?? ''),
+        phone: String(r.phone ?? ''),
+        currentBalance: Number(r.current_balance ?? 0),
+        grossAmount: amounts.grossAmount,
+        returnAmount: amounts.returnAmount,
+        netAmount: amounts.netAmount,
+        totalQuantity: amounts.totalQuantity,
+        grossCount: Number(r.gross_count ?? 0),
+        returnCount: Number(r.return_count ?? 0),
+        paidAmount: Number(r.paid_amount ?? 0),
+        remainingDebt: Number(r.remaining_debt ?? 0),
+        lastSaleDate: String(r.last_sale_date ?? '').slice(0, 10),
+      };
+    });
   },
 
   /**
@@ -3550,11 +3482,11 @@ export interface PartySalesByPeriodRow {
   currentBalance: number;
   /** Brüt satış toplamı (iade hariç) */
   grossAmount: number;
-  /** İade toplamı (negatif işaretli) */
+  /** İade tutarı (bilgi kolonu, artı büyüklük). Net hesaba bir kez girer. */
   returnAmount: number;
-  /** Net = brüt + iade (işaretli) */
+  /** Net = brüt − |iade| (iade bir kez düşülür) */
   netAmount: number;
-  /** Brüt miktar (kg/adet) — tüm satır.quantities toplamı */
+  /** Net miktar = brüt miktar − |iade miktarı| */
   totalQuantity: number;
   /** Brüt satış adedi (iade olmayan belge sayısı) */
   grossCount: number;

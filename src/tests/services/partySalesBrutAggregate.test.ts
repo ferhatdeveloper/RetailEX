@@ -25,6 +25,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { settlePartySalesPeriodNet } from '../../utils/partySalesPeriodNet';
 
 interface SaleRow {
   id: string;
@@ -206,7 +207,16 @@ describe('getPartySalesByPeriod — Brüt Ciro aggregate (Bug 29 follow-up)', ()
     expect(totals[0].return_amount).toBe(-50_000);
     expect(totals[0].gross_count).toBe(1);
     expect(totals[0].return_count).toBe(1);
-    // net = gross + return (gross 100k - iade 50k = 50k)
-    expect(totals[0].gross_amount + totals[0].return_amount).toBe(50_000);
+    // Ham kova eksi. Ekran büyüklüğü bir kez düşer; ikinci eksi yazılmaz.
+    const shown = settlePartySalesPeriodNet({
+      grossAmount: totals[0].gross_amount,
+      returnAmount: totals[0].return_amount,
+      grossQuantity: 1,
+      returnQuantity: -1,
+    });
+    expect(shown.returnAmount).toBe(50_000);
+    expect(shown.netAmount).toBe(50_000);
+    expect(shown.netAmount).not.toBe(0);
+    expect(shown.netAmount).not.toBe(150_000);
   });
 });
