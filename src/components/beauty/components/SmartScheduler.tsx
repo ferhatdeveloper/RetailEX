@@ -2726,7 +2726,7 @@ export function SmartScheduler() {
                                     );
                                 })()}
                             </div>
-                            {/* Peşinat / Kalan — aynı fişin depozitosu hizmetlere bir kez paylaştırılır (gösterim). */}
+                            {/* Peşinat / Kalan — fiş bakiyesi. Satır payı raporda kalır. */}
                             {(() => {
                                 const pool = appointments.some((apt) => apt.id === selectedApt.id)
                                     ? appointments
@@ -2749,10 +2749,11 @@ export function SmartScheduler() {
                                     })),
                                     selectedApt.id,
                                 );
-                                // Ücret hizmet bedelidir. Ön ödenen bu satırın payıdır.
-                                // Kalan = ücret − pay. Depozito ücrete eklenmez ve kayda yazılmaz.
+                                // Ücret bu hizmetin fiyatıdır. Ön ödenen fiş peşinatıdır.
+                                // Kalan = fiş hizmet bedeli − peşinat, bir kez. Kayda yazılmaz.
                                 if (!card || !(card.prepaid > 0.004)) return null;
                                 const remaining = card.remaining;
+                                const remainingDue = remaining != null && remaining > 0.004;
                                 const depositLabel = tm('prePaymentAmount') || 'Ön Ödenen Tutar';
                                 const remainingLabel = tm('bRemainingAmount') || 'Kalan Tutar';
                                 const depositFicheNo = selectedApt.deposit_sale_fiche_no || selectedApt.deposit_sale_id || '—';
@@ -2798,10 +2799,10 @@ export function SmartScheduler() {
                                         </div>
                                         <div
                                             data-testid="appointment-detail-remaining-box"
-                                            title={remaining > 0 ? undefined : (tm('appointmentFullyPaid') || 'Tamamı ödendi')}
+                                            title={remaining == null ? (tm('bAppointmentNotYetDone') || 'Henüz gerçekleşmedi') : remainingDue ? undefined : (tm('appointmentFullyPaid') || 'Tamamı ödendi')}
                                             style={{
-                                                background: remaining > 0 ? '#fee2e2' : '#d1fae5',
-                                                border: `1px solid ${remaining > 0 ? '#fecaca' : '#bbf7d0'}`,
+                                                background: remaining == null ? '#f3f4f6' : remainingDue ? '#fee2e2' : '#d1fae5',
+                                                border: `1px solid ${remaining == null ? '#e5e7eb' : remainingDue ? '#fecaca' : '#bbf7d0'}`,
                                                 borderRadius: 8,
                                                 padding: '10px 12px',
                                             }}
@@ -2810,7 +2811,7 @@ export function SmartScheduler() {
                                                 style={{
                                                     fontSize: 10,
                                                     fontWeight: 700,
-                                                    color: remaining > 0 ? '#dc2626' : '#059669',
+                                                    color: remaining == null ? '#6b7280' : remainingDue ? '#dc2626' : '#059669',
                                                     textTransform: 'uppercase',
                                                     letterSpacing: '0.08em',
                                                     marginBottom: 4,
@@ -2823,17 +2824,21 @@ export function SmartScheduler() {
                                                 style={{
                                                     fontSize: 14,
                                                     fontWeight: 700,
-                                                    color: remaining > 0 ? '#dc2626' : '#059669',
+                                                    color: remaining == null ? '#6b7280' : remaining > 0 ? '#dc2626' : '#059669',
                                                     fontFamily: 'monospace',
                                                 }}
                                             >
-                                                {formatMoneyAmount(remaining, { minFrac: 0, maxFrac: 0 })}
+                                                {remaining == null
+                                                    ? (tm('bAppointmentNotYetDone') || 'Henüz gerçekleşmedi')
+                                                    : formatMoneyAmount(remaining, { minFrac: 0, maxFrac: 0 })}
                                             </p>
-                                            <p style={{ fontSize: 10, color: remaining > 0 ? '#dc2626' : '#059669', marginTop: 2 }}>
-                                                {remaining > 0
+                                            {remaining != null && (
+                                            <p style={{ fontSize: 10, color: remainingDue ? '#dc2626' : '#059669', marginTop: 2 }}>
+                                                {remainingDue
                                                     ? tm('pesinatPartialNotCari') || 'Cariye yazılmaz, randevu tamamlanırken tahsil edilir.'
                                                     : tm('appointmentFullyPaid') || 'Tamamı ödendi'}
                                             </p>
+                                            )}
                                         </div>
                                     </div>
                                 );

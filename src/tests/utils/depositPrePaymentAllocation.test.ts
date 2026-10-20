@@ -57,6 +57,7 @@ describe('spreadPrePaymentDepositRows', () => {
     ).map((share) => share.depositShare);
 
     expect([cut.deposit_amount, pink.deposit_amount]).toEqual(expected);
+    expect([cut.deposit_amount, pink.deposit_amount]).toEqual([9_000, 11_000]);
     expect(expected.reduce((sum, share) => sum + share, 0)).toBe(20_000);
     expect(expected.every((share) => share > 0)).toBe(true);
 
@@ -198,6 +199,8 @@ describe('appointmentDepositCardAmounts', () => {
         deposit_amount: 20_000,
         payment_state: 'deposit_only',
         deposit_sale_fiche_no: 'RZV-1',
+        avans_total: 7_000,
+        status: 'pre_paid',
       }),
       row({
         appointment_id: 'pink',
@@ -206,19 +209,24 @@ describe('appointmentDepositCardAmounts', () => {
         total_price: 60_000,
         deposit_amount: 0,
         payment_state: 'unpaid',
+        avans_total: 7_000,
+        status: 'scheduled',
       }),
     ];
   }
 
-  it('aynı fişte kart tutarları 9.000/41.000 ve 11.000/49.000 olur', () => {
+  it('aynı fişte kart ön ödenen 20.000 ve kalan 90.000 olur', () => {
     const raw = visit();
     const cut = appointmentDepositCardAmounts(raw, 'cut');
     const pink = appointmentDepositCardAmounts(raw, 'pink');
 
-    expect(cut).toEqual({ fee: 50_000, prepaid: 9_000, remaining: 41_000 });
-    expect(pink).toEqual({ fee: 60_000, prepaid: 11_000, remaining: 49_000 });
-    expect((cut?.prepaid || 0) + (pink?.prepaid || 0)).toBe(20_000);
-    expect((cut?.remaining || 0) + (pink?.remaining || 0)).toBe(90_000);
+    expect(cut).toEqual({ fee: 50_000, prepaid: 20_000, remaining: 90_000 });
+    expect(pink).toEqual({ fee: 60_000, prepaid: 20_000, remaining: 90_000 });
+    expect(cut?.prepaid).not.toBe(9_000);
+    expect(cut?.remaining).not.toBe(41_000);
+    expect(pink?.prepaid).not.toBe(11_000);
+    expect(pink?.remaining).not.toBe(49_000);
+    expect(cut?.prepaid).not.toBe(7_000);
     expect((cut?.fee || 0) + (pink?.fee || 0)).toBe(110_000);
     expect(cut?.fee).not.toBe(70_000);
     expect(pink?.fee).not.toBe(80_000);
@@ -226,6 +234,57 @@ describe('appointmentDepositCardAmounts', () => {
     expect(raw[0].total_price).toBe(50_000);
     expect(raw[1].deposit_amount).toBe(0);
     expect(raw[1].total_price).toBe(60_000);
+  });
+
+  it('kayıtlı paylar 9.000 ve 11.000 olsa da kart fiş toplamını gösterir', () => {
+    const raw = visit().map((line) => (
+      line.appointment_id === 'cut'
+        ? { ...line, deposit_amount: 9_000 }
+        : { ...line, deposit_amount: 11_000 }
+    ));
+    const cut = appointmentDepositCardAmounts(raw, 'cut');
+    const pink = appointmentDepositCardAmounts(raw, 'pink');
+    expect(cut).toEqual({ fee: 50_000, prepaid: 20_000, remaining: 90_000 });
+    expect(pink).toEqual({ fee: 60_000, prepaid: 20_000, remaining: 90_000 });
+    expect(raw[0].deposit_amount).toBe(9_000);
+    expect(raw[1].deposit_amount).toBe(11_000);
+    expect(raw[0].total_price).toBe(50_000);
+    expect(raw[1].total_price).toBe(60_000);
+  });
+
+  it('aynı peşinat kardeşe kopyalandıysa bir kez düşülür', () => {
+    const raw = visit().map((line) => ({ ...line, deposit_amount: 20_000 }));
+    const cut = appointmentDepositCardAmounts(raw, 'cut');
+    const pink = appointmentDepositCardAmounts(raw, 'pink');
+    expect(cut?.prepaid).toBe(20_000);
+    expect(pink?.prepaid).toBe(20_000);
+    expect(cut?.remaining).toBe(90_000);
+    expect(pink?.remaining).toBe(90_000);
+    expect(cut?.remaining).not.toBe(70_000);
+    expect(raw[0].deposit_amount).toBe(20_000);
+    expect(raw[1].deposit_amount).toBe(20_000);
+  });
+
+  it('peşinat yok ve randevu kapanmadıysa kalan henüz gerçekleşmedi', () => {
+    const open = appointmentDepositCardAmounts([
+      row({
+        appointment_id: 'cut',
+        total_price: 50_000,
+        deposit_amount: 0,
+        status: 'scheduled',
+        avans_total: 20_000,
+      }),
+    ], 'cut');
+    expect(open).toEqual({ fee: 50_000, prepaid: 0, remaining: null });
+    const closed = appointmentDepositCardAmounts([
+      row({
+        appointment_id: 'cut',
+        total_price: 50_000,
+        deposit_amount: 0,
+        status: 'completed',
+      }),
+    ], 'cut');
+    expect(closed).toEqual({ fee: 50_000, prepaid: 0, remaining: 0 });
   });
 
   it('farklı fişin depozitosu kartta karışmaz', () => {
@@ -243,13 +302,13 @@ describe('appointmentDepositCardAmounts', () => {
     ];
     expect(appointmentDepositCardAmounts(raw, 'cut')).toEqual({
       fee: 50_000,
-      prepaid: 9_000,
-      remaining: 41_000,
+      prepaid: 20_000,
+      remaining: 90_000,
     });
     expect(appointmentDepositCardAmounts(raw, 'pink')).toEqual({
       fee: 60_000,
-      prepaid: 11_000,
-      remaining: 49_000,
+      prepaid: 20_000,
+      remaining: 90_000,
     });
     expect(appointmentDepositCardAmounts(raw, 'other')).toEqual({
       fee: 40_000,

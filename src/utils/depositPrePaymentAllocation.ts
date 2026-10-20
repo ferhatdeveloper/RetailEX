@@ -261,17 +261,50 @@ export function prePaymentRemaining(row: PrePaymentDepositSource): number {
 }
 
 export interface AppointmentDepositCardAmounts {
-  /** Hizmet bedeli. Depozito bu tutara eklenmez. */
+  /** Bu hizmetin fiyatı. Depozito ciroya eklenmez. */
   fee: number;
-  /** Fiş depozitosunun bu hizmete düşen payı. */
+  /** Fişte tahsil edilen peşinat. Satır payı değildir. */
   prepaid: number;
-  /** Hizmet bedeli − bu satırın payı. */
-  remaining: number;
+  /**
+   * Fiş kalanı: kardeş hizmet bedelleri − peşinat, bir kez.
+   * Peşinat yok ve randevu kapanmadıysa null; ekran «henüz gerçekleşmedi» der.
+   */
+  remaining: number | null;
+}
+
+function appointmentClosed(row: PrePaymentDepositSource): boolean {
+  const status = String(row.status ?? '').trim().toLowerCase();
+  return status === 'completed' || status === 'closed' || status === 'cancelled' || status === 'no_show';
 }
 
 /**
- * Randevu özet kartı. Aynı fişin depozitosunu hizmetlere bir kez böler.
- * Yalnızca gösterim tutarları döner; gelen satırların fiyatı ve depozitosu değişmez.
+ * Fişte tahsil edilen peşinat.
+ * Aynı tutar kardeş satıra kopyalandıysa bir kez sayılır.
+ * Paylar farklıysa toplanır. Müşteri avansı bu toplama girmez.
+ */
+function ficheCollectedDeposit(group: PrePaymentDepositSource[]): number {
+  const present = group
+    .map((row) => round2(Number(row.deposit_amount) || 0))
+    .filter((amount) => Math.abs(amount) > 0.004);
+  if (present.length === 0) return 0;
+  const negative = present.some((amount) => amount < 0);
+  const positive = present.some((amount) => amount > 0);
+  if (negative && positive) return round2(present.reduce((sum, amount) => sum + amount, 0));
+  const sign = negative ? -1 : 1;
+  const magnitudes = present.map((amount) => Math.abs(amount));
+  const keys = [...new Set(magnitudes.map((amount) => amount.toFixed(2)))];
+  if (keys.length === 1) return round2(sign * Number(keys[0]));
+  return round2(sign * magnitudes.reduce((sum, amount) => sum + amount, 0));
+}
+
+function ficheServiceGross(group: PrePaymentDepositSource[]): number {
+  return round2(group.reduce((sum, row) => sum + (Number(row.total_price) || 0), 0));
+}
+
+/**
+ * Randevu özet kartı. Büyük rakamlar fiş bakiyesidir.
+ * Rapor payı (`spreadPrePaymentDepositRows`) bu tutarlara bağlanmaz.
+ * Yalnızca gösterim döner; kayıtlı fiyat ve depozito değişmez.
  */
 export function appointmentDepositCardAmounts<T extends PrePaymentDepositSource>(
   rows: T[],
@@ -279,12 +312,27 @@ export function appointmentDepositCardAmounts<T extends PrePaymentDepositSource>
 ): AppointmentDepositCardAmounts | null {
   const id = String(appointmentId ?? '').trim();
   if (!id) return null;
-  const shared = spreadPrePaymentDepositRows(rows);
-  const row = shared.find((item) => item.appointment_id === id);
+  const row = rows.find((item) => item.appointment_id === id);
   if (!row) return null;
+  const group = visitGroups(rows).find((bucket) =>
+    bucket.some((item) => item.appointment_id === id),
+  ) ?? [row];
+  const fee = prePaymentServiceTotal(row);
+  const prepaid = ficheCollectedDeposit(group);
+  if (appointmentClosed(row)) {
+    return { fee, prepaid, remaining: 0 };
+  }
+  if (Math.abs(prepaid) <= 0.004) {
+    return { fee, prepaid: 0, remaining: null };
+  }
+  const gross = ficheServiceGross(group);
+  const remaining = round2(gross - prepaid);
+  if (gross < -0.004 || prepaid < -0.004) {
+    return { fee, prepaid, remaining };
+  }
   return {
-    fee: prePaymentServiceTotal(row),
-    prepaid: round2(Number(row.deposit_amount) || 0),
-    remaining: prePaymentRemaining(row),
+    fee,
+    prepaid: round2(Math.max(0, prepaid)),
+    remaining: Math.max(0, remaining),
   };
 }
