@@ -4228,6 +4228,59 @@ export function ReportsModule({
     return buildFromErpSales();
   };
 
+  // En Çok Satanlar + Kategori Performansı. İade satırı artı gelse de bir kez düşülür.
+  // Peşinat ciroya yazılmaz. Stok katalogdan okunur, bu hesap stoku değiştirmez.
+  const erpAnalysisRank = () => {
+    if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod)) {
+      return summarizeRankNet([], { categoryOf: () => '—' });
+    }
+    const catalog = catalogProducts?.length ? catalogProducts : products || [];
+    const otherCat = tm('bCatOther') || 'Diğer';
+    const serviceCat = tm('rptAnalysisColService') || tm('service') || 'Hizmet';
+    const beautyCatalog = beautyServicesCatalog.map((service) => ({
+      id: service.id,
+      name: service.name,
+      parent_category: service.parent_category ?? undefined,
+      category: service.category != null ? String(service.category) : undefined,
+    }));
+    const findCatalogProduct = (productId: string) => {
+      const key = String(productId ?? '').trim();
+      if (!key) return undefined;
+      const lower = key.toLowerCase();
+      return catalog.find(
+        (p) =>
+          String(p.id ?? '').trim() === key ||
+          String(p.id ?? '').trim().toLowerCase() === lower ||
+          String(p.code ?? '').trim().toLowerCase() === lower,
+      );
+    };
+    return summarizeRankNet(erpSalesForReportPeriod, {
+      categoryOf: (line) =>
+        resolveAnalysisSaleCategory(
+          {
+            productId: line.productId,
+            productName: line.productName,
+            lineType: line.lineType,
+            item_type: line.itemType,
+          },
+          catalog,
+          beautyCatalog,
+          { other: otherCat, service: serviceCat, tm },
+          analysisServiceKeys,
+          reportCategoryLookup,
+        ),
+      productKeyOf: (line) => {
+        const hit = findCatalogProduct(line.productId);
+        return (String(hit?.id ?? '').trim() || line.productId || line.productName || '—').trim() || '—';
+      },
+      productNameOf: (line) => {
+        const hit = findCatalogProduct(line.productId);
+        return String(hit?.name || line.productName || '—');
+      },
+      inTopSellers: (line) => (products || []).some((p) => p.id === line.productId),
+    });
+  };
+
   // Product sales analysis
   const getProductSales = () => {
     if (businessType === 'restaurant') {
@@ -4261,36 +4314,18 @@ export function ReportsModule({
       return Array.from(productMap.values()).sort((a, b) => b.revenue - a.revenue);
     }
 
-    if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod)) return [];
-    const productMap = new Map<string, {
-      product: Product;
-      quantity: number;
-      revenue: number;
-      discount: number;
-    }>();
-
-    erpSalesForReportPeriod.forEach(sale => {
-      foldedErpSaleItems(sale, depositRefs).forEach(item => {
-        const existing = productMap.get(item.productId);
-        if (existing) {
-          existing.quantity += item.quantity;
-          existing.revenue += item.total;
-          existing.discount += (item.quantity * item.price * item.discount) / 100;
-        } else {
-          const product = products.find(p => p.id === item.productId);
-          if (product) {
-            productMap.set(item.productId, {
-              product,
-              quantity: item.quantity,
-              revenue: item.total,
-              discount: (item.quantity * item.price * item.discount) / 100
-            });
-          }
-        }
-      });
-    });
-
-    return Array.from(productMap.values()).sort((a, b) => b.revenue - a.revenue);
+    return erpAnalysisRank().products
+      .flatMap((row) => {
+        const product = products.find((p) => p.id === row.productId);
+        if (!product) return [];
+        return [{
+          product,
+          quantity: row.quantity,
+          revenue: row.revenue,
+          discount: row.discount,
+        }];
+      })
+      .sort((a, b) => b.revenue - a.revenue);
   };
 
   const getPaymentDistribution = () => {
@@ -4631,103 +4666,7 @@ export function ReportsModule({
         .sort((a, b) => b.totalRevenue - a.totalRevenue);
     }
 
-    if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod)) return [];
-    const catalog = catalogProducts?.length ? catalogProducts : products || [];
-    const otherCat = tm('bCatOther') || 'Diğer';
-    const serviceCat = tm('rptAnalysisColService') || tm('service') || 'Hizmet';
-    const categoryMap = new Map<
-      string,
-      {
-        name: string;
-        totalRevenue: number;
-        totalQuantity: number;
-        avgPrice: number;
-        productIds: Set<string>;
-        items: CategoryAnalysisItem[];
-      }
-    >();
-
-    erpSalesForReportPeriod.forEach((sale) => {
-      // Bug 28 follow-up — Rezervasyon peşinatı ve hizmet verilmemiş
-      // randevuya bağlı satışlar Kategori Analizi ciro/adet toplamlarına
-      // katılmamalı. Aksi halde 40.000 ana satış + 20.000 peşinat → 60.000
-      // iken rapor 60.000 (peşinat) + 60.000 (ana) = 120.000 gösterir.
-      if (isDepositSale(sale as Partial<Sale>)) return;
-      const linkedAppt = (sale as Sale & { linkedAppointmentId?: string | null })
-        .linkedAppointmentId;
-      if (linkedAppt && String(linkedAppt).trim() !== '') {
-        if (!isCompletedAppointmentStatus(sale.status)) return;
-      }
-      foldedErpSaleItems(sale, depositRefs).forEach((item) => {
-        const lineIn = {
-          productId: String(item.productId ?? (item as { product_id?: string }).product_id ?? '').trim(),
-          productName: String(item.productName ?? (item as { product_name?: string }).product_name ?? '').trim(),
-          lineType: String(item.lineType ?? (item as { item_type?: string }).item_type ?? '').trim(),
-          item_type: String((item as { item_type?: string }).item_type ?? item.lineType ?? '').trim(),
-        };
-        const categoryName = resolveAnalysisSaleCategory(
-          lineIn,
-          catalog,
-          beautyServicesCatalog,
-          { other: otherCat, service: serviceCat, tm },
-          analysisServiceKeys,
-          reportCategoryLookup,
-        );
-        const catalogProduct = catalog.find(
-          (p) =>
-            String(p.id ?? '').trim() === lineIn.productId ||
-            String(p.id ?? '').trim().toLowerCase() === lineIn.productId.toLowerCase() ||
-            String(p.code ?? '').trim().toLowerCase() === lineIn.productId.toLowerCase(),
-        );
-        const productKey = (
-          String(catalogProduct?.id ?? '').trim() ||
-          lineIn.productId ||
-          lineIn.productName ||
-          '—'
-        ).trim() || '—';
-        const productName = String(
-          catalogProduct?.name || lineIn.productName || (item as { productName?: string }).productName || '—',
-        );
-        const qty = Number(item.quantity || 0);
-        const subtotal = Number(item.total || 0);
-        const existing = categoryMap.get(categoryName);
-
-        if (existing) {
-          existing.totalRevenue += subtotal;
-          existing.totalQuantity += qty;
-          existing.avgPrice = existing.totalQuantity > 0 ? existing.totalRevenue / existing.totalQuantity : 0;
-          existing.productIds.add(productKey);
-
-          const idx = existing.items.findIndex((i) => i.product_name === productName);
-          if (idx >= 0) {
-            existing.items[idx].quantity += qty;
-            existing.items[idx].subtotal += subtotal;
-          } else {
-            existing.items.push({ product_name: productName, quantity: qty, subtotal });
-          }
-        } else {
-          categoryMap.set(categoryName, {
-            name: categoryName,
-            totalRevenue: subtotal,
-            totalQuantity: qty,
-            avgPrice: qty > 0 ? subtotal / qty : 0,
-            productIds: new Set([productKey]),
-            items: [{ product_name: productName, quantity: qty, subtotal }],
-          });
-        }
-      });
-    });
-
-    return Array.from(categoryMap.values())
-      .map((c) => ({
-        name: c.name,
-        totalRevenue: c.totalRevenue,
-        totalQuantity: c.totalQuantity,
-        productCount: c.productIds.size,
-        avgPrice: c.avgPrice,
-        items: c.items.sort((a, b) => b.subtotal - a.subtotal),
-      }))
-      .sort((a, b) => b.totalRevenue - a.totalRevenue);
+    return erpAnalysisRank().categories;
   };
 
   // Hourly Analysis — seçili güne göre (restoranda günlük birleşik satır saatleri)
