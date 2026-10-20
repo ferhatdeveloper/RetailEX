@@ -4058,6 +4058,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   balanceShort: { tr: 'Bakiye', en: 'Balance', ar: 'الرصيد', ku: 'باڵانس' },
   cashierNamePlaceholder: { tr: 'Kasiyer adı...', en: 'Cashier name...', ar: 'اسم الصراف...', ku: 'ناوی سندوقدار...' },
   cashierNotSelected: { tr: 'Seçilmedi', en: 'Not selected', ar: 'لم يتم الاختيار', ku: 'هەڵنەبژێردراوە' },
+  cashierFallbackNotice: {
+    tr: 'Kasiyer seçilmedi — fiş oturum açan kullanıcı adına kaydedilecek.',
+    en: 'No cashier selected — the receipt will be saved under the signed-in user.',
+    ar: 'لم يُختر صراف — يُحفظ الإيصال باسم المستخدم الذي سجّل الدخول.',
+    ku: 'سندوقدار هەڵنەبژێردراوە — پسوڵە بە ناوی بەکارهێنەری چوونەژوورەوە تۆمار دەکرێت.',
+  },
 
   // Invoice modals & actions
   selectAuthorityCode: { tr: 'Yetki Kodu Seç', en: 'Select Authorization Code', ar: 'اختر رمز الصلاحية', ku: 'کۆدی دەسەڵات هەڵبژێرە' },
@@ -12397,8 +12403,8 @@ export const excelModuleTranslations = {
   bDiscountPercentShort: { tr: 'İndirim (%)', en: 'Discount (%)', ar: 'خصم (%)', ku: 'داشکاندن (%)' },
   bDiscountMinusPct: { tr: 'İndirim -%{n}%', en: 'Disc. -%{n}%', ar: 'خصم -%{n}%', ku: 'داشکاندن -%{n}%' },
   // Randevu Detayları paneli — "Ön Ödenen Tutar" bilgi kutusu içindeki
-  // dinamik Kalan Tutar satırı: hizmet tamamlandıysa gerçek tutar, aksi
-  // hâlde "Henüz gerçekleşmedi" notu.
+  // Kalan Tutar: peşinat varsa hizmet bedeli − peşinat (bir kez).
+  // Peşinat yoksa ve hizmet kapanmadıysa "Henüz gerçekleşmedi".
   bRemainingAmount: { tr: 'Kalan Tutar', en: 'Remaining Amount', ar: 'المبلغ المتبقي', ku: 'بڕی ماوە' },
   pesinatPartialNotCari: {
     tr: 'Kalan tutar cariye yazılmaz.',

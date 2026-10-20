@@ -23,6 +23,7 @@ import {
   type CustomerOutstandingInvoice,
 } from '../../services/api/customerDebtCollection';
 import { formatCurrency, formatNumber, formatMoneyWithCode, getGlobalCurrency } from '../../utils/currency';
+import { formatPosCustomerBalanceLabel } from '../../utils/posCustomerBalanceLabel';
 import { formatNumber as formatNumberTR } from '../../utils/formatNumber';
 import { posPaymentAdditionalDiscount, roundPosMoneyAmount, posMoneyEpsilon, getPosQuickDiscountAmountPresets } from '../../utils/discountRounding';
 import { getCurrencyDecimalPlaces } from '../../utils/currency';
@@ -1589,11 +1590,12 @@ const handleCollectCustomerDebt = async () => {
                           : 'text-gray-600'
                     }`}
                   >
-                    {customerBalance > 0
-                      ? `${tm('customerDebt') || 'Borç'}: ${formatSummaryMoney(customerBalance)} ${baseCurrency}`
-                      : customerBalance < 0
-                        ? `${tm('customerCredit') || 'Alacak'}: ${formatSummaryMoney(Math.abs(customerBalance))} ${baseCurrency}`
-                        : `${formatSummaryMoney(0)} ${baseCurrency}`}
+                    {formatPosCustomerBalanceLabel({
+                      balance: customerBalance,
+                      currencyCode: baseCurrency,
+                      debtLabel: tm('customerDebt') || 'Borç',
+                      creditLabel: tm('customerCredit') || 'Alacak',
+                    })}
                   </span>
                 </button>
               )}
@@ -2341,8 +2343,8 @@ const handleCollectCustomerDebt = async () => {
             </div>
             <div className={`text-lg font-bold font-mono ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
               {customerBalance > 0
-                ? `${formatSummaryMoney(customerBalance)} ${baseCurrency} ${tm('customerDebt') || 'borç'}`
-                : `${formatSummaryMoney(0)} ${baseCurrency}`}
+                ? `${formatSummaryMoney(customerBalance)} ${tm('customerDebt') || 'borç'}`
+                : formatSummaryMoney(0)}
             </div>
           </div>
           <PercentBodyModalScrollBody className="p-6 space-y-4">
@@ -2499,7 +2501,7 @@ const handleCollectCustomerDebt = async () => {
               )}
               {collectingDebt
                 ? (tm('processingText') || 'İŞLENİYOR...')
-                : `${tm('confirmCollect') || 'Tahsil Et'} (${formatSummaryMoney(collectAmount)} ${baseCurrency})`}
+                : `${tm('confirmCollect') || 'Tahsil Et'} (${formatSummaryMoney(collectAmount)})`}
             </button>
           </div>
         </PercentBodyModal>

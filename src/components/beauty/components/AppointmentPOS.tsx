@@ -989,7 +989,7 @@ export function AppointmentPOS({
         discountPercent: discount,
         reservation: existingDeposit,
         completed: existingIsCompleted,
-    }) ?? 0;
+    });
     const totalDur = billableCart.filter(l => l.type === 'service').reduce((s, l) => s + (l.duration_min ?? 0) * l.qty, 0);
     const visualCart = useMemo(() => {
         const deposits = cart.filter((line) => isAppointmentDepositCartLine({
@@ -5539,12 +5539,10 @@ export function AppointmentPOS({
                                 arasında kompakt yeşil yatay bilgi satırı. Input değil.
                                 Plan §6 Adım 7: fiş no (`deposit_sale_fiche_no`) ikinci
                                 satırda monospace olarak gösterilir.
-                                Kalan Tutar satırı sadece COMPLETED durumda gerçek
-                                tutarı gösterir; henüz gerçekleşmemiş randevularda
-                                (SCHEDULED/CONFIRMED/IN_PROGRESS) "Henüz gerçekleşmedi"
-                                notu ile değişir (kalan borç hizmet tamamlandıktan
-                                sonra tahsil edilir). Yeni randevuda da peşinat
-                                toplamın dışında, ayrı satırda durur. */}
+                                Kalan Tutar: peşinat alındıysa hizmet bedeli − peşinat
+                                (bir kez). Hizmet kapanmamış olsa da aynı kalan
+                                görünür; depozito ikinci kez düşülmez. Peşinat
+                                yoksa "Henüz gerçekleşmedi" kalır. */}
                             {existingDeposit > 0 && (
                                 <div
                                     data-testid="appointment-prepaid-amount-row"
@@ -5580,8 +5578,7 @@ export function AppointmentPOS({
                                             </span>
                                         </div>
                                     )}
-                                    {/* Kalan Tutar: hizmet tamamlandıysa gerçek kalan,
-                                        aksi hâlde hizmet henüz verilmedi bilgisi. */}
+                                    {/* Peşinat varsa kalan sayıdadır. Peşinat yoksa not kalır. */}
                                     <div
                                         data-testid="appointment-remaining-row"
                                         style={{
@@ -5594,10 +5591,10 @@ export function AppointmentPOS({
                                             borderTop: '1px dashed #bbf7d0',
                                         }}
                                     >
-                                        <span style={{ color: existingIsCompleted ? '#b45309' : '#6b7280', fontWeight: 700 }}>
+                                        <span style={{ color: remainingAfterDeposit != null ? '#b45309' : '#6b7280', fontWeight: 700 }}>
                                             {tm('bRemainingAmount') || 'Kalan Tutar'}
                                         </span>
-                                        {existingIsCompleted ? (
+                                        {remainingAfterDeposit != null ? (
                                             <span
                                                 data-testid="appointment-remaining-value"
                                                 style={{ fontSize: 12, fontWeight: 800, color: '#b45309' }}

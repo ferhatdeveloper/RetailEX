@@ -104,8 +104,11 @@ export function appointmentReservationField(input: {
 }
 
 /**
- * Hizmet kapanmadıysa kalan gösterilmez.
- * Kapandıysa kalan = hizmet bedeli − rezervasyon (bir kez).
+ * Randevu detayındaki kalan.
+ * Peşinat varsa kalan = hizmet bedeli − rezervasyon, bir kez.
+ * Hizmet kapanmamış olsa da aynı kalan gösterilir; kapanış ikinci kez düşmez.
+ * Peşinat yok ve hizmet kapanmadıysa null döner; ekran "henüz gerçekleşmedi" der.
+ * Peşinat yok ve hizmet kapandıysa kalan, indirimli hizmet bedelidir.
  */
 export function appointmentRemainingAfterDeposit(input: {
   serviceGross: number;
@@ -113,9 +116,12 @@ export function appointmentRemainingAfterDeposit(input: {
   reservation: number;
   completed: boolean;
 }): number | null {
-  if (!input.completed) return null;
   const total = appointmentFormTotal(input.serviceGross, input.discountPercent ?? 0);
   const reservation = Math.max(0, Number(input.reservation) || 0);
+  if (reservation <= 0.004) {
+    if (!input.completed) return null;
+    return total;
+  }
   return round2(Math.max(0, total - reservation));
 }
 

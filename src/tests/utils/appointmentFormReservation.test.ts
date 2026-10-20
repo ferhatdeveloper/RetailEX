@@ -74,17 +74,22 @@ describe('randevu formu rezervasyon', () => {
     })).toBe(20_000);
   });
 
-  it('hizmet kapanınca kalan 60.000 olur ve depozito ikinci kez düşülmez', () => {
+  it('peşinat varken kalan hizmet kapanmadan da görünür ve depozito ikinci kez düşülmez', () => {
     expect(appointmentRemainingAfterDeposit({
       serviceGross: 80_000,
       reservation: 20_000,
       completed: false,
-    })).toBeNull();
+    })).toBe(60_000);
     expect(appointmentRemainingAfterDeposit({
       serviceGross: 80_000,
       reservation: 20_000,
       completed: true,
     })).toBe(60_000);
+    expect(appointmentRemainingAfterDeposit({
+      serviceGross: 80_000,
+      reservation: 0,
+      completed: false,
+    })).toBeNull();
   });
 
   it('yeni kayıt kullanıcı tutarını ilk randevuda tutar', () => {
@@ -124,12 +129,22 @@ describe('randevu formu rezervasyon', () => {
       serviceGross: plan.serviceGross,
       reservation: plan.depositAmount,
       completed: false,
-    })).toBeNull();
+    })).toBe(90_000);
     expect(appointmentRemainingAfterDeposit({
       serviceGross: plan.serviceGross,
       reservation: plan.depositAmount,
       completed: true,
     })).toBe(90_000);
+    expect(appointmentRemainingAfterDeposit({
+      serviceGross: 110_000,
+      reservation: 0,
+      completed: false,
+    })).toBeNull();
+    expect(appointmentRemainingAfterDeposit({
+      serviceGross: 110_000,
+      reservation: 0,
+      completed: true,
+    })).toBe(110_000);
   });
 
   it('kutu işaretliyse fiş kesilir, tutar 0 ise kesilmez', () => {
