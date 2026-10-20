@@ -28,6 +28,7 @@ import {
   isPurchaseFiche,
   isSalesReturnFiche,
   displayItemCode,
+  isExplicitProductItemType,
   isServiceLineType,
   LAST_PURCHASE_JOIN,
   lineCostAmount,
@@ -1908,12 +1909,8 @@ export const erpReportsAPI = {
             // bağlıysa appointment status kontrolü. No-show / iptal
             // randevulara bağlı BEA fişleri Hariç (ciro yansımaz, sadece
             // kasa'ya gider).
-            const ficheNo = String(s.fiche_no || '').trim();
-            if (ficheNo.startsWith('BEA-')) {
-              const appt = beautyApptByFiche.get(ficheNo);
-              if (!appt) return false; // bağlantı yok → brüt kâr'a katma
-              if (BEA_EXCLUDED_STATUSES.has(appt.status)) return false;
-            }
+            // Ürün satırı randevu köprüsü olmadan da kalır. Hizmet satırı
+            // aşağıda, fiş BEA ve randevu yok/iptal ise düşer.
             return true;
           })
           .map((s) => String(s.id)),
@@ -1945,24 +1942,31 @@ export const erpReportsAPI = {
       const prepared: GrossFoldLine[] = [];
       (items || []).forEach((it, index) => {
         if (!saleOk.has(String(it.invoice_id))) return;
-        const itemType = String(it.item_type || 'Malzeme');
+        const rawItemType = String(it.item_type ?? '').trim();
+        const itemType = rawItemType || 'Malzeme';
         if (itemType === 'Promosyon' || itemType === 'İndirim') return;
         const inv = salesById.get(String(it.invoice_id));
         if (!inv) return;
+        const ficheNo = String(inv.fiche_no || '').trim();
+        const appt = ficheNo.startsWith('BEA-') ? beautyApptByFiche.get(ficheNo) : undefined;
+        const beaServiceBlocked = ficheNo.startsWith('BEA-')
+          && (!appt || BEA_EXCLUDED_STATUSES.has(appt.status));
+        if (beaServiceBlocked && !isExplicitProductItemType(rawItemType)) return;
         const sgn = isSalesReturnFiche(inv) ? -1 : 1;
         const rawLineNet = Number(it.net_amount ?? 0) || 0;
-        const rawRevenue = sgn * scaleLineRevenueToInvoiceNet(
-          rawLineNet,
-          linesNetByInvoice.get(String(it.invoice_id)) || 0,
-          Number(inv.net_amount ?? 0) || 0,
-        );
-        const ficheNo = String(inv.fiche_no || '').trim();
         const isBeautyFiche = ficheNo.startsWith('BEA-');
+        const rawRevenue = (isBeautyFiche && isExplicitProductItemType(rawItemType))
+          ? sgn * rawLineNet
+          : sgn * scaleLineRevenueToInvoiceNet(
+            rawLineNet,
+            linesNetByInvoice.get(String(it.invoice_id)) || 0,
+            Number(inv.net_amount ?? 0) || 0,
+          );
         prepared.push({
           index,
           invoiceId: String(it.invoice_id),
           productName: String(it.item_name ?? ''),
-          lineType: itemType,
+          lineType: rawItemType || itemType,
           quantity: Number(it.quantity ?? 0) || 0,
           total: rawRevenue,
           rawRevenue,
@@ -1989,6 +1993,7 @@ export const erpReportsAPI = {
         }, depositRefs);
         const only = folded.length === 1 ? folded[0] : null;
         const uplift = !!only
+          && !isExplicitProductItemType(only.lineType)
           && only.isBeautyFiche
           && only.apptTotal > 0
           && Math.abs(Math.abs(only.total) - Math.abs(only.rawRevenue)) < 1
@@ -2003,7 +2008,8 @@ export const erpReportsAPI = {
       for (let lineIndex = 0; lineIndex < saleItems.length; lineIndex++) {
         const it = saleItems[lineIndex];
         if (!saleOk.has(String(it.invoice_id))) continue;
-        const itemType = String(it.item_type || 'Malzeme');
+        const rawItemType = String(it.item_type ?? '').trim();
+        const itemType = rawItemType || 'Malzeme';
         if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
         if (!revenueByIndex.has(lineIndex)) continue;
         const pid = resolveLineProductId(it);
@@ -2014,11 +2020,17 @@ export const erpReportsAPI = {
           serviceByCode.get(String(it.item_code || '').trim()) ||
           undefined;
         const isService =
-          isServiceLineType(itemType) || !!(svc || beauty);
-        if (lineKind === 'product' && isService) continue;
-        if (lineKind === 'service' && !isService) continue;
+          isServiceLineType(rawItemType)
+          || (!isExplicitProductItemType(rawItemType) && !!(svc || beauty));
         const inv = salesById.get(String(it.invoice_id));
         if (!inv) continue;
+        const ficheNo = String(inv.fiche_no || '').trim();
+        if (ficheNo.startsWith('BEA-') && !isExplicitProductItemType(rawItemType)) {
+          const appt = beautyApptByFiche.get(ficheNo);
+          if (!appt || BEA_EXCLUDED_STATUSES.has(appt.status)) continue;
+        }
+        if (lineKind === 'product' && isService) continue;
+        if (lineKind === 'service' && !isService) continue;
         const sgn = isSalesReturnFiche(inv) ? -1 : 1;
         const code = displayItemCode(prod?.code, svc?.code, it.item_code);
         const rawLineNet = Number(it.net_amount ?? 0) || 0;

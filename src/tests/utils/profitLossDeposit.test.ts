@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { isDepositProductLine } from '../../utils/beautyDepositAllocation';
-import { foldProfitLossLines, type ProfitLossDepositLine } from '../../utils/profitLossDeposit';
+import {
+  filterProfitLossByKind,
+  foldProfitLossLines,
+  type ProfitLossDepositLine,
+} from '../../utils/profitLossDeposit';
+import { resolveBeautyLineNet } from '../../utils/lastPurchaseCostSql';
 
 function sum(lines: ProfitLossDepositLine[], key: 'total' | 'cost'): number {
   return lines.reduce((total, line) => total + (Number(line[key]) || 0), 0);
@@ -335,5 +340,149 @@ describe('foldProfitLossLines', () => {
     expect(lines[0].total).toBe(50000);
     expect(lines[0].cost).toBe(10000);
     expect(sum(lines, 'total') - sum(lines, 'cost')).toBe(40000);
+  });
+
+  it('ürün 25.000 ve hizmet 50.000 ayrı kalır; randevu fiyatı ürünü 50.000 yapmaz', () => {
+    const productNet = resolveBeautyLineNet({
+      ficheNo: 'BEA-2026-1',
+      itemType: 'Malzeme',
+      lineKind: 'product',
+      lineNet: 25000,
+      appointmentTotal: 50000,
+      nonDepositLineCount: 1,
+    });
+    const serviceNet = resolveBeautyLineNet({
+      ficheNo: 'BEA-2026-1',
+      itemType: 'Hizmet',
+      lineKind: 'service',
+      lineNet: 50000,
+      appointmentTotal: 50000,
+      nonDepositLineCount: 2,
+    });
+    expect(productNet).toBe(25000);
+    expect(productNet).not.toBe(50000);
+    expect(serviceNet).toBe(50000);
+
+    const lines = foldProfitLossLines([
+      {
+        invoiceId: 's1',
+        invoiceNet: 75000,
+        productName: 'Şampuan',
+        lineType: 'Malzeme',
+        lineKind: 'product',
+        quantity: 1,
+        total: productNet,
+        cost: 8000,
+      },
+      {
+        invoiceId: 's1',
+        invoiceNet: 75000,
+        productName: 'HAIR CUT',
+        lineType: 'Hizmet',
+        lineKind: 'service',
+        quantity: 1,
+        total: serviceNet,
+        cost: 10000,
+      },
+      {
+        invoiceId: 's1',
+        invoiceNet: 75000,
+        productName: 'Depozito (Peşinat Avansı)',
+        lineType: 'deposit',
+        lineKind: 'product',
+        quantity: 1,
+        total: 20000,
+        cost: 4000,
+      },
+    ]);
+
+    expect(lines.some((line) => isDepositProductLine(line))).toBe(false);
+    const products = filterProfitLossByKind(lines, 'product');
+    const services = filterProfitLossByKind(lines, 'service');
+    const all = filterProfitLossByKind(lines, 'all');
+    expect(products.map((line) => line.productName)).toEqual(['Şampuan']);
+    expect(sum(products, 'total')).toBe(25000);
+    expect(sum(products, 'total') - sum(products, 'cost')).toBe(17000);
+    expect(services.map((line) => line.productName)).toEqual(['HAIR CUT']);
+    expect(sum(services, 'total')).toBe(50000);
+    expect(sum(services, 'total') - sum(services, 'cost')).toBe(40000);
+    expect(sum(all, 'total')).toBe(75000);
+    expect(sum(all, 'total') - sum(all, 'cost')).toBe(57000);
+    expect(products[0].total).not.toBe(50000);
+  });
+
+  it('depozito sorguda ürün türü gelse de satır olmaz; iki hizmet 110.000 kalır', () => {
+    const lines = foldProfitLossLines([
+      {
+        invoiceId: 's1',
+        invoiceNet: 110000,
+        productName: 'HAIR CUT',
+        lineType: 'Hizmet',
+        lineKind: 'service',
+        quantity: 1,
+        total: 50000,
+        cost: 20000,
+        ficheDeposits: [20000],
+      },
+      {
+        invoiceId: 's1',
+        invoiceNet: 110000,
+        productName: 'HAIR PINK COLOR',
+        lineType: 'Hizmet',
+        lineKind: 'service',
+        quantity: 1,
+        total: 60000,
+        cost: 20000,
+        ficheDeposits: [20000],
+      },
+      {
+        invoiceId: 's1',
+        invoiceNet: 110000,
+        productName: 'Depozito (Peşinat Avansı)',
+        lineType: 'deposit',
+        lineKind: 'product',
+        quantity: 1,
+        total: 20000,
+        cost: 4000,
+        ficheDeposits: [20000],
+      },
+    ]);
+
+    expect(lines.map((line) => line.total)).toEqual([50000, 60000]);
+    expect(sum(lines, 'total')).toBe(110000);
+    expect(filterProfitLossByKind(lines, 'product')).toEqual([]);
+    expect(sum(filterProfitLossByKind(lines, 'service'), 'total')).toBe(110000);
+    expect(lines.some((line) => isDepositProductLine(line))).toBe(false);
+  });
+
+  it('ürün iadesi eksi kalır ve hizmete karışmaz', () => {
+    const lines = foldProfitLossLines([
+      {
+        invoiceId: 'ret',
+        invoiceNet: -25000,
+        productName: 'Şampuan',
+        lineType: 'Malzeme',
+        lineKind: 'product',
+        quantity: -1,
+        total: -25000,
+        cost: -8000,
+      },
+      {
+        invoiceId: 'ret',
+        invoiceNet: -25000,
+        productName: 'HAIR CUT',
+        lineType: 'Hizmet',
+        lineKind: 'service',
+        quantity: -1,
+        total: -50000,
+        cost: -10000,
+      },
+    ]);
+
+    expect(sum(filterProfitLossByKind(lines, 'product'), 'total')).toBe(-25000);
+    expect(sum(filterProfitLossByKind(lines, 'service'), 'total')).toBe(-50000);
+    expect(sum(filterProfitLossByKind(lines, 'all'), 'total')).toBe(-75000);
+    const product = filterProfitLossByKind(lines, 'product')[0];
+    expect((product.total || 0) - (product.cost || 0)).toBe(-17000);
   });
 });

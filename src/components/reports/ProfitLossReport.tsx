@@ -32,7 +32,7 @@ import {
   SQL_SERVICE_DEPOSIT_AMOUNT,
 } from '../../utils/lastPurchaseCostSql';
 import { parseFicheDepositList } from '../../utils/beautyDepositAllocation';
-import { foldProfitLossLines } from '../../utils/profitLossDeposit';
+import { filterProfitLossByKind, foldProfitLossLines } from '../../utils/profitLossDeposit';
 import {
   ProductMovementHistoryModal,
   type ProductMovementTarget,
@@ -207,7 +207,8 @@ export function ProfitLossReport() {
           ficheDeposits: parseFicheDepositList(r.fiche_deposits).map((n) => sign * Math.abs(n)),
           ficheRemainders: parseFicheDepositList(r.fiche_remainders).map((n) => sign * Math.abs(n)),
         };
-      })).filter((line) => lineKind === 'all' || line.lineKind === lineKind);
+      }));
+      const foldedView = filterProfitLossByKind(folded, lineKind);
 
       type Agg = {
         productId: string;
@@ -219,7 +220,7 @@ export function ProfitLossReport() {
         cost: number;
       };
       const agg = new Map<string, Agg>();
-      for (const line of folded) {
+      for (const line of foldedView) {
         const month = line.saleDate.slice(0, 7);
         const key = reportType === 'category'
           ? `${line.lineKind}|${line.categoryCode}|${line.categoryName}`

@@ -7,6 +7,8 @@ import {
   isPlSalesOrReturnFiche,
   isPurchaseFiche,
   isSalesReturnFiche,
+  classifyProfitLossLineKind,
+  isExplicitProductItemType,
   isServiceLineType,
   isUuidText,
   LINE_COST_EXPR,
@@ -198,6 +200,11 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
     expect(LINE_REVENUE_EXPR).toContain('ba_total.total_price');
     expect(LINE_REVENUE_EXPR).toContain('service_line_count');
     expect(LINE_REVENUE_EXPR).toContain('si.net_amount');
+    const productGuard = LINE_REVENUE_EXPR.indexOf("'malzeme'");
+    const appointmentPrice = LINE_REVENUE_EXPR.indexOf('ba_total.total_price');
+    expect(productGuard).toBeGreaterThan(-1);
+    expect(productGuard).toBeLessThan(appointmentPrice);
+    expect(SQL_BEAUTY_APPT_INCLUDED).toContain("'malzeme'");
     const bridge = buildInvoiceLineScaleCte();
     expect(bridge).toContain('DISTINCT ON (s.fiche_no)');
     expect(bridge).toContain('service_line_count');
@@ -205,5 +212,17 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
     expect(SQL_BEAUTY_APPT_INCLUDED).toContain("'no_show'");
     expect(SQL_BEAUTY_APPT_INCLUDED).toContain("'cancelled'");
     expect(SQL_BEAUTY_APPT_INCLUDED).toContain("'refunded'");
+  });
+
+  it('açık malzeme hizmet kartına düşmez', () => {
+    expect(isExplicitProductItemType('Malzeme')).toBe(true);
+    expect(isExplicitProductItemType('product')).toBe(true);
+    expect(isExplicitProductItemType('Hizmet')).toBe(false);
+    expect(isExplicitProductItemType('')).toBe(false);
+    expect(classifyProfitLossLineKind({ itemType: 'Malzeme', serviceCardMatched: true })).toBe('product');
+    expect(classifyProfitLossLineKind({ itemType: 'product', serviceCardMatched: true })).toBe('product');
+    expect(classifyProfitLossLineKind({ itemType: 'Hizmet', serviceCardMatched: false })).toBe('service');
+    expect(classifyProfitLossLineKind({ itemType: '', serviceCardMatched: true })).toBe('service');
+    expect(classifyProfitLossLineKind({ itemType: '', serviceCardMatched: false })).toBe('product');
   });
 });

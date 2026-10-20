@@ -8,6 +8,7 @@ import {
   foldDepositRevenueIntoServices,
   isDepositProductLine,
 } from './beautyDepositAllocation';
+import { isExplicitProductItemType } from './lastPurchaseCostSql';
 
 export interface ProfitLossDepositLine {
   invoiceId?: string | null;
@@ -18,6 +19,7 @@ export interface ProfitLossDepositLine {
   productCode?: string | null;
   productId?: string | null;
   lineType?: string | null;
+  lineKind?: 'product' | 'service' | string | null;
   item_type?: string | null;
   quantity?: number | null;
   total?: number | null;
@@ -130,6 +132,26 @@ function groupKey(line: ProfitLossDepositLine): string {
   return `i:${invoiceKey(line)}`;
 }
 
+/** Açık ürün satırı. Depozito ürün değildir. Tür yoksa eski hizmet satırları ürün sanılmaz. */
+export function isExplicitProfitLossProductLine(line: ProfitLossDepositLine): boolean {
+  if (isDepositProductLine(line)) return false;
+  const kind = String(line.lineKind || '').trim().toLocaleLowerCase('tr-TR');
+  if (kind === 'product') return true;
+  if (kind === 'service') return false;
+  return isExplicitProductItemType(line.lineType || line.item_type);
+}
+
+export function filterProfitLossByKind<T extends ProfitLossDepositLine>(
+  lines: T[],
+  kind: 'all' | 'product' | 'service',
+): T[] {
+  if (kind === 'all') return lines;
+  return lines.filter((line) => {
+    const rowKind = String(line.lineKind || '').trim() === 'service' ? 'service' : 'product';
+    return rowKind === kind;
+  });
+}
+
 function isDepositOnlyInvoice(lines: ProfitLossDepositLine[]): boolean {
   return lines.length > 0 && lines.every((line) => isDepositProductLine(line));
 }
@@ -204,6 +226,16 @@ export function foldProfitLossLines<T extends ProfitLossDepositLine>(lines: T[])
   const out: T[] = [];
   for (const group of buckets.values()) {
     const collapsed = collapseCopiedDepositLines(group);
+    const productLines = collapsed.filter((line) => isExplicitProfitLossProductLine(line));
+    // Ürün kendi netinde kalır. Hizmet kendi netinde kalır. Depozito satır olmaz
+    // ve iki tutarın yerine randevu fiyatı yazılmaz.
+    if (productLines.length > 0) {
+      const servicesKept = collapsed.filter(
+        (line) => !isExplicitProfitLossProductLine(line) && !isDepositProductLine(line),
+      );
+      out.push(...productLines, ...servicesKept);
+      continue;
+    }
     const services = collapsed.filter((line) => !isDepositProductLine(line));
     if (services.length === 0) continue;
     const pool = depositPoolOf(collapsed);

@@ -450,20 +450,66 @@ COALESCE((
 `.trim();
 
 /**
+ * Depozito satırı BEA fişinde randevu brütüyle değişmesin.
+ * Dağıtım, satırın kendi net tutarını görsün.
+ */
+export const SQL_IS_DEPOSIT_LINE = `
+(
+  lower(trim(coalesce(si.item_type, ''))) IN ('deposit', 'depozito')
+  OR lower(trim(coalesce(si.item_name, ''))) IN ('deposit', 'depozito', 'peşinat', 'pesinat', 'rezervasyon')
+  OR lower(trim(coalesce(si.item_name, ''))) LIKE 'depozito%'
+  OR lower(trim(coalesce(si.item_name, ''))) LIKE 'deposit%'
+  OR lower(trim(coalesce(si.item_name, ''))) LIKE 'peşinat%'
+  OR lower(trim(coalesce(si.item_name, ''))) LIKE 'pesinat%'
+  OR lower(trim(coalesce(si.item_code, ''))) IN ('deposit', 'depozito')
+)
+`.trim();
+
+/** Açık malzeme/ürün türü. Boş tür malzeme sanılmaz; kart eşleşmesi hizmete bırakılır. */
+export const SQL_IS_EXPLICIT_PRODUCT_TYPE = `
+(
+  NULLIF(TRIM(si.item_type), '') IS NOT NULL
+  AND LOWER(TRIM(si.item_type)) IN (
+    'malzeme', 'material', 'product', 'ürün', 'urun', 'Ürün', 'ÜRÜN'
+  )
+)
+`.trim();
+
+/**
+ * Hizmet kartı eşleşse bile açık malzeme satırı hizmet değildir.
+ * Boş tür + kart eşleşmesi hizmet kalır. Depozito hizmet sayılmaz.
+ */
+export const SQL_IS_SERVICE_LINE = `
+(
+  LOWER(TRIM(COALESCE(si.item_type, ''))) IN ('hizmet', 'service', 'package', 'paket')
+  OR (
+    NOT ${SQL_IS_EXPLICIT_PRODUCT_TYPE}
+    AND NOT ${SQL_IS_DEPOSIT_LINE}
+    AND (svc.id IS NOT NULL OR bsvc.id IS NOT NULL)
+  )
+)
+`.trim();
+
+/**
  * Dip indirim: satır net toplamı fatura net_amount’tan büyükse oransal ölçek.
  * Satır indirimi zaten si.net_amount içinde varsayılır.
  *
- * BEA-* tek hizmet: fatura `net_amount`'ı kalan ödeme olabilir. Tek satırda
- * `appointment.total_price` brüt hizmet tutarıdır; ölçek ciroyu eksik bırakır.
+ * Ürün satırı randevu `total_price` ile ezilmez. Ciro, satırın kendi netidir.
  *
- * BEA-* birden fazla hizmet: köprü tek randevuya bağlıdır. O randevunun
- * fiyatını her satıra yazmak diğer hizmeti eksiltir (50.000 + 60.000 fişte
- * ikinci satır 50.000 görünür, toplam 10.000 eksik kalır). Çok satırda her
- * hizmet kendi `si.net_amount` tutarıdır. Depozito bu tutara eklenmez.
+ * BEA-* tek hizmet: fatura `net_amount`'ı kalan ödeme olabilir. Tek hizmet
+ * satırında `appointment.total_price` brüt hizmet tutarıdır.
+ *
+ * BEA-* birden fazla satır (hizmet + hizmet veya hizmet + ürün): köprü tek
+ * randevuya bağlıdır. O fiyatı her satıra yazmak diğer satırı eksiltir.
+ * Her satır kendi `si.net_amount` tutarıdır. Depozito bu tutara eklenmez.
  */
 export const LINE_REVENUE_EXPR = `
 (
   CASE
+    WHEN ${SQL_IS_DEPOSIT_LINE} THEN
+      COALESCE(si.net_amount, 0)
+    WHEN s.fiche_no LIKE 'BEA-%' AND ${SQL_IS_EXPLICIT_PRODUCT_TYPE} THEN
+      COALESCE(si.net_amount, 0)
     WHEN s.fiche_no LIKE 'BEA-%' AND COALESCE(ba_total.service_line_count, 0) > 1 THEN
       COALESCE(si.net_amount, 0)
     WHEN s.fiche_no LIKE 'BEA-%' THEN
@@ -492,13 +538,15 @@ export const BEAUTY_APPOINTMENT_BRIDGE_JOIN = `
 `.trim();
 
 /**
- * BEA satışı randevuya bağlıysa ciroya dahil mi? (evet = brüt kâr sayılır)
- * İptal/No-show/refunded randevulara bağlı BEA fişleri Hariç.
- * BEA olmayan satışlar için TRUE.
+ * BEA hizmeti randevuya bağlıysa ciroya dahil mi?
+ * İptal/No-show/refunded randevuya bağlı hizmet satırı Hariç.
+ * Açık ürün/malzeme satırı randevu köprüsü olmasa da kalır: randevusuz
+ * ürün fişi bu kapıda sıfır satıra düşmez. BEA olmayan satışlar için TRUE.
  */
 export const SQL_BEAUTY_APPT_INCLUDED = `
 (
   s.fiche_no NOT LIKE 'BEA-%'
+  OR ${SQL_IS_EXPLICIT_PRODUCT_TYPE}
   OR (
     ba_total.linked_appointment_id IS NOT NULL
     AND ba_total.appt_status NOT IN (
@@ -514,13 +562,6 @@ export const SQL_BEAUTY_APPT_INCLUDED = `
  * Hizmet satırlarında: satır unit_cost → hizmet kartı purchase_price → beauty cost_price → reçete.
  * Malzemede alış bulunamazsa 0 (kart cost / satış satırı total_cost yok).
  */
-export const SQL_IS_SERVICE_LINE = `
-(
-  LOWER(TRIM(COALESCE(si.item_type, 'Malzeme'))) IN ('hizmet', 'service', 'package', 'paket')
-  OR svc.id IS NOT NULL
-  OR bsvc.id IS NOT NULL
-)
-`.trim();
 
 export const SQL_LINE_KIND_EXPR = `
 CASE WHEN ${SQL_IS_SERVICE_LINE} THEN 'service' ELSE 'product' END
@@ -559,22 +600,6 @@ export const LINE_COST_EXPR = `
 
 export const SIGNED_LINE_QTY_EXPR = `(${SQL_SALES_SIGN}) * COALESCE(si.quantity, 0)`;
 export const SIGNED_LINE_REVENUE_EXPR = `(${SQL_SALES_SIGN}) * ${LINE_REVENUE_EXPR}`;
-
-/**
- * Depozito satırı BEA fişinde randevu brütüyle değişmesin.
- * Dağıtım, satırın kendi net tutarını görsün.
- */
-export const SQL_IS_DEPOSIT_LINE = `
-(
-  lower(trim(coalesce(si.item_type, ''))) IN ('deposit', 'depozito')
-  OR lower(trim(coalesce(si.item_name, ''))) IN ('deposit', 'depozito', 'peşinat', 'pesinat', 'rezervasyon')
-  OR lower(trim(coalesce(si.item_name, ''))) LIKE 'depozito%'
-  OR lower(trim(coalesce(si.item_name, ''))) LIKE 'deposit%'
-  OR lower(trim(coalesce(si.item_name, ''))) LIKE 'peşinat%'
-  OR lower(trim(coalesce(si.item_name, ''))) LIKE 'pesinat%'
-  OR lower(trim(coalesce(si.item_code, ''))) IN ('deposit', 'depozito')
-)
-`.trim();
 
 export const SIGNED_FOLD_LINE_REVENUE_EXPR = `
 CASE
@@ -676,6 +701,60 @@ export function displayItemCode(...vals: unknown[]): string {
 export function isServiceLineType(itemType?: unknown): boolean {
   const t = String(itemType || '').trim().toLocaleLowerCase('tr-TR');
   return t === 'hizmet' || t === 'service' || t === 'package' || t === 'paket';
+}
+
+/** Açık malzeme/ürün türü. Boş değer malzeme değildir. */
+export function isExplicitProductItemType(itemType?: unknown): boolean {
+  const t = String(itemType || '').trim().toLocaleLowerCase('tr-TR');
+  return t === 'malzeme' || t === 'material' || t === 'product' || t === 'ürün' || t === 'urun';
+}
+
+/**
+ * Kar-zarar türü. Açık malzeme, hizmet kartı eşleşse de üründür.
+ * Boş tür yalnızca kart eşleşirse hizmettir.
+ */
+export function classifyProfitLossLineKind(opts: {
+  itemType?: unknown;
+  serviceCardMatched?: boolean;
+}): 'product' | 'service' {
+  if (isServiceLineType(opts.itemType)) return 'service';
+  if (isExplicitProductItemType(opts.itemType)) return 'product';
+  if (opts.serviceCardMatched) return 'service';
+  return 'product';
+}
+
+/**
+ * Kar-zarar satır cirosu.
+ * Ürün her zaman kendi netidir; randevu fiyatı yazılmaz.
+ * Tek hizmetli BEA fişinde randevu brütü durur. Yanında başka satır varsa
+ * hizmet de kendi netini korur.
+ */
+export function resolveBeautyLineNet(opts: {
+  ficheNo?: string | null;
+  itemType?: unknown;
+  lineKind?: 'product' | 'service' | string | null;
+  lineNet: number;
+  appointmentTotal?: number | null;
+  nonDepositLineCount: number;
+  linesNetSum?: number;
+  invoiceNet?: number;
+}): number {
+  const line = Number(opts.lineNet) || 0;
+  const kind = opts.lineKind === 'service' || opts.lineKind === 'product'
+    ? opts.lineKind
+    : classifyProfitLossLineKind({ itemType: opts.itemType });
+  const bea = String(opts.ficheNo || '').startsWith('BEA-');
+  if (kind === 'product') {
+    if (bea) return line;
+    return scaleLineRevenueToInvoiceNet(line, Number(opts.linesNetSum ?? line) || 0, Number(opts.invoiceNet ?? line) || 0);
+  }
+  if (bea && Number(opts.nonDepositLineCount) > 1) return line;
+  if (bea) {
+    const appt = Number(opts.appointmentTotal);
+    if (Number.isFinite(appt) && Math.abs(appt) > 0.004) return appt;
+    return line;
+  }
+  return scaleLineRevenueToInvoiceNet(line, Number(opts.linesNetSum ?? line) || 0, Number(opts.invoiceNet ?? line) || 0);
 }
 
 export function sqlLineKindFilter(kind: 'all' | 'product' | 'service'): string {
