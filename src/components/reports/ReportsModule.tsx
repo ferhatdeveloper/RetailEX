@@ -4,6 +4,7 @@ import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
 import { PeriodSummaryReport } from './PeriodSummaryReport';
+import { omitRepeatedPeriodSummaryUnderFinance } from '../../utils/reportMenuPeriodSummary';
 import { ReportChatAI } from './ReportChatAI';
 import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
@@ -6578,8 +6579,7 @@ export function ReportsModule({
         type: 'group',
         children: [
           { key: 'profit-loss', label: tm('karZararRaporu'), icon: <AccountBookOutlined /> },
-          { key: 'monthly-days-summary', label: tm('aylikGunOzeti'), icon: <CalendarOutlined /> },
-          { key: 'yearly-months-summary', label: tm('yillikAyOzeti'), icon: <BarChart3 /> },
+          // Aylık gün / yıllık ay özeti yalnızca genel grupta; burada tekrarlanmaz.
           { key: 'cash-flow', label: tm('nakitAkisRaporu'), icon: <TransactionOutlined /> },
           { key: 'debt-aging', label: tm('borcAlacakYaslandirma'), icon: <HistoryOutlined /> },
           { key: 'cari-debtors', label: tm('cariDebtorsReportTitle'), icon: <BankOutlined /> },
@@ -6634,7 +6634,7 @@ export function ReportsModule({
     ];
 
     return filterReportMenuGroups(
-      [
+      omitRepeatedPeriodSummaryUnderFinance([
         ...(businessType === 'beauty'
           ? [
               {
@@ -6665,7 +6665,7 @@ export function ReportsModule({
             { key: 'turnover-reports', label: tm('ciroRaporlari'), icon: <Banknote className="w-4 h-4" /> },
           ] : []
         }
-      ],
+      ]),
       reportMenuParams,
     );
   };
