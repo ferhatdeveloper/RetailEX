@@ -100,6 +100,7 @@ import {
   foldSaleItemsWithDeposits,
   type FicheDepositRef,
 } from '../../utils/beautyDepositAllocation';
+import { beautyServiceReportLineMoney } from '../../utils/beautyServiceReportLineTotal';
 import {
   absorbReservationFromRemainings,
   detachReservationFromOpenAccount,
@@ -249,9 +250,9 @@ type ServiceBreakdownFlatRow = {
   deviceName: string;
   receiptNumber: string;
   amount: number;
-  // 19.10.2026 — Depozito/rezervasyon tutarı
+  // Rezervasyon payı — bilgi kolonu. Ciroya eklenmez.
   depositAmount: number;
-  // Hizmet tutarı + depozito
+  // Toplam tutar = hizmet tutarı. Peşinat eklenmez.
   lineTotal: number;
   appointment?: BeautyAppointment;
 };
@@ -2420,8 +2421,8 @@ export function ReportsModule({
           const a = item as BeautyAppointment;
           const cats = resolveBeautyServiceCategoryLabels(a.service_id, beautyServiceById);
           const rawDeposit = Number((a as BeautyAppointment & { deposit_amount?: number }).deposit_amount ?? 0);
-          const depositAmount = beautyDepositShareById.get(String(a.id ?? '')) ?? rawDeposit;
-          const amount = Number(a.total_price ?? 0);
+          const depositShare = beautyDepositShareById.get(String(a.id ?? '')) ?? rawDeposit;
+          const money = beautyServiceReportLineMoney(a.total_price ?? 0, depositShare);
           rows.push({
             id: String(a.id ?? `${g.serviceName}-${rows.length}`),
             serviceName: g.serviceName,
@@ -2433,9 +2434,9 @@ export function ReportsModule({
             staffName: String(a.specialist_name ?? a.staff_name ?? '').trim() || '—',
             deviceName: String(a.device_name ?? '').trim() || '—',
             receiptNumber: '',
-            amount,
-            depositAmount,
-            lineTotal: amount + depositAmount,
+            amount: money.amount,
+            depositAmount: money.depositAmount,
+            lineTotal: money.lineTotal,
             appointment: a,
           });
         } else {
