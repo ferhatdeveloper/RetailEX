@@ -29,6 +29,11 @@ import {
 } from 'recharts';
 import { RestaurantService } from '../../services/restaurant';
 import { beautyService } from '../../services/beautyService';
+import {
+  planBeautyProductReturns,
+  summarizeBeautyProductSales,
+  type BeautyProductReturnLine,
+} from '../../utils/beautyProductSalesNet';
 import { expenseAPI } from '../../services/api/expenses';
 import { fetchKasaIslemleri, fetchKasalar, deleteKasaIslemi, type Kasa, type KasaIslemi } from '../../services/api/kasa';
 import { userAPI } from '../../services/api/users';
@@ -882,6 +887,8 @@ type BeautyAppointmentProductRow = {
   staffName: string;
   paymentMethod: string;
   crmAppointment: BeautyAppointment | null;
+  /** Satış iadesi: miktar ve tutar eksi. İşlem sayısına girmez. */
+  isReturn?: boolean;
 };
 
 type BeautyProductReportSearchMode = 'all' | 'name' | 'code';
@@ -1566,6 +1573,7 @@ export function ReportsModule({
     return Array.from(map.values());
   }, [rangeDepositRefs, beautyServiceAppointments]);
   const [beautyServiceSales, setBeautyServiceSales] = useState<BeautySale[]>([]);
+  const [beautyProductReturnLines, setBeautyProductReturnLines] = useState<BeautyProductReturnLine[]>([]);
   const [erpServiceBreakdownSales, setErpServiceBreakdownSales] = useState<Sale[]>([]);
   const [erpHizmetSaleIds, setErpHizmetSaleIds] = useState<Set<string>>(() => new Set());
   const [erpServiceCards, setErpServiceCards] = useState<Array<{ id: string; code: string; name: string }>>([]);
@@ -1785,6 +1793,7 @@ export function ReportsModule({
           );
           setBeautyServiceAppointments([]);
           setBeautyServiceSales([]);
+          setBeautyProductReturnLines([]);
         } catch (err) {
           console.error('[ReportsModule] Hizmet bazlı rapor (ERP):', err);
           setErpServiceBreakdownSales([]);
@@ -1799,11 +1808,15 @@ export function ReportsModule({
       return Promise.resolve();
     }
     setLoadingBeautyServiceReport(true);
+    const wantProductReturns = selectedTab === 'beauty-appointment-product-report';
     return Promise.allSettled([
       beautyService.getAppointmentsInRange(beautyServiceFrom, beautyServiceTo),
       beautyService.getSalesWithItemsForExportRange(beautyServiceFrom, beautyServiceTo),
+      wantProductReturns
+        ? beautyService.getProductSalesReturnLines(beautyServiceFrom, beautyServiceTo)
+        : Promise.resolve([] as BeautyProductReturnLine[]),
     ])
-      .then(([appointmentsResult, salesResult]) => {
+      .then(([appointmentsResult, salesResult, returnsResult]) => {
         if (appointmentsResult.status === 'fulfilled') {
           setBeautyServiceAppointments(Array.isArray(appointmentsResult.value) ? appointmentsResult.value : []);
         } else {
@@ -1814,6 +1827,11 @@ export function ReportsModule({
           setBeautyServiceSales(Array.isArray(salesResult.value) ? salesResult.value : []);
         } else {
           setBeautyServiceSales([]);
+        }
+        if (wantProductReturns && returnsResult.status === 'fulfilled') {
+          setBeautyProductReturnLines(Array.isArray(returnsResult.value) ? returnsResult.value : []);
+        } else {
+          setBeautyProductReturnLines([]);
         }
         setErpServiceBreakdownSales([]);
         setErpHizmetSaleIds(new Set());
@@ -2594,8 +2612,40 @@ export function ReportsModule({
           staffName,
           paymentMethod,
           crmAppointment: appointment,
+          isReturn: false,
         });
       }
+    }
+
+    // İade fişi beauty_sales'te yok; ERP satış iadesi eksi satır olarak eklenir.
+    // Brüt satış satırı olduğu gibi kalır — aynı iade ikinci kez düşülmez.
+    const returnApps = planBeautyProductReturns(rows, beautyProductReturnLines);
+    for (const app of returnApps) {
+      const rowId = `iade-${app.sourceLineId}`;
+      rows.push({
+        id: rowId,
+        key: rowId,
+        saleId: app.saleId,
+        appointmentId: '',
+        createdAt: app.date,
+        appointmentDate: app.date || '—',
+        appointmentTime: '',
+        customerName: app.customerName,
+        productId: app.productId,
+        productName: app.productName,
+        productCode: app.productCode,
+        productBarcode: app.productBarcode,
+        productCodeDisplay: app.productCodeDisplay,
+        categoryName: app.categoryName,
+        subCategoryName: app.subCategoryName,
+        quantity: app.quantity,
+        unitPrice: app.unitPrice,
+        total: app.total,
+        staffName: app.staffName,
+        paymentMethod: app.paymentMethod,
+        crmAppointment: null,
+        isReturn: true,
+      });
     }
 
     rows.sort((a, b) => {
@@ -2608,7 +2658,7 @@ export function ReportsModule({
       return String(b.createdAt).localeCompare(String(a.createdAt));
     });
     return rows;
-  }, [beautyServiceSales, beautyServiceAppointments, beautyProductCatalogById]);
+  }, [beautyServiceSales, beautyServiceAppointments, beautyProductCatalogById, beautyProductReturnLines]);
 
   const beautyProductFilterOptions = useMemo(
     () =>
@@ -2668,18 +2718,11 @@ export function ReportsModule({
     };
   }, [beautyServiceSales]);
 
-  const beautyAppointmentProductSummary = useMemo(() => {
-    // İşlem = benzersiz satış fişi; grid satırı = ürün kalemi (çok kalemli fişte satır > işlem).
-    const transactionCount = new Set(
-      beautyAppointmentProductRows.map((row) => String(row.saleId || '').trim()).filter(Boolean)
-    ).size;
-    return {
-      transactionCount,
-      lineCount: beautyAppointmentProductRows.length,
-      totalQty: beautyAppointmentProductRows.reduce((sum, row) => sum + row.quantity, 0),
-      totalRevenue: beautyAppointmentProductRows.reduce((sum, row) => sum + row.total, 0),
-    };
-  }, [beautyAppointmentProductRows]);
+  const beautyAppointmentProductSummary = useMemo(
+    // İşlem = benzersiz satış fişi (iade fişi sayılmaz). Miktar ve ciro net (satış − iade).
+    () => summarizeBeautyProductSales(beautyAppointmentProductRows),
+    [beautyAppointmentProductRows],
+  );
 
   /** Dönem karşılaştırması: ERP `sales` veya (restoran) fiş yoksa `comparisonOrders` */
   const comparisonBundle = useMemo(() => {
@@ -10250,7 +10293,12 @@ export function ReportsModule({
                                   size: 100,
                                   footerSum: true,
                                   footerFormat: (n) => formatNumber(n, 2, false),
-                                  cell: (row) => formatNumber(row.quantity, 2, false),
+                                  cell: (row) => {
+                                    const text = formatNumber(row.quantity, 2, false);
+                                    return row.quantity < 0
+                                      ? <span className="text-rose-700 font-semibold">{text}</span>
+                                      : text;
+                                  },
                                 },
                                 {
                                   key: 'unitPrice',
@@ -10268,7 +10316,12 @@ export function ReportsModule({
                                   size: 130,
                                   footerSum: true,
                                   footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
-                                  cell: (row) => formatLedgerAmount(row.total, reportCurrency),
+                                  cell: (row) => {
+                                    const text = formatLedgerAmount(row.total, reportCurrency);
+                                    return row.total < 0
+                                      ? <span className="text-rose-700 font-semibold">{text}</span>
+                                      : text;
+                                  },
                                 },
                                 { key: 'staffName', header: tm('bStaffView'), size: 140 },
                                 { key: 'paymentMethod', header: tm('paymentType'), size: 120 },

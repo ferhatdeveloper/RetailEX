@@ -6,6 +6,7 @@ import type { Sale, SaleItem } from '../core/types/models';
 import { applyOpenAdvancesToSale } from './avansService';
 import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
 import { postgres, ERP_SETTINGS } from './postgres';
+import type { BeautyProductReturnLine } from '../utils/beautyProductSalesNet';
 import { useSaleStore } from '../store/useSaleStore';
 import { useCustomerStore } from '../store/useCustomerStore';
 import { cariCashStoredBalanceDelta } from './api/accountBalance';
@@ -7027,6 +7028,98 @@ export const beautyService = {
             ...s,
             items: bySale.get(s.id) ?? [],
         }));
+    },
+
+    /**
+     * Ürün satış raporu için dönemdeki satış iadeleri (ERP fiş).
+     * Güzellik satış tablosuna iade satırı yazılmaz; iade `sales` içinde
+     * trcode 2/3 veya return_invoice olarak, tutarı pozitif durur.
+     * Yalnızca okunur. Hizmet ve depozito kalemleri çağıran tarafta elenir.
+     */
+    async getProductSalesReturnLines(startYmd: string, endYmd: string): Promise<BeautyProductReturnLine[]> {
+        const salesTable = postgres.getMovementTableName('sales');
+        const itemsTable = postgres.getMovementTableName('sale_items');
+        try {
+            const { rows } = await postgres.query<{
+                sale_id?: string;
+                fiche_no?: string;
+                date?: string;
+                customer_name?: string;
+                payment_method?: string;
+                cashier?: string;
+                trcode?: number | string | null;
+                fiche_type?: string;
+                line_id?: string;
+                product_id?: string;
+                item_code?: string;
+                item_name?: string;
+                item_type?: string;
+                quantity?: number | string | null;
+                unit_price?: number | string | null;
+                net_amount?: number | string | null;
+                total_amount?: number | string | null;
+            }>(
+                `SELECT
+                    s.id::text AS sale_id,
+                    s.fiche_no,
+                    s.date,
+                    s.customer_name,
+                    s.payment_method,
+                    s.cashier,
+                    s.trcode,
+                    s.fiche_type,
+                    si.id::text AS line_id,
+                    si.product_id::text AS product_id,
+                    si.item_code,
+                    si.item_name,
+                    si.item_type,
+                    si.quantity,
+                    si.unit_price,
+                    si.net_amount,
+                    si.total_amount
+                 FROM ${salesTable} s
+                 INNER JOIN ${itemsTable} si ON si.invoice_id = s.id
+                 WHERE s.date::date >= $1::date AND s.date::date <= $2::date
+                   AND COALESCE(s.is_cancelled, false) = false
+                   AND LOWER(TRIM(COALESCE(s.status, ''))) NOT IN
+                       ('cancelled', 'canceled', 'void', 'deleted', 'iptal', 'silindi')
+                   AND COALESCE(s.trcode, 0) <> 6
+                   AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) NOT IN
+                       ('purchase_invoice', 'a', 'opening_balance')
+                   AND (
+                     COALESCE(s.trcode, 0) IN (2, 3)
+                     OR (
+                       LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('return_invoice', 'i')
+                       AND COALESCE(s.trcode, 0) NOT IN (1, 4, 5, 6, 13, 26, 41, 42)
+                     )
+                   )
+                 ORDER BY s.date ASC, s.fiche_no ASC
+                 LIMIT 20000`,
+                [startYmd, endYmd],
+            );
+            return (rows ?? []).map((row) => ({
+                saleId: String(row.sale_id ?? ''),
+                lineId: String(row.line_id ?? ''),
+                ficheNo: String(row.fiche_no ?? ''),
+                date: String(row.date ?? ''),
+                customerName: String(row.customer_name ?? ''),
+                paymentMethod: String(row.payment_method ?? ''),
+                cashier: String(row.cashier ?? ''),
+                trcode: row.trcode == null || row.trcode === '' ? null : Number(row.trcode),
+                ficheType: String(row.fiche_type ?? ''),
+                productId: String(row.product_id ?? ''),
+                itemCode: String(row.item_code ?? ''),
+                itemName: String(row.item_name ?? ''),
+                itemType: String(row.item_type ?? ''),
+                quantity: Number(row.quantity ?? 0) || 0,
+                unitPrice: Number(row.unit_price ?? 0) || 0,
+                netAmount: Number(row.net_amount ?? 0) || 0,
+                totalAmount: Number(row.total_amount ?? 0) || 0,
+            }));
+        } catch (err) {
+            console.warn('[beautyService] getProductSalesReturnLines:', err);
+            return [];
+        }
     },
 
     /**
