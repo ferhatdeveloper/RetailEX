@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  netBeautyProductSaleRows,
   planBeautyProductReturns,
   summarizeBeautyProductSales,
   type BeautyProductReturnLine,
@@ -45,58 +46,71 @@ function productReturn(overrides: Partial<BeautyProductReturnLine> = {}): Beauty
 }
 
 describe('Güzellik ürün satış — iade netleştirmesi', () => {
-  it('2 adet × 10.000 satış ve 1 adet × 10.000 iade → net miktar 1, net tutar 10.000', () => {
-    const sale = boyaSale();
+  it('2 adet × 10.000 satış ve 1 adet × 10.000 iade → tek satır, miktar 1, tutar 10.000', () => {
+    const sale = {
+      ...boyaSale(),
+      unitPrice: 10_000,
+      customerName: 'FERDİN BEY',
+      staffName: 'System Administrator',
+      paymentMethod: 'cash',
+    };
     const snapshot = { ...sale };
-    const applied = planBeautyProductReturns([sale], [productReturn()]);
+    const applied = planBeautyProductReturns([sale], [productReturn({
+      cashier: 'admin',
+      paymentMethod: 'veresiye',
+      customerName: '',
+    })]);
+    const net = netBeautyProductSaleRows([sale], [productReturn({
+      cashier: 'admin',
+      paymentMethod: 'veresiye',
+      customerName: '',
+    })]);
 
     expect(sale).toEqual(snapshot);
     expect(applied).toHaveLength(1);
     expect(applied[0].quantity).toBe(-1);
     expect(applied[0].total).toBe(-10_000);
-    expect(applied[0].unitPrice).toBe(10_000);
+    expect(net).toHaveLength(1);
+    expect(net[0].quantity).toBe(1);
+    expect(net[0].total).toBe(10_000);
+    expect(net[0].unitPrice).toBe(10_000);
+    expect(net[0].customerName).toBe('FERDİN BEY');
+    expect(net[0].staffName).toBe('System Administrator');
+    expect(net[0].paymentMethod).toBe('cash');
+    expect(net[0].productCode).toBe('0000001');
+    expect(net[0].productName).toBe('BOYA');
 
     const summary = summarizeBeautyProductSales([
-      { saleId: 'sale-1', quantity: sale.quantity, total: sale.total, isReturn: false },
-      {
-        saleId: applied[0].saleId,
-        quantity: applied[0].quantity,
-        total: applied[0].total,
-        isReturn: true,
-      },
+      { saleId: 'sale-1', quantity: net[0].quantity, total: net[0].total, isReturn: false },
     ]);
     expect(summary.totalQty).toBe(1);
     expect(summary.totalRevenue).toBe(10_000);
     expect(summary.transactionCount).toBe(1);
-    expect(summary.lineCount).toBe(2);
+    expect(summary.lineCount).toBe(1);
   });
 
-  it('aynı iade satırı ikinci kez düşülmez (20.000 − 10.000 − 10.000 olmaz)', () => {
-    const applied = planBeautyProductReturns(
+  it('aynı iade satırı ikinci kez düşülmez (10.000 ikinci kez inip 0 olmaz)', () => {
+    const net = netBeautyProductSaleRows(
       [boyaSale()],
       [productReturn(), productReturn({ saleId: 'return-sale-dup' })],
     );
-    expect(applied).toHaveLength(1);
-    const netQty = 2 + applied.reduce((sum, row) => sum + row.quantity, 0);
-    const netTotal = 20_000 + applied.reduce((sum, row) => sum + row.total, 0);
-    expect(netQty).toBe(1);
-    expect(netTotal).toBe(10_000);
+    expect(net).toHaveLength(1);
+    expect(net[0].quantity).toBe(1);
+    expect(net[0].total).toBe(10_000);
   });
 
   it('veritabanında eksi yazılmış iade de bir kez düşülür', () => {
-    const applied = planBeautyProductReturns(
+    const net = netBeautyProductSaleRows(
       [boyaSale()],
       [productReturn({ quantity: -1, unitPrice: 10_000, netAmount: -10_000, totalAmount: -10_000 })],
     );
-    expect(applied).toHaveLength(1);
-    expect(applied[0].quantity).toBe(-1);
-    expect(applied[0].total).toBe(-10_000);
-    expect(2 + applied[0].quantity).toBe(1);
-    expect(20_000 + applied[0].total).toBe(10_000);
+    expect(net).toHaveLength(1);
+    expect(net[0].quantity).toBe(1);
+    expect(net[0].total).toBe(10_000);
   });
 
   it('depozito 20.000 ve hizmet iadesi ürün cirosundan düşmez', () => {
-    const applied = planBeautyProductReturns(
+    const net = netBeautyProductSaleRows(
       [boyaSale()],
       [
         productReturn({
@@ -124,14 +138,24 @@ describe('Güzellik ürün satış — iade netleştirmesi', () => {
         productReturn(),
       ],
     );
-    expect(applied).toHaveLength(1);
-    expect(applied[0].total).toBe(-10_000);
-    expect(20_000 + applied[0].total).toBe(10_000);
+    expect(net).toHaveLength(1);
+    expect(net[0].quantity).toBe(1);
+    expect(net[0].total).toBe(10_000);
   });
 
   it('başka ürünün iadesi BOYA satırına yazılmaz', () => {
-    const applied = planBeautyProductReturns(
-      [boyaSale()],
+    const sabun: BeautyProductSaleNetInput = {
+      productId: '22222222-2222-4222-8222-222222222222',
+      productName: 'SABUN',
+      productCode: '0000099',
+      productBarcode: '',
+      categoryName: '—',
+      subCategoryName: '—',
+      quantity: 1,
+      total: 5_000,
+    };
+    const net = netBeautyProductSaleRows(
+      [boyaSale(), sabun],
       [
         productReturn({
           lineId: 'other-product',
@@ -145,30 +169,55 @@ describe('Güzellik ürün satış — iade netleştirmesi', () => {
         }),
       ],
     );
-    expect(applied).toHaveLength(0);
-    const summary = summarizeBeautyProductSales([
-      { saleId: 'sale-1', quantity: 2, total: 20_000, isReturn: false },
-    ]);
-    expect(summary.totalQty).toBe(2);
-    expect(summary.totalRevenue).toBe(20_000);
+    expect(net).toHaveLength(2);
+    expect(net[0].productCode).toBe('0000001');
+    expect(net[0].quantity).toBe(2);
+    expect(net[0].total).toBe(20_000);
+    expect(net[1].productCode).toBe('0000099');
+    expect(net[1].quantity).toBe(0);
+    expect(net[1].total).toBe(0);
+  });
+
+  it('farklı ürün ayrı satır kalır, BOYA iadesi SABUN satırına yazılmaz', () => {
+    const sabun: BeautyProductSaleNetInput = {
+      productId: '22222222-2222-4222-8222-222222222222',
+      productName: 'SABUN',
+      productCode: '0000099',
+      productBarcode: '',
+      categoryName: '—',
+      subCategoryName: '—',
+      quantity: 1,
+      total: 5_000,
+    };
+    const net = netBeautyProductSaleRows([boyaSale(), sabun], [productReturn()]);
+    expect(net).toHaveLength(2);
+    expect(net[0].productName).toBe('BOYA');
+    expect(net[0].quantity).toBe(1);
+    expect(net[0].total).toBe(10_000);
+    expect(net[1].productName).toBe('SABUN');
+    expect(net[1].quantity).toBe(1);
+    expect(net[1].total).toBe(5_000);
   });
 
   it('alış iadesi satıştan düşülmez', () => {
-    const applied = planBeautyProductReturns(
+    const net = netBeautyProductSaleRows(
       [boyaSale()],
       [productReturn({ trcode: 6, ficheType: 'return_invoice', lineId: 'purchase-return' })],
     );
-    expect(applied).toHaveLength(0);
+    expect(net).toHaveLength(1);
+    expect(net[0].quantity).toBe(2);
+    expect(net[0].total).toBe(20_000);
   });
 
-  it('ürün kodu ile eşleşen iade, kod karttaysa düşülür', () => {
-    const applied = planBeautyProductReturns(
+  it('ürün kodu ile eşleşen iade aynı satırdan düşülür', () => {
+    const net = netBeautyProductSaleRows(
       [boyaSale()],
       [productReturn({ productId: '', itemCode: '0000001', itemName: '' })],
     );
-    expect(applied).toHaveLength(1);
-    expect(applied[0].quantity).toBe(-1);
-    expect(applied[0].productCode).toBe('0000001');
-    expect(applied[0].productId).toBe(BOYA_ID);
+    expect(net).toHaveLength(1);
+    expect(net[0].quantity).toBe(1);
+    expect(net[0].total).toBe(10_000);
+    expect(net[0].productCode).toBe('0000001');
+    expect(net[0].productId).toBe(BOYA_ID);
   });
 });

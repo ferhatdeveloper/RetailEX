@@ -30,7 +30,7 @@ import {
 import { RestaurantService } from '../../services/restaurant';
 import { beautyService } from '../../services/beautyService';
 import {
-  planBeautyProductReturns,
+  netBeautyProductSaleRows,
   summarizeBeautyProductSales,
   type BeautyProductReturnLine,
 } from '../../utils/beautyProductSalesNet';
@@ -2617,38 +2617,10 @@ export function ReportsModule({
       }
     }
 
-    // İade fişi beauty_sales'te yok; ERP satış iadesi eksi satır olarak eklenir.
-    // Brüt satış satırı olduğu gibi kalır — aynı iade ikinci kez düşülmez.
-    const returnApps = planBeautyProductReturns(rows, beautyProductReturnLines);
-    for (const app of returnApps) {
-      const rowId = `iade-${app.sourceLineId}`;
-      rows.push({
-        id: rowId,
-        key: rowId,
-        saleId: app.saleId,
-        appointmentId: '',
-        createdAt: app.date,
-        appointmentDate: app.date || '—',
-        appointmentTime: '',
-        customerName: app.customerName,
-        productId: app.productId,
-        productName: app.productName,
-        productCode: app.productCode,
-        productBarcode: app.productBarcode,
-        productCodeDisplay: app.productCodeDisplay,
-        categoryName: app.categoryName,
-        subCategoryName: app.subCategoryName,
-        quantity: app.quantity,
-        unitPrice: app.unitPrice,
-        total: app.total,
-        staffName: app.staffName,
-        paymentMethod: app.paymentMethod,
-        crmAppointment: null,
-        isReturn: true,
-      });
-    }
-
-    rows.sort((a, b) => {
+    // İade kaydı aynı ürünün satış satırından bir kez düşülür.
+    // Ayrı eksi satır açılmaz; müşteri ve personel satış satırında kalır.
+    const netted = netBeautyProductSaleRows(rows, beautyProductReturnLines);
+    netted.sort((a, b) => {
       if (a.appointmentDate !== b.appointmentDate) {
         return b.appointmentDate.localeCompare(a.appointmentDate);
       }
@@ -2657,7 +2629,7 @@ export function ReportsModule({
       }
       return String(b.createdAt).localeCompare(String(a.createdAt));
     });
-    return rows;
+    return netted;
   }, [beautyServiceSales, beautyServiceAppointments, beautyProductCatalogById, beautyProductReturnLines]);
 
   const beautyProductFilterOptions = useMemo(
@@ -2719,7 +2691,7 @@ export function ReportsModule({
   }, [beautyServiceSales]);
 
   const beautyAppointmentProductSummary = useMemo(
-    // İşlem = benzersiz satış fişi (iade fişi sayılmaz). Miktar ve ciro net (satış − iade).
+    // İşlem = benzersiz satış fişi. Ürün satırı = iade düşülmüş satır (ayrı iade satırı yok).
     () => summarizeBeautyProductSales(beautyAppointmentProductRows),
     [beautyAppointmentProductRows],
   );

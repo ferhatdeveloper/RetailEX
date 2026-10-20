@@ -9,8 +9,11 @@
  * net 1 adet / 10.000 görünmez.
  *
  * Muhasebe: satış artı, iade eksi. Net ciro = satış − iade.
- * Net miktar = satılan − iade edilen. Aynı iade satırı bir kez düşülür
- * (satır hem küçültülüp hem ikinci kez eksi yazılmaz).
+ * Net miktar = satılan − iade edilen. Aynı iade bir kez düşülür;
+ * ikinci kez uygulanıp satır 0'a indirilmez.
+ * İade kaydı hesaplanır ve aynı ürünün satış satırından düşülür.
+ * Ayrı iade grid satırı açılmaz. Müşteri, personel, ödeme ve fiyat
+ * satış satırında kalır. Başka ürünün satırına yazılmaz.
  * Hizmet ve depozito satırları bu rapora girmez.
  */
 import { classifyProductHistoryType } from './lastPurchaseCostSql';
@@ -65,12 +68,14 @@ export type BeautyProductReturnApplication = {
   productCodeDisplay: string;
   categoryName: string;
   subCategoryName: string;
-  /** Eksi miktar (bir kez). */
+  /** Eksi miktar (bir kez). Grid satırı değildir; satış satırından düşülür. */
   quantity: number;
   /** Birim fiyat artı kalır. */
   unitPrice: number;
-  /** Eksi tutar (bir kez). */
+  /** Eksi tutar (bir kez). Grid satırı değildir; satış satırından düşülür. */
   total: number;
+  /** Bu iadenin düşüleceği satış satırı konumları. Yeni satır açılmaz. */
+  targetRowIndexes: number[];
 };
 
 export type BeautyProductSalesSummary = {
@@ -85,6 +90,7 @@ type ProductPool = {
   amount: number;
   aliases: Set<string>;
   sample: BeautyProductSaleNetInput;
+  rowIndexes: number[];
 };
 
 function trKey(value: string): string {
@@ -198,16 +204,18 @@ function isProductReturnLine(line: BeautyProductReturnLine): boolean {
 }
 
 /**
- * Brüt ürün satırlarına karşılık iade uygulamaları.
- * Satış satırları değiştirilmez. Her iade kalemi en fazla bir kez düşülür.
+ * Brüt ürün satırlarına karşılık iade kayıtları.
+ * Satış dizisi değiştirilmez. Her iade kalemi en fazla bir kez düşülür.
  * Düşüm, aynı üründen bu raporda satılan miktar ve tutarı aşmaz.
+ * Kayıt eksi yönlüdür; grid'e ayrı satır olarak yazılmaz.
  */
 export function planBeautyProductReturns(
   sales: BeautyProductSaleNetInput[],
   returns: BeautyProductReturnLine[],
 ): BeautyProductReturnApplication[] {
   const pools: ProductPool[] = [];
-  for (const row of sales) {
+  for (let index = 0; index < sales.length; index += 1) {
+    const row = sales[index];
     const qty = finite(row.quantity);
     const amount = finite(row.total);
     if (qty <= 1e-9 && amount <= 1e-6) continue;
@@ -222,6 +230,7 @@ export function planBeautyProductReturns(
     if (existing) {
       existing.qty += Math.max(0, qty);
       existing.amount += Math.max(0, amount);
+      existing.rowIndexes.push(index);
       for (const alias of aliases) existing.aliases.add(alias);
     } else {
       pools.push({
@@ -229,6 +238,7 @@ export function planBeautyProductReturns(
         amount: Math.max(0, amount),
         aliases,
         sample: row,
+        rowIndexes: [index],
       });
     }
   }
@@ -308,13 +318,57 @@ export function planBeautyProductReturns(
       quantity: -takeQty,
       unitPrice,
       total: -takeAmt,
+      targetRowIndexes: [...pool.rowIndexes],
     });
   }
 
   return out;
 }
 
-/** İşlem sayısı iade fişini ayrıca saymaz. Miktar ve ciro işaretli nettir. */
+function roundNet(value: number): number {
+  const rounded = Math.round(value * 10000) / 10000;
+  return Math.abs(rounded) < 1e-9 ? 0 : rounded;
+}
+
+/**
+ * Aynı ürünün iadesini satış satırından düşer. Yeni satır dönmez.
+ * Müşteri, personel, ödeme ve birim fiyat satış satırında kalır.
+ * Aynı iade kalemi bir kez düşülür; net 0'ın altına ikinci kez inmez.
+ */
+export function netBeautyProductSaleRows<T extends BeautyProductSaleNetInput>(
+  sales: readonly T[],
+  returns: BeautyProductReturnLine[],
+): T[] {
+  const rows = sales.map((row) => ({ ...row }));
+  const apps = planBeautyProductReturns(rows, returns);
+  for (const app of apps) {
+    let leftQty = Math.abs(finite(app.quantity));
+    let leftAmt = Math.abs(finite(app.total));
+    for (const index of app.targetRowIndexes) {
+      if (leftQty <= 1e-9 && leftAmt <= 1e-6) break;
+      const row = rows[index];
+      if (!row) continue;
+      const rowQty = Math.max(0, finite(row.quantity));
+      const rowAmt = Math.max(0, finite(row.total));
+      if (rowQty <= 1e-9 && rowAmt <= 1e-6) continue;
+      const takeQty = Math.min(rowQty, leftQty);
+      const fraction = leftQty > 1e-9 ? takeQty / leftQty : 1;
+      const takeAmt = Math.min(rowAmt, leftAmt * fraction);
+      if (takeQty <= 1e-9 && takeAmt <= 1e-6) continue;
+      row.quantity = roundNet(rowQty - takeQty);
+      row.total = roundNet(rowAmt - takeAmt);
+      leftQty = roundNet(leftQty - takeQty);
+      leftAmt = roundNet(leftAmt - takeAmt);
+    }
+  }
+  return rows;
+}
+
+/**
+ * İşlem sayısı iade fişini ayrıca saymaz.
+ * Satırlar iade düşülmüş ürün satırlarıdır; iade ayrı satır sayılmaz.
+ * Miktar ve ciro nettir (satış − iade).
+ */
 export function summarizeBeautyProductSales(
   rows: Array<{ saleId?: string; quantity?: number; total?: number; isReturn?: boolean }>,
 ): BeautyProductSalesSummary {
