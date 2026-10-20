@@ -11,9 +11,14 @@ import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
   fetchLayeredInventoryValuation,
-  layeredCostForProduct,
+  layeredAvgForProduct,
   type LayeredInventoryValuation,
 } from '../../services/layeredInventoryCost';
+import {
+  fetchWeightedAverageUnitCosts,
+  lookupWeightedAvgUnitCost,
+} from '../../services/weightedAverageUnitCost';
+import { summarizeBackofficeDailyStrip } from '../../utils/backofficeDailySummary';
 import { useMenuFavorites } from '../../hooks/useMenuFavorites';
 import {
   flattenMenuLeaves,
@@ -74,6 +79,10 @@ export function DashboardModule({
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
   const [draftFavoriteIds, setDraftFavoriteIds] = useState<string[]>([]);
   const [layeredValuation, setLayeredValuation] = useState<LayeredInventoryValuation | null>(null);
+  const [purchaseAvg, setPurchaseAvg] = useState<{
+    byProductId: Map<string, number>;
+    byCode: Map<string, number>;
+  } | null>(null);
 
   const menuLeaves = useMemo(() => flattenMenuLeaves(menuSections), [menuSections]);
   const allowedIdSet = useMemo(() => new Set(menuLeaves.map((l) => l.id)), [menuLeaves]);
@@ -133,18 +142,26 @@ export function DashboardModule({
 
   useEffect(() => {
     let cancelled = false;
+    const firmNr = selectedFirm?.firm_nr;
+    const periodNr = selectedPeriod?.nr;
     (async () => {
-      try {
-        const v = await fetchLayeredInventoryValuation({
-          firmNr: selectedFirm?.firm_nr,
-          periodNr: selectedPeriod?.nr,
+      const [valuation, avg] = await Promise.all([
+        fetchLayeredInventoryValuation({
+          firmNr,
+          periodNr,
           onHandProducts: products,
-        });
-        if (!cancelled) setLayeredValuation(v);
-      } catch (err) {
-        console.warn('[DashboardModule] layered inventory cost failed', err);
-        if (!cancelled) setLayeredValuation(null);
-      }
+        }).catch((err) => {
+          console.warn('[DashboardModule] layered inventory cost failed', err);
+          return null;
+        }),
+        fetchWeightedAverageUnitCosts({ firmNr, periodNr }).catch((err) => {
+          console.warn('[DashboardModule] weighted average cost failed', err);
+          return null;
+        }),
+      ]);
+      if (cancelled) return;
+      setLayeredValuation(valuation);
+      setPurchaseAvg(avg);
     })();
     return () => {
       cancelled = true;
@@ -174,64 +191,38 @@ export function DashboardModule({
   /** Tarih filtresi uygulanmış, iptal edilmemiş aktif satışlar */
   const activeSales = useMemo(() => sales.filter(isActiveSale), [sales]);
 
-  // 09.10.2026 — Randevu kapatılınca ana fişe yalnız kalan ödeme (net_amount)
-  // yazılıyor; peşinat ayrı bir fiş olarak yazılmadığı için toplam hizmet
-  // (75.000) dashboard'da 50.000 görünüyordu. Dashboard "Bugünkü Satış" toplamı
-  // artık fişin **toplam_net**'inden (hizmet toplamı) alınır; eğer DB'de
-  // total_net yoksa (eski fiş) `s.total`'a geri düşer.
-  const saleServiceTotal = (s: Sale): number => {
-    const anyS = s as Sale & {
-      total_net?: number;
-      totalAmount?: number;
-      total?: number;
-    };
-    const tn = Number(anyS.total_net ?? 0);
-    if (tn > 0) return tn;
-    return Number(anyS.total ?? anyS.totalAmount ?? 0);
-  };
+  // Günlük Özet, Detaylı Satış ile aynı iş gününü kullanır.
+  // UTC gece yarısı yerel karşılaştırmada düne kaymasın. Net = brüt − iade
+  // (bir kez). Peşinat ciro değildir. Stok kartı satış fiyatı değil birim alış.
+  const dailyStrip = useMemo(() => {
+    const stockProducts = products.map((p) => {
+      const fetched = lookupWeightedAvgUnitCost(purchaseAvg, p);
+      return {
+        id: p.id,
+        code: p.code,
+        barcode: p.barcode,
+        name: p.name,
+        stock: p.stock,
+        price: p.price,
+        cost: p.cost,
+        average_unit_cost: fetched > 0 ? fetched : p.average_unit_cost,
+        layeredAvg: layeredAvgForProduct(layeredValuation, p),
+        isService: p.isService,
+        materialType: p.materialType,
+      };
+    });
+    return summarizeBackofficeDailyStrip({ sales, products: stockProducts });
+  }, [sales, products, purchaseAvg, layeredValuation]);
 
-  // Today's sales (iptal hariç)
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todaysSales = activeSales.filter(s => new Date(s.date) >= today);
-  const totalRevenue = todaysSales.reduce((sum, s) => sum + saleServiceTotal(s), 0);
-  const totalProfitToday = layeredValuation
-    ? totalRevenue - layeredValuation.todayCogs
-    : todaysSales.reduce((sum, s) => sum + (s.profit || 0), 0);
-
-  // Yesterday's sales for comparison (iptal hariç)
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdaySales = activeSales.filter(s => {
-    const saleDate = new Date(s.date);
-    return saleDate >= yesterday && saleDate < today;
-  });
-  const yesterdayRevenue = yesterdaySales.reduce(
-    (sum, s) => sum + saleServiceTotal(s),
-    0,
-  );
-  const yesterdayProfit = yesterdaySales.reduce((sum, s) => sum + (s.profit || 0), 0);
-
-  const revenueChange = yesterdayRevenue > 0
-    ? ((totalRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
-    : 0;
-
-  const profitChange = yesterdayProfit > 0
-    ? ((totalProfitToday - yesterdayProfit) / yesterdayProfit) * 100
-    : 0;
-
-  // This week's data (iptal hariç)
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 7);
-  const weekSales = activeSales.filter(s => new Date(s.date) >= weekAgo);
-  const weekRevenue = weekSales.reduce(
-    (sum, s) => sum + saleServiceTotal(s),
-    0,
-  );
-
-  // Stock value — FIFO kalan katman (kart alış × miktar değil)
-  const totalStockValue = products.reduce((sum, p) => sum + layeredCostForProduct(layeredValuation, p), 0);
-  const totalStockSaleValue = products.reduce((sum, p) => sum + ((Number(p.stock) || 0) * (Number(p.price) || 0)), 0);
+  const totalRevenue = dailyStrip.today.netSales;
+  const totalProfitToday = dailyStrip.today.profit;
+  const revenueChange = dailyStrip.revenueChangePercent;
+  const profitChange = dailyStrip.profitChangePercent;
+  const weekRevenue = dailyStrip.week.netSales;
+  const todayTransactionCount = dailyStrip.today.transactionCount;
+  const weekTransactionCount = dailyStrip.week.transactionCount;
+  const totalStockValue = dailyStrip.stockValueCost;
+  const totalStockSaleValue = dailyStrip.stockValueSale;
   const potentialProfit = totalStockSaleValue - totalStockValue;
 
   // Low stock products
@@ -269,28 +260,15 @@ export function DashboardModule({
     value
   }));
 
-  // Sales trend (last 7 days) — iptal edilenler HARİÇ (Bug 12)
-  const last7Days = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date(today);
-    date.setDate(date.getDate() - (6 - i));
+  // Son 7 gün — aynı iş günü ve aynı net satış (iade bir kez, peşinat hariç)
+  const last7Days = dailyStrip.trend.map((day) => {
+    const [y, m, d] = day.dateKey.split('-').map((part) => parseInt(part, 10));
+    const labelDate = new Date(y, (m || 1) - 1, d || 1);
     return {
-      date: date.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' }),
-      revenue: 0,
-      count: 0
+      date: labelDate.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' }),
+      revenue: day.netSales,
+      count: day.transactionCount,
     };
-  });
-
-  activeSales.forEach(sale => {
-    const saleDate = new Date(sale.date);
-    const dayIndex = last7Days.findIndex(day => {
-      const checkDate = new Date(today);
-      checkDate.setDate(checkDate.getDate() - (6 - last7Days.indexOf(day)));
-      return saleDate.toDateString() === checkDate.toDateString();
-    });
-    if (dayIndex !== -1) {
-      last7Days[dayIndex].revenue += sale.total;
-      last7Days[dayIndex].count += 1;
-    }
   });
 
   // Category distribution — count = ürün (SKU) adedi; value = stok×fiyat envanter değeri
@@ -472,7 +450,7 @@ export function DashboardModule({
                 )}
               </div>
               <div className={cellValue}>{formatNumber(totalRevenue, 2, false)} {currency}</div>
-              <div className={cellMuted}>{todaysSales.length} {tLabel(t.transaction, 'işlem')}</div>
+              <div className={cellMuted}>{todayTransactionCount} {tLabel(t.transaction, 'işlem')}</div>
             </div>
 
             <div className="p-3">
@@ -481,7 +459,7 @@ export function DashboardModule({
                 <span className={cellLabel}>{tLabel(t.weeklySales, 'Haftalık Satış')}</span>
               </div>
               <div className={cellValue}>{formatNumber(weekRevenue, 2, false)} {currency}</div>
-              <div className={cellMuted}>{weekSales.length} {tLabel(t.transaction, 'işlem')}</div>
+              <div className={cellMuted}>{weekTransactionCount} {tLabel(t.transaction, 'işlem')}</div>
             </div>
 
             <div className="p-3">
@@ -513,7 +491,7 @@ export function DashboardModule({
                 )}
               </div>
               <div className={cellValue}>{products.length}</div>
-              <div className={cellMuted}>{tLabel(t.stockManagement, 'Stok')}: {formatNumber(totalStockSaleValue, 0, false)} {currency}</div>
+              <div className={cellMuted}>{tLabel(t.stockManagement, 'Stok')}: {formatNumber(totalStockValue, 0, false)} {currency}</div>
             </div>
 
             <div className="p-3">
