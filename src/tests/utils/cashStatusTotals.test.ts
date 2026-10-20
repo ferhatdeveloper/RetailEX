@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { computeCashBalanceForRegister } from '../../utils/cashBalance';
 import type { KasaIslemi } from '../../services/api/kasa';
 import {
+  cashRefundsFromSales,
   cashRegisterDistributionLines,
   cashRegisterDrawerLines,
   cashRegisterStatusFromLedger,
@@ -263,6 +264,8 @@ describe('cashRegisterStatusFromLedger — kasa kartı nakit/kart', () => {
     ozel_kod?: string;
     islem_tarihi?: string;
     is_reservation_deposit?: boolean;
+    islem_no?: string;
+    islem_aciklamasi?: string;
   }) {
     return {
       kasa_id: partial.kasa_id ?? 'k1',
@@ -272,6 +275,8 @@ describe('cashRegisterStatusFromLedger — kasa kartı nakit/kart', () => {
       ozel_kod: partial.ozel_kod,
       islem_tarihi: partial.islem_tarihi ?? day,
       is_reservation_deposit: partial.is_reservation_deposit,
+      islem_no: partial.islem_no,
+      islem_aciklamasi: partial.islem_aciklamasi,
     };
   }
 
@@ -611,5 +616,122 @@ describe('cashRegisterStatusFromLedger — kasa kartı nakit/kart', () => {
     expect(rows[0].payCash).toBe(50000);
     expect(rows[0].payCard).toBe(0);
     expect(rows[0].grandTotal).toBe(50000);
+  });
+
+  it('brüt giriş 130.000 ve nakit iade 10.000 → nakit ve kalan 120.000, rezervasyon toplama eklenmez', () => {
+    const lines = [
+      line({ tutar: 90_000, payment_method: 'cash', islem_tipi: 'KASA_GIRIS' }),
+      line({ tutar: 20_000, payment_method: 'cash', islem_tipi: 'KASA_GIRIS' }),
+      line({
+        tutar: 20_000,
+        payment_method: 'Nakit',
+        ozel_kod: 'REZERVASYON',
+        islem_tipi: 'CH_TAHSILAT',
+      }),
+    ];
+    const refunds = cashRefundsFromSales([
+      { id: 'hizmet', receiptNumber: 'HZM-1', total: 90_000, paymentMethod: 'cash', status: 'completed', date: day },
+      { id: 'urun', receiptNumber: 'URN-1', total: 20_000, paymentMethod: 'cash', status: 'completed', date: day },
+      {
+        id: 'pesinat',
+        receiptNumber: 'PES-1',
+        total: 20_000,
+        paymentMethod: 'cash',
+        status: 'completed',
+        isDeposit: true,
+        notes: 'deposit:1',
+        date: day,
+      },
+      {
+        id: 'iade',
+        receiptNumber: '0000003',
+        total: -10_000,
+        paymentMethod: 'Nakit',
+        status: 'return',
+        date: day,
+      },
+    ]);
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines,
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+      cashRefunds: refunds,
+    });
+    const drawer = cashRegisterDrawerLines(rows);
+    const listed = cashRegisterDistributionLines(rows);
+    const block = cashStatusBlockTotals(120_000, rows);
+
+    expect(refunds).toEqual([
+      expect.objectContaining({ ficheNo: '0000003', amount: 10_000, method: 'cash' }),
+    ]);
+    expect(rows[0].payCash).toBe(120_000);
+    expect(rows[0].todayCash).toBe(120_000);
+    expect(rows[0].closingCash).toBe(120_000);
+    expect(rows[0].reservationDeposit).toBe(20_000);
+    expect(rows[0].grandTotal).toBe(120_000);
+    expect(rows[0].grandTotal).not.toBe(140_000);
+    expect(rows[0].grandTotal).not.toBe(130_000);
+    expect(drawer[0].cash).toBe(120_000);
+    expect(drawer[0].balance).toBe(120_000);
+    expect(drawer[0].reservation).toBe(20_000);
+    expect(drawer[0].balance).not.toBe(drawer[0].cash + drawer[0].reservation);
+    expect(listed[0].label).toBe('KASA.001 — MERKEZ KASA');
+    expect(listed[0].amount).toBe(120_000);
+    expect(sumCashRegisterDistribution(listed)).toBe(120_000);
+    expect(sumCashRegisterDistribution(listed)).not.toBe(130_000);
+    expect(sumCashRegisterDistribution(listed)).not.toBe(140_000);
+    expect(block.grandTotal).toBe(120_000);
+    expect(block.registerTotal).toBe(120_000);
+  });
+
+  it('peşinat iade sanılmaz, veresiye iade kasadan çıkmaz', () => {
+    expect(cashRefundsFromSales([
+      {
+        id: 'pesinat',
+        receiptNumber: 'PES-1',
+        total: 20_000,
+        paymentMethod: 'cash',
+        status: 'completed',
+        isDeposit: true,
+        notes: 'deposit:1',
+      },
+    ])).toEqual([]);
+    expect(cashRefundsFromSales([
+      {
+        id: 'iade-veresiye',
+        receiptNumber: '0000004',
+        total: -10_000,
+        paymentMethod: 'veresiye',
+        status: 'return',
+      },
+    ])).toEqual([]);
+  });
+
+  it('defterdeki nakit iade çıkışı kalandan ikinci kez düşülmez', () => {
+    const lines = [
+      line({ tutar: 130_000, payment_method: 'cash', islem_tipi: 'KASA_GIRIS' }),
+      line({
+        tutar: 10_000,
+        payment_method: 'cash',
+        islem_tipi: 'KASA_CIKIS',
+        islem_no: '0000003',
+        islem_aciklamasi: 'Nakit iade — 0000003',
+      }),
+    ];
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines,
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+      cashRefunds: [{ ficheNo: '0000003', amount: 10_000, method: 'cash', date: day }],
+    });
+    const drawer = cashRegisterDrawerLines(rows);
+    expect(drawer[0].cash).toBe(120_000);
+    expect(drawer[0].balance).toBe(120_000);
+    expect(drawer[0].balance).not.toBe(110_000);
+    expect(rows[0].reservationDeposit).toBe(0);
   });
 });

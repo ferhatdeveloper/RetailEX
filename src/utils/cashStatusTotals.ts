@@ -12,7 +12,10 @@
 
 import { computeKasaIslemiSign, type KasaIslemi } from '../services/api/kasa';
 import { computeCashBalanceForRegister } from './cashBalance';
+import { isReturnSale } from './posZReport';
 import { dbPaymentMethodToFormCode, type PaymentFormCode } from './paymentMethodUtils';
+import { isDepositSale } from './reportDepositFilter';
+import { saleCollectedSplit, type SalePaymentRow } from './saleCollectedAmounts';
 
 const CASH_CODE = 'NAKIT';
 const RESERVATION_CODE = 'REZERVASYON_AVANS';
@@ -384,6 +387,38 @@ export interface CashStatusRegisterLine {
   /** cash_lines.payment_method — nakit / kart ayrımı */
   payment_method?: string | null;
   islem_tarihi?: string | null;
+  /** Fiş no — aynı nakit iade defterde varsa ikinci kez düşülmez */
+  islem_no?: string | null;
+  fiche_no?: string | null;
+  islem_aciklamasi?: string | null;
+  aciklama?: string | null;
+}
+
+/**
+ * Satış iadesinin kasadan çıkan payı.
+ * Peşinat fişi buraya yazılmaz. Tutar artıdır; kolon ve kalan bir kez düşer.
+ */
+export interface CashRegisterRefund {
+  id?: string | null;
+  ficheNo?: string | null;
+  amount: number;
+  /** cash | card | transfer. Boş yöntem nakit sayılır. Peşinat / avans atlanır. */
+  method?: string | null;
+  registerId?: string | null;
+  date?: string | null;
+}
+
+export interface CashRegisterRefundSale {
+  id?: string;
+  receiptNumber?: string | null;
+  date?: string | Date | null;
+  total?: number | null;
+  paymentMethod?: unknown;
+  payments?: Array<SalePaymentRow & { cash_register_id?: string | null }> | null;
+  status?: string | null;
+  discount?: number | null;
+  isDeposit?: boolean | null;
+  notes?: string | null;
 }
 
 function formCodeOf(raw: unknown): PaymentFormCode | '' {
@@ -567,14 +602,195 @@ function balanceOf(registerId: string, lines: CashStatusRegisterLine[]): number 
   return round2(computeCashBalanceForRegister(registerId, lines as unknown as KasaIslemi[]));
 }
 
+function refundDrawerKind(method: unknown): 'cash' | 'card' | 'transfer' | '' {
+  const folded = String(method ?? '').trim().toLocaleLowerCase('tr-TR');
+  if (
+    folded.includes('avans')
+    || folded.includes('rezervasyon')
+    || folded.includes('depozito')
+    || folded.includes('peşinat')
+    || folded.includes('pesinat')
+  ) {
+    return '';
+  }
+  const kind = drawerKind({ payment_method: folded || 'cash' });
+  if (kind === 'cash' || kind === 'card' || kind === 'transfer') return kind;
+  return '';
+}
+
+function refundInRange(date: unknown, dateFrom: string, dateTo: string): boolean {
+  const day = ledgerDay(date);
+  if (!day) return true;
+  if (dateFrom && day < dateFrom) return false;
+  if (dateTo && day > dateTo) return false;
+  return true;
+}
+
+function refundLineBlob(line: CashStatusRegisterLine): string {
+  return [line.islem_no, line.fiche_no, line.islem_aciklamasi, line.aciklama]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLocaleLowerCase('tr-TR');
+}
+
+/** Eksi kasa satırı aynı fişi taşıyorsa iade bakiyeye zaten yazılmıştır. */
+function refundAlreadyPosted(ficheNo: string, lines: readonly CashStatusRegisterLine[]): boolean {
+  const fiche = String(ficheNo || '').trim().toLocaleLowerCase('tr-TR');
+  if (!fiche) return false;
+  return lines.some((line) => {
+    if (!(signedLedgerAmount(line) < -0.004)) return false;
+    return refundLineBlob(line).includes(fiche);
+  });
+}
+
+function rowForCashRefund(
+  rows: CashRegisterStatusRow[],
+  registerId: string,
+): CashRegisterStatusRow | undefined {
+  const wanted = registerId.trim();
+  if (wanted) {
+    const hit = rows.find((row) => row.id === wanted);
+    if (hit) return hit;
+  }
+  const real = rows.filter((row) => row.id !== CASH_REGISTER_UNASSIGNED_ID);
+  if (real.length === 1) return real[0];
+  return rows.find((row) => row.id === CASH_REGISTER_UNASSIGNED_ID);
+}
+
+/**
+ * Brüt kasa girişinden nakit iadeyi bir kez düşer.
+ * Peşinat giriş olarak kalır. Defterde aynı fişin çıkışı varsa kalan
+ * ikinci kez inmez; nakit kolonu yine net tutarı gösterir.
+ * Rezervasyon bilgi tutarına eklenmez.
+ */
+function applyCashRefundsToRegisterRows(
+  rows: CashRegisterStatusRow[],
+  periodLines: ReadonlyMap<string, CashStatusRegisterLine[]>,
+  refunds: readonly CashRegisterRefund[],
+  dateFrom: string,
+  dateTo: string,
+): void {
+  if (!refunds.length || !rows.length) return;
+  const allLines: CashStatusRegisterLine[] = [];
+  for (const lines of periodLines.values()) allLines.push(...lines);
+  const seen = new Set<string>();
+  const cuts = new Map<string, { cash: number; card: number; transfer: number; unposted: number }>();
+
+  const bucketFor = (id: string) => {
+    const current = cuts.get(id) || { cash: 0, card: 0, transfer: 0, unposted: 0 };
+    cuts.set(id, current);
+    return current;
+  };
+
+  for (const refund of refunds) {
+    const kind = refundDrawerKind(refund.method);
+    if (!kind) continue;
+    if (!refundInRange(refund.date, dateFrom, dateTo)) continue;
+    const amount = Math.abs(num(refund.amount));
+    if (!(amount > 0.004)) continue;
+    const fiche = String(refund.ficheNo || '').trim();
+    const dedupe = fiche ? `${fiche.toLocaleLowerCase('tr-TR')}|${kind}` : '';
+    if (dedupe) {
+      if (seen.has(dedupe)) continue;
+      seen.add(dedupe);
+    }
+    const row = rowForCashRefund(rows, String(refund.registerId || ''));
+    if (!row) continue;
+    const cut = bucketFor(row.id);
+    if (kind === 'cash') cut.cash = round2(cut.cash + amount);
+    else if (kind === 'card') cut.card = round2(cut.card + amount);
+    else cut.transfer = round2(cut.transfer + amount);
+    if (!refundAlreadyPosted(fiche, allLines)) cut.unposted = round2(cut.unposted + amount);
+  }
+
+  for (const row of rows) {
+    const cut = cuts.get(row.id);
+    if (!cut) continue;
+    row.payCash = round2(row.payCash - cut.cash);
+    row.todayCash = row.payCash;
+    row.payCard = round2(row.payCard - cut.card);
+    row.todayCard = row.payCard;
+    row.payTransfer = round2(row.payTransfer - cut.transfer);
+    row.closingCash = round2(row.closingCash - cut.unposted);
+    row.grandTotal = round2(row.payCash + row.payCard + row.payOpen + row.payTransfer);
+  }
+}
+
+/**
+ * Satış iadelerinden kasa çıkışı. Peşinat fişi iade değildir.
+ * Veresiye iade kasadan çıkmaz. Aynı fiş bir kez yazılır.
+ */
+export function cashRefundsFromSales(
+  sales: readonly CashRegisterRefundSale[],
+  appliedAvansBySaleId?: ReadonlyMap<string, number>,
+): CashRegisterRefund[] {
+  const out: CashRegisterRefund[] = [];
+  const seen = new Set<string>();
+  for (const sale of sales || []) {
+    if (isDepositSale({
+      isDeposit: sale.isDeposit ?? null,
+      notes: sale.notes ?? undefined,
+    })) continue;
+    if (!isReturnSale({ total: Number(sale.total) || 0, status: sale.status } as Parameters<typeof isReturnSale>[0])) continue;
+    const id = String(sale.id || '').trim();
+    const fiche = String(sale.receiptNumber || '').trim();
+    const key = (fiche || id).toLocaleLowerCase('tr-TR');
+    if (!key || seen.has(key)) continue;
+    const applied = id && appliedAvansBySaleId ? Number(appliedAvansBySaleId.get(id) || 0) : 0;
+    const paymentRows = Array.isArray(sale.payments)
+      ? sale.payments.filter((row) => row != null).map((row) => ({
+        method: String(row.method || ''),
+        amount: Number(row.amount) || 0,
+        currency: row.currency,
+        cash_register_id: row.cash_register_id ?? null,
+      }))
+      : undefined;
+    const split = saleCollectedSplit(
+      {
+        total: Number(sale.total) || 0,
+        paymentMethod: String(sale.paymentMethod ?? ''),
+        payments: paymentRows && paymentRows.length > 0 ? paymentRows : undefined,
+        discount: sale.discount,
+      },
+      applied,
+    );
+    const parts: Array<{ method: 'cash' | 'card' | 'transfer'; amount: number }> = [
+      { method: 'cash', amount: split.cash < 0 ? -split.cash : 0 },
+      { method: 'card', amount: split.card < 0 ? -split.card : 0 },
+      { method: 'transfer', amount: split.transfer < 0 ? -split.transfer : 0 },
+    ];
+    const alive = parts.filter((part) => part.amount > 0.004);
+    if (!alive.length) continue;
+    seen.add(key);
+    const registerId = String(
+      paymentRows?.find((row) => String(row.cash_register_id || '').trim())?.cash_register_id || '',
+    ).trim();
+    const date = sale.date == null ? '' : String(sale.date);
+    for (const part of alive) {
+      out.push({
+        id,
+        ficheNo: fiche,
+        amount: round2(part.amount),
+        method: part.method,
+        registerId: registerId || null,
+        date,
+      });
+    }
+  }
+  return out;
+}
+
 /**
  * Kasalar sekmesi — her kasanın kendi kasa kartı hareketi.
  *
  * Günlük nakit / kart, Kasa Yönetimi tahsilatı ile aynı işaret kuralından
  * (`computeKasaIslemiSign`) ve ödeme yönteminden ayrılır. Aynı satır hem
  * nakde hem karta yazılmaz. Kapanış, aynı formülle kasa bakiyesidir
- * (KALAN). Çıkış bakiyeden düşer. Rezervasyon bilgi tutarı genel toplama
- * ikinci kez eklenmez. Çek ve senet dağılım satırı değildir.
+ * (KALAN). Çıkış bakiyeden düşer. Nakit satış iadesi nakit kolonundan ve
+ * kalandan bir kez düşülür; peşinat kasa girişidir, iade sayılmaz.
+ * Rezervasyon bilgi tutarı genel toplama ikinci kez eklenmez. Çek ve senet
+ * dağılım satırı değildir.
  * Kasaya bağlanmayan satır ayrı kalır; şirket satış özeti kasaya yapıştırılmaz.
  */
 export function cashRegisterStatusFromLedger(args: {
@@ -583,6 +799,8 @@ export function cashRegisterStatusFromLedger(args: {
   dateFrom: string;
   dateTo: string;
   unassignedLabel: string;
+  /** Satış fişindeki nakit iade. Defter satırı yoksa kalan da bu tutarı düşer. */
+  cashRefunds?: readonly CashRegisterRefund[];
 }): CashRegisterStatusRow[] {
   const dateFrom = String(args.dateFrom || '').slice(0, 10);
   const dateTo = String(args.dateTo || '').slice(0, 10);
@@ -615,6 +833,7 @@ export function cashRegisterStatusFromLedger(args: {
   }
 
   const rows: CashRegisterStatusRow[] = [];
+  const periodLines = new Map<string, CashStatusRegisterLine[]>();
   for (const [id, bucket] of byId) {
     const before: CashStatusRegisterLine[] = [];
     const through: CashStatusRegisterLine[] = [];
@@ -652,6 +871,7 @@ export function cashRegisterStatusFromLedger(args: {
       if (isReservationCashLine(line)) reservationCash = round2(reservationCash + signed);
     }
 
+    periodLines.set(id, through);
     const openingCash = balanceOf(id, before);
     const closingCash = balanceOf(id, through);
     const moved = Math.abs(openingCash) + Math.abs(closingCash) + cashIn + cardIn
@@ -675,6 +895,8 @@ export function cashRegisterStatusFromLedger(args: {
       grandTotal: round2(cashIn + cardIn + openIn + transferIn),
     });
   }
+
+  applyCashRefundsToRegisterRows(rows, periodLines, args.cashRefunds || [], dateFrom, dateTo);
 
   rows.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
   return rows;
@@ -731,7 +953,7 @@ export interface CashRegisterDrawerLine {
   code: string;
   name: string;
   label: string;
-  /** Dönem içi nakit tahsilatı. Rezervasyon nakdi bunun içindedir. */
+  /** Dönem içi nakit. Rezervasyon nakdi bunun içindedir. Nakit iade bir kez düşülür. */
   cash: number;
   /** Dönem içi kart. Nakit satırına yazılmaz. */
   card: number;

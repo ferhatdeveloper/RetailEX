@@ -115,6 +115,7 @@ import {
   type PaymentTypeMovement,
 } from '../../utils/paymentTypeDistribution';
 import {
+  cashRefundsFromSales,
   cashRegisterDistributionLines,
   cashRegisterDrawerLines,
   cashRegisterStatusFromLedger,
@@ -4864,6 +4865,7 @@ export function ReportsModule({
       dateFrom: selectedDateFrom,
       dateTo: selectedDateTo,
       unassignedLabel: tm('cashStatusUnassignedRegister'),
+      cashRefunds: cashRefundsFromSales(dailySalesForCash, dailyAppliedAvans),
     });
   };
 
