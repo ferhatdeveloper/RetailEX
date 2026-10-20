@@ -9,11 +9,10 @@ import { invoicesAPI } from '../../services/api/invoices';
 import { supplierAPI } from '../../services/api/suppliers';
 import { fetchKasaIslemleri, type KasaIslemi } from '../../services/api/kasa';
 import { postgres, ERP_SETTINGS } from '../../services/postgres';
-import { isReturnSale } from '../../utils/posZReport';
-import { isDepositSale } from '../../utils/reportDepositFilter';
-import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
-// saleCollected kaldırıldı (2026-10-12 — Ciro = brüt belge tutarı;
-// Ciro için `saleCollected` yerine doğrudan `Math.abs(s.total)` kullanılıyor).
+import {
+  aggregatePeriodSalesAndReturns,
+  periodSummaryNetRemaining,
+} from '../../utils/periodSummaryNet';
 import {
   mergeExpensesWithCashOuts,
   mergeExpensesWithCashIns,
@@ -37,7 +36,6 @@ import {
   isReportMenuParamEnabled,
   loadReportMenuParams,
   reportNetAfterOptionalExpenseAndPurchases,
-  reportNetCiroMinusGider,
   subscribeReportMenuParams,
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
@@ -185,136 +183,6 @@ function saleMonthKey(date: string | Date | undefined): string {
 
 function expenseDayKey(raw: string | undefined | null): string {
   return toSqlDateInputString(raw || '') || '';
-}
-
-/**
- * Günlük Rapor ile aynı satış özeti:
- * - cancelled / refunded aktif satışa girmez
- * - refunded yalnızca iade sayacında
- * - aktif ciro = Σ |sale.total| (brüt belge tutarı, 2026-10-12)
- * - iade Ciro'dan düşer (status=return veya negatif total Hariç tutulur)
- * - nakit / kart ayrı kovalar; iade peşin satırı abs ile şişirmez
- */
-function aggregateSales(
-  sales: Sale[],
-  bucketKey: (s: Sale) => string,
-  completedAppointmentIds: Set<string> = new Set(),
-  /**
-   * 16.10.2026 — `sale.id` → uygulanan avans toplamı (IQD, mutlak). Bu
-   * faturaya bağlanmış `cari_avans.status='applied'` satırları toplamı.
-   * saleCollectedSplit'e `appliedAvans` olarak geçirilir; DUBLE senaryosu
-   * gibi kalan tutarın veresiye gibi görünmesini engeller.
-   * Opsiyonel (default boş map) — geriye dönük uyumlu.
-   */
-  appliedAvansBySaleId: Map<string, number> = new Map(),
-) {
-  const map = new Map<string, {
-    saleCount: number; revenue: number; cash: number; card: number; veresiye: number; discount: number;
-    returnsCount: number; returnsAmount: number;
-    // Bug 28 — Rezervasyon peşinatı ayrı toplanır (henüz hizmet verilmemiş avanslar)
-    depositCount: number; depositAmount: number;
-    // 14.10.2026 — Rezervasyon brüt/kalan (faturası kesilecek tutar)
-    reservationGross: number; reservationPending: number;
-  }>();
-
-  const bump = (key: string) => {
-    const row = map.get(key) || {
-      saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
-      returnsCount: 0, returnsAmount: 0,
-      depositCount: 0, depositAmount: 0,
-      reservationGross: 0, reservationPending: 0,
-    };
-    map.set(key, row);
-    return row;
-  };
-
-  for (const s of sales) {
-    const st = String(s.status ?? '').toLowerCase();
-    if (st === 'cancelled' || st === 'canceled' || st === 'silindi' || st === 'iptal') continue;
-    const ft = String((s as any).fiche_type ?? '');
-    if (ft === 'opening_balance' || ft === 'purchase_invoice') continue;
-    const key = bucketKey(s);
-    if (!key) continue;
-
-    const row = bump(key);
-    const total = Number(s.total) || 0;
-    const absTotal = Math.abs(total);
-    const isReturn = isReturnSale(s);
-
-    // Bug 29 follow-up: Ciro kök neden. Önceki kod Ciro'dan iade için iki
-    // kez düşüyordu (`row.revenue += total` ile negatifi ekle, sonra
-    // `if (isReturn) row.revenue -= absTotal` ile tekrar düş) — bu
-    // double-counting Ciro'yu hatalı azaltıyordu. Şimdi:
-    // - Normal satış: total pozitif, Ciro'ya eklenir.
-    // - İade: total negatif (signedTotal); Ciro'ya yalnızca negatifi
-    //   eklenir (toplam = Ciro − iade amount). İade bug yok; returnsCount/
-    //   returnsAmount ayrıca takip edilir.
-    if (isReturn) {
-      row.returnsCount += 1;
-      row.returnsAmount += absTotal;
-    }
-
-    // Günlük: refunded `isRemovedSaleStatus` ile aktif dışı
-    if (st === 'refunded') continue;
-
-    // Bug 28 — Peşinat: tamamlanmış randevuya bağlı avans Ciro'ya
-    // eklenir (Toplam Ciro = avans + kalan); depositLabel'dan çıkar.
-    // Tamamlanmamış randevuya bağlı avans hâlâ depositLabel'da görünür.
-    if (isDepositSale(s)) {
-      const linkedApt = String((s as any).linked_appointment_id ?? '').trim();
-      const isCompletedLinked = linkedApt && completedAppointmentIds.has(linkedApt);
-      if (isCompletedLinked && !isReturn) {
-        // Ciro = brüt belge tutarı (2026-10-12 kullanıcı kararı). Deposit
-        // fiş tamamlanmış randevuya bağlıysa Ciro'ya eklenir; avans zaten
-        // tahsil edildiği için brüt = tahsilat ile aynı şey.
-        row.revenue += absTotal;
-        row.saleCount += 1;
-        const split = saleCollectedSplit(
-          s,
-          appliedAvansBySaleId.get(String(s.id)) || 0,
-        );
-        row.cash += split.cash;
-        row.card += split.card;
-        row.veresiye += Number(split.remaining) || 0;
-      } else {
-        row.depositCount += 1;
-        row.depositAmount += absTotal;
-      }
-      continue;
-    }
-
-    if (!isReturn) {
-      row.saleCount += 1;
-      row.discount += Number(s.discount) || 0;
-    }
-
-    // Bug-fix 2026-10-12 — Ciro = brüt belge tutarı (`sale.total`).
-    // 2026-10-11 geri-çevrimi Ciro'yu tahsil edilen nakit olarak değiştirmişti
-    // (veresiye kalan Ciro'ya girmiyordu). Kullanıcı yeni kararı: Ciro brüt
-    // belge tutarı olmalı; veresiye kalan dahil edilir, "Net Kalan" kolonu
-    // (Ciro − Gider) doğru olsun diye Ciro 65.000 → 100.000 olarak güncellenir.
-    //
-    // Trade-off (bilinçli):
-    //  2026-10-04 geri-çevrimi: "Ciro = brüt belge tutarı veresiyeyi de dahil
-    //  eder, Ciro'yu 26M'a şişirir". Bu biliniyor; Ciro brüt bilinçli olarak
-    //  isteniyor (Net Kalan doğru olsun diye). Veresiye Kasa'ya henüz
-    //  girmediyse Ciro yine de yansır, Net Kalan = Ciro − Gider.
-    //  Tahsilat (nakit/kart/veresiye ayrımı) ayrı kolonlarda korunur.
-    //
-    // Günlük Rapor dailyTotal ile aynı semantik: brüt belge tutarı − iade.
-    row.revenue += absTotal;
-    const split = saleCollectedSplit(
-      s,
-      appliedAvansBySaleId.get(String(s.id)) || 0,
-    );
-    row.cash += split.cash;
-    row.card += split.card;
-    // Veresiye verilen = cariye kalan (iade satırında şişirmemek için yalnız satış)
-    if (!isReturn) {
-      row.veresiye += Number(split.remaining) || 0;
-    }
-  }
-  return map;
 }
 
 function aggregateExpenses(
@@ -484,14 +352,22 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const isMonthlyProfitEligible =
     mode === 'monthly-days' && Number.isFinite(targetYear) && Number.isFinite(targetMonth) && targetMonth >= 1 && targetMonth <= 12;
 
-  // sales referansı useQuery.data üzerinden geliyor (aşağıdaki salesQuery) — refactor 7a34520d sonrası
-  // Ciro satışları — iade Hariç (Bug 29 follow-up). İade Ciro'da negatifti ve
-  // aggregateSales çift düşme uyguladığı için Ciro hatalı azalıyordu
-  // (3.315.370 → 2.173.250). `getSalesOnlyByDateRange` iade Hariç Satis döner.
+  // Brüt ciro: yalnız satış fişleri. İade ayrı sorguda tutulur ki brüt
+  // ciroya eklenmesin ve netten bir kez düşülsün.
   const salesQuery = useQuery({
     queryKey: ['periodSummary', 'sales', firmKey, periodRange?.start, periodRange?.end],
     queryFn: async () => {
       const rows = await salesAPI.getSalesOnlyByDateRange(periodRange!.start, periodRange!.end);
+      return Array.isArray(rows) ? (rows as Sale[]) : [];
+    },
+    enabled: !!periodRange,
+    ...queryCommon,
+  });
+
+  const returnsQuery = useQuery({
+    queryKey: ['periodSummary', 'returns', firmKey, periodRange?.start, periodRange?.end],
+    queryFn: async () => {
+      const rows = await salesAPI.getCustomerReturnsByDateRange(periodRange!.start, periodRange!.end);
       return Array.isArray(rows) ? (rows as Sale[]) : [];
     },
     enabled: !!periodRange,
@@ -734,12 +610,14 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   });
 
   const sales = salesQuery.data ?? [];
+  const customerReturns = returnsQuery.data ?? [];
   const purchases = purchasesQuery.data ?? [];
   const suppliers = suppliersQuery.data ?? [];
   const profitDistribution = monthlyProfitQuery.data ?? null;
 
   const isAnyFetching =
     salesQuery.isFetching ||
+    returnsQuery.isFetching ||
     expensesBaseQuery.isFetching ||
     cashLinesQuery.isFetching ||
     purchasesQuery.isFetching ||
@@ -784,14 +662,20 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       }
     }
 
-    const saleMap =
-      mode === 'monthly-days'
-        ? aggregateSales(sales, (s) => localCalendarDateKey(s.date), completedAppointmentIds, appliedAvansBySaleId)
-        : aggregateSales(sales, (s) => saleMonthKey(s.date), completedAppointmentIds, appliedAvansBySaleId);
+    const saleBucketKey = mode === 'monthly-days'
+      ? (s: Sale) => localCalendarDateKey(s.date)
+      : (s: Sale) => saleMonthKey(s.date);
+    const saleMap = aggregatePeriodSalesAndReturns(
+      sales,
+      customerReturns,
+      saleBucketKey,
+      completedAppointmentIds,
+      appliedAvansBySaleId,
+    );
 
     // AVANS → FATURA (Basit Model): skipInvoice avansları (`cari_avans`,
     // status='open') tarih (YYYY-MM-DD) veya ay (YYYY-MM) bazında
-    // `saleMap` anahtar yapısıyla eşleşir. `aggregateSales` çıktısındaki
+    // `saleMap` anahtar yapısıyla eşleşir. Satış kovası çıktısındaki
     // depositAmount'a eklenir → Peşinat kolonu skipInvoice modunda da
     // doğru toplam verir.
     const avansRows = avansDepositsRaw as Array<{
@@ -840,7 +724,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     return periodKeys.map((periodKey) => {
       const sale = saleMap.get(periodKey) || {
         saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
-        returnsCount: 0, returnsAmount: 0,
+        returnsCount: 0, returnsAmount: 0, returnDeduction: 0,
         depositCount: 0, depositAmount: 0,
       };
       // AVANS → FATURA (Basit Model): cari_avans'tan gelen skipInvoice
@@ -902,11 +786,16 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // sayılıyor; çift sayımı önlemek için Ciro dışı tahsilat = Ciro'ya
       // yansımamış satış depositleri olarak alınır.
       const ciroDisiTahsilat = sale.depositAmount + skipInvoiceAvans.amount;
-      const netRemaining = reportNetCiroMinusGider(
-        ciroTotal,
-        exp,
-        showPeriodCardExpenses,
-      ) + ciroDisiTahsilat;
+      // Net kalan = brüt ciro − iade − masraf. Peşinat (rezervasyon tutarı)
+      // bilgi kolonudur; bu farka eklenmez ve düşülmez.
+      const netRemaining = periodSummaryNetRemaining({
+        revenue: ciroTotal,
+        returnDeduction: sale.returnDeduction,
+        expenses: exp,
+        expenseEnabled: showPeriodCardExpenses,
+        ciroDisiTahsilat,
+        reservationDeposit: reservationDepositInfo,
+      });
       // 14.10.2026 — DEBUG kaldırıldı
       const shareList = splitAmountByPartners(netRemaining, partnerSlices);
       const partnerShareMap: Record<string, number> = {};
@@ -952,6 +841,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     mode,
     periodRange,
     sales,
+    customerReturns,
+    appliedAvansBySaleId,
     expenses,
     purchases,
     cashInMap,

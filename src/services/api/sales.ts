@@ -688,7 +688,10 @@ export const salesAPI = {
     }
   },
 
-  /** Müşteri satış iadeleri (trcode 3) — ayrı analiz / Z raporu. */
+  /**
+   * Müşteri satış iadeleri (trcode 2/3 veya return_invoice).
+   * Alış iadesi (trcode 6) dönmez. Tutar mapInvoiceToSale içinde eksi işaretlenir.
+   */
   async getCustomerReturnsByDateRange(
     startDate: string,
     endDate: string,
@@ -704,12 +707,11 @@ export const salesAPI = {
           startDate,
           endDate,
           invoiceCategory: 'Iade',
-          invoiceType: 3,
           pageSize,
         });
         all.push(
           ...result.data
-            .filter((inv) => !isPurchaseReturnInvoice(inv))
+            .filter((inv) => isCustomerSalesReturnInvoice(inv))
             .map(mapInvoiceToSale),
         );
         totalPages = Math.max(1, result.totalPages || 1);

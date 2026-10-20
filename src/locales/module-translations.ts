@@ -10974,6 +10974,7 @@ export const excelModuleTranslations = {
   },
   rptPeriodSelectMonth: { tr: 'Ay', en: 'Month', ar: 'الشهر', ku: 'مانگ' },
   rptPeriodSelectYear: { tr: 'Yıl', en: 'Year', ar: 'السنة', ku: 'ساڵ' },
+  rptPeriodRefresh: { tr: 'Yenile', en: 'Refresh', ar: 'تحديث', ku: 'نوێکردنەوە' },
   rptPeriodColDay: { tr: 'Gün', en: 'Day', ar: 'اليوم', ku: 'ڕۆژ' },
   rptPeriodColMonth: { tr: 'Ay', en: 'Month', ar: 'الشهر', ku: 'مانگ' },
   rptPeriodColSaleCount: { tr: 'Satış Adedi', en: 'Sales count', ar: 'عدد المبيعات', ku: 'ژمارەی فرۆشتن' },
