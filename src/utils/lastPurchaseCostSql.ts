@@ -416,6 +416,32 @@ COALESCE((
 `.trim();
 
 /**
+ * Fişe bağlı randevuların kalan ödemesi, virgülle.
+ * Aynı tutar kardeş randevuda kopyalanmış olabilir; kar-zarar bunu bir kez okur.
+ * Kalan, hizmet satırına eşitse satır depozito düşülmüş tutardır.
+ */
+export const SQL_FICHE_REMAINDER_LIST = `
+COALESCE((
+  SELECT string_agg(d.remainder_paid_amount::text, ',')
+  FROM (
+    SELECT DISTINCT ba.id, COALESCE(ba.remainder_paid_amount, 0) AS remainder_paid_amount
+    FROM beauty_appointments ba
+    WHERE COALESCE(ba.remainder_paid_amount, 0) <> 0
+      AND (
+        (s.linked_appointment_id IS NOT NULL AND ba.id::text = s.linked_appointment_id::text)
+        OR (ba.remainder_sale_id IS NOT NULL AND ba.remainder_sale_id::text = s.id::text)
+        OR (ba.deposit_sale_id IS NOT NULL AND ba.deposit_sale_id::text = s.id::text)
+        OR (
+          s.sale_group_id IS NOT NULL
+          AND NULLIF(TRIM(ba.sale_group_id::text), '') IS NOT NULL
+          AND ba.sale_group_id::text = s.sale_group_id::text
+        )
+      )
+  ) d
+), '')
+`.trim();
+
+/**
  * Dip indirim: satır net toplamı fatura net_amount’tan büyükse oransal ölçek.
  * Satır indirimi zaten si.net_amount içinde varsayılır.
  *

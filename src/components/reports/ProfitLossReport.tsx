@@ -27,10 +27,12 @@ import {
   BEAUTY_APPOINTMENT_BRIDGE_JOIN,
   SQL_BEAUTY_APPT_INCLUDED,
   SQL_FICHE_DEPOSIT_LIST,
+  SQL_FICHE_REMAINDER_LIST,
   SQL_SALES_SIGN,
   SQL_SERVICE_DEPOSIT_AMOUNT,
 } from '../../utils/lastPurchaseCostSql';
-import { foldDepositLinesByInvoice, parseFicheDepositList } from '../../utils/beautyDepositAllocation';
+import { parseFicheDepositList } from '../../utils/beautyDepositAllocation';
+import { foldProfitLossLines } from '../../utils/profitLossDeposit';
 import {
   ProductMovementHistoryModal,
   type ProductMovementTarget,
@@ -132,6 +134,8 @@ export function ProfitLossReport() {
         SELECT
           s.id::text AS invoice_id,
           (${SQL_SALES_SIGN}) * COALESCE(s.net_amount, 0) AS invoice_net,
+          COALESCE(s.sale_group_id::text, '') AS sale_group_id,
+          COALESCE(s.parent_sale_id::text, '') AS parent_sale_id,
           COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
           ${SQL_DISPLAY_ITEM_CODE} AS product_code,
           ${SQL_DISPLAY_ITEM_NAME} AS product_name,
@@ -144,7 +148,8 @@ export function ProfitLossReport() {
           ${SIGNED_FOLD_LINE_REVENUE_EXPR} AS revenue,
           ${SIGNED_LINE_COST_EXPR} AS cost,
           (${SQL_SALES_SIGN}) * (${SQL_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
-          ${SQL_FICHE_DEPOSIT_LIST} AS fiche_deposits
+          ${SQL_FICHE_DEPOSIT_LIST} AS fiche_deposits,
+          ${SQL_FICHE_REMAINDER_LIST} AS fiche_remainders
         FROM sale_items si
         INNER JOIN sales s ON s.id = si.invoice_id
         ${PRODUCTS_JOIN}
@@ -160,6 +165,8 @@ export function ProfitLossReport() {
       const { rows } = await postgres.query<{
         invoice_id: string;
         invoice_net: string | number;
+        sale_group_id?: string;
+        parent_sale_id?: string;
         product_id?: string;
         product_code: string;
         product_name: string;
@@ -173,14 +180,17 @@ export function ProfitLossReport() {
         cost: string | number;
         service_deposit?: string | number;
         fiche_deposits?: string;
+        fiche_remainders?: string;
       }>(sql, [firmNr, dateFrom, dateTo], { firmNr, periodNr });
 
-      const folded = foldDepositLinesByInvoice(rows.map((r) => {
+      const folded = foldProfitLossLines(rows.map((r) => {
         const invoiceNet = Number(r.invoice_net) || 0;
         const sign = invoiceNet < 0 ? -1 : 1;
         return {
           invoiceId: String(r.invoice_id || ''),
           invoiceNet,
+          saleGroupId: String(r.sale_group_id || '').trim(),
+          parentSaleId: String(r.parent_sale_id || '').trim(),
           productId: String(r.product_id || '').trim(),
           productCode: displayItemCode(r.product_code),
           productName: r.product_name || '',
@@ -195,6 +205,7 @@ export function ProfitLossReport() {
           cost: Number(r.cost) || 0,
           depositAmount: sign * Math.abs(Number(r.service_deposit) || 0),
           ficheDeposits: parseFicheDepositList(r.fiche_deposits).map((n) => sign * Math.abs(n)),
+          ficheRemainders: parseFicheDepositList(r.fiche_remainders).map((n) => sign * Math.abs(n)),
         };
       })).filter((line) => lineKind === 'all' || line.lineKind === lineKind);
 
