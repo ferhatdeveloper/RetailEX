@@ -1,8 +1,9 @@
 /**
  * Hizmet raporunda aynı fiş / aynı kayıt anındaki hizmetlere depozito payı.
  *
- * Kasa kaydı bölünmez. Pay, randevu sepetindeki düşümle aynıdır: hizmet
- * brütüne oran, 1.000'e yuvarlama, son satır kalanı alır.
+ * Kasa kaydı bölünmez. Pay yalnızca rapor ve kasa bilgi kolonundadır:
+ * hizmet brütüne oran, 1.000'e yuvarlama, son satır kalanı alır.
+ * Canlı randevu formu bu payı hizmet fiyatına veya rezervasyon alanına yazmaz.
  */
 import type { BeautyAppointment } from '../types/beauty';
 import { beautyAppointmentDateKey } from './dateLocal';
@@ -306,7 +307,7 @@ export function foldDepositLinesByInvoice<T extends DepositFoldItem & {
   return out;
 }
 
-/** Randevu sepetindeki rezervasyon düşümü ile aynı: en yakın 1.000. */
+/** Rapor payı: en yakın 1.000. Canlı randevu tutarına uygulanmaz. */
 export function roundReservationMoney(n: number): number {
   return Math.round(n / 1000) * 1000;
 }
@@ -318,10 +319,11 @@ export interface ReservationSpreadLine {
 }
 
 /**
- * Randevu oluştururken sepete uygulanan orantılı düşüm.
+ * Rapor bilgi kolonu için orantılı pay.
  * Her satırın payı `orijinal birim × adet × (depozito / brüt)` ve 1.000'e
  * yuvarlanır. Son satır kalanı alır, sonra yine 1.000'e yuvarlanır.
- * Dönüş: yeni birim fiyat ve satırdan düşülen depozito payı.
+ * Dönüş: bilgi kolonundaki birim ve satır payı. Randevu formu bunu
+ * hizmet fiyatına veya rezervasyon girişine yazmaz.
  */
 export function spreadReservationAcrossLines(
   lines: ReservationSpreadLine[],

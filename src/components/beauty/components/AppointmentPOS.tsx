@@ -39,7 +39,7 @@ import { salesAPI } from '../../../services/api/sales';
 // POSPaymentModal'dan gelen "peşinatlı ödemede sadece avans kaydet" callback'i
 // için `recordAdvance` (avans + cari bakiye + kasa hareketi + stok rezervasyonu).
 // Fatura oluşturmaz; müşteri sonraki gelişinde kalan ödemeyi yapar.
-import { recordAdvance } from '../../../services/avansService';
+import { getOpenAdvances, recordAdvance } from '../../../services/avansService';
 // 07.10.2026 — `createAppointmentDeposit` import'u kaldırıldı.
 // Artık BEAUTY-PESINAT-* sales fişi kesilmiyor (çift fiş düzeltmesi). Cari
 // tarafı yalnızca `recordAdvance` ile yazılır; hizmet verildiğinde
@@ -68,7 +68,14 @@ import { toast } from 'sonner';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import { findBeautyAppointmentsSameQueueGroup } from '../../../utils/beautyQueueOrder';
-import { roundReservationMoney, spreadReservationAcrossLines } from '../../../utils/beautyDepositAllocation';
+import {
+    appointmentFormTotal,
+    appointmentRemainingAfterDeposit,
+    appointmentReservationField,
+    appointmentServiceGross,
+    depositAmountsForNewAppointments,
+    isAppointmentDepositCartLine,
+} from '../../../utils/appointmentFormReservation';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { safeInvoke } from '../../../utils/env';
 import { splitProportionalLineDiscount } from '../../../utils/beautySaleLineDiscount';
@@ -104,12 +111,8 @@ function readBeautyCategoryRailMode(): BeautyCategoryRailMode {
 interface CartLine {
     uid: string;
     /**
-     * Satır tipi. 14.10.2026 — `'deposit'` eklendi: rezervasyon tutarı
-     * girildiğinde otomatik eklenen DEPOSIT satırı. Sepet render'ında
-     * mor renkli özel kart olarak gösterilir; fatura oluşturma
-     * (`createSale`, `collectAppointmentRemainder`) akışında bu satır
-     * hizmetten düşülen tutarı temsil eder ve `unit_price` = kullanıcının
-     * girdiği rezervasyon tutarı, `qty=1`, `item_id` = sentetik.
+     * Satır tipi. `'deposit'` eski sepet kartıdır; canlı form bunu
+     * hizmete katmaz ve toplama eklemez. Rezervasyon tutarı ayrı alandadır.
      */
     type: 'service' | 'package' | 'product' | 'deposit';
     item_id: string;
@@ -121,11 +124,8 @@ interface CartLine {
     color?: string;
     duration_min?: number;
     /**
-     * 14.10.2026 — Rezervasyon tutarı girildiğinde `unit_price` orantılı
-     * düşürülür; orijinal fiyat bu alanda saklanır. Tutar 0'a dönünce
-     * `unit_price` tekrar orijinaline çekilir ve alan temizlenir.
-     * Yalnızca `type !== 'deposit'` satırlar için anlamlı; DEPOSIT
-     * satırında undefined.
+     * Kullanıcının girdiği birim fiyat. Eski oturumda fiyat düşürüldüyse
+     * burada durur; form toplamı ve kart bu tutarı kullanır.
      */
     original_unit_price?: number;
     /**
@@ -174,7 +174,12 @@ function beautyLinesToReceiptItems(
     productList: Product[],
     specialistList: { id: string; name?: string }[],
 ): SaleItem[] {
-    return lines.map((line) => {
+    return lines.filter((line) => !isAppointmentDepositCartLine({
+        type: line.type,
+        name: line.name,
+        code: line.code,
+        itemId: line.item_id,
+    })).map((line) => {
         const product: Partial<Product> | null =
             line.type === 'product'
                 ? productList.find((p) => p.id === line.item_id) ?? { id: line.item_id, name: line.name }
@@ -467,13 +472,10 @@ export function AppointmentPOS({
     const [discount, setDiscount] = useState(0);
     // Rezervasyon tutarı (müşteriden peşin alınan tutar; toplamdan düşer)
     const [reservationAmount, setReservationAmount] = useState(0);
-    /**
-     * 14.10.2026 — DEPOSIT hizmeti için gerçek DB ID. Sayfa açıldığında
-     * `beautyService.ensureDepositService()` ile DB'de aranır/oluşturulur;
-     * `applyReservationSpread` bu ID ile DEPOSIT satırını ekler. Sentetik
-     * `__deposit__` ID'si fiş kesiminde sorun çıkarıyordu.
-     */
-    const [depositServiceId, setDepositServiceId] = useState<string | null>(null);
+    /** Açılan randevu grubunun kayıtlı depozito payları. Forma dağıtım yazılmaz. */
+    const [visitStoredDeposits, setVisitStoredDeposits] = useState<number[]>([]);
+    /** Cari avans hâlâ tam tutarı tutuyorsa (pay alana ezilmemiş kaynak). */
+    const [visitSourceAmount, setVisitSourceAmount] = useState<number | null>(null);
     // 14.10.2026 — Default `false`: "Rezervasyon fişi kes" checkbox'ı
     // varsayılan işaretli OLMASIN. Kullanıcı talebi: yeni randevuda
     // peşinat alırken ayrı bir rezervasyon sales fişi otomatik
@@ -744,22 +746,6 @@ export function AppointmentPOS({
         loadServices(); loadPackages(); loadSpecialists();
         loadCustomers(); loadDevices();
         void loadProducts(true);
-        // 14.10.2026 — DEPOSIT hizmeti DB'de yoksa oluştur (idempotent).
-        // ensureDepositService() önce var mı diye bakar, yoksa INSERT yapar
-        // ve ID döndürür; tek seferlik bootstrap — race condition'a karşı
-        // state guard ile korunuyor. Yeni eklenen DEPOSIT hizmetinin
-        // katalogda (sol panel) görünmesi için `loadServices` çağrılır.
-        if (!depositServiceId) {
-            void beautyService.ensureDepositService()
-                .then(id => {
-                    setDepositServiceId(id);
-                    // Kataloğu tazele ki DEPOSIT hizmeti sol panelde listelensin.
-                    void loadServices();
-                })
-                .catch((err) => {
-                    logger.error('AppointmentPOS', 'ensureDepositService failed', err);
-                });
-        }
         void (async () => {
             try {
                 const accounts = await fetchCurrentAccounts(ERP_SETTINGS.firmNr, 'MUSTERI');
@@ -896,52 +882,50 @@ export function AppointmentPOS({
     }, [specialists, prefillStaffId, existingAppointment?.id]);
 
     // ── Derived ──────────────────────────────────────────────────────────
-    // 14.10.2026 — Subtotal her zaman BRÜT hizmet toplamı = hizmetlerin
-    // ORİJİNAL fiyatları toplamı (varsa `original_unit_price`, yoksa
-    // `unit_price`). DEPOSIT satırı hariç.
-    //
-    // Neden `unit_price` değil `original_unit_price`?
-    // - Rezervasyon girildiğinde hizmet kartlarında orantılı düşüm
-    //   görsel olarak yapılır (FACIAL 80.000 → 62.000 gibi).
-    // - Ancak ödeme/kasa toplamı her zaman BRÜT hizmet tutarı üzerinden
-    //   hesaplanmalı: Ara Toplam 130.000 − Ön Ödenen 30.000 = Kalan 100.000.
-    // - Düşülmüş fiyatı toplarsak Ara Toplam 100.000 olur, Ön Ödenen
-    //   30.000 düşülünce Kalan 70.000 çıkar (hatalı).
-    // - `original_unit_price` ilk eklenen hizmet fiyatını korur; DEPOSIT
-    //   satırında undefined olduğu için o satırı toplama dahil etmiyoruz.
-    const subtotal = cart.reduce(
-        (s, l) =>
-            l.type === 'deposit'
-                ? s
-                : s + (l.original_unit_price ?? l.unit_price) * l.qty,
-        0,
+    // Toplam = hizmet bedeli. Depozito peşinattır: satır fiyatından düşülmez,
+    // ara toplama eklenmez. DEPOSIT kartı sepette hizmet gibi durmaz.
+    const billableCart = useMemo(
+        () => cart.filter((line) => !isAppointmentDepositCartLine({
+            type: line.type,
+            name: line.name,
+            code: line.code,
+            itemId: line.item_id,
+        })),
+        [cart],
+    );
+    const subtotal = appointmentServiceGross(
+        billableCart.map((l) => ({
+            type: l.type,
+            name: l.name,
+            code: l.code,
+            itemId: l.item_id,
+            unitPrice: l.original_unit_price ?? l.unit_price,
+            qty: l.qty,
+        })),
     );
     const discAmt = subtotal * (discount / 100);
-    // Mevcut randevuda daha önce alınmış ön ödeme (deposit_amount) tutarı.
-    // Yeni randevu oluştururken bu alan boş olacağı için 0 döner.
-    const existingDeposit = existingAppointment?.id
-        ? Number((existingAppointment as { deposit_amount?: number }).deposit_amount ?? 0)
-        : 0;
-    // Toplam = Ara Toplam − İndirim − Ön Ödeme.
-    // Yeni randevuda kullanıcı rezervasyon tutarı girer; mevcut randevuda
-    // (ön ödeme daha önce alınmışsa) deposit_amount kullanılır ve input kilitlenir.
-    // effectiveReservation yalnızca ödeme/akış hesaplarında kullanılır (yeni
-    // randevu booking, peşinatlı mod, receipt toplamı); panel "Toplam" satırı
-    // brüt hizmet tutarı + indirim gösterir, peşinat ayrıca "Ön Ödenen Tutar"
-    // olarak aşağıda listelenir (randevu henüz gerçekleşmediyse kalan borç
-    // "Henüz gerçekleşmedi" notu olarak gösterilir, gerçekleştikten sonra
-    // gerçek kalan = brüt − peşinat).
-    const effectiveReservation = existingAppointment?.id ? existingDeposit : Math.max(0, reservationAmount || 0);
-    // Panel "Toplam" = Ara Toplam − İndirim (peşinat dahil edilmez).
-    const total = Math.max(0, subtotal - discAmt);
-    // Brüt hizmet toplamı (panel Toplam satırı ile aynı; kalan = brüt − peşinat).
-    const grossAfterDiscount = Math.max(0, subtotal - discAmt);
-    // Mevcut randevuda henüz gerçekleşmediyse kalan borç gizlenir (ödemeler
-    // sadece hizmet tamamlandıktan sonra tahsil edilir).
+    // Mevcut randevuda rezervasyon, kullanıcının aldığı tutardır.
+    // Pay alana (13.000) ezilmiş kayıtta kaynak veya kardeş payların
+    // toplamı 20.000 ise o gösterilir. Yeni randevuda input esas alınır.
+    const existingDeposit = appointmentReservationField({
+        existing: !!existingAppointment?.id,
+        enteredAmount: reservationAmount,
+        storedDeposits: visitStoredDeposits.length > 0
+            ? visitStoredDeposits
+            : [Number((existingAppointment as { deposit_amount?: number } | null | undefined)?.deposit_amount ?? 0)],
+        sourceAmount: visitSourceAmount,
+    });
+    const total = appointmentFormTotal(subtotal, discount);
+    const grossAfterDiscount = total;
     const existingIsCompleted = !!existingAppointment?.id
         && appointmentStatusMatches(existingAppointment.status, AppointmentStatus.COMPLETED);
-    const remainingAfterDeposit = Math.max(0, grossAfterDiscount - existingDeposit);
-    const totalDur = cart.filter(l => l.type === 'service').reduce((s, l) => s + (l.duration_min ?? 0) * l.qty, 0);
+    const remainingAfterDeposit = appointmentRemainingAfterDeposit({
+        serviceGross: subtotal,
+        discountPercent: discount,
+        reservation: existingDeposit,
+        completed: existingIsCompleted,
+    }) ?? 0;
+    const totalDur = billableCart.filter(l => l.type === 'service').reduce((s, l) => s + (l.duration_min ?? 0) * l.qty, 0);
 
     useEffect(() => {
         if (existingAppointment?.id) return;
@@ -1074,9 +1058,14 @@ export function AppointmentPOS({
     useEffect(() => {
         if (!existingAppointment?.id) {
             setHydratedAppointmentId(null);
+            setVisitStoredDeposits([]);
+            setVisitSourceAmount(null);
             return;
         }
         if (hydratedAppointmentId === existingAppointment.id) return;
+
+        setVisitStoredDeposits([]);
+        setVisitSourceAmount(null);
 
         const primary = existingAppointment;
         let cancelled = false;
@@ -1217,19 +1206,32 @@ export function AppointmentPOS({
             );
             setAptActualDurationMin(Math.max(1, sumDur || Math.round(Number(primary.duration) || 30)));
             setHydratedAppointmentId(primary.id);
-            // 14.10.2026 — Mevcut randevuda deposit tutarı DB'den geliyor
-            // (`primary.deposit_amount`). Bu tutarı sepete yansıt:
-            // hizmet kartlarını orantılı düşür + mor DEPOSIT kartı ekle.
-            // Yeni randevuda kullanıcı rezervasyon tutarı girince de aynı
-            // fonksiyon çalışıyor (`applyReservationSpread` onChange'de).
-            // Mevcut randevuda input kilitli olduğu için kullanıcı yanlışlıkla
-            // tetikleyemez; burada sadece ilk yüklemede bir kez çağrılır.
-            const existingDep = Number((primary as { deposit_amount?: number }).deposit_amount ?? 0);
-            if (existingDep > 0 && lines.length > 0) {
-                // Kısa gecikme: setCart async olduğu için applyReservationSpread
-                // bir sonraki tick'te çalışmalı (cart state güncellenmiş olur).
-                setTimeout(() => applyReservationSpread(existingDep), 0);
+            // Rezervasyon kullanıcı tutarıdır. Hizmet fiyatı düşürülmez,
+            // DEPOSIT satırı sepete yazılmaz. Paylara bölünmüş eski kayıtta
+            // kardeş tutarlar toplanır; avans kaynağı daha büyükse o gösterilir.
+            const storedDeposits = activeSiblings.map(
+                (a) => Number((a as { deposit_amount?: number }).deposit_amount) || 0,
+            );
+            setVisitStoredDeposits(storedDeposits);
+            let sourceAmount: number | null = null;
+            if (customerId) {
+                try {
+                    const advances = await getOpenAdvances(customerId);
+                    const ids = [primary, ...activeSiblings]
+                        .map((a) => String(a?.id ?? '').trim())
+                        .filter((id) => id.length >= 8);
+                    let best = 0;
+                    for (const av of advances) {
+                        const notes = String(av.notes ?? '');
+                        if (!ids.some((id) => notes.includes(id))) continue;
+                        best = Math.max(best, Number(av.amount) || 0);
+                    }
+                    sourceAmount = best > 0 ? best : null;
+                } catch (avansErr) {
+                    logger.warn('AppointmentPOS', 'hydrate: avans kaynağı okunamadı', avansErr);
+                }
             }
+            if (!cancelled) setVisitSourceAmount(sourceAmount);
         })();
 
         return () => {
@@ -1426,84 +1428,6 @@ export function AppointmentPOS({
         setCart(c => c.map(l => l.uid === uid ? { ...l, qty: Math.max(1, l.qty + d) } : l));
     };
     const remLine = (uid: string) => setCart(c => c.filter(l => l.uid !== uid));
-    /**
-     * 14.10.2026 — Rezervasyon tutarını (deposit) sepete orantılı olarak
-     * yansıt + otomatik DEPOSIT satırı ekle/güncelle/sil.
-     *
-     * Davranış:
-     *   - `amount = 0` → tüm hizmet satırlarını orijinal fiyatına döndür
-     *     (varsa `original_unit_price` alanından), DEPOSIT satırını sil.
-     *   - `amount > 0` → hizmet satırlarının brüt tutarını (line.unit_price *
-     *     line.qty, varsa orijinal) topla, sonra her satırdan
-     *     `amount * (lineGross / totalGross)` kadar orantılı düş.
-     *     DEPOSIT satırı yoksa ekle (qty=1, unit_price=amount); varsa
-     *     güncelle. Son satır kalan farkı yutar (yuvarlama sapmasını önler).
-     *
-     * Yalnızca yeni randevu modunda (existingAppointment?.id yok) çalışır;
-     * mevcut randevuda deposit_amount zaten DB'den geliyor ve input
-     * kilitli, dolayısıyla cart manipülasyonu yapılmaz.
-     */
-    const applyReservationSpread = (amount: number) => {
-        // 14.10.2026 — Mevcut randevu kontrolü kaldırıldı. Yeni randevuda
-        // onChange'den çağrılır (kullanıcı tutar girer), mevcut randevuda
-        // ise randevu yüklenirken bir kez `existingDeposit` ile tetiklenir
-        // (DEPOSIT kartını ekle + hizmetleri orantılı düş). Mevcut
-        // randevuda input readonly olduğu için kullanıcı yanlışlıkla
-        // setReservationAmount çağıramaz.
-        setCart(prevCart => {
-            const depositIdx = prevCart.findIndex(l => l.type === 'deposit');
-            const serviceLines = prevCart.filter(l => l.type !== 'deposit');
-            if (serviceLines.length === 0) {
-                return depositIdx >= 0 ? [] : prevCart;
-            }
-            // Orijinal brüt toplam (orijinal fiyattan). original_unit_price
-            // yoksa mevcut unit_price'ı orijinal kabul et.
-            const totalGross = serviceLines.reduce(
-                (s, l) => s + (l.original_unit_price ?? l.unit_price) * l.qty,
-                0,
-            );
-            if (totalGross <= 0) return prevCart;
-            // Rezervasyon düşümü `spreadReservationAcrossLines` ile yapılır:
-            // orantılı pay, 1.000'e yuvarlama, son satır kalanı alır.
-            if (amount <= 0) {
-                const restored = serviceLines.map(l =>
-                    l.original_unit_price !== undefined
-                        ? { ...l, unit_price: l.original_unit_price, original_unit_price: undefined }
-                        : l,
-                );
-                return restored;
-            }
-            const cap = Math.min(amount, totalGross);
-            const spread = spreadReservationAcrossLines(
-                serviceLines.map((l) => ({
-                    unitPrice: l.unit_price,
-                    qty: l.qty,
-                    originalUnitPrice: l.original_unit_price,
-                })),
-                amount,
-            );
-            const updatedServices = serviceLines.map((l, idx) => ({
-                ...l,
-                original_unit_price: l.original_unit_price ?? l.unit_price,
-                unit_price: spread[idx]?.unitPrice ?? l.unit_price,
-            }));
-            // DEPOSIT satırı ekle veya güncelle.
-            // item_id için `depositServiceId` (DB'de bootstrap edilen gerçek
-            // hizmet) kullanılır; hazır değilse sentetik `__deposit__` ID'si
-            // ile devam edilir (faturalama sonraya bırakılır).
-            const newDeposit: CartLine = {
-                uid: depositIdx >= 0 ? prevCart[depositIdx].uid : uid(),
-                type: 'deposit',
-                item_id: depositServiceId ?? '__deposit__',
-                code: 'DEPOSIT',
-                name: 'DEPOSIT',
-                unit_price: roundReservationMoney(cap),
-                qty: 1,
-                color: '#a855f7',
-            };
-            return [...updatedServices, newDeposit];
-        });
-    };
     const setStaff = (uid: string, sid: string) => setCart(c => c.map(l => l.uid === uid ? { ...l, staff_id: sid } : l));
     /**
      * Hizmet × personel yüzdesi cache'i. Anahtar: `${service_id}::${staff_id}`.
@@ -1727,7 +1651,7 @@ export function AppointmentPOS({
     };
 
     // ── Save actions ──────────────────────────────────────────────────────
-    const canSave = cart.length > 0 && !!customer;
+    const canSave = billableCart.length > 0 && !!customer;
     /** Tamamlanmış randevu: tekrar ödeme / yeni randevu kaydı yok (iptal veya gelmedi seçildiyse güncelleme serbest) */
     const isExistingPaidComplete = useMemo(() => {
         if (!existingAppointment?.id) return false;
@@ -1755,12 +1679,12 @@ export function AppointmentPOS({
             aptStatus === AppointmentStatus.COMPLETED
         );
     }, [existingAppointment?.id, existingAppointment?.status, aptStatus]);
-    const serviceLines = useMemo(() => cart.filter(l => l.type === 'service'), [cart]);
-    const productLines = useMemo(() => cart.filter(l => l.type === 'product'), [cart]);
-    /** Hizmet veya ürün sekmesinden seçilen satırlar randevu oluşturabilir (paket hariç). */
+    const serviceLines = useMemo(() => billableCart.filter(l => l.type === 'service'), [billableCart]);
+    const productLines = useMemo(() => billableCart.filter(l => l.type === 'product'), [billableCart]);
+    /** Hizmet veya ürün sekmesinden seçilen satırlar randevu oluşturabilir (paket ve depozito hariç). */
     const appointmentBookLines = useMemo(
-        () => cart.filter((l) => l.type === 'service' || l.type === 'product'),
-        [cart],
+        () => billableCart.filter((l) => l.type === 'service' || l.type === 'product'),
+        [billableCart],
     );
     const allBookLinesStaffed =
         appointmentBookLines.length === 0 || appointmentBookLines.every((l) => !!l.staff_id?.trim());
@@ -2163,7 +2087,7 @@ export function AppointmentPOS({
                 time: startHhmm,
                 appointment_time: startHhmm,
                 duration: d,
-                total_price: Number(line.unit_price ?? 0) * Math.max(1, Number(line.qty ?? 1)),
+                total_price: Number(line.original_unit_price ?? line.unit_price ?? 0) * Math.max(1, Number(line.qty ?? 1)),
                 status: statusForCreate ?? aptStatus,
                 notes: mergeNotes(aptNotes, idx === 0),
                 type: 'regular',
@@ -2368,21 +2292,14 @@ export function AppointmentPOS({
             const statusForCreate = hasReservation
                 ? AppointmentStatus.PRE_PAID
                 : (aptStatus ?? AppointmentStatus.SCHEDULED);
-            const reservationShares = hasReservation
-                ? spreadReservationAcrossLines(
-                    appointmentBookLines.map((l) => ({
-                        unitPrice: l.unit_price,
-                        qty: Math.max(1, Number(l.qty) || 1),
-                        originalUnitPrice: l.original_unit_price,
-                    })),
-                    reservationForSubmit,
-                ).map((s) => s.depositShare)
+            const reservationAmounts = hasReservation
+                ? depositAmountsForNewAppointments(reservationForSubmit, appointmentBookLines.length)
                 : [];
             const planned = buildServiceAppointmentPayloads(statusForCreate).map((p, idx) => {
                 if (!hasReservation) return p;
                 return {
                     ...p,
-                    deposit_amount: reservationShares[idx] ?? 0,
+                    deposit_amount: reservationAmounts[idx] ?? 0,
                     deposit_date: new Date().toISOString(),
                     deposit_provider: 'pos' as const,
                 };
@@ -2424,7 +2341,7 @@ export function AppointmentPOS({
                     // fişi keser (BEA-2026-...).
                     await Promise.all(
                         createdIds.map((id, idx) => updateAppointment(id, {
-                            deposit_amount: reservationShares[idx] ?? 0,
+                            deposit_amount: idx === 0 ? reservationForSubmit : 0,
                             deposit_date: new Date().toISOString(),
                             deposit_provider: 'pos',
                         })),
@@ -2548,7 +2465,7 @@ export function AppointmentPOS({
             openBookingBlockModal('customer');
             return;
         }
-        if (!cart.length) return;
+        if (!billableCart.length) return;
         if (appointmentBookLines.length > 0 && activeSpecialists.length === 0) {
             openBookingBlockModal('no_specialists');
             return;
@@ -2684,7 +2601,7 @@ export function AppointmentPOS({
      * `printDraft` davranışıyla aynı semantik — müşteri ödemeyi henüz tamamlamadı.
      */
     const handlePrintDraftFromTabbar = useCallback(async () => {
-        if (cart.length === 0) {
+        if (billableCart.length === 0) {
             toast.error(tm('bEmptyCartHint') || 'Sepet boş');
             return;
         }
@@ -2749,7 +2666,7 @@ export function AppointmentPOS({
             toast.error(tm('printFailed') || 'Yazdırma başarısız');
         }
     }, [
-        cart, customer, subtotal, discAmt, total, receiptNumber, products, specialists,
+        cart, billableCart, customer, subtotal, discAmt, total, receiptNumber, products, specialists,
         aptDevice, devices, receiptTreatmentDegree, receiptTreatmentShots, uiLanguage,
         receiptFirmNr, selectedFirm, tm,
     ]);
@@ -2977,7 +2894,7 @@ export function AppointmentPOS({
                 const firstBook = appointmentBookLines[0];
                 const firstBookTotal =
                     firstBook
-                        ? Number(firstBook.unit_price ?? 0) * Math.max(1, Number(firstBook.qty ?? 1))
+                        ? Number(firstBook.original_unit_price ?? firstBook.unit_price ?? 0) * Math.max(1, Number(firstBook.qty ?? 1))
                         : finalTotalSale;
                 if (appointmentBookLines.length > 0) {
                     const plannedPay = buildServiceAppointmentPayloads(finalAptStatus);
@@ -3086,16 +3003,9 @@ export function AppointmentPOS({
                 ) {
                     try {
                         const pool = skipInvoice ? effectiveDepositAmt : reservationAmt;
-                        const shares = spreadReservationAcrossLines(
-                            appointmentBookLines.map((l) => ({
-                                unitPrice: l.unit_price,
-                                qty: Math.max(1, Number(l.qty) || 1),
-                                originalUnitPrice: l.original_unit_price,
-                            })),
-                            pool,
-                        );
+                        const amounts = depositAmountsForNewAppointments(pool, createdAppointmentIds.length);
                         await Promise.all(createdAppointmentIds.map((id, idx) => updateAppointment(id, {
-                            deposit_amount: shares[idx]?.depositShare ?? 0,
+                            deposit_amount: amounts[idx] ?? 0,
                             deposit_date: new Date().toISOString(),
                             deposit_provider: 'pos',
                             ...(idx === 0 && shouldRecordReservation && reservationSaleFicheNo
@@ -3135,7 +3045,7 @@ export function AppointmentPOS({
             const remainingNow = settlement.remaining;
             // separateLineInvoices yukarıda scope dışında tanımlandı; burada atanıyor.
 
-            const lineGrosses = cart.map((l) => l.unit_price * l.qty);
+            const lineGrosses = billableCart.map((l) => (l.original_unit_price ?? l.unit_price) * l.qty);
             const lineSplits = splitProportionalLineDiscount(lineGrosses, headerDiscount);
             const resolveLineCommissionRate = (line: CartLine): number => {
                 const sid = String(line.staff_id ?? '').trim();
@@ -3178,18 +3088,18 @@ export function AppointmentPOS({
                 const value = (Math.max(0, Number(netTotal) || 0) * rate) / 100;
                 return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
             };
-            const saleItems = cart.map((line, idx) => ({
+            const saleItems = billableCart.map((line, idx) => ({
                 item_type: line.type,
                 item_id: line.item_id,
                 name: line.name,
                 quantity: line.qty,
-                unit_price: line.unit_price,
+                unit_price: line.original_unit_price ?? line.unit_price,
                 discount: lineSplits[idx]?.discount ?? 0,
-                total: lineSplits[idx]?.total ?? line.unit_price * line.qty,
+                total: lineSplits[idx]?.total ?? (line.original_unit_price ?? line.unit_price) * line.qty,
                 staff_id: line.staff_id ?? null,
                 commission_amount: resolveLineCommissionAmount(
                     line,
-                    lineSplits[idx]?.total ?? line.unit_price * line.qty,
+                    lineSplits[idx]?.total ?? (line.original_unit_price ?? line.unit_price) * line.qty,
                 ),
             }));
 
@@ -3222,9 +3132,9 @@ export function AppointmentPOS({
                 depositSaleId: null,
             };
 
-            if (separateLineInvoices && cart.length > 1) {
-                const splitSaleTasks = cart.map((line, idx) => {
-                    const gross = line.unit_price * line.qty;
+            if (separateLineInvoices && billableCart.length > 1) {
+                const splitSaleTasks = billableCart.map((line, idx) => {
+                    const gross = (line.original_unit_price ?? line.unit_price) * line.qty;
                     const disc = lineSplits[idx]?.discount ?? 0;
                     const net = lineSplits[idx]?.total ?? gross;
                     const ratio = finalTotalSale > 0 ? net / finalTotalSale : 0;
@@ -3264,7 +3174,7 @@ export function AppointmentPOS({
                                 item_id: line.item_id,
                                 name: line.name,
                                 quantity: line.qty,
-                                unit_price: line.unit_price,
+                                unit_price: line.original_unit_price ?? line.unit_price,
                                 discount: disc,
                                 total: net,
                                 staff_id: line.staff_id ?? null,
@@ -3329,7 +3239,7 @@ export function AppointmentPOS({
             // hesaplanır; skipInvoice ise toast'taki fiş-adedi dalına düşmez.
             // splitInvoiceCount'u scope dışında tutmak için koşullu atama yapıyoruz.
             const splitInvoiceCount: number =
-                !skipInvoice && separateLineInvoices && cart.length > 1 ? cart.length : 0;
+                !skipInvoice && separateLineInvoices && billableCart.length > 1 ? billableCart.length : 0;
 
             // Stok: yalnızca ERP fatura oluşturma (salesAPI → invoicesAPI.create) düşer.
             // Burada tekrar updateStock yapılırsa çift düşüm + silmede tek reverse → hayalet stok.
@@ -3971,7 +3881,7 @@ export function AppointmentPOS({
                                 <button
                                     type="button"
                                     onClick={handlePrintDraftFromTabbar}
-                                    disabled={cart.length === 0}
+                                    disabled={billableCart.length === 0}
                                     title={tm('bPrintDraftTabbar')}
                                     aria-label={tm('bPrintDraftTabbar')}
                                     style={{
@@ -3981,11 +3891,11 @@ export function AppointmentPOS({
                                         padding: '8px 14px',
                                         borderRadius: 8,
                                         border: '1px solid #7c3aed',
-                                        background: cart.length === 0 ? '#f3f4f6' : '#ede9fe',
-                                        color: cart.length === 0 ? '#9ca3af' : '#5b21b6',
+                                        background: billableCart.length === 0 ? '#f3f4f6' : '#ede9fe',
+                                        color: billableCart.length === 0 ? '#9ca3af' : '#5b21b6',
                                         fontSize: 13,
                                         fontWeight: 700,
-                                        cursor: cart.length === 0 ? 'not-allowed' : 'pointer',
+                                        cursor: billableCart.length === 0 ? 'not-allowed' : 'pointer',
                                         minHeight: 44,
                                         touchAction: 'manipulation',
                                         flexShrink: 0,
@@ -3993,10 +3903,10 @@ export function AppointmentPOS({
                                         transition: 'background 0.12s, color 0.12s',
                                     }}
                                     onMouseEnter={e => {
-                                        if (cart.length > 0) e.currentTarget.style.background = '#ddd6fe';
+                                        if (billableCart.length > 0) e.currentTarget.style.background = '#ddd6fe';
                                     }}
                                     onMouseLeave={e => {
-                                        if (cart.length > 0) e.currentTarget.style.background = '#ede9fe';
+                                        if (billableCart.length > 0) e.currentTarget.style.background = '#ede9fe';
                                     }}
                                 >
                                     <Printer size={18} strokeWidth={2.25} />
@@ -4811,12 +4721,12 @@ export function AppointmentPOS({
 
                     {/* Cart Section (Scrollable) */}
                     <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }} className="custom-scrollbar">
-                        {cart.length === 0 ? (
+                        {billableCart.length === 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#d1d5db', gap: 8 }}>
                                 <Sparkles size={32} />
                                 <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bCartEmptyHint')}</p>
                             </div>
-                        ) : cart.map(line => {
+                        ) : billableCart.map(line => {
                             // 14.10.2026 — DEPOSIT satırı özel kompakt kart:
                             // kaldır butonu YOK (reservationAmount ile bağlı),
                             // qty +/− YOK, sadece tutar gösterilir. Mor renkli.
@@ -4944,7 +4854,7 @@ export function AppointmentPOS({
                                                         fontVariantNumeric: 'tabular-nums',
                                                         flexShrink: 0,
                                                     }}>
-                                                        {fmt(line.unit_price * line.qty)}
+                                                        {fmt((line.original_unit_price ?? line.unit_price) * line.qty)}
                                                     </span>
                                                 </div>
                                             </div>
@@ -5302,7 +5212,6 @@ export function AppointmentPOS({
                                                 const raw = e.target.value;
                                                 if (raw === '') {
                                                     setReservationAmount(0);
-                                                    applyReservationSpread(0);
                                                     return;
                                                 }
                                                 // Para birimi ondalık kuralı: IQD tam sayı,
@@ -5312,7 +5221,6 @@ export function AppointmentPOS({
                                                 const num = Number(cleaned);
                                                 if (!Number.isFinite(num) || num < 0) {
                                                     setReservationAmount(0);
-                                                    applyReservationSpread(0);
                                                     return;
                                                 }
                                                 const fixed =
@@ -5320,7 +5228,6 @@ export function AppointmentPOS({
                                                         ? Math.round(num)
                                                         : Math.round(num * 100) / 100;
                                                 setReservationAmount(fixed);
-                                                applyReservationSpread(fixed);
                                             }}
                                             placeholder="0"
                                             data-testid="appointment-reservation-amount"
@@ -5432,7 +5339,7 @@ export function AppointmentPOS({
                                 (SCHEDULED/CONFIRMED/IN_PROGRESS) "Henüz gerçekleşmedi"
                                 notu ile değişir (kalan borç hizmet tamamlandıktan
                                 sonra tahsil edilir). */}
-                            {existingAppointment?.id && Number((existingAppointment as { deposit_amount?: number }).deposit_amount ?? 0) > 0 && (
+                            {existingAppointment?.id && existingDeposit > 0 && (
                                 <div
                                     data-testid="appointment-prepaid-amount-row"
                                     style={{
@@ -5451,7 +5358,7 @@ export function AppointmentPOS({
                                             {tm('prePaymentAmount') || 'Ön Ödenen Tutar'}
                                         </span>
                                         <span style={{ fontSize: 12, fontWeight: 800, color: '#15803d' }}>
-                                            {fmt(Number((existingAppointment as { deposit_amount?: number }).deposit_amount))} IQD
+                                            {fmt(existingDeposit)} IQD
                                         </span>
                                     </div>
                                     {(existingAppointment as { deposit_sale_fiche_no?: string | null }).deposit_sale_fiche_no && (
@@ -5939,8 +5846,8 @@ export function AppointmentPOS({
                 const builtCtx = buildAppointmentPesinatliContext({
                     appointmentId: existingAppointment?.id,
                     status: existingAppointment?.status,
-                    totalPrice: existingAppointment?.total_price,
-                    depositAmount: existingAppointment?.deposit_amount,
+                    totalPrice: grossAfterDiscount,
+                    depositAmount: existingDeposit,
                     remainderPaidAmount: existingAppointment?.remainder_paid_amount,
                     prePaymentFicheNo: (existingAppointment as { deposit_sale_fiche_no?: string | null } | undefined)?.deposit_sale_fiche_no ?? null,
                 });
