@@ -12,6 +12,12 @@ import { getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currenc
 import { getAppDefaultCurrency } from '../../../services/postgres';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { toast } from 'sonner';
+import {
+    prePaymentReceived,
+    prePaymentRemaining,
+    prePaymentServiceTotal,
+    spreadPrePaymentDepositRows,
+} from '../../../utils/depositPrePaymentAllocation';
 
 const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
@@ -48,67 +54,13 @@ type Row = Awaited<ReturnType<typeof beautyService.getDepositPrePaymentReport>>[
     avans_total?: number;
 };
 
-// 17.10.2026 — Rezervasyon / Ön Ödeme Raporu "Kalan" hesabı.
-//
-// Kullanıcı kuralı (17.10.2026): "iptal durumunda depozito kalıyor,
-// hizmet tutarı sıfırlanıyor, depozito kalmalı". Durum bazlı mantık:
-//
-//   status === 'completed'        → hizmet bitti, tüm tutar alındı (kalan = 0)
-//   status === 'cancelled'       → hizmet iptal (tutar sıfır), depozito iade
-//                                  edilmediği sürece alınmış sayılır (kalan = 0)
-//   diğer (scheduled, pre_paid,
-//   in_progress, no_show, …)     → sadece peşinat alınmış; kalan = total − deposit
-//
-// Negatif sonuçlar Math.max(0, …) ile sıfırlanır (formül/veri bozulması
-// koruması). NULL/eksik alanlar Number() || 0 ile normalize edilir.
-// SQL tarafı `pas.status` ile `a.status` VARCHAR(20) kuyruğundan
-// status doldurulur; burada küçük harfe çevirip karşılaştırıyoruz.
+// Kalan ve alınan, gösterim payından gelir. Hizmet bedeline avans eklenmez.
 function computeKalan(r: Row): number {
-    const status = String(r.status ?? '').trim().toLowerCase();
-    if (status === 'completed' || status === 'cancelled') {
-        // Hizmet tamamlandı → tüm tutar alındı; iptal → hizmet tutarı sıfır,
-        // depozito alınmış olarak kabul edilir. Her iki durumda da kalan = 0.
-        return 0;
-    }
-    // Tamamlanmamış/devam eden → kalan = toplam tutar − peşinat
-    // 18.10.2026 — "Toplam Tutar" kolonuyla tutarlı olması için avans_total
-    // dahil edildi. Aksi halde Toplam=50k, Rezervasyon=5k iken Kalan 40k
-    // gösteriliyordu (45k olması gerekirken).
-    const total = (Number(r.total_price) || 0) + (Number((r as any).avans_total) || 0);
-    const deposit = Number(r.deposit_amount) || 0;
-    return Math.max(0, total - deposit);
+    return prePaymentRemaining(r);
 }
 
-// 17.10.2026 — "Alınan Ödeme" helper'ı (kullanıcı basitleştirme).
-// Yeni formül (17.10.2026 güncelleme — iptal/depozito kuralı ile uyumlu):
-//   status === 'completed'  → alınan = total_price       (tüm tutar alınmış sayılır)
-//   status === 'cancelled'  → alınan = deposit_amount    (hizmet sıfırlanır, depozito kalır)
-//   diğer (scheduled / pre_paid /
-//   in_progress / no_show /
-//   …)                      → alınan = deposit_amount    (sadece peşinat alınmış)
-//
-// Mantık: `completed` randevunun bitip tüm hizmet bedelinin tahsil
-// edildiği tek durumdur. İptalde hizmet tutarı sıfırlanır; alınmış
-// peşinat `cancelled` satırda "alınan" sayılır (iade ayrı bir akış;
-// `computeKalan` zaten 0 döndürür, böylece Toplam = Alınan + 0 eşitliği
-// görsel olarak da tutarlı kalır). Devam eden durumlarda yalnızca
-// peşinat alınmıştır. NULL/eksik alanlar Number() || 0 ile normalize
-// edilir. SQL tarafında status string olarak gelir (`beauty.beauty_
-// appointment_payment_status` view → `pas.status`). Avans/remainder
-// bilgisi hücrede bilgi amaçlı gösterilir; kalan hesabı bu helper'ın
-// döndürdüğü "alınan" ile total_price arasındaki farktır.
 function computeTakenPayment(r: Row): number {
-    const total = Number(r.total_price) || 0;
-    const deposit = Number(r.deposit_amount) || 0;
-    const status = String(r.status ?? '').trim().toLowerCase();
-    if (status === 'completed') {
-        // Hizmet tamamlandı → tüm tutar alınmış sayılır.
-        return Math.max(0, total);
-    }
-    // cancelled / scheduled / pre_paid / in_progress / no_show / …
-    // → alınan = peşinat (iptalde hizmet sıfırlanır; alınmış peşinat
-    //   "alınan" sayılır; iade henüz yapılmadı).
-    return Math.max(0, deposit);
+    return prePaymentReceived(r);
 }
 
 const PAYMENT_STATE_LABEL_KEY: Record<string, string> = {
@@ -164,9 +116,9 @@ export function DepositPrePaymentReport() {
         setLoading(true);
         setError(null);
         try {
-            const opts: { paymentState?: string } = {};
-            if (paymentStateFilter) opts.paymentState = paymentStateFilter;
-            const res = await beautyService.getDepositPrePaymentReport(startYmd, endYmd, opts);
+            // Durum süzgeci paydan sonra uygulanır. Kardeş hizmet SQL'de
+            // düşerse depozito tek satırda kalır.
+            const res = await beautyService.getDepositPrePaymentReport(startYmd, endYmd);
             setRows(res);
         } catch (e: any) {
             setError(e?.message || String(e));
@@ -178,7 +130,13 @@ export function DepositPrePaymentReport() {
     useEffect(() => {
         void load();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [startYmd, endYmd, paymentStateFilter]);
+    }, [startYmd, endYmd]);
+
+    const visibleRows = useMemo(() => {
+        const shared = spreadPrePaymentDepositRows(rows);
+        if (!paymentStateFilter) return shared;
+        return shared.filter((row) => row.payment_state === paymentStateFilter);
+    }, [rows, paymentStateFilter]);
 
     const columns = useMemo<ReportColumnTableCol<Row>[]>(
         () => [
@@ -227,12 +185,7 @@ export function DepositPrePaymentReport() {
                 //   "Toplam Kalan, Alınan Ödemenin altına kaydır"
                 // — bu, Kalan'ın Alınan Ödeme'nin sağına alınması anlamına gelir.
                 //
-                // 16.10.2026 — "Toplam Tutar" = hizmet bedeli + cari_avans.
-                // Müşterinin ödediği toplam tutar (randevuya bağlı deposit +
-                // cari_avans'taki avanslar dahil). Böylece Toplam Tutar (50k) =
-                // Rezervasyon Tutarı (10k) + Alınan Ödeme (50k - çift sayım
-                // olmasın) eşitliği görsel olarak doğrulanabilir. Önceki
-                // sürümde Toplam Tutar yalnızca hizmet (40k) gösteriyordu.
+                // Toplam Tutar = hizmet bedeli. Depozito peşinattır, üstüne eklenmez.
                 key: 'total_with_avans',
                 // 12.10.2026 — `bTotalAmountCol` artık 4 dilde tanımlı; yine de
                 // eski `tm('total')` ve Türkçe fallback korunur (geriye dönük uyum).
@@ -241,20 +194,10 @@ export function DepositPrePaymentReport() {
                 align: 'right',
                 size: 130,
                 footerSum: true,
-                // 16.10.2026 — Footer için sanal değer: hizmet bedeli +
-                // cari_avans toplamı. `footerGetValue` köprüsü olmadan
-                // DevExDataGrid ham `row[key]` okur; bu köprü zorunlu.
-                footerGetValue: (r) =>
-                    (Number(r.total_price) || 0) + (Number(r.avans_total ?? 0) || 0),
+                footerGetValue: (r) => prePaymentServiceTotal(r),
                 footerFormat: (n) => fmtAmt(n),
                 cell: (r) => {
-                    // 16.10.2026 — Toplam Tutar = hizmet + cari_avans.
-                    // Müşterinin fiilen ödediği toplam (hizmet 40k + avans
-                    // 10k = 50k). Önceki sürüm yalnızca hizmet (40k)
-                    // gösteriyordu; "diğer yerdeki gibi" müşteri toplam
-                    // tahsilatı mantığı için avans dahil edilir.
-                    const total =
-                        (Number(r.total_price) || 0) + (Number(r.avans_total ?? 0) || 0);
+                    const total = prePaymentServiceTotal(r);
                     return renderZeroAmount(total, (v) => (
                         <span className="font-semibold text-gray-700 tabular-nums">{fmt(v)}</span>
                     ));
@@ -481,14 +424,14 @@ export function DepositPrePaymentReport() {
                 </div>
                 {error ? (
                     <div className="p-6 text-sm font-semibold text-red-600">{error}</div>
-                ) : rows.length === 0 && !loading ? (
+                ) : visibleRows.length === 0 && !loading ? (
                     <div className="p-10 text-center text-gray-400 text-sm font-bold">
                         {tm('bNoData') || 'Bu tarih aralığında kayıt yok'}
                     </div>
                 ) : (
 <div className="p-2">
                         <ReportColumnTable
-                            data={rows}
+                            data={visibleRows}
                             columns={columns}
                             height={520}
                             // 19.10.2026 — Satıra tıklayınca detay modalı açılır
@@ -562,7 +505,7 @@ export function DepositPrePaymentReport() {
                             <li className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
                                 <span className="font-semibold text-slate-500">{tm('bTotalAmountCol') || 'Toplam Tutar'}</span>
                                 <span className="font-bold text-slate-800 tabular-nums">
-                                    {fmt(closeTarget.total_price)}
+                                    {fmt(prePaymentServiceTotal(closeTarget))}
                                 </span>
                             </li>
                             <li className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
@@ -713,19 +656,13 @@ export function DepositPrePaymentReport() {
                                     <div className="flex justify-between border-b border-slate-100 pb-2">
                                         <span className="font-semibold text-slate-500">{tm('bTotalAmountCol') || 'Toplam Tutar'}</span>
                                         <span className="font-bold text-slate-800 tabular-nums">
-                                            {fmt((Number(detailRow.total_price) || 0) + (Number(detailRow.avans_total ?? 0) || 0))}
+                                            {fmt(prePaymentServiceTotal(detailRow))}
                                         </span>
                                     </div>
                                     <div className="flex justify-between border-b border-slate-100 pb-2">
                                         <span className="font-semibold text-slate-500">{tm('dailyDepositCollected') || 'Rezervasyon Tutarı'}</span>
                                         <span className="font-bold text-cyan-700 tabular-nums">{fmt(Number(detailRow.deposit_amount) || 0)}</span>
                                     </div>
-                                    {(Number(detailRow.avans_total) || 0) > 0 && (
-                                        <div className="flex justify-between border-b border-slate-100 pb-2">
-                                            <span className="font-semibold text-slate-500">{tm('bAvansTotal') || 'Avans Toplamı'}</span>
-                                            <span className="font-bold text-blue-700 tabular-nums">{fmt(Number(detailRow.avans_total) || 0)}</span>
-                                        </div>
-                                    )}
                                     <div className="flex justify-between border-b border-slate-100 pb-2">
                                         <span className="font-semibold text-slate-500">{tm('bReceivedPayment') || 'Alınan Ödeme'}</span>
                                         <span className="font-bold text-emerald-700 tabular-nums">{fmt(computeTakenPayment(detailRow))}</span>

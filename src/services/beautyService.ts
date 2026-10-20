@@ -8074,7 +8074,10 @@ export const beautyService = {
         status: string | null;
         currency: string;
         deposit_provider: string | null;
+        deposit_sale_id: string | null;
         deposit_sale_fiche_no: string | null;
+        sale_group_id: string | null;
+        created_at: string | null;
     }>> {
         const start = String(startYmd || '').trim();
         const end = String(endYmd || '').trim();
@@ -8156,7 +8159,10 @@ export const beautyService = {
                 pas.payment_state                              AS payment_state,
                 NULLIF(LOWER(TRIM(COALESCE(pas.status, ''))), '') AS status,
                 NULLIF(pas.deposit_provider, '')               AS deposit_provider,
+                a.deposit_sale_id::text                        AS deposit_sale_id,
                 a.deposit_sale_fiche_no                        AS deposit_sale_fiche_no,
+                a.sale_group_id::text                          AS sale_group_id,
+                a.created_at                                   AS created_at,
                 -- 16.10.2026 — cari_avans toplamı (müşteri bazında).
                 -- Randevuya deposit fişi bağlanmamış olsa bile cari_avans
                 -- tablosunda açık/uygulanmış avans varsa "Alınan Ödeme"
@@ -8226,12 +8232,12 @@ export const beautyService = {
                 status: r.status ? String(r.status) : null,
                 currency: 'IQD',
                 deposit_provider: r.deposit_provider ? String(r.deposit_provider) : null,
+                deposit_sale_id: r.deposit_sale_id ? String(r.deposit_sale_id) : null,
                 deposit_sale_fiche_no: r.deposit_sale_fiche_no ? String(r.deposit_sale_fiche_no) : null,
-                // 16.10.2026 — SQL'de `ca.avans_total` seçiliyordu ama
-                // TypeScript row mapping'inde bu alan eksikti; frontend'de
-                // `r.avans_total` her zaman undefined oluyor ve
-                // "Toplam Tutar" / "Alınan Ödeme" hesapları avansı
-                // dahil etmiyordu. Düzeltme: alanı eşle.
+                sale_group_id: r.sale_group_id ? String(r.sale_group_id) : null,
+                created_at: r.created_at ? String(r.created_at) : null,
+                // Müşteri avansı bilgi alanıdır. Toplam tutara eklenmez;
+                // depozito payı rapor gösteriminde ayrıca bölünür.
                 avans_total: Number(r.avans_total) || 0,
             }));
         } catch (e) {
