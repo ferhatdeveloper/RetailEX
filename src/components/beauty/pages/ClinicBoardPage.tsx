@@ -8,6 +8,7 @@ import type { BeautyAppointment, BeautyCustomer, BeautyService, BeautySpecialist
 import { beautyAppointmentDateKey, formatLocalYmd, getWeekRangeLocal } from '../../../utils/dateLocal';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { formatMoneyInteger } from '../../../utils/formatMoney';
+import { ShareOpenSlotsStudio } from '../share-slots/ShareOpenSlotsStudio';
 import { ClinicBoardMenu } from './ClinicBoardMenu';
 import { ClinicDayBoard } from './ClinicDayBoard';
 import {
@@ -47,6 +48,7 @@ async function settle<T>(task: Promise<T>, fallback: T): Promise<{ value: T; fai
 }
 
 export function ClinicBoardPage({ onOpenShareSlots }: { onOpenShareSlots?: () => void }) {
+    void onOpenShareSlots;
     const { tm } = useLanguage();
     const locale = tm('localeCode');
     const [section, setSection] = useState<ClinicBoardSection>('appointment');
@@ -61,6 +63,7 @@ export function ClinicBoardPage({ onOpenShareSlots }: { onOpenShareSlots?: () =>
     const [customers, setCustomers] = useState<BeautyCustomer[]>([]);
     const [appointments, setAppointments] = useState<BeautyAppointment[]>([]);
     const [loadFailed, setLoadFailed] = useState(false);
+    const [shareOpen, setShareOpen] = useState(false);
 
     const range = useMemo(() => {
         if (mode === 'week') return getWeekRangeLocal(parseClinicBoardYmd(anchor));
@@ -211,7 +214,7 @@ export function ClinicBoardPage({ onOpenShareSlots }: { onOpenShareSlots?: () =>
                         <button
                             type="button"
                             data-testid="clinic-board-share-slots"
-                            onClick={() => onOpenShareSlots?.()}
+                            onClick={() => setShareOpen(true)}
                             className="flex h-8 items-center gap-1.5 rounded-lg border border-[#e6eaf0] px-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                         >
                             <Share2 size={14} aria-hidden />
@@ -399,6 +402,13 @@ export function ClinicBoardPage({ onOpenShareSlots }: { onOpenShareSlots?: () =>
                     )}
                 </div>
             </div>
+            {shareOpen && section === 'appointment' && (
+                <ShareOpenSlotsStudio
+                    staff={staff}
+                    anchorYmd={anchor}
+                    onClose={() => setShareOpen(false)}
+                />
+            )}
         </div>
     );
 }
