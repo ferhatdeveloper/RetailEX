@@ -6,7 +6,7 @@ class ResizeObserverStub {
     disconnect() {}
 }
 globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AppointmentStatus } from '../../../types/beauty';
 import type { BeautyAppointment, BeautySpecialist } from '../../../types/beauty';
 import { ClinicDashboardV2 } from '../../../components/beauty/components/ClinicDashboardV2';
@@ -23,11 +23,12 @@ import {
 
 const harness = vi.hoisted(() => ({
     customers: [] as Array<{ id: string; name: string; is_active: boolean; created_at?: string }>,
+    range: ((_start?: string, _end?: string) => new Promise(() => {}) as Promise<unknown[]>),
 }));
 
 vi.mock('../../../services/beautyService', () => ({
     beautyService: {
-        getAppointmentsInRange: () => new Promise(() => {}),
+        getAppointmentsInRange: (start: string, end: string) => harness.range(start, end),
         getCustomers: () => Promise.resolve([]),
     },
 }));
@@ -99,6 +100,7 @@ const QUICK_LABELS = [
 describe('ClinicDashboardV2', () => {
     beforeEach(() => {
         harness.customers = [];
+        harness.range = () => new Promise(() => {});
         localStorage.removeItem(CLINIC_V2_GRAFANA_PICKS_KEY);
     });
 
@@ -120,11 +122,11 @@ describe('ClinicDashboardV2', () => {
         expect(screen.getAllByText('Bugün').length).toBeGreaterThan(0);
         expect(screen.getByText('Bugünkü randevu')).toBeTruthy();
         expect(screen.getAllByText('85.000').length).toBeGreaterThan(0);
-        expect(screen.getByText('HAIR CUT')).toBeTruthy();
-        expect(screen.getByText('HAIR PINK COLOR')).toBeTruthy();
-        expect(screen.getByText('50.000')).toBeTruthy();
-        expect(screen.getByText('60.000')).toBeTruthy();
-        expect(screen.getByText('Nihat')).toBeTruthy();
+        expect(screen.getAllByText('HAIR CUT').length).toBeGreaterThanOrEqual(2);
+        expect(screen.getAllByText('HAIR PINK COLOR').length).toBeGreaterThanOrEqual(2);
+        expect(screen.getAllByText('50.000').length).toBeGreaterThanOrEqual(2);
+        expect(screen.getAllByText('60.000').length).toBeGreaterThanOrEqual(2);
+        expect(screen.getAllByText('Nihat').length).toBeGreaterThanOrEqual(2);
         expect(screen.queryByText('İlk randevu için üç adım')).toBeNull();
     });
 
@@ -202,6 +204,59 @@ describe('ClinicDashboardV2', () => {
         expect(addCard.textContent).toContain('Rapor ekle');
         expect(search.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(addCard.compareDocumentPosition(day) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        const pair = screen.getByTestId('clinic-v2-activity-pair');
+        expect(pair.className).toContain('lg:flex-row');
+        expect(within(pair).getByRole('heading', { name: 'Arama ve ön aktivite' })).toBeTruthy();
+        expect(within(pair).getByRole('heading', { name: 'Bugünün Randevuları' })).toBeTruthy();
+        expect(search.compareDocumentPosition(pair) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(pair.compareDocumentPosition(day) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('arama panosu ile bugünün randevuları yan yana yerleşir', async () => {
+        harness.range = () => Promise.resolve([]);
+        render(
+            <ClinicDashboardV2
+                revenue={0}
+                appointmentCount={0}
+                cancelledCount={0}
+                todayStr="2026-10-21"
+                specialists={[]}
+                appointments={[]}
+            />,
+        );
+        const pair = screen.getByTestId('clinic-v2-activity-pair');
+        expect(pair.className).toContain('flex-col');
+        expect(pair.className).toContain('lg:flex-row');
+        const titles = within(pair).getAllByRole('heading');
+        expect(titles[0].textContent).toBe('Arama ve ön aktivite');
+        expect(titles[1].textContent).toBe('Bugünün Randevuları');
+        expect(within(pair).getByText('0 kayıtlı randevu')).toBeTruthy();
+        expect(within(pair).getByText('Bugün randevu bulunmuyor')).toBeTruthy();
+        expect(within(pair).getByRole('button', { name: 'Bugün' })).toBeTruthy();
+        expect(within(pair).getByRole('button', { name: 'Yarın' })).toBeTruthy();
+        expect(within(pair).getByRole('button', { name: 'Bu hafta' })).toBeTruthy();
+        expect(within(pair).getByRole('button', { name: 'Bu ay' })).toBeTruthy();
+        expect(within(pair).getByText('Aranmadı')).toBeTruthy();
+        expect(within(pair).getByText('Aktivite yok')).toBeTruthy();
+        expect(within(pair).getByText('Tamam')).toBeTruthy();
+        expect(within(pair).getByText('Hizmet filtresi')).toBeTruthy();
+        expect(within(pair).getByLabelText('Hizmet filtresi')).toBeTruthy();
+        expect(within(pair).getByRole('option', { name: 'Tüm hizmetler' })).toBeTruthy();
+        expect(within(pair).getByText('Cihaz')).toBeTruthy();
+        expect(within(pair).getByRole('option', { name: 'Tüm cihazlar' })).toBeTruthy();
+        expect(within(pair).getByText('Hizmete göre grupla')).toBeTruthy();
+        await waitFor(() => {
+            expect(within(pair).getByText('Bu aralıkta uygun randevu yok.')).toBeTruthy();
+        });
+        expect(within(pair).queryByRole('table')).toBeNull();
+        const search = screen.getByTestId('clinic-v2-search-row');
+        const grafana = screen.getByTestId('clinic-grafana-grid');
+        const day = screen.getByTestId('clinic-v2-day');
+        const chart = screen.getByTestId('clinic-rich-chart');
+        expect(grafana.compareDocumentPosition(pair) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(search.compareDocumentPosition(pair) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(pair.compareDocumentPosition(day) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(day.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it('hızlı erişim 12 etiket ve mevcut sekmeye gider', () => {
@@ -259,7 +314,7 @@ describe('ClinicDashboardV2', () => {
         const search = screen.getByTestId('clinic-v2-search-row');
         expect(within(search).getByRole('searchbox')).toBeTruthy();
         expect(within(search).queryByRole('button')).toBeNull();
-        expect(screen.queryByRole('checkbox')).toBeNull();
+        expect(screen.queryAllByRole('checkbox').filter((node) => !node.closest('[data-testid="clinic-v2-activity-pair"]'))).toHaveLength(0);
         expect(screen.queryByTestId('clinic-grafana-card')).toBeNull();
 
         const grid = screen.getByTestId('clinic-grafana-grid');
@@ -300,7 +355,7 @@ describe('ClinicDashboardV2', () => {
         expect(screen.getAllByTestId('clinic-grafana-card')).toHaveLength(n);
         expect(screen.getAllByTestId('clinic-grafana-add')).toHaveLength(1);
         expect(screen.getByTestId('clinic-grafana-grid').lastElementChild).toBe(screen.getByTestId('clinic-grafana-add'));
-        expect(screen.queryByRole('checkbox')).toBeNull();
+        expect(screen.queryAllByRole('checkbox').filter((node) => !node.closest('[data-testid="clinic-v2-activity-pair"]'))).toHaveLength(0);
     });
 
     it('yeni alt şerit çevirileri dört dilde dolu', () => {

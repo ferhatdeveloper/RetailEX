@@ -9,6 +9,7 @@ import { buildClinicV2View } from '../../../utils/clinicV2Charts';
 import { buildClinicMonthSeries, clinicChartFetchBounds } from '../../../utils/clinicDashboardRich';
 import { ClinicDashboardV2Rich } from './ClinicDashboardV2Rich';
 import { ClinicV2SearchGrafanaBar } from './ClinicV2SearchGrafanaBar';
+import { ClinicV2ActivityPair } from './ClinicV2ActivityPair';
 import { beautyService } from '../../../services/beautyService';
 import { useBeautyStore } from '../store/useBeautyStore';
 import {
@@ -307,6 +308,8 @@ export function ClinicDashboardV2({
                 </section>
 
                 <ClinicV2SearchGrafanaBar query={boardQuery} onQueryChange={setBoardQuery} />
+
+                <ClinicV2ActivityPair appointments={source} todayStr={todayStr} />
 
                 <section data-testid="clinic-v2-day" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.65fr) minmax(260px, 0.85fr)', gap: 12 }}>
                     <div className="bg-white" style={{ borderRadius: 16, border: `1px solid ${LINE}`, minHeight: 220 }}>

@@ -152,3 +152,10 @@ export function computeClinicDayKpis(input: ClinicDayKpiInputs): ClinicDayKpis {
         rate,
     };
 }
+
+/** V1 «Bugünün Randevuları» satır sırası: saat artan. */
+export function sortClinicTodayAppointments(rows: BeautyAppointment[]): BeautyAppointment[] {
+    return [...(Array.isArray(rows) ? rows : [])].sort((a, b) =>
+        (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? ''),
+    );
+}

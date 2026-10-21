@@ -8,12 +8,17 @@ import {
     ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
-import { AppointmentStatus } from '../../../types/beauty';
 import type { BeautyAppointment } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
-import { beautyAppointmentDateKey, formatLocalYmd, getWeekRangeLocal, getMonthRangeLocal } from '../../../utils/dateLocal';
+import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
-import { computeClinicDayKpis } from '../../../utils/clinicDashboardStats';
+import { computeClinicDayKpis, sortClinicTodayAppointments } from '../../../utils/clinicDashboardStats';
+import {
+    clinicCallBoardBounds,
+    filterClinicCallBoardRows,
+    groupClinicCallBoardByService,
+    selectClinicCallBoardRows,
+} from '../../../utils/clinicCallBoard';
 import { beautyService } from '../../../services/beautyService';
 import { beautySalePocketCollected, beautySaleRemainingCari, extraCustomerCollectionsNotOnSales } from '../../../utils/saleCollectedAmounts';
 import { fetchKasaIslemleri } from '../../../services/api/kasa';
@@ -232,53 +237,21 @@ export function ClinicDashboard() {
     }, []);
 
     useEffect(() => {
-        const now = new Date();
-        const today = formatLocalYmd(now);
-        let start = today;
-        let end = today;
-        if (callTab === 'tomorrow') {
-            const t = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-            start = formatLocalYmd(t);
-            end = start;
-        } else if (callTab === 'week') {
-            const w = getWeekRangeLocal(now);
-            start = w.start;
-            end = w.end;
-        } else if (callTab === 'month') {
-            const anchor = new Date(now.getFullYear(), now.getMonth() + callMonthOffset, 1);
-            const m = getMonthRangeLocal(anchor);
-            start = m.start;
-            end = m.end;
-        } else if (callTab === 'range') {
-            let a = (callRangeFrom || today).trim();
-            let b = (callRangeTo || today).trim();
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(a)) a = today;
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(b)) b = today;
-            if (a > b) {
-                const t = a;
-                a = b;
-                b = t;
-            }
-            start = a;
-            end = b;
-        }
+        if (shellV2) return;
+        const { start, end } = clinicCallBoardBounds({
+            tab: callTab,
+            now: new Date(),
+            monthOffset: callMonthOffset,
+            rangeFrom: callRangeFrom,
+            rangeTo: callRangeTo,
+        });
         let cancelled = false;
         setCallLoading(true);
         beautyService
             .getAppointmentsInRange(start, end)
             .then((rows) => {
                 if (cancelled) return;
-                const need = rows.filter((a) =>
-                    a.status === AppointmentStatus.SCHEDULED ||
-                    a.status === AppointmentStatus.CONFIRMED ||
-                    a.status === AppointmentStatus.IN_PROGRESS
-                );
-                need.sort((a, b) => {
-                    const da = beautyAppointmentDateKey(a).localeCompare(beautyAppointmentDateKey(b));
-                    if (da !== 0) return da;
-                    return (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? '');
-                });
-                setCallRowsRaw(need);
+                setCallRowsRaw(selectClinicCallBoardRows(rows));
             })
             .catch(() => {
                 if (!cancelled) setCallRowsRaw([]);
@@ -289,40 +262,14 @@ export function ClinicDashboard() {
         return () => {
             cancelled = true;
         };
-    }, [callTab, callMonthOffset, callBoardRefreshTick, callRangeFrom, callRangeTo, appointments]);
+    }, [callTab, callMonthOffset, callBoardRefreshTick, callRangeFrom, callRangeTo, appointments, shellV2]);
 
-    const callRows = useMemo(() => {
-        return callRowsRaw.filter((a) => {
-            if (callFilterServiceId && String(a.service_id ?? '') !== String(callFilterServiceId)) return false;
-            if (callFilterDeviceId && String(a.device_id ?? '') !== String(callFilterDeviceId)) return false;
-            return true;
-        });
-    }, [callRowsRaw, callFilterServiceId, callFilterDeviceId]);
+    const callRows = useMemo(
+        () => filterClinicCallBoardRows(callRowsRaw, callFilterServiceId, callFilterDeviceId),
+        [callRowsRaw, callFilterServiceId, callFilterDeviceId],
+    );
 
-    const callRowsGrouped = useMemo(() => {
-        const map = new Map<string, BeautyAppointment[]>();
-        for (const a of callRows) {
-            const name = (a.service_name && String(a.service_name).trim()) || '—';
-            if (!map.has(name)) map.set(name, []);
-            map.get(name)!.push(a);
-        }
-        for (const arr of map.values()) {
-            arr.sort((x, y) => {
-                const dx = beautyAppointmentDateKey(x).localeCompare(beautyAppointmentDateKey(y));
-                if (dx !== 0) return dx;
-                return String(x.appointment_time ?? x.time ?? '').localeCompare(
-                    String(y.appointment_time ?? y.time ?? '')
-                );
-            });
-        }
-        return Array.from(map.entries())
-            .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
-            .map(([serviceName, items]) => ({
-                serviceName,
-                items,
-                sum: items.reduce((s, it) => s + Number(it.total_price ?? 0), 0),
-            }));
-    }, [callRows]);
+    const callRowsGrouped = useMemo(() => groupClinicCallBoardByService(callRows), [callRows]);
 
     const markCallDone = useCallback(
         async (id: string) => {
@@ -564,9 +511,7 @@ export function ClinicDashboard() {
          * hesaplandı; burada yeniden hesaplamıyoruz.
          */
 
-        const sorted = [...kpis.todayApts].sort((a, b) => {
-            return (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? '');
-        });
+        const sorted = sortClinicTodayAppointments(kpis.todayApts);
 
         return {
             todayApts: sorted,
