@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Calendar, CheckCircle2, Scissors, Users, Wallet } from 'lucide-react';
+import { Calendar, CheckCircle2, Users, Wallet } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { BeautyAppointment, BeautySpecialist } from '../../../types/beauty';
 import { beautyAppointmentDateKey, formatLocalYmd, getWeekRangeLocal } from '../../../utils/dateLocal';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { buildClinicV2View } from '../../../utils/clinicV2Charts';
+import { buildClinicMonthSeries, clinicChartFetchBounds } from '../../../utils/clinicDashboardRich';
+import { ClinicDashboardV2Rich } from './ClinicDashboardV2Rich';
 import { beautyService } from '../../../services/beautyService';
 import { useBeautyStore } from '../store/useBeautyStore';
 import {
@@ -53,16 +55,6 @@ function eachYmd(start: string, end: string): string[] {
     while (cur <= end && out.length < 8) {
         out.push(cur);
         cur = addDaysYmd(cur, 1);
-    }
-    return out;
-}
-
-function monthKeys(anchor: string): string[] {
-    const [y, m] = anchor.split('-').map((n) => Number(n));
-    const out: string[] = [];
-    for (let i = 5; i >= 0; i -= 1) {
-        const dt = new Date(y || 1970, (m || 1) - 1 - i, 1);
-        out.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`);
     }
     return out;
 }
@@ -123,8 +115,12 @@ export function ClinicDashboardV2({
 
     const range = useMemo(() => {
         const week = getWeekRangeLocal(ymdToDate(todayStr));
-        const from = addDaysYmd(todayStr, -180);
-        return { start: from < week.start ? from : week.start, end: addDaysYmd(week.end, 1) };
+        const bounds = clinicChartFetchBounds(todayStr);
+        const weekEnd = addDaysYmd(week.end, 1);
+        const from180 = addDaysYmd(todayStr, -180);
+        const start = [week.start, from180, bounds.start].reduce((a, b) => (a < b ? a : b));
+        const end = bounds.end > weekEnd ? bounds.end : weekEnd;
+        return { start, end };
     }, [todayStr]);
 
     useEffect(() => {
@@ -184,13 +180,16 @@ export function ClinicDashboardV2({
     }));
     const weekTotal = weekCounts.reduce((s, row) => s + row.count, 0);
 
-    const months = monthKeys(todayStr);
-    const monthCounts = months.map((key) => ({
-        key,
-        label: ymdToDate(`${key}-01`).toLocaleDateString(locale, { month: 'short' }),
-        count: source.filter((a) => beautyAppointmentDateKey(a).startsWith(key)).length,
-    }));
-    const monthMax = Math.max(1, ...monthCounts.map((row) => row.count));
+    const monthSeries = useMemo(
+        () =>
+            buildClinicMonthSeries({
+                anchorYmd: todayStr,
+                locale,
+                appointments: source.map((row) => ({ dateKey: beautyAppointmentDateKey(row) })),
+                customers: customers.map((row) => ({ createdAt: row.created_at })),
+            }),
+        [todayStr, locale, source, customers],
+    );
 
     const monthPrefix = todayStr.slice(0, 7);
     const datedCustomers = customers.filter((c) => String(c.created_at || '').startsWith(monthPrefix));
@@ -428,37 +427,7 @@ export function ClinicDashboardV2({
                     </div>
                 </section>
 
-                <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(240px, 0.7fr)', gap: 12 }}>
-                    <div className="bg-white px-3 py-3" style={{ borderRadius: 16, border: `1px solid ${LINE}` }}>
-                        <h2 className="text-sm font-extrabold">{tm('bClinicV2MonthChart')}</h2>
-                        <div className="mt-3 grid grid-cols-6 items-end gap-2" style={{ height: 120 }}>
-                            {monthCounts.map((row) => (
-                                <div key={row.key} className="flex h-full flex-col justify-end text-center">
-                                    <div className="text-[10px] font-bold text-slate-500">{row.count}</div>
-                                    <div
-                                        className="mx-auto w-full max-w-[28px] rounded-t"
-                                        style={{
-                                            height: `${Math.max(2, Math.round((row.count / monthMax) * 88))}px`,
-                                            background: row.count ? BLUE : '#e2e8f0',
-                                        }}
-                                    />
-                                    <div className="mt-1 text-[10px] font-semibold text-slate-500">{row.label}</div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="bg-white px-3 py-3" style={{ borderRadius: 16, border: `1px solid ${LINE}` }}>
-                        <h2 className="text-sm font-extrabold">{tm('bClinicV2QuickAccess')}</h2>
-                        <div className="mt-2 grid grid-cols-2 gap-2">
-                            <Quick label={tm('bClinicV2OpenCalendar')} icon={<Calendar size={16} />} onClick={() => openTab('calendar')} />
-                            <Quick label={tm('bClinicV2OpenClients')} icon={<Users size={16} />} onClick={() => openTab('clients')} />
-                            <Quick label={tm('bClinicV2OpenServices')} icon={<Scissors size={16} />} onClick={() => openTab('services')} />
-                            <Quick label={tm('bClinicV2OpenStaff')} icon={<Users size={16} />} onClick={() => openTab('staff')} />
-                            <Quick label={tm('bClinicV2OpenReports')} icon={<Wallet size={16} />} onClick={() => openTab('reports')} />
-                            <Quick label={tm('bClinicV2SurveyToggle')} icon={<CheckCircle2 size={16} />} onClick={() => openTab('surveys')} />
-                        </div>
-                    </div>
-                </section>
+                <ClinicDashboardV2Rich series={monthSeries} />
             </div>
         </div>
     );
@@ -542,20 +511,6 @@ function DaySwitch({ active, label, onClick }: { active: boolean; label: string;
             style={{ background: active ? BLUE : '#f8fafc', color: active ? '#fff' : '#334155' }}
         >
             {label}
-        </button>
-    );
-}
-
-function Quick({ label, icon, onClick }: { label: string; icon: ReactNode; onClick: () => void }) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            className="flex items-center gap-2 rounded-xl border px-2 py-2 text-left text-xs font-bold"
-            style={{ borderColor: '#dbe4f0', color: '#1e3a8a' }}
-        >
-            {icon}
-            <span className="truncate">{label}</span>
         </button>
     );
 }
