@@ -44,7 +44,8 @@ import { DietitianScreen } from './specialty/DietitianScreen';
 import { AppointmentPOS } from './components/AppointmentPOS';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import { BeautyShellChromeButtons } from './components/BeautyShellChrome';
-import { CLINIC_CLASSIC_SHELL } from './clinicShellV2';
+import { CLINIC_CLASSIC_SHELL, useClinicShellV2 } from './clinicShellV2';
+import { ClinicV2SideRail } from './components/ClinicV2SideRail';
 import { FirmSelector } from '../system/FirmSelector';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { normalizeFirmEnabledModules } from '../../utils/firmShellModules';
@@ -112,6 +113,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const showNavText = !isMobile ? !collapsed : mobileNavOpen;
     const [showLanguageModal, setShowLanguageModal] = useState(false);
     const shell = CLINIC_CLASSIC_SHELL;
+    const shellV2 = useClinicShellV2();
     const [rtlMode, setRtlMode] = useState(() => localStorage.getItem('retailos_rtl_mode') === 'true');
     const { specialists, devices, loadSpecialists, loadServices, loadAppointments, loadDevices } = useBeautyStore();
     const { selectedFirm } = useFirmaDonem();
@@ -451,7 +453,18 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
             )}
 
             {/* ── SIDEBAR (anket tam ekran açıkken gizlenir) ───────── */}
-            {!surveyOverlayOpen && (
+            {!surveyOverlayOpen && shellV2 && (
+                <ClinicV2SideRail
+                    activeTab={activeTab}
+                    isMobile={isMobile}
+                    mobileOpen={mobileNavOpen}
+                    onSelect={(tabId) => {
+                        setActiveTab(tabId);
+                        if (isMobile) setMobileNavOpen(false);
+                    }}
+                />
+            )}
+            {!surveyOverlayOpen && !shellV2 && (
             <aside
                 className={`flex flex-col transition-all duration-200 ease-out ${
                     isMobile ? 'fixed inset-y-0 left-0 z-[60] shadow-2xl' : 'shrink-0'
