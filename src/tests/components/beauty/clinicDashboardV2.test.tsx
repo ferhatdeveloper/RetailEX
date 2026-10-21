@@ -12,7 +12,6 @@ import type { BeautyAppointment, BeautySpecialist } from '../../../types/beauty'
 import { ClinicDashboardV2 } from '../../../components/beauty/components/ClinicDashboardV2';
 import { translate, type Language } from '../../../locales/module-translations';
 import {
-    CLINIC_QUICK_LINKS,
     CLINIC_V2_GRAFANA_PICKS_KEY,
     buildClinicMonthSeries,
     clinicChartFetchBounds,
@@ -85,7 +84,6 @@ function apt(partial: Partial<BeautyAppointment> & Pick<BeautyAppointment, 'id' 
 const QUICK_LABELS = [
     'Randevu Takvimi',
     'Randevu Listesi',
-    'Müşteriler',
     'Stok Yönetimi',
     'Laboratuvar',
     'Raporlar',
@@ -195,15 +193,18 @@ describe('ClinicDashboardV2', () => {
         const search = screen.getByTestId('clinic-v2-search-row');
         const day = screen.getByTestId('clinic-v2-day');
         const chart = screen.getByTestId('clinic-rich-chart');
-        const quick = screen.getByTestId('clinic-rich-quick');
+        const grafana = screen.getByTestId('clinic-grafana-grid');
         expect(search.compareDocumentPosition(day) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(day.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(chart.compareDocumentPosition(quick) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(chart.compareDocumentPosition(grafana) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(chart.parentElement).toBe(grafana.parentElement);
+        expect(screen.queryByTestId('clinic-rich-quick')).toBeNull();
+        expect(screen.queryByText('Hızlı Erişim')).toBeNull();
+        expect(screen.getAllByTestId('clinic-grafana-grid')).toHaveLength(1);
         expect(within(search).queryByRole('button')).toBeNull();
-        const addCard = screen.getByTestId('clinic-grafana-add');
+        const addCard = within(grafana).getByTestId('clinic-grafana-add');
         expect(addCard.textContent).toContain('Rapor ekle');
-        expect(search.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(addCard.compareDocumentPosition(day) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(day.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         const pair = screen.getByTestId('clinic-v2-activity-pair');
         expect(pair.className).toContain('lg:flex-row');
         expect(within(pair).getByRole('heading', { name: 'Arama ve ön aktivite' })).toBeTruthy();
@@ -253,14 +254,15 @@ describe('ClinicDashboardV2', () => {
         const grafana = screen.getByTestId('clinic-grafana-grid');
         const day = screen.getByTestId('clinic-v2-day');
         const chart = screen.getByTestId('clinic-rich-chart');
-        expect(grafana.compareDocumentPosition(pair) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(pair.compareDocumentPosition(grafana) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(chart.parentElement).toBe(grafana.parentElement);
+        expect(screen.getAllByTestId('clinic-grafana-grid')).toHaveLength(1);
         expect(search.compareDocumentPosition(pair) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(pair.compareDocumentPosition(day) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(day.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
-    it('hızlı erişim 12 etiket ve mevcut sekmeye gider', () => {
-        expect(CLINIC_QUICK_LINKS).toHaveLength(12);
+    it('hızlı erişim etiketleri yok; grafana ekle kartı aylık bakışın sağında', () => {
         render(
             <ClinicDashboardV2
                 revenue={0}
@@ -271,27 +273,21 @@ describe('ClinicDashboardV2', () => {
                 appointments={[]}
             />,
         );
-        const buttons = screen.getAllByTestId('clinic-quick-link');
-        expect(buttons.map((node) => node.textContent)).toEqual(QUICK_LABELS);
-        const heard: string[] = [];
-        const onOpen = (event: Event) => {
-            heard.push(String((event as CustomEvent<{ tab?: string }>).detail?.tab || ''));
-        };
-        window.addEventListener('retailex-beauty-open-tab', onOpen);
-        for (const button of buttons) fireEvent.click(button);
-        window.removeEventListener('retailex-beauty-open-tab', onOpen);
-        expect(heard).toEqual(CLINIC_QUICK_LINKS.map((link) => link.tab));
-        const byLabel = (label: string) => buttons.find((node) => node.textContent === label);
-        expect(byLabel('Laboratuvar')?.getAttribute('title')).toBe('Laboratuvar — Raporlar açılır');
-        expect(byLabel('Kredi Yükle')?.getAttribute('title')).toBe('Kredi Yükle — Raporlar açılır');
-        expect(byLabel('Yardım Merkezi')?.getAttribute('title')).toBe('Yardım Merkezi — Raporlar açılır');
-        expect(byLabel('Online Randevu')?.getAttribute('title')).toBe('Online Randevu — Klinik operasyon açılır');
-        expect(byLabel('Bildirim Ayarları')?.getAttribute('title')).toBe('Bildirim Ayarları — Klinik operasyon açılır');
-        expect(byLabel('Destek')?.getAttribute('title')).toBe('Destek — Klinik operasyon açılır');
-        expect(byLabel('Stok Yönetimi')?.getAttribute('title')).toBe('Stok Yönetimi — Ürün satışı açılır');
-        expect(byLabel('Randevu Listesi')?.getAttribute('title')).toBe('Randevu Listesi — Randevu tahtası açılır');
-        expect(byLabel('Şube Ayarları')?.getAttribute('title')).toBe('Şube Ayarları — Klinik operasyon açılır');
-        expect(byLabel('Randevu Takvimi')?.getAttribute('data-tab')).toBe('calendar');
+        expect(screen.queryByTestId('clinic-quick-link')).toBeNull();
+        expect(screen.queryByTestId('clinic-rich-quick')).toBeNull();
+        expect(screen.queryByText('Hızlı Erişim')).toBeNull();
+        for (const label of QUICK_LABELS) {
+            expect(screen.queryByText(label)).toBeNull();
+        }
+        const chart = screen.getByTestId('clinic-rich-chart');
+        const grafana = screen.getByTestId('clinic-grafana-grid');
+        expect(chart.parentElement).toBe(grafana.parentElement);
+        expect(chart.compareDocumentPosition(grafana) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        const add = within(grafana).getByTestId('clinic-grafana-add');
+        expect(add.textContent).toContain('Rapor ekle');
+        expect(grafana.lastElementChild).toBe(add);
+        expect(screen.getAllByTestId('clinic-grafana-add')).toHaveLength(1);
+        expect(screen.getAllByTestId('clinic-grafana-grid')).toHaveLength(1);
     });
 
     it('artı kartı seçim modalını açar; seçimden sonra n rapor kartı ve bir ekle kartı kalır', () => {

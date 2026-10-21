@@ -1,19 +1,4 @@
-import {
-    BarChart3,
-    Bell,
-    BookOpen,
-    Calendar,
-    ChartLine,
-    Globe,
-    Headset,
-    LayoutGrid,
-    List,
-    Package,
-    Pipette,
-    Settings,
-    Users,
-    Wallet,
-} from 'lucide-react';
+import { ChartLine } from 'lucide-react';
 import {
     CartesianGrid,
     Line,
@@ -24,46 +9,20 @@ import {
     YAxis,
 } from 'recharts';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import {
-    CLINIC_QUICK_LINKS,
-    type ClinicMonthPoint,
-    type ClinicQuickIcon,
-    type ClinicQuickLink,
-} from '../../../utils/clinicDashboardRich';
+import type { ClinicMonthPoint } from '../../../utils/clinicDashboardRich';
+import { ClinicV2GrafanaGrid } from './ClinicV2GrafanaGrid';
 
 const LINE = '#e6ebf2';
 const BLUE = '#2563eb';
 const ORANGE = '#f59e0b';
-
-const ICONS: Record<ClinicQuickIcon, typeof Calendar> = {
-    calendar: Calendar,
-    list: List,
-    users: Users,
-    package: Package,
-    pipette: Pipette,
-    chart: BarChart3,
-    settings: Settings,
-    globe: Globe,
-    bell: Bell,
-    wallet: Wallet,
-    book: BookOpen,
-    headset: Headset,
-};
-
-function openTab(tab: string) {
-    window.dispatchEvent(new CustomEvent('retailex-beauty-open-tab', { detail: { tab } }));
-}
 
 export function ClinicDashboardV2Rich({ series }: { series: ClinicMonthPoint[] }) {
     const { tm } = useLanguage();
     const peak = series.reduce((max, row) => Math.max(max, row.appointments, row.newCustomers), 0);
     const yMax = peak > 0 ? peak : 1;
 
-    const goesTo = (label: string, dest: string) =>
-        tm('bClinicV2QaGoesTo').replace('{label}', label).replace('{dest}', dest);
-
     return (
-            <div className="flex flex-col gap-3 lg:flex-row">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
                 <section
                     data-testid="clinic-rich-chart"
                     className="min-w-0 flex-1 bg-white px-3 py-3"
@@ -136,21 +95,7 @@ export function ClinicDashboardV2Rich({ series }: { series: ClinicMonthPoint[] }
                     </ol>
                 </section>
 
-                <section
-                    data-testid="clinic-rich-quick"
-                    className="w-full shrink-0 bg-white px-3 py-3 lg:w-[340px]"
-                    style={{ borderRadius: 16, border: `1px solid ${LINE}` }}
-                >
-                    <h2 className="flex items-center gap-1.5 text-sm font-extrabold">
-                        <LayoutGrid size={16} color="#64748b" aria-hidden />
-                        {tm('bClinicV2QuickAccess')}
-                    </h2>
-                    <div className="mt-2 grid grid-cols-3 gap-2">
-                        {CLINIC_QUICK_LINKS.map((link) => (
-                            <QuickLink key={link.id} link={link} label={tm(link.labelKey)} title={goesTo(tm(link.labelKey), tm(link.destKey))} />
-                        ))}
-                    </div>
-                </section>
+                <ClinicV2GrafanaGrid />
             </div>
     );
 }
@@ -161,24 +106,5 @@ function LegendDot({ color, label }: { color: string; label: string }) {
             <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: color }} />
             {label}
         </span>
-    );
-}
-
-function QuickLink({ link, label, title }: { link: ClinicQuickLink; label: string; title: string }) {
-    const Icon = ICONS[link.icon];
-    return (
-        <button
-            type="button"
-            data-testid="clinic-quick-link"
-            data-tab={link.tab}
-            data-proxy={link.proxy ? '1' : '0'}
-            title={title}
-            onClick={() => openTab(link.tab)}
-            className="flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-lg bg-white px-1 py-2 text-center text-[11px] font-semibold leading-tight text-slate-700"
-            style={{ border: `1.5px dashed ${link.color}` }}
-        >
-            <Icon size={18} color={link.color} aria-hidden />
-            <span>{label}</span>
-        </button>
     );
 }
