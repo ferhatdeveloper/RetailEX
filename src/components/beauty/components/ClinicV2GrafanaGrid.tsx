@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Plus, X } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -6,13 +6,14 @@ import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { GRAFANA_CATEGORY_LABELS, type GrafanaReadyReport } from '../../../utils/grafanaEmbed';
 import {
+    CLINIC_V2_GRAFANA_PICKS_KEY,
     clinicGrafanaCards,
     clinicGrafanaCatalog,
     clinicGrafanaEmbedUrl,
-    readClinicGrafanaPicks,
-    writeClinicGrafanaPicks,
+    readGrafanaPicks,
+    writeGrafanaPicks,
 } from '../../../utils/clinicDashboardRich';
-import { ClinicGrafanaCardFrame } from './ClinicGrafanaCardFrame';
+import { CLINIC_V2_GRAFANA_SIZE_KEY, ClinicGrafanaCardFrame } from './ClinicGrafanaCardFrame';
 
 const LINE = '#e6ebf2';
 const BLUE = '#2563eb';
@@ -33,8 +34,19 @@ function folderOf(report: GrafanaReadyReport, english: boolean): string {
     return english ? label.en : label.tr;
 }
 
-/** Seçili Grafana kartları ve sonda rapor ekleme. Aylık bakışın sağ kolonu. */
-export function ClinicV2GrafanaGrid() {
+/** Seçili Grafana kartları ve sonda rapor ekleme. Aylık bakışın sağ kolonu ve yönetim panosu. */
+export function ClinicV2GrafanaGrid({
+    storageKey = CLINIC_V2_GRAFANA_PICKS_KEY,
+    sizeStorageKey = CLINIC_V2_GRAFANA_SIZE_KEY,
+    testId = 'clinic-grafana',
+}: {
+    /** Seçilen rapor uid listesinin localStorage anahtarı. */
+    storageKey?: string;
+    /** Kart yüksekliği ve genişlik bayrağının localStorage anahtarı. */
+    sizeStorageKey?: string;
+    /** data-testid öneki. Klinik çağrısı `clinic-grafana` kalır. */
+    testId?: string;
+} = {}) {
     const { tm } = useLanguage();
     const english = String(tm('localeCode') || '').startsWith('en');
     const catalog = useMemo(() => clinicGrafanaCatalog(), []);
@@ -54,7 +66,10 @@ export function ClinicV2GrafanaGrid() {
         ],
         [tm],
     );
-    const [picks, setPicks] = useState<string[]>(readClinicGrafanaPicks);
+    const [picks, setPicks] = useState<string[]>(() => readGrafanaPicks(storageKey));
+    useEffect(() => {
+        setPicks(readGrafanaPicks(storageKey));
+    }, [storageKey]);
     const [open, setOpen] = useState(false);
     const [seed, setSeed] = useState<Record<string, boolean>>({});
     const [openTick, setOpenTick] = useState(0);
@@ -70,20 +85,25 @@ export function ClinicV2GrafanaGrid() {
 
     const saveModal = () => {
         const next = [...selectionRef.current];
-        writeClinicGrafanaPicks(next);
+        writeGrafanaPicks(storageKey, next);
         setPicks(next);
         setOpen(false);
     };
 
     const dropUid = (uid: string) => {
         const next = picks.filter((item) => item !== uid);
-        writeClinicGrafanaPicks(next);
+        writeGrafanaPicks(storageKey, next);
         setPicks(next);
     };
 
     return (
         <>
-            <div data-testid="clinic-grafana-grid" className="grid min-w-0 w-full flex-1 grid-cols-1 content-start gap-3 lg:grid-cols-2">
+            <div
+                data-testid={`${testId}-grid`}
+                data-picks-key={storageKey}
+                data-size-key={sizeStorageKey}
+                className="grid min-w-0 w-full flex-1 grid-cols-1 content-start gap-3 lg:grid-cols-2"
+            >
                 {cards.map((report) => {
                     const title = reportTitle(report, english);
                     return (
@@ -91,6 +111,7 @@ export function ClinicV2GrafanaGrid() {
                             key={report.uid}
                             uid={report.uid}
                             title={title}
+                            storageKey={sizeStorageKey}
                             onRemove={() => dropUid(report.uid)}
                         >
                             <iframe
@@ -105,7 +126,7 @@ export function ClinicV2GrafanaGrid() {
                 })}
                 <button
                     type="button"
-                    data-testid="clinic-grafana-add"
+                    data-testid={`${testId}-add`}
                     onClick={openModal}
                     className="flex min-h-[11rem] w-full flex-col items-center justify-center gap-2 bg-white px-4 py-6 text-sm font-extrabold"
                     style={{ borderRadius: 12, border: '1px dashed #2563eb', color: BLUE, order: 1 }}
@@ -139,7 +160,11 @@ export function ClinicV2GrafanaGrid() {
                             enablePrint={false}
                             enableRefresh={false}
                             autoFooterSums={false}
-                            storageNamespace="clinicV2GrafanaPick"
+                            storageNamespace={
+                                storageKey === CLINIC_V2_GRAFANA_PICKS_KEY
+                                    ? 'clinicV2GrafanaPick'
+                                    : `grafanaPick_${storageKey}`
+                            }
                         />
                     </PercentBodyModalScrollBody>
                     <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-4 py-3">
@@ -153,7 +178,7 @@ export function ClinicV2GrafanaGrid() {
                         </button>
                         <button
                             type="button"
-                            data-testid="clinic-grafana-save"
+                            data-testid={`${testId}-save`}
                             onClick={saveModal}
                             className="rounded-lg px-3 py-1.5 text-xs font-extrabold text-white"
                             style={{ background: BLUE }}

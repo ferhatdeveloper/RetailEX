@@ -42,8 +42,11 @@ export type ClinicQuickLink = {
     icon: ClinicQuickIcon;
 };
 
-/** Seçilen Grafana pano uid listesi. */
+/** Seçilen Grafana pano uid listesi. Klinik kabuğu bu anahtarı kullanır. */
 export const CLINIC_V2_GRAFANA_PICKS_KEY = 'retailex_clinic_v2_grafana_picks';
+
+/** Yönetim panosu seçimi. Klinik listesinden ayrı durur. */
+export const BACKOFFICE_GRAFANA_PICKS_KEY = 'retailex_backoffice_grafana_picks';
 
 export function clinicMonthKeys(anchorYmd: string): string[] {
     const [y, m] = anchorYmd.split('-').map((n) => Number(n));
@@ -127,10 +130,10 @@ export const CLINIC_QUICK_LINKS: readonly ClinicQuickLink[] = [
     { id: 'support', labelKey: 'bClinicV2QaSupport', tab: 'clinic_ops', destKey: 'bShellNavClinicOps', proxy: true, color: '#334155', icon: 'headset' },
 ];
 
-export function readClinicGrafanaPicks(): string[] {
+export function readGrafanaPicks(storageKey: string): string[] {
     try {
         if (typeof localStorage === 'undefined') return [];
-        const raw = localStorage.getItem(CLINIC_V2_GRAFANA_PICKS_KEY);
+        const raw = localStorage.getItem(storageKey);
         if (!raw) return [];
         const parsed = JSON.parse(raw) as unknown;
         if (!Array.isArray(parsed)) return [];
@@ -145,17 +148,25 @@ export function readClinicGrafanaPicks(): string[] {
     }
 }
 
-export function writeClinicGrafanaPicks(uids: readonly string[]): void {
+export function writeGrafanaPicks(storageKey: string, uids: readonly string[]): void {
     const out: string[] = [];
     for (const item of uids) {
         const uid = String(item ?? '').trim();
         if (uid && !out.includes(uid)) out.push(uid);
     }
     try {
-        localStorage.setItem(CLINIC_V2_GRAFANA_PICKS_KEY, JSON.stringify(out));
+        localStorage.setItem(storageKey, JSON.stringify(out));
     } catch {
         /* depolama kapalı */
     }
+}
+
+export function readClinicGrafanaPicks(): string[] {
+    return readGrafanaPicks(CLINIC_V2_GRAFANA_PICKS_KEY);
+}
+
+export function writeClinicGrafanaPicks(uids: readonly string[]): void {
+    writeGrafanaPicks(CLINIC_V2_GRAFANA_PICKS_KEY, uids);
 }
 
 /** Proje kataloğu. Güzellik panoları önde. Sorgu oluşturucu ayrı tutulur. */

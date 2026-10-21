@@ -19,6 +19,9 @@ import {
   lookupWeightedAvgUnitCost,
 } from '../../services/weightedAverageUnitCost';
 import { summarizeBackofficeDailyStrip } from '../../utils/backofficeDailySummary';
+import { BACKOFFICE_GRAFANA_PICKS_KEY } from '../../utils/clinicDashboardRich';
+import { ClinicV2GrafanaGrid } from '../beauty/components/ClinicV2GrafanaGrid';
+import { BACKOFFICE_GRAFANA_SIZE_KEY } from '../beauty/components/ClinicGrafanaCardFrame';
 import { useMenuFavorites } from '../../hooks/useMenuFavorites';
 import {
   flattenMenuLeaves,
@@ -504,6 +507,12 @@ export function DashboardModule({
             </div>
           </div>
         </div>
+
+        <ClinicV2GrafanaGrid
+          storageKey={BACKOFFICE_GRAFANA_PICKS_KEY}
+          sizeStorageKey={BACKOFFICE_GRAFANA_SIZE_KEY}
+          testId="backoffice-grafana"
+        />
 
         {/* Finansal Özet - Kurumsal Tablo */}
         <div className={cardShell}>

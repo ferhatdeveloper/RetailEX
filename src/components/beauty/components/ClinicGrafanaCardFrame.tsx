@@ -4,6 +4,9 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 /** Seçili Grafana kartının yükseklik kademesi ve tam genişlik bayrağı. uid başına. */
 export const CLINIC_V2_GRAFANA_SIZE_KEY = 'retailex_clinic_v2_grafana_size';
 
+/** Yönetim panosu kart boyutu. Klinik boyutu ile karışmaz. */
+export const BACKOFFICE_GRAFANA_SIZE_KEY = 'retailex_backoffice_grafana_size';
+
 export const CLINIC_GRAFANA_HEIGHT_STEPS = [280, 420, 640] as const;
 
 type HeightStep = (typeof CLINIC_GRAFANA_HEIGHT_STEPS)[number];
@@ -24,10 +27,10 @@ function isHeightStep(value: number): value is HeightStep {
     return (CLINIC_GRAFANA_HEIGHT_STEPS as readonly number[]).includes(value);
 }
 
-export function readClinicGrafanaSizeFile(): SizeFile {
+function readSizeFile(storageKey: string): SizeFile {
     try {
         if (typeof localStorage === 'undefined') return emptyFile();
-        const raw = localStorage.getItem(CLINIC_V2_GRAFANA_SIZE_KEY);
+        const raw = localStorage.getItem(storageKey);
         if (!raw) return emptyFile();
         const parsed = JSON.parse(raw) as unknown;
         if (!parsed || typeof parsed !== 'object') return emptyFile();
@@ -46,24 +49,40 @@ export function readClinicGrafanaSizeFile(): SizeFile {
     }
 }
 
-function writeClinicGrafanaSizeFile(file: SizeFile): void {
+export function readClinicGrafanaSizeFile(): SizeFile {
+    return readSizeFile(CLINIC_V2_GRAFANA_SIZE_KEY);
+}
+
+function sameSizeFile(a: SizeFile, b: SizeFile): boolean {
+    if (a.wideUid !== b.wideUid) return false;
+    const aKeys = Object.keys(a.heights);
+    const bKeys = Object.keys(b.heights);
+    if (aKeys.length !== bKeys.length) return false;
+    return aKeys.every((key) => a.heights[key] === b.heights[key]);
+}
+
+function writeSizeFile(storageKey: string, file: SizeFile): void {
     try {
-        localStorage.setItem(CLINIC_V2_GRAFANA_SIZE_KEY, JSON.stringify(file));
+        localStorage.setItem(storageKey, JSON.stringify(file));
     } catch {
         /* depolama kapalı */
     }
     for (const notify of listeners) notify();
 }
 
-function useClinicGrafanaSizeFile(): SizeFile {
-    const [file, setFile] = useState<SizeFile>(() => readClinicGrafanaSizeFile());
+function useClinicGrafanaSizeFile(storageKey: string): SizeFile {
+    const [file, setFile] = useState<SizeFile>(() => readSizeFile(storageKey));
     useEffect(() => {
-        const pull = () => setFile(readClinicGrafanaSizeFile());
+        const pull = () => {
+            const next = readSizeFile(storageKey);
+            setFile((prev) => (sameSizeFile(prev, next) ? prev : next));
+        };
         listeners.add(pull);
+        pull();
         return () => {
             listeners.delete(pull);
         };
-    }, []);
+    }, [storageKey]);
     return file;
 }
 
@@ -77,28 +96,31 @@ export function ClinicGrafanaCardFrame({
     title,
     children,
     onRemove,
+    storageKey = CLINIC_V2_GRAFANA_SIZE_KEY,
 }: {
     uid: string;
     title: string;
     children: ReactNode;
     onRemove?: () => void;
+    /** Yükseklik ve genişlik kaydı. Verilmezse klinik anahtarı kalır. */
+    storageKey?: string;
 }) {
     const { tm } = useLanguage();
-    const file = useClinicGrafanaSizeFile();
+    const file = useClinicGrafanaSizeFile(storageKey);
     const height = file.heights[uid] ?? CLINIC_GRAFANA_HEIGHT_STEPS[0];
     const wide = file.wideUid === uid;
     const index = stepIndex(height);
 
     const setHeight = (next: HeightStep) => {
-        const current = readClinicGrafanaSizeFile();
+        const current = readSizeFile(storageKey);
         current.heights[uid] = next;
-        writeClinicGrafanaSizeFile(current);
+        writeSizeFile(storageKey, current);
     };
 
     const toggleWide = () => {
-        const current = readClinicGrafanaSizeFile();
+        const current = readSizeFile(storageKey);
         current.wideUid = current.wideUid === uid ? '' : uid;
-        writeClinicGrafanaSizeFile(current);
+        writeSizeFile(storageKey, current);
     };
 
     return (
