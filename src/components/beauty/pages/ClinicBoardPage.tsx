@@ -10,11 +10,9 @@ import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisi
 import { formatMoneyInteger } from '../../../utils/formatMoney';
 import { ClinicBoardMenu } from './ClinicBoardMenu';
 import { ClinicDayBoard } from './ClinicDayBoard';
-import { ClinicBoardShareDialog } from './ClinicBoardShareDialog';
 import {
     clinicBoardSideOpen,
     clinicBoardWeekYmds,
-    listClinicBoardOpenSlots,
     parseClinicBoardYmd,
     shiftClinicBoardYmd,
     type ClinicBoardSection,
@@ -48,7 +46,7 @@ async function settle<T>(task: Promise<T>, fallback: T): Promise<{ value: T; fai
     }
 }
 
-export function ClinicBoardPage() {
+export function ClinicBoardPage({ onOpenShareSlots }: { onOpenShareSlots?: () => void }) {
     const { tm } = useLanguage();
     const locale = tm('localeCode');
     const [section, setSection] = useState<ClinicBoardSection>('appointment');
@@ -63,7 +61,6 @@ export function ClinicBoardPage() {
     const [customers, setCustomers] = useState<BeautyCustomer[]>([]);
     const [appointments, setAppointments] = useState<BeautyAppointment[]>([]);
     const [loadFailed, setLoadFailed] = useState(false);
-    const [shareOpen, setShareOpen] = useState(false);
 
     const range = useMemo(() => {
         if (mode === 'week') return getWeekRangeLocal(parseClinicBoardYmd(anchor));
@@ -132,16 +129,6 @@ export function ClinicBoardPage() {
         return rows;
     }, [dayAppointments, customers]);
 
-    const openSlots = useMemo(
-        () => listClinicBoardOpenSlots({
-            staff,
-            appointments,
-            dayYmd: anchor,
-            staffFilterId: staffFilter,
-            unassignedName: tm('bClinicBoardUnassigned'),
-        }),
-        [staff, appointments, anchor, staffFilter, tm],
-    );
     const sideOpen = section === 'appointment' && clinicBoardSideOpen(surveyOn, crmOn);
     const weekDays = mode === 'week' ? clinicBoardWeekYmds(anchor) : [];
     const dateLabel = parseClinicBoardYmd(anchor).toLocaleDateString(locale, {
@@ -150,7 +137,6 @@ export function ClinicBoardPage() {
         year: 'numeric',
         weekday: 'long',
     });
-
     const step = (dir: number) => setAnchor((current) => shiftClinicBoardYmd(current, dir * (mode === 'week' ? 7 : 1)));
 
     const activeStaff = staff.filter((person) => person.is_active !== false);
@@ -225,7 +211,7 @@ export function ClinicBoardPage() {
                         <button
                             type="button"
                             data-testid="clinic-board-share-slots"
-                            onClick={() => setShareOpen(true)}
+                            onClick={() => onOpenShareSlots?.()}
                             className="flex h-8 items-center gap-1.5 rounded-lg border border-[#e6eaf0] px-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                         >
                             <Share2 size={14} aria-hidden />
@@ -413,20 +399,6 @@ export function ClinicBoardPage() {
                     )}
                 </div>
             </div>
-            {shareOpen && section === 'appointment' && (
-                <ClinicBoardShareDialog
-                    title={tm('bClinicBoardShareSlots')}
-                    dayLabel={dateLabel}
-                    slots={openSlots}
-                    heading={tm('bClinicBoardShareHeading')}
-                    emptyLabel={tm('bClinicBoardShareEmpty')}
-                    copyLabel={tm('bClinicBoardShareCopy')}
-                    copiedLabel={tm('bClinicBoardShareCopied')}
-                    whatsAppLabel={tm('bClinicBoardShareWhatsApp')}
-                    closeLabel={tm('close')}
-                    onClose={() => setShareOpen(false)}
-                />
-            )}
         </div>
     );
 }

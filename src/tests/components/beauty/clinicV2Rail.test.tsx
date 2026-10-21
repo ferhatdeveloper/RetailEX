@@ -77,6 +77,7 @@ describe('Klinik V2 sol şerit', () => {
         expect(CLINIC_V2_RAIL_GROUPS.find((group) => group.id === 'appointments')?.items.map((item) => item.id)).toEqual([
             'calendar',
             'clinic_board',
+            'share_open_slots',
         ]);
         const labelKeys = [
             'bClinicV2RailHome',
@@ -130,6 +131,8 @@ describe('Klinik V2 sol şerit', () => {
         expect(onSelect).toHaveBeenCalledWith('calendar');
         fireEvent.click(screen.getByRole('button', { name: 'Randevu tahtası' }));
         expect(onSelect).toHaveBeenCalledWith('clinic_board');
+        fireEvent.click(screen.getByRole('button', { name: 'Boş saatleri paylaş' }));
+        expect(onSelect).toHaveBeenCalledWith('share_open_slots');
         fireEvent.click(screen.getByRole('button', { name: 'Ayarlar' }));
         expect(onSelect).toHaveBeenCalledWith('clinic_ops');
         fireEvent.click(screen.getByRole('button', { name: 'Giderler' }));

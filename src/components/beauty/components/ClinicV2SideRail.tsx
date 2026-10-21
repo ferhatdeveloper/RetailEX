@@ -2,10 +2,11 @@ import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
     Activity, Apple, Baby, Banknote, BarChart3, Box, Calendar, ChevronLeft, ChevronRight,
-    ClipboardList, Layers, LayoutDashboard, Megaphone, Package, Scissors, Settings2, Smile, UserCog, Users,
+    ClipboardList, Layers, LayoutDashboard, Megaphone, Package, Scissors, Settings2, Share2, Smile, UserCog, Users,
 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { canAccessBeautyTab } from '../clinicShellNavConfig';
+import { SHARE_OPEN_SLOTS_LABEL_KEY, SHARE_OPEN_SLOTS_TAB_ID } from '../share-slots/shareSlotsStory';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import type { ClinicErpSpecialty } from '../../../types/beauty';
 
@@ -52,6 +53,7 @@ export const CLINIC_V2_RAIL_GROUPS: readonly ClinicV2RailGroup[] = [
         items: [
             { id: 'calendar', labelKey: 'bClinicV2RailCalendar', icon: Calendar, color: '#2563eb' },
             { id: 'clinic_board', labelKey: 'bClinicBoardNav', icon: Calendar, color: '#0ea5e9' },
+            { id: SHARE_OPEN_SLOTS_TAB_ID, labelKey: SHARE_OPEN_SLOTS_LABEL_KEY, icon: Share2, color: '#2563eb' },
         ],
     },
     {
