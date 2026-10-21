@@ -32,6 +32,7 @@ import type { Product, Sale } from '../../core/types';
 import { LeadManagement } from './components/LeadManagement';
 import { SatisfactionSurveyManagement } from './components/SatisfactionSurveyManagement';
 import { ClinicOperationsHub } from './components/ClinicOperationsHub';
+import { ClinicV2SettingsShell } from './components/ClinicV2SettingsShell';
 import { ClinicErpSpecialtyProvider, useClinicErpSpecialty } from './context/ClinicErpSpecialtyContext';
 import {
     canAccessBeautyTab,
@@ -794,7 +795,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                             <ClinicReportCenter onOpenAllReports={() => setActiveTab(GENERAL_REPORTS_TAB)} />
                         </div>
                     )}
-                    {activeTab === 'clinic_ops' && <ClinicOperationsHub />}
+                    {activeTab === 'clinic_ops' && (shellV2 ? <ClinicV2SettingsShell /> : <ClinicOperationsHub />)}
                     {activeTab === 'dental_chart' && <DentalChartScreen />}
                     {activeTab === 'physio_body' && <PhysioBodyScreen />}
                     {activeTab === 'obstetrics' && <ObstetricsScreen />}

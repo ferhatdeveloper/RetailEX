@@ -13,7 +13,7 @@ import type { ClinicErpSpecialty } from '../../types/beauty';
  * | Tarife / hizmet kataloğu | `services`, `packages`                      |
  * | Ünite / cihaz          | `devices`                                     |
  * | Raporlar               | `reports`                                     |
- * | Ayarlar / çok şube     | `clinic_ops` (ClinicOperationsHub)            |
+ * | Ayarlar / çok şube     | `clinic_ops` (V2 kabuk, V1 ClinicOperationsHub) |
  * | Personel               | `staff`                                       |
  *
  * `dental` uzmanlığı seçildiğinde sol menü bu sıraya yaklaşır (randevu önce, tedavi şeması vurgulu).
