@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Calendar, CheckCircle2, Scissors, Users, Wallet } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { BeautyAppointment, BeautySpecialist } from '../../../types/beauty';
 import { beautyAppointmentDateKey, formatLocalYmd, getWeekRangeLocal } from '../../../utils/dateLocal';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
-import { buildClinicV2View, type ClinicV2DayBlock, type ClinicV2ViewModel } from '../../../utils/clinicV2Charts';
+import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
+import { buildClinicV2View } from '../../../utils/clinicV2Charts';
 import { beautyService } from '../../../services/beautyService';
+import { useBeautyStore } from '../store/useBeautyStore';
 import {
-    CLINIC_V2_PALETTE as P,
     readClinicV2CrmPanel,
     readClinicV2SurveyPanel,
     writeClinicV2CrmPanel,
@@ -25,12 +25,70 @@ type Props = {
     todayStr: string;
 };
 
-type Mode = 'day' | 'week';
-
-const ROW_PX = 28;
+const PAGE = '#f3f6fb';
+const LINE = '#e6ebf2';
+const BLUE = '#2563eb';
+const RED = '#f04438';
+const TEAL = '#14b8a6';
+const ORANGE = '#f59e0b';
 
 function money(n: number): string {
     return formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
+}
+
+function ymdToDate(ymd: string): Date {
+    const [y, m, d] = ymd.split('-').map((n) => Number(n));
+    return new Date(y || 1970, (m || 1) - 1, d || 1);
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+    const dt = ymdToDate(ymd);
+    dt.setDate(dt.getDate() + days);
+    return formatLocalYmd(dt);
+}
+
+function eachYmd(start: string, end: string): string[] {
+    const out: string[] = [];
+    let cur = start;
+    while (cur <= end && out.length < 8) {
+        out.push(cur);
+        cur = addDaysYmd(cur, 1);
+    }
+    return out;
+}
+
+function monthKeys(anchor: string): string[] {
+    const [y, m] = anchor.split('-').map((n) => Number(n));
+    const out: string[] = [];
+    for (let i = 5; i >= 0; i -= 1) {
+        const dt = new Date(y || 1970, (m || 1) - 1 - i, 1);
+        out.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`);
+    }
+    return out;
+}
+
+function sessionName(): string {
+    try {
+        const raw = localStorage.getItem('exretail_session');
+        if (!raw) return '';
+        const user = JSON.parse(raw)?.user;
+        return String(user?.full_name || user?.username || '').trim();
+    } catch {
+        return '';
+    }
+}
+
+function statusKind(status: string): 'new' | 'confirmed' | 'arrived' | 'noshow' | 'cancelled' {
+    const s = status.toLowerCase();
+    if (s === 'confirmed' || s === 'pre_paid') return 'confirmed';
+    if (s === 'in_progress' || s === 'completed') return 'arrived';
+    if (s === 'no_show') return 'noshow';
+    if (s === 'cancelled' || s === 'canceled') return 'cancelled';
+    return 'new';
+}
+
+function openTab(tab: string) {
+    window.dispatchEvent(new CustomEvent('retailex-beauty-open-tab', { detail: { tab } }));
 }
 
 export function ClinicDashboardV2({
@@ -42,17 +100,32 @@ export function ClinicDashboardV2({
     todayStr,
 }: Props) {
     const { tm } = useLanguage();
-    const [anchorYmd, setAnchorYmd] = useState(todayStr);
-    const [mode, setMode] = useState<Mode>('day');
-    const [staffFilter, setStaffFilter] = useState('');
+    const customers = useBeautyStore((s) => s.customers);
+    const loadCustomers = useBeautyStore((s) => s.loadCustomers);
+    const [dayOffset, setDayOffset] = useState(0);
+    const [clock, setClock] = useState(() => new Date());
     const [surveyOn, setSurveyOn] = useState(readClinicV2SurveyPanel);
     const [crmOn, setCrmOn] = useState(readClinicV2CrmPanel);
     const [fetched, setFetched] = useState<BeautyAppointment[] | null>(null);
+    const [name] = useState(sessionName);
+
+    const selectedYmd = addDaysYmd(todayStr, dayOffset);
+    const locale = tm('localeCode') || 'tr-TR';
+
+    useEffect(() => {
+        const id = window.setInterval(() => setClock(new Date()), 1000);
+        return () => window.clearInterval(id);
+    }, []);
+
+    useEffect(() => {
+        void loadCustomers().catch(() => {});
+    }, [loadCustomers]);
 
     const range = useMemo(() => {
-        if (mode === 'week') return getWeekRangeLocal(ymdToDate(anchorYmd));
-        return { start: anchorYmd, end: anchorYmd };
-    }, [mode, anchorYmd]);
+        const week = getWeekRangeLocal(ymdToDate(todayStr));
+        const from = addDaysYmd(todayStr, -180);
+        return { start: from < week.start ? from : week.start, end: addDaysYmd(week.end, 1) };
+    }, [todayStr]);
 
     useEffect(() => {
         let cancel = false;
@@ -70,561 +143,419 @@ export function ClinicDashboardV2({
     }, [range.start, range.end]);
 
     const source = fetched !== null ? fetched : appointments;
-    const specs = staffFilter
-        ? specialists.filter((s) => s.id === staffFilter)
-        : specialists;
-    const dayKeys = mode === 'week' ? eachYmd(range.start, range.end) : [anchorYmd];
+    const todayRows = source.filter((a) => beautyAppointmentDateKey(a) === todayStr);
+    const selectedRows = source.filter((a) => beautyAppointmentDateKey(a) === selectedYmd);
+    const selectedVisible = selectedRows
+        .filter(beautyAptVisibleOnSchedule)
+        .slice()
+        .sort((a, b) => String(a.appointment_time || a.time || '').localeCompare(String(b.appointment_time || b.time || '')));
 
-    const views = useMemo(
+    const buckets = useMemo(() => {
+        const c = { scheduled: 0, confirmed: 0, arrived: 0, noshow: 0, cancelled: 0 };
+        for (const row of todayRows) {
+            const kind = statusKind(String(row.status || ''));
+            if (kind === 'new') c.scheduled += 1;
+            else if (kind === 'confirmed') c.confirmed += 1;
+            else if (kind === 'arrived') c.arrived += 1;
+            else if (kind === 'noshow') c.noshow += 1;
+            else c.cancelled += 1;
+        }
+        return c;
+    }, [todayRows]);
+
+    const noShowRate = todayRows.length ? Math.round((buckets.noshow / todayRows.length) * 100) : 0;
+    const occupancy = useMemo(
         () =>
-            dayKeys.map((key) =>
-                buildClinicV2View({
-                    appointments: source,
-                    specialists: specs,
-                    todayStr: key,
-                    dateKeyOf: beautyAppointmentDateKey,
-                    unassignedLabel: tm('bClinicV2Unassigned'),
-                }),
-            ),
-        [dayKeys, source, specs, tm],
+            buildClinicV2View({
+                appointments: source,
+                specialists,
+                todayStr,
+                dateKeyOf: beautyAppointmentDateKey,
+                unassignedLabel: tm('bClinicV2Unassigned'),
+            }).occupancyRate,
+        [source, specialists, todayStr, tm],
     );
 
-    const statusLabels = useMemo(
-        () => ({
-            completed: tm('bKpiCompletedLabel'),
-            pending: tm('bKpiPendingLabel'),
-            cancelled: tm('bKpiCancelledLabel'),
-        }),
-        [tm],
-    );
-    const summary = useMemo(() => mergeViews(views, mode, statusLabels), [views, mode, statusLabels]);
-    const showTahsilat = mode === 'day' && anchorYmd === todayStr;
-    const locale = tm('localeCode') || 'tr-TR';
-    const dateLabel = ymdToDate(anchorYmd).toLocaleDateString(locale, {
+    const week = useMemo(() => getWeekRangeLocal(ymdToDate(todayStr)), [todayStr]);
+    const weekDays = eachYmd(week.start, week.end);
+    const weekCounts = weekDays.map((day) => ({
+        day,
+        count: source.filter((a) => beautyAppointmentDateKey(a) === day && beautyAptVisibleOnSchedule(a)).length,
+    }));
+    const weekTotal = weekCounts.reduce((s, row) => s + row.count, 0);
+
+    const months = monthKeys(todayStr);
+    const monthCounts = months.map((key) => ({
+        key,
+        label: ymdToDate(`${key}-01`).toLocaleDateString(locale, { month: 'short' }),
+        count: source.filter((a) => beautyAppointmentDateKey(a).startsWith(key)).length,
+    }));
+    const monthMax = Math.max(1, ...monthCounts.map((row) => row.count));
+
+    const monthPrefix = todayStr.slice(0, 7);
+    const datedCustomers = customers.filter((c) => String(c.created_at || '').startsWith(monthPrefix));
+    const knowCreated = customers.some((c) => String(c.created_at || '').trim());
+    const customerValue = knowCreated ? datedCustomers.length : customers.length;
+    const customerLabel = knowCreated ? tm('bClinicV2NewThisMonth') : tm('bClinicV2RegisteredCustomers');
+
+    const showSteps = customers.length === 0 && appointmentCount === 0 && selectedVisible.length === 0 && dayOffset === 0;
+    const dateLabel = ymdToDate(todayStr).toLocaleDateString(locale, {
         day: 'numeric',
         month: 'long',
         year: 'numeric',
         weekday: 'long',
     });
+    const clockLabel = clock.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    const step = mode === 'week' ? 7 : 1;
-    const dayView = views[0];
-    const dayColumns = boardColumns(dayView, tm('bClinicV2Unassigned'), tm('bClinicV2ApptCount'), tm('bClinicV2EmptySlots'));
-
-    const toggleSurvey = () => {
-        const next = !surveyOn;
-        setSurveyOn(next);
-        writeClinicV2SurveyPanel(next);
-    };
-    const toggleCrm = () => {
-        const next = !crmOn;
-        setCrmOn(next);
-        writeClinicV2CrmPanel(next);
-    };
-
-    const surveyRows = surveyOn ? summary.completedBlocks : [];
-    const crmRows = crmOn ? uniqueCustomers(summary.allBlocks) : [];
+    const fill = (tpl: string, n: number) => tpl.replace('{n}', String(n));
 
     return (
-        <div className="flex h-full min-h-0 flex-col" style={{ background: P.bg, color: P.text }}>
-            <div
-                className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-white px-3 py-2"
-                style={{ borderColor: P.line }}
-            >
-                <div className="flex items-center gap-1">
-                    <IconButton label={tm('bClinicV2Prev')} onClick={() => setAnchorYmd((d) => addDaysYmd(d, -step))}>
-                        <ChevronLeft size={16} />
-                    </IconButton>
-                    <span
-                        className="rounded-md border bg-white px-3 py-1 text-sm font-semibold"
-                        style={{ borderColor: P.line, color: P.text }}
-                    >
-                        {dateLabel}
-                    </span>
-                    <IconButton label={tm('bClinicV2Next')} onClick={() => setAnchorYmd((d) => addDaysYmd(d, step))}>
-                        <ChevronRight size={16} />
-                    </IconButton>
-                </div>
-                <button
-                    type="button"
-                    onClick={() => setAnchorYmd(todayStr)}
-                    className="rounded-md px-3 py-1 text-xs font-bold text-white"
-                    style={{ background: anchorYmd === todayStr ? P.accent : '#9ca3af' }}
+        <div className="h-full min-h-0 overflow-y-auto" style={{ background: PAGE, color: '#0f172a' }}>
+            <div className="mx-auto flex max-w-[1240px] flex-col gap-3 p-3">
+                <section
+                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-white"
+                    style={{ borderRadius: 16, background: 'linear-gradient(90deg,#1e40af 0%,#2563eb 52%,#38bdf8 100%)' }}
                 >
-                    {tm('bClinicV2Today')}
-                </button>
-                <select
-                    aria-label={tm('bClinicV2AllStaff')}
-                    value={staffFilter}
-                    onChange={(e) => setStaffFilter(e.target.value)}
-                    className="h-8 max-w-[12rem] rounded-md border bg-white px-2 text-xs font-semibold"
-                    style={{ borderColor: P.line, color: P.text }}
-                >
-                    <option value="">{tm('bClinicV2AllStaff')}</option>
-                    {specialists
-                        .filter((s) => s.is_active)
-                        .slice()
-                        .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
-                        .map((s) => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                </select>
-                <div className="ml-auto flex flex-wrap items-center gap-1">
-                    <ToggleChip on={surveyOn} label={tm('bClinicV2SurveyToggle')} onClick={toggleSurvey} />
-                    <ToggleChip on={crmOn} label={tm('bClinicV2CrmToggle')} onClick={toggleCrm} />
-                    <div className="ml-1 flex overflow-hidden rounded-md border" style={{ borderColor: P.line }}>
-                        <Seg active={mode === 'day'} label={tm('bClinicV2Day')} onClick={() => setMode('day')} />
-                        <Seg active={mode === 'week'} label={tm('bClinicV2Week')} onClick={() => setMode('week')} />
+                    <div className="min-w-0">
+                        <div className="text-[22px] font-extrabold leading-tight">
+                            {tm('bClinicV2Hello')}{name ? `, ${name}` : ''}
+                        </div>
+                        <div className="mt-1 text-[13px] font-medium text-white/90">
+                            {dateLabel}
+                            <span className="mx-2 opacity-70">·</span>
+                            {clockLabel}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-[12px] font-bold">
+                            <Chip text={fill(tm('bClinicV2CustomerChip'), customers.length)} />
+                            <Chip text={fill(tm('bClinicV2ApptCount'), appointmentCount)} />
+                            <Chip text={`${tm('bClinicV2KpiOccupancy')} %${occupancy}`} />
+                        </div>
                     </div>
-                </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-auto p-3">
-                {mode === 'day' ? (
-                    <TimeBoard
-                        startMin={dayView?.dayStartMin ?? 8 * 60}
-                        endMin={dayView?.dayEndMin ?? 20 * 60}
-                        columns={dayColumns}
-                        locale={locale}
-                        timeLabel={tm('time')}
-                        customerFallback={tm('bCustomerFallbackName')}
-                    />
-                ) : (
-                    <TimeBoard
-                        startMin={8 * 60}
-                        endMin={20 * 60}
-                        timeLabel={tm('time')}
-                        customerFallback={tm('bCustomerFallbackName')}
-                        locale={locale}
-                        columns={dayKeys.map((key, i) => {
-                            const view = views[i];
-                            const blocks = view?.blocks ?? [];
-                            return {
-                                id: key,
-                                title: ymdToDate(key).toLocaleDateString(locale, { weekday: 'short', day: 'numeric' }),
-                                subtitle: tm('bClinicV2ApptCount').replace('{n}', String(blocks.length)),
-                                selected: key === anchorYmd,
-                                blocks,
-                            };
-                        })}
-                    />
-                )}
-            </div>
-
-            <div className="grid shrink-0 grid-cols-1 gap-2 border-t bg-white px-3 py-2 md:grid-cols-3" style={{ borderColor: P.line }}>
-                <MiniStat
-                    title={tm('bClinicV2KpiAppointments')}
-                    value={String(mode === 'day' && anchorYmd === todayStr ? appointmentCount : summary.appointmentCount)}
-                    extra={`${tm('bKpiCancelledLabel')}: ${mode === 'day' && anchorYmd === todayStr ? cancelledCount : summary.cancelled}`}
-                />
-                <MiniStat
-                    title={tm('cebeGirenNakit')}
-                    value={showTahsilat ? money(revenue) : '0'}
-                />
-                <MiniStat
-                    title={tm('bClinicV2KpiOccupancy')}
-                    value={`${summary.occupancyRate}%`}
-                />
-            </div>
-            <div className="grid shrink-0 grid-cols-1 gap-2 px-3 pb-3 md:grid-cols-3">
-                <ChartCard title={tm('bClinicV2StatusChart')}>
-                    {summary.statusSum === 0 ? (
-                        <ZeroLine />
-                    ) : (
-                        <div className="flex h-24 items-center gap-2">
-                            <div className="h-24 w-24 shrink-0">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <PieChart>
-                                        <Pie data={summary.pie} dataKey="value" nameKey="name" innerRadius={22} outerRadius={36} stroke="none">
-                                            {summary.pie.map((entry) => (
-                                                <Cell key={entry.name} fill={entry.fill} />
-                                            ))}
-                                        </Pie>
-                                        <Tooltip />
-                                    </PieChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <ul className="min-w-0 flex-1 text-[11px] font-semibold">
-                                {summary.status.map((row) => (
-                                    <li key={row.key} className="flex justify-between gap-2">
-                                        <span>{row.label}</span>
-                                        <span>{row.count}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-                </ChartCard>
-                <ChartCard title={tm('bClinicV2ServiceRevenue')}>
-                    {summary.serviceRevenue.length === 0 ? (
-                        <ZeroLine />
-                    ) : (
-                        <div className="h-24">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={summary.serviceRevenue} layout="vertical" margin={{ left: 4, right: 4, top: 4, bottom: 0 }}>
-                                    <XAxis type="number" hide />
-                                    <YAxis type="category" dataKey="name" width={108} tick={{ fontSize: 10, fill: P.text }} />
-                                    <Tooltip formatter={(value) => money(Number(value ?? 0))} />
-                                    <Bar dataKey="amount" fill="#64748b" radius={[0, 3, 3, 0]} maxBarSize={12} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    )}
-                </ChartCard>
-                <ChartCard title={tm('bClinicV2StaffOccupancy')}>
-                    {summary.staffOccupancy.length === 0 ? (
-                        <ZeroLine />
-                    ) : (
-                        <div className="h-24">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={summary.staffOccupancy} layout="vertical" margin={{ left: 4, right: 4, top: 4, bottom: 0 }}>
-                                    <XAxis type="number" hide />
-                                    <YAxis type="category" dataKey="name" width={108} tick={{ fontSize: 10, fill: P.text }} />
-                                    <Tooltip formatter={(value) => `${Number(value ?? 0)}%`} />
-                                    <Bar dataKey="rate" fill="#94a3b8" radius={[0, 3, 3, 0]} maxBarSize={12} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    )}
-                </ChartCard>
-            </div>
-
-            {surveyOn ? (
-                <div className="shrink-0 border-t bg-white px-3 py-2 text-xs" style={{ borderColor: P.line }}>
-                    <div className="mb-1 font-bold">{tm('bClinicV2SurveyToggle')}</div>
-                    {surveyRows.length === 0 ? (
-                        <ZeroLine />
-                    ) : (
-                        surveyRows.map((b) => (
-                            <div key={b.id} className="flex gap-3 border-t py-1" style={{ borderColor: P.lineSoft }}>
-                                <span className="w-12 font-semibold">{formatHour(b.startMin)}</span>
-                                <span className="min-w-0 flex-1 truncate">{b.customerName || tm('bCustomerFallbackName')}</span>
-                                <span className="truncate" style={{ color: P.muted }}>{b.serviceName}</span>
-                            </div>
-                        ))
-                    )}
-                </div>
-            ) : null}
-
-            {crmOn ? (
-                <div className="shrink-0 border-t bg-white px-3 py-2 text-xs" style={{ borderColor: P.line }}>
-                    <div className="mb-1 font-bold">{tm('bClinicV2CrmToggle')}</div>
-                    {crmRows.length === 0 ? (
-                        <ZeroLine />
-                    ) : (
-                        crmRows.map((name) => (
-                            <div key={name} className="border-t py-1" style={{ borderColor: P.lineSoft }}>{name}</div>
-                        ))
-                    )}
-                </div>
-            ) : null}
-        </div>
-    );
-}
-
-type BoardColumn = {
-    id: string;
-    title: string;
-    subtitle: string;
-    selected?: boolean;
-    blocks: ClinicV2DayBlock[];
-};
-
-function TimeBoard({
-    startMin,
-    endMin,
-    columns,
-    timeLabel,
-    customerFallback,
-    locale,
-}: {
-    startMin: number;
-    endMin: number;
-    columns: BoardColumn[];
-    timeLabel: string;
-    customerFallback: string;
-    locale: string;
-}) {
-    const slots: number[] = [];
-    for (let t = startMin; t < endMin; t += 30) slots.push(t);
-    const height = Math.max(ROW_PX, slots.length * ROW_PX);
-    void locale;
-    return (
-        <div className="overflow-x-auto rounded-md border bg-white" style={{ borderColor: P.line }}>
-            <div
-                className="grid"
-                style={{
-                    gridTemplateColumns: `56px repeat(${Math.max(1, columns.length)}, minmax(140px, 1fr))`,
-                    minWidth: 56 + Math.max(1, columns.length) * 140,
-                }}
-            >
-                <div className="sticky top-0 z-10 border-b border-r bg-white px-1 py-2 text-[10px] font-semibold" style={{ borderColor: P.line, color: P.muted }}>
-                    {timeLabel}
-                </div>
-                {columns.map((col) => (
-                    <div
-                        key={col.id}
-                        className="sticky top-0 z-10 border-b bg-white px-2 py-1.5"
-                        style={{ borderColor: P.line }}
-                    >
-                        <div className="truncate text-center text-xs font-bold" style={{ color: col.selected ? P.accent : P.text }}>
-                            {col.title}
-                        </div>
-                        <div className="truncate text-center text-[10px] font-medium" style={{ color: P.muted }}>{col.subtitle}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <GhostButton label={tm('bClinicV2OpenCalendar')} onClick={() => openTab('calendar')} />
+                        <GhostButton label={tm('bClinicV2OpenClients')} onClick={() => openTab('clients')} />
+                        <GhostButton label={tm('bClinicV2OpenServices')} onClick={() => openTab('services')} />
+                        <GhostButton
+                            label={tm('bClinicV2SurveyToggle')}
+                            pressed={surveyOn}
+                            onClick={() => {
+                                const next = !surveyOn;
+                                setSurveyOn(next);
+                                writeClinicV2SurveyPanel(next);
+                            }}
+                        />
+                        <GhostButton
+                            label={tm('bClinicV2CrmToggle')}
+                            pressed={crmOn}
+                            onClick={() => {
+                                const next = !crmOn;
+                                setCrmOn(next);
+                                writeClinicV2CrmPanel(next);
+                            }}
+                        />
                     </div>
-                ))}
-                <div className="relative border-r" style={{ height, borderColor: P.line }}>
-                    {slots.map((t, i) => (
-                        <div
-                            key={t}
-                            className="absolute left-0 right-0 border-t px-1 text-[10px] font-medium leading-none"
-                            style={{ top: i * ROW_PX, height: ROW_PX, borderColor: P.lineSoft, color: P.muted, paddingTop: 2 }}
-                        >
-                            {formatHour(t)}
+                </section>
+
+                {showSteps ? (
+                    <section className="bg-white px-4 py-3" style={{ borderRadius: 16, border: `1px solid ${LINE}` }}>
+                        <h2 className="text-[15px] font-extrabold">{tm('bClinicV2StepsTitle')}</h2>
+                        <div className="mt-3 grid gap-2 md:grid-cols-3">
+                            <Step n={1} title={tm('bClinicV2StepServices')} action={tm('bClinicV2StepGo')} onClick={() => openTab('services')} />
+                            <Step n={2} title={tm('bClinicV2StepClients')} action={tm('bClinicV2StepGo')} onClick={() => openTab('clients')} />
+                            <Step n={3} title={tm('bClinicV2StepCalendar')} action={tm('bClinicV2StepGo')} onClick={() => openTab('calendar')} />
                         </div>
-                    ))}
-                </div>
-                {columns.map((col) => (
-                    <div key={`${col.id}-body`} className="relative border-l" style={{ height, borderColor: P.lineSoft, background: '#f8fafc' }}>
-                        {slots.map((t, i) => (
-                            <div key={t} className="absolute left-0 right-0 border-t" style={{ top: i * ROW_PX, borderColor: P.lineSoft }} />
-                        ))}
-                        {col.blocks.map((b) => {
-                            const top = ((b.startMin - startMin) / 30) * ROW_PX;
-                            const span = Math.max(ROW_PX - 1, ((Math.max(b.durationMin, 30)) / 30) * ROW_PX - 1);
-                            return (
-                                <div
-                                    key={b.id}
-                                    className="absolute overflow-hidden px-1.5 py-0.5 text-[11px] leading-tight"
-                                    style={{
-                                        top: Math.max(0, top),
-                                        height: span,
-                                        left: 2,
-                                        right: 2,
-                                        background: P.block,
-                                        border: `1px solid ${P.line}`,
-                                        borderLeft: `3px solid ${statusColor(b.status)}`,
-                                        color: P.text,
-                                    }}
-                                    title={`${formatHour(b.startMin)} ${b.customerName} ${b.serviceName} ${money(b.price)}`}
+                    </section>
+                ) : null}
+
+                <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
+                    <Metric
+                        tint={BLUE}
+                        title={tm('bClinicV2KpiAppointments')}
+                        value={String(appointmentCount)}
+                        icon={<Calendar size={18} />}
+                        footer={`${tm('bClinicV2StatusNew')} ${buckets.scheduled} · ${tm('bClinicV2StatusConfirmed')} ${buckets.confirmed} · ${tm('bClinicV2StatusArrived')} ${buckets.arrived} · ${tm('bClinicV2StatusNoShow')} ${buckets.noshow} · ${tm('bKpiCancelledLabel')} ${cancelledCount || buckets.cancelled}`}
+                    />
+                    <Metric
+                        tint={RED}
+                        title={tm('bClinicV2NoShowRate')}
+                        value={`%${noShowRate}`}
+                        icon={<Users size={18} />}
+                        footer={`${buckets.noshow} / ${todayRows.length || 0}`}
+                    />
+                    <Metric
+                        tint={TEAL}
+                        title={tm('cebeGirenNakit')}
+                        value={money(revenue)}
+                        icon={<Wallet size={18} />}
+                        footer={tm('bClinicV2Today')}
+                    />
+                    <Metric
+                        tint={ORANGE}
+                        title={customerLabel}
+                        value={String(customerValue)}
+                        icon={<Users size={18} />}
+                        footer={fill(tm('bClinicV2CustomerChip'), customers.length)}
+                    />
+                </section>
+
+                <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.65fr) minmax(260px, 0.85fr)', gap: 12 }}>
+                    <div className="bg-white" style={{ borderRadius: 16, border: `1px solid ${LINE}`, minHeight: 220 }}>
+                        <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2" style={{ borderColor: LINE }}>
+                            <DaySwitch
+                                active={dayOffset === -1}
+                                label={tm('bClinicV2Yesterday')}
+                                onClick={() => setDayOffset(-1)}
+                            />
+                            <DaySwitch
+                                active={dayOffset === 0}
+                                label={tm('bClinicV2Today')}
+                                onClick={() => setDayOffset(0)}
+                            />
+                            <DaySwitch
+                                active={dayOffset === 1}
+                                label={tm('bClinicV2Tomorrow')}
+                                onClick={() => setDayOffset(1)}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => openTab('calendar')}
+                                className="ml-auto rounded-lg border px-3 py-1 text-xs font-bold"
+                                style={{ borderColor: LINE, color: BLUE }}
+                            >
+                                {tm('bClinicV2OpenCalendar')}
+                            </button>
+                        </div>
+                        {selectedVisible.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+                                <CheckCircle2 size={42} color={BLUE} />
+                                <div className="mt-3 text-[16px] font-extrabold">{tm('bClinicV2NoAppointments')}</div>
+                                <button
+                                    type="button"
+                                    onClick={() => openTab('calendar')}
+                                    className="mt-3 rounded-lg px-3 py-1.5 text-xs font-bold text-white"
+                                    style={{ background: BLUE }}
                                 >
-                                    <div className="truncate font-semibold">{formatHour(b.startMin)}</div>
-                                    <div className="truncate">{b.customerName || customerFallback}</div>
-                                    <div className="truncate" style={{ color: P.muted }}>{b.serviceName}</div>
-                                    <div className="truncate font-semibold">{money(b.price)}</div>
-                                </div>
-                            );
-                        })}
+                                    {tm('bClinicV2AddAppointment')}
+                                </button>
+                            </div>
+                        ) : (
+                            <div>
+                                {selectedVisible.map((apt) => (
+                                    <div
+                                        key={apt.id}
+                                        className="grid items-center gap-2 border-b px-3 py-2"
+                                        style={{
+                                            gridTemplateColumns: '72px minmax(0,1fr) auto',
+                                            borderColor: LINE,
+                                            borderLeft: `4px solid ${kindColor(statusKind(String(apt.status || '')))}`,
+                                        }}
+                                    >
+                                        <div className="text-sm font-extrabold">{String(apt.appointment_time || apt.time || '').slice(0, 5)}</div>
+                                        <div className="min-w-0">
+                                            <div className="truncate text-sm font-bold">{apt.customer_name || tm('bCustomerFallbackName')}</div>
+                                            <div className="truncate text-xs font-semibold text-slate-500">{apt.service_name || '—'}</div>
+                                        </div>
+                                        <div className="text-sm font-extrabold">{money(Number(apt.total_price) || 0)}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {surveyOn ? (
+                            <aside className="border-t px-3 py-2 text-xs" style={{ borderColor: LINE }}>
+                                <div className="font-extrabold">{tm('bClinicV2SurveyToggle')}</div>
+                                {selectedVisible.filter((a) => String(a.status) === 'completed').length === 0 ? (
+                                    <div className="py-1 font-semibold text-slate-400">0</div>
+                                ) : (
+                                    selectedVisible
+                                        .filter((a) => String(a.status) === 'completed')
+                                        .map((a) => (
+                                            <div key={`s-${a.id}`} className="truncate py-0.5">
+                                                {String(a.appointment_time || '').slice(0, 5)} {a.customer_name} {a.service_name}
+                                            </div>
+                                        ))
+                                )}
+                            </aside>
+                        ) : null}
+                        {crmOn ? (
+                            <aside className="border-t px-3 py-2 text-xs" style={{ borderColor: LINE }}>
+                                <div className="font-extrabold">{tm('bClinicV2CrmToggle')}</div>
+                                {uniqueNames(selectedVisible).length === 0 ? (
+                                    <div className="py-1 font-semibold text-slate-400">0</div>
+                                ) : (
+                                    uniqueNames(selectedVisible).map((n) => (
+                                        <div key={n} className="truncate py-0.5">{n}</div>
+                                    ))
+                                )}
+                            </aside>
+                        ) : null}
                     </div>
-                ))}
+
+                    <div className="flex flex-col gap-3">
+                        <div className="bg-white px-3 py-3" style={{ borderRadius: 16, border: `1px solid ${LINE}` }}>
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-sm font-extrabold">{tm('bClinicV2WeekProgram')}</h2>
+                                <span className="text-xs font-bold text-slate-500">{fill(tm('bClinicV2ApptCount'), weekTotal)}</span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-7 gap-1">
+                                {weekCounts.map((row) => {
+                                    const on = row.day === todayStr;
+                                    return (
+                                        <div
+                                            key={row.day}
+                                            className="rounded-md px-0.5 py-1 text-center"
+                                            style={{ background: on ? '#eff6ff' : '#f8fafc', color: on ? BLUE : '#334155' }}
+                                        >
+                                            <div className="text-[10px] font-bold">
+                                                {ymdToDate(row.day).toLocaleDateString(locale, { weekday: 'short' })}
+                                            </div>
+                                            <div className="text-sm font-extrabold">{row.count}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <div className="bg-white px-3 py-4 text-center" style={{ borderRadius: 16, border: `1px solid ${LINE}` }}>
+                            <h2 className="text-sm font-extrabold">{tm('cebeGirenNakit')}</h2>
+                            {revenue > 0 ? (
+                                <div className="mt-2 text-2xl font-extrabold" style={{ color: TEAL }}>{money(revenue)}</div>
+                            ) : (
+                                <div className="mt-3 flex flex-col items-center text-sm font-semibold text-slate-500">
+                                    <CheckCircle2 size={28} color="#22c55e" />
+                                    <span className="mt-1">{tm('bClinicV2NoPayment')}</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </section>
+
+                <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(240px, 0.7fr)', gap: 12 }}>
+                    <div className="bg-white px-3 py-3" style={{ borderRadius: 16, border: `1px solid ${LINE}` }}>
+                        <h2 className="text-sm font-extrabold">{tm('bClinicV2MonthChart')}</h2>
+                        <div className="mt-3 grid grid-cols-6 items-end gap-2" style={{ height: 120 }}>
+                            {monthCounts.map((row) => (
+                                <div key={row.key} className="flex h-full flex-col justify-end text-center">
+                                    <div className="text-[10px] font-bold text-slate-500">{row.count}</div>
+                                    <div
+                                        className="mx-auto w-full max-w-[28px] rounded-t"
+                                        style={{
+                                            height: `${Math.max(2, Math.round((row.count / monthMax) * 88))}px`,
+                                            background: row.count ? BLUE : '#e2e8f0',
+                                        }}
+                                    />
+                                    <div className="mt-1 text-[10px] font-semibold text-slate-500">{row.label}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="bg-white px-3 py-3" style={{ borderRadius: 16, border: `1px solid ${LINE}` }}>
+                        <h2 className="text-sm font-extrabold">{tm('bClinicV2QuickAccess')}</h2>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            <Quick label={tm('bClinicV2OpenCalendar')} icon={<Calendar size={16} />} onClick={() => openTab('calendar')} />
+                            <Quick label={tm('bClinicV2OpenClients')} icon={<Users size={16} />} onClick={() => openTab('clients')} />
+                            <Quick label={tm('bClinicV2OpenServices')} icon={<Scissors size={16} />} onClick={() => openTab('services')} />
+                            <Quick label={tm('bClinicV2OpenStaff')} icon={<Users size={16} />} onClick={() => openTab('staff')} />
+                            <Quick label={tm('bClinicV2OpenReports')} icon={<Wallet size={16} />} onClick={() => openTab('reports')} />
+                            <Quick label={tm('bClinicV2SurveyToggle')} icon={<CheckCircle2 size={16} />} onClick={() => openTab('surveys')} />
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
     );
 }
 
-function boardColumns(
-    view: ClinicV2ViewModel | undefined,
-    unassigned: string,
-    apptTpl: string,
-    emptyTpl: string,
-): BoardColumn[] {
-    const staff = view?.dayStaff?.length
-        ? view.dayStaff
-        : [{ id: 'unassigned', name: unassigned, color: '#94a3b8' }];
-    const start = view?.dayStartMin ?? 8 * 60;
-    const end = view?.dayEndMin ?? 20 * 60;
-    return staff.map((col) => {
-        const blocks = (view?.blocks ?? []).filter((b) => b.staffId === col.id);
-        const count = blocks.length;
-        const open = emptySlotCount(blocks, start, end);
-        return {
-            id: col.id,
-            title: col.name,
-            subtitle: `${apptTpl.replace('{n}', String(count))} · ${emptyTpl.replace('{n}', String(open))}`,
-            blocks,
-        };
-    });
-}
-
-function emptySlotCount(blocks: ClinicV2DayBlock[], start: number, end: number): number {
-    let open = 0;
-    for (let t = start; t < end; t += 30) {
-        const hit = blocks.some((b) => b.startMin < t + 30 && b.startMin + Math.max(b.durationMin, 30) > t);
-        if (!hit) open += 1;
-    }
-    return open;
-}
-
-function mergeViews(
-    views: ClinicV2ViewModel[],
-    mode: Mode,
-    labels: { completed: string; pending: string; cancelled: string },
-) {
-    const statusKeys = ['completed', 'pending', 'cancelled'] as const;
-    const status = statusKeys.map((key) => ({
-        key,
-        label: labels[key],
-        count: views.reduce((sum, view) => sum + (view.status.find((s) => s.key === key)?.count ?? 0), 0),
-    }));
-    const revenue = new Map<string, number>();
-    const occ = new Map<string, { name: string; sum: number; n: number }>();
-    const allBlocks: ClinicV2DayBlock[] = [];
-    for (const view of views) {
-        for (const row of view.serviceRevenue) revenue.set(row.name, (revenue.get(row.name) ?? 0) + row.amount);
-        for (const row of view.staffOccupancy) {
-            const prev = occ.get(row.id);
-            occ.set(row.id, {
-                name: row.name,
-                sum: (prev?.sum ?? 0) + row.rate,
-                n: (prev?.n ?? 0) + 1,
-            });
-        }
-        allBlocks.push(...view.blocks);
-    }
-    const pieColors: Record<string, string> = {
-        completed: P.completed,
-        pending: P.pending,
-        cancelled: P.cancelled,
-    };
-    const named = status;
-    return {
-        status: named,
-        statusSum: named.reduce((s, row) => s + row.count, 0),
-        pie: named.filter((row) => row.count > 0).map((row) => ({
-            name: row.key,
-            value: row.count,
-            fill: pieColors[row.key] ?? '#64748b',
-        })),
-        serviceRevenue: Array.from(revenue.entries())
-            .map(([name, amount]) => ({ name, amount }))
-            .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name, 'tr')),
-        staffOccupancy: Array.from(occ.values()).map((row) => ({
-            name: row.name,
-            rate: row.n > 0 ? Math.round(row.sum / row.n) : 0,
-        })),
-        occupancyRate: mode === 'day' ? (views[0]?.occupancyRate ?? 0) : averageRate(views),
-        appointmentCount: named.find((s) => s.key === 'completed')!.count + named.find((s) => s.key === 'pending')!.count,
-        cancelled: named.find((s) => s.key === 'cancelled')?.count ?? 0,
-        allBlocks,
-        completedBlocks: allBlocks.filter((b) => b.status === 'completed'),
-    };
-}
-
-function averageRate(views: ClinicV2ViewModel[]): number {
-    if (!views.length) return 0;
-    const sum = views.reduce((s, view) => s + view.occupancyRate, 0);
-    return Math.round(sum / views.length);
-}
-
-function uniqueCustomers(blocks: ClinicV2DayBlock[]): string[] {
+function uniqueNames(rows: BeautyAppointment[]): string[] {
     const names = new Set<string>();
-    for (const b of blocks) {
-        const name = b.customerName.trim();
+    for (const row of rows) {
+        const name = String(row.customer_name || '').trim();
         if (name) names.add(name);
     }
     return Array.from(names);
 }
 
-function statusColor(status: string): string {
-    if (status === 'completed') return P.completed;
-    if (status === 'cancelled' || status === 'canceled' || status === 'no_show') return P.cancelled;
-    return P.pending;
+function kindColor(kind: ReturnType<typeof statusKind>): string {
+    if (kind === 'arrived') return TEAL;
+    if (kind === 'confirmed') return BLUE;
+    if (kind === 'noshow' || kind === 'cancelled') return RED;
+    return ORANGE;
 }
 
-function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+function Chip({ text }: { text: string }) {
     return (
-        <button
-            type="button"
-            aria-label={label}
-            title={label}
-            onClick={onClick}
-            className="flex h-8 w-8 items-center justify-center rounded-md border bg-white"
-            style={{ borderColor: P.line, color: P.text }}
-        >
-            {children}
-        </button>
+        <span className="rounded-md bg-white/20 px-2 py-0.5">{text}</span>
     );
 }
 
-function Seg({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+function GhostButton({ label, onClick, pressed }: { label: string; onClick: () => void; pressed?: boolean }) {
     return (
         <button
             type="button"
+            aria-pressed={pressed}
             onClick={onClick}
-            className="px-3 py-1 text-xs font-bold"
-            style={{
-                background: active ? '#fff' : '#f9fafb',
-                color: active ? P.accent : P.muted,
-            }}
+            className="rounded-lg px-3 py-1.5 text-xs font-bold"
+            style={{ background: pressed ? '#fff' : 'rgba(255,255,255,0.18)', color: pressed ? BLUE : '#fff' }}
         >
             {label}
         </button>
     );
 }
 
-function ToggleChip({ on, label, onClick }: { on: boolean; label: string; onClick: () => void }) {
+function Step({ n, title, action, onClick }: { n: number; title: string; action: string; onClick: () => void }) {
     return (
-        <button
-            type="button"
-            aria-pressed={on}
-            onClick={onClick}
-            className="rounded-md border px-2 py-1 text-xs font-bold"
-            style={{
-                borderColor: on ? P.accent : P.line,
-                color: on ? P.accent : P.muted,
-                background: '#fff',
-            }}
-        >
-            {label}
-        </button>
-    );
-}
-
-function MiniStat({ title, value, extra }: { title: string; value: string; extra?: string }) {
-    return (
-        <div className="rounded-md border bg-white px-2 py-1.5" style={{ borderColor: P.line }}>
-            <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: P.muted }}>{title}</div>
-            <div className="text-sm font-bold">{value}{extra ? <span className="ml-2 text-[11px] font-medium" style={{ color: P.muted }}>{extra}</span> : null}</div>
+        <div className="flex items-center gap-2 rounded-xl px-2 py-2" style={{ background: '#f8fafc', border: `1px solid ${LINE}` }}>
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-extrabold text-white" style={{ background: BLUE }}>{n}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-bold">{title}</span>
+            <button type="button" onClick={onClick} className="rounded-md px-2 py-1 text-xs font-bold text-white" style={{ background: BLUE }}>{action}</button>
         </div>
     );
 }
 
-function ChartCard({ title, children }: { title: string; children: ReactNode }) {
+function Metric({
+    tint,
+    title,
+    value,
+    footer,
+    icon,
+}: {
+    tint: string;
+    title: string;
+    value: string;
+    footer: string;
+    icon: ReactNode;
+}) {
     return (
-        <section className="rounded-md border bg-white px-2 py-1.5" style={{ borderColor: P.line }}>
-            <h2 className="text-[11px] font-bold" style={{ color: P.text }}>{title}</h2>
-            {children}
-        </section>
+        <article className="relative overflow-hidden px-3 py-3 text-white" style={{ borderRadius: 16, background: tint, minHeight: 108 }}>
+            <div className="pr-10 text-[12px] font-bold uppercase tracking-wide text-white/90">{title}</div>
+            <div className="mt-1 text-[30px] font-extrabold leading-none">{value}</div>
+            <div className="mt-2 text-[11px] font-semibold text-white/90">{footer}</div>
+            <span className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/20">{icon}</span>
+        </article>
     );
 }
 
-function ZeroLine() {
-    return <div className="py-1 text-sm font-semibold" style={{ color: P.muted }}>0</div>;
+function DaySwitch({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="rounded-lg px-3 py-1 text-xs font-extrabold"
+            style={{ background: active ? BLUE : '#f8fafc', color: active ? '#fff' : '#334155' }}
+        >
+            {label}
+        </button>
+    );
 }
 
-function formatHour(totalMin: number): string {
-    const hh = String(Math.floor(totalMin / 60)).padStart(2, '0');
-    const mm = String(totalMin % 60).padStart(2, '0');
-    return `${hh}:${mm}`;
-}
-
-function ymdToDate(ymd: string): Date {
-    const [y, m, d] = ymd.split('-').map((n) => Number(n));
-    return new Date(y || 1970, (m || 1) - 1, d || 1);
-}
-
-function addDaysYmd(ymd: string, days: number): string {
-    const dt = ymdToDate(ymd);
-    dt.setDate(dt.getDate() + days);
-    return formatLocalYmd(dt);
-}
-
-function eachYmd(start: string, end: string): string[] {
-    const out: string[] = [];
-    let cur = start;
-    while (cur <= end && out.length < 14) {
-        out.push(cur);
-        cur = addDaysYmd(cur, 1);
-    }
-    return out;
+function Quick({ label, icon, onClick }: { label: string; icon: ReactNode; onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="flex items-center gap-2 rounded-xl border px-2 py-2 text-left text-xs font-bold"
+            style={{ borderColor: '#dbe4f0', color: '#1e3a8a' }}
+        >
+            {icon}
+            <span className="truncate">{label}</span>
+        </button>
+    );
 }

@@ -331,6 +331,16 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     }, [activeTab, hasPermission, MENU_GROUPS]);
 
     React.useEffect(() => {
+        const onOpenTab = (event: Event) => {
+            const tab = (event as CustomEvent<{ tab?: string }>).detail?.tab;
+            if (!tab || !canAccessBeautyTab(hasPermission, tab)) return;
+            setActiveTab(tab);
+        };
+        window.addEventListener('retailex-beauty-open-tab', onOpenTab);
+        return () => window.removeEventListener('retailex-beauty-open-tab', onOpenTab);
+    }, [hasPermission]);
+
+    React.useEffect(() => {
         const prefillCallerSearch = (phone?: string) => {
             const p = phone?.trim();
             if (!p) return;
