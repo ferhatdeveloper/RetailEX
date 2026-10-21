@@ -18,6 +18,8 @@ import { ClientCRM } from './components/ClientCRM';
 import { ClientCustomerDetailPage } from './components/ClientCustomerDetailPage';
 import { PackageManagement } from './components/PackageManagement';
 import { ClinicDashboard } from './components/ClinicDashboard';
+import { ClinicBoardPage } from './pages/ClinicBoardPage';
+import { CLINIC_BOARD_SHELL_LABEL_KEY, CLINIC_BOARD_SHELL_TAB_ID } from './pages/clinicBoardModel';
 import { ServiceManagement } from './components/ServiceManagement';
 import { ServiceRecipeManagement } from './components/ServiceRecipeManagement';
 import { StaffManagement } from './components/StaffManagement';
@@ -164,7 +166,10 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
             return filterMenuGroups([
                 {
                     title: tm('bShellMenuGeneral'),
-                    items: [{ id: 'dashboard', icon: LayoutDashboard, label: tm('dashboard') }],
+                    items: [
+                        { id: 'dashboard', icon: LayoutDashboard, label: tm('dashboard') },
+                        { id: CLINIC_BOARD_SHELL_TAB_ID, icon: Calendar, label: tm(CLINIC_BOARD_SHELL_LABEL_KEY) },
+                    ],
                 },
                 {
                     title: tm('bShellMenuDentalOperations'),
@@ -218,7 +223,10 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         }[] = [
             {
                 title: tm('bShellMenuGeneral'),
-                items: [{ id: 'dashboard', icon: LayoutDashboard, label: tm('dashboard') }],
+                items: [
+                    { id: 'dashboard', icon: LayoutDashboard, label: tm('dashboard') },
+                    { id: CLINIC_BOARD_SHELL_TAB_ID, icon: Calendar, label: tm(CLINIC_BOARD_SHELL_LABEL_KEY) },
+                ],
             },
             {
                 title: tm('bShellMenuOperations'),
@@ -259,6 +267,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
 
     const PAGE_TITLES = useMemo((): Record<string, string> => ({
         dashboard: tm('dashboard'),
+        [CLINIC_BOARD_SHELL_TAB_ID]: tm(CLINIC_BOARD_SHELL_LABEL_KEY),
         clients: tm('bShellNavClients'),
         calendar: tm('bShellNavCalendar'),
         services: tm('bShellNavServices'),
@@ -716,6 +725,11 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     {activeTab === 'dashboard' && (
                         <div className="h-full min-h-0">
                             <ClinicDashboard />
+                        </div>
+                    )}
+                    {activeTab === CLINIC_BOARD_SHELL_TAB_ID && (
+                        <div className="h-full min-h-0">
+                            <ClinicBoardPage />
                         </div>
                     )}
                     {activeTab === 'calendar' && <SmartScheduler />}
