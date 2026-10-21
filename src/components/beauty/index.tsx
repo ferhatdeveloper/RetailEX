@@ -6,7 +6,7 @@ import {
     LayoutDashboard, Users, Calendar, Scissors, Package,
     UserCog, BarChart3, Bell, Search,
     ChevronLeft, ChevronRight, Box, Megaphone,
-    Sparkles, Settings2, Globe, ClipboardList, Layers, LayoutGrid,
+    Sparkles, Settings2, ClipboardList, Layers, LayoutGrid,
     Clock, LogOut, Smile, Activity, Baby, Apple, Banknote, Menu, X,
 } from 'lucide-react';
 import { useBeautyStore } from './store/useBeautyStore';
@@ -43,7 +43,7 @@ import { ObstetricsScreen } from './specialty/ObstetricsScreen';
 import { DietitianScreen } from './specialty/DietitianScreen';
 import { AppointmentPOS } from './components/AppointmentPOS';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
-import { BeautyShellChromeButtons } from './components/BeautyShellChrome';
+import { ClinicShellLanguageCluster } from './components/ClinicShellLanguageCluster';
 import { CLINIC_CLASSIC_SHELL, useClinicShellV2 } from './clinicShellV2';
 import { ClinicV2SideRail } from './components/ClinicV2SideRail';
 import { FirmSelector } from '../system/FirmSelector';
@@ -458,6 +458,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     activeTab={activeTab}
                     isMobile={isMobile}
                     mobileOpen={mobileNavOpen}
+                    specialty={specialty}
                     onSelect={(tabId) => {
                         setActiveTab(tabId);
                         if (isMobile) setMobileNavOpen(false);
@@ -717,18 +718,14 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                             <span style={{ position: 'absolute', top: 6, right: 6, width: 6, height: 6, background: '#ef4444', borderRadius: '50%', border: '1.5px solid #fff' }} />
                         </button>
 
-                        <BeautyShellChromeButtons />
-
-                        {/* Language Selector */}
-                        <button
-                            onClick={() => setShowLanguageModal(true)}
-                            className="flex items-center justify-center transition-colors"
-                            style={{ width: 32, height: 32, borderRadius: 6, background: '#f9fafb', border: '1px solid #e5e7eb', color: '#6b7280', cursor: 'pointer' }}
-                            onMouseEnter={e => (e.currentTarget.style.borderColor = shell.accent)}
-                            onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
-                        >
-                            <Globe size={14} />
-                        </button>
+                        <ClinicShellLanguageCluster
+                            onOpenLanguage={() => setShowLanguageModal(true)}
+                            onGoToManagement={
+                                onRequestManagementAccess && hasPermission('management', 'READ')
+                                    ? onRequestManagementAccess
+                                    : undefined
+                            }
+                        />
                     </div>
                 </header>
                 )}

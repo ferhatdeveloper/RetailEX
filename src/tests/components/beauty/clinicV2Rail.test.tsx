@@ -1,9 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { translate } from '../../../locales/module-translations';
-import { ClinicV2SideRail, CLINIC_V2_RAIL_ITEMS } from '../../../components/beauty/components/ClinicV2SideRail';
+import {
+    CLINIC_V2_RAIL_EXPANDED_KEY,
+    CLINIC_V2_RAIL_GROUPS,
+    ClinicV2SideRail,
+} from '../../../components/beauty/components/ClinicV2SideRail';
 
 vi.mock('../../../contexts/LanguageContext', async () => {
     const actual = await vi.importActual<typeof import('../../../locales/module-translations')>(
@@ -38,6 +42,10 @@ const V1_MENU_MARKERS = [
 ];
 
 describe('Klinik V2 sol şerit', () => {
+    beforeEach(() => {
+        localStorage.removeItem(CLINIC_V2_RAIL_EXPANDED_KEY);
+    });
+
     it('V2 kapalıyken eski menü maddeleri kaynakta durur', () => {
         const indexSrc = readFileSync(resolve('src/components/beauty/index.tsx'), 'utf8');
         expect(indexSrc).toContain('background: shell.sidebar');
@@ -55,54 +63,81 @@ describe('Klinik V2 sol şerit', () => {
         expect(calendarAt).toBeGreaterThan(clientsAt);
     });
 
-    it('V2 açıkken dar menüde kısa etiketler görünür ve mevcut sekmeyi açar', () => {
-        expect(CLINIC_V2_RAIL_ITEMS.map((item) => item.id)).toEqual([
-            'calendar',
-            'clients',
+    it('dar halde kısa etiket, geniş halde grup ve alt madde görünür', () => {
+        expect(CLINIC_V2_RAIL_GROUPS.map((group) => group.id)).toEqual([
+            'home',
+            'appointments',
+            'customers',
+            'catalog',
             'staff',
-            'services',
-            'clinic_ops',
+            'expenses',
+            'reports',
+            'settings',
         ]);
-        for (const item of CLINIC_V2_RAIL_ITEMS) {
+        expect(CLINIC_V2_RAIL_GROUPS.find((group) => group.id === 'appointments')?.items.map((item) => item.id)).toEqual([
+            'calendar',
+            'clinic_board',
+        ]);
+        const labelKeys = [
+            'bClinicV2RailHome',
+            'bClinicV2RailCalendar',
+            'bClinicV2RailExpenseShort',
+            'bClinicV2RailReportShort',
+            'bClinicV2RailExpand',
+            'bClinicV2RailCollapse',
+            ...CLINIC_V2_RAIL_GROUPS.flatMap((group) => [group.shortKey, group.titleKey, ...group.items.map((item) => item.labelKey)]),
+        ];
+        for (const key of labelKeys) {
             for (const lang of ['tr', 'en', 'ar', 'ku'] as const) {
-                const label = translate(item.labelKey, lang);
-                expect(label.trim().length).toBeGreaterThan(0);
-                expect(label).not.toBe(item.labelKey);
+                const label = translate(key, lang);
+                expect(label.trim().length, `${key}:${lang}`).toBeGreaterThan(0);
+                expect(label, key).not.toBe(key);
             }
         }
-        expect(translate('bClinicV2RailAppointment', 'tr')).toBe('Randevu');
-        expect(translate('bClinicV2RailClients', 'tr')).toBe('Müşteriler');
-        expect(translate('bClinicV2RailStaff', 'tr')).toBe('Personel');
-        expect(translate('bClinicV2RailService', 'tr')).toBe('Hizmet');
-        expect(translate('bClinicV2RailSettings', 'tr')).toBe('Ayarlar');
 
         const onSelect = vi.fn();
-        const { rerender } = render(
+        const view = render(
             <ClinicV2SideRail activeTab="dashboard" onSelect={onSelect} isMobile={false} mobileOpen={false} />,
         );
 
-        for (const label of ['Randevu', 'Müşteriler', 'Personel', 'Hizmet', 'Ayarlar']) {
+        expect(screen.getByTestId('clinic-v2-rail').getAttribute('data-expanded')).toBe('0');
+        for (const label of ['Anasayfa', 'Randevu', 'Müşteriler', 'Hizmet', 'Personel', 'Gider', 'Rapor', 'Ayarlar']) {
             expect(screen.getByRole('button', { name: label })).toBeTruthy();
         }
+        expect(screen.queryByText('Randevu takvimi')).toBeNull();
         expect(screen.queryByText('Randevu tahtası')).toBeNull();
         expect(screen.queryByText('Memnuniyet anketleri')).toBeNull();
-        expect(screen.queryByText('Klinik operasyon')).toBeNull();
-        expect(screen.getByRole('button', { name: 'Dashboard' }).getAttribute('aria-pressed')).toBe('true');
-        expect(screen.getByRole('button', { name: 'Randevu' }).getAttribute('aria-pressed')).toBe('false');
+        expect(screen.getByRole('button', { name: 'Anasayfa' }).getAttribute('aria-pressed')).toBe('true');
 
         fireEvent.click(screen.getByRole('button', { name: 'Müşteriler' }));
         expect(onSelect).toHaveBeenCalledWith('clients');
         fireEvent.click(screen.getByRole('button', { name: 'Randevu' }));
         expect(onSelect).toHaveBeenCalledWith('calendar');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Menüyü genişlet' }));
+        expect(localStorage.getItem(CLINIC_V2_RAIL_EXPANDED_KEY)).toBe('1');
+        expect(screen.getByTestId('clinic-v2-group-appointments').textContent).toBe('Randevu');
+        expect(screen.getByTestId('clinic-v2-group-customers').textContent).toBe('Müşteriler');
+        expect(screen.getByTestId('clinic-v2-group-catalog').textContent).toBe('Hizmetler');
+        expect(screen.getByRole('button', { name: 'Randevu takvimi' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Randevu tahtası' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Memnuniyet anketleri' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Giderler' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Raporlar' })).toBeTruthy();
+        expect(screen.queryByText('Klinik operasyon')).toBeNull();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Randevu takvimi' }));
+        expect(onSelect).toHaveBeenCalledWith('calendar');
+        fireEvent.click(screen.getByRole('button', { name: 'Randevu tahtası' }));
+        expect(onSelect).toHaveBeenCalledWith('clinic_board');
         fireEvent.click(screen.getByRole('button', { name: 'Ayarlar' }));
         expect(onSelect).toHaveBeenCalledWith('clinic_ops');
+        fireEvent.click(screen.getByRole('button', { name: 'Giderler' }));
+        expect(onSelect).toHaveBeenCalledWith('expenses');
 
-        rerender(<ClinicV2SideRail activeTab="calendar" onSelect={onSelect} isMobile={false} mobileOpen={false} />);
-        expect(screen.getByRole('button', { name: 'Randevu' }).getAttribute('aria-pressed')).toBe('true');
-
-        rerender(<ClinicV2SideRail activeTab="clinic_board" onSelect={onSelect} isMobile={false} mobileOpen={false} />);
-        expect(screen.getByRole('button', { name: 'Randevu' }).getAttribute('aria-pressed')).toBe('true');
-        fireEvent.click(screen.getByRole('button', { name: 'Randevu' }));
-        expect(onSelect).toHaveBeenLastCalledWith('calendar');
+        view.unmount();
+        render(<ClinicV2SideRail activeTab="clinic_board" onSelect={onSelect} isMobile={false} mobileOpen={false} />);
+        expect(screen.getByTestId('clinic-v2-rail').getAttribute('data-expanded')).toBe('1');
+        expect(screen.getByRole('button', { name: 'Randevu tahtası' }).getAttribute('aria-pressed')).toBe('true');
     });
 });
