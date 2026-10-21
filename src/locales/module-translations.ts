@@ -12032,12 +12032,13 @@ export const excelModuleTranslations = {
     ku: 'نۆرە',
   },
   reportsDailyKindHint: {
-    tr: 'Hizmet ve ürün tutarlarını ayırır. Karma fiş seçilen türe göre bölünür. Rezervasyon avansı ayrı rozet — Hizmet/Ürün filtresinden Hariç.',
-    en: 'Separates service and product amounts. Mixed receipts are split by the selected type. Reservation advances are excluded from service/product filters.',
-    ar: 'يفصل مبالغ الخدمة والمنتج. تُقسَّم الإيصالات المختلطة حسب النوع المحدد. عربونات الحجز مستبعدة من فلتر الخدمة/المنتج.',
-    // 09.10.2026 — Rezervasyon avansı filtrelerden Hariç tutulduğunu
-    // kullanıcıya bildiren ek ipucu.
-    ku: 'بڕی خزمەتگوزاری و بەرهەم جیا دەکاتەوە. پسوڵەی تێکەڵ بە جۆری هەڵبژێردراو دابەش دەکرێت. نۆرەکان لە فلتەری خزمەت/بەرهەم مەستەثنایە.',
+    tr: 'Hizmet ve ürün tutarlarını ayırır. Karma fiş seçilen türe göre bölünür. Rezervasyon avansı Satış Detayları tablosunda **tüm filtrelerde Hariç** — avans Ciro Dışı tahsilattır, çift yazıma yol açmaması için ayrı "Peşinat (Avans)" kartında izlenir.',
+    en: 'Separates service and product amounts. Mixed receipts are split by the selected type. Reservation advances are **excluded from all filters** in the Sales Details table — advances are off-revenue collections and are tracked separately on the Deposit (Advance) card.',
+    ar: 'يفصل مبالغ الخدمة والمنتج. تُقسَّم الإيصالات المختلطة حسب النوع المحدد. عربونات الحجز **مستبعدة من جميع الفلاتر** في جدول تفاصيل المبيعات — العرابين خارج الإيرادات ويُتابعان في بطاقة العربون المنفصلة.',
+    // 17.10.2026 — Avans artık TÜM filtrelerde Hariç (eskiden yalnızca
+    // service/product). "Tümü" filtresinde de gizli; çift yazımı önlemek
+    // için kullanıcıya açık mesaj verilir.
+    ku: 'بڕی خزمەتگوزاری و بەرهەم جیا دەکاتەوە. پسوڵەی تێکەڵ بە جۆری هەڵبژێردراو دابەش دەکرێت. نۆرەکان **لە هەموو فلتەرەکان** مەستەثنایە لە خشتەیەکی فرۆشتنەکاندا — لە کارتی سەربەخۆی نۆرە (نۆرەی پێشوەختە) شوێنیان دەگیرێت.',
   },
   transactionCount: { tr: 'İşlem Sayısı', en: 'Transaction Count', ar: 'عدد العمليات', ku: 'ژمارەی کارەکان' },
   totalRevenueLabel: { tr: 'Toplam Ciro', en: 'Total Revenue', ar: 'إجمالي الإيرادات', ku: 'کۆی داهات' },

@@ -1077,19 +1077,56 @@ export const staffDbApi = {
       groupKey = `GROUP BY a.staff_id, a.staff_name, a.department`;
     }
 
+    // Yarım gün izin (total_days >= 0.5) alındığında, attendance kaydı yoksa
+    // o gün sanal PRESENT gibi gösterilir (kullanıcı isteği: tam çalışılmış gibi).
+    // effective CTE: staff_attendance kayıtları + staff_leaves günleri (anti-join).
+    const effectiveCte = `
+      WITH effective AS (
+        SELECT a.staff_id, a.attendance_date, a.staff_name, a.department,
+               a.shift_id, a.status, a.worked_minutes, a.overtime_minutes,
+               a.late_minutes, a.early_minutes, a.clock_in, a.clock_out
+          FROM public.staff_attendance a
+         WHERE a.firm_nr = $1 AND a.period_nr = $2
+           AND a.attendance_date BETWEEN $3::date AND $4::date
+        UNION ALL
+        -- Yarım gün veya tam gün izin alınan günler (attendance kaydı yoksa PRESENT)
+        SELECT l.staff_id, d::date AS attendance_date,
+               COALESCE(st.full_name, l.staff_name) AS staff_name,
+               COALESCE(st.department, '') AS department,
+               NULL::uuid AS shift_id,
+               'PRESENT'::text AS status,
+               0 AS worked_minutes, 0 AS overtime_minutes,
+               0 AS late_minutes, 0 AS early_minutes,
+               NULL::text AS clock_in, NULL::text AS clock_out
+          FROM public.staff_leaves l
+          CROSS JOIN LATERAL generate_series(l.start_date, l.end_date, '1 day'::interval) d
+          LEFT JOIN public.staff st ON st.id = l.staff_id
+         WHERE l.firm_nr = $1
+           AND l.status = 'APPROVED'
+           AND l.total_days >= 0.5
+           AND d::date BETWEEN $3::date AND $4::date
+           AND NOT EXISTS (
+             SELECT 1 FROM public.staff_attendance a2
+              WHERE a2.firm_nr = $1 AND a2.period_nr = $2
+                AND a2.staff_id = l.staff_id AND a2.attendance_date = d::date
+           )
+      )
+    `;
+
     const sql = `
+      ${effectiveCte}
       SELECT ${groupSelect}
-        FROM public.staff_attendance a
+        FROM effective a
         LEFT JOIN public.staff st  ON st.id = a.staff_id
         LEFT JOIN public.staff_shifts sh ON sh.id = a.shift_id
-       WHERE a.firm_nr = $1 AND a.period_nr = $2
-         AND a.attendance_date BETWEEN $3::date AND $4::date
+       WHERE 1=1
          ${filterSql}
        ${groupKey}
        ORDER BY ${groupBy === 'staff' ? 'a.staff_name' : 'group_date, a.staff_name'}
        LIMIT 5000`;
 
     const totalsSql = `
+      ${effectiveCte}
       SELECT
         COUNT(*) FILTER (WHERE a.status = 'PRESENT')::int  AS present,
         COUNT(*) FILTER (WHERE a.status = 'ABSENT')::int   AS absent,
@@ -1100,10 +1137,9 @@ export const staffDbApi = {
         COUNT(*) FILTER (WHERE a.status = 'OFF')::int      AS off,
         COALESCE(SUM(a.worked_minutes), 0)::int            AS worked_minutes,
         COALESCE(SUM(a.overtime_minutes), 0)::int         AS overtime_minutes
-      FROM public.staff_attendance a
+      FROM effective a
       LEFT JOIN public.staff_shifts sh ON sh.id = a.shift_id
-      WHERE a.firm_nr = $1 AND a.period_nr = $2
-        AND a.attendance_date BETWEEN $3::date AND $4::date
+      WHERE 1=1
         ${filterSql}`;
 
     try {

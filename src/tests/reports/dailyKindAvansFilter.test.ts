@@ -43,10 +43,11 @@ function applyDailyKindFilter(
   row: DailyUnifiedRowLite,
   filter: DailyKindFilter,
 ): DailyUnifiedRowLite | null {
-  if (filter === 'all') return row;
-  // 09.10.2026 — Rezervasyon avansı (isAvans=true) Hizmet/Ürün
-  // filtresinde Hariç.
+  // 17.10.2026 — Rezervasyon avansı (isAvans=true) TÜM filtrelerde Hariç
+  // (eskiden yalnızca service/product). Çift yazımı önlemek için avans
+  // Ciro Dışı tahsilat olarak ayrı "Peşinat (Avans)" kartında izlenir.
   if (row.isAvans === true) return null;
+  if (filter === 'all') return row;
 
   const sum =
     Math.abs(Number(row.serviceTotal) || 0) +
@@ -134,12 +135,18 @@ const makeServiceSale = (amount: number): DailyUnifiedRowLite => ({
   remaining: 0,
 });
 
-describe('dailyKindAvansFilter — 09.10.2026 Rezervasyon avansı ayrımı', () => {
-  it('filter=all → avans + ürün + hizmet satırları geçer', () => {
+describe('dailyKindAvansFilter — 09.10.2026 + 17.10.2026 Rezervasyon avansı ayrımı', () => {
+  // 17.10.2026 — Kullanıcı isteği (whatsapp, guzel DB):
+  // "rezervasyon tutari burda gorunmemeli listede musteri de yok diyor".
+  // Avans artık TÜM filtrelerde Hariç (eskiden yalnızca service/product).
+  // Avans Ciro Dışı tahsilattır; Satış Detayları tablosunda ayrı satır
+  // gösterilmesi çift yazıma yol açar. "Peşinat (Avans)" kartında ayrıca
+  // bilgi amaçlı izlenir.
+  it('filter=all → avans Hariç, ürün + hizmet satırları geçer (17.10.2026)', () => {
     const avans = makeAvans(20_000);
     const product = makeProductSale(15_000);
     const service = makeServiceSale(25_000);
-    expect(applyDailyKindFilter(avans, 'all')).not.toBeNull();
+    expect(applyDailyKindFilter(avans, 'all')).toBeNull();
     expect(applyDailyKindFilter(product, 'all')).not.toBeNull();
     expect(applyDailyKindFilter(service, 'all')).not.toBeNull();
   });
@@ -176,5 +183,24 @@ describe('dailyKindAvansFilter — 09.10.2026 Rezervasyon avansı ayrımı', () 
     expect(kindLabelFor(product, 'Ürün')).toBe('Ürün');
     const service = makeServiceSale(25_000);
     expect(kindLabelFor(service, 'Hizmet')).toBe('Hizmet');
+  });
+
+  // 17.10.2026 — Kullanıcı ekran görüntüsü senaryosu (Süslenmiş müşteri +
+  // 20.000 IQD avans satırı + admin/FERHAT 50.000 IQD gerçek satış +
+  // 70.000 alt toplam). Düzeltme sonrası alt toplam 50.000 olmalı;
+  // avans Ciro dışı tahsilat olarak ayrı "Peşinat (Avans)" kartında
+  // izlenir.
+  it('Süslenmiş müşteri avans + admin FERHAT satış → filter=all ile yalnız satış geçer (17.10.2026)', () => {
+    const avansSuslenmisMusteri = makeAvans(20_000); // cari_avans → Süslenmiş müşteri
+    const realSaleFerhat = makeServiceSale(50_000); // admin → FERHAT, 50.000 IQD
+    const filtered = [avansSuslenmisMusteri, realSaleFerhat]
+      .map((row) => applyDailyKindFilter(row, 'all'))
+      .filter((r): r is DailyUnifiedRowLite => r !== null);
+    // Yalnızca gerçek satış (admin → FERHAT, 50.000) geçer.
+    expect(filtered.length).toBe(1);
+    expect(filtered[0].total).toBe(50_000);
+    // Alt toplam: 70.000 (avans dahil) → 50.000 (avans Hariç).
+    const subtotal = filtered.reduce((acc, r) => acc + (Number(r.total) || 0), 0);
+    expect(subtotal).toBe(50_000);
   });
 });

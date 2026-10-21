@@ -809,18 +809,27 @@ function dailyKindAmountShare(row: DailyUnifiedRow, filter: DailyKindFilter): nu
 }
 
 function applyDailyKindFilter(row: DailyUnifiedRow, filter: DailyKindFilter): DailyUnifiedRow | null {
-  if (filter === 'all') return row;
-  // 19.10.2026 — Rezervasyon sekmesi: sadece avans satırlarını göster
+  // 17.10.2026 — Kullanıcı isteği (whatsapp, guzel DB): "rezervasyon tutari
+  // burda gorunmemeli listede musteri de yok diyor". Rezervasyon avansı
+  // (cari_avans → `isAvans=true`) Satış Detayları tablosunda **tüm
+  // filtrelerde** hariç tutulur; avans bir hizmet rezervasyonunun peşinatıdır
+  // — hizmet/ürün satış değildir, Ciro'ya katılmaz ve ayrı satır olarak
+  // gösterilmesi çift yazıma yol açır. Önceki sürüm yalnızca
+  // service/product filtresinde hariç tutuyordu; all filtresinde hâlâ
+  // görünüyordu — bu da "Süslenmiş müşteri" placeholder satırının
+  // yukarıdaki 20.000 IQD avansı olarak yansımasına neden oluyordu.
+  //
+  // 19.10.2026 — Rezervasyon sekmesi eklendi: o sekmede avans satırları
+  // SADECE gösterilir. Bu nedenle 'reservation' filtresi ilk sırada kontrol
+  // edilir; 'all' | 'service' | 'product' altında avans her zaman gizlidir.
   if (filter === 'reservation') {
     if (row.isAvans === true) return row;
     return null;
   }
-  // 09.10.2026 — Kullanıcı isteği: cari_avans satırları (rezervasyon
-  // avansı) Hizmet veya Ürün filtresinde **Hariç** tutulmalı. Avans bir
-  // hizmet rezervasyonunun peşinatıdır; ürün satışı değildir. Hizmet
-  // filtresinde de göstermiyoruz çünkü avans henüz hizmet verilmemiş bir
-  // kayıttır — hizmet cirosuna katılması yanlış olur.
   if (row.isAvans === true) return null;
+  if (filter === 'all') return row;
+  // 09.10.2026 — Eski not (korundu): Hizmet/Ürün filtresinde de avans
+  // hariç — yukarıdaki erken dönüş zaten bunu da karşılıyor.
   const share = dailyKindAmountShare(row, filter);
   if (filter === 'service') {
     if (Math.abs(Number(row.serviceTotal) || 0) < 0.0001) return null;
