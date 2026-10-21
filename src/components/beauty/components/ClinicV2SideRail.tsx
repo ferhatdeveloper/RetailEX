@@ -7,6 +7,7 @@ import {
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { canAccessBeautyTab } from '../clinicShellNavConfig';
 import { SHARE_OPEN_SLOTS_LABEL_KEY, SHARE_OPEN_SLOTS_TAB_ID } from '../share-slots/shareSlotsStory';
+import { CLINIC_REPORT_CENTER_TAB } from '../../../utils/clinicReportCenter';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import type { ClinicErpSpecialty } from '../../../types/beauty';
 
@@ -109,7 +110,7 @@ export const CLINIC_V2_RAIL_GROUPS: readonly ClinicV2RailGroup[] = [
         icon: BarChart3,
         color: '#ea580c',
         items: [
-            { id: 'reports', labelKey: 'bShellNavReports', icon: BarChart3, color: '#ea580c' },
+            { id: CLINIC_REPORT_CENTER_TAB, labelKey: 'bShellNavReports', icon: BarChart3, color: '#ea580c' },
         ],
     },
     {

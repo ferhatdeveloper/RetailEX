@@ -53,6 +53,11 @@ describe('Klinik V2 sol şerit', () => {
         expect(indexSrc).toContain('{!surveyOverlayOpen && !shellV2 && (');
         expect(indexSrc).toContain('<ClinicBoardPage');
         expect(indexSrc).not.toContain('ClinicDashboardV2');
+        expect(indexSrc).toContain("id: 'reports'");
+        expect(indexSrc).toContain("activeTab === 'reports'");
+        expect(indexSrc).toContain('activeTab === CLINIC_REPORT_CENTER_TAB');
+        expect(indexSrc).toContain('setActiveTab(GENERAL_REPORTS_TAB)');
+        expect(indexSrc).toContain('<ClinicReportCenter');
         for (const marker of V1_MENU_MARKERS) {
             expect(indexSrc.includes(marker), marker).toBe(true);
         }
@@ -73,6 +78,9 @@ describe('Klinik V2 sol şerit', () => {
             'expenses',
             'reports',
             'settings',
+        ]);
+        expect(CLINIC_V2_RAIL_GROUPS.find((group) => group.id === 'reports')?.items.map((item) => item.id)).toEqual([
+            'clinic_reports',
         ]);
         expect(CLINIC_V2_RAIL_GROUPS.find((group) => group.id === 'appointments')?.items.map((item) => item.id)).toEqual([
             'calendar',
@@ -114,6 +122,9 @@ describe('Klinik V2 sol şerit', () => {
         expect(onSelect).toHaveBeenCalledWith('clients');
         fireEvent.click(screen.getByRole('button', { name: 'Randevu' }));
         expect(onSelect).toHaveBeenCalledWith('calendar');
+        fireEvent.click(screen.getByRole('button', { name: 'Rapor' }));
+        expect(onSelect).toHaveBeenCalledWith('clinic_reports');
+        expect(onSelect).not.toHaveBeenCalledWith('reports');
 
         fireEvent.click(screen.getByRole('button', { name: 'Menüyü genişlet' }));
         expect(localStorage.getItem(CLINIC_V2_RAIL_EXPANDED_KEY)).toBe('1');
@@ -137,6 +148,9 @@ describe('Klinik V2 sol şerit', () => {
         expect(onSelect).toHaveBeenCalledWith('clinic_ops');
         fireEvent.click(screen.getByRole('button', { name: 'Giderler' }));
         expect(onSelect).toHaveBeenCalledWith('expenses');
+        fireEvent.click(screen.getByRole('button', { name: 'Raporlar' }));
+        expect(onSelect).toHaveBeenCalledWith('clinic_reports');
+        expect(onSelect.mock.calls.filter((call) => call[0] === 'reports')).toHaveLength(0);
 
         view.unmount();
         render(<ClinicV2SideRail activeTab="clinic_board" onSelect={onSelect} isMobile={false} mobileOpen={false} />);

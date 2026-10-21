@@ -48,6 +48,8 @@ import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import { ClinicShellLanguageCluster } from './components/ClinicShellLanguageCluster';
 import { CLINIC_CLASSIC_SHELL, useClinicShellV2 } from './clinicShellV2';
 import { ClinicV2SideRail } from './components/ClinicV2SideRail';
+import { ClinicReportCenter } from './components/ClinicReportCenter';
+import { CLINIC_REPORT_CENTER_TAB, GENERAL_REPORTS_TAB } from '../../utils/clinicReportCenter';
 import { FirmSelector } from '../system/FirmSelector';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { normalizeFirmEnabledModules } from '../../utils/firmShellModules';
@@ -285,6 +287,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         leads: tm('bShellNavLeads'),
         expenses: tm('bShellNavExpenses'),
         reports: tm('bShellNavReports'),
+        [CLINIC_REPORT_CENTER_TAB]: tm('bCrcTitle'),
         clinic_ops: tm('bShellNavClinicOps'),
         dental_chart: tm('bShellNavDental'),
         physio_body: tm('bShellNavPhysio'),
@@ -784,6 +787,11 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                                 initialBusinessType="beauty"
                                 initialReportTab={reportInitialTab}
                             />
+                        </div>
+                    )}
+                    {activeTab === CLINIC_REPORT_CENTER_TAB && (
+                        <div className="h-full min-h-0 min-w-0">
+                            <ClinicReportCenter onOpenAllReports={() => setActiveTab(GENERAL_REPORTS_TAB)} />
                         </div>
                     )}
                     {activeTab === 'clinic_ops' && <ClinicOperationsHub />}
