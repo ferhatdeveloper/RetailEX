@@ -51,6 +51,7 @@ const WarehouseManagement = lazyWithChunkRecovery(() => import('../wms')) as any
 // Lazy load Restaurant & Beauty
 const RestaurantMain = lazyWithChunkRecovery(() => import('../restaurant/index'));
 const BeautyMain = lazyWithChunkRecovery(() => import('../beauty/index'));
+import { GoToManagementIconButton, shouldShowGoToManagement } from '../shared/GoToManagementIconButton';
 import { FirmSelector } from './FirmSelector';
 import { HybridSyncToolbarButtons } from './HybridSyncToolbarButtons';
 import { MarketRatesToolbarButton } from './MarketRatesToolbarButton';
@@ -1381,6 +1382,14 @@ export function MainLayout({
                 >
                   <User className={isSmallMobile ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
                 </button>
+                {shouldShowGoToManagement(currentModule, hasPermission('management', 'READ')) && (
+                  <GoToManagementIconButton
+                    variant="shell"
+                    compact
+                    dense={isSmallMobile}
+                    onClick={requestManagementAccess}
+                  />
+                )}
                 <div className="relative shrink-0" ref={mobileTopBarMoreRef}>
                   <button
                     type="button"
@@ -1600,6 +1609,13 @@ export function MainLayout({
                 >
                   <Languages className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                 </button>
+
+                {shouldShowGoToManagement(currentModule, hasPermission('management', 'READ')) && (
+                  <GoToManagementIconButton
+                    variant="shell"
+                    onClick={requestManagementAccess}
+                  />
+                )}
 
                 {/* Logout */}
                 <button
