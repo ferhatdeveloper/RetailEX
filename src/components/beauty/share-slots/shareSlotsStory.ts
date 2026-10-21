@@ -1,5 +1,8 @@
 import type { BeautyAppointment, BeautySpecialist } from '../../../types/beauty';
 import {
+    CLINIC_BOARD_DAY_END_MIN,
+    CLINIC_BOARD_DAY_START_MIN,
+    CLINIC_BOARD_SLOT_MIN,
     buildClinicBoardShareText,
     clinicBoardWhatsAppShareUrl,
     formatBoardMinutes,
@@ -16,6 +19,9 @@ export const SHARE_OPEN_SLOTS_LABEL_KEY = 'bShareOpenSlotsNav';
 export const SHARE_STORY_WIDTH = 1080;
 export const SHARE_STORY_HEIGHT = 1920;
 export const SHARE_STORY_FRAME_MS = 320;
+export const SHARE_STORY_FPS = 30;
+export const SHARE_STORY_DURATION_MS = 4000;
+export const SHARE_STORY_REVEAL_MS = 2600;
 export const SHARE_SLOTS_BRAND = 'RetailEX';
 export const SHARE_SLOTS_NAVY = '#071833';
 
@@ -52,8 +58,18 @@ export type ShareSlotsStoryFrame = {
     cta: string;
     linkLabel: string;
     brand: string;
+    note?: string;
+    /** Son görünen hapın beliriş oranı. Öncekiler tam görünür. */
+    pillEnter?: number;
     background: ShareSlotsBackground;
     photo?: CanvasImageSource | null;
+};
+
+export type ShareSlotsAnimFrame = {
+    index: number;
+    progress: number;
+    visible: number;
+    enter: number;
 };
 
 export type ShareStoryContext = {
@@ -73,6 +89,11 @@ export type ShareStoryContext = {
     fill(): void;
     drawImage?: CanvasRenderingContext2D['drawImage'];
     createLinearGradient?: CanvasRenderingContext2D['createLinearGradient'];
+    globalAlpha?: number;
+    save?: () => void;
+    restore?: () => void;
+    translate?: (x: number, y: number) => void;
+    scale?: (x: number, y: number) => void;
 };
 
 export function shareSlotsPresetLength(preset: ShareSlotsDayPreset): number {
@@ -105,7 +126,27 @@ export function shareSlotsDayCaption(
     });
 }
 
-/** Gün gün benzersiz boş başlangıç saatleri. Hesap clinicBoardModel ile aynıdır. */
+function activeShareStaff(staff: BeautySpecialist[], staffFilterId?: string): BeautySpecialist[] {
+    return staff.filter((person) => person.is_active !== false && (!staffFilterId || person.id === staffFilterId));
+}
+
+/** Personel veya randevu verisi yoksa 08:00–19:30 çalışma dilimleri boş kabul edilir. */
+function openWorkingChips(days: string[]): ShareSlotsChip[] {
+    const chips: ShareSlotsChip[] = [];
+    for (const dayYmd of days) {
+        for (let startMin = CLINIC_BOARD_DAY_START_MIN; startMin < CLINIC_BOARD_DAY_END_MIN; startMin += CLINIC_BOARD_SLOT_MIN) {
+            chips.push({
+                id: `${dayYmd}|${startMin}`,
+                dayYmd,
+                startMin,
+                label: formatBoardMinutes(startMin),
+            });
+        }
+    }
+    return chips;
+}
+
+/** Gün gün benzersiz boş başlangıç saatleri. Dolu dilim tahta ile aynı hesapla düşer. */
 export function collectShareOpenSlotChips(input: {
     staff: BeautySpecialist[];
     appointments: BeautyAppointment[];
@@ -113,6 +154,9 @@ export function collectShareOpenSlotChips(input: {
     staffFilterId?: string;
     unassignedName: string;
 }): ShareSlotsChip[] {
+    if (activeShareStaff(input.staff, input.staffFilterId).length === 0) {
+        return openWorkingChips(input.days);
+    }
     const chips: ShareSlotsChip[] = [];
     for (const dayYmd of input.days) {
         const slots = listClinicBoardOpenSlots({
@@ -143,6 +187,24 @@ export function shareSlotsForPickedDays(input: {
     unassignedName: string;
     picked: ReadonlySet<string>;
 }): { dayLabel: string; slots: ClinicBoardShareSlot[] }[] {
+    if (activeShareStaff(input.staff, input.staffFilterId).length === 0) {
+        return input.days.map((day) => {
+            const slots: ClinicBoardShareSlot[] = [];
+            for (let startMin = CLINIC_BOARD_DAY_START_MIN; startMin < CLINIC_BOARD_DAY_END_MIN; startMin += CLINIC_BOARD_SLOT_MIN) {
+                if (!input.picked.has(`${day.ymd}|${startMin}`)) continue;
+                const endMin = startMin + CLINIC_BOARD_SLOT_MIN;
+                slots.push({
+                    id: `${day.ymd}|${startMin}`,
+                    staffId: '',
+                    staffName: '',
+                    startMin,
+                    endMin,
+                    label: `${formatBoardMinutes(startMin)}-${formatBoardMinutes(endMin)}`,
+                });
+            }
+            return { dayLabel: day.label, slots };
+        });
+    }
     return input.days.map((day) => {
         const slots = listClinicBoardOpenSlots({
             staff: input.staff,
@@ -239,6 +301,57 @@ export function shareSlotsVideoPlan(pillCount: number): { counts: number[]; dura
     };
 }
 
+/** Önizleme ve video için tek hapın opaklık / ölçek eğrisi. progress 0..1. */
+export function shareSlotsPillMotion(index: number, count: number, progress: number): { opacity: number; scale: number } {
+    const total = Math.max(1, count);
+    const clamped = Math.min(1, Math.max(0, progress));
+    const start = index / total;
+    const end = (index + 1) / total;
+    const span = end - start || 1;
+    const t = clamped <= start ? 0 : clamped >= end ? 1 : (clamped - start) / span;
+    return { opacity: t, scale: 0.84 + 0.16 * t };
+}
+
+/**
+ * 30 kare/sn, yaklaşık 4 sn. Haplar ilk ~2.6 sn içinde sırayla açılır, sonra kısa duraklama.
+ * En az 3 kare. Tuval 1080x1920.
+ */
+export function shareSlotsAnimationPlan(pillCount: number): {
+    frames: ShareSlotsAnimFrame[];
+    fps: number;
+    durationMs: number;
+    revealMs: number;
+    width: number;
+    height: number;
+} {
+    const fps = SHARE_STORY_FPS;
+    const durationMs = SHARE_STORY_DURATION_MS;
+    const revealMs = SHARE_STORY_REVEAL_MS;
+    const frameCount = Math.max(3, Math.round((durationMs / 1000) * fps));
+    const total = Math.max(0, pillCount);
+    const frames: ShareSlotsAnimFrame[] = [];
+    for (let index = 0; index < frameCount; index += 1) {
+        const timeMs = (index / fps) * 1000;
+        const progress = timeMs >= revealMs ? 1 : timeMs / revealMs;
+        if (total === 0) {
+            frames.push({ index, progress, visible: 0, enter: 1 });
+            continue;
+        }
+        const scaled = progress * total;
+        const visible = Math.min(total, Math.max(1, Math.ceil(scaled)));
+        const enter = scaled <= 0 ? 0 : (Number.isInteger(scaled) ? 1 : scaled - Math.floor(scaled));
+        frames.push({ index, progress, visible, enter });
+    }
+    return {
+        frames,
+        fps,
+        durationMs,
+        revealMs,
+        width: SHARE_STORY_WIDTH,
+        height: SHARE_STORY_HEIGHT,
+    };
+}
+
 function textWidth(ctx: ShareStoryContext, text: string, fontSize: number): number {
     const measured = ctx.measureText(text).width;
     if (Number.isFinite(measured) && measured > 0) return measured;
@@ -309,12 +422,23 @@ export function paintShareSlotsStory(ctx: ShareStoryContext, frame: ShareSlotsSt
     ctx.font = '700 32px sans-serif';
     ctx.fillText(frame.dayLabel, 96, 450, width - 160);
 
+    let pillsTop = 530;
+    const note = frame.note?.trim() || '';
+    if (note) {
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = '600 28px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(note, 96, 510, width - 160);
+        pillsTop = 590;
+    }
+
     const shown = frame.pills.slice(0, Math.max(0, frame.visiblePills));
     const pillFont = 34;
     ctx.font = `700 ${pillFont}px sans-serif`;
     const gapX = 18;
     const gapY = 18;
     const pillH = 78;
+    const perRow = 4;
     const maxRow = width - 160;
     const sizes = shown.map((label) => Math.max(168, textWidth(ctx, label, pillFont) + 64));
     const rows: { labels: string[]; widths: number[]; rowWidth: number }[] = [];
@@ -322,7 +446,8 @@ export function paintShareSlotsStory(ctx: ShareStoryContext, frame: ShareSlotsSt
     shown.forEach((label, index) => {
         const pillW = sizes[index];
         const next = current.labels.length === 0 ? pillW : current.rowWidth + gapX + pillW;
-        if (current.labels.length > 0 && next > maxRow) {
+        const rowFull = current.labels.length >= perRow;
+        if (current.labels.length > 0 && (rowFull || next > maxRow)) {
             rows.push(current);
             current = { labels: [label], widths: [pillW], rowWidth: pillW };
             return;
@@ -333,18 +458,41 @@ export function paintShareSlotsStory(ctx: ShareStoryContext, frame: ShareSlotsSt
     });
     if (current.labels.length) rows.push(current);
 
-    let y = 530;
+    const enter = frame.pillEnter == null ? 1 : Math.min(1, Math.max(0, frame.pillEnter));
+    let drawn = 0;
+    let y = pillsTop;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (const row of rows) {
         let x = (width - row.rowWidth) / 2;
         row.labels.forEach((label, index) => {
             const pillW = row.widths[index];
+            const isLast = drawn === shown.length - 1;
+            drawn += 1;
+            const alpha = isLast ? enter : 1;
+            const scale = isLast ? 0.84 + 0.16 * enter : 1;
+            const canTransform = typeof ctx.save === 'function'
+                && typeof ctx.restore === 'function'
+                && typeof ctx.translate === 'function'
+                && typeof ctx.scale === 'function';
+            if (canTransform) {
+                ctx.save?.();
+                ctx.globalAlpha = alpha;
+                const cx = x + pillW / 2;
+                const cy = y + pillH / 2;
+                ctx.translate?.(cx, cy);
+                ctx.scale?.(scale, scale);
+                ctx.translate?.(-cx, -cy);
+            }
             ctx.fillStyle = '#ffffff';
             fillRoundRect(ctx, x, y, pillW, pillH, pillH / 2);
             ctx.fillStyle = '#0f172a';
             ctx.font = `700 ${pillFont}px sans-serif`;
             ctx.fillText(label, x + pillW / 2, y + pillH / 2 + 1);
+            if (canTransform) {
+                ctx.globalAlpha = 1;
+                ctx.restore?.();
+            }
             x += pillW + gapX;
         });
         y += pillH + gapY;
@@ -411,7 +559,8 @@ export async function recordShareSlotsVideo(
     if (!ctx) throw new Error('canvas');
     const Recorder = hooks?.MediaRecorder ?? globalThis.MediaRecorder;
     if (typeof Recorder !== 'function') throw new Error('recorder');
-    const stream = canvas.captureStream?.(12);
+    const plan = shareSlotsAnimationPlan(frame.pills.length);
+    const stream = canvas.captureStream?.(plan.fps);
     if (!stream) throw new Error('stream');
     const mime = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find((item) =>
         Recorder.isTypeSupported(item),
@@ -423,20 +572,27 @@ export async function recordShareSlotsVideo(
             if (event.data && event.data.size > 0) chunks.push(event.data);
         };
         recorder.onerror = () => reject(new Error('recorder'));
-        recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || mime || 'video/webm' }));
+        recorder.onstop = () => {
+            const blob = new Blob(chunks, { type: recorder.mimeType || mime || 'video/webm' });
+            if (!blob.size) reject(new Error('empty'));
+            else resolve(blob);
+        };
     });
     const sleep = hooks?.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
-    const plan = shareSlotsVideoPlan(frame.pills.length);
-    recorder.start();
-    for (const visiblePills of plan.counts) {
+    const frameMs = Math.round(1000 / plan.fps);
+    recorder.start(frameMs);
+    for (const step of plan.frames) {
         paintShareSlotsStory(ctx, {
             ...frame,
             width: SHARE_STORY_WIDTH,
             height: SHARE_STORY_HEIGHT,
-            visiblePills,
+            visiblePills: step.visible,
+            pillEnter: step.enter,
         });
-        await sleep(SHARE_STORY_FRAME_MS);
+        await sleep(frameMs);
     }
+    const ask = recorder as MediaRecorder & { requestData?: () => void };
+    ask.requestData?.();
     recorder.stop();
     return stopped;
 }
@@ -619,7 +775,7 @@ export function shareCopyPayload(link: string, text: string): { kind: 'link' | '
 export function paintShareStory(
     ctx: ShareStoryContext,
     plan: ShareStoryPlan,
-    options: { revealCount: number; photo?: CanvasImageSource | null },
+    options: { revealCount: number; photo?: CanvasImageSource | null; pillEnter?: number },
 ): void {
     const activeDays = plan.days.filter((item) => item.times.length);
     paintShareSlotsStory(ctx, {
@@ -634,6 +790,8 @@ export function paintShareStory(
         cta: plan.cta,
         linkLabel: plan.companyName,
         brand: plan.footer || SHARE_SLOTS_BRAND,
+        note: plan.note,
+        pillEnter: options.pillEnter,
         background: { kind: 'solid', color: plan.backgroundColor || SHARE_NAVY },
         photo: options.photo ?? null,
     });
@@ -654,6 +812,7 @@ export async function recordShareStory(
             cta: plan.cta,
             linkLabel: plan.companyName,
             brand: plan.footer || SHARE_SLOTS_BRAND,
+            note: plan.note,
             background: { kind: 'solid', color: plan.backgroundColor || SHARE_NAVY },
             photo: photo ?? null,
         });

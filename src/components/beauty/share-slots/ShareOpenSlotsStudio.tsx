@@ -11,6 +11,7 @@ import {
     SHARE_BG_PRESETS,
     SHARE_NAVY,
     SHARE_STORY_HEIGHT,
+    SHARE_STORY_REVEAL_MS,
     SHARE_STORY_WIDTH,
     buildShareSlotsText,
     buildShareStoryPlan,
@@ -88,7 +89,6 @@ export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose }: Props) {
     const [titleKey, setTitleKey] = useState<(typeof TITLE_KEYS)[number]>('bShareSlotsTitleOurs');
     const [note, setNote] = useState('');
     const [tab, setTab] = useState<StoryTab>('video');
-    const [reveal, setReveal] = useState(0);
     const [bookingLink, setBookingLink] = useState('');
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState('');
@@ -178,10 +178,10 @@ export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose }: Props) {
     }, [photoUrl, bgMode]);
 
     const slots = useMemo(() => {
-        if (loadFailed || loading) return [];
+        if (loading) return [];
         return listShareOpenSlots({
             staff: people,
-            appointments,
+            appointments: loadFailed ? [] : appointments,
             startYmd: anchorYmd,
             span,
             staffId,
@@ -231,30 +231,32 @@ export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose }: Props) {
         [plan, bookingLink],
     );
 
-    const revealKey = `${tab}|${plan.selectedTimes.join(',')}|${plan.title}|${plan.note}|${plan.backgroundColor}|${hasPhoto ? 'photo' : 'flat'}`;
-    useEffect(() => {
-        const total = plan.selectedTimes.length;
-        if (tab !== 'video') {
-            setReveal(total);
-            return;
-        }
-        setReveal(0);
-        if (total === 0) return;
-        let count = 0;
-        const timer = window.setInterval(() => {
-            count += 1;
-            setReveal(Math.min(total, count));
-            if (count >= total) window.clearInterval(timer);
-        }, 320);
-        return () => window.clearInterval(timer);
-    }, [revealKey, tab, plan.selectedTimes.length]);
-
     useEffect(() => {
         const canvas = canvasRef.current;
         const ctx = canvas?.getContext('2d');
-        if (!ctx) return;
-        paintShareStory(ctx, plan, { revealCount: tab === 'image' ? plan.selectedTimes.length : reveal, photo });
-    }, [plan, reveal, photo, tab]);
+        if (!ctx) return undefined;
+        const total = plan.selectedTimes.length;
+        if (tab !== 'video') {
+            paintShareStory(ctx, plan, { revealCount: total, photo, pillEnter: 1 });
+            return undefined;
+        }
+        let raf = 0;
+        let start = 0;
+        const holdMs = 800;
+        const cycle = SHARE_STORY_REVEAL_MS + holdMs;
+        const tick = (now: number) => {
+            if (!start) start = now;
+            const elapsed = (now - start) % cycle;
+            const progress = elapsed >= SHARE_STORY_REVEAL_MS ? 1 : elapsed / SHARE_STORY_REVEAL_MS;
+            const visible = total === 0 ? 0 : Math.min(total, Math.max(1, Math.ceil(progress * total)));
+            const scaled = progress * total;
+            const enter = total === 0 || scaled <= 0 ? 1 : (Number.isInteger(scaled) ? 1 : scaled - Math.floor(scaled));
+            paintShareStory(ctx, plan, { revealCount: visible, photo, pillEnter: enter });
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [plan, photo, tab]);
 
     const groups = groupShareSlotsByDay(slots);
     const selectedCount = slots.filter((slot) => selected.has(slot.id)).length;
@@ -411,9 +413,6 @@ export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose }: Props) {
                         </div>
                         {loading && <p className="mb-3 text-xs text-slate-400">{tm('bShareSlotsLoading')}</p>}
                         {loadFailed && <p className="mb-3 text-xs font-medium text-amber-800">{tm('bShareSlotsLoadError')}</p>}
-                        {!loading && !loadFailed && slots.length === 0 && (
-                            <p className="mb-3 text-xs text-slate-400">{tm('bShareSlotsEmpty')}</p>
-                        )}
                         <div className="mb-5 space-y-3">
                             {groups.map((group) => (
                                 <div key={group.ymd}>

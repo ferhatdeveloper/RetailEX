@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronLeft, Clapperboard, ImageIcon, Link2, MessageCircle } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronLeft, Clapperboard, Download, ImageIcon, Link2, MessageCircle } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { beautyService } from '../../../services/beautyService';
@@ -9,6 +9,7 @@ import {
     SHARE_SLOTS_BRAND,
     SHARE_SLOTS_NAVY,
     SHARE_SLOTS_PRESETS,
+    SHARE_STORY_REVEAL_MS,
     collectShareOpenSlotChips,
     composeShareSlotsMessage,
     downloadShareBlob,
@@ -17,10 +18,9 @@ import {
     shareSlotsDayCaption,
     shareSlotsDayYmds,
     shareSlotsFirmInitial,
-    shareSlotsLinkCaption,
+    shareSlotsPillMotion,
     shareSlotsPublicLink,
     shareSlotsForPickedDays,
-    shareSlotsVideoPlan,
     shareSlotsWhatsAppUrl,
     type ShareSlotsBackground,
     type ShareSlotsDayPreset,
@@ -46,11 +46,14 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
     const locale = tm('localeCode') || 'tr-TR';
     const { selectedFirm, selectedPeriod } = useFirmaDonem();
     const [staff, setStaff] = useState<BeautySpecialist[]>([]);
+    const [staffReady, setStaffReady] = useState(false);
     const [appointments, setAppointments] = useState<BeautyAppointment[]>([]);
+    const [appointmentsReady, setAppointmentsReady] = useState(false);
     const [staffFilter, setStaffFilter] = useState('');
     const [preset, setPreset] = useState<ShareSlotsDayPreset>('today_tomorrow');
     const [picked, setPicked] = useState<Set<string>>(() => new Set());
-    const [backgroundKind, setBackgroundKind] = useState<BackgroundKind>('solid');
+    const [backgroundKind, setBackgroundKind] = useState<BackgroundKind>('preset');
+    const [solidColor, setSolidColor] = useState(SHARE_SLOTS_NAVY);
     const [presetId, setPresetId] = useState<ShareSlotsPresetId>('navy');
     const [photo, setPhoto] = useState<HTMLImageElement | null>(null);
     const [titleId, setTitleId] = useState<TitleId>('ours');
@@ -61,7 +64,7 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
     const [copied, setCopied] = useState(false);
     const [exportError, setExportError] = useState('');
     const [busy, setBusy] = useState(false);
-    const [reveal, setReveal] = useState(0);
+    const pillRefs = useRef<HTMLSpanElement[]>([]);
     const today = formatLocalYmd(new Date());
 
     useEffect(() => {
@@ -70,6 +73,8 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
             if (!cancel) setStaff(Array.isArray(rows) ? rows : []);
         }).catch(() => {
             if (!cancel) setStaff([]);
+        }).finally(() => {
+            if (!cancel) setStaffReady(true);
         });
         beautyService.getPortalSettings().then((settings) => {
             if (!cancel) setToken(settings?.public_token?.trim() || '');
@@ -85,11 +90,14 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
 
     useEffect(() => {
         let cancel = false;
+        setAppointmentsReady(false);
         const end = days[days.length - 1] || today;
         beautyService.getAppointmentsInRange(days[0] || today, end).then((rows) => {
             if (!cancel) setAppointments(Array.isArray(rows) ? rows : []);
         }).catch(() => {
             if (!cancel) setAppointments([]);
+        }).finally(() => {
+            if (!cancel) setAppointmentsReady(true);
         });
         return () => {
             cancel = true;
@@ -97,14 +105,17 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
     }, [days, today]);
 
     const chips = useMemo(
-        () => collectShareOpenSlotChips({
-            staff,
-            appointments,
-            days,
-            staffFilterId: staffFilter,
-            unassignedName: tm('bClinicBoardUnassigned'),
-        }),
-        [staff, appointments, days, staffFilter, tm],
+        () => {
+            if (!staffReady || !appointmentsReady) return [];
+            return collectShareOpenSlotChips({
+                staff,
+                appointments,
+                days,
+                staffFilterId: staffFilter,
+                unassignedName: tm('bClinicBoardUnassigned'),
+            });
+        },
+        [staffReady, appointmentsReady, staff, appointments, days, staffFilter, tm],
     );
     const chipKey = chips.map((chip) => chip.id).join('|');
 
@@ -113,7 +124,7 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
         setFocusDay(days[0] || '');
     }, [chipKey, days]);
 
-    const firmName = (selectedFirm?.name || selectedFirm?.title || SHARE_SLOTS_BRAND).trim() || SHARE_SLOTS_BRAND;
+    const firmName = (selectedFirm?.firma_adi || selectedFirm?.title || selectedFirm?.name || SHARE_SLOTS_BRAND).trim() || SHARE_SLOTS_BRAND;
     const title = titleId === 'available'
         ? tm('bShareOpenSlotsTitleAvailable')
         : titleId === 'room'
@@ -125,7 +136,7 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
         periodNr: String(selectedPeriod?.nr ?? 1).padStart(2, '0'),
         token,
     });
-    const linkLabel = shareSlotsLinkCaption(link, firmName);
+    const footer = tm('bShareSlotsFooter');
     const activeStaff = staff.filter((person) => person.is_active !== false);
     const dayCards = days.map((day, index) => ({
         day,
@@ -145,38 +156,53 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
         .replace('{picked}', String(selectedCount))
         .replace('{total}', String(chips.length));
 
+    const pillKey = previewPills.join('|');
     useEffect(() => {
+        let raf = 0;
+        let start = 0;
+        const holdMs = 800;
+        const cycle = SHARE_STORY_REVEAL_MS + holdMs;
+        const paint = (progress: number) => {
+            const nodes = pillRefs.current;
+            const count = nodes.length;
+            nodes.forEach((el, index) => {
+                if (!el) return;
+                const motion = mode === 'video'
+                    ? shareSlotsPillMotion(index, count, progress)
+                    : { opacity: 1, scale: 1 };
+                el.style.opacity = String(motion.opacity);
+                el.style.transform = `scale(${motion.scale})`;
+            });
+        };
         if (mode !== 'video') {
-            setReveal(previewPills.length);
+            paint(1);
             return undefined;
         }
-        const plan = shareSlotsVideoPlan(previewPills.length);
-        let step = 0;
-        setReveal(plan.counts[0] ?? 0);
-        const timer = window.setInterval(() => {
-            step += 1;
-            if (step >= plan.counts.length) {
-                window.clearInterval(timer);
-                return;
-            }
-            setReveal(plan.counts[step] ?? previewPills.length);
-        }, 320);
-        return () => window.clearInterval(timer);
-    }, [mode, previewDay, previewPills.join('|')]);
+        const frame = window.requestAnimationFrame ?? ((cb: FrameRequestCallback) => window.setTimeout(() => cb(performance.now()), 16));
+        const cancel = window.cancelAnimationFrame ?? ((id: number) => window.clearTimeout(id));
+        const tick = (now: number) => {
+            if (!start) start = now;
+            const elapsed = (now - start) % cycle;
+            const progress = elapsed >= SHARE_STORY_REVEAL_MS ? 1 : elapsed / SHARE_STORY_REVEAL_MS;
+            paint(progress);
+            raf = frame(tick);
+        };
+        raf = frame(tick);
+        return () => cancel(raf);
+    }, [mode, previewDay, pillKey]);
 
-    const visiblePills = mode === 'video' ? previewPills.slice(0, reveal) : previewPills;
     const background: ShareSlotsBackground = backgroundKind === 'preset'
         ? {
             kind: 'preset',
             from: SHARE_SLOTS_PRESETS.find((item) => item.id === presetId)?.from || SHARE_SLOTS_NAVY,
             to: SHARE_SLOTS_PRESETS.find((item) => item.id === presetId)?.to || '#12315c',
         }
-        : { kind: 'solid', color: SHARE_SLOTS_NAVY };
+        : { kind: 'solid', color: solidColor || SHARE_SLOTS_NAVY };
     const phoneStyle = photo && backgroundKind === 'photo'
         ? { backgroundImage: `linear-gradient(rgba(7,24,51,0.55), rgba(7,24,51,0.55)), url(${photo.src})`, backgroundSize: 'cover', backgroundPosition: 'center' }
         : background.kind === 'preset'
             ? { backgroundImage: `linear-gradient(180deg, ${background.from}, ${background.to})` }
-            : { backgroundColor: SHARE_SLOTS_NAVY };
+            : { backgroundColor: background.kind === 'solid' ? background.color : SHARE_SLOTS_NAVY };
 
     const toggle = (id: string) => {
         setPicked((current) => {
@@ -211,8 +237,9 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
         pills: previewPills,
         visiblePills: previewPills.length,
         cta: tm('bShareOpenSlotsTapLink'),
-        linkLabel,
-        brand: SHARE_SLOTS_BRAND,
+        linkLabel: firmName,
+        brand: footer,
+        note,
         background,
         photo: backgroundKind === 'photo' ? photo : null,
         width: 1080,
@@ -222,13 +249,23 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
     const onDownload = async () => {
         setExportError('');
         setBusy(true);
+        const frame = storyFrame();
         try {
             if (mode === 'image') {
-                const blob = await renderShareSlotsPng(storyFrame());
+                const blob = await renderShareSlotsPng(frame);
+                if (!blob.size) throw new Error('empty');
                 downloadShareBlob(blob, 'RetailEX-bos-saatler.png');
-            } else {
-                const blob = await recordShareSlotsVideo(storyFrame());
-                downloadShareBlob(blob, 'RetailEX-bos-saatler.webm');
+                return;
+            }
+            try {
+                const blob = await recordShareSlotsVideo(frame);
+                if (!blob.size) throw new Error('empty');
+                const ext = (blob.type || '').includes('mp4') ? 'mp4' : 'webm';
+                downloadShareBlob(blob, `RetailEX-bos-saatler.${ext}`);
+            } catch {
+                setExportError(tm('bShareSlotsRecorderFallback'));
+                const blob = await renderShareSlotsPng(frame);
+                if (blob.size) downloadShareBlob(blob, 'RetailEX-bos-saatler.png');
             }
         } catch {
             setExportError(tm('bShareOpenSlotsExportError'));
@@ -269,9 +306,14 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
         reader.readAsDataURL(file);
     };
 
+    pillRefs.current = [];
+
     return (
         <div data-testid="share-open-slots-page" className="min-h-full bg-[#eef2f6] p-3 sm:p-5">
-            <div className="mx-auto grid max-w-[1180px] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
+            <div
+                className="mx-auto grid max-w-[1180px] items-start gap-4"
+                style={{ gridTemplateColumns: 'minmax(0, 1fr) 400px' }}
+            >
                 <section className="rounded-2xl border border-[#e6eaf0] bg-white p-4 shadow-sm sm:p-5">
                     <div className="mb-3 flex items-center gap-2">
                         <button
@@ -316,9 +358,10 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
                                     data-testid={`share-slots-preset-${item.id}`}
                                     aria-pressed={on}
                                     onClick={() => setPreset(item.id)}
-                                    className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
-                                        on ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700'
-                                    }`}
+                                    className="rounded-lg px-3 py-1.5 text-sm font-semibold"
+                                    style={on
+                                        ? { backgroundColor: '#2f6bff', color: '#fff' }
+                                        : { backgroundColor: '#e8f1ff', color: '#3b82f6' }}
                                 >
                                     {tm(item.labelKey)}
                                 </button>
@@ -340,29 +383,26 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
                                 >
                                     {card.label}
                                 </button>
-                                {card.chips.length === 0 ? (
-                                    <p className="text-xs text-slate-400">{tm('bShareOpenSlotsEmpty')}</p>
-                                ) : (
-                                    <div className="flex flex-wrap gap-2">
-                                        {card.chips.map((chip) => {
-                                            const on = picked.has(chip.id);
-                                            return (
-                                                <button
-                                                    key={chip.id}
-                                                    type="button"
-                                                    data-testid={`share-slot-${chip.dayYmd}-${chip.label}`}
-                                                    aria-pressed={on}
-                                                    onClick={() => toggle(chip.id)}
-                                                    className={`rounded-lg px-3 py-1.5 text-sm font-semibold tabular-nums ${
-                                                        on ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-500'
-                                                    }`}
-                                                >
-                                                    {chip.label}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                )}
+                                <div className="flex flex-wrap gap-2">
+                                    {card.chips.map((chip) => {
+                                        const on = picked.has(chip.id);
+                                        return (
+                                            <button
+                                                key={chip.id}
+                                                type="button"
+                                                data-testid={`share-slot-${chip.dayYmd}-${chip.label}`}
+                                                aria-pressed={on}
+                                                onClick={() => toggle(chip.id)}
+                                                className="rounded-lg border px-3 py-1.5 text-sm font-semibold tabular-nums"
+                                                style={on
+                                                    ? { backgroundColor: '#2f6bff', borderColor: '#2f6bff', color: '#fff' }
+                                                    : { backgroundColor: '#fff', borderColor: '#d5dbe3', color: '#475569' }}
+                                            >
+                                                {chip.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -379,7 +419,9 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
                         >
                             {tm('bShareOpenSlotsBgSolid')}
                         </button>
-                        <label className={`cursor-pointer rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                        <label
+                            onClick={() => setBackgroundKind('photo')}
+                            className={`cursor-pointer rounded-lg px-3 py-1.5 text-sm font-semibold ${
                             backgroundKind === 'photo' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' : 'bg-slate-50 text-slate-600'
                         }`}
                         >
@@ -402,6 +444,18 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
                             {tm('bShareOpenSlotsBgPreset')}
                         </button>
                     </div>
+                    {backgroundKind === 'solid' && (
+                        <label className="mb-4 flex items-center gap-3 text-sm text-slate-600">
+                            <input
+                                type="color"
+                                aria-label={tm('bShareOpenSlotsBgSolid')}
+                                value={solidColor}
+                                onChange={(event) => setSolidColor(event.target.value)}
+                                className="h-10 w-14 cursor-pointer rounded-lg border border-[#e6eaf0] bg-white"
+                            />
+                            <span className="font-mono text-xs">{solidColor}</span>
+                        </label>
+                    )}
                     {backgroundKind === 'preset' && (
                         <div className="mb-4 flex gap-2">
                             {SHARE_SLOTS_PRESETS.map((item) => (
@@ -484,22 +538,41 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
                     <div className="mb-4 flex justify-center">
                         <div
                             data-testid="share-slots-phone"
-                            className="flex aspect-[9/16] w-[280px] flex-col rounded-[28px] px-4 py-6 text-white shadow-lg"
-                            style={phoneStyle}
+                            className="flex flex-col rounded-[28px] px-4 py-6 text-white shadow-lg"
+                            style={{ ...phoneStyle, width: 280, aspectRatio: '9 / 16' }}
                         >
                             <div className="mb-6 flex items-center gap-2">
-                                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-sm font-bold text-[#071833]">
+                                <span
+                                    className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold"
+                                    style={{ backgroundColor: '#fff', color: '#071833' }}
+                                >
                                     {shareSlotsFirmInitial(firmName)}
                                 </span>
                                 <span className="text-sm font-semibold">{firmName}</span>
                             </div>
-                            <p className="mb-2 text-2xl font-extrabold leading-tight">{title}</p>
-                            <p className="mb-4 text-sm font-bold text-[#f0b429]">{previewCard?.label}</p>
+                            <p className="mb-2 text-[26px] font-extrabold leading-tight">{title}</p>
+                            <p className="mb-2 text-sm font-bold text-[#f0b429]">{previewCard?.label}</p>
+                            {note.trim() ? (
+                                <p data-testid="share-slots-note-preview" className="mb-3 text-center text-[11px] font-semibold text-white">
+                                    {note.trim()}
+                                </p>
+                            ) : null}
                             <div className="flex flex-wrap justify-center gap-1.5">
-                                {visiblePills.map((pill) => (
+                                {previewPills.map((pill, index) => (
                                     <span
-                                        key={pill}
-                                        className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-900"
+                                        key={`${previewDay}-${pill}-${index}`}
+                                        ref={(node) => {
+                                            if (node) pillRefs.current[index] = node;
+                                        }}
+                                        className="inline-flex items-center justify-center rounded-full text-[11px] font-bold"
+                                        style={{
+                                            width: 54,
+                                            height: 28,
+                                            backgroundColor: '#fff',
+                                            color: '#0f172a',
+                                            opacity: mode === 'video' ? 0 : 1,
+                                            transform: mode === 'video' ? 'scale(0.84)' : 'scale(1)',
+                                        }}
                                     >
                                         {pill}
                                     </span>
@@ -508,10 +581,13 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
                             <div className="mt-auto flex flex-col items-center gap-2 pb-2 text-center">
                                 <p className="text-xs font-medium text-slate-200">{tm('bShareOpenSlotsTapLink')}</p>
                                 <span aria-hidden className="text-sm">↓</span>
-                                <span className="max-w-full truncate rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-900">
-                                    {linkLabel}
+                                <span
+                                    className="max-w-full truncate rounded-full px-4 py-2 text-xs font-bold"
+                                    style={{ backgroundColor: '#fff', color: '#0f172a' }}
+                                >
+                                    {firmName}
                                 </span>
-                                <span className="text-[10px] font-semibold tracking-wide text-slate-300">{SHARE_SLOTS_BRAND}</span>
+                                <span className="text-[10px] font-semibold tracking-wide text-slate-300">{footer}</span>
                             </div>
                         </div>
                     </div>
@@ -522,8 +598,10 @@ export function ShareOpenSlotsPage({ onBack }: Props) {
                         data-testid="share-slots-download"
                         onClick={() => { void onDownload(); }}
                         disabled={busy}
-                        className="mb-2 flex h-11 w-full items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-60"
+                        className="mb-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold disabled:opacity-60"
+                        style={{ backgroundColor: '#2f6bff', color: '#fff' }}
                     >
+                        <Download size={16} aria-hidden />
                         {mode === 'video' ? tm('bShareOpenSlotsDownloadVideo') : tm('bShareOpenSlotsDownloadImage')}
                     </button>
                     <div className="grid grid-cols-2 gap-2">

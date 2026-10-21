@@ -188,13 +188,18 @@ describe('boş saat hikâyesi', () => {
         expect(labelsOf(busyOnly)).toContain('09:00');
     });
 
-    it('personel yoksa çip üretilmez', () => {
+    it('personel yoksa çalışma saatleri boş kabul edilir', () => {
         const rows = openSlots({
             staff: [{ id: 'st-1', name: 'Roza', is_active: false, commission_rate: 0 }],
             appointments: [],
             staffId: '',
         });
-        expect(rows).toEqual([]);
+        const labels = rows.filter((slot) => slot.dayYmd === '2026-10-21').map((slot) => slot.label);
+        expect(labels).toContain('08:00');
+        expect(labels).toContain('09:00');
+        expect(labels).toContain('19:30');
+        expect(labels).not.toContain('07:30');
+        expect(labels).not.toContain('20:00');
     });
 
     it('stüdyo dolu saati göstermez ve dört dilde metin vardır', async () => {

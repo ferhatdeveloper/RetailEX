@@ -15,6 +15,7 @@ import {
     composeShareSlotsMessage,
     recordShareSlotsVideo,
     renderShareSlotsPng,
+    shareSlotsAnimationPlan,
     shareSlotsDayYmds,
     shareSlotsRevealCounts,
     shareSlotsVideoPlan,
@@ -137,6 +138,16 @@ describe('Boş saatleri paylaş sayfası', () => {
         expect(plan.counts.at(-1)).toBe(3);
         expect(plan.durationMs).toBeGreaterThanOrEqual(2400);
         expect(plan.counts.every((count, index) => index === 0 || count >= plan.counts[index - 1])).toBe(true);
+        const anim = shareSlotsAnimationPlan(3);
+        expect(anim.frames.length).toBeGreaterThanOrEqual(3);
+        expect(anim.width).toBe(1080);
+        expect(anim.height).toBe(1920);
+        const visibles = anim.frames.map((frame) => frame.visible);
+        expect(visibles[0]).toBeLessThan(visibles[visibles.length - 1] ?? 0);
+        expect(visibles.every((count, index) => index === 0 || count >= (visibles[index - 1] ?? 0))).toBe(true);
+        expect(visibles).toContain(1);
+        expect(visibles).toContain(2);
+        expect(visibles).toContain(3);
 
         const texts: string[] = [];
         const canvas = {
@@ -242,7 +253,8 @@ describe('Boş saatleri paylaş sayfası', () => {
         expect(video.type).toContain('webm');
         expect(videoCanvas.width).toBe(1080);
         expect(videoCanvas.height).toBe(1920);
-        expect(frames).toBe(shareSlotsVideoPlan(2).counts.length);
+        expect(frames).toBe(shareSlotsAnimationPlan(2).frames.length);
+        expect(shareSlotsAnimationPlan(2).frames.length).toBeGreaterThanOrEqual(3);
     });
 
     it('tam sayfa yerleşir, menü sekmesini açar ve dolu saati göstermez', async () => {
