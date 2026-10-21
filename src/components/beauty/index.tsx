@@ -7,7 +7,7 @@ import {
     UserCog, BarChart3, Bell, Search,
     ChevronLeft, ChevronRight, Box, Megaphone,
     Sparkles, Settings2, ClipboardList, Layers, LayoutGrid,
-    Clock, LogOut, Smile, Activity, Baby, Apple, Banknote, Menu, X, Share2,
+    Clock, LogOut, Smile, Activity, Baby, Apple, Banknote, Menu, X,
 } from 'lucide-react';
 import { useBeautyStore } from './store/useBeautyStore';
 import { formatLocalYmd } from '../../utils/dateLocal';
@@ -173,7 +173,6 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     items: [
                         { id: 'dashboard', icon: LayoutDashboard, label: tm('dashboard') },
                         { id: CLINIC_BOARD_SHELL_TAB_ID, icon: Calendar, label: tm(CLINIC_BOARD_SHELL_LABEL_KEY) },
-                        { id: SHARE_OPEN_SLOTS_TAB_ID, icon: Share2, label: tm(SHARE_OPEN_SLOTS_LABEL_KEY) },
                     ],
                 },
                 {
@@ -231,7 +230,6 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                 items: [
                     { id: 'dashboard', icon: LayoutDashboard, label: tm('dashboard') },
                     { id: CLINIC_BOARD_SHELL_TAB_ID, icon: Calendar, label: tm(CLINIC_BOARD_SHELL_LABEL_KEY) },
-                    { id: SHARE_OPEN_SLOTS_TAB_ID, icon: Share2, label: tm(SHARE_OPEN_SLOTS_LABEL_KEY) },
                 ],
             },
             {
