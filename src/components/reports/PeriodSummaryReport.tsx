@@ -335,11 +335,14 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
 
   const queryClient = useQueryClient();
 
-  // Ortak sorgu parametreleri — ledger snapshot değişmez, sorgu tazelenir.
+  // Ortak sorgu parametreleri — kullanıcı isteği 21.10.2026: otomatik yenileme
+  // kapatıldı (rapor kendi kendine sürekli refetch ediyordu). Manuel "Yenile"
+  // butonu (`refreshAll` ile `invalidateQueries`) korundu — kullanıcı yenilemek
+  // isterse butona basar. refetchInterval: false = devre dışı.
   const queryCommon = useMemo(
     () => ({
       staleTime: 0,
-      refetchInterval: 60_000,
+      refetchInterval: false,
       refetchOnWindowFocus: true,
       retry: 1,
     }),
@@ -586,7 +589,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     ...queryCommon,
   });
 
-  // Kâr dağıtımı — "anlık hesap (cache yok)" kartı; refetchInterval ile her dakika tazelenir.
+  // Kâr dağıtımı — "anlık hesap (cache yok)" kartı; queryCommon üzerinden
+  // refetchInterval=false (Manuel Yenile için invalidateQueries yeterli).
   const monthlyProfitQuery = useQuery({
     queryKey: [
       'periodSummary',
