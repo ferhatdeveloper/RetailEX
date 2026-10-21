@@ -6,7 +6,7 @@ class ResizeObserverStub {
     disconnect() {}
 }
 globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { AppointmentStatus } from '../../../types/beauty';
 import type { BeautyAppointment, BeautySpecialist } from '../../../types/beauty';
 import { ClinicDashboardV2 } from '../../../components/beauty/components/ClinicDashboardV2';
@@ -41,6 +41,15 @@ vi.mock('../../../components/beauty/store/useBeautyStore', () => ({
             customers: harness.customers,
             loadCustomers: async () => {},
         }),
+}));
+
+vi.mock('../../../contexts/ThemeContext', () => ({
+    useTheme: () => ({ darkMode: false }),
+}));
+
+vi.mock('../../../contexts/FirmaDonemContext', () => ({
+    useFirmaDonem: () => ({ selectedFirm: { firm_nr: '001', name: 'Demo' }, selectedPeriod: { nr: '01' } }),
+    useOptionalFirmaDonem: () => null,
 }));
 
 vi.mock('../../../contexts/LanguageContext', async () => {
@@ -181,11 +190,14 @@ describe('ClinicDashboardV2', () => {
         expect(screen.getByText('Son 6 Ay')).toBeTruthy();
         expect(screen.getByText('Randevular')).toBeTruthy();
         expect(screen.getByText('Yeni Müşteriler')).toBeTruthy();
+        const search = screen.getByTestId('clinic-v2-search-row');
+        const day = screen.getByTestId('clinic-v2-day');
         const chart = screen.getByTestId('clinic-rich-chart');
         const quick = screen.getByTestId('clinic-rich-quick');
-        const grafana = screen.getByTestId('clinic-rich-grafana');
+        expect(search.compareDocumentPosition(day) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(day.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(chart.compareDocumentPosition(quick) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(quick.compareDocumentPosition(grafana) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(within(search).getByRole('button', { name: 'Grafana raporu' })).toBeTruthy();
     });
 
     it('hızlı erişim 12 etiket ve mevcut sekmeye gider', () => {
@@ -223,12 +235,11 @@ describe('ClinicDashboardV2', () => {
         expect(byLabel('Randevu Takvimi')?.getAttribute('data-tab')).toBe('calendar');
     });
 
-    it('grafana seçimi n kart döner ve localStorage da kalır', () => {
+    it('modal seçimi n uid döner ve arama satırında düğme vardır', () => {
         const catalog = clinicGrafanaCatalog();
         const n = 3;
         expect(catalog.length).toBeGreaterThan(n);
-        const chosen = catalog.slice(0, n);
-        expect(clinicGrafanaCards([...chosen.map((row) => row.uid), 'kayip-pano'], catalog)).toHaveLength(n);
+        expect(clinicGrafanaCards([...catalog.slice(0, n).map((row) => row.uid), 'kayip-pano'], catalog)).toHaveLength(n);
 
         const view = (
             <ClinicDashboardV2
@@ -241,22 +252,39 @@ describe('ClinicDashboardV2', () => {
             />
         );
         const first = render(view);
-        expect(screen.getByTestId('clinic-grafana-empty').textContent).toBe('Grafana raporu seçin');
-        const boxes = screen.getAllByRole('checkbox');
-        for (let i = 0; i < n; i += 1) fireEvent.click(boxes[i]);
+        const search = screen.getByTestId('clinic-v2-search-row');
+        expect(within(search).getByRole('searchbox')).toBeTruthy();
+        expect(within(search).getByRole('button', { name: 'Grafana raporu' })).toBeTruthy();
+        expect(search.textContent).toContain('Grafana raporu seçin');
+        expect(screen.queryByRole('checkbox')).toBeNull();
+        expect(screen.queryByTestId('clinic-grafana-card')).toBeNull();
+
+        fireEvent.click(within(search).getByRole('button', { name: 'Grafana raporu' }));
+        const dialog = screen.getByRole('dialog');
+        expect(within(dialog).getByText('Pano adı')).toBeTruthy();
+        expect(within(dialog).getByText('Klasör / uid')).toBeTruthy();
+        for (let i = 1; i <= n; i += 1) {
+            const boxes = within(dialog).getAllByRole('checkbox');
+            fireEvent.click(boxes[i]);
+        }
+        fireEvent.click(within(dialog).getByTestId('clinic-grafana-save'));
+
+        expect(screen.queryByRole('dialog')).toBeNull();
         const cards = screen.getAllByTestId('clinic-grafana-card');
         expect(cards).toHaveLength(n);
-        expect(cards.map((node) => node.getAttribute('data-uid'))).toEqual(chosen.map((row) => row.uid));
-        expect(screen.queryByTestId('clinic-grafana-empty')).toBeNull();
-        expect(JSON.parse(localStorage.getItem(CLINIC_V2_GRAFANA_PICKS_KEY) || '[]')).toEqual(chosen.map((row) => row.uid));
+        const stored = JSON.parse(localStorage.getItem(CLINIC_V2_GRAFANA_PICKS_KEY) || '[]') as string[];
+        expect(stored).toHaveLength(n);
+        expect(stored).toEqual(cards.map((node) => node.getAttribute('data-uid')));
+        expect(catalog.some((row) => row.uid === stored[0])).toBe(true);
         const src = cards[0].querySelector('iframe')?.getAttribute('src') || '';
-        expect(src).toBe(clinicGrafanaEmbedUrl(chosen[0]));
-        expect(src.includes(chosen[0].uid)).toBe(true);
+        expect(src).toBe(clinicGrafanaEmbedUrl(catalog.find((row) => row.uid === stored[0])!));
         expect(/api[_-]?key|bearer|token=/i.test(src)).toBe(false);
+        expect(screen.queryByText('Grafana raporu seçin')).toBeNull();
         first.unmount();
 
         render(view);
         expect(screen.getAllByTestId('clinic-grafana-card')).toHaveLength(n);
+        expect(screen.queryByRole('checkbox')).toBeNull();
     });
 
     it('yeni alt şerit çevirileri dört dilde dolu', () => {
@@ -281,6 +309,18 @@ describe('ClinicDashboardV2', () => {
             'bClinicV2GrafanaEmpty',
             'bClinicV2GrafanaSearch',
             'bClinicV2GrafanaRemove',
+            'bClinicV2SearchLabel',
+            'bClinicV2SearchPlaceholder',
+            'bClinicV2SearchEmpty',
+            'bClinicV2GrafanaButton',
+            'bClinicV2GrafanaColName',
+            'bClinicV2GrafanaColFolder',
+            'bClinicV2GrafanaSave',
+            'bClinicV2GrafanaCancel',
+            'bClinicV2GrafanaShrink',
+            'bClinicV2GrafanaGrow',
+            'bClinicV2GrafanaExpand',
+            'bClinicV2GrafanaCollapse',
         ];
         const langs: Language[] = ['tr', 'en', 'ar', 'ku'];
         for (const key of keys) {

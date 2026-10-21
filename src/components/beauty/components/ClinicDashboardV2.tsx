@@ -8,6 +8,7 @@ import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisi
 import { buildClinicV2View } from '../../../utils/clinicV2Charts';
 import { buildClinicMonthSeries, clinicChartFetchBounds } from '../../../utils/clinicDashboardRich';
 import { ClinicDashboardV2Rich } from './ClinicDashboardV2Rich';
+import { ClinicV2SearchGrafanaBar } from './ClinicV2SearchGrafanaBar';
 import { beautyService } from '../../../services/beautyService';
 import { useBeautyStore } from '../store/useBeautyStore';
 import {
@@ -96,6 +97,7 @@ export function ClinicDashboardV2({
     const loadCustomers = useBeautyStore((s) => s.loadCustomers);
     const [dayOffset, setDayOffset] = useState(0);
     const [clock, setClock] = useState(() => new Date());
+    const [boardQuery, setBoardQuery] = useState('');
     const [surveyOn, setSurveyOn] = useState(readClinicV2SurveyPanel);
     const [crmOn, setCrmOn] = useState(readClinicV2CrmPanel);
     const [fetched, setFetched] = useState<BeautyAppointment[] | null>(null);
@@ -145,6 +147,13 @@ export function ClinicDashboardV2({
         .filter(beautyAptVisibleOnSchedule)
         .slice()
         .sort((a, b) => String(a.appointment_time || a.time || '').localeCompare(String(b.appointment_time || b.time || '')));
+    const boardNeedle = boardQuery.trim().toLocaleLowerCase('tr-TR');
+    const listedRows = boardNeedle
+        ? selectedVisible.filter((apt) => {
+            const blob = `${apt.customer_name || ''} ${apt.service_name || ''} ${apt.appointment_time || apt.time || ''}`;
+            return blob.toLocaleLowerCase('tr-TR').includes(boardNeedle);
+        })
+        : selectedVisible;
 
     const buckets = useMemo(() => {
         const c = { scheduled: 0, confirmed: 0, arrived: 0, noshow: 0, cancelled: 0 };
@@ -297,7 +306,9 @@ export function ClinicDashboardV2({
                     />
                 </section>
 
-                <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.65fr) minmax(260px, 0.85fr)', gap: 12 }}>
+                <ClinicV2SearchGrafanaBar query={boardQuery} onQueryChange={setBoardQuery} />
+
+                <section data-testid="clinic-v2-day" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.65fr) minmax(260px, 0.85fr)', gap: 12 }}>
                     <div className="bg-white" style={{ borderRadius: 16, border: `1px solid ${LINE}`, minHeight: 220 }}>
                         <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2" style={{ borderColor: LINE }}>
                             <DaySwitch
@@ -337,9 +348,11 @@ export function ClinicDashboardV2({
                                     {tm('bClinicV2AddAppointment')}
                                 </button>
                             </div>
+                        ) : listedRows.length === 0 ? (
+                            <div className="px-4 py-8 text-center text-sm font-semibold text-slate-500">{tm('bClinicV2SearchEmpty')}</div>
                         ) : (
                             <div>
-                                {selectedVisible.map((apt) => (
+                                {listedRows.map((apt) => (
                                     <div
                                         key={apt.id}
                                         className="grid items-center gap-2 border-b px-3 py-2"

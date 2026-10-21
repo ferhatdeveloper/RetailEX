@@ -1,4 +1,3 @@
-import { useMemo, useState } from 'react';
 import {
     BarChart3,
     Bell,
@@ -25,14 +24,8 @@ import {
     YAxis,
 } from 'recharts';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import type { GrafanaReadyReport } from '../../../utils/grafanaEmbed';
 import {
     CLINIC_QUICK_LINKS,
-    clinicGrafanaCards,
-    clinicGrafanaCatalog,
-    clinicGrafanaEmbedUrl,
-    readClinicGrafanaPicks,
-    writeClinicGrafanaPicks,
     type ClinicMonthPoint,
     type ClinicQuickIcon,
     type ClinicQuickLink,
@@ -61,38 +54,15 @@ function openTab(tab: string) {
     window.dispatchEvent(new CustomEvent('retailex-beauty-open-tab', { detail: { tab } }));
 }
 
-function reportTitle(report: GrafanaReadyReport, english: boolean): string {
-    return english ? report.titleEn : report.titleTr;
-}
-
 export function ClinicDashboardV2Rich({ series }: { series: ClinicMonthPoint[] }) {
     const { tm } = useLanguage();
-    const english = String(tm('localeCode') || '').startsWith('en');
-    const catalog = useMemo(() => clinicGrafanaCatalog(), []);
-    const [picks, setPicks] = useState<string[]>(readClinicGrafanaPicks);
-    const [search, setSearch] = useState('');
-    const cards = useMemo(() => clinicGrafanaCards(picks, catalog), [picks, catalog]);
-    const needle = search.trim().toLocaleLowerCase('tr-TR');
-    const visible = catalog.filter((report) => {
-        if (!needle) return true;
-        return reportTitle(report, english).toLocaleLowerCase('tr-TR').includes(needle);
-    });
     const peak = series.reduce((max, row) => Math.max(max, row.appointments, row.newCustomers), 0);
     const yMax = peak > 0 ? peak : 1;
-
-    const toggle = (uid: string) => {
-        setPicks((prev) => {
-            const next = prev.includes(uid) ? prev.filter((item) => item !== uid) : [...prev, uid];
-            writeClinicGrafanaPicks(next);
-            return next;
-        });
-    };
 
     const goesTo = (label: string, dest: string) =>
         tm('bClinicV2QaGoesTo').replace('{label}', label).replace('{dest}', dest);
 
     return (
-        <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-3 lg:flex-row">
                 <section
                     data-testid="clinic-rich-chart"
@@ -182,80 +152,6 @@ export function ClinicDashboardV2Rich({ series }: { series: ClinicMonthPoint[] }
                     </div>
                 </section>
             </div>
-
-            <section
-                data-testid="clinic-rich-grafana"
-                className="bg-white px-3 py-3"
-                style={{ borderRadius: 16, border: `1px solid ${LINE}` }}
-            >
-                <h2 className="text-sm font-extrabold">{tm('bClinicV2GrafanaTitle')}</h2>
-                <input
-                    type="search"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    aria-label={tm('bClinicV2GrafanaSearch')}
-                    placeholder={tm('bClinicV2GrafanaSearch')}
-                    className="mt-2 w-full rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none"
-                    style={{ borderColor: LINE }}
-                />
-                <div className="mt-2 max-h-36 space-y-1 overflow-y-auto pr-1">
-                    {visible.map((report) => {
-                        const title = reportTitle(report, english);
-                        const checked = picks.includes(report.uid);
-                        return (
-                            <label key={report.uid} className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-xs font-semibold text-slate-700">
-                                <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => toggle(report.uid)}
-                                />
-                                <span className="truncate">{title}</span>
-                            </label>
-                        );
-                    })}
-                </div>
-                {cards.length === 0 ? (
-                    <p data-testid="clinic-grafana-empty" className="py-8 text-center text-sm font-semibold text-slate-400">
-                        {tm('bClinicV2GrafanaEmpty')}
-                    </p>
-                ) : (
-                    <div className={cards.length > 1 ? 'mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2' : 'mt-3 grid grid-cols-1 gap-3'}>
-                        {cards.map((report) => {
-                            const title = reportTitle(report, english);
-                            const src = clinicGrafanaEmbedUrl(report, 'light');
-                            return (
-                                <article
-                                    key={report.uid}
-                                    data-testid="clinic-grafana-card"
-                                    data-uid={report.uid}
-                                    className="overflow-hidden bg-white"
-                                    style={{ borderRadius: 12, border: `1px solid ${LINE}` }}
-                                >
-                                    <div className="flex items-center justify-between gap-2 border-b px-2 py-1.5" style={{ borderColor: LINE }}>
-                                        <h3 className="truncate text-xs font-extrabold">{title}</h3>
-                                        <button
-                                            type="button"
-                                            onClick={() => toggle(report.uid)}
-                                            className="shrink-0 text-[11px] font-bold"
-                                            style={{ color: BLUE }}
-                                        >
-                                            {tm('bClinicV2GrafanaRemove')}
-                                        </button>
-                                    </div>
-                                    <iframe
-                                        title={title}
-                                        src={src}
-                                        className="h-64 w-full border-0"
-                                        allow="fullscreen"
-                                        referrerPolicy="no-referrer-when-downgrade"
-                                    />
-                                </article>
-                            );
-                        })}
-                    </div>
-                )}
-            </section>
-        </div>
     );
 }
 
