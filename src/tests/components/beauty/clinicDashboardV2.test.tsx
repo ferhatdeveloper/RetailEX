@@ -206,7 +206,8 @@ describe('ClinicDashboardV2', () => {
         expect(addCard.textContent).toContain('Rapor ekle');
         expect(day.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         const pair = screen.getByTestId('clinic-v2-activity-pair');
-        expect(pair.className).toContain('lg:flex-row');
+        expect(pair.className).toContain('grid-cols-2');
+        expect(within(pair).getAllByTestId('clinic-v2-activity-cell')).toHaveLength(4);
         expect(within(pair).getByRole('heading', { name: 'Arama ve ön aktivite' })).toBeTruthy();
         expect(within(pair).getByRole('heading', { name: 'Bugünün Randevuları' })).toBeTruthy();
         expect(search.compareDocumentPosition(pair) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -226,11 +227,18 @@ describe('ClinicDashboardV2', () => {
             />,
         );
         const pair = screen.getByTestId('clinic-v2-activity-pair');
-        expect(pair.className).toContain('flex-col');
-        expect(pair.className).toContain('lg:flex-row');
-        const titles = within(pair).getAllByRole('heading');
-        expect(titles[0].textContent).toBe('Arama ve ön aktivite');
-        expect(titles[1].textContent).toBe('Bugünün Randevuları');
+        expect(pair.className).toContain('grid');
+        expect(pair.className).toContain('grid-cols-2');
+        expect(pair.className).toContain('max-sm:grid-cols-1');
+        expect(pair.className).not.toContain('flex-col');
+        expect(pair.className).not.toContain('lg:flex-row');
+        const cells = within(pair).getAllByTestId('clinic-v2-activity-cell');
+        expect(cells).toHaveLength(4);
+        expect(within(cells[0]).getByRole('heading', { name: 'Arama ve ön aktivite' })).toBeTruthy();
+        expect(within(cells[1]).getByRole('heading', { name: 'Bugünün Randevuları' })).toBeTruthy();
+        expect(within(cells[1]).getByText('0 kayıtlı randevu')).toBeTruthy();
+        expect(within(cells[0]).queryByText('Bu aralıkta uygun randevu yok.')).toBeNull();
+        expect(within(cells[1]).queryByText('Bugün randevu bulunmuyor')).toBeNull();
         expect(within(pair).getByText('0 kayıtlı randevu')).toBeTruthy();
         expect(within(pair).getByText('Bugün randevu bulunmuyor')).toBeTruthy();
         expect(within(pair).getByRole('button', { name: 'Bugün' })).toBeTruthy();
@@ -246,8 +254,11 @@ describe('ClinicDashboardV2', () => {
         expect(within(pair).getByText('Cihaz')).toBeTruthy();
         expect(within(pair).getByRole('option', { name: 'Tüm cihazlar' })).toBeTruthy();
         expect(within(pair).getByText('Hizmete göre grupla')).toBeTruthy();
+        expect(within(cells[0]).getByText('Hizmete göre grupla')).toBeTruthy();
+        expect(within(cells[3]).getByText('Bugün randevu bulunmuyor')).toBeTruthy();
         await waitFor(() => {
-            expect(within(pair).getByText('Bu aralıkta uygun randevu yok.')).toBeTruthy();
+            const live = within(pair).getAllByTestId('clinic-v2-activity-cell');
+            expect(within(live[2]).getByText('Bu aralıkta uygun randevu yok.')).toBeTruthy();
         });
         expect(within(pair).queryByRole('table')).toBeNull();
         const search = screen.getByTestId('clinic-v2-search-row');

@@ -292,9 +292,16 @@ export function ClinicV2ActivityPair({
         ['month', 'bCallBoardMonth'],
     ] as const;
 
+    const cellClass = 'flex h-full min-h-0 min-w-0 flex-col overflow-y-auto bg-white';
+    const cellStyle = { borderRadius: 16, border: `1px solid ${LINE}` } as const;
+
     return (
-        <section data-testid="clinic-v2-activity-pair" className="flex flex-col gap-3 lg:flex-row">
-            <article className="min-w-0 flex-1 overflow-hidden bg-white" style={{ borderRadius: 16, border: `1px solid ${LINE}` }}>
+        <>
+        <section
+            data-testid="clinic-v2-activity-pair"
+            className="grid grid-cols-2 gap-2 max-sm:grid-cols-1 sm:h-[26rem] sm:grid-rows-2"
+        >
+            <article data-testid="clinic-v2-activity-cell" className={cellClass} style={cellStyle}>
                 <header className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2" style={{ borderColor: LINE, background: '#faf9fd' }}>
                     <div className="flex items-center gap-2">
                         <Phone size={16} color={VIOLET} />
@@ -405,7 +412,22 @@ export function ClinicV2ActivityPair({
                         {tm('bCallBoardGroupByService')}
                     </label>
                 </div>
-                <div className="max-h-[280px] overflow-y-auto">
+            </article>
+
+            <article data-testid="clinic-v2-activity-cell" className={cellClass} style={cellStyle}>
+                <header className="flex items-center justify-between px-3 py-3">
+                    <div>
+                        <h2 className="text-[13px] font-extrabold" style={{ color: TEXT }}>{tm('bTodayAppointmentsTitle')}</h2>
+                        <p className="mt-0.5 text-[11px] font-medium" style={{ color: MUTED }}>
+                            {tm('bRegisteredAppointmentsSub').replace('{n}', String(todayKpis.total))}
+                        </p>
+                    </div>
+                    <Calendar size={16} color={VIOLET} />
+                </header>
+            </article>
+
+            <article data-testid="clinic-v2-activity-cell" className={cellClass} style={cellStyle}>
+                <div className="min-h-0 flex-1">
                     {callLoading ? (
                         <p className="px-4 py-6 text-center text-xs" style={{ color: MUTED }}>…</p>
                     ) : callRows.length === 0 ? (
@@ -476,18 +498,9 @@ export function ClinicV2ActivityPair({
                 </div>
             </article>
 
-            <article className="min-w-0 flex-1 overflow-hidden bg-white" style={{ borderRadius: 16, border: `1px solid ${LINE}` }}>
-                <header className="flex items-center justify-between border-b px-3 py-3" style={{ borderColor: LINE }}>
-                    <div>
-                        <h2 className="text-[13px] font-extrabold" style={{ color: TEXT }}>{tm('bTodayAppointmentsTitle')}</h2>
-                        <p className="mt-0.5 text-[11px] font-medium" style={{ color: MUTED }}>
-                            {tm('bRegisteredAppointmentsSub').replace('{n}', String(todayKpis.total))}
-                        </p>
-                    </div>
-                    <Calendar size={16} color={VIOLET} />
-                </header>
+            <article data-testid="clinic-v2-activity-cell" className={cellClass} style={cellStyle}>
                 {todayApts.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center px-4 py-10" style={{ color: MUTED }}>
+                    <div className="flex h-full flex-col items-center justify-center px-4 py-6" style={{ color: MUTED }}>
                         <Calendar size={32} style={{ opacity: 0.3 }} />
                         <p className="mt-2 text-xs font-semibold">{tm('bNoAppointmentsToday')}</p>
                     </div>
@@ -505,17 +518,17 @@ export function ClinicV2ActivityPair({
                     />
                 )}
             </article>
-
-            {crmAppointment ? (
-                <BeautyServiceReportCrmModal
-                    open
-                    onClose={() => setCrmAppointment(null)}
-                    appointment={crmAppointment}
-                    accentColor={VIOLET}
-                    onSaved={() => setRefreshTick((t) => t + 1)}
-                />
-            ) : null}
         </section>
+        {crmAppointment ? (
+            <BeautyServiceReportCrmModal
+                open
+                onClose={() => setCrmAppointment(null)}
+                appointment={crmAppointment}
+                accentColor={VIOLET}
+                onSaved={() => setRefreshTick((t) => t + 1)}
+            />
+        ) : null}
+        </>
     );
 }
 
