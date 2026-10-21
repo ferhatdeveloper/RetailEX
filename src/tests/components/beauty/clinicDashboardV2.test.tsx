@@ -197,7 +197,11 @@ describe('ClinicDashboardV2', () => {
         expect(search.compareDocumentPosition(day) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(day.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(chart.compareDocumentPosition(quick) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(within(search).getByRole('button', { name: 'Grafana raporu' })).toBeTruthy();
+        expect(within(search).queryByRole('button')).toBeNull();
+        const addCard = screen.getByTestId('clinic-grafana-add');
+        expect(addCard.textContent).toContain('Rapor ekle');
+        expect(search.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(addCard.compareDocumentPosition(day) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it('hızlı erişim 12 etiket ve mevcut sekmeye gider', () => {
@@ -235,7 +239,7 @@ describe('ClinicDashboardV2', () => {
         expect(byLabel('Randevu Takvimi')?.getAttribute('data-tab')).toBe('calendar');
     });
 
-    it('modal seçimi n uid döner ve arama satırında düğme vardır', () => {
+    it('artı kartı seçim modalını açar; seçimden sonra n rapor kartı ve bir ekle kartı kalır', () => {
         const catalog = clinicGrafanaCatalog();
         const n = 3;
         expect(catalog.length).toBeGreaterThan(n);
@@ -254,12 +258,17 @@ describe('ClinicDashboardV2', () => {
         const first = render(view);
         const search = screen.getByTestId('clinic-v2-search-row');
         expect(within(search).getByRole('searchbox')).toBeTruthy();
-        expect(within(search).getByRole('button', { name: 'Grafana raporu' })).toBeTruthy();
-        expect(search.textContent).toContain('Grafana raporu seçin');
+        expect(within(search).queryByRole('button')).toBeNull();
         expect(screen.queryByRole('checkbox')).toBeNull();
         expect(screen.queryByTestId('clinic-grafana-card')).toBeNull();
 
-        fireEvent.click(within(search).getByRole('button', { name: 'Grafana raporu' }));
+        const grid = screen.getByTestId('clinic-grafana-grid');
+        const add = within(grid).getByRole('button', { name: 'Rapor ekle' });
+        expect(add).toBe(screen.getByTestId('clinic-grafana-add'));
+        expect(add.querySelector('svg')).toBeTruthy();
+        expect(grid.children).toHaveLength(1);
+
+        fireEvent.click(add);
         const dialog = screen.getByRole('dialog');
         expect(within(dialog).getByText('Pano adı')).toBeTruthy();
         expect(within(dialog).getByText('Klasör / uid')).toBeTruthy();
@@ -272,6 +281,11 @@ describe('ClinicDashboardV2', () => {
         expect(screen.queryByRole('dialog')).toBeNull();
         const cards = screen.getAllByTestId('clinic-grafana-card');
         expect(cards).toHaveLength(n);
+        const gridAfter = screen.getByTestId('clinic-grafana-grid');
+        const addAfter = within(gridAfter).getByTestId('clinic-grafana-add');
+        expect(within(gridAfter).getAllByTestId('clinic-grafana-card')).toHaveLength(n);
+        expect(gridAfter.children).toHaveLength(n + 1);
+        expect(gridAfter.lastElementChild).toBe(addAfter);
         const stored = JSON.parse(localStorage.getItem(CLINIC_V2_GRAFANA_PICKS_KEY) || '[]') as string[];
         expect(stored).toHaveLength(n);
         expect(stored).toEqual(cards.map((node) => node.getAttribute('data-uid')));
@@ -284,6 +298,8 @@ describe('ClinicDashboardV2', () => {
 
         render(view);
         expect(screen.getAllByTestId('clinic-grafana-card')).toHaveLength(n);
+        expect(screen.getAllByTestId('clinic-grafana-add')).toHaveLength(1);
+        expect(screen.getByTestId('clinic-grafana-grid').lastElementChild).toBe(screen.getByTestId('clinic-grafana-add'));
         expect(screen.queryByRole('checkbox')).toBeNull();
     });
 
@@ -313,6 +329,7 @@ describe('ClinicDashboardV2', () => {
             'bClinicV2SearchPlaceholder',
             'bClinicV2SearchEmpty',
             'bClinicV2GrafanaButton',
+            'bClinicV2GrafanaAdd',
             'bClinicV2GrafanaColName',
             'bClinicV2GrafanaColFolder',
             'bClinicV2GrafanaSave',
@@ -322,6 +339,7 @@ describe('ClinicDashboardV2', () => {
             'bClinicV2GrafanaExpand',
             'bClinicV2GrafanaCollapse',
         ];
+        expect(translate('bClinicV2GrafanaAdd', 'tr')).toBe('Rapor ekle');
         const langs: Language[] = ['tr', 'en', 'ar', 'ku'];
         for (const key of keys) {
             for (const lang of langs) {

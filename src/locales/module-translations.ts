@@ -12656,6 +12656,7 @@ export const excelModuleTranslations = {
   bClinicV2SearchPlaceholder: { tr: 'Müşteri, hizmet veya saat', en: 'Customer, service or time', ar: 'العميل أو الخدمة أو الوقت', ku: 'کڕیار، خزمەت یان کات' },
   bClinicV2SearchEmpty: { tr: 'Eşleşen randevu yok', en: 'No matching appointment', ar: 'لا يوجد موعد مطابق', ku: 'ژمێرەی هاوتا نییە' },
   bClinicV2GrafanaButton: { tr: 'Grafana raporu', en: 'Grafana report', ar: 'تقرير Grafana', ku: 'ڕاپۆرتی Grafana' },
+  bClinicV2GrafanaAdd: { tr: 'Rapor ekle', en: 'Add report', ar: 'إضافة تقرير', ku: 'ڕاپۆرت زیاد بکە' },
   bClinicV2GrafanaColName: { tr: 'Pano adı', en: 'Dashboard', ar: 'اسم اللوحة', ku: 'ناوی پانێڵ' },
   bClinicV2GrafanaColFolder: { tr: 'Klasör / uid', en: 'Folder / uid', ar: 'المجلد / المعرف', ku: 'بوخچە / uid' },
   bClinicV2GrafanaSave: { tr: 'Kaydet', en: 'Save', ar: 'حفظ', ku: 'پاشەکەوت' },

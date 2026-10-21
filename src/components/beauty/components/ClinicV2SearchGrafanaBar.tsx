@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Search, X } from 'lucide-react';
+import { Plus, Search, X } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
@@ -106,45 +106,39 @@ export function ClinicV2SearchGrafanaBar({
                     className="min-w-[12rem] flex-1 rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none"
                     style={{ borderColor: LINE }}
                 />
-                <button
-                    type="button"
-                    data-testid="clinic-grafana-open"
-                    onClick={openModal}
-                    className="rounded-lg px-3 py-1.5 text-xs font-extrabold text-white"
-                    style={{ background: BLUE }}
-                >
-                    {tm('bClinicV2GrafanaButton')}
-                </button>
-                {cards.length === 0 ? (
-                    <span data-testid="clinic-grafana-empty" className="text-xs font-semibold text-slate-400">
-                        {tm('bClinicV2GrafanaEmpty')}
-                    </span>
-                ) : null}
             </section>
 
-            {cards.length > 0 ? (
-                <div className={cards.length > 1 ? 'grid grid-cols-1 gap-3 lg:grid-cols-2' : 'grid grid-cols-1 gap-3'}>
-                    {cards.map((report) => {
-                        const title = reportTitle(report, english);
-                        return (
-                            <ClinicGrafanaCardFrame
-                                key={report.uid}
-                                uid={report.uid}
+            <div data-testid="clinic-grafana-grid" className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                {cards.map((report) => {
+                    const title = reportTitle(report, english);
+                    return (
+                        <ClinicGrafanaCardFrame
+                            key={report.uid}
+                            uid={report.uid}
+                            title={title}
+                            onRemove={() => dropUid(report.uid)}
+                        >
+                            <iframe
                                 title={title}
-                                onRemove={() => dropUid(report.uid)}
-                            >
-                                <iframe
-                                    title={title}
-                                    src={clinicGrafanaEmbedUrl(report, 'light')}
-                                    className="h-full w-full border-0"
-                                    allow="fullscreen"
-                                    referrerPolicy="no-referrer-when-downgrade"
-                                />
-                            </ClinicGrafanaCardFrame>
-                        );
-                    })}
-                </div>
-            ) : null}
+                                src={clinicGrafanaEmbedUrl(report, 'light')}
+                                className="h-full w-full border-0"
+                                allow="fullscreen"
+                                referrerPolicy="no-referrer-when-downgrade"
+                            />
+                        </ClinicGrafanaCardFrame>
+                    );
+                })}
+                <button
+                    type="button"
+                    data-testid="clinic-grafana-add"
+                    onClick={openModal}
+                    className="flex min-h-[11rem] w-full flex-col items-center justify-center gap-2 bg-white px-4 py-6 text-sm font-extrabold"
+                    style={{ borderRadius: 12, border: '1px dashed #2563eb', color: BLUE, order: 1 }}
+                >
+                    <Plus size={28} aria-hidden />
+                    <span>{tm('bClinicV2GrafanaAdd')}</span>
+                </button>
+            </div>
 
             {open ? (
                 <PercentBodyModal onClose={() => setOpen(false)} size="wide" ariaLabel={tm('bClinicV2GrafanaButton')}>
