@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Share2 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { beautyService } from '../../../services/beautyService';
@@ -10,9 +10,11 @@ import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisi
 import { formatMoneyInteger } from '../../../utils/formatMoney';
 import { ClinicBoardMenu } from './ClinicBoardMenu';
 import { ClinicDayBoard } from './ClinicDayBoard';
+import { ClinicBoardShareDialog } from './ClinicBoardShareDialog';
 import {
     clinicBoardSideOpen,
     clinicBoardWeekYmds,
+    listClinicBoardOpenSlots,
     parseClinicBoardYmd,
     shiftClinicBoardYmd,
     type ClinicBoardSection,
@@ -61,6 +63,7 @@ export function ClinicBoardPage() {
     const [customers, setCustomers] = useState<BeautyCustomer[]>([]);
     const [appointments, setAppointments] = useState<BeautyAppointment[]>([]);
     const [loadFailed, setLoadFailed] = useState(false);
+    const [shareOpen, setShareOpen] = useState(false);
 
     const range = useMemo(() => {
         if (mode === 'week') return getWeekRangeLocal(parseClinicBoardYmd(anchor));
@@ -129,6 +132,16 @@ export function ClinicBoardPage() {
         return rows;
     }, [dayAppointments, customers]);
 
+    const openSlots = useMemo(
+        () => listClinicBoardOpenSlots({
+            staff,
+            appointments,
+            dayYmd: anchor,
+            staffFilterId: staffFilter,
+            unassignedName: tm('bClinicBoardUnassigned'),
+        }),
+        [staff, appointments, anchor, staffFilter, tm],
+    );
     const sideOpen = section === 'appointment' && clinicBoardSideOpen(surveyOn, crmOn);
     const weekDays = mode === 'week' ? clinicBoardWeekYmds(anchor) : [];
     const dateLabel = parseClinicBoardYmd(anchor).toLocaleDateString(locale, {
@@ -208,6 +221,17 @@ export function ClinicBoardPage() {
                             <option key={person.id} value={person.id}>{person.name}</option>
                         ))}
                     </select>
+                    {section === 'appointment' && (
+                        <button
+                            type="button"
+                            data-testid="clinic-board-share-slots"
+                            onClick={() => setShareOpen(true)}
+                            className="flex h-8 items-center gap-1.5 rounded-lg border border-[#e6eaf0] px-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                        >
+                            <Share2 size={14} aria-hidden />
+                            {tm('bClinicBoardShareSlots')}
+                        </button>
+                    )}
                     <div className="ml-auto flex flex-wrap items-center gap-2">
                         <div className="flex rounded-lg bg-[#f3f5f9] p-0.5">
                             {(['day', 'week'] as const).map((value) => (
@@ -389,6 +413,20 @@ export function ClinicBoardPage() {
                     )}
                 </div>
             </div>
+            {shareOpen && section === 'appointment' && (
+                <ClinicBoardShareDialog
+                    title={tm('bClinicBoardShareSlots')}
+                    dayLabel={dateLabel}
+                    slots={openSlots}
+                    heading={tm('bClinicBoardShareHeading')}
+                    emptyLabel={tm('bClinicBoardShareEmpty')}
+                    copyLabel={tm('bClinicBoardShareCopy')}
+                    copiedLabel={tm('bClinicBoardShareCopied')}
+                    whatsAppLabel={tm('bClinicBoardShareWhatsApp')}
+                    closeLabel={tm('close')}
+                    onClose={() => setShareOpen(false)}
+                />
+            )}
         </div>
     );
 }

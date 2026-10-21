@@ -229,3 +229,62 @@ export function buildClinicBoardColumns(input: {
         };
     });
 }
+
+export type ClinicBoardShareSlot = {
+    id: string;
+    staffId: string;
+    staffName: string;
+    startMin: number;
+    endMin: number;
+    /** 30 dakikalık boş dilim, örn. 09:00-09:30 */
+    label: string;
+};
+
+/** Dolu randevuyla çakışmayan çalışma dilimleri. Atanmamış kolon paylaşılmaz. */
+export function listClinicBoardOpenSlots(input: {
+    staff: BeautySpecialist[];
+    appointments: BeautyAppointment[];
+    dayYmd: string;
+    staffFilterId?: string;
+    unassignedName: string;
+}): ClinicBoardShareSlot[] {
+    const columns = buildClinicBoardColumns(input);
+    const slots: ClinicBoardShareSlot[] = [];
+    for (const column of columns) {
+        if (column.unassigned) continue;
+        for (let start = CLINIC_BOARD_DAY_START_MIN; start < CLINIC_BOARD_DAY_END_MIN; start += CLINIC_BOARD_SLOT_MIN) {
+            const busy = column.blocks.some(
+                (block) => block.startMin < start + CLINIC_BOARD_SLOT_MIN && block.endMin > start,
+            );
+            if (busy) continue;
+            const end = start + CLINIC_BOARD_SLOT_MIN;
+            slots.push({
+                id: `${column.id}-${start}`,
+                staffId: column.id,
+                staffName: column.name,
+                startMin: start,
+                endMin: end,
+                label: `${formatBoardMinutes(start)}-${formatBoardMinutes(end)}`,
+            });
+        }
+    }
+    return slots;
+}
+
+/** Seçilen gün ve personel için paylaşım metni. Ciro hesabı yok. */
+export function buildClinicBoardShareText(dayLabel: string, slots: ClinicBoardShareSlot[], heading: string): string {
+    const lines = [heading.trim(), dayLabel.trim()].filter((line) => line.length > 0);
+    let staffName = '';
+    for (const slot of slots) {
+        if (slot.staffName !== staffName) {
+            staffName = slot.staffName;
+            lines.push(staffName);
+        }
+        lines.push(slot.label);
+    }
+    return lines.join('\n');
+}
+
+export function clinicBoardWhatsAppShareUrl(text: string): string {
+    return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
