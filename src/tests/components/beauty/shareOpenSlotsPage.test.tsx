@@ -270,6 +270,11 @@ describe('Boş saatleri paylaş sayfası', () => {
             'bShareOpenSlotsCopyLink',
             'bShareOpenSlotsWhatsApp',
             'bShareOpenSlotsTapLink',
+            'bShareOpenSlotsIgShare',
+            'bShareOpenSlotsWaSend',
+            'bShareOpenSlotsWaChatHint',
+            'bShareOpenSlotsNotConnected',
+            'bShareOpenSlotsNeedNumber',
         ];
         for (const key of keys) {
             for (const lang of ['tr', 'en', 'ar', 'ku'] as const) {
@@ -320,7 +325,10 @@ describe('Boş saatleri paylaş sayfası', () => {
         const onBack = vi.fn();
         render(<ShareOpenSlotsPage onBack={onBack} />);
         expect(screen.getByRole('heading', { name: 'Boş saatleri paylaş' })).toBeTruthy();
-        expect(screen.getByText(/Instagram hikâyesinde ve WhatsApp durumunda/)).toBeTruthy();
+        expect(screen.getByText(/seçilen WhatsApp sohbetine mesaj olarak gider/)).toBeTruthy();
+        expect(screen.getByRole('button', { name: "Instagram'da paylaş" })).toBeTruthy();
+        expect(screen.getByRole('button', { name: "WhatsApp'ta gönder" })).toBeTruthy();
+        expect(screen.getByText(/WhatsApp durumu olarak yayınlanmaz/)).toBeTruthy();
         expect(screen.getByRole('option', { name: 'Tüm ekip' })).toBeTruthy();
         expect(await screen.findByRole('option', { name: 'Roza' })).toBeTruthy();
         const today = formatLocalYmd(new Date());
@@ -332,6 +340,10 @@ describe('Boş saatleri paylaş sayfası', () => {
         expect(screen.getByTestId('share-slots-phone').textContent).toContain('RetailEX');
         expect(screen.getByTestId('share-slots-phone').textContent).toContain('Boş saatlerimiz');
         expect(screen.getByTestId('share-slots-download').textContent).toContain('Videoyu indir');
+        expect(screen.getByTestId('share-slots-instagram').textContent).toContain('Instagram\'da paylaş');
+        expect(screen.getByTestId('share-slots-whatsapp-send').textContent).toContain('WhatsApp\'ta gönder');
+        expect(screen.getByTestId('share-slots-ig-off').textContent).toContain('Hesap bağlı değil');
+        expect(screen.getByTestId('share-slots-wa-recipient')).toBeTruthy();
         fireEvent.click(screen.getByTestId('share-slots-mode-image'));
         expect(screen.getByTestId('share-slots-download').textContent).toContain('Görseli indir');
         expect(screen.queryByRole('dialog')).toBeNull();

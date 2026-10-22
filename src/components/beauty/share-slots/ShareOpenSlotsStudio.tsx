@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronLeft, Download, Image as ImageIcon, Link2, MessageCircle, Video } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Download, Image as ImageIcon, Instagram, Link2, MessageCircle, Send, Video } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { beautyService } from '../../../services/beautyService';
@@ -24,6 +24,8 @@ import {
     type ShareBgPresetId,
     type ShareDaySpan,
 } from './shareSlotsStory';
+import { readClinicSocialConnect, rememberSocialConnectFocus, rememberWhatsAppRecipient, type PortalWhatsAppSnapshot, type SocialAccountHint, type SocialChatHint } from './socialConnect';
+import { buildShareStoryPublishPlan, runInstagramStoryPublish, runWhatsAppMessagePublish, toPublishSecrets } from './shareSlotsPublish';
 
 const TITLE_KEYS = ['bShareSlotsTitleOurs', 'bShareSlotsTitleOpen', 'bShareSlotsTitleBook'] as const;
 
@@ -34,6 +36,7 @@ type Props = {
     staff: BeautySpecialist[];
     anchorYmd: string;
     onClose: () => void;
+    onOpenConnect?: (channel: 'instagram' | 'whatsapp') => void;
 };
 
 function storyFileBase(ymd: string): string {
@@ -69,7 +72,7 @@ function saveBlob(blob: Blob, filename: string): boolean {
     return true;
 }
 
-export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose }: Props) {
+export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose, onOpenConnect }: Props) {
     const { tm } = useLanguage();
     const { selectedFirm } = useFirmaDonem();
     const locale = tm('localeCode') || 'tr-TR';
@@ -92,6 +95,11 @@ export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose }: Props) {
     const [bookingLink, setBookingLink] = useState('');
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState('');
+    const [portalWa, setPortalWa] = useState<PortalWhatsAppSnapshot | null>(null);
+    const [socialAccounts, setSocialAccounts] = useState<SocialAccountHint[]>([]);
+    const [socialChats, setSocialChats] = useState<SocialChatHint[]>([]);
+    const [socialTick, setSocialTick] = useState(0);
+    const [recipient, setRecipient] = useState('');
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const photoUrlRef = useRef<string | null>(null);
 
@@ -133,7 +141,9 @@ export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose }: Props) {
         beautyService
             .getPortalSettings()
             .then((settings) => {
-                if (cancel || !settings?.online_booking_enabled || !settings.public_token) return;
+                if (cancel) return;
+                setPortalWa(settings ?? null);
+                if (!settings?.online_booking_enabled || !settings.public_token) return;
                 const firmNr = String(ERP_SETTINGS.firmNr || '').trim();
                 const periodNr = String(ERP_SETTINGS.periodNr || '').trim();
                 if (!firmNr || typeof window === 'undefined') return;
@@ -143,7 +153,10 @@ export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose }: Props) {
                 );
             })
             .catch(() => {
-                if (!cancel) setBookingLink('');
+                if (!cancel) {
+                    setBookingLink('');
+                    setPortalWa(null);
+                }
             });
         return () => {
             cancel = true;
@@ -339,6 +352,178 @@ export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose }: Props) {
         await writeClipboard(shareText);
         setNotice(tm('bShareSlotsCopied'));
     };
+
+    const social = useMemo(
+        () => readClinicSocialConnect({ portal: portalWa, accounts: socialAccounts, chats: socialChats }),
+        [portalWa, socialTick, socialAccounts, socialChats],
+    );
+
+    useEffect(() => {
+        let cancel = false;
+        void import('../../../services/messaging/clinicSocialRepository').then(async (mod) => {
+            const [accounts, messages] = await Promise.all([
+                mod.listSocialAccounts(),
+                mod.listSocialMessages(),
+            ]);
+            if (cancel) return;
+            setSocialAccounts(accounts);
+            setSocialChats(messages.map((row) => ({ channel: row.channel, counterparty: row.counterparty })));
+        }).catch(() => {
+            if (!cancel) {
+                setSocialAccounts([]);
+                setSocialChats([]);
+            }
+        });
+        return () => {
+            cancel = true;
+        };
+    }, [socialTick]);
+
+    useEffect(() => {
+        const onFocus = () => setSocialTick((value) => value + 1);
+        window.addEventListener('focus', onFocus);
+        return () => window.removeEventListener('focus', onFocus);
+    }, []);
+
+    useEffect(() => {
+        if (!social.whatsapp.savedNumber) return;
+        setRecipient((current) => current || social.whatsapp.savedNumber);
+    }, [social.whatsapp.savedNumber]);
+
+    const askConnect = (channel: 'instagram' | 'whatsapp') => {
+        setNotice(tm('bShareOpenSlotsNotConnected'));
+        rememberSocialConnectFocus(channel);
+        onOpenConnect?.(channel);
+    };
+
+    const captureStoryFile = async (): Promise<{ kind: 'image' | 'video'; bytes: Uint8Array; mime: string } | null> => {
+        if (tab === 'image') {
+            const canvas = document.createElement('canvas');
+            canvas.width = SHARE_STORY_WIDTH;
+            canvas.height = SHARE_STORY_HEIGHT;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return null;
+            paintShareStory(ctx, plan, { revealCount: plan.selectedTimes.length, photo });
+            const blob = await new Promise<Blob | null>((resolve) => {
+                canvas.toBlob((value) => resolve(value), 'image/png');
+            });
+            if (!blob?.size) return null;
+            return { kind: 'image', bytes: new Uint8Array(await blob.arrayBuffer()), mime: 'image/png' };
+        }
+        const recorded = await recordShareStory(plan, photo);
+        if (!recorded?.blob.size) return null;
+        return {
+            kind: 'video',
+            bytes: new Uint8Array(await recorded.blob.arrayBuffer()),
+            mime: recorded.blob.type || 'video/webm',
+        };
+    };
+
+    const onInstagram = async () => {
+        if (!canShare || busy) return;
+        setNotice('');
+        const current = readClinicSocialConnect({ portal: portalWa, accounts: socialAccounts, chats: socialChats });
+        if (!current.instagram.connected) {
+            askConnect('instagram');
+            return;
+        }
+        setBusy(true);
+        try {
+            const file = await captureStoryFile();
+            if (!file) {
+                setNotice(tm('bShareSlotsNoImage'));
+                return;
+            }
+            const secrets = toPublishSecrets(current);
+            const publishPlan = buildShareStoryPublishPlan({
+                media: { kind: file.kind, mime: file.mime, byteLength: file.bytes.byteLength },
+                secrets,
+            });
+            const result = await runInstagramStoryPublish(publishPlan, {
+                pageAccessToken: secrets.pageAccessToken,
+                bytes: file.bytes,
+            });
+            if (result.status === 'not_connected') {
+                askConnect('instagram');
+                return;
+            }
+            if (result.status === 'media_url_required') {
+                setNotice(tm('bShareOpenSlotsIgNeedUrl'));
+                return;
+            }
+            if (result.status !== 'published') {
+                setNotice(tm('bShareOpenSlotsPublishFail'));
+                return;
+            }
+            setNotice(tm('bShareOpenSlotsIgOk'));
+        } catch {
+            setNotice(tm('bShareOpenSlotsPublishFail'));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const onWhatsAppSend = async () => {
+        if (!canShare || busy) return;
+        setNotice('');
+        const current = readClinicSocialConnect({ portal: portalWa, accounts: socialAccounts, chats: socialChats });
+        if (!current.whatsapp.connected) {
+            askConnect('whatsapp');
+            return;
+        }
+        const secrets = toPublishSecrets(current);
+        const probe = buildShareStoryPublishPlan({
+            media: { kind: tab === 'video' ? 'video' : 'image' },
+            secrets,
+            recipient,
+        });
+        if (probe.whatsapp.status === 'recipient_required') {
+            setNotice(tm('bShareOpenSlotsNeedNumber'));
+            return;
+        }
+        if (probe.whatsapp.status !== 'ready') {
+            askConnect('whatsapp');
+            return;
+        }
+        setBusy(true);
+        try {
+            const file = await captureStoryFile();
+            if (!file) {
+                setNotice(tm('bShareSlotsNoImage'));
+                return;
+            }
+            const publishPlan = buildShareStoryPublishPlan({
+                media: { kind: file.kind, mime: file.mime, byteLength: file.bytes.byteLength },
+                secrets,
+                recipient,
+                caption: shareText,
+            });
+            const result = await runWhatsAppMessagePublish(publishPlan, {
+                accessToken: secrets.whatsappAccessToken,
+                bridgeToken: secrets.bridgeToken,
+                bytes: file.bytes,
+            });
+            if (result.status === 'recipient_required') {
+                setNotice(tm('bShareOpenSlotsNeedNumber'));
+                return;
+            }
+            if (result.status !== 'sent') {
+                setNotice(result.status === 'not_connected' ? tm('bShareOpenSlotsNotConnected') : tm('bShareOpenSlotsPublishFail'));
+                if (result.status === 'not_connected') askConnect('whatsapp');
+                return;
+            }
+            rememberWhatsAppRecipient(publishPlan.whatsapp.to);
+            setSocialTick((value) => value + 1);
+            setNotice(tm('bShareOpenSlotsWaOk'));
+        } catch {
+            setNotice(tm('bShareOpenSlotsPublishFail'));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const igLabel = tm('bShareOpenSlotsIgShare');
+    const waSendLabel = tm('bShareOpenSlotsWaSend');
 
     const daySpans: { id: ShareDaySpan; label: string }[] = [
         { id: 'todayTomorrow', label: tm('bShareSlotsTodayTomorrow') },
@@ -589,6 +774,49 @@ export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose }: Props) {
                                 ? tm('bShareSlotsPreparing')
                                 : tm(tab === 'video' ? 'bShareSlotsDownloadVideo' : 'bShareSlotsDownloadImage')}
                         </button>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                data-testid="share-studio-instagram"
+                                onClick={() => { void onInstagram(); }}
+                                disabled={!canShare || busy}
+                                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-[#e6eaf0] bg-white px-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                            >
+                                <Instagram size={15} aria-hidden />
+                                {igLabel}
+                            </button>
+                            <button
+                                type="button"
+                                data-testid="share-studio-whatsapp-send"
+                                onClick={() => { void onWhatsAppSend(); }}
+                                disabled={!canShare || busy}
+                                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-[#e6eaf0] bg-white px-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                            >
+                                <Send size={15} aria-hidden />
+                                {waSendLabel}
+                            </button>
+                        </div>
+                        <label className="block">
+                            <span className="mb-1 block text-[11px] font-semibold text-slate-500">{tm('bShareOpenSlotsRecipient')}</span>
+                            <input
+                                data-testid="share-studio-wa-recipient"
+                                list="share-studio-wa-chats"
+                                inputMode="tel"
+                                autoComplete="off"
+                                value={recipient}
+                                onChange={(event) => setRecipient(event.target.value)}
+                                placeholder={tm('bShareOpenSlotsRecipientPh')}
+                                aria-label={tm('bShareOpenSlotsRecipient')}
+                                title={social.whatsapp.recentChats.length ? tm('bShareOpenSlotsRecent') : undefined}
+                                className="h-10 w-full rounded-xl border border-[#e6eaf0] bg-white px-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#93c5fd]"
+                            />
+                            <datalist id="share-studio-wa-chats">
+                                {social.whatsapp.recentChats.map((chat) => (
+                                    <option key={chat.number} value={chat.number}>{chat.label}</option>
+                                ))}
+                            </datalist>
+                            <span className="mt-1 block text-[11px] leading-snug text-slate-500">{tm('bShareOpenSlotsWaChatHint')}</span>
+                        </label>
                         <div className="grid grid-cols-2 gap-2">
                             <button
                                 type="button"

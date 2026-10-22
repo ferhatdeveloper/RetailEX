@@ -12238,6 +12238,19 @@ export const excelModuleTranslations = {
   bShareOpenSlotsBack: { tr: 'Geri', en: 'Back', ar: 'رجوع', ku: 'گەڕانەوە' },
   bShareOpenSlotsBrand: { tr: 'RetailEX', en: 'RetailEX', ar: 'RetailEX', ku: 'RetailEX' },
   bShareOpenSlotsExportError: { tr: 'Dosya hazırlanamadı.', en: 'Could not prepare the file.', ar: 'تعذر تجهيز الملف.', ku: 'فایل ئامادە نەکرا.' },
+  bShareOpenSlotsIgShare: { tr: 'Instagram\'da paylaş', en: 'Share on Instagram', ar: 'مشاركة على إنستغرام', ku: 'لە ئینستاگرام هاوبەش بکە' },
+  bShareOpenSlotsIgConnect: { tr: 'Instagram\'a bağlan', en: 'Connect Instagram', ar: 'ربط إنستغرام', ku: 'ئینستاگرام ببەستە' },
+  bShareOpenSlotsWaSend: { tr: 'WhatsApp\'ta gönder', en: 'Send on WhatsApp', ar: 'إرسال عبر واتساب', ku: 'لە واتسئاپ بنێرە' },
+  bShareOpenSlotsWaConnect: { tr: 'WhatsApp\'a bağlan', en: 'Connect WhatsApp', ar: 'ربط واتساب', ku: 'واتسئاپ ببەستە' },
+  bShareOpenSlotsNotConnected: { tr: 'Hesap bağlı değil', en: 'Account is not connected', ar: 'الحساب غير مربوط', ku: 'هەژمار نەبەستراوە' },
+  bShareOpenSlotsRecipient: { tr: 'Alıcı numarası', en: 'Recipient number', ar: 'رقم المستلم', ku: 'ژمارەی وەرگر' },
+  bShareOpenSlotsRecipientPh: { tr: 'Son sohbet veya numara', en: 'Recent chat or number', ar: 'محادثة أخيرة أو رقم', ku: 'دوایین گفتوگۆ یان ژمارە' },
+  bShareOpenSlotsRecent: { tr: 'Son sohbetler', en: 'Recent chats', ar: 'المحادثات الأخيرة', ku: 'دوایین گفتوگۆکان' },
+  bShareOpenSlotsNeedNumber: { tr: 'Alıcı numarası gerekli. Mesaj gönderilmedi.', en: 'A recipient number is required. The message was not sent.', ar: 'رقم المستلم مطلوب. لم تُرسل الرسالة.', ku: 'ژمارەی وەرگر پێویستە. نامە نەنێردرا.' },
+  bShareOpenSlotsIgOk: { tr: 'Hikâye, bağlı hesabın kendi hikâyesine gitti.', en: 'The story went to the connected account\'s own story.', ar: 'ذهبت القصة إلى قصة الحساب المربوط نفسه.', ku: 'چیرۆکەکە چووە سەر چیرۆکی هەژماری بەستراو.' },
+  bShareOpenSlotsWaOk: { tr: 'Dosya mesaj olarak gönderildi.', en: 'The file was sent as a message.', ar: 'أُرسل الملف كرسالة.', ku: 'فایل وەک نامە نێردرا.' },
+  bShareOpenSlotsPublishFail: { tr: 'Yayınlanamadı.', en: 'Could not publish.', ar: 'تعذر النشر.', ku: 'بڵاونەکرایەوە.' },
+  bShareOpenSlotsIgNeedUrl: { tr: 'Instagram görseli herkese açık bir adres olmadan hikâyeye konamaz.', en: 'An Instagram image story needs a public address. Nothing was published.', ar: 'قصة الصورة في إنستغرام تحتاج عنواناً عاماً. لم يُنشر شيء.', ku: 'چیرۆکی وێنەی ئینستاگرام ناونیشانی گشتی دەوێت. هیچ بڵاونەکرایەوە.' },
   bShellNavPOS: { tr: 'Kasa / POS', en: 'Cash / POS', ar: 'الصندوق', ku: 'سندوق / POS' },
   bShellNavServices: { tr: 'Hizmetler', en: 'Services', ar: 'الخدمات', ku: 'خزمەتەکان' },
   bShellNavProductSales: { tr: 'Ürün satışı', en: 'Product sales', ar: 'مبيعات المنتجات', ku: 'فرۆشتنی بەرهەم' },
@@ -16483,3 +16496,34 @@ Object.assign(moduleTranslations, wmsModuleTranslations);
 Object.assign(moduleTranslations, pdksRangeTranslations);
 Object.assign(moduleTranslations, messageTemplateEditorTranslations);
 Object.assign(moduleTranslations, shareSlotsStudioTranslations);
+
+const shareSlotsDirectTranslations = {
+  bShareOpenSlotsLead: {
+    tr: 'En yakın boş saatlerinizi seçin. Görsel Instagram hikâyesine yayınlanabilir ve seçilen WhatsApp sohbetine mesaj olarak gider.',
+    en: 'Pick the nearest open hours. The visual can be published as an Instagram story and is sent as a message to the selected WhatsApp chat.',
+    ar: 'اختر أقرب الأوقات الفارغة. يمكن نشر الصورة في قصة إنستغرام وتُرسل رسالة إلى محادثة واتساب المحددة.',
+    ku: 'نزیکترین کاتە بەتاڵەکان هەڵبژێرە. وێنە دەتوانێت بۆ چیرۆکی ئینستاگرام بڕوات و وەک نامە بۆ چاتی هەڵبژێردراوی واتسئاپ دەنێردرێت.',
+  },
+  bShareSlotsIntro: {
+    tr: 'En yakın boş saatlerinizi seçin. Görsel Instagram hikâyesine yayınlanabilir ve seçilen WhatsApp sohbetine mesaj olarak gider.',
+    en: 'Pick the nearest open hours. The visual can be published as an Instagram story and is sent as a message to the selected WhatsApp chat.',
+    ar: 'اختر أقرب الأوقات الفارغة. يمكن نشر الصورة في قصة إنستغرام وتُرسل رسالة إلى محادثة واتساب المحددة.',
+    ku: 'نزیکترین کاتە بەتاڵەکان هەڵبژێرە. وێنە دەتوانێت بۆ چیرۆکی ئینستاگرام بڕوات و وەک نامە بۆ چاتی هەڵبژێردراوی واتسئاپ دەنێردرێت.',
+  },
+  bShareOpenSlotsIgShare: { tr: 'Instagram\'da paylaş', en: 'Share on Instagram', ar: 'مشاركة على إنستغرام', ku: 'لە ئینستاگرام هاوبەش بکە' },
+  bShareOpenSlotsIgConnect: { tr: 'Instagram\'a bağlan', en: 'Connect Instagram', ar: 'ربط إنستغرام', ku: 'ئینستاگرام ببەستە' },
+  bShareOpenSlotsWaSend: { tr: 'WhatsApp\'ta gönder', en: 'Send on WhatsApp', ar: 'إرسال عبر واتساب', ku: 'لە واتسئاپ بنێرە' },
+  bShareOpenSlotsWaConnect: { tr: 'WhatsApp\'a bağlan', en: 'Connect WhatsApp', ar: 'ربط واتساب', ku: 'واتسئاپ ببەستە' },
+  bShareOpenSlotsNotConnected: { tr: 'Hesap bağlı değil', en: 'Account is not connected', ar: 'الحساب غير مربوط', ku: 'هەژمار نەبەستراوە' },
+  bShareOpenSlotsRecipient: { tr: 'Alıcı numarası', en: 'Recipient number', ar: 'رقم المستلم', ku: 'ژمارەی وەرگر' },
+  bShareOpenSlotsRecipientPh: { tr: 'Son sohbet veya numara', en: 'Recent chat or number', ar: 'محادثة أخيرة أو رقم', ku: 'دوایین گفتوگۆ یان ژمارە' },
+  bShareOpenSlotsRecent: { tr: 'Son sohbetler', en: 'Recent chats', ar: 'المحادثات الأخيرة', ku: 'دوایین گفتوگۆکان' },
+  bShareOpenSlotsNeedNumber: { tr: 'Alıcı numarası gerekli. Mesaj gönderilmedi.', en: 'A recipient number is required. The message was not sent.', ar: 'رقم المستلم مطلوب. لم تُرسل الرسالة.', ku: 'ژمارەی وەرگر پێویستە. نامە نەنێردرا.' },
+  bShareOpenSlotsWaChatHint: { tr: 'Seçilen sohbete mesaj olarak gider. WhatsApp durumu olarak yayınlanmaz.', en: 'It is sent as a message to the selected chat. It is not published as a WhatsApp status.', ar: 'تُرسل رسالة إلى المحادثة المحددة. لا تُنشر كحالة واتساب.', ku: 'وەک نامە بۆ چاتی هەڵبژێردراو دەڕوات. وەک دۆخی واتسئاپ بڵاوناکرێتەوە.' },
+  bShareOpenSlotsIgOk: { tr: 'Hikâye, bağlı hesabın kendi hikâyesine gitti.', en: 'The story went to the connected account\'s own story.', ar: 'ذهبت القصة إلى قصة الحساب المربوط نفسه.', ku: 'چیرۆکەکە چووە سەر چیرۆکی هەژماری بەستراو.' },
+  bShareOpenSlotsWaOk: { tr: 'Görsel seçilen sohbete mesaj olarak gönderildi.', en: 'The image was sent as a message to the selected chat.', ar: 'أُرسلت الصورة رسالة إلى المحادثة المحددة.', ku: 'وێنە وەک نامە بۆ چاتی هەڵبژێردراو نێردرا.' },
+  bShareOpenSlotsPublishFail: { tr: 'Yayınlanamadı.', en: 'Could not publish.', ar: 'تعذر النشر.', ku: 'بڵاونەکرایەوە.' },
+  bShareOpenSlotsIgNeedUrl: { tr: 'Instagram görseli herkese açık bir adres olmadan hikâyeye konamaz.', en: 'An Instagram image story needs a public address. Nothing was published.', ar: 'قصة الصورة في إنستغرام تحتاج عنواناً عاماً. لم يُنشر شيء.', ku: 'چیرۆکی وێنەی ئینستاگرام ناونیشانی گشتی دەوێت. هیچ بڵاونەکرایەوە.' },
+};
+
+Object.assign(moduleTranslations, shareSlotsDirectTranslations);

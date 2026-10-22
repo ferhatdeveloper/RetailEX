@@ -33,7 +33,6 @@ import { LeadManagement } from './components/LeadManagement';
 import { SatisfactionSurveyManagement } from './components/SatisfactionSurveyManagement';
 import { ClinicOperationsHub } from './components/ClinicOperationsHub';
 import { ClinicV2SettingsShell } from './components/ClinicV2SettingsShell';
-import { ClinicV2Inbox } from './components/ClinicV2Inbox';
 import { ClinicErpSpecialtyProvider, useClinicErpSpecialty } from './context/ClinicErpSpecialtyContext';
 import {
     canAccessBeautyTab,
@@ -49,7 +48,7 @@ import { AppointmentPOS } from './components/AppointmentPOS';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import { ClinicShellLanguageCluster } from './components/ClinicShellLanguageCluster';
 import { CLINIC_CLASSIC_SHELL, useClinicShellV2 } from './clinicShellV2';
-import { CLINIC_V2_INBOX_TAB_ID, ClinicV2SideRail } from './components/ClinicV2SideRail';
+import { ClinicV2SideRail } from './components/ClinicV2SideRail';
 import { ClinicReportCenter } from './components/ClinicReportCenter';
 import { CLINIC_REPORT_CENTER_TAB, GENERAL_REPORTS_TAB } from '../../utils/clinicReportCenter';
 import { FirmSelector } from '../system/FirmSelector';
@@ -291,7 +290,6 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         reports: tm('bShellNavReports'),
         [CLINIC_REPORT_CENTER_TAB]: tm('bCrcTitle'),
         clinic_ops: tm('bShellNavClinicOps'),
-        [CLINIC_V2_INBOX_TAB_ID]: tm('bClinicV2Inbox'),
         dental_chart: tm('bShellNavDental'),
         physio_body: tm('bShellNavPhysio'),
         obstetrics: tm('bShellNavObstetrics'),
@@ -801,11 +799,6 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                         </div>
                     )}
                     {activeTab === 'clinic_ops' && (shellV2 ? <ClinicV2SettingsShell /> : <ClinicOperationsHub />)}
-                    {activeTab === CLINIC_V2_INBOX_TAB_ID && shellV2 && (
-                        <div className="h-full min-h-0">
-                            <ClinicV2Inbox />
-                        </div>
-                    )}
                     {activeTab === 'dental_chart' && <DentalChartScreen />}
                     {activeTab === 'physio_body' && <PhysioBodyScreen />}
                     {activeTab === 'obstetrics' && <ObstetricsScreen />}

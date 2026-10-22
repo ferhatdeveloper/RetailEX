@@ -240,6 +240,7 @@ async function handleReset(_req, res) {
   }
 }
 
+/** Sohbet mesajı. 24 saatlik duruma yazmaz; durum ucu yoktur. */
 async function handleSend(req, res) {
   if (!sock) await startSocket();
   if (connectionStatus !== 'connected' || !sock) {
@@ -255,18 +256,32 @@ async function handleSend(req, res) {
   }
   const digits = normalizeDigits(body.to, body.countryCode || body.country_code || '90');
   const text = String(body.text || '').trim();
+  const mediaRaw = String(body.mediaBase64 || body.imageBase64 || '').replace(/^data:[^;]+;base64,/, '').trim();
+  const mediaKind = body.mediaKind === 'video' ? 'video' : 'image';
   if (!digits || digits.length < 10) {
     json(res, 400, { success: false, error: 'Geçerli telefon numarası gerekli (to).' });
     return;
   }
-  if (!text) {
-    json(res, 400, { success: false, error: 'Mesaj metni gerekli (text).' });
+  if (!text && !mediaRaw) {
+    json(res, 400, { success: false, error: 'Mesaj metni veya görsel gerekli.' });
     return;
   }
   try {
     const jid = `${digits}@s.whatsapp.net`;
-    await sock.sendMessage(jid, { text });
-    json(res, 200, { success: true });
+    if (mediaRaw) {
+      const buffer = Buffer.from(mediaRaw, 'base64');
+      if (!buffer.length) {
+        json(res, 400, { success: false, error: 'Görsel çözülemedi.' });
+        return;
+      }
+      const payload = mediaKind === 'video'
+        ? { video: buffer, caption: text || undefined }
+        : { image: buffer, caption: text || undefined };
+      await sock.sendMessage(jid, payload);
+    } else {
+      await sock.sendMessage(jid, { text });
+    }
+    json(res, 200, { success: true, kind: 'message' });
   } catch (e) {
     json(res, 500, { success: false, error: e?.message || String(e) });
   }
