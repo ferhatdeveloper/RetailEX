@@ -67,6 +67,8 @@ function htmlCacheBusterPlugin(): Plugin {
 
 export default defineConfig({
   base: '/',
+  // META_APP_ID genel kimliktir. META_APP_SECRET bu önekle eşleşmez, pakete girmez.
+  envPrefix: ['VITE_', 'META_APP_ID'],
   plugins: [react(), eticaretStaticPlugin(), htmlCacheBusterPlugin()],
   publicDir: 'src/public',
   resolve: {

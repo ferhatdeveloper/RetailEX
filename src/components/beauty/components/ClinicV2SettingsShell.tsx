@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
-    Bell, Building2, Calendar, Crown, Globe, List, Plus, Scissors, Users,
+    Bell, Building2, Calendar, Crown, Globe, Instagram, List, MessageCircle, Plus, Scissors, Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -14,6 +14,7 @@ import {
 } from '../../../services/beautyBranchPlace';
 import { ServiceManagement } from './ServiceManagement';
 import { StaffManagement } from './StaffManagement';
+import { ClinicV2SocialConnect } from './ClinicV2SocialConnect';
 
 /**
  * V2 ayar kabuğu. Soldaki sıra, kayıtlı karşılığı olan grupları izler.
@@ -28,6 +29,8 @@ export type ClinicV2SettingsGroupId =
     | 'online'
     | 'calendar'
     | 'notify'
+    | 'instagram'
+    | 'whatsapp'
     | 'branchList'
     | 'branchAdd';
 
@@ -45,6 +48,8 @@ export const CLINIC_V2_SETTINGS_GROUPS: readonly ClinicV2SettingsGroup[] = [
     { id: 'online', labelKey: 'bClinicV2QaOnline', icon: Globe },
     { id: 'calendar', labelKey: 'bClinicV2SetCalendar', icon: Calendar },
     { id: 'notify', labelKey: 'bClinicV2QaNotify', icon: Bell },
+    { id: 'instagram', labelKey: 'bClinicV2SetInstagram', icon: Instagram },
+    { id: 'whatsapp', labelKey: 'bClinicV2SetWhatsapp', icon: MessageCircle },
     { id: 'branchList', labelKey: 'bClinicV2SetBranchList', icon: List, section: 'org' },
     { id: 'branchAdd', labelKey: 'bClinicV2SetBranchAdd', icon: Plus, section: 'org' },
 ];
@@ -466,6 +471,16 @@ export function ClinicV2SettingsShell() {
                     ) : null}
                     {!loading && group === 'notify' && portal ? (
                         <NotifyFields portal={portal} onChange={setPortal} />
+                    ) : null}
+                    {!loading && group === 'instagram' ? (
+                        <ClinicV2SocialConnect channel="instagram" />
+                    ) : null}
+                    {!loading && group === 'whatsapp' ? (
+                        <ClinicV2SocialConnect
+                            channel="whatsapp"
+                            bridgeBaseUrl={portal?.whatsapp_base_url}
+                            bridgeToken={portal?.whatsapp_token}
+                        />
                     ) : null}
                     {!loading && group === 'branchList' ? (
                         <ul>

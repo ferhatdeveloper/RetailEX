@@ -73,6 +73,7 @@ describe('Klinik V2 sol şerit', () => {
             'home',
             'appointments',
             'customers',
+            'inbox',
             'catalog',
             'staff',
             'expenses',
@@ -144,6 +145,8 @@ describe('Klinik V2 sol şerit', () => {
         expect(onSelect).toHaveBeenCalledWith('clinic_board');
         fireEvent.click(screen.getByRole('button', { name: 'Boş saatleri paylaş' }));
         expect(onSelect).toHaveBeenCalledWith('share_open_slots');
+        fireEvent.click(screen.getByRole('button', { name: 'Gelen kutu' }));
+        expect(onSelect).toHaveBeenCalledWith('clinic_inbox');
         fireEvent.click(screen.getByRole('button', { name: 'Ayarlar' }));
         expect(onSelect).toHaveBeenCalledWith('clinic_ops');
         fireEvent.click(screen.getByRole('button', { name: 'Giderler' }));

@@ -32,6 +32,10 @@ vi.mock('../../../services/postgres', () => ({
     ERP_SETTINGS: { firmNr: '001', periodNr: '01' },
 }));
 
+vi.mock('../../../services/messaging/whatsappEmbeddedBridge', () => ({
+    getEmbeddedBridgeStatus: vi.fn(async () => ({ ok: true, status: 'disconnected' })),
+}));
+
 vi.mock('../../../services/beautyService', () => ({
     beautyService: {
         getBranches: (...args: unknown[]) => getBranches(...args),
@@ -94,6 +98,8 @@ describe('Klinik V2 ayar kabuğu', () => {
             'online',
             'calendar',
             'notify',
+            'instagram',
+            'whatsapp',
             'branchList',
             'branchAdd',
         ]);
@@ -144,5 +150,23 @@ describe('Klinik V2 ayar kabuğu', () => {
         expect(indexSrc).toContain('shellV2 ? <ClinicV2SettingsShell /> : <ClinicOperationsHub />');
         expect(indexSrc).toContain("{!surveyOverlayOpen && !shellV2 && (");
         expect(indexSrc).toContain("id: 'clinic_ops'");
+    });
+
+    it('uygulama kimliği yokken bağlan düğmesi sahte adres açmaz', async () => {
+        render(<ClinicV2SettingsShell />);
+        await screen.findByDisplayValue('Merkez');
+        fireEvent.click(screen.getByTestId('clinic-v2-settings-group-instagram'));
+        const button = await screen.findByTestId('clinic-v2-social-connect-instagram');
+        await waitFor(() => {
+            expect(button.textContent).toBe('Meta uygulama kimliği tanımlı değil');
+        });
+        expect(button.getAttribute('data-oauth-url')).toBe('');
+
+        fireEvent.click(screen.getByTestId('clinic-v2-settings-group-whatsapp'));
+        await waitFor(() => {
+            expect(screen.getByTestId('clinic-v2-wa-bridge').textContent).toContain('Port 3000');
+        });
+        expect(screen.getByTestId('clinic-v2-social-connect-whatsapp').textContent).toBe('Meta uygulama kimliği tanımlı değil');
+        expect(screen.getByTestId('clinic-v2-wa-bridge').textContent).toContain('Bağlı değil');
     });
 });

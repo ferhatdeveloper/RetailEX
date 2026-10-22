@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
     Activity, Apple, Baby, Banknote, BarChart3, Box, Calendar, ChevronLeft, ChevronRight,
-    ClipboardList, Layers, LayoutDashboard, Megaphone, Package, Scissors, Settings2, Share2, Smile, UserCog, Users,
+    ClipboardList, Inbox, Layers, LayoutDashboard, Megaphone, Package, Scissors, Settings2, Share2, Smile, UserCog, Users,
 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { canAccessBeautyTab } from '../clinicShellNavConfig';
@@ -13,6 +13,8 @@ import type { ClinicErpSpecialty } from '../../../types/beauty';
 
 /** Dar/geniş tercih. V1 menüsünden bağımsız. */
 export const CLINIC_V2_RAIL_EXPANDED_KEY = 'retailex_clinic_v2_rail_expanded';
+
+export const CLINIC_V2_INBOX_TAB_ID = 'clinic_inbox';
 
 export type ClinicV2RailLeaf = {
     id: string;
@@ -67,6 +69,16 @@ export const CLINIC_V2_RAIL_GROUPS: readonly ClinicV2RailGroup[] = [
             { id: 'clients', labelKey: 'bClinicV2RailClients', icon: Users, color: '#0ea5e9' },
             { id: 'leads', labelKey: 'bShellNavLeads', icon: Megaphone, color: '#0284c7' },
             { id: 'surveys', labelKey: 'bSatisfactionSurveysTitle', icon: ClipboardList, color: '#0369a1' },
+        ],
+    },
+    {
+        id: 'inbox',
+        shortKey: 'bClinicV2Inbox',
+        titleKey: 'bClinicV2Inbox',
+        icon: Inbox,
+        color: '#db2777',
+        items: [
+            { id: CLINIC_V2_INBOX_TAB_ID, labelKey: 'bClinicV2Inbox', icon: Inbox, color: '#db2777' },
         ],
     },
     {
