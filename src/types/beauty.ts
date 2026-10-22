@@ -1,3 +1,5 @@
+import type { BeautyBranchPlace } from '../services/beautyBranchPlace';
+
 /** Randevu `clinical_data` JSONB — diş / fizik / KD / diyet (sunucu kalıcı) */
 export type ToothClinicalState = 'ok' | 'watch' | 'treat';
 
@@ -319,6 +321,8 @@ export interface BeautyBranch {
     phone?: string;
     is_active: boolean;
     sort_order?: number;
+    /** Adres metninden çözülen ülke, kapı, tarif ve logo. Ayrı kolon değildir. */
+    place?: BeautyBranchPlace;
 }
 
 export interface BeautyRoom {

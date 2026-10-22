@@ -109,6 +109,10 @@ describe('Klinik V2 ayar kabuğu', () => {
         expect(screen.getByTestId('clinic-v2-settings-group-branch')).toHaveAttribute('aria-pressed', 'true');
         expect(screen.getByTestId('clinic-v2-settings-group-online')).toBeTruthy();
         expect(screen.getByText('Oda 1')).toBeTruthy();
+        expect(screen.getByTestId('clinic-v2-branch-logo')).toBeTruthy();
+        expect(screen.getByTestId('clinic-v2-branch-map')).toBeTruthy();
+        expect(screen.getByLabelText('Ülke')).toBeTruthy();
+        expect(screen.getByLabelText('Cadde/Sokak')).toHaveValue('Cadde 1');
 
         fireEvent.click(screen.getByTestId('clinic-v2-settings-group-online'));
         expect(screen.getByTestId('clinic-v2-settings-group-online')).toHaveAttribute('aria-pressed', 'true');

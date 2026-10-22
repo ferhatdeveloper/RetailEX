@@ -7,13 +7,19 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { beautyService } from '../../../services/beautyService';
 import { ERP_SETTINGS } from '../../../services/postgres';
 import type { BeautyBranch, BeautyPortalSettings, BeautyRoom } from '../../../types/beauty';
+import {
+    EMPTY_BRANCH_PLACE,
+    unpackBranchAddress,
+    type BeautyBranchPlace,
+} from '../../../services/beautyBranchPlace';
 import { ServiceManagement } from './ServiceManagement';
 import { StaffManagement } from './StaffManagement';
 
 /**
  * V2 ayar kabuğu. Soldaki sıra, kayıtlı karşılığı olan grupları izler.
- * Şube mesaisi, tatil günü, modül anahtarı, sesli asistan, kontör ve kurum logosu
+ * Şube mesaisi, tatil günü, modül anahtarı, sesli asistan ve kontör
  * için ayrı kayıt yoktur; o başlıklar burada yok.
+ * Logo, ülke ve kapı numarası şube adres metninin yanında durur.
  */
 export type ClinicV2SettingsGroupId =
     | 'branch'
@@ -43,18 +49,70 @@ export const CLINIC_V2_SETTINGS_GROUPS: readonly ClinicV2SettingsGroup[] = [
     { id: 'branchAdd', labelKey: 'bClinicV2SetBranchAdd', icon: Plus, section: 'org' },
 ];
 
-type BranchForm = { name: string; address: string; phone: string; is_active: boolean };
+type BranchForm = {
+    name: string;
+    address: string;
+    phone: string;
+    is_active: boolean;
+    place: Required<BeautyBranchPlace>;
+};
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-const EMPTY_BRANCH: BranchForm = { name: '', address: '', phone: '', is_active: true };
+const EMPTY_BRANCH: BranchForm = {
+    name: '',
+    address: '',
+    phone: '',
+    is_active: true,
+    place: { ...EMPTY_BRANCH_PLACE },
+};
 
 function toBranchForm(row: BeautyBranch): BranchForm {
+    const parsed = unpackBranchAddress(row.address);
     return {
         name: row.name ?? '',
-        address: row.address ?? '',
+        address: parsed.address,
         phone: row.phone ?? '',
         is_active: row.is_active !== false,
+        place: { ...EMPTY_BRANCH_PLACE, ...parsed.place, ...(row.place ?? {}) },
     };
+}
+
+function placeQuery(form: BranchForm): string {
+    return [
+        form.address,
+        form.place.neighborhood,
+        form.place.district,
+        form.place.province,
+        form.place.country,
+    ].map((part) => part.trim()).filter(Boolean).join(', ');
+}
+
+function readLogoFile(file: File): Promise<string> {
+    return new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            const max = 160;
+            const scale = Math.min(1, max / Math.max(img.width, img.height, 1));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(img.width * scale));
+            canvas.height = Math.max(1, Math.round(img.height * scale));
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                URL.revokeObjectURL(url);
+                resolve('');
+                return;
+            }
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            URL.revokeObjectURL(url);
+            resolve(canvas.toDataURL('image/jpeg', 0.72));
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve('');
+        };
+        img.src = url;
+    });
 }
 
 function publicBookingUrl(token: string): string {
@@ -140,6 +198,7 @@ export function ClinicV2SettingsShell() {
                     address: branchForm.address.trim() || undefined,
                     phone: branchForm.phone.trim() || undefined,
                     is_active: branchForm.is_active,
+                    place: branchForm.place,
                 });
                 await reload(id);
             } else if (group === 'branchAdd') {
@@ -148,6 +207,7 @@ export function ClinicV2SettingsShell() {
                     address: addForm.address.trim() || undefined,
                     phone: addForm.phone.trim() || undefined,
                     is_active: addForm.is_active,
+                    place: addForm.place,
                 });
                 setAddForm(EMPTY_BRANCH);
                 await reload(id);
@@ -212,9 +272,11 @@ export function ClinicV2SettingsShell() {
             <div className="cv2s-side flex shrink-0 flex-col overflow-y-auto">
                 <div className="cv2s-card">
                     <div className="cv2s-identity">
-                        <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#f9f9f9]" aria-hidden>
-                            <Building2 size={22} color="#1b84ff" />
-                        </span>
+                        <LogoBox
+                            logo={branchForm.place.logo}
+                            label={tm('bClinicV2SetLogo')}
+                            onPick={(logo) => setBranchForm((prev) => ({ ...prev, place: { ...prev.place, logo } }))}
+                        />
                         {!loading && branches.length > 1 ? (
                             <select
                                 aria-label={tm('bCrcColBranch')}
@@ -238,8 +300,10 @@ export function ClinicV2SettingsShell() {
                             placeholder={tm('branchName')}
                             onChange={(event) => setBranchForm((prev) => ({ ...prev, name: event.target.value }))}
                         />
-                        {branchForm.phone ? (
-                            <p className="mt-0.5 text-[13px] text-[#7e8299]">{branchForm.phone}</p>
+                        {branchForm.phone || branchForm.place.dial ? (
+                            <p className="mt-0.5 text-[13px] text-[#7e8299]">
+                                {[branchForm.place.dial, branchForm.phone].filter(Boolean).join(' ')}
+                            </p>
                         ) : null}
                         {!loading ? (
                             <span
@@ -312,20 +376,12 @@ export function ClinicV2SettingsShell() {
                     {loading ? <p className="text-[13px] text-[#7e8299]">{tm('bLoading')}</p> : null}
                     {!loading && group === 'branch' ? (
                         <div>
-                            <FormRow label={tm('bAddress')}>
-                                <input
-                                    className={inputClass}
-                                    value={branchForm.address}
-                                    onChange={(event) => setBranchForm((prev) => ({ ...prev, address: event.target.value }))}
-                                />
-                            </FormRow>
-                            <FormRow label={tm('bPhone')}>
-                                <input
-                                    className={inputClass}
-                                    value={branchForm.phone}
-                                    onChange={(event) => setBranchForm((prev) => ({ ...prev, phone: event.target.value }))}
-                                />
-                            </FormRow>
+                            <BranchPlaceFields
+                                form={branchForm}
+                                onAddress={(address) => setBranchForm((prev) => ({ ...prev, address }))}
+                                onPhone={(phone) => setBranchForm((prev) => ({ ...prev, phone }))}
+                                onPlace={(patch) => setBranchForm((prev) => ({ ...prev, place: { ...prev.place, ...patch } }))}
+                            />
                             <FormRow label={tm('bClinicV2SetBranchStatus')}>
                                 <StatusPair
                                     label={tm('bClinicV2SetBranchStatus')}
@@ -447,20 +503,20 @@ export function ClinicV2SettingsShell() {
                                     onChange={(event) => setAddForm((prev) => ({ ...prev, name: event.target.value }))}
                                 />
                             </FormRow>
-                            <FormRow label={tm('bAddress')}>
-                                <input
-                                    className={inputClass}
-                                    value={addForm.address}
-                                    onChange={(event) => setAddForm((prev) => ({ ...prev, address: event.target.value }))}
+                            <FormRow label={tm('bClinicV2SetLogo')}>
+                                <LogoBox
+                                    logo={addForm.place.logo}
+                                    label={tm('bClinicV2SetLogo')}
+                                    testId="clinic-v2-branch-add-logo"
+                                    onPick={(logo) => setAddForm((prev) => ({ ...prev, place: { ...prev.place, logo } }))}
                                 />
                             </FormRow>
-                            <FormRow label={tm('bPhone')}>
-                                <input
-                                    className={inputClass}
-                                    value={addForm.phone}
-                                    onChange={(event) => setAddForm((prev) => ({ ...prev, phone: event.target.value }))}
-                                />
-                            </FormRow>
+                            <BranchPlaceFields
+                                form={addForm}
+                                onAddress={(address) => setAddForm((prev) => ({ ...prev, address }))}
+                                onPhone={(phone) => setAddForm((prev) => ({ ...prev, phone }))}
+                                onPlace={(patch) => setAddForm((prev) => ({ ...prev, place: { ...prev.place, ...patch } }))}
+                            />
                             <FormRow label={tm('bClinicV2SetBranchStatus')}>
                                 <StatusPair
                                     label={tm('bClinicV2SetBranchStatus')}
@@ -495,8 +551,146 @@ textarea.cv2s-input { height: auto; padding-top: 8px; }
 .cv2s-org { padding: 16px 20px; }
 .cv2s-row { display: flex; align-items: flex-start; gap: 16px; margin-top: 16px; }
 .cv2s-row:first-child { margin-top: 0; }
+.cv2s-logo { width: 72px; height: 72px; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #f1f1f4; border-radius: 8px; background: #f9f9f9; cursor: pointer; position: relative; }
+.cv2s-logo input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.cv2s-logo img { width: 100%; height: 100%; object-fit: contain; }
+.cv2s-fields { display: flex; flex-wrap: wrap; gap: 8px; }
+.cv2s-fields label { flex: 1 1 140px; min-width: 0; }
+.cv2s-fields span { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 500; color: #7e8299; }
+.cv2s-fields .cv2s-input { max-width: none; }
+.cv2s-map { margin-top: 12px; height: 280px; overflow: hidden; border: 1px solid #f1f1f4; border-radius: 8px; background: #f9f9f9; }
+.cv2s-map iframe { width: 100%; height: 100%; border: 0; }
 `;
 const inputClass = 'cv2s-input';
+
+function LogoBox({
+    logo, label, onPick, testId = 'clinic-v2-branch-logo',
+}: {
+    logo: string;
+    label: string;
+    onPick: (logo: string) => void;
+    testId?: string;
+}) {
+    const src = logo.startsWith('data:image/') ? logo : '';
+    return (
+        <label className="cv2s-logo" title={label}>
+            {src ? <img src={src} alt={label} /> : <Building2 size={22} color="#1b84ff" aria-hidden />}
+            <input
+                data-testid={testId}
+                type="file"
+                accept="image/*"
+                aria-label={label}
+                onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (!file) return;
+                    void readLogoFile(file).then((next) => {
+                        if (next) onPick(next);
+                    });
+                }}
+            />
+        </label>
+    );
+}
+
+function PlaceInput({
+    label, value, onChange,
+}: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+}) {
+    return (
+        <label>
+            <span>{label}</span>
+            <input className={inputClass} aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} />
+        </label>
+    );
+}
+
+function BranchPlaceFields({
+    form, onAddress, onPhone, onPlace,
+}: {
+    form: BranchForm;
+    onAddress: (value: string) => void;
+    onPhone: (value: string) => void;
+    onPlace: (patch: Partial<BeautyBranchPlace>) => void;
+}) {
+    const { tm } = useLanguage();
+    const set = (key: keyof BeautyBranchPlace) => (value: string) => onPlace({ [key]: value });
+    return (
+        <>
+            <FormRow label={tm('bClinicV2SetAddressBlock')}>
+                <div className="cv2s-fields">
+                    <PlaceInput label={tm('bClinicV2SetCountry')} value={form.place.country} onChange={set('country')} />
+                    <PlaceInput label={tm('bClinicV2SetProvince')} value={form.place.province} onChange={set('province')} />
+                    <PlaceInput label={tm('bClinicV2SetDistrict')} value={form.place.district} onChange={set('district')} />
+                    <PlaceInput label={tm('bClinicV2SetNeighborhood')} value={form.place.neighborhood} onChange={set('neighborhood')} />
+                </div>
+                <div className="cv2s-fields" style={{ marginTop: 12 }}>
+                    <PlaceInput label={tm('bClinicV2SetStreet')} value={form.address} onChange={onAddress} />
+                    <PlaceInput label={tm('bClinicV2SetOuterDoor')} value={form.place.outerDoor} onChange={set('outerDoor')} />
+                    <PlaceInput label={tm('bClinicV2SetInnerDoor')} value={form.place.innerDoor} onChange={set('innerDoor')} />
+                    <PlaceInput label={tm('bClinicV2SetDirections')} value={form.place.directions} onChange={set('directions')} />
+                </div>
+                <BranchMap query={placeQuery(form)} />
+            </FormRow>
+            <FormRow label={tm('bPhone')}>
+                <div className="flex gap-2">
+                    <input
+                        className={inputClass}
+                        style={{ maxWidth: 88 }}
+                        aria-label={tm('bClinicV2SetDial')}
+                        placeholder="+964"
+                        value={form.place.dial}
+                        onChange={(event) => onPlace({ dial: event.target.value })}
+                    />
+                    <input
+                        className={inputClass}
+                        value={form.phone}
+                        onChange={(event) => onPhone(event.target.value)}
+                    />
+                </div>
+            </FormRow>
+        </>
+    );
+}
+
+function BranchMap({ query }: { query: string }) {
+    const { tm } = useLanguage();
+    const [src, setSrc] = useState('');
+    useEffect(() => {
+        const q = query.trim();
+        if (!q || import.meta.env.MODE === 'test') {
+            setSrc('');
+            return;
+        }
+        const ctrl = new AbortController();
+        const timer = window.setTimeout(() => {
+            const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`;
+            void fetch(url, { signal: ctrl.signal, headers: { Accept: 'application/json' } })
+                .then((res) => res.json())
+                .then((rows: { lat?: string; lon?: string }[]) => {
+                    const lat = Number(rows?.[0]?.lat);
+                    const lon = Number(rows?.[0]?.lon);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+                    const pad = 0.02;
+                    const bbox = [lon - pad, lat - pad, lon + pad, lat + pad].map((n) => n.toFixed(5)).join(',');
+                    setSrc(`https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${lat},${lon}`)}`);
+                })
+                .catch(() => undefined);
+        }, 450);
+        return () => {
+            ctrl.abort();
+            window.clearTimeout(timer);
+        };
+    }, [query]);
+    return (
+        <div className="cv2s-map" data-testid="clinic-v2-branch-map">
+            {src ? <iframe title={tm('bClinicV2SetMap')} src={src} /> : null}
+        </div>
+    );
+}
 
 function MenuLink({
     item, label, selected, onClick,

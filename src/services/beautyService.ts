@@ -6,6 +6,7 @@ import type { Sale, SaleItem } from '../core/types/models';
 import { applyOpenAdvancesToSale } from './avansService';
 import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
 import { postgres, ERP_SETTINGS } from './postgres';
+import { packBranchAddress, unpackBranchAddress } from './beautyBranchPlace';
 import type { BeautyProductReturnLine } from '../utils/beautyProductSalesNet';
 import { useSaleStore } from '../store/useSaleStore';
 import { useCustomerStore } from '../store/useCustomerStore';
@@ -8414,18 +8415,24 @@ export const beautyService = {
         const { rows } = await postgres.query(
             `SELECT * FROM ${t} ORDER BY sort_order, name`
         );
-        return rows;
+        return rows.map((row: BeautyBranch) => {
+            const parsed = unpackBranchAddress(row.address);
+            return { ...row, address: parsed.address, place: parsed.place };
+        });
     },
 
     async upsertBranch(row: Partial<BeautyBranch> & { name: string }): Promise<string> {
         const id = row.id ?? uuidv4();
+        const storedAddress = row.place
+            ? packBranchAddress(row.address, row.place)
+            : (row.address ?? null);
         if (shouldUseTenantPostgrestApi()) {
             const { postgrest } = await import('./api/postgrestClient');
             const fn = erpFirmNrForRow();
             const payload = {
                 id,
                 name: row.name,
-                address: row.address ?? null,
+                address: storedAddress,
                 phone: row.phone ?? null,
                 is_active: row.is_active ?? true,
                 sort_order: row.sort_order ?? 0,
@@ -8452,7 +8459,7 @@ export const beautyService = {
              ON CONFLICT (id) DO UPDATE SET
                name=EXCLUDED.name, address=EXCLUDED.address, phone=EXCLUDED.phone,
                is_active=EXCLUDED.is_active, sort_order=EXCLUDED.sort_order`,
-            [id, row.name, row.address ?? null, row.phone ?? null, row.is_active, row.sort_order ?? 0]
+            [id, row.name, storedAddress, row.phone ?? null, row.is_active, row.sort_order ?? 0]
         );
         return id;
     },
