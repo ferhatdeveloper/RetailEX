@@ -214,6 +214,18 @@ export type ClinicAuditRow = {
   recordId: string;
 };
 
+export type ClinicServiceCatalogRow = {
+  id: string;
+  name: string;
+  isActive: boolean;
+};
+
+export type ClinicSignupRow = {
+  id: string;
+  date: string;
+  count: number;
+};
+
 export type ClinicMirrorModel = {
   serviceRevenue: number;
   productGross: number;
@@ -256,6 +268,8 @@ export type ClinicMirrorModel = {
   avgDuration: number | null;
   activeStaff: number;
   branchCount: number;
+  serviceCatalog: ClinicServiceCatalogRow[];
+  customerSignups: ClinicSignupRow[];
 };
 
 type ProductDraft = BeautyProductSaleNetInput & {
@@ -790,6 +804,20 @@ export function buildClinicMirrorReports(input: ClinicMirrorInput): ClinicMirror
 
   const genderOf = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase();
   const topServiceName = services[0]?.serviceName || '';
+  const serviceCatalog: ClinicServiceCatalogRow[] = (input.services || []).map((row) => ({
+    id: String(row.id ?? ''),
+    name: String(row.name ?? '').trim() || '—',
+    isActive: row.isActive !== false,
+  }));
+  const signupCounts = new Map<string, number>();
+  for (const row of customers) {
+    const day = ymd(row.createdAt);
+    if (!inRange(day, from, to)) continue;
+    signupCounts.set(day, (signupCounts.get(day) || 0) + 1);
+  }
+  const customerSignups: ClinicSignupRow[] = [...signupCounts.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, count]) => ({ id: date, date, count }));
 
   return {
     serviceRevenue,
@@ -833,5 +861,7 @@ export function buildClinicMirrorReports(input: ClinicMirrorInput): ClinicMirror
     avgDuration,
     activeStaff: (input.specialists || []).filter((row) => row.isActive !== false).length,
     branchCount: branches.length,
+    serviceCatalog,
+    customerSignups,
   };
 }
