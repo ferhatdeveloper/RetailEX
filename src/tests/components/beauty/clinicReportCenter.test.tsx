@@ -1,9 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { translate } from '../../../locales/module-translations';
 import { ThemeProvider } from '../../../contexts/ThemeContext';
 import { ClinicReportCenter } from '../../../components/beauty/components/ClinicReportCenter';
+import { beautyService } from '../../../services/beautyService';
 import { GENERAL_REPORTS_TAB } from '../../../utils/clinicReportCenter';
+import { localTodayDateKey } from '../../../utils/localCalendarDate';
+import type { BeautyAppointment } from '../../../types/beauty';
 
 vi.mock('../../../contexts/LanguageContext', async () => {
   const actual = await vi.importActual<typeof import('../../../locales/module-translations')>(
@@ -38,8 +41,24 @@ vi.mock('../../../services/api/expenses', () => ({
   expenseAPI: { getAll: vi.fn(async () => []) },
 }));
 
+const MENU_LABELS = [
+  'Kurum',
+  'Gelir-Gider',
+  'Alacak ve Tahsilat',
+  'Hizmet',
+  'Müşteri',
+  'Randevu',
+  'Personel Performans',
+  'Denetim',
+  'Tüm raporlar',
+];
+
 describe('Klinik rapor merkezi ekranı', () => {
-  it('Tüm raporlar genel rapor anahtarını açar', async () => {
+  beforeEach(() => {
+    vi.mocked(beautyService.getAppointmentsInRange).mockResolvedValue([]);
+  });
+
+  it('açılır listede Tüm raporlar genel rapor anahtarını ister', async () => {
     const onOpenAllReports = vi.fn();
     render(
       <ThemeProvider>
@@ -49,20 +68,61 @@ describe('Klinik rapor merkezi ekranı', () => {
     expect(screen.getByTestId('clinic-report-center')).toBeTruthy();
     expect(await screen.findByText('Şube')).toBeTruthy();
     expect(await screen.findByText('Merkez')).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Kurum' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Gelir-Gider' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Alacak ve Tahsilat' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Hizmet' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Müşteri' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Randevu' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Personel Performans' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Denetim' })).toBeTruthy();
-    fireEvent.click(screen.getByTestId('clinic-report-all'));
+    expect(screen.queryByRole('tab')).toBeNull();
+    fireEvent.click(screen.getByTestId('clinic-report-menu-trigger'));
+    const menu = screen.getByTestId('clinic-report-menu-list');
+    expect([...menu.querySelectorAll('[role="option"]')].map((el) => el.textContent)).toEqual(MENU_LABELS);
+    const allReports = screen.getByTestId('clinic-report-all');
+    expect(allReports.textContent).toBe('Tüm raporlar');
+    fireEvent.click(allReports);
     expect(onOpenAllReports).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('clinic-report-all').textContent).toBe('Tüm raporlar');
     expect(GENERAL_REPORTS_TAB).toBe('reports');
+    expect(GENERAL_REPORTS_TAB).not.toBe('clinic_reports');
     for (const lang of ['tr', 'en', 'ar', 'ku'] as const) {
       expect(translate('bCrcAllReports', lang).trim().length).toBeGreaterThan(0);
     }
+  });
+
+  it('hizmet raporu satırı randevu kaydından gelir', async () => {
+    const day = localTodayDateKey();
+    vi.mocked(beautyService.getAppointmentsInRange).mockResolvedValue([
+      {
+        id: 'a1',
+        duration: 30,
+        status: 'completed',
+        total_price: 50_000,
+        is_package_session: false,
+        service_name: 'HAIR CUT',
+        customer_id: 'c1',
+        customer_name: 'FERDİN BEY',
+        date: day,
+        deposit_amount: 9_000,
+      },
+      {
+        id: 'a2',
+        duration: 45,
+        status: 'completed',
+        total_price: 60_000,
+        is_package_session: false,
+        service_name: 'HAIR PINK COLOR',
+        customer_id: 'c1',
+        customer_name: 'FERDİN BEY',
+        date: day,
+        deposit_amount: 11_000,
+        time: '11:00',
+      },
+    ] as BeautyAppointment[]);
+    render(
+      <ThemeProvider>
+        <ClinicReportCenter onOpenAllReports={vi.fn()} />
+      </ThemeProvider>,
+    );
+    expect(await screen.findByText('Şube')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('clinic-report-menu-trigger'));
+    fireEvent.click(screen.getByTestId('clinic-report-option-service'));
+    expect(await screen.findByText('HAIR CUT')).toBeTruthy();
+    expect(screen.getAllByText('HAIR PINK COLOR').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('110.000').length).toBeGreaterThan(0);
+    expect(screen.queryByText('130.000')).toBeNull();
   });
 });

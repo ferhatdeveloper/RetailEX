@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, Loader2 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { beautyService } from '../../../services/beautyService';
@@ -64,6 +64,18 @@ export function ClinicReportCenter({ onOpenAllReports }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [auditRow, setAuditRow] = useState<ClinicAuditRow | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const activeReport = CLINIC_MIRROR_REPORTS.find((item) => item.id === reportId) ?? CLINIC_MIRROR_REPORTS[0];
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [menuOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -409,34 +421,69 @@ export function ClinicReportCenter({ onOpenAllReports }: Props) {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 p-3 sm:p-4" data-testid="clinic-report-center">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-lg font-black text-slate-800">{tm('bCrcTitle')}</h1>
-        <button
-          type="button"
-          data-testid="clinic-report-all"
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
-          onClick={onOpenAllReports}
-        >
-          {tm('bCrcAllReports')}
-        </button>
-      </div>
-      <ReportDateRangePresets value={range} onChange={setRange} tm={tm} />
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label={tm('bCrcTitle')}>
-        {CLINIC_MIRROR_REPORTS.map((item) => (
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div ref={menuRef} className="relative min-w-[16rem]">
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{tm('bCrcTitle')}</p>
           <button
-            key={item.id}
             type="button"
-            role="tab"
-            aria-selected={reportId === item.id}
-            data-testid={`clinic-report-tab-${item.id}`}
-            className={`rounded-lg px-3 py-1.5 text-xs font-bold ${
-              reportId === item.id ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-700'
-            }`}
-            onClick={() => setReportId(item.id)}
+            data-testid="clinic-report-menu-trigger"
+            className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 shadow-sm"
+            aria-haspopup="listbox"
+            aria-expanded={menuOpen}
+            aria-label={tm('bCrcTitle')}
+            onClick={() => setMenuOpen((open) => !open)}
           >
-            {tm(item.labelKey)}
+            <span>{tm(activeReport.labelKey)}</span>
+            <ChevronDown size={16} className={`text-slate-400 ${menuOpen ? 'rotate-180' : ''}`} />
           </button>
-        ))}
+          {menuOpen ? (
+            <ul
+              role="listbox"
+              aria-label={tm('bCrcTitle')}
+              data-testid="clinic-report-menu-list"
+              className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+            >
+              {CLINIC_MIRROR_REPORTS.map((item) => {
+                const selected = reportId === item.id;
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      data-testid={`clinic-report-option-${item.id}`}
+                      className={`flex w-full items-center px-3 py-2 text-left text-sm font-semibold ${
+                        selected ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                      onClick={() => {
+                        setReportId(item.id);
+                        setMenuOpen(false);
+                      }}
+                    >
+                      {tm(item.labelKey)}
+                    </button>
+                  </li>
+                );
+              })}
+              <li className="border-t border-slate-100">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  data-testid="clinic-report-all"
+                  className="flex w-full items-center px-3 py-2 text-left text-sm font-bold text-slate-800 hover:bg-slate-50"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenAllReports();
+                  }}
+                >
+                  {tm('bCrcAllReports')}
+                </button>
+              </li>
+            </ul>
+          ) : null}
+        </div>
+        <ReportDateRangePresets value={range} onChange={setRange} tm={tm} />
       </div>
       <p className="text-[11px] text-slate-500">{tm('bCrcDepositHint')}</p>
       {loading && !model ? (
