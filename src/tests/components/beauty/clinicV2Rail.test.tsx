@@ -75,11 +75,20 @@ describe('Klinik V2 sol şerit', () => {
             'customers',
             'inbox',
             'catalog',
-            'staff',
             'expenses',
             'reports',
             'settings',
         ]);
+        const railIds = CLINIC_V2_RAIL_GROUPS.flatMap((group) => group.items.map((item) => item.id));
+        expect(railIds).not.toContain('staff');
+        expect(railIds).not.toContain('services');
+        expect(CLINIC_V2_RAIL_GROUPS.find((group) => group.id === 'catalog')?.items.map((item) => item.id)).toEqual([
+            'packages',
+            'product_sales',
+            'service_recipes',
+            'devices',
+        ]);
+        expect(railIds).toContain('clinic_ops');
         expect(CLINIC_V2_RAIL_GROUPS.find((group) => group.id === 'reports')?.items.map((item) => item.id)).toEqual([
             'clinic_reports',
         ]);
@@ -111,9 +120,10 @@ describe('Klinik V2 sol şerit', () => {
         );
 
         expect(screen.getByTestId('clinic-v2-rail').getAttribute('data-expanded')).toBe('0');
-        for (const label of ['Anasayfa', 'Randevu', 'Müşteriler', 'Hizmet', 'Personel', 'Gider', 'Rapor', 'Ayarlar']) {
+        for (const label of ['Anasayfa', 'Randevu', 'Müşteriler', 'Hizmet', 'Gider', 'Rapor', 'Ayarlar']) {
             expect(screen.getByRole('button', { name: label })).toBeTruthy();
         }
+        expect(screen.queryByRole('button', { name: 'Personel' })).toBeNull();
         expect(screen.queryByText('Randevu takvimi')).toBeNull();
         expect(screen.queryByText('Randevu tahtası')).toBeNull();
         expect(screen.queryByText('Memnuniyet anketleri')).toBeNull();

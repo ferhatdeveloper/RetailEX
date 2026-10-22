@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
     Activity, Apple, Baby, Banknote, BarChart3, Box, Calendar, ChevronLeft, ChevronRight,
-    ClipboardList, Inbox, Layers, LayoutDashboard, Megaphone, Package, Scissors, Settings2, Share2, Smile, UserCog, Users,
+    ClipboardList, Inbox, Layers, LayoutDashboard, Megaphone, Package, Scissors, Settings2, Share2, Smile, Users,
 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { canAccessBeautyTab } from '../clinicShellNavConfig';
@@ -33,8 +33,9 @@ export type ClinicV2RailGroup = {
 };
 
 /**
- * RandevuNet açık menü sırası. Karşılığı olmayan maddeler yok.
- * Çok çocuklu gruplar geniş halde başlık + alt madde gösterir.
+ * Açık menü sırası. Personel ve hizmet ekranları ayar kabuğunda açılır;
+ * aynı satır sol şeritte tekrarlanmaz. Çok çocuklu gruplar geniş halde
+ * başlık + alt madde gösterir.
  */
 export const CLINIC_V2_RAIL_GROUPS: readonly ClinicV2RailGroup[] = [
     {
@@ -88,21 +89,10 @@ export const CLINIC_V2_RAIL_GROUPS: readonly ClinicV2RailGroup[] = [
         icon: Scissors,
         color: '#d97706',
         items: [
-            { id: 'services', labelKey: 'bShellNavServices', icon: Scissors, color: '#d97706' },
             { id: 'packages', labelKey: 'bShellNavPackages', icon: Package, color: '#ea580c' },
             { id: 'product_sales', labelKey: 'bShellNavProductSales', icon: Package, color: '#c2410c' },
             { id: 'service_recipes', labelKey: 'bShellNavServiceRecipes', icon: Layers, color: '#b45309' },
             { id: 'devices', labelKey: 'bShellNavDevices', icon: Box, color: '#a16207' },
-        ],
-    },
-    {
-        id: 'staff',
-        shortKey: 'bClinicV2RailStaff',
-        titleKey: 'bClinicV2RailStaff',
-        icon: UserCog,
-        color: '#7c3aed',
-        items: [
-            { id: 'staff', labelKey: 'bShellNavStaff', icon: UserCog, color: '#7c3aed' },
         ],
     },
     {
