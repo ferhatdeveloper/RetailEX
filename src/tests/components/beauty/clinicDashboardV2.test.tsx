@@ -11,6 +11,7 @@ import { AppointmentStatus } from '../../../types/beauty';
 import type { BeautyAppointment, BeautySpecialist } from '../../../types/beauty';
 import { ClinicDashboardV2 } from '../../../components/beauty/components/ClinicDashboardV2';
 import { translate, type Language } from '../../../locales/module-translations';
+import { CLINIC_V2_CRM_MENU_KEY } from '../../../components/beauty/clinicShellV2';
 import {
     CLINIC_V2_GRAFANA_PICKS_KEY,
     buildClinicMonthSeries,
@@ -100,6 +101,7 @@ describe('ClinicDashboardV2', () => {
         harness.customers = [];
         harness.range = () => new Promise(() => {});
         localStorage.removeItem(CLINIC_V2_GRAFANA_PICKS_KEY);
+        localStorage.removeItem(CLINIC_V2_CRM_MENU_KEY);
     });
 
     it('gün listesinde hizmet tutarını API değerinde gösterir', () => {
@@ -126,6 +128,22 @@ describe('ClinicDashboardV2', () => {
         expect(screen.getAllByText('60.000').length).toBeGreaterThanOrEqual(2);
         expect(screen.getAllByText('Nihat').length).toBeGreaterThanOrEqual(2);
         expect(screen.queryByText('İlk randevu için üç adım')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'CRM' })).toBeNull();
+    });
+
+    it('CRM menü anahtarı açıkken pano kısayolu görünür', () => {
+        localStorage.setItem(CLINIC_V2_CRM_MENU_KEY, '1');
+        render(
+            <ClinicDashboardV2
+                revenue={0}
+                appointmentCount={0}
+                cancelledCount={0}
+                todayStr="2026-10-20"
+                specialists={[]}
+                appointments={[]}
+            />,
+        );
+        expect(screen.getByRole('button', { name: 'CRM' })).toBeTruthy();
     });
 
     it('randevu yoksa boş gün kartı sıfır gösterir', () => {

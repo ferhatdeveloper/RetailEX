@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { canAccessBeautyTab } from '../clinicShellNavConfig';
+import { CLINIC_V2_CRM_TAB_ID, useClinicV2CrmMenu } from '../clinicShellV2';
 import { SHARE_OPEN_SLOTS_LABEL_KEY, SHARE_OPEN_SLOTS_TAB_ID } from '../share-slots/shareSlotsStory';
 import { CLINIC_REPORT_CENTER_TAB } from '../../../utils/clinicReportCenter';
 import { usePermission } from '../../../shared/hooks/usePermission';
@@ -68,7 +69,7 @@ export const CLINIC_V2_RAIL_GROUPS: readonly ClinicV2RailGroup[] = [
         color: '#0ea5e9',
         items: [
             { id: 'clients', labelKey: 'bClinicV2RailClients', icon: Users, color: '#0ea5e9' },
-            { id: 'leads', labelKey: 'bShellNavLeads', icon: Megaphone, color: '#0284c7' },
+            { id: CLINIC_V2_CRM_TAB_ID, labelKey: 'bShellNavLeads', icon: Megaphone, color: '#0284c7' },
             { id: 'surveys', labelKey: 'bSatisfactionSurveysTitle', icon: ClipboardList, color: '#0369a1' },
         ],
     },
@@ -199,12 +200,16 @@ type Props = {
 export function ClinicV2SideRail({ activeTab, onSelect, isMobile, mobileOpen, specialty }: Props) {
     const { tm } = useLanguage();
     const { hasPermission } = usePermission();
+    const crmMenu = useClinicV2CrmMenu();
     const [expanded, setExpanded] = useState(readExpanded);
 
     const groups = clinicV2RailGroups(specialty)
         .map((group) => ({
             ...group,
-            items: group.items.filter((item) => canAccessBeautyTab(hasPermission, item.id)),
+            items: group.items.filter((item) => {
+                if (item.id === CLINIC_V2_CRM_TAB_ID && !crmMenu) return false;
+                return canAccessBeautyTab(hasPermission, item.id);
+            }),
         }))
         .filter((group) => group.items.length > 0);
 

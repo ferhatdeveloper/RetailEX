@@ -15,6 +15,7 @@ import {
 import { ServiceManagement } from './ServiceManagement';
 import { StaffManagement } from './StaffManagement';
 import { ClinicV2SocialConnect } from './ClinicV2SocialConnect';
+import { useClinicV2CrmMenu, writeClinicV2CrmMenu } from '../clinicShellV2';
 
 /**
  * V2 ayar kabuğu. Soldaki sıra, kayıtlı karşılığı olan grupları izler.
@@ -129,6 +130,7 @@ function publicBookingUrl(token: string): string {
 
 export function ClinicV2SettingsShell() {
     const { tm } = useLanguage();
+    const crmMenu = useClinicV2CrmMenu();
     const [group, setGroup] = useState<ClinicV2SettingsGroupId>('branch');
     const [loading, setLoading] = useState(true);
     const [branches, setBranches] = useState<BeautyBranch[]>([]);
@@ -337,6 +339,17 @@ export function ClinicV2SettingsShell() {
                             />
                         ))}
                     </nav>
+                    <div className="px-5 pb-4" data-testid="clinic-v2-crm-menu-setting">
+                        <p className="mb-2 text-[13px] font-medium text-[#252f4a]">{tm('bClinicV2SetShowCrm')}</p>
+                        <Switch
+                            label={tm('bClinicV2SetShowCrm')}
+                            on={crmMenu}
+                            onLabel={tm('active')}
+                            offLabel={tm('passive')}
+                            onChange={writeClinicV2CrmMenu}
+                        />
+                        <p className="mt-2 text-[12px] leading-snug text-[#7e8299]">{tm('bClinicV2SetShowCrmHint')}</p>
+                    </div>
                 </div>
                 <div className="cv2s-card cv2s-org">
                     <p className="mb-2 flex items-center gap-2 px-[13px] text-[14px] font-semibold text-[#071437]">

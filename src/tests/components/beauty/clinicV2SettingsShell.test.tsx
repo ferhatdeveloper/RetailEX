@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { CLINIC_V2_CRM_MENU_KEY } from '../../../components/beauty/clinicShellV2';
 import {
     CLINIC_V2_SETTINGS_GROUPS,
     ClinicV2SettingsShell,
@@ -88,6 +89,7 @@ describe('Klinik V2 ayar kabuğu', () => {
         upsertBranch.mockResolvedValue('b1');
         upsertRoom.mockResolvedValue('r2');
         updatePortalSettings.mockResolvedValue(undefined);
+        localStorage.removeItem(CLINIC_V2_CRM_MENU_KEY);
     });
 
     it('karşılığı olan grupları ekrandaki sırayla tutar', () => {
@@ -129,6 +131,19 @@ describe('Klinik V2 ayar kabuğu', () => {
         fireEvent.click(screen.getByTestId('clinic-v2-settings-group-staff'));
         expect(screen.getByTestId('clinic-v2-settings-staff')).toBeTruthy();
         expect(screen.queryByRole('button', { name: 'Kaydet' })).toBeNull();
+    });
+
+    it('CRM menü anahtarı varsayılan kapalıdır ve açılınca saklanır', async () => {
+        render(<ClinicV2SettingsShell />);
+        const toggle = await screen.findByRole('switch', { name: "CRM'i V2 menüsünde göster" });
+        expect(toggle.getAttribute('aria-checked')).toBe('false');
+        expect(localStorage.getItem(CLINIC_V2_CRM_MENU_KEY)).toBeNull();
+        fireEvent.click(toggle);
+        expect(toggle.getAttribute('aria-checked')).toBe('true');
+        expect(localStorage.getItem(CLINIC_V2_CRM_MENU_KEY)).toBe('1');
+        fireEvent.click(toggle);
+        expect(toggle.getAttribute('aria-checked')).toBe('false');
+        expect(localStorage.getItem(CLINIC_V2_CRM_MENU_KEY)).toBe('0');
     });
 
     it('şube kaydı mevcut servise gider', async () => {

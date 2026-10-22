@@ -12750,6 +12750,18 @@ export const excelModuleTranslations = {
   bClinicV2SetWaPhone: { tr: 'Telefon kimliği', en: 'Phone id', ar: 'معرّف الهاتف', ku: 'ناسنامەی تەلەفۆن' },
   bClinicV2SetSaved: { tr: 'Kaydedildi', en: 'Saved', ar: 'تم الحفظ', ku: 'پاشەکەوت کرا' },
   bClinicV2SetSaveFailed: { tr: 'Kaydedilemedi', en: 'Could not save', ar: 'تعذر الحفظ', ku: 'پاشەکەوت نەکرا' },
+  bClinicV2SetShowCrm: {
+    tr: "CRM'i V2 menüsünde göster",
+    en: 'Show CRM in the V2 menu',
+    ar: 'إظهار CRM في قائمة V2',
+    ku: 'CRM لە مێنیوی V2 پیشان بدە',
+  },
+  bClinicV2SetShowCrmHint: {
+    tr: 'Kapalıyken sol menüde, dar şeritte ve panodaki kısayolda görünmez.',
+    en: 'When off, it stays out of the side menu, the narrow rail, and the board shortcut.',
+    ar: 'عند الإيقاف لا يظهر في القائمة الجانبية ولا في الشريط الضيق ولا في اختصار اللوحة.',
+    ku: 'کاتێک داخراوە لە مێنیوی لایەن، شریتی تەسک و قەدبڕی پانێڵدا دیار نابێت.',
+  },
   bClinicV2Inbox: { tr: 'Gelen kutu', en: 'Inbox', ar: 'صندوق الوارد', ku: 'سندوقی هاتوو' },
   bClinicV2SetInstagram: { tr: 'Instagram', en: 'Instagram', ar: 'إنستغرام', ku: 'ئینستاگرام' },
   bClinicV2SetWhatsapp: { tr: 'WhatsApp', en: 'WhatsApp', ar: 'واتساب', ku: 'واتسئاپ' },

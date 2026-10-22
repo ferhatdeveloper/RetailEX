@@ -4,6 +4,10 @@ import { resolve } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { translate } from '../../../locales/module-translations';
 import {
+    CLINIC_V2_CRM_MENU_KEY,
+    clinicV2TabAfterCrmMenu,
+} from '../../../components/beauty/clinicShellV2';
+import {
     CLINIC_V2_RAIL_EXPANDED_KEY,
     CLINIC_V2_RAIL_GROUPS,
     ClinicV2SideRail,
@@ -33,6 +37,7 @@ const V1_MENU_MARKERS = [
     "id: 'services'",
     "id: 'staff'",
     "id: 'clinic_ops'",
+    "id: 'leads'",
     'bShellNavClients',
     'bShellNavCalendar',
     'bShellNavServices',
@@ -44,6 +49,7 @@ const V1_MENU_MARKERS = [
 describe('Klinik V2 sol şerit', () => {
     beforeEach(() => {
         localStorage.removeItem(CLINIC_V2_RAIL_EXPANDED_KEY);
+        localStorage.removeItem(CLINIC_V2_CRM_MENU_KEY);
     });
 
     it('V2 kapalıyken eski menü maddeleri kaynakta durur', () => {
@@ -124,6 +130,8 @@ describe('Klinik V2 sol şerit', () => {
             expect(screen.getByRole('button', { name: label })).toBeTruthy();
         }
         expect(screen.queryByRole('button', { name: 'Personel' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Leads & CRM' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'CRM' })).toBeNull();
         expect(screen.queryByText('Randevu takvimi')).toBeNull();
         expect(screen.queryByText('Randevu tahtası')).toBeNull();
         expect(screen.queryByText('Memnuniyet anketleri')).toBeNull();
@@ -145,6 +153,7 @@ describe('Klinik V2 sol şerit', () => {
         expect(screen.getByRole('button', { name: 'Randevu takvimi' })).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Randevu tahtası' })).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Memnuniyet anketleri' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Leads & CRM' })).toBeNull();
         expect(screen.getByRole('button', { name: 'Giderler' })).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Raporlar' })).toBeTruthy();
         expect(screen.queryByText('Klinik operasyon')).toBeNull();
@@ -169,5 +178,27 @@ describe('Klinik V2 sol şerit', () => {
         render(<ClinicV2SideRail activeTab="clinic_board" onSelect={onSelect} isMobile={false} mobileOpen={false} />);
         expect(screen.getByTestId('clinic-v2-rail').getAttribute('data-expanded')).toBe('1');
         expect(screen.getByRole('button', { name: 'Randevu tahtası' }).getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('CRM menü anahtarı açıkken Leads & CRM geniş menüde görünür', () => {
+        localStorage.setItem(CLINIC_V2_CRM_MENU_KEY, '1');
+        localStorage.setItem(CLINIC_V2_RAIL_EXPANDED_KEY, '1');
+        const onSelect = vi.fn();
+        render(<ClinicV2SideRail activeTab="dashboard" onSelect={onSelect} isMobile={false} mobileOpen={false} />);
+        const crm = screen.getByRole('button', { name: 'Leads & CRM' });
+        expect(crm).toBeTruthy();
+        fireEvent.click(crm);
+        expect(onSelect).toHaveBeenCalledWith('leads');
+    });
+
+    it('CRM kapalıyken leads sekmesi anasayfaya döner, açıkken kalır', () => {
+        expect(clinicV2TabAfterCrmMenu('leads', false)).toBe('dashboard');
+        expect(clinicV2TabAfterCrmMenu('leads', true)).toBe('leads');
+        expect(clinicV2TabAfterCrmMenu('clients', false)).toBe('clients');
+        expect(clinicV2TabAfterCrmMenu('clinic_ops', false)).toBe('clinic_ops');
+        const indexSrc = readFileSync(resolve('src/components/beauty/index.tsx'), 'utf8');
+        expect(indexSrc).toContain('if (!shellV2) return;');
+        expect(indexSrc).toContain('clinicV2TabAfterCrmMenu(activeTab, crmMenuOn)');
+        expect(indexSrc).toContain("{activeTab === 'leads' && (!shellV2 || crmMenuOn) && <LeadManagement />}");
     });
 });

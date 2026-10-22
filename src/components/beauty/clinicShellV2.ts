@@ -130,6 +130,45 @@ export function writeClinicV2CrmPanel(on: boolean): void {
     writePanelFlag(CLINIC_V2_CRM_PANEL_KEY, on);
 }
 
+/**
+ * V2 sol menü, dar şerit ve pano kısayolunda Leads & CRM.
+ * Anahtar yoksa veya `0` ise gizli. Pano içi CRM şeridi ayrı anahtardadır.
+ */
+export const CLINIC_V2_CRM_MENU_KEY = 'retailex_clinic_v2_crm_menu';
+export const CLINIC_V2_CRM_MENU_EVENT = 'retailex-clinic-v2-crm-menu';
+export const CLINIC_V2_CRM_TAB_ID = 'leads';
+
+export function readClinicV2CrmMenu(): boolean {
+    return readPanelFlag(CLINIC_V2_CRM_MENU_KEY);
+}
+
+export function writeClinicV2CrmMenu(on: boolean): void {
+    writePanelFlag(CLINIC_V2_CRM_MENU_KEY, on);
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(CLINIC_V2_CRM_MENU_EVENT, { detail: { on } }));
+    }
+}
+
+export function useClinicV2CrmMenu(): boolean {
+    const [on, setOn] = useState(readClinicV2CrmMenu);
+    useEffect(() => {
+        const sync = () => setOn(readClinicV2CrmMenu());
+        window.addEventListener(CLINIC_V2_CRM_MENU_EVENT, sync);
+        window.addEventListener('storage', sync);
+        return () => {
+            window.removeEventListener(CLINIC_V2_CRM_MENU_EVENT, sync);
+            window.removeEventListener('storage', sync);
+        };
+    }, []);
+    return on;
+}
+
+/** V2 kabuğunda CRM kapalıyken leads sekmesi anasayfaya döner. V1 bu sonucu uygulamaz. */
+export function clinicV2TabAfterCrmMenu(activeTab: string, crmMenuOn: boolean): string {
+    if (!crmMenuOn && activeTab === CLINIC_V2_CRM_TAB_ID) return 'dashboard';
+    return activeTab;
+}
+
 export function writeSurveyDayParam(ymd: string): void {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return;
     try {

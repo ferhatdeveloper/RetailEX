@@ -48,7 +48,13 @@ import { DietitianScreen } from './specialty/DietitianScreen';
 import { AppointmentPOS } from './components/AppointmentPOS';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import { ClinicShellLanguageCluster } from './components/ClinicShellLanguageCluster';
-import { CLINIC_CLASSIC_SHELL, useClinicShellV2 } from './clinicShellV2';
+import {
+    CLINIC_CLASSIC_SHELL,
+    clinicV2TabAfterCrmMenu,
+    readClinicV2CrmMenu,
+    useClinicShellV2,
+    useClinicV2CrmMenu,
+} from './clinicShellV2';
 import { CLINIC_V2_INBOX_TAB_ID, ClinicV2SideRail } from './components/ClinicV2SideRail';
 import { ClinicReportCenter } from './components/ClinicReportCenter';
 import { CLINIC_REPORT_CENTER_TAB, GENERAL_REPORTS_TAB } from '../../utils/clinicReportCenter';
@@ -120,6 +126,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const [showLanguageModal, setShowLanguageModal] = useState(false);
     const shell = CLINIC_CLASSIC_SHELL;
     const shellV2 = useClinicShellV2();
+    const crmMenuOn = useClinicV2CrmMenu();
     const [rtlMode, setRtlMode] = useState(() => localStorage.getItem('retailos_rtl_mode') === 'true');
     const { specialists, devices, loadSpecialists, loadServices, loadAppointments, loadDevices } = useBeautyStore();
     const { selectedFirm } = useFirmaDonem();
@@ -342,6 +349,13 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         setActiveTab(getLandingTabForBeautyAccess(hasPermission, specialty));
     }, [specialty, hasPermission]);
 
+    /** V2'de CRM kapalıyken leads açıksa anasayfaya dön. V1 mor menü aynı sekmede kalır. */
+    React.useEffect(() => {
+        if (!shellV2) return;
+        const next = clinicV2TabAfterCrmMenu(activeTab, crmMenuOn);
+        if (next !== activeTab) setActiveTab(next);
+    }, [shellV2, crmMenuOn, activeTab]);
+
     /** Yetkisi olmayan sekmede kalma (ör. anket operatörü) */
     React.useEffect(() => {
         if (canAccessBeautyTab(hasPermission, activeTab)) return;
@@ -354,11 +368,15 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         const onOpenTab = (event: Event) => {
             const tab = (event as CustomEvent<{ tab?: string }>).detail?.tab;
             if (!tab || !canAccessBeautyTab(hasPermission, tab)) return;
+            if (shellV2 && clinicV2TabAfterCrmMenu(tab, readClinicV2CrmMenu()) !== tab) {
+                setActiveTab('dashboard');
+                return;
+            }
             setActiveTab(tab);
         };
         window.addEventListener('retailex-beauty-open-tab', onOpenTab);
         return () => window.removeEventListener('retailex-beauty-open-tab', onOpenTab);
-    }, [hasPermission]);
+    }, [hasPermission, shellV2]);
 
     React.useEffect(() => {
         const prefillCallerSearch = (phone?: string) => {
@@ -783,7 +801,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                             }}
                         />
                     )}
-                    {activeTab === 'leads' && <LeadManagement />}
+                    {activeTab === 'leads' && (!shellV2 || crmMenuOn) && <LeadManagement />}
                     {activeTab === 'expenses' && <ExpenseManagement />}
                     {activeTab === 'reports' && (
                         <div className="h-full min-h-[min(100dvh,1200px)] min-w-0">

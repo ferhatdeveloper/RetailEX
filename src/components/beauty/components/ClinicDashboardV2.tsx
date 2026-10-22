@@ -15,6 +15,7 @@ import { useBeautyStore } from '../store/useBeautyStore';
 import {
     readClinicV2CrmPanel,
     readClinicV2SurveyPanel,
+    useClinicV2CrmMenu,
     writeClinicV2CrmPanel,
     writeClinicV2SurveyPanel,
 } from '../clinicShellV2';
@@ -101,6 +102,7 @@ export function ClinicDashboardV2({
     const [boardQuery, setBoardQuery] = useState('');
     const [surveyOn, setSurveyOn] = useState(readClinicV2SurveyPanel);
     const [crmOn, setCrmOn] = useState(readClinicV2CrmPanel);
+    const crmMenu = useClinicV2CrmMenu();
     const [fetched, setFetched] = useState<BeautyAppointment[] | null>(null);
     const [name] = useState(sessionName);
 
@@ -253,15 +255,17 @@ export function ClinicDashboardV2({
                                 writeClinicV2SurveyPanel(next);
                             }}
                         />
-                        <GhostButton
-                            label={tm('bClinicV2CrmToggle')}
-                            pressed={crmOn}
-                            onClick={() => {
-                                const next = !crmOn;
-                                setCrmOn(next);
-                                writeClinicV2CrmPanel(next);
-                            }}
-                        />
+                        {crmMenu ? (
+                            <GhostButton
+                                label={tm('bClinicV2CrmToggle')}
+                                pressed={crmOn}
+                                onClick={() => {
+                                    const next = !crmOn;
+                                    setCrmOn(next);
+                                    writeClinicV2CrmPanel(next);
+                                }}
+                            />
+                        ) : null}
                     </div>
                 </section>
 
@@ -391,7 +395,7 @@ export function ClinicDashboardV2({
                                 )}
                             </aside>
                         ) : null}
-                        {crmOn ? (
+                        {crmMenu && crmOn ? (
                             <aside className="border-t px-3 py-2 text-xs" style={{ borderColor: LINE }}>
                                 <div className="font-extrabold">{tm('bClinicV2CrmToggle')}</div>
                                 {uniqueNames(selectedVisible).length === 0 ? (
