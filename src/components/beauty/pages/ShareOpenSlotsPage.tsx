@@ -442,6 +442,7 @@ export function ShareOpenSlotsPage({ onBack, onOpenConnect }: Props) {
             const result = await runWhatsAppMessagePublish(plan, {
                 accessToken: secrets.whatsappAccessToken,
                 bridgeToken: secrets.bridgeToken,
+                evolutionToken: secrets.evolutionToken,
                 bytes: file.bytes,
             });
             if (result.status === 'not_connected') {

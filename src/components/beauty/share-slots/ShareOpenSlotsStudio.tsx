@@ -501,6 +501,7 @@ export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose, onOpenConnect 
             const result = await runWhatsAppMessagePublish(publishPlan, {
                 accessToken: secrets.whatsappAccessToken,
                 bridgeToken: secrets.bridgeToken,
+                evolutionToken: secrets.evolutionToken,
                 bytes: file.bytes,
             });
             if (result.status === 'recipient_required') {

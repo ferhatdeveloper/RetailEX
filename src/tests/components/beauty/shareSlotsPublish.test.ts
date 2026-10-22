@@ -162,4 +162,81 @@ describe('boş saat hikâye yayını', () => {
         expect(refused.status).toBe('failed');
         expect(fetchImpl).not.toHaveBeenCalled();
     });
+
+    it('klinikteki Evolution ve köprü alıcıya mesaj planlar, durum ucu çağırmaz', async () => {
+        const storage = { getItem: () => null, setItem: () => undefined };
+        const evolution = readClinicSocialConnect({
+            storage,
+            portal: {
+                whatsapp_provider: 'EVOLUTION',
+                whatsapp_base_url: 'https://evo.example',
+                whatsapp_token: 'evo-key',
+                whatsapp_instance_id: 'nora',
+            },
+        });
+        expect(evolution.whatsapp.connected).toBe(true);
+        expect(evolution.whatsapp.channel).toBe('evolution');
+        const plan = buildShareStoryPublishPlan({
+            media: { kind: 'image', mime: 'image/png', byteLength: 8 },
+            secrets: toPublishSecrets(evolution),
+            recipient: '905551112233',
+            caption: 'Boş saatler',
+        });
+        expect(plan.whatsapp.status).toBe('ready');
+        expect(plan.whatsapp.transport).toBe('evolution_message');
+        expect(plan.whatsapp.kind).toBe('message');
+        expect(plan.whatsapp.callsStatusApi).toBe(false);
+        expect(plan.whatsapp.calls[0]?.url).toBe('https://evo.example/message/sendMedia/nora');
+        expect(plan.whatsapp.calls[0]?.url.toLowerCase()).not.toMatch(/\/status(?:es)?(?:\/|$)/);
+        expect(JSON.stringify(plan.whatsapp)).not.toContain('evo-key');
+
+        const missing = buildShareStoryPublishPlan({
+            media: { kind: 'image', mime: 'image/png', byteLength: 8 },
+            secrets: toPublishSecrets(evolution),
+            recipient: '',
+        });
+        expect(missing.whatsapp.status).toBe('recipient_required');
+        expect(missing.whatsapp.calls).toEqual([]);
+        const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
+        const blocked = await runWhatsAppMessagePublish(missing, { evolutionToken: 'evo-key', fetchImpl });
+        expect(blocked.status).toBe('recipient_required');
+        expect(fetchImpl).not.toHaveBeenCalled();
+
+        const sent = await runWhatsAppMessagePublish(plan, {
+            evolutionToken: 'evo-key',
+            bytes: new Uint8Array([1, 2, 3, 4]),
+            fetchImpl,
+        });
+        expect(sent.status).toBe('sent');
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+        const calledUrl = String(fetchImpl.mock.calls[0]?.[0]);
+        expect(calledUrl).toBe('https://evo.example/message/sendMedia/nora');
+        expect(calledUrl.toLowerCase()).not.toMatch(/\/status(?:es)?(?:\/|$)/);
+
+        const kept = readClinicSocialConnect({
+            storage,
+            portal: {
+                whatsapp_provider: 'NONE',
+                whatsapp_base_url: 'http://127.0.0.1:3000',
+                whatsapp_token: 'bridge-key',
+            },
+        });
+        expect(kept.whatsapp.connected).toBe(true);
+        expect(kept.whatsapp.channel).toBe('bridge');
+        const bridgePlan = buildShareStoryPublishPlan({
+            media: { kind: 'image', mime: 'image/png', byteLength: 4 },
+            secrets: toPublishSecrets(kept),
+            recipient: '905551112233',
+        });
+        expect(bridgePlan.whatsapp.transport).toBe('bridge_message');
+        expect(bridgePlan.whatsapp.calls[0]?.url).toBe('http://127.0.0.1:3000/send');
+        expect(bridgePlan.whatsapp.callsStatusApi).toBe(false);
+
+        const off = readClinicSocialConnect({
+            storage,
+            portal: { whatsapp_provider: 'NONE' },
+        });
+        expect(off.whatsapp.connected).toBe(false);
+        expect(off.whatsapp.channel).toBe('none');
+    });
 });

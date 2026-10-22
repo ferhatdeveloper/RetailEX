@@ -3,6 +3,29 @@
  */
 import type { WhatsAppMessage } from './whatsappTypes';
 
+/** Klinik Evolution kökü. Sohbet mesajı; durum ucu değil. */
+export function evolutionMediaEndpoint(baseUrl: string, instance: string): string {
+    const root = baseUrl.trim().replace(/\/+$/, '').replace(/\/status$/i, '');
+    return `${root}/message/sendMedia/${encodeURIComponent(instance)}`;
+}
+
+export function evolutionMediaPayload(input: {
+    to: string;
+    mediatype: 'image' | 'video';
+    media: string;
+    caption?: string;
+}): { number: string; options: { delay: number; presence: string }; mediaMessage: { mediatype: string; caption: string; media: string } } {
+    return {
+        number: input.to,
+        options: { delay: 1200, presence: 'composing' },
+        mediaMessage: {
+            mediatype: input.mediatype,
+            caption: input.caption || '',
+            media: input.media,
+        },
+    };
+}
+
 export class EvolutionProvider {
     constructor(
         private baseUrl: string,

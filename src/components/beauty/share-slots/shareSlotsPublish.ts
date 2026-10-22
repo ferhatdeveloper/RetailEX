@@ -1,3 +1,4 @@
+import { evolutionMediaEndpoint, evolutionMediaPayload } from '../../../services/messaging/whatsappEvolution';
 import { SHARE_STORY_HEIGHT, SHARE_STORY_WIDTH } from './shareSlotsStory';
 import type { ClinicSocialConnect } from './socialConnect';
 
@@ -14,10 +15,14 @@ export type SharePublishSecrets = {
     metaAppId?: string | null;
     pageAccessToken?: string | null;
     igUserId?: string | null;
+    whatsappChannel?: ClinicSocialConnect['whatsapp']['channel'] | null;
     whatsappAccessToken?: string | null;
     whatsappPhoneId?: string | null;
     bridgeBaseUrl?: string | null;
     bridgeToken?: string | null;
+    evolutionBaseUrl?: string | null;
+    evolutionToken?: string | null;
+    evolutionInstance?: string | null;
 };
 
 export type SharePublishMediaInput = {
@@ -39,7 +44,7 @@ export type InstagramPublishStep = {
 export type WhatsAppPublishCall = {
     method: 'POST';
     url: string;
-    purpose: 'message' | 'media_upload' | 'bridge_send';
+    purpose: 'message' | 'media_upload' | 'bridge_send' | 'evolution_send';
     body: Record<string, string>;
 };
 
@@ -64,7 +69,7 @@ export type ShareStoryPublishPlan = {
         callsStatusApi: false;
         kind: 'message';
         to: string;
-        transport: 'cloud_message' | 'bridge_message' | 'none';
+        transport: 'cloud_message' | 'bridge_message' | 'evolution_message' | 'none';
         calls: WhatsAppPublishCall[];
     };
 };
@@ -114,11 +119,24 @@ export function toPublishSecrets(connect: ClinicSocialConnect): SharePublishSecr
         metaAppId: connect.instagram.metaAppId,
         pageAccessToken: connect.instagram.pageAccessToken,
         igUserId: connect.instagram.igUserId,
+        whatsappChannel: connect.whatsapp.channel,
         whatsappAccessToken: connect.whatsapp.accessToken,
         whatsappPhoneId: connect.whatsapp.phoneId,
         bridgeBaseUrl: connect.whatsapp.bridgeBaseUrl,
         bridgeToken: connect.whatsapp.bridgeToken,
+        evolutionBaseUrl: connect.whatsapp.evolutionBaseUrl,
+        evolutionToken: connect.whatsapp.evolutionToken,
+        evolutionInstance: connect.whatsapp.evolutionInstance,
     };
+}
+
+function whatsAppChannel(secrets: SharePublishSecrets): ClinicSocialConnect['whatsapp']['channel'] {
+    const explicit = clean(secrets.whatsappChannel);
+    if (explicit === 'evolution' || explicit === 'bridge' || explicit === 'cloud' || explicit === 'none') return explicit;
+    if (clean(secrets.evolutionBaseUrl) && clean(secrets.evolutionInstance)) return 'evolution';
+    if (clean(secrets.bridgeBaseUrl)) return 'bridge';
+    if (clean(secrets.whatsappAccessToken) && clean(secrets.whatsappPhoneId)) return 'cloud';
+    return 'none';
 }
 
 function instagramReady(secrets: SharePublishSecrets): { metaAppId: string; pageAccessToken: string; igUserId: string } | null {
@@ -204,16 +222,59 @@ export function buildShareStoryPublishPlan(input: {
     }
 
     const to = digitsOf(input.recipient);
+    const channel = whatsAppChannel(input.secrets);
     const cloudToken = clean(input.secrets.whatsappAccessToken);
     const phoneId = clean(input.secrets.whatsappPhoneId);
     const bridge = clean(input.secrets.bridgeBaseUrl);
+    const evolutionBase = clean(input.secrets.evolutionBaseUrl);
+    const evolutionInstance = clean(input.secrets.evolutionInstance);
     const caption = clean(input.caption).slice(0, 1024);
+    const channelReady = channel === 'evolution'
+        ? Boolean(evolutionBase && evolutionInstance)
+        : channel === 'bridge'
+            ? Boolean(bridge)
+            : channel === 'cloud'
+                ? Boolean(cloudToken && phoneId)
+                : false;
     let whatsapp: ShareStoryPublishPlan['whatsapp'];
-    if (!((cloudToken && phoneId) || bridge)) {
+    if (!channelReady) {
         whatsapp = { status: 'not_connected', callsStatusApi: false, kind: 'message', to, transport: 'none', calls: [] };
     } else if (to.length < 8) {
         whatsapp = { status: 'recipient_required', callsStatusApi: false, kind: 'message', to, transport: 'none', calls: [] };
-    } else if (cloudToken && phoneId) {
+    } else if (channel === 'evolution') {
+        whatsapp = {
+            status: 'ready',
+            callsStatusApi: false,
+            kind: 'message',
+            to,
+            transport: 'evolution_message',
+            calls: [{
+                method: 'POST',
+                url: evolutionMediaEndpoint(evolutionBase, evolutionInstance),
+                purpose: 'evolution_send',
+                body: {
+                    to,
+                    text: caption,
+                    mediaKind: kind,
+                    ...(publicUrl ? { media: publicUrl } : {}),
+                },
+            }],
+        };
+    } else if (channel === 'bridge') {
+        whatsapp = {
+            status: 'ready',
+            callsStatusApi: false,
+            kind: 'message',
+            to,
+            transport: 'bridge_message',
+            calls: [{
+                method: 'POST',
+                url: bridgeSendUrl(bridge),
+                purpose: 'bridge_send',
+                body: { to, text: caption, mediaKind: kind },
+            }],
+        };
+    } else if (channel === 'cloud') {
         const messageBody: Record<string, string> = {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
@@ -239,19 +300,7 @@ export function buildShareStoryPublishPlan(input: {
         });
         whatsapp = { status: 'ready', callsStatusApi: false, kind: 'message', to, transport: 'cloud_message', calls };
     } else {
-        whatsapp = {
-            status: 'ready',
-            callsStatusApi: false,
-            kind: 'message',
-            to,
-            transport: 'bridge_message',
-            calls: [{
-                method: 'POST',
-                url: bridgeSendUrl(bridge),
-                purpose: 'bridge_send',
-                body: { to, text: caption, mediaKind: kind },
-            }],
-        };
+        whatsapp = { status: 'not_connected', callsStatusApi: false, kind: 'message', to, transport: 'none', calls: [] };
     }
 
     return { width: SHARE_PUBLISH_WIDTH, height: SHARE_PUBLISH_HEIGHT, media, instagram, whatsapp };
@@ -341,6 +390,7 @@ export async function runWhatsAppMessagePublish(
     options: {
         accessToken?: string | null;
         bridgeToken?: string | null;
+        evolutionToken?: string | null;
         bytes?: Uint8Array | null;
         fetchImpl?: PublishFetch;
     },
@@ -351,8 +401,10 @@ export async function runWhatsAppMessagePublish(
     const fetchImpl = options.fetchImpl ?? defaultFetch();
     const cloudToken = clean(options.accessToken);
     const bridgeToken = clean(options.bridgeToken);
+    const evolutionToken = clean(options.evolutionToken);
     if (plan.whatsapp.transport === 'cloud_message' && !cloudToken) return { status: 'not_connected' };
     if (plan.whatsapp.transport === 'bridge_message' && !plan.whatsapp.calls[0]?.url) return { status: 'not_connected' };
+    if (plan.whatsapp.transport === 'evolution_message' && !evolutionToken) return { status: 'not_connected' };
     let mediaId = '';
     for (const call of plan.whatsapp.calls) {
         if (isStatusEndpoint(call.url)) return { status: 'failed' };
@@ -381,6 +433,29 @@ export async function runWhatsAppMessagePublish(
             const body: Record<string, string> = { ...call.body };
             if (bytes && bytes.byteLength > 0) body.mediaBase64 = bytesToBase64(bytes);
             const response = await fetchImpl(call.url, { method: 'POST', headers, body: JSON.stringify(body) });
+            if (!response.ok) return { status: 'failed' };
+            return { status: 'sent' };
+        }
+        if (call.purpose === 'evolution_send') {
+            const linked = clean(call.body.media);
+            const bytes = options.bytes;
+            const media = linked || (bytes && bytes.byteLength > 0 ? bytesToBase64(bytes) : '');
+            if (!media) return { status: 'failed' };
+            const payload = evolutionMediaPayload({
+                to: plan.whatsapp.to,
+                mediatype: plan.media.kind === 'video' ? 'video' : 'image',
+                media,
+                caption: clean(call.body.text),
+            });
+            const response = await fetchImpl(call.url, {
+                method: 'POST',
+                headers: {
+                    apikey: evolutionToken,
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
             if (!response.ok) return { status: 'failed' };
             return { status: 'sent' };
         }
