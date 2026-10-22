@@ -3,10 +3,37 @@
  */
 import type { WhatsAppMessage } from './whatsappTypes';
 
-/** Klinik Evolution kökü. Sohbet mesajı; durum ucu değil. */
+/** Evolution 1.8 kökü. Sohbet ve durum uçları bu kökten ayrılır. */
+function evolutionRoot(baseUrl: string): string {
+    return baseUrl.trim().replace(/\/+$/, '').replace(/\/status$/i, '');
+}
+
+/** Klinik Evolution kökü. Sohbet medyası; durum ucu değil. */
 export function evolutionMediaEndpoint(baseUrl: string, instance: string): string {
-    const root = baseUrl.trim().replace(/\/+$/, '').replace(/\/status$/i, '');
-    return `${root}/message/sendMedia/${encodeURIComponent(instance)}`;
+    return `${evolutionRoot(baseUrl)}/message/sendMedia/${encodeURIComponent(instance)}`;
+}
+
+/**
+ * Evolution 1.8 durum ucu: POST /message/sendStatus/{instance}.
+ * Görsel ve video `content` alanı sunucuda adres olarak açılır; sohbet numarası yoktur.
+ */
+export function evolutionStatusEndpoint(baseUrl: string, instance: string): string {
+    return `${evolutionRoot(baseUrl)}/message/sendStatus/${encodeURIComponent(instance)}`;
+}
+
+export function evolutionStatusPayload(input: {
+    mediatype: 'image' | 'video';
+    content: string;
+    caption?: string;
+}): { statusMessage: { type: string; content: string; allContacts: true; caption?: string } } {
+    const caption = (input.caption || '').trim();
+    const statusMessage: { type: string; content: string; allContacts: true; caption?: string } = {
+        type: input.mediatype,
+        content: input.content,
+        allContacts: true,
+    };
+    if (caption) statusMessage.caption = caption;
+    return { statusMessage };
 }
 
 export function evolutionMediaPayload(input: {

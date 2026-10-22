@@ -2,7 +2,7 @@
   "name": "retailex-whatsapp-bridge",
   "private": true,
   "type": "module",
-  "description": "RetailEX Baileys HTTP köprüsü — GET /status, POST /send",
+  "description": "RetailEX Baileys HTTP köprüsü — GET /status, POST /send, POST /status",
   "scripts": {
     "start": "node server.mjs",
     "dev": "node --watch server.mjs"

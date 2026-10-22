@@ -1,4 +1,9 @@
-import { evolutionMediaEndpoint, evolutionMediaPayload } from '../../../services/messaging/whatsappEvolution';
+import {
+    evolutionMediaEndpoint,
+    evolutionMediaPayload,
+    evolutionStatusEndpoint,
+    evolutionStatusPayload,
+} from '../../../services/messaging/whatsappEvolution';
 import { SHARE_STORY_HEIGHT, SHARE_STORY_WIDTH } from './shareSlotsStory';
 import type { ClinicSocialConnect } from './socialConnect';
 
@@ -46,6 +51,23 @@ export type WhatsAppPublishCall = {
     url: string;
     purpose: 'message' | 'media_upload' | 'bridge_send' | 'evolution_send';
     body: Record<string, string>;
+};
+
+export type WhatsAppStatusCall = {
+    method: 'POST';
+    url: string;
+    purpose: 'bridge_status' | 'evolution_status';
+    body: Record<string, string>;
+};
+
+/** Sohbet planından ayrı. Alıcı numarası gerekmez; yayın hesabın kendi durumudur. */
+export type ShareWhatsAppStatusPlan = {
+    width: number;
+    height: number;
+    status: 'not_connected' | 'unsupported' | 'media_url_required' | 'ready';
+    callsStatusApi: boolean;
+    transport: 'bridge_status' | 'evolution_status' | 'cloud_unsupported' | 'none';
+    calls: WhatsAppStatusCall[];
 };
 
 export type ShareStoryPublishPlan = {
@@ -108,10 +130,36 @@ function isStatusEndpoint(url: string): boolean {
     }
 }
 
+function bridgeRoot(base: string): string {
+    return base.trim().replace(/\/+$/, '').replace(/\/status$/i, '').replace(/\/send$/i, '');
+}
+
 function bridgeSendUrl(base: string): string {
-    const trimmed = base.trim().replace(/\/+$/, '').replace(/\/status$/i, '');
+    const trimmed = bridgeRoot(base);
     if (trimmed.endsWith('/send')) return trimmed;
     return `${trimmed}/send`;
+}
+
+/** Köprü sağlık ucu GET /status kalır. 24 saatlik durum ayrı POST /status yoludur. */
+export function bridgeStatusPostUrl(base: string): string {
+    return `${bridgeRoot(base)}/status`;
+}
+
+function isEvolutionStatusUrl(url: string): boolean {
+    try {
+        return /\/message\/sendstatus\/[^/]+$/.test(new URL(url).pathname.toLowerCase());
+    } catch {
+        return false;
+    }
+}
+
+function isBridgeStatusPostUrl(url: string): boolean {
+    try {
+        const path = new URL(url).pathname.toLowerCase();
+        return path === '/status' || path.endsWith('/status');
+    } catch {
+        return false;
+    }
 }
 
 export function toPublishSecrets(connect: ClinicSocialConnect): SharePublishSecrets {
@@ -306,6 +354,73 @@ export function buildShareStoryPublishPlan(input: {
     return { width: SHARE_PUBLISH_WIDTH, height: SHARE_PUBLISH_HEIGHT, media, instagram, whatsapp };
 }
 
+export function buildShareWhatsAppStatusPlan(input: {
+    media: SharePublishMediaInput;
+    secrets: SharePublishSecrets;
+    caption?: string;
+}): ShareWhatsAppStatusPlan {
+    const kind = input.media.kind === 'video' ? 'video' : 'image';
+    const publicUrl = isPublicMediaUrl(input.media.publicUrl);
+    const caption = clean(input.caption).slice(0, 1024);
+    const channel = whatsAppChannel(input.secrets);
+    const cloudToken = clean(input.secrets.whatsappAccessToken);
+    const phoneId = clean(input.secrets.whatsappPhoneId);
+    const bridge = clean(input.secrets.bridgeBaseUrl);
+    const evolutionBase = clean(input.secrets.evolutionBaseUrl);
+    const evolutionInstance = clean(input.secrets.evolutionInstance);
+    const shell = {
+        width: SHARE_PUBLISH_WIDTH,
+        height: SHARE_PUBLISH_HEIGHT,
+    };
+    const channelReady = channel === 'evolution'
+        ? Boolean(evolutionBase && evolutionInstance)
+        : channel === 'bridge'
+            ? Boolean(bridge)
+            : channel === 'cloud'
+                ? Boolean(cloudToken && phoneId)
+                : false;
+    if (!channelReady) {
+        return { ...shell, status: 'not_connected', callsStatusApi: false, transport: 'none', calls: [] };
+    }
+    if (channel === 'cloud') {
+        return { ...shell, status: 'unsupported', callsStatusApi: false, transport: 'cloud_unsupported', calls: [] };
+    }
+    if (channel === 'evolution') {
+        if (!publicUrl) {
+            return { ...shell, status: 'media_url_required', callsStatusApi: false, transport: 'evolution_status', calls: [] };
+        }
+        return {
+            ...shell,
+            status: 'ready',
+            callsStatusApi: true,
+            transport: 'evolution_status',
+            calls: [{
+                method: 'POST',
+                url: evolutionStatusEndpoint(evolutionBase, evolutionInstance),
+                purpose: 'evolution_status',
+                body: {
+                    type: kind,
+                    allContacts: 'true',
+                    media: publicUrl,
+                    ...(caption ? { text: caption } : {}),
+                },
+            }],
+        };
+    }
+    return {
+        ...shell,
+        status: 'ready',
+        callsStatusApi: true,
+        transport: 'bridge_status',
+        calls: [{
+            method: 'POST',
+            url: bridgeStatusPostUrl(bridge),
+            purpose: 'bridge_status',
+            body: { mediaKind: kind, ...(caption ? { text: caption } : {}) },
+        }],
+    };
+}
+
 async function readJson(res: PublishResponse): Promise<Record<string, unknown>> {
     const text = await res.text();
     if (!text) return {};
@@ -481,6 +596,64 @@ export async function runWhatsAppMessagePublish(
         });
         if (!response.ok) return { status: 'failed' };
         return { status: 'sent' };
+    }
+    return { status: 'failed' };
+}
+
+export async function runWhatsAppStatusPublish(
+    plan: ShareWhatsAppStatusPlan,
+    options: {
+        bridgeToken?: string | null;
+        evolutionToken?: string | null;
+        bytes?: Uint8Array | null;
+        fetchImpl?: PublishFetch;
+    },
+): Promise<{ status: 'not_connected' | 'unsupported' | 'media_url_required' | 'posted' | 'failed' }> {
+    if (plan.status === 'not_connected' || plan.transport === 'none') return { status: 'not_connected' };
+    if (plan.status === 'unsupported' || plan.transport === 'cloud_unsupported') return { status: 'unsupported' };
+    if (plan.status === 'media_url_required') return { status: 'media_url_required' };
+    if (plan.calls.length === 0) return { status: 'failed' };
+    const fetchImpl = options.fetchImpl ?? defaultFetch();
+    const call = plan.calls[0];
+    if (!call) return { status: 'failed' };
+    if (plan.transport === 'bridge_status') {
+        if (!isBridgeStatusPostUrl(call.url) || call.purpose !== 'bridge_status') return { status: 'failed' };
+        const bytes = options.bytes;
+        if (!bytes || bytes.byteLength < 1) return { status: 'failed' };
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        const bridgeToken = clean(options.bridgeToken);
+        if (bridgeToken) headers.Authorization = `Bearer ${bridgeToken}`;
+        const body: Record<string, string> = {
+            mediaKind: call.body.mediaKind === 'video' ? 'video' : 'image',
+            mediaBase64: bytesToBase64(bytes),
+        };
+        if (clean(call.body.text)) body.text = clean(call.body.text);
+        const response = await fetchImpl(call.url, { method: 'POST', headers, body: JSON.stringify(body) });
+        if (!response.ok) return { status: 'failed' };
+        return { status: 'posted' };
+    }
+    if (plan.transport === 'evolution_status') {
+        if (!isEvolutionStatusUrl(call.url) || call.purpose !== 'evolution_status') return { status: 'failed' };
+        const evolutionToken = clean(options.evolutionToken);
+        if (!evolutionToken) return { status: 'not_connected' };
+        const content = isPublicMediaUrl(call.body.media);
+        if (!content) return { status: 'media_url_required' };
+        const payload = evolutionStatusPayload({
+            mediatype: call.body.type === 'video' ? 'video' : 'image',
+            content,
+            caption: clean(call.body.text),
+        });
+        const response = await fetchImpl(call.url, {
+            method: 'POST',
+            headers: {
+                apikey: evolutionToken,
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) return { status: 'failed' };
+        return { status: 'posted' };
     }
     return { status: 'failed' };
 }

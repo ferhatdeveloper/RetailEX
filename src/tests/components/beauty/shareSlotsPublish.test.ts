@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
     buildShareStoryPublishPlan,
+    buildShareWhatsAppStatusPlan,
     runInstagramStoryPublish,
     runWhatsAppMessagePublish,
+    runWhatsAppStatusPublish,
     toPublishSecrets,
     type PublishResponse,
 } from '../../../components/beauty/share-slots/shareSlotsPublish';
@@ -238,5 +240,166 @@ describe('boş saat hikâye yayını', () => {
         });
         expect(off.whatsapp.connected).toBe(false);
         expect(off.whatsapp.channel).toBe('none');
+    });
+
+    it('24 saatlik durum planı sohbet mesajından ayrıdır', async () => {
+        const bridgeSecrets = { bridgeBaseUrl: 'http://127.0.0.1:3000', bridgeToken: 'bridge-key' };
+        const chat = buildShareStoryPublishPlan({
+            media: { kind: 'image', mime: 'image/png', byteLength: 8 },
+            secrets: bridgeSecrets,
+            recipient: '905551112233',
+            caption: 'Boş saatler',
+        });
+        const statusPlan = buildShareWhatsAppStatusPlan({
+            media: { kind: 'image', mime: 'image/png', byteLength: 8 },
+            secrets: bridgeSecrets,
+            caption: 'Boş saatler',
+        });
+        expect(chat.whatsapp.transport).toBe('bridge_message');
+        expect(chat.whatsapp.calls[0]?.url).toBe('http://127.0.0.1:3000/send');
+        expect(chat.whatsapp.callsStatusApi).toBe(false);
+        expect(statusPlan.status).toBe('ready');
+        expect(statusPlan.transport).toBe('bridge_status');
+        expect(statusPlan.callsStatusApi).toBe(true);
+        expect(statusPlan.calls[0]?.url).toBe('http://127.0.0.1:3000/status');
+        expect(statusPlan.calls[0]?.url).not.toBe(chat.whatsapp.calls[0]?.url);
+        expect(statusPlan.calls[0]?.body.to).toBeUndefined();
+
+        const withoutRecipient = buildShareWhatsAppStatusPlan({
+            media: { kind: 'image', mime: 'image/png', byteLength: 4 },
+            secrets: bridgeSecrets,
+        });
+        expect(withoutRecipient.status).toBe('ready');
+        const chatMissing = buildShareStoryPublishPlan({
+            media: { kind: 'image', mime: 'image/png', byteLength: 4 },
+            secrets: bridgeSecrets,
+            recipient: '',
+        });
+        expect(chatMissing.whatsapp.status).toBe('recipient_required');
+        expect(chatMissing.whatsapp.calls).toEqual([]);
+
+        const fetchImpl = vi.fn(async () => jsonResponse({ success: true, kind: 'status' }));
+        const blockedChat = await runWhatsAppMessagePublish(chatMissing, { bridgeToken: 'bridge-key', fetchImpl });
+        expect(blockedChat.status).toBe('recipient_required');
+        expect(fetchImpl).not.toHaveBeenCalled();
+
+        const posted = await runWhatsAppStatusPublish(statusPlan, {
+            bridgeToken: 'bridge-key',
+            bytes: new Uint8Array([1, 2, 3, 4]),
+            fetchImpl,
+        });
+        expect(posted.status).toBe('posted');
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+        const calledUrl = String(fetchImpl.mock.calls[0]?.[0]);
+        expect(calledUrl).toBe('http://127.0.0.1:3000/status');
+        const sentBody = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body || '{}')) as Record<string, string>;
+        expect(sentBody.to).toBeUndefined();
+        expect(sentBody.mediaKind).toBe('image');
+        expect(sentBody.mediaBase64?.length).toBeGreaterThan(0);
+        expect(sentBody.text).toBe('Boş saatler');
+
+        statusPlan.calls[0]!.url = 'http://127.0.0.1:3000/send';
+        const refused = await runWhatsAppStatusPublish(statusPlan, {
+            bridgeToken: 'bridge-key',
+            bytes: new Uint8Array([1, 2, 3, 4]),
+            fetchImpl,
+        });
+        expect(refused.status).toBe('failed');
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+    });
+
+    it('Evolution durum ucu sendStatus olur, kapalı sağlayıcı ve Cloud ağ çağırmaz', async () => {
+        const evolutionSecrets = {
+            whatsappChannel: 'evolution' as const,
+            evolutionBaseUrl: 'https://evo.example',
+            evolutionInstance: 'nora',
+            evolutionToken: 'evo-key',
+        };
+        const bytesOnly = buildShareWhatsAppStatusPlan({
+            media: { kind: 'image', mime: 'image/png', byteLength: 8 },
+            secrets: evolutionSecrets,
+        });
+        expect(bytesOnly.status).toBe('media_url_required');
+        expect(bytesOnly.calls).toEqual([]);
+        expect(bytesOnly.callsStatusApi).toBe(false);
+        const fetchImpl = vi.fn(async () => jsonResponse({ key: { id: 'sta-1' } }));
+        const blockedBytes = await runWhatsAppStatusPublish(bytesOnly, { evolutionToken: 'evo-key', fetchImpl });
+        expect(blockedBytes.status).toBe('media_url_required');
+        expect(fetchImpl).not.toHaveBeenCalled();
+
+        const statusPlan = buildShareWhatsAppStatusPlan({
+            media: image,
+            secrets: evolutionSecrets,
+            caption: 'Boş saatler',
+        });
+        const chat = buildShareStoryPublishPlan({
+            media: image,
+            secrets: evolutionSecrets,
+            recipient: '905551112233',
+            caption: 'Boş saatler',
+        });
+        expect(chat.whatsapp.calls[0]?.url).toBe('https://evo.example/message/sendMedia/nora');
+        expect(statusPlan.status).toBe('ready');
+        expect(statusPlan.transport).toBe('evolution_status');
+        expect(statusPlan.callsStatusApi).toBe(true);
+        expect(statusPlan.calls[0]?.url).toBe('https://evo.example/message/sendStatus/nora');
+        expect(statusPlan.calls[0]?.url).not.toContain('sendMedia');
+        expect(JSON.stringify(statusPlan)).not.toContain('evo-key');
+        expect(statusPlan.calls[0]?.body.to).toBeUndefined();
+
+        const posted = await runWhatsAppStatusPublish(statusPlan, {
+            evolutionToken: 'evo-key',
+            bytes: new Uint8Array([9, 9]),
+            fetchImpl,
+        });
+        expect(posted.status).toBe('posted');
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+        expect(String(fetchImpl.mock.calls[0]?.[0])).toBe('https://evo.example/message/sendStatus/nora');
+        const payload = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body || '{}')) as {
+            number?: string;
+            statusMessage?: { type?: string; content?: string; allContacts?: boolean; caption?: string; statusJidList?: string[] };
+        };
+        expect(payload.number).toBeUndefined();
+        expect(payload.statusMessage).toMatchObject({
+            type: 'image',
+            content: 'https://cdn.example/bos-saat.png',
+            allContacts: true,
+            caption: 'Boş saatler',
+        });
+        expect(payload.statusMessage?.statusJidList).toBeUndefined();
+
+        const closed = buildShareWhatsAppStatusPlan({
+            media: image,
+            secrets: { whatsappChannel: 'none' },
+        });
+        expect(closed.status).toBe('not_connected');
+        expect(closed.calls).toEqual([]);
+        expect(closed.callsStatusApi).toBe(false);
+        const closedResult = await runWhatsAppStatusPublish(closed, { fetchImpl });
+        expect(closedResult.status).toBe('not_connected');
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+        const cloud = buildShareWhatsAppStatusPlan({
+            media: image,
+            secrets: { whatsappAccessToken: 'wa-token', whatsappPhoneId: '55501' },
+        });
+        expect(cloud.status).toBe('unsupported');
+        expect(cloud.transport).toBe('cloud_unsupported');
+        expect(cloud.calls).toEqual([]);
+        expect(cloud.callsStatusApi).toBe(false);
+        expect(JSON.stringify(cloud)).not.toContain('55501');
+        expect(JSON.stringify(cloud)).not.toContain('graph.facebook.com');
+        const cloudResult = await runWhatsAppStatusPublish(cloud, { fetchImpl });
+        expect(cloudResult.status).toBe('unsupported');
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+        const missingChat = buildShareStoryPublishPlan({
+            media: image,
+            secrets: { whatsappAccessToken: 'wa-token', whatsappPhoneId: '55501' },
+            recipient: ' ',
+        });
+        const missingChatResult = await runWhatsAppMessagePublish(missingChat, { accessToken: 'wa-token', fetchImpl });
+        expect(missingChatResult.status).toBe('recipient_required');
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
     });
 });

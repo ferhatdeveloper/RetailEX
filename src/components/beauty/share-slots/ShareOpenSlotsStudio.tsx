@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronLeft, Download, Image as ImageIcon, Instagram, Link2, MessageCircle, Send, Video } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Clock, Download, Image as ImageIcon, Instagram, Link2, MessageCircle, Send, Video } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { beautyService } from '../../../services/beautyService';
@@ -25,7 +25,7 @@ import {
     type ShareDaySpan,
 } from './shareSlotsStory';
 import { readClinicSocialConnect, rememberSocialConnectFocus, rememberWhatsAppRecipient, type PortalWhatsAppSnapshot, type SocialAccountHint, type SocialChatHint } from './socialConnect';
-import { buildShareStoryPublishPlan, runInstagramStoryPublish, runWhatsAppMessagePublish, toPublishSecrets } from './shareSlotsPublish';
+import { buildShareStoryPublishPlan, buildShareWhatsAppStatusPlan, runInstagramStoryPublish, runWhatsAppMessagePublish, runWhatsAppStatusPublish, toPublishSecrets } from './shareSlotsPublish';
 
 const TITLE_KEYS = ['bShareSlotsTitleOurs', 'bShareSlotsTitleOpen', 'bShareSlotsTitleBook'] as const;
 
@@ -523,8 +523,80 @@ export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose, onOpenConnect 
         }
     };
 
+    const onWhatsAppStatus = async () => {
+        if (!canShare || busy) return;
+        setNotice('');
+        const current = readClinicSocialConnect({ portal: portalWa, accounts: socialAccounts, chats: socialChats });
+        if (!current.whatsapp.connected) {
+            askConnect('whatsapp');
+            return;
+        }
+        const secrets = toPublishSecrets(current);
+        const probe = buildShareWhatsAppStatusPlan({
+            media: { kind: tab === 'video' ? 'video' : 'image', mime: tab === 'video' ? 'video/webm' : 'image/png', byteLength: 1 },
+            secrets,
+            caption: shareText,
+        });
+        if (probe.status === 'not_connected') {
+            askConnect('whatsapp');
+            return;
+        }
+        if (probe.status === 'unsupported') {
+            setNotice(tm('bShareOpenSlotsWaStatusCloud'));
+            return;
+        }
+        if (probe.status === 'media_url_required') {
+            setNotice(tm('bShareOpenSlotsWaStatusNeedUrl'));
+            return;
+        }
+        if (probe.status !== 'ready') {
+            setNotice(tm('bShareOpenSlotsPublishFail'));
+            return;
+        }
+        setBusy(true);
+        try {
+            const file = await captureStoryFile();
+            if (!file) {
+                setNotice(tm('bShareSlotsNoImage'));
+                return;
+            }
+            const publishPlan = buildShareWhatsAppStatusPlan({
+                media: { kind: file.kind, mime: file.mime, byteLength: file.bytes.byteLength },
+                secrets,
+                caption: shareText,
+            });
+            const result = await runWhatsAppStatusPublish(publishPlan, {
+                bridgeToken: secrets.bridgeToken,
+                evolutionToken: secrets.evolutionToken,
+                bytes: file.bytes,
+            });
+            if (result.status === 'not_connected') {
+                askConnect('whatsapp');
+                return;
+            }
+            if (result.status === 'unsupported') {
+                setNotice(tm('bShareOpenSlotsWaStatusCloud'));
+                return;
+            }
+            if (result.status === 'media_url_required') {
+                setNotice(tm('bShareOpenSlotsWaStatusNeedUrl'));
+                return;
+            }
+            if (result.status !== 'posted') {
+                setNotice(tm('bShareOpenSlotsPublishFail'));
+                return;
+            }
+            setNotice(tm('bShareOpenSlotsWaStatusOk'));
+        } catch {
+            setNotice(tm('bShareOpenSlotsPublishFail'));
+        } finally {
+            setBusy(false);
+        }
+    };
+
     const igLabel = tm('bShareOpenSlotsIgShare');
     const waSendLabel = tm('bShareOpenSlotsWaSend');
+    const waStatusLabel = tm('bShareOpenSlotsWaStatus');
 
     const daySpans: { id: ShareDaySpan; label: string }[] = [
         { id: 'todayTomorrow', label: tm('bShareSlotsTodayTomorrow') },
@@ -797,6 +869,17 @@ export function ShareOpenSlotsStudio({ staff, anchorYmd, onClose, onOpenConnect 
                                 {waSendLabel}
                             </button>
                         </div>
+                        <button
+                            type="button"
+                            data-testid="share-studio-whatsapp-status"
+                            onClick={() => { void onWhatsAppStatus(); }}
+                            disabled={!canShare || busy}
+                            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#e6eaf0] bg-white px-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                            <Clock size={15} aria-hidden />
+                            {waStatusLabel}
+                        </button>
+                        <p className="text-[11px] leading-snug text-slate-500">{tm('bShareOpenSlotsWaStatusHint')}</p>
                         <label className="block">
                             <span className="mb-1 block text-[11px] font-semibold text-slate-500">{tm('bShareOpenSlotsRecipient')}</span>
                             <input

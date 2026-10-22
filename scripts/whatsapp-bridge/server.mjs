@@ -2,7 +2,8 @@
  * RetailEX WhatsApp köprüsü — Baileys tabanlı HTTP API.
  *
  *   GET  /status  → { status, qr? }
- *   POST /send    → { to, text }
+ *   POST /send    → { to, text } sohbet mesajı
+ *   POST /status  → bu hesabın 24 saatlik durumu (status@broadcast)
  *   POST /reset   → oturumu sıfırla, yeni QR üret
  */
 import http from 'node:http';
@@ -29,6 +30,9 @@ let connectionStatus = 'disconnected';
 let lastQrRaw = null;
 let starting = false;
 let resetInProgress = false;
+/** Bu oturumun kişi ve sohbet kimlikleri. Başka hesaba yazılmaz. */
+const statusAudience = new Set();
+const STATUS_BROADCAST_JID = 'status@broadcast';
 
 function json(res, statusCode, body) {
   const payload = JSON.stringify(body);
@@ -103,6 +107,32 @@ function publicStatus() {
   return connectionStatus;
 }
 
+function bareUserJid(raw) {
+  const value = String(raw || '').trim();
+  const at = value.lastIndexOf('@');
+  if (at < 1) return '';
+  const host = value.slice(at + 1).split(':')[0];
+  if (host !== 's.whatsapp.net' && host !== 'lid') return '';
+  const user = value.slice(0, at).split(':')[0];
+  if (!/^\d+$/.test(user)) return '';
+  return `${user}@${host}`;
+}
+
+function rememberStatusJid(raw) {
+  const bare = bareUserJid(raw);
+  if (!bare || bare === STATUS_BROADCAST_JID) return;
+  statusAudience.add(bare);
+}
+
+function rememberStatusRows(rows) {
+  for (const row of rows || []) rememberStatusJid(row?.id);
+}
+
+function currentStatusAudience() {
+  rememberStatusJid(sock?.user?.id);
+  return [...statusAudience];
+}
+
 async function destroySocket() {
   if (sock) {
     try {
@@ -119,6 +149,7 @@ async function clearAuthDir() {
   await destroySocket();
   connectionStatus = 'disconnected';
   lastQrRaw = null;
+  statusAudience.clear();
   await rm(AUTH_DIR, { recursive: true, force: true });
   await mkdir(AUTH_DIR, { recursive: true });
 }
@@ -146,6 +177,7 @@ async function startSocket() {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const logger = pino({ level: 'silent' });
 
+    statusAudience.clear();
     sock = makeWASocket({
       version,
       auth: {
@@ -161,6 +193,14 @@ async function startSocket() {
     });
 
     sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('contacts.upsert', rememberStatusRows);
+    sock.ev.on('contacts.update', rememberStatusRows);
+    sock.ev.on('chats.upsert', rememberStatusRows);
+    sock.ev.on('chats.update', rememberStatusRows);
+    sock.ev.on('messaging-history.set', (payload) => {
+      rememberStatusRows(payload?.contacts);
+      rememberStatusRows(payload?.chats);
+    });
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -240,7 +280,7 @@ async function handleReset(_req, res) {
   }
 }
 
-/** Sohbet mesajı. 24 saatlik duruma yazmaz; durum ucu yoktur. */
+/** Sohbet mesajı. 24 saatlik durum bu uçtan yazılmaz. */
 async function handleSend(req, res) {
   if (!sock) await startSocket();
   if (connectionStatus !== 'connected' || !sock) {
@@ -287,6 +327,51 @@ async function handleSend(req, res) {
   }
 }
 
+/** Bu oturumun 24 saatlik durumu. Sohbet jid'sine yazmaz. */
+async function handleOwnStatus(req, res) {
+  if (!sock) await startSocket();
+  if (connectionStatus !== 'connected' || !sock) {
+    json(res, 503, { success: false, error: 'WhatsApp bağlı değil. QR ile eşleştirin (/status).' });
+    return;
+  }
+  let body;
+  try {
+    body = await readBody(req);
+  } catch {
+    json(res, 400, { success: false, error: 'Geçersiz JSON gövdesi.' });
+    return;
+  }
+  const text = String(body.text || '').trim();
+  const mediaRaw = String(body.mediaBase64 || body.imageBase64 || '').replace(/^data:[^;]+;base64,/, '').trim();
+  const mediaKind = body.mediaKind === 'video' ? 'video' : 'image';
+  if (!mediaRaw) {
+    json(res, 400, { success: false, error: '24 saatlik durum için görsel gerekli.' });
+    return;
+  }
+  const audience = currentStatusAudience();
+  if (!audience.length) {
+    json(res, 409, { success: false, error: 'Bu hesabın kişi listesi yok. 24 saatlik durum yazılmadı.' });
+    return;
+  }
+  try {
+    const buffer = Buffer.from(mediaRaw, 'base64');
+    if (!buffer.length) {
+      json(res, 400, { success: false, error: 'Görsel çözülemedi.' });
+      return;
+    }
+    const payload = mediaKind === 'video'
+      ? { video: buffer, caption: text || undefined }
+      : { image: buffer, caption: text || undefined };
+    await sock.sendMessage(STATUS_BROADCAST_JID, payload, {
+      broadcast: true,
+      statusJidList: audience,
+    });
+    json(res, 200, { success: true, kind: 'status', target: STATUS_BROADCAST_JID });
+  } catch (e) {
+    json(res, 500, { success: false, error: e?.message || String(e) });
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     json(res, 204, {});
@@ -301,6 +386,10 @@ const server = http.createServer(async (req, res) => {
     await handleStatus(req, res);
     return;
   }
+  if (req.method === 'POST' && url.pathname === '/status') {
+    await handleOwnStatus(req, res);
+    return;
+  }
   if (req.method === 'POST' && url.pathname === '/reset') {
     await handleReset(req, res);
     return;
@@ -309,7 +398,7 @@ const server = http.createServer(async (req, res) => {
     await handleSend(req, res);
     return;
   }
-  json(res, 404, { success: false, error: 'Bilinmeyen uç nokta. GET /status, POST /send, POST /reset' });
+  json(res, 404, { success: false, error: 'Bilinmeyen uç nokta. GET /status, POST /status, POST /send, POST /reset' });
 });
 
 void startSocket();

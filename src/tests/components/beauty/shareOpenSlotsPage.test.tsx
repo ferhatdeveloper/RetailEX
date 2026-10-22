@@ -272,6 +272,11 @@ describe('Boş saatleri paylaş sayfası', () => {
             'bShareOpenSlotsTapLink',
             'bShareOpenSlotsIgShare',
             'bShareOpenSlotsWaSend',
+            'bShareOpenSlotsWaStatus',
+            'bShareOpenSlotsWaStatusHint',
+            'bShareOpenSlotsWaStatusOk',
+            'bShareOpenSlotsWaStatusCloud',
+            'bShareOpenSlotsWaStatusNeedUrl',
             'bShareOpenSlotsWaChatHint',
             'bShareOpenSlotsNotConnected',
             'bShareOpenSlotsNeedNumber',
@@ -328,6 +333,7 @@ describe('Boş saatleri paylaş sayfası', () => {
         expect(screen.getByText(/seçilen WhatsApp sohbetine mesaj olarak gider/)).toBeTruthy();
         expect(screen.getByRole('button', { name: "Instagram'da paylaş" })).toBeTruthy();
         expect(screen.getByRole('button', { name: "WhatsApp'ta gönder" })).toBeTruthy();
+        expect(screen.getByRole('button', { name: '24 saatlik duruma yaz' })).toBeTruthy();
         expect(screen.getByText(/WhatsApp durumu olarak yayınlanmaz/)).toBeTruthy();
         expect(screen.getByRole('option', { name: 'Tüm ekip' })).toBeTruthy();
         expect(await screen.findByRole('option', { name: 'Roza' })).toBeTruthy();
@@ -342,6 +348,7 @@ describe('Boş saatleri paylaş sayfası', () => {
         expect(screen.getByTestId('share-slots-download').textContent).toContain('Videoyu indir');
         expect(screen.getByTestId('share-slots-instagram').textContent).toContain('Instagram\'da paylaş');
         expect(screen.getByTestId('share-slots-whatsapp-send').textContent).toContain('WhatsApp\'ta gönder');
+        expect(screen.getByTestId('share-slots-whatsapp-status').textContent).toContain('24 saatlik duruma yaz');
         expect(screen.getByTestId('share-slots-ig-off').textContent).toContain('Hesap bağlı değil');
         expect(screen.getByTestId('share-slots-wa-recipient')).toBeTruthy();
         fireEvent.click(screen.getByTestId('share-slots-mode-image'));
