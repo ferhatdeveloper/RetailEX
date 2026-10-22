@@ -5,7 +5,9 @@ import {
   appointmentReservationField,
   appointmentServiceGross,
   depositAmountsForNewAppointments,
+  parseReservationAmountInput,
   planNewAppointmentDeposit,
+  readAppointmentDepositFicheNo,
   resolveVisitReservationAmount,
   syncAutomaticDepositCart,
 } from '../../utils/appointmentFormReservation';
@@ -208,5 +210,55 @@ describe('randevu formu rezervasyon', () => {
     expect(stray.filter((line) => line.name === 'DEPOSIT')).toHaveLength(1);
     expect(stray.some((line) => line.unitPrice === 13_000)).toBe(false);
     expect(stray.some((line) => line.unitPrice === 42_000 || line.unitPrice === 25_000)).toBe(false);
+  });
+
+  it('yeni randevuda fiş no okunurken fırlatmaz', () => {
+    expect(() => readAppointmentDepositFicheNo(null)).not.toThrow();
+    expect(() => readAppointmentDepositFicheNo(undefined)).not.toThrow();
+    expect(readAppointmentDepositFicheNo(null)).toBeNull();
+    expect(readAppointmentDepositFicheNo(undefined)).toBeNull();
+    expect(readAppointmentDepositFicheNo({})).toBeNull();
+    expect(readAppointmentDepositFicheNo({ deposit_sale_fiche_no: '   ' })).toBeNull();
+    expect(readAppointmentDepositFicheNo({ deposit_sale_fiche_no: ' RX-19 ' })).toBe('RX-19');
+  });
+
+  it('rezervasyon yazılırken boş, ara değer ve binlik ayraç çökmez', () => {
+    const iqd = 0;
+    const tryDigits = 2;
+    expect(() => parseReservationAmountInput('', iqd)).not.toThrow();
+    expect(parseReservationAmountInput('', iqd)).toBe(0);
+    expect(parseReservationAmountInput('.', iqd)).toBe(0);
+    expect(parseReservationAmountInput(',', tryDigits)).toBe(0);
+    expect(parseReservationAmountInput('1.', iqd)).toBe(1);
+    expect(parseReservationAmountInput('1,', tryDigits)).toBe(1);
+    expect(parseReservationAmountInput('1.', tryDigits)).toBe(1);
+    expect(parseReservationAmountInput('20.000', iqd)).toBe(20_000);
+    expect(parseReservationAmountInput('20,000', iqd)).toBe(20_000);
+    expect(parseReservationAmountInput('1.250.000', iqd)).toBe(1_250_000);
+    expect(parseReservationAmountInput('1.5', iqd)).toBe(2);
+    expect(parseReservationAmountInput('20,50', tryDigits)).toBe(20.5);
+    expect(parseReservationAmountInput('20.50', tryDigits)).toBe(20.5);
+    expect(parseReservationAmountInput('1.250,75', tryDigits)).toBe(1250.75);
+    expect(parseReservationAmountInput('abc', iqd)).toBe(0);
+    expect(parseReservationAmountInput('-5', iqd)).toBe(0);
+    expect(parseReservationAmountInput('20000', iqd)).toBe(20_000);
+  });
+
+  it('yazılan 20.000 peşinattır; hizmet 110.000 ve ürün 10.000 toplamı 120.000 kalır', () => {
+    const amount = parseReservationAmountInput('20.000', 0);
+    const plan = planNewAppointmentDeposit({
+      lines: [
+        { type: 'service', name: 'HIZMET', unitPrice: 110_000, qty: 1 },
+        { type: 'product', name: 'URUN', unitPrice: 10_000, qty: 1 },
+      ],
+      reservationAmount: amount,
+      cutReceipt: false,
+    });
+    expect(plan.serviceGross).toBe(120_000);
+    expect(plan.formTotal).toBe(120_000);
+    expect(plan.formTotal).not.toBe(140_000);
+    expect(plan.depositAmount).toBe(20_000);
+    expect(plan.cashIn).toBe(20_000);
+    expect(plan.customerServiceDebt).toBe(0);
   });
 });

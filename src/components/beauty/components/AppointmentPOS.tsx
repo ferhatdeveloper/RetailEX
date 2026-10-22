@@ -75,7 +75,9 @@ import {
     appointmentReservationField,
     appointmentServiceGross,
     isAppointmentDepositCartLine,
+    parseReservationAmountInput,
     planNewAppointmentDeposit,
+    readAppointmentDepositFicheNo,
     syncAutomaticDepositCart,
     type AppointmentMoneyLine,
 } from '../../../utils/appointmentFormReservation';
@@ -535,6 +537,8 @@ export function AppointmentPOS({
     const [discount, setDiscount] = useState(0);
     // Rezervasyon tutarı (müşteriden peşin alınan tutar; toplamdan düşer)
     const [reservationAmount, setReservationAmount] = useState(0);
+    /** Yazarken tutulan metin. null ise kutuda sayı gösterilir. Ara değer silinmez. */
+    const [reservationDraft, setReservationDraft] = useState<string | null>(null);
     /** Açılan randevu grubunun kayıtlı depozito payları. Forma dağıtım yazılmaz. */
     const [visitStoredDeposits, setVisitStoredDeposits] = useState<number[]>([]);
     /** Cari avans hâlâ tam tutarı tutuyorsa (pay alana ezilmemiş kaynak). */
@@ -5410,30 +5414,28 @@ export function AppointmentPOS({
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                         <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{tm('bReservationAmount')}</span>
                                         <input
-                                            type="number"
-                                            min={0}
-                                            step={reservationMaxFractionDigits === 0 ? 1 : 0.01}
-                                            value={reservationAmount || ''}
+                                            type="text"
+                                            inputMode="decimal"
+                                            autoComplete="off"
+                                            value={
+                                                reservationDraft !== null
+                                                    ? reservationDraft
+                                                    : (reservationAmount > 0 ? String(reservationAmount) : '')
+                                            }
                                             onChange={e => {
                                                 const raw = e.target.value;
-                                                if (raw === '') {
-                                                    setReservationAmount(0);
-                                                    return;
-                                                }
-                                                // Para birimi ondalık kuralı: IQD tam sayı,
-                                                // diğerleri en fazla 2 hane. Geçersiz giriş
-                                                // kullanıcıya kırmızı uyarı ile gösterilir.
-                                                const cleaned = raw.replace(',', '.');
-                                                const num = Number(cleaned);
-                                                if (!Number.isFinite(num) || num < 0) {
-                                                    setReservationAmount(0);
-                                                    return;
-                                                }
-                                                const fixed =
-                                                    reservationMaxFractionDigits === 0
-                                                        ? Math.round(num)
-                                                        : Math.round(num * 100) / 100;
-                                                setReservationAmount(fixed);
+                                                setReservationDraft(raw);
+                                                setReservationAmount(
+                                                    parseReservationAmountInput(raw, reservationMaxFractionDigits),
+                                                );
+                                            }}
+                                            onBlur={() => {
+                                                const amount = parseReservationAmountInput(
+                                                    reservationDraft ?? '',
+                                                    reservationMaxFractionDigits,
+                                                );
+                                                setReservationAmount(amount);
+                                                setReservationDraft(null);
                                             }}
                                             placeholder="0"
                                             data-testid="appointment-reservation-amount"
@@ -5565,7 +5567,10 @@ export function AppointmentPOS({
                                             {fmt(existingDeposit)} IQD
                                         </span>
                                     </div>
-                                    {(existingAppointment as { deposit_sale_fiche_no?: string | null }).deposit_sale_fiche_no && (
+                                    {(() => {
+                                        const depositFicheNo = readAppointmentDepositFicheNo(existingAppointment);
+                                        if (!depositFicheNo) return null;
+                                        return (
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 10, opacity: 0.85 }}>
                                             <span style={{ color: '#15803d' }}>
                                                 {tm('prePaymentInvoiceNo') || 'Peşinat Fişi'}
@@ -5574,10 +5579,11 @@ export function AppointmentPOS({
                                                 data-testid="appointment-deposit-fiche-no"
                                                 style={{ fontFamily: 'monospace', color: '#15803d' }}
                                             >
-                                                {(existingAppointment as { deposit_sale_fiche_no?: string | null }).deposit_sale_fiche_no}
+                                                {depositFicheNo}
                                             </span>
                                         </div>
-                                    )}
+                                        );
+                                    })()}
                                     {/* Peşinat varsa kalan sayıdadır. Peşinat yoksa not kalır. */}
                                     <div
                                         data-testid="appointment-remaining-row"

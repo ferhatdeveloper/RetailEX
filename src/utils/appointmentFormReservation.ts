@@ -31,6 +31,71 @@ function isDepositToken(value: string | null | undefined): boolean {
   );
 }
 
+/**
+ * Peşinat fiş no. Yeni randevuda kayıt yoktur; alan yokken fırlatmaz.
+ * Boş metin yok sayılır.
+ */
+export function readAppointmentDepositFicheNo(
+  appointment: { deposit_sale_fiche_no?: string | null } | null | undefined,
+): string | null {
+  const raw = appointment?.deposit_sale_fiche_no;
+  if (raw == null) return null;
+  const text = String(raw).trim();
+  return text.length > 0 ? text : null;
+}
+
+/**
+ * Rezervasyon tutarı yazılırken sayıya çevirir. Fırlatmaz.
+ * Boş, yalnız ayraç ve sondaki ayraç ("1." / "1,") 0 veya önek tutardır.
+ * IQD (0 hane): "20.000" ve "20,000" yirmi bindir; "1.5" en yakın tam sayıdır.
+ * TRY (2 hane): "20,50" ve "20.50" yirmi buçuktur; "1.250,75" bin iki yüz ellidir.
+ * Eksi ve harf 0 döner. Tutar peşinattır; bu fonksiyon ciroya eklemez.
+ */
+export function parseReservationAmountInput(raw: string, maxFractionDigits = 0): number {
+  const digits = Number.isFinite(maxFractionDigits)
+    ? Math.max(0, Math.min(6, Math.floor(maxFractionDigits)))
+    : 0;
+  let s = String(raw ?? '').trim().replace(/\s/g, '');
+  s = s.replace(/[\u060C\u066B\uFF0C\u201A]/g, ',');
+  if (!s || s === '-' || s === '+' || s === '.' || s === ',' || s === '-.' || s === '-,') return 0;
+  if (/[.,]$/.test(s)) s = s.slice(0, -1);
+  if (!s) return 0;
+  if (/[^\d.,]/.test(s) || s.includes('-')) return 0;
+
+  let normalized = s;
+  if (s.includes(',') && s.includes('.')) {
+    const lastComma = s.lastIndexOf(',');
+    const lastDot = s.lastIndexOf('.');
+    if (lastComma > lastDot) {
+      normalized = `${s.slice(0, lastComma).replace(/\./g, '').replace(/,/g, '')}.${s.slice(lastComma + 1).replace(/\D/g, '')}`;
+    } else {
+      normalized = `${s.slice(0, lastDot).replace(/,/g, '').replace(/\./g, '')}.${s.slice(lastDot + 1).replace(/\D/g, '')}`;
+    }
+  } else if (s.includes(',')) {
+    if (digits === 0 || /^\d{1,3}(,\d{3})+$/.test(s)) {
+      normalized = s.replace(/,/g, '');
+    } else {
+      const last = s.lastIndexOf(',');
+      const intPart = s.slice(0, last).replace(/,/g, '');
+      const frac = s.slice(last + 1).replace(/\D/g, '');
+      normalized = frac.length > 0 ? `${intPart || '0'}.${frac}` : intPart;
+    }
+  } else if (s.includes('.')) {
+    // "20.000" binlik. "0.500" ve "20.50" ondalık kalır; IQD sonra tam sayıya yuvarlanır.
+    if (/^\d{1,3}(\.\d{3})+$/.test(s) && !s.startsWith('0.')) {
+      normalized = s.replace(/\./g, '');
+    } else {
+      normalized = s;
+    }
+  }
+
+  const num = Number(normalized);
+  if (!Number.isFinite(num) || num < 0) return 0;
+  if (digits === 0) return Math.round(num);
+  const factor = 10 ** digits;
+  return Math.round(num * factor) / factor;
+}
+
 /** DEPOSIT satırı hizmet değildir; sepette toplanmaz. */
 export function isAppointmentDepositCartLine(line: {
   type?: string | null;
