@@ -31,6 +31,7 @@ import {
   getEticaretPool,
 } from '../../eticaret/core/server/tenantDbResolve';
 import { registerQrMenuBridgeRoutes } from './qrMenuBridge';
+import { registerClinicSocialRoutes } from './messaging/clinicSocialBridgeRoutes';
 
 const app = new Hono();
 
@@ -199,6 +200,8 @@ function getPool(connStr: string): Pool {
     }
     return getSharedPgPool(connStr);
 }
+
+registerClinicSocialRoutes(app, getPool);
 
 const poolsLogged = new Set<string>();
 

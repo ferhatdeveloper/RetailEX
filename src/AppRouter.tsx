@@ -30,6 +30,11 @@ const PublicQrMenuRoutes = lazy(() =>
 );
 const RoleManagement = lazy(() => import('./components/system/RoleManagement'));
 const RoleForm = lazy(() => import('./components/system/RoleForm'));
+const ClinicMetaOAuthPage = lazy(() =>
+  import('./components/beauty/components/ClinicMetaOAuthPage').then((m) => ({
+    default: m.ClinicMetaOAuthPage,
+  })),
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -91,6 +96,7 @@ export function AppRouter() {
                     />
                     <Route path="/infra-settings" element={<InfrastructureSettingsPage />} />
                     <Route path="/book/:firmNr" element={<PublicBeautyBooking />} />
+                    <Route path="/clinic/meta-oauth" element={<ClinicMetaOAuthPage />} />
                     <Route path="/m/:tenantCode/*" element={<PublicQrMenuRoutes />} />
                     <Route
                       path="/system/roles"

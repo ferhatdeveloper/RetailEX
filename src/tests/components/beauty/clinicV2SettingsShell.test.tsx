@@ -178,10 +178,8 @@ describe('Klinik V2 ayar kabuğu', () => {
         expect(button.getAttribute('data-oauth-url')).toBe('');
 
         fireEvent.click(screen.getByTestId('clinic-v2-settings-group-whatsapp'));
-        await waitFor(() => {
-            expect(screen.getByTestId('clinic-v2-wa-bridge').textContent).toContain('Port 3000');
-        });
-        expect(screen.getByTestId('clinic-v2-social-connect-whatsapp').textContent).toBe('Meta uygulama kimliği tanımlı değil');
-        expect(screen.getByTestId('clinic-v2-wa-bridge').textContent).toContain('Bağlı değil');
+        expect(await screen.findByTestId('clinic-v2-wa-backoffice')).toBeTruthy();
+        expect(screen.getByTestId('clinic-v2-wa-backoffice').textContent).toBe('Backoffice WhatsApp kaydı yok');
+        expect(screen.queryByTestId('clinic-v2-social-connect-whatsapp')).toBeNull();
     });
 });

@@ -2,6 +2,7 @@
  * RetailEX WhatsApp köprüsü — Baileys tabanlı HTTP API.
  *
  *   GET  /status  → { status, qr? }
+ *   GET  /messages → bağlı oturumun son sohbet mesajları
  *   POST /send    → { to, text } sohbet mesajı
  *   POST /status  → bu hesabın 24 saatlik durumu (status@broadcast)
  *   POST /reset   → oturumu sıfırla, yeni QR üret
@@ -33,6 +34,48 @@ let resetInProgress = false;
 /** Bu oturumun kişi ve sohbet kimlikleri. Başka hesaba yazılmaz. */
 const statusAudience = new Set();
 const STATUS_BROADCAST_JID = 'status@broadcast';
+const INBOX_LIMIT = 200;
+const inboxMessages = [];
+const inboxIds = new Set();
+
+function textOfWaMessage(message) {
+  if (!message || typeof message !== 'object') return '';
+  if (typeof message.conversation === 'string') return message.conversation;
+  if (message.extendedTextMessage && typeof message.extendedTextMessage.text === 'string') {
+    return message.extendedTextMessage.text;
+  }
+  if (message.imageMessage && typeof message.imageMessage.caption === 'string') return message.imageMessage.caption;
+  return '';
+}
+
+function rememberInboxMessage(msg) {
+  const key = msg?.key || {};
+  const remote = String(key.remoteJid || '');
+  if (!remote || remote === STATUS_BROADCAST_JID || remote.endsWith('@g.us') || remote.endsWith('@broadcast')) return;
+  const id = String(key.id || '').trim();
+  if (!id || inboxIds.has(id)) return;
+  const body = textOfWaMessage(msg?.message).trim();
+  if (!body) return;
+  const digits = remote.replace(/@.*/, '').replace(/\D/g, '');
+  const stamp = Number(msg?.messageTimestamp) || Math.floor(Date.now() / 1000);
+  inboxIds.add(id);
+  inboxMessages.push({
+    id,
+    counterparty: digits || remote,
+    direction: key.fromMe ? 'out' : 'in',
+    body,
+    occurredAt: new Date(stamp * 1000).toISOString(),
+  });
+  while (inboxMessages.length > INBOX_LIMIT) {
+    const dropped = inboxMessages.shift();
+    if (dropped?.id) inboxIds.delete(dropped.id);
+  }
+}
+
+function clearInboxMessages() {
+  inboxMessages.length = 0;
+  inboxIds.clear();
+}
 
 function json(res, statusCode, body) {
   const payload = JSON.stringify(body);
@@ -150,6 +193,7 @@ async function clearAuthDir() {
   connectionStatus = 'disconnected';
   lastQrRaw = null;
   statusAudience.clear();
+  clearInboxMessages();
   await rm(AUTH_DIR, { recursive: true, force: true });
   await mkdir(AUTH_DIR, { recursive: true });
 }
@@ -200,6 +244,12 @@ async function startSocket() {
     sock.ev.on('messaging-history.set', (payload) => {
       rememberStatusRows(payload?.contacts);
       rememberStatusRows(payload?.chats);
+      const history = Array.isArray(payload?.messages) ? payload.messages : [];
+      for (const msg of history) rememberInboxMessage(msg);
+    });
+    sock.ev.on('messages.upsert', (payload) => {
+      const list = Array.isArray(payload?.messages) ? payload.messages : [];
+      for (const msg of list) rememberInboxMessage(msg);
     });
 
     sock.ev.on('connection.update', async (update) => {
@@ -247,6 +297,14 @@ async function waitForQr(maxMs = 8000) {
     if (!sock && !starting) await startSocket();
     await new Promise((r) => setTimeout(r, 400));
   }
+}
+
+function handleMessages(_req, res) {
+  if (connectionStatus !== 'connected') {
+    json(res, 200, { messages: [], status: connectionStatus || 'disconnected' });
+    return;
+  }
+  json(res, 200, { messages: inboxMessages, status: 'connected' });
 }
 
 async function handleStatus(_req, res) {
@@ -321,6 +379,11 @@ async function handleSend(req, res) {
     } else {
       await sock.sendMessage(jid, { text });
     }
+    rememberInboxMessage({
+      key: { remoteJid: jid, fromMe: true, id: `out-${Date.now()}` },
+      message: { conversation: text || '' },
+      messageTimestamp: Math.floor(Date.now() / 1000),
+    });
     json(res, 200, { success: true, kind: 'message' });
   } catch (e) {
     json(res, 500, { success: false, error: e?.message || String(e) });
@@ -386,6 +449,10 @@ const server = http.createServer(async (req, res) => {
     await handleStatus(req, res);
     return;
   }
+  if (req.method === 'GET' && url.pathname === '/messages') {
+    handleMessages(req, res);
+    return;
+  }
   if (req.method === 'POST' && url.pathname === '/status') {
     await handleOwnStatus(req, res);
     return;
@@ -398,7 +465,7 @@ const server = http.createServer(async (req, res) => {
     await handleSend(req, res);
     return;
   }
-  json(res, 404, { success: false, error: 'Bilinmeyen uç nokta. GET /status, POST /status, POST /send, POST /reset' });
+  json(res, 404, { success: false, error: 'Bilinmeyen uç nokta. GET /status, GET /messages, POST /status, POST /send, POST /reset' });
 });
 
 void startSocket();

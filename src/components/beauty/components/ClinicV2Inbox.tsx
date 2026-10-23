@@ -4,11 +4,10 @@ import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import {
     SOCIAL_INBOX_CHANNELS,
-    buildInboxThreads,
     type SocialChannel,
-    type SocialInboxThread,
+    type SocialInboxMessage,
 } from '../../../services/messaging/clinicSocialInbox';
-import { listSocialMessages } from '../../../services/messaging/clinicSocialRepository';
+import { prepareClinicInbox } from '../../../services/messaging/clinicSocialSync';
 
 function channelLabelKey(channel: SocialChannel): string {
     return channel === 'instagram' ? 'bClinicV2SetInstagram' : 'bClinicV2SetWhatsapp';
@@ -17,38 +16,54 @@ function channelLabelKey(channel: SocialChannel): string {
 export function ClinicV2Inbox() {
     const { tm, language } = useLanguage();
     const [channel, setChannel] = useState<SocialChannel>('instagram');
-    const [threads, setThreads] = useState<SocialInboxThread[]>([]);
+    const [messages, setMessages] = useState<SocialInboxMessage[]>([]);
+    const [instagramConnected, setInstagramConnected] = useState(false);
+    const [whatsappConnected, setWhatsappConnected] = useState(false);
     const [selectedId, setSelectedId] = useState<string | null>(null);
 
     useEffect(() => {
         let cancel = false;
-        void listSocialMessages().then((messages) => {
+        void prepareClinicInbox().then((snapshot) => {
             if (cancel) return;
-            // Belirteç yok: tablo okunur, ekranda uydurma veya gerçek satır gösterilmez.
-            setThreads(buildInboxThreads({ token: '', messages }));
+            setMessages(snapshot.messages);
+            setInstagramConnected(snapshot.instagramConnected);
+            setWhatsappConnected(snapshot.whatsappConnected);
+        }).catch(() => {
+            if (cancel) return;
+            setMessages([]);
         });
         return () => {
             cancel = true;
         };
     }, []);
 
-    const visible = threads.filter((row) => row.channel === channel);
+    const visible = messages.filter((row) => row.channel === channel);
     const selected = visible.find((row) => row.id === selectedId) ?? null;
+    const channelConnected = channel === 'instagram' ? instagramConnected : whatsappConnected;
 
-    const columns = useMemo<ColumnDef<SocialInboxThread>[]>(() => [
-        { id: 'sender', accessorKey: 'sender', header: tm('bClinicV2InboxSender') },
-        { id: 'lastMessage', accessorKey: 'lastMessage', header: tm('bClinicV2InboxLast') },
-        {
-            id: 'timeLabel',
-            accessorFn: (row) => formatInboxTime(row.occurredAt, language),
-            header: tm('bClinicV2InboxTime'),
-        },
+    const columns = useMemo<ColumnDef<SocialInboxMessage>[]>(() => [
         {
             id: 'channelLabel',
             accessorFn: (row) => tm(channelLabelKey(row.channel)),
             header: tm('bClinicV2InboxChannel'),
         },
+        { id: 'counterparty', accessorKey: 'counterparty', header: tm('bClinicV2InboxCounterparty') },
+        {
+            id: 'directionLabel',
+            accessorFn: (row) => (row.direction === 'in' ? tm('bClinicV2InboxIn') : tm('bClinicV2InboxOut')),
+            header: tm('bClinicV2InboxDirection'),
+        },
+        { id: 'body', accessorKey: 'body', header: tm('bClinicV2InboxBody') },
+        {
+            id: 'timeLabel',
+            accessorFn: (row) => formatInboxTime(row.occurredAt, language),
+            header: tm('bClinicV2InboxTime'),
+        },
     ], [language, tm]);
+
+    const emptyKey = !channelConnected
+        ? (channel === 'whatsapp' ? 'bClinicV2WaBackofficeEmpty' : 'bClinicV2InboxIgOff')
+        : 'bClinicV2InboxEmpty';
 
     return (
         <div data-testid="clinic-v2-inbox" className="flex h-full min-h-0 gap-4 p-4" style={{ background: '#fcfcfc' }}>
@@ -80,7 +95,7 @@ export function ClinicV2Inbox() {
                 </div>
                 {visible.length === 0 ? (
                     <p data-testid="clinic-v2-inbox-empty" className="text-[13px] text-[#7e8299]">
-                        {tm('bClinicV2InboxEmpty')}
+                        {tm(emptyKey)}
                     </p>
                 ) : null}
                 <div className="min-h-0 flex-1">
@@ -105,18 +120,18 @@ export function ClinicV2Inbox() {
                 {!selected ? (
                     <p className="text-[13px] text-[#a1a5b7]">{tm('bClinicV2InboxPick')}</p>
                 ) : (
-                    <ul className="flex flex-col gap-3">
-                        {selected.messages.map((message) => (
-                            <li key={message.id} className="text-[13px] text-[#071437]">
-                                <p className="text-[12px] text-[#7e8299]">
-                                    {message.direction === 'in' ? tm('bClinicV2InboxIn') : tm('bClinicV2InboxOut')}
-                                    {' · '}
-                                    {formatInboxTime(message.occurredAt, language)}
-                                </p>
-                                <p className="mt-1 whitespace-pre-wrap">{message.body}</p>
-                            </li>
-                        ))}
-                    </ul>
+                    <div className="text-[13px] text-[#071437]">
+                        <p className="text-[12px] text-[#7e8299]">
+                            {tm(channelLabelKey(selected.channel))}
+                            {' · '}
+                            {selected.counterparty}
+                            {' · '}
+                            {selected.direction === 'in' ? tm('bClinicV2InboxIn') : tm('bClinicV2InboxOut')}
+                            {' · '}
+                            {formatInboxTime(selected.occurredAt, language)}
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap">{selected.body}</p>
+                    </div>
                 )}
             </aside>
         </div>

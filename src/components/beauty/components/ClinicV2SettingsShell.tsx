@@ -15,6 +15,7 @@ import {
 import { ServiceManagement } from './ServiceManagement';
 import { StaffManagement } from './StaffManagement';
 import { ClinicV2SocialConnect } from './ClinicV2SocialConnect';
+import { ClinicV2WhatsAppBackoffice } from './ClinicV2WhatsAppBackoffice';
 import { useClinicV2CrmMenu, writeClinicV2CrmMenu } from '../clinicShellV2';
 
 /**
@@ -489,11 +490,7 @@ export function ClinicV2SettingsShell() {
                         <ClinicV2SocialConnect channel="instagram" />
                     ) : null}
                     {!loading && group === 'whatsapp' ? (
-                        <ClinicV2SocialConnect
-                            channel="whatsapp"
-                            bridgeBaseUrl={portal?.whatsapp_base_url}
-                            bridgeToken={portal?.whatsapp_token}
-                        />
+                        <ClinicV2WhatsAppBackoffice />
                     ) : null}
                     {!loading && group === 'branchList' ? (
                         <ul>

@@ -7,37 +7,20 @@ import {
     metaOAuthState,
     openSocialOAuth,
     readMetaAppId,
-    whatsappBridgeHealth,
-    whatsappBridgePort,
-    type SocialChannel,
-    type WhatsAppBridgeHealth,
 } from '../../../services/messaging/clinicSocialInbox';
 import {
     disconnectSocialAccount,
     listSocialAccounts,
     type SocialChannelAccount,
 } from '../../../services/messaging/clinicSocialRepository';
-import { getEmbeddedBridgeStatus } from '../../../services/messaging/whatsappEmbeddedBridge';
 
 type Props = {
-    channel: SocialChannel;
-    bridgeBaseUrl?: string | null;
-    bridgeToken?: string | null;
+    channel: 'instagram';
 };
 
-const HEALTH_KEY: Record<WhatsAppBridgeHealth, string> = {
-    loading: 'bClinicV2WaBridgeOff',
-    connected: 'bClinicV2WaBridgeOk',
-    scanning: 'bClinicV2WaBridgeScan',
-    disconnected: 'bClinicV2WaBridgeOff',
-    down: 'bClinicV2WaBridgeDown',
-};
-
-export function ClinicV2SocialConnect({ channel, bridgeBaseUrl, bridgeToken }: Props) {
+export function ClinicV2SocialConnect({ channel }: Props) {
     const { tm } = useLanguage();
     const [account, setAccount] = useState<SocialChannelAccount | null>(null);
-    const [health, setHealth] = useState<WhatsAppBridgeHealth>('loading');
-    const [bridgeError, setBridgeError] = useState('');
     const appId = readMetaAppId();
     const oauth = buildMetaOAuthStart({
         appId,
@@ -51,29 +34,13 @@ export function ClinicV2SocialConnect({ channel, bridgeBaseUrl, bridgeToken }: P
         let cancel = false;
         void listSocialAccounts().then((rows) => {
             if (cancel) return;
-            setAccount(rows.find((row) => row.channel === channel) ?? null);
+            const row = rows.find((item) => item.channel === channel && item.linked) ?? null;
+            setAccount(row);
         });
         return () => {
             cancel = true;
         };
     }, [channel]);
-
-    useEffect(() => {
-        if (channel !== 'whatsapp') return;
-        let cancel = false;
-        const base = String(bridgeBaseUrl || '').trim() || '/__wa_bridge';
-        void getEmbeddedBridgeStatus({
-            whatsapp_base_url: base,
-            whatsapp_token: bridgeToken,
-        }).then((res) => {
-            if (cancel) return;
-            setHealth(whatsappBridgeHealth(res));
-            setBridgeError(res.ok ? '' : String(res.error || ''));
-        });
-        return () => {
-            cancel = true;
-        };
-    }, [channel, bridgeBaseUrl, bridgeToken]);
 
     const disconnect = async () => {
         try {
@@ -83,9 +50,6 @@ export function ClinicV2SocialConnect({ channel, bridgeBaseUrl, bridgeToken }: P
             /* tablo yoksa hesap satırı durur */
         }
     };
-
-    const bridgeBase = String(bridgeBaseUrl || '').trim() || '/__wa_bridge';
-    const port = channel === 'whatsapp' ? whatsappBridgePort(bridgeBase) : null;
 
     return (
         <div data-testid={`clinic-v2-social-${channel}`} className="max-w-xl">
@@ -114,14 +78,6 @@ export function ClinicV2SocialConnect({ channel, bridgeBaseUrl, bridgeToken }: P
                     {oauthUrl ? tm('bClinicV2SocialConnect') : tm('bClinicV2SocialMissingApp')}
                 </button>
             )}
-            {channel === 'whatsapp' ? (
-                <p className="mt-4 text-[13px] text-[#4b5675]" data-testid="clinic-v2-wa-bridge">
-                    {tm('bClinicV2WaBridge')}
-                    {port ? ` · ${tm('bClinicV2WaBridgePort')} ${port}` : ''}
-                    {' · '}
-                    {health === 'down' && bridgeError ? bridgeError : tm(HEALTH_KEY[health])}
-                </p>
-            ) : null}
         </div>
     );
 }
