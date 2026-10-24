@@ -10,6 +10,7 @@ import { X, TrendingUp, TrendingDown, Plus, Minus, Wallet, ArrowRightLeft, Recei
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import type { Kasa, KasaIslemTipi } from '../../../services/api/kasa';
+import { KASA_CREATE_MENU_TYPES } from './kasaCreateMenu';
 
 interface KasaIslemTurleriModalProps {
   kasa: Kasa;
@@ -141,36 +142,6 @@ export function KasaIslemTurleriModal({ kasa, onClose, onSelect }: KasaIslemTurl
       hoverBg: 'hover:bg-orange-100',
     },
     {
-      type: 'VERILEN_SERBEST_MESLEK',
-      label: tm('issuedSelfEmployedReceipt'),
-      description: tm('issuedSelfEmployedReceiptDesc'),
-      icon: FileText,
-      bgColor: 'bg-cyan-50',
-      borderColor: 'border-cyan-200',
-      textColor: 'text-cyan-800',
-      hoverBg: 'hover:bg-cyan-100',
-    },
-    {
-      type: 'ALINAN_SERBEST_MESLEK',
-      label: tm('receivedSelfEmployedReceipt'),
-      description: tm('receivedSelfEmployedReceiptDesc'),
-      icon: FileText,
-      bgColor: 'bg-cyan-50',
-      borderColor: 'border-cyan-200',
-      textColor: 'text-cyan-800',
-      hoverBg: 'hover:bg-cyan-100',
-    },
-    {
-      type: 'MUSTAHSIL_MAKBUZU',
-      label: tm('producerReceipt'),
-      description: tm('producerReceiptDesc'),
-      icon: ShoppingBag,
-      bgColor: 'bg-emerald-50',
-      borderColor: 'border-emerald-200',
-      textColor: 'text-emerald-800',
-      hoverBg: 'hover:bg-emerald-100',
-    },
-    {
       type: 'ACILIS_BORC',
       label: tm('openingDebit'),
       description: tm('openingDebitDesc'),
@@ -235,7 +206,9 @@ export function KasaIslemTurleriModal({ kasa, onClose, onSelect }: KasaIslemTurl
 
       <PercentBodyModalScrollBody className="p-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {islemTurleri.map((islem) => {
+          {KASA_CREATE_MENU_TYPES.map((type) => {
+            const islem = islemTurleri.find((item) => item.type === type);
+            if (!islem) return null;
             const Icon = islem.icon;
             return (
               <button
