@@ -1,11 +1,13 @@
 /**
  * Kasa Durumu kartları ve ödeme dağılımı.
- * Üst sıra: açılış, günlük nakit, alınan avans, kapanış.
+ * Üst ızgara dört sütundur ve ikinci satıra kırılır: açılış, günlük nakit,
+ * alınan avans, kapanış, rezervasyon avansı, gider. Hepsi aynı karttır.
  * Günlük Kart kutusu gizlidir; kart tahsilatı bu yüzden nakde yazılmaz.
- * Rezervasyon avansı ve gider, üst kutularla aynı kart biçimindedir.
+ * Rezervasyon avansı ile gider yarım sayfa şerit değildir.
  * İkisi bilgi ve düşüm kartıdır; nakde ve kapanışa ikinci kez girmez.
- * Nakit ve açık cari liste satırı olarak kalır.
- * Kasa ızgarası en altta kalır. Genel toplam çubuğu ve alt açıklama yoktur.
+ * Nakit ve açık cari liste satırı olarak kalır. Kart türleri paneli yanlarında durur.
+ * Kasa ızgarası bu panellerin altında, tam genişliktedir.
+ * Genel toplam çubuğu ve alt açıklama yoktur.
  */
 import type { ReactNode } from 'react';
 import { Banknote, HandCoins, Receipt } from 'lucide-react';
@@ -18,8 +20,46 @@ import {
 } from '../../utils/cashStatusTotals';
 import { ReportColumnTable } from './shared/ReportDataGrid';
 
-/** Ödeme dağılımında liste yerine üst kutu biçiminde duran satırlar. */
-const CASH_STATUS_SPOTLIGHT_CODES = new Set(['REZERVASYON_AVANS', 'GIDER']);
+/** Ödeme dağılımı listesinden çıkıp üst kart ızgarasına giren satırlar. */
+const CASH_STATUS_KPI_EXTRA_CODES = new Set(['REZERVASYON_AVANS', 'GIDER']);
+
+function CashKpiCard({
+  testId,
+  borderClass,
+  amountClass,
+  icon,
+  title,
+  amount,
+  hint,
+  hintClass = 'text-slate-500',
+  badge,
+}: {
+  testId: string;
+  borderClass: string;
+  amountClass: string;
+  icon: ReactNode;
+  title: string;
+  amount: string;
+  hint?: string;
+  hintClass?: string;
+  badge?: ReactNode;
+}) {
+  return (
+    <div data-testid={testId} className={`bg-white rounded-lg border-2 ${borderClass} p-4 h-full`}>
+      <div className="flex items-center justify-between gap-3 h-full">
+        <div className="min-w-0">
+          <p className="text-sm text-gray-600 flex flex-wrap items-center gap-2">
+            <span>{title}</span>
+            {badge}
+          </p>
+          <p className={`text-2xl mt-1 font-bold ${amountClass}`}>{amount}</p>
+          {hint ? <p className={`text-xs mt-1 leading-snug ${hintClass}`}>{hint}</p> : null}
+        </div>
+        {icon}
+      </div>
+    </div>
+  );
+}
 
 export interface CashStatusFigureLabels {
   opening: string;
@@ -68,7 +108,7 @@ export function CashStatusFigures({
   closingCash: number;
   currency: string;
   paymentRows: CashStatusPaymentLine[];
-  /** Ödeme dağılımının altındaki kasa ızgarası. Boş dizi boş durumdur. */
+  /** Ödeme dağılımı ve kart türlerinin altındaki tam genişlik kasa ızgarası. Boş dizi boş durumdur. */
   registerLines?: CashRegisterDistributionLine[];
   /**
    * Eski yeşil genel toplam. Çubuk gösterilmez.
@@ -85,204 +125,192 @@ export function CashStatusFigures({
     `${deduction && amount > 0.004 ? '− ' : ''}${formatNumber(amount, 2, false)} ${currency}`;
 
   const distributionRows = cashStatusDistributionListRows(paymentRows);
-  const spotlightRows = distributionRows.filter((row) => CASH_STATUS_SPOTLIGHT_CODES.has(row.code));
-  const listRows = distributionRows.filter((row) => !CASH_STATUS_SPOTLIGHT_CODES.has(row.code));
+  const kpiExtraRows = distributionRows.filter((row) => CASH_STATUS_KPI_EXTRA_CODES.has(row.code));
+  const listRows = distributionRows.filter((row) => !CASH_STATUS_KPI_EXTRA_CODES.has(row.code));
 
-  const spotlightCard = (pt: CashStatusPaymentLine) => {
+  const kpiExtraCard = (pt: CashStatusPaymentLine) => {
     const title = pt.label || pt.code;
     if (pt.code === 'GIDER' || pt.deduction) {
       return (
-        <div
+        <CashKpiCard
           key={pt.code}
-          data-testid="cash-status-card-expense"
-          className="bg-white rounded-lg border-2 border-rose-200 p-4"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm text-gray-600">{title}</p>
-              <p className="text-2xl text-rose-600 mt-1 font-bold">{money(pt.amount, true)}</p>
-              <p className="text-xs text-rose-700 mt-1">{labels.expenseHint}</p>
-            </div>
-            <Receipt className="w-12 h-12 text-rose-600 opacity-20 shrink-0" />
-          </div>
-        </div>
+          testId="cash-status-card-expense"
+          borderClass="border-rose-200"
+          amountClass="text-rose-600"
+          icon={<Receipt className="w-12 h-12 text-rose-600 opacity-20 shrink-0" />}
+          title={title}
+          amount={money(pt.amount, true)}
+          hint={labels.expenseHint}
+          hintClass="text-rose-700"
+        />
       );
     }
     return (
-      <div
+      <CashKpiCard
         key={pt.code}
-        data-testid="cash-status-card-reservation-info"
-        className="bg-white rounded-lg border-2 border-sky-200 p-4"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm text-gray-600 flex flex-wrap items-center gap-2">
-              <span>{title}</span>
-              <span className="text-[10px] uppercase tracking-wide text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
-                {labels.infoBadge}
-              </span>
-            </p>
-            <p className="text-2xl text-sky-600 mt-1 font-bold">{money(pt.amount)}</p>
-            <p className="text-xs text-slate-500 mt-1">{labels.reservationHint}</p>
-          </div>
-          <HandCoins className="w-12 h-12 text-sky-600 opacity-20 shrink-0" />
-        </div>
-      </div>
+        testId="cash-status-card-reservation-info"
+        borderClass="border-sky-200"
+        amountClass="text-sky-600"
+        icon={<HandCoins className="w-12 h-12 text-sky-600 opacity-20 shrink-0" />}
+        title={title}
+        amount={money(pt.amount)}
+        hint={labels.reservationHint}
+        badge={(
+          <span className="text-[10px] uppercase tracking-wide text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
+            {labels.infoBadge}
+          </span>
+        )}
+      />
     );
   };
+
+  const registerPanel = registerLines ? (
+    <div className="bg-white rounded-lg border p-4 w-full" data-testid="cash-status-registers">
+      <h3 className="text-lg mb-4">{labels.registersTitle}</h3>
+      {registerLines.length === 0 ? (
+        <div className="p-4 text-center text-sm text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+          {labels.registersEmpty}
+        </div>
+      ) : (
+        <ReportColumnTable
+          data={registerLines}
+          height={Math.min(420, 260 + registerLines.length * 36)}
+          storageNamespace="cash-status-register-distribution"
+          footerLabel={labels.registersTotal}
+          onRowClick={onRegisterRowClick ? (row) => onRegisterRowClick(row.id) : undefined}
+          columns={[
+            {
+              key: 'label',
+              header: labels.registerName,
+              size: 280,
+              cell: (row) => <span className="font-medium text-slate-800">{row.label}</span>,
+            },
+            {
+              key: 'amount',
+              header: labels.registerAmount,
+              type: 'number',
+              align: 'right',
+              size: 160,
+              footerSum: true,
+              footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+              cell: (row) => (
+                <span className="font-semibold tabular-nums">{money(row.amount)}</span>
+              ),
+            },
+          ]}
+        />
+      )}
+    </div>
+  ) : null;
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-testid="cash-status-kpi-row">
-        <div className="bg-white rounded-lg border-2 border-blue-200 p-4" data-testid="cash-status-card-opening">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">{labels.opening}</p>
-              <p className="text-2xl text-blue-600 mt-1 font-bold">{money(openingCash)}</p>
-              {labels.openingHint ? (
-                <p className="text-xs text-amber-700 mt-1 max-w-[14rem] leading-snug">{labels.openingHint}</p>
-              ) : null}
-            </div>
-            <Banknote className="w-12 h-12 text-blue-600 opacity-20" />
-          </div>
-        </div>
-        <div className="bg-white rounded-lg border-2 border-green-200 p-4" data-testid="cash-status-card-today-cash">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">{labels.todayCash}</p>
-              <p className="text-2xl text-green-600 mt-1 font-bold">{money(todayCash)}</p>
-              <p className="text-xs text-slate-500 mt-1">{labels.todayCashHint}</p>
-            </div>
-            <Banknote className="w-12 h-12 text-green-600 opacity-20" />
-          </div>
-        </div>
-        <div className="bg-white rounded-lg border-2 border-cyan-200 p-4" data-testid="cash-status-card-reservation">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">{labels.reservation}</p>
-              <p className="text-2xl text-cyan-600 mt-1 font-bold">{money(reservationDeposit)}</p>
-              <p className="text-xs text-slate-500 mt-1">{labels.reservationHint}</p>
-            </div>
-            <HandCoins className="w-12 h-12 text-cyan-600 opacity-20" />
-          </div>
-        </div>
-        <div className="bg-white rounded-lg border-2 border-orange-200 p-4" data-testid="cash-status-card-closing">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">{labels.closing}</p>
-              <p className="text-2xl text-orange-600 mt-1 font-bold">{money(closingCash)}</p>
-              <p className="text-xs text-slate-500 mt-1">{labels.closingHint}</p>
-            </div>
-            <Banknote className="w-12 h-12 text-orange-600 opacity-20" />
-          </div>
-        </div>
+        <CashKpiCard
+          testId="cash-status-card-opening"
+          borderClass="border-blue-200"
+          amountClass="text-blue-600"
+          icon={<Banknote className="w-12 h-12 text-blue-600 opacity-20 shrink-0" />}
+          title={labels.opening}
+          amount={money(openingCash)}
+          hint={labels.openingHint}
+          hintClass="text-amber-700 max-w-[14rem]"
+        />
+        <CashKpiCard
+          testId="cash-status-card-today-cash"
+          borderClass="border-green-200"
+          amountClass="text-green-600"
+          icon={<Banknote className="w-12 h-12 text-green-600 opacity-20 shrink-0" />}
+          title={labels.todayCash}
+          amount={money(todayCash)}
+          hint={labels.todayCashHint}
+        />
+        <CashKpiCard
+          testId="cash-status-card-reservation"
+          borderClass="border-cyan-200"
+          amountClass="text-cyan-600"
+          icon={<HandCoins className="w-12 h-12 text-cyan-600 opacity-20 shrink-0" />}
+          title={labels.reservation}
+          amount={money(reservationDeposit)}
+          hint={labels.reservationHint}
+        />
+        <CashKpiCard
+          testId="cash-status-card-closing"
+          borderClass="border-orange-200"
+          amountClass="text-orange-600"
+          icon={<Banknote className="w-12 h-12 text-orange-600 opacity-20 shrink-0" />}
+          title={labels.closing}
+          amount={money(closingCash)}
+          hint={labels.closingHint}
+        />
+        {kpiExtraRows.map(kpiExtraCard)}
       </div>
 
-      {spotlightRows.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="cash-status-spotlight-row">
-          {spotlightRows.map(spotlightCard)}
-        </div>
-      ) : null}
-
-      <div className={aside ? 'grid grid-cols-1 lg:grid-cols-2 gap-4' : ''}>
-      <div className="bg-white rounded-lg border p-4" data-testid="cash-status-distribution">
-        <h3 className="text-lg mb-4">{labels.distribution}</h3>
-        <div className="space-y-3">
-          {listRows.map((pt) => {
-            const body = (
-              <>
-                <span className="flex items-center gap-2 min-w-0">
-                  <div className="w-3 h-3 rounded shrink-0" style={{ backgroundColor: pt.color || '#94a3b8' }} />
-                  <span className="min-w-0">
-                    <span className="truncate block">{pt.label || pt.code}</span>
-                    {pt.deduction ? (
-                      <span className="block text-[11px] text-rose-700">{labels.expenseHint}</span>
+      <div
+        className={aside ? 'grid grid-cols-1 lg:grid-cols-2 gap-4' : ''}
+        data-testid="cash-status-panels"
+      >
+        <div className="bg-white rounded-lg border p-4" data-testid="cash-status-distribution">
+          <h3 className="text-lg mb-4">{labels.distribution}</h3>
+          <div className="space-y-3">
+            {listRows.map((pt) => {
+              const body = (
+                <>
+                  <span className="flex items-center gap-2 min-w-0">
+                    <div className="w-3 h-3 rounded shrink-0" style={{ backgroundColor: pt.color || '#94a3b8' }} />
+                    <span className="min-w-0">
+                      <span className="truncate block">{pt.label || pt.code}</span>
+                      {pt.deduction ? (
+                        <span className="block text-[11px] text-rose-700">{labels.expenseHint}</span>
+                      ) : null}
+                    </span>
+                    {pt.informational ? (
+                      <span className="text-[10px] uppercase tracking-wide text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
+                        {labels.infoBadge}
+                      </span>
                     ) : null}
                   </span>
-                  {pt.informational ? (
-                    <span className="text-[10px] uppercase tracking-wide text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
-                      {labels.infoBadge}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="font-semibold tabular-nums shrink-0" style={{ color: pt.color || '#334155' }}>
-                  {money(pt.amount, pt.deduction)}
-                </span>
-              </>
-            );
-            if (pt.deduction) {
+                  <span className="font-semibold tabular-nums shrink-0" style={{ color: pt.color || '#334155' }}>
+                    {money(pt.amount, pt.deduction)}
+                  </span>
+                </>
+              );
+              if (pt.deduction) {
+                return (
+                  <div
+                    key={pt.code}
+                    className="w-full flex items-center justify-between p-3 bg-rose-50 rounded-lg border border-dashed border-rose-200 text-left"
+                  >
+                    {body}
+                  </div>
+                );
+              }
+              if (pt.informational || !onPaymentClick) {
+                return (
+                  <div
+                    key={pt.code}
+                    className="w-full flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-dashed border-slate-200 text-left"
+                  >
+                    {body}
+                  </div>
+                );
+              }
               return (
-                <div
+                <button
                   key={pt.code}
-                  className="w-full flex items-center justify-between p-3 bg-rose-50 rounded-lg border border-dashed border-rose-200 text-left"
+                  type="button"
+                  onClick={() => onPaymentClick(pt.code)}
+                  className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-slate-100 hover:border-slate-200 border border-transparent transition-colors text-left cursor-pointer"
                 >
                   {body}
-                </div>
+                </button>
               );
-            }
-            if (pt.informational || !onPaymentClick) {
-              return (
-                <div
-                  key={pt.code}
-                  className="w-full flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-dashed border-slate-200 text-left"
-                >
-                  {body}
-                </div>
-              );
-            }
-            return (
-              <button
-                key={pt.code}
-                type="button"
-                onClick={() => onPaymentClick(pt.code)}
-                className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-slate-100 hover:border-slate-200 border border-transparent transition-colors text-left cursor-pointer"
-              >
-                {body}
-              </button>
-            );
-          })}
-          {registerLines ? (
-            registerLines.length === 0 ? (
-              <div className="p-4 text-center text-sm text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
-                {labels.registersEmpty}
-              </div>
-            ) : (
-              <div className="space-y-2" data-testid="cash-status-registers">
-                <h4 className="text-sm font-semibold text-slate-700">{labels.registersTitle}</h4>
-                <ReportColumnTable
-                  data={registerLines}
-                  height={Math.min(420, 260 + registerLines.length * 36)}
-                  storageNamespace="cash-status-register-distribution"
-                  footerLabel={labels.registersTotal}
-                  onRowClick={onRegisterRowClick ? (row) => onRegisterRowClick(row.id) : undefined}
-                  columns={[
-                    {
-                      key: 'label',
-                      header: labels.registerName,
-                      size: 280,
-                      cell: (row) => <span className="font-medium text-slate-800">{row.label}</span>,
-                    },
-                    {
-                      key: 'amount',
-                      header: labels.registerAmount,
-                      type: 'number',
-                      align: 'right',
-                      size: 160,
-                      footerSum: true,
-                      footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
-                      cell: (row) => (
-                        <span className="font-semibold tabular-nums">{money(row.amount)}</span>
-                      ),
-                    },
-                  ]}
-                />
-              </div>
-            )
-          ) : null}
+            })}
+          </div>
         </div>
+        {aside}
       </div>
-      {aside}
-      </div>
+      {registerPanel}
     </div>
   );
 }

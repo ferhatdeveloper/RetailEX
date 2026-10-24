@@ -1,8 +1,10 @@
 /**
  * Kasa Durumu yerleşimi.
  * Günlük Kart kutusu ve genel toplam çubuğu yoktur.
- * Rezervasyon avansı ile gider üst kutularla aynı kart biçimindedir.
- * Kasa ızgarası altta kalır. Tutarlar çağıranın verdiği değerdir.
+ * Rezervasyon avansı ile gider, açılış / nakit / avans / kapanış ile aynı
+ * kart bileşenidir ve aynı dört sütunlu ızgaradadır. Yarım sayfa şerit yoktur.
+ * Kasalar, ödeme dağılımı ile kart türlerinin altında tam genişliktedir.
+ * Tutarlar çağıranın verdiği değerdir.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -122,16 +124,34 @@ describe('Kasa Durumu yerleşimi', () => {
 
     const html = container.innerHTML;
     const kpi = html.indexOf('data-testid="cash-status-kpi-row"');
-    const spot = html.indexOf('data-testid="cash-status-spotlight-row"');
     const dist = html.indexOf('data-testid="cash-status-distribution"');
+    const cards = html.indexOf('data-testid="cash-status-card-types"');
     const regs = html.indexOf('data-testid="cash-status-registers"');
+    expect(screen.queryByTestId('cash-status-spotlight-row')).toBeNull();
     expect(kpi).toBeGreaterThanOrEqual(0);
-    expect(kpi).toBeLessThan(spot);
-    expect(spot).toBeLessThan(dist);
-    expect(dist).toBeLessThan(regs);
+    expect(kpi).toBeLessThan(dist);
+    expect(dist).toBeLessThan(cards);
+    expect(cards).toBeLessThan(regs);
+
+    const kpiRow = screen.getByTestId('cash-status-kpi-row');
+    expect(kpiRow.className).toContain('grid-cols-2');
+    expect(kpiRow.className).toContain('lg:grid-cols-4');
+    expect(kpiRow.className).not.toContain('grid-cols-1');
+    const openingCard = screen.getByTestId('cash-status-card-opening');
+    const infoCard = screen.getByTestId('cash-status-card-reservation-info');
+    const expenseCard = screen.getByTestId('cash-status-card-expense');
+    expect(infoCard.parentElement).toBe(kpiRow);
+    expect(expenseCard.parentElement).toBe(kpiRow);
+    expect(openingCard.parentElement).toBe(kpiRow);
+    for (const card of [openingCard, infoCard, expenseCard]) {
+      expect(card.className).toContain('border-2');
+      expect(card.className).toContain('p-4');
+      expect(card.className).toContain('rounded-lg');
+      expect(card.className).toContain('h-full');
+    }
   });
 
-  it('rezervasyon ve gideri kart yapar; nakit ile açık cari listede, kasalar altta kalır', () => {
+  it('rezervasyon ve gideri üst kart ızgarasına alır; nakit ile açık cari listede, kasalar tam genişlikte altta kalır', () => {
     const { onPaymentClick } = renderScreen();
 
     const info = screen.getByTestId('cash-status-card-reservation-info');
@@ -167,7 +187,19 @@ describe('Kasa Durumu yerleşimi', () => {
     expect(onPaymentClick).toHaveBeenCalledWith('NAKIT');
 
     const registers = screen.getByTestId('cash-status-registers');
-    expect(distribution.contains(registers)).toBe(true);
+    const panels = screen.getByTestId('cash-status-panels');
+    const kpiRow = screen.getByTestId('cash-status-kpi-row');
+    expect(distribution.contains(registers)).toBe(false);
+    expect(panels.contains(registers)).toBe(false);
+    expect(panels.contains(distribution)).toBe(true);
+    expect(panels.contains(screen.getByTestId('cash-status-card-types'))).toBe(true);
+    expect(kpiRow.contains(screen.getByTestId('cash-status-card-reservation-info'))).toBe(true);
+    expect(kpiRow.contains(screen.getByTestId('cash-status-card-expense'))).toBe(true);
+    expect(registers.className).toContain('w-full');
+    expect(registers.parentElement?.className ?? '').not.toContain('lg:grid-cols-2');
+    expect(registers.parentElement?.contains(panels)).toBe(true);
+    const rootChildren = Array.from(registers.parentElement?.children ?? []);
+    expect(rootChildren.indexOf(registers)).toBeGreaterThan(rootChildren.indexOf(panels));
     expect(registers.textContent).toContain('Kasalar');
     expect(registers.textContent).toContain('KASA.001 — MERKEZ KASA');
     expect(registers.textContent).toContain('KASA.002 — QICARD');
@@ -176,9 +208,13 @@ describe('Kasa Durumu yerleşimi', () => {
 
     const source = readFileSync(resolve('src/components/reports/CashStatusFigures.tsx'), 'utf8');
     expect(source).toContain('ReportColumnTable');
+    expect(source).toContain('lg:grid-cols-4');
     expect(source).not.toContain('<table');
     expect(source).not.toContain('labels.todayCard');
     expect(source).not.toContain('labels.grandTotal');
+    expect(source).not.toContain('cash-status-spotlight-row');
+    expect(source).not.toContain('sm:grid-cols-2');
+    expect(source).not.toContain('grid-cols-1 sm:grid-cols-2');
 
     expect(screen.getByTestId('cash-status-card-types').textContent).toContain('Kart Türleri');
   });
