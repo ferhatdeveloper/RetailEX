@@ -16,6 +16,7 @@ import {
   cashRegisterStatusFromLedger,
   cashRegisterNetGrandTotal,
   cashStatusBlockTotals,
+  cashStatusDistributionListRows,
   foldReservationIntoCashStatus,
   listCashRegisterStatus,
   mergeRegisterSeeds,
@@ -116,6 +117,53 @@ describe('foldReservationIntoCashStatus', () => {
     });
     expect(folded.grandTotal).toBe(35000);
     expect(folded.paymentTypes.find((row) => row.code === 'CEK')?.informational).toBe(true);
+  });
+
+  it('kredi kartı ve havale liste satırı gizlenir; toplam formülü kart ve havaleyi saymaya devam eder', () => {
+    const folded = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash: 40000,
+      reservationCash: 10000,
+      cashOut: 0,
+      expense: 5000,
+      paymentTypes: [
+        { code: 'NAKIT', amount: 40000 },
+        { code: 'KREDIKARTI', amount: 0 },
+        { code: 'ACIK_CARI', amount: 0 },
+        { code: 'HAVAL', amount: 0 },
+        { code: 'REZERVASYON_AVANS', amount: 10000 },
+      ],
+    });
+
+    expect(folded.todayCash).toBe(50000);
+    expect(folded.reservationDeposit).toBe(10000);
+    expect(folded.paymentTypes.find((row) => row.code === 'NAKIT')?.amount).toBe(50000);
+    expect(folded.paymentTypes.find((row) => row.code === 'REZERVASYON_AVANS')?.informational).toBe(true);
+    expect(folded.paymentTypes.find((row) => row.code === 'GIDER')?.amount).toBe(5000);
+    expect(folded.grandTotal).toBe(45000);
+    expect(folded.grandTotal).not.toBe(55000);
+
+    const visible = cashStatusDistributionListRows(folded.paymentTypes).map((row) => row.code);
+    expect(visible).toEqual(['NAKIT', 'ACIK_CARI', 'REZERVASYON_AVANS', 'GIDER']);
+    expect(folded.paymentTypes.some((row) => row.code === 'KREDIKARTI')).toBe(true);
+    expect(folded.paymentTypes.some((row) => row.code === 'HAVAL')).toBe(true);
+
+    expect(paymentReportGrandTotal({
+      cash: 50000,
+      card: 0,
+      openAccount: 0,
+      transfer: 0,
+      reservation: 10000,
+      expense: 5000,
+    })).toBe(45000);
+    expect(paymentReportGrandTotal({
+      cash: 50000,
+      card: 8000,
+      openAccount: 0,
+      transfer: 2000,
+      reservation: 10000,
+      expense: 5000,
+    })).toBe(55000);
   });
 });
 

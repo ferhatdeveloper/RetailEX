@@ -32,6 +32,13 @@ const RESERVATION_CODE = 'REZERVASYON_AVANS';
 const EXPENSE_CODE = 'GIDER';
 const SKIP_DISTRIBUTION = new Set<PaymentFormCode>(['CEK', 'SENET']);
 
+/**
+ * Kasa Durumu ödeme dağılımı listesinde gösterilmeyen satırlar.
+ * Üstteki Günlük Kart kartı ayrıdır ve durur.
+ * Tutarlar `paymentReportGrandTotal` içinde kalır; formül değişmez.
+ */
+const HIDDEN_CASH_STATUS_LIST_CODES = new Set(['KREDIKARTI', 'HAVAL']);
+
 const CASH_OUT_TYPES = new Set([
   'CH_ODEME',
   'KASA_CIKIS',
@@ -119,6 +126,15 @@ export interface ReportCollectionParts {
   reservation?: number;
   /** Klinik gideri ve kasa çıkış fişi. Bir kez düşülür. */
   expense?: number;
+}
+
+/**
+ * Kasa Durumu ödeme dağılımı listesi.
+ * Kredi kartı ve havale satırları gizlenir. Genel toplam aynı kalır:
+ * nakit (rezervasyon dahil) + kart + açık cari + havale − gider.
+ */
+export function cashStatusDistributionListRows<T extends { code: string }>(rows: readonly T[]): T[] {
+  return rows.filter((row) => !HIDDEN_CASH_STATUS_LIST_CODES.has(row.code));
 }
 
 /**

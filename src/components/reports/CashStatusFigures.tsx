@@ -1,15 +1,17 @@
 /**
  * Kasa Durumu kartları ve ödeme dağılımı.
- * Ödeme tipi satırları bu blokta kalır. Hemen altında kasa kartları
- * (kod — ad, içindeki bakiye) ızgarada listelenir.
+ * Liste satırları bu blokta kalır. Kredi kartı ve havale satırları
+ * gizlenir; üstteki Günlük Kart kartı ve genel toplam durur.
+ * Hemen altında kasa kartları (kod — ad, içindeki bakiye) listelenir.
  */
 import type { ReactNode } from 'react';
 import { Banknote, CreditCard, HandCoins } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
-import type {
-  CashRegisterDistributionLine,
-  CashRegisterDrawerLine,
-  CashStatusPaymentLine,
+import {
+  cashStatusDistributionListRows,
+  type CashRegisterDistributionLine,
+  type CashRegisterDrawerLine,
+  type CashStatusPaymentLine,
 } from '../../utils/cashStatusTotals';
 import { ReportColumnTable } from './shared/ReportDataGrid';
 
@@ -130,7 +132,7 @@ export function CashStatusFigures({
       <div className="bg-white rounded-lg border p-4">
         <h3 className="text-lg mb-4">{labels.distribution}</h3>
         <div className="space-y-3">
-          {paymentRows.map((pt) => {
+          {cashStatusDistributionListRows(paymentRows).map((pt) => {
             const body = (
               <>
                 <span className="flex items-center gap-2 min-w-0">
