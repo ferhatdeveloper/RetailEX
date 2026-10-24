@@ -421,7 +421,7 @@ export function CashBankMovementReport() {
             registerLabel: displayRegister(r),
             txnLabel: cashBankTxnLabel(tm, r.transactionType),
             descLabel: String(r.definition || '').trim(),
-            accountLabel: String(r.accountName || '').trim(),
+            accountLabel: String(r.accountName || '').trim() || '—',
             inflowAmount,
             outflowAmount,
             transferAmount,

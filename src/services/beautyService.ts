@@ -7187,8 +7187,9 @@ export const beautyService = {
     },
 
     /**
-     * Güzellik satışı + kalemler. `skipErpAndLoyalty`: yalnızca beauty şeması (kalem ayrı fiş);
-     * sonra `syncBeautyCheckoutToErp` ile tek tahsilat.
+     * Güzellik satışı + kalemler. `skipErpAndLoyalty`: yalnızca beauty şeması.
+     * Kalem ayrı fiş açıksa her fatura kendi kasa satırını yazar; aynı müşteri
+     * ve aynı gün tek fişte birleşmez. Peşinat ciro değildir. Prim tutara eklenmez.
      *
      * Plan §6 Adım 5 — opsiyonel peşinat/parent bağlantı parametreleri:
      *   - `linkedAppointmentId`: bu satışın bağlı olduğu randevu.
@@ -7739,7 +7740,9 @@ export const beautyService = {
     },
 
     /**
-     * Kalem ayrı `beauty_sales` kayıtları yazıldıktan sonra: tek ERP/kasa hareketi ve tek müşteri puanı (toplam tutar).
+     * Eski birleşik tahsilat. Yeni ödeme her fatura numarasını ayrı keser;
+     * bu fonksiyon ikinci bir toplam fiş açmasın diye randevu sepetinden çağrılmaz.
+     * Tutarları ve peşinatı değiştirmez.
      */
     async syncBeautyCheckoutToErp(sale: Partial<BeautySale>, items: Partial<BeautySaleItem>[]): Promise<void> {
         const invoiceNumber = await allocateBeautyInvoiceNumber('checkout');

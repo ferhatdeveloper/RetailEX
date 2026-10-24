@@ -3341,7 +3341,12 @@ export function AppointmentPOS({
             };
 
             if (separateLineInvoices && billableCart.length > 1) {
-                const splitSaleTasks = billableCart.map((line, idx) => {
+                // Her hizmet kendi fatura numarasını alır. Aynı müşteri ve aynı
+                // gün kasa hareketinde tek fişte birleşmez. Fiş no sırayla
+                // kesilir. Sepet tutarı, peşinat ve prim formülü değişmez.
+                // Prim satırda kalır; ciroya eklenmez. Peşinat ciro değildir.
+                for (let idx = 0; idx < billableCart.length; idx += 1) {
+                    const line = billableCart[idx];
                     const gross = (line.original_unit_price ?? line.unit_price) * line.qty;
                     const disc = lineSplits[idx]?.discount ?? 0;
                     const net = lineSplits[idx]?.total ?? gross;
@@ -3355,7 +3360,7 @@ export function AppointmentPOS({
                     const splitPaid = isPesinatliPrePayment ? paidNow * ratio : paidNow * ratio;
                     const splitRemaining = isPesinatliPrePayment ? 0 : remainingNow * ratio;
                     const splitStatus = isPesinatliPrePayment ? 'pending' : 'paid';
-                    return beautyService.createSale(
+                    await beautyService.createSale(
                         {
                             customer_id: customer!.id,
                             customer_name: customer?.name,
@@ -3389,34 +3394,9 @@ export function AppointmentPOS({
                                 commission_amount: resolveLineCommissionAmount(line, net),
                             },
                         ],
-                        { skipErpAndLoyalty: true, ...parentOpts },
+                        { ...parentOpts },
                     );
-                });
-                await Promise.all(splitSaleTasks);
-                // Fatura Detayı brüt hizmet tutarı (finalTotalSale) ile Perakende
-                // Satış listesi tutarlı olmalı. Peşinatlı modda ERP cari etkisi 0
-                // `payment_status=pending` + `remaining_amount=0` ile sağlanır;
-                // `total` alanı brüt kalır (kalan ödeme DEĞİL).
-                const syncTotal = finalTotalSale;
-                const syncRemaining = isPesinatliPrePayment ? 0 : remainingNow;
-                const syncStatus = isPesinatliPrePayment ? 'pending' : 'paid';
-                await beautyService.syncBeautyCheckoutToErp(
-                    {
-                        customer_id: customer!.id,
-                        customer_name: customer?.name,
-                        subtotal,
-                        discount: headerDiscount,
-                        tax: 0,
-                        total: syncTotal,
-                        payment_method: paymentMethod,
-                        payment_status: syncStatus,
-                        paid_amount: paidNow,
-                        remaining_amount: syncRemaining,
-                        notes: (saleNotesLink ?? aptNotes?.trim()) || undefined,
-                        payments: payRows,
-                    },
-                    saleItems,
-                );
+                }
             } else {
                 // Randevu tamamlandığında Fatura Detayı brüt hizmet tutarını
                 // göstermeli — peşinatlı modda bile `total` brüt (finalTotalSale)

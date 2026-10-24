@@ -78,6 +78,7 @@ import {
   type CashFlowLineRef,
   type CashFlowNameIndexes,
 } from '../../utils/cashFlowAccountName';
+import { foldCashFlowByFiche } from '../../utils/cashFlowByFiche';
 
 const ROW_LIMIT = 3000;
 
@@ -1153,6 +1154,7 @@ async function withCashFlowNames(drafts: CashFlowDraft[]): Promise<CashBankMovem
   });
 }
 
+/** Sorgu satır satırdır. Müşteri + gün ile GROUP BY yok; birleştirme fiş anahtarıyla yapılır. */
 function buildCashBankMovementParts(opts: {
   mode: 'rich' | 'plain';
   wantCash: boolean;
@@ -1749,7 +1751,7 @@ export const erpReportsAPI = {
         }
       }
 
-      const named = await withCashFlowNames(drafts);
+      const named = foldCashFlowByFiche(await withCashFlowNames(drafts));
       return named.sort((a, b) => b.date.localeCompare(a.date)).slice(0, ROW_LIMIT);
     }
 
@@ -1785,7 +1787,7 @@ export const erpReportsAPI = {
       );
       rawRows = rows || [];
     }
-    return withCashFlowNames(rawRows.map((row) => cashFlowDraft(row)));
+    return foldCashFlowByFiche(await withCashFlowNames(rawRows.map((row) => cashFlowDraft(row))));
   },
 
   async getPurchaseSummary(opts: {
