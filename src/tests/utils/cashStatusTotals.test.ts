@@ -25,6 +25,7 @@ import {
   cashRegisterNetGrandTotal,
   cashStatusBlockTotals,
   cashStatusDistributionListRows,
+  cashStatusMovementRows,
   cashStatusThreeBoxes,
   cashStatusWithVouchers,
   foldReservationIntoCashStatus,
@@ -2125,5 +2126,354 @@ describe('Kasa Durumu filtresi — yılbaşı ve seçilen aralık', () => {
     expect(summary).toContain('formulaBalance');
     expect(summary).not.toContain('dailyReportDateRange');
     expect(summary).toContain('allowEmpty');
+  });
+});
+
+describe('Kasa Durumu hareket listesi', () => {
+  const noon = new Date('2026-10-24T09:00:00.000Z');
+  const lines = [
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 100_000,
+      islem_tarihi: '2025-12-20',
+      payment_method: 'cash',
+      islem_no: 'ONCEKI-YIL',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'ACILIS_ALACAK',
+      tutar: 8_000,
+      islem_tarihi: '2026-02-01',
+      payment_method: 'cash',
+      islem_no: 'ACILIS-ALACAK',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'ACILIS_BORC',
+      tutar: 12_000,
+      islem_tarihi: '2026-02-02',
+      payment_method: 'cash',
+      islem_no: 'ACILIS-BORC',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 50_000,
+      islem_tarihi: '2026-03-01',
+      payment_method: 'cash',
+      islem_no: 'MART',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_CIKIS',
+      tutar: 10_000,
+      islem_tarihi: '2026-06-01',
+      payment_method: 'cash',
+      islem_no: 'GDR-YIL',
+    },
+    {
+      kasa_id: 'k1',
+      target_register_id: 'k2',
+      islem_tipi: 'VIRMAN',
+      tutar: 20_000,
+      sign: -1,
+      islem_no: 'VRM-YIL',
+      islem_tarihi: '2026-04-10',
+      payment_method: 'cash',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 5_000,
+      islem_tarihi: '2026-10-24',
+      payment_method: 'cash',
+      islem_no: 'BUGUN',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'CH_TAHSILAT',
+      tutar: 10_000,
+      ozel_kod: 'REZERVASYON',
+      islem_tarihi: '2026-10-24',
+      payment_method: 'cash',
+      islem_no: 'PESINAT',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 40_000,
+      islem_tarihi: '2026-10-24',
+      payment_method: 'cash',
+      islem_no: 'FIS-40',
+      islem_aciklamasi: 'Satış faturası — FIS-40',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 7,
+      islem_tarihi: '2026-10-24T21:30:00.000Z',
+      payment_method: 'cash',
+      islem_no: 'UTC-GECE',
+    },
+  ];
+
+  it('filtresiz liste 1 Ocak–bugündür; açılış işareti doğru, virman iki bacaktır ve kutulara yazılmaz', () => {
+    const open = resolveCashStatusQuery(emptyCashStatusDate(), noon);
+    expect(open.from).toBe('2026-01-01');
+    expect(open.to).toBe('2026-10-24');
+    expect(open.filtered).toBe(false);
+
+    const rows = cashStatusMovementRows({
+      salesCash: 40_000,
+      reservation: 10_000,
+      discount: 1_500,
+      expense: 10_000,
+      countedExpenseKeys: ['GDR-YIL'],
+      lines,
+      dateFrom: open.from,
+      dateTo: open.to,
+      saleReceiptKeys: ['FIS-40'],
+      customerCollectionsInSalesCash: true,
+      registerNames: { k1: 'MERKEZ KASA', k2: 'QICARD' },
+    });
+
+    expect(rows.every((row) => row.date >= '2026-01-01' && row.date <= '2026-10-24')).toBe(true);
+    expect(rows.some((row) => row.ficheNo === 'ONCEKI-YIL')).toBe(false);
+    expect(rows.some((row) => row.ficheNo === 'UTC-GECE')).toBe(false);
+    expect(rows.filter((row) => row.ficheNo === 'PESINAT')).toHaveLength(1);
+    expect(rows.find((row) => row.ficheNo === 'PESINAT')?.amount).toBe(10_000);
+    expect(rows.filter((row) => row.ficheNo === 'FIS-40')).toHaveLength(1);
+    expect(rows.filter((row) => row.ficheNo === 'GDR-YIL')).toHaveLength(1);
+    expect(rows.find((row) => row.ficheNo === 'GDR-YIL')?.amount).toBe(-10_000);
+    expect(rows.find((row) => row.ficheNo === 'GDR-YIL')?.flow).toBe('gider');
+
+    const alacak = rows.find((row) => row.ficheNo === 'ACILIS-ALACAK');
+    const borc = rows.find((row) => row.ficheNo === 'ACILIS-BORC');
+    expect(alacak?.flow).toBe('gider');
+    expect(alacak?.amount).toBe(-8_000);
+    expect(borc?.flow).toBe('gelir');
+    expect(borc?.amount).toBe(12_000);
+
+    const legs = rows.filter((row) => row.categoryCode === 'virman');
+    expect(legs).toHaveLength(2);
+    expect(legs.map((row) => row.amount).sort((a, b) => a - b)).toEqual([-20_000, 20_000]);
+    expect(legs.reduce((sum, row) => sum + row.amount, 0)).toBe(0);
+    expect(legs.find((row) => row.amount < 0)?.registerId).toBe('k1');
+    expect(legs.find((row) => row.amount > 0)?.registerId).toBe('k2');
+    expect(legs.find((row) => row.amount > 0)?.party).toBe('QICARD');
+
+    const shared = {
+      salesCash: 40_000,
+      expense: 10_000,
+      countedExpenseKeys: ['GDR-YIL'],
+      dateFrom: open.from,
+      dateTo: open.to,
+      saleReceiptKeys: ['FIS-40'],
+      customerCollectionsInSalesCash: true,
+    };
+    const withVirman = cashStatusThreeBoxes({ ...shared, lines });
+    const withoutVirman = cashStatusThreeBoxes({
+      ...shared,
+      lines: lines.filter((line) => line.islem_tipi !== 'VIRMAN'),
+    });
+    expect(withVirman.totalIn).toBe(withoutVirman.totalIn);
+    expect(withVirman.totalOut).toBe(withoutVirman.totalOut);
+    expect(withVirman.balance).toBe(withoutVirman.balance);
+  });
+
+  it('Bugün seçilince yalnız bugünün fişleri kalır', () => {
+    const picked = buildCashStatusRange('today', 0, '', '', noon);
+    const query = resolveCashStatusQuery(picked, noon);
+    expect(query.from).toBe('2026-10-24');
+    expect(query.to).toBe('2026-10-24');
+    expect(query.filtered).toBe(true);
+
+    const rows = cashStatusMovementRows({
+      salesCash: 40_000,
+      reservation: 10_000,
+      lines,
+      dateFrom: query.from,
+      dateTo: query.to,
+      saleReceiptKeys: ['FIS-40'],
+      customerCollectionsInSalesCash: true,
+    });
+
+    expect(rows.every((row) => row.date === '2026-10-24')).toBe(true);
+    expect(rows.map((row) => row.ficheNo).sort()).toEqual(['BUGUN', 'FIS-40', 'PESINAT']);
+    expect(rows.some((row) => row.ficheNo === 'MART' || row.ficheNo === 'GDR-YIL')).toBe(false);
+    expect(rows.some((row) => row.categoryCode === 'virman')).toBe(false);
+    expect(rows.some((row) => row.ficheNo === 'ONCEKI-YIL' || row.ficheNo === 'UTC-GECE')).toBe(false);
+    expect(rows.find((row) => row.ficheNo === 'BUGUN')?.method).toBe('nakit');
+    expect(rows.find((row) => row.ficheNo === 'BUGUN')?.amount).toBe(5_000);
+    expect(rows.find((row) => row.ficheNo === 'BUGUN')?.flow).toBe('gelir');
+  });
+
+  it('peşinat bir kez listelenir; aynı satış fişi ikinci satır olmaz', () => {
+    const rows = cashStatusMovementRows({
+      salesCash: 263_500,
+      reservation: 10_000,
+      discount: 1_500,
+      customerCollectionsInSalesCash: true,
+      saleReceiptKeys: ['FIS-263'],
+      dateFrom: '2026-10-24',
+      dateTo: '2026-10-24',
+      lines: [
+        {
+          id: 'pesinat-1',
+          kasa_id: 'k1',
+          islem_tipi: 'CH_TAHSILAT',
+          tutar: 10_000,
+          ozel_kod: 'REZERVASYON',
+          islem_tarihi: '2026-10-24',
+          payment_method: 'cash',
+          islem_no: 'PESINAT',
+          cari_hesap_unvani: 'Ayşe Demir',
+        },
+        {
+          id: 'pesinat-2',
+          kasa_id: 'k1',
+          islem_tipi: 'CH_TAHSILAT',
+          tutar: 10_000,
+          ozel_kod: 'REZERVASYON',
+          islem_tarihi: '2026-10-24',
+          payment_method: 'cash',
+          islem_no: 'PESINAT',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'KASA_GIRIS',
+          tutar: 263_500,
+          islem_no: 'FIS-263',
+          islem_tarihi: '2026-10-24',
+          payment_method: 'cash',
+          islem_aciklamasi: 'Satış faturası — FIS-263',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'SATIS_FATURASI',
+          tutar: 263_500,
+          islem_no: 'FIS-263',
+          islem_tarihi: '2026-10-24',
+          payment_method: 'cash',
+          islem_aciklamasi: 'Satış faturası — FIS-263',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'CH_TAHSILAT',
+          tutar: 10_000,
+          ozel_kod: 'REZERVASYON',
+          islem_no: 'FIS-263',
+          islem_tarihi: '2026-10-24',
+          payment_method: 'cash',
+          islem_aciklamasi: 'Peşinat — FIS-263',
+        },
+      ],
+    });
+
+    const deposit = rows.filter((row) => row.ficheNo === 'PESINAT');
+    expect(deposit).toHaveLength(1);
+    expect(deposit[0]?.flow).toBe('gelir');
+    expect(deposit[0]?.amount).toBe(10_000);
+    expect(deposit[0]?.categoryCode).toBe('deposit');
+    expect(deposit[0]?.party).toBe('Ayşe Demir');
+
+    const sale = rows.filter((row) => row.ficheNo === 'FIS-263');
+    expect(sale).toHaveLength(1);
+    expect(sale[0]?.flow).toBe('gelir');
+    expect(sale[0]?.amount).toBe(263_500);
+    expect(sale[0]?.typeCode).toBe('KASA_GIRIS');
+    expect(rows).toHaveLength(2);
+  });
+
+  it('gider eksi ve bir kezdir; indirim ile açık cari satır açılmaz', () => {
+    const rows = cashStatusMovementRows({
+      salesCash: 263_500,
+      expense: 15_000,
+      discount: 1_500,
+      countedExpenseKeys: ['GDR-1', 'ODE-1'],
+      dateFrom: '2026-10-24',
+      dateTo: '2026-10-24',
+      lines: [
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'KASA_CIKIS',
+          tutar: 5_000,
+          islem_tarihi: '2026-10-24',
+          payment_method: 'cash',
+          islem_no: 'GDR-1',
+          category: 'Reklam',
+          islem_aciklamasi: 'Instagram reklam',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'GIDER_PUSULASI',
+          tutar: 5_000,
+          islem_tarihi: '2026-10-24',
+          payment_method: 'cash',
+          islem_no: 'GDR-1',
+          islem_aciklamasi: 'Instagram reklam',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'CH_ODEME',
+          tutar: 10_000,
+          islem_tarihi: '2026-10-24',
+          payment_method: 'cash',
+          islem_no: 'ODE-1',
+          cari_hesap_unvani: 'Tedarikçi',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'KASA_GIRIS',
+          tutar: 5_000,
+          islem_tarihi: '2026-10-24',
+          payment_method: 'ACIK_CARI',
+          islem_no: 'VERESIYE',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'KASA_GIRIS',
+          tutar: 1_500,
+          islem_tarihi: '2026-10-24',
+          payment_method: 'indirim',
+          islem_no: 'IND-1',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'KASA_GIRIS',
+          tutar: 2_000,
+          islem_tarihi: '2026-10-24',
+          payment_method: 'card',
+          islem_no: 'KART-1',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'KASA_GIRIS',
+          tutar: 3_000,
+          islem_tarihi: '2026-10-24',
+          payment_method: 'havale',
+          islem_no: 'HAV-1',
+        },
+      ],
+    });
+
+    const expense = rows.filter((row) => row.ficheNo === 'GDR-1');
+    expect(expense).toHaveLength(1);
+    expect(expense[0]?.flow).toBe('gider');
+    expect(expense[0]?.amount).toBe(-5_000);
+    expect(expense[0]?.party).toBe('Reklam');
+    const payment = rows.find((row) => row.ficheNo === 'ODE-1');
+    expect(payment?.flow).toBe('gider');
+    expect(payment?.amount).toBe(-10_000);
+    expect(rows.some((row) => row.ficheNo === 'VERESIYE' || row.ficheNo === 'IND-1')).toBe(false);
+    expect(rows.find((row) => row.ficheNo === 'KART-1')?.method).toBe('kart');
+    expect(rows.find((row) => row.ficheNo === 'KART-1')?.amount).toBe(2_000);
+    expect(rows.find((row) => row.ficheNo === 'HAV-1')?.method).toBe('havale');
+    const giderSum = rows
+      .filter((row) => row.ficheNo === 'GDR-1' || row.ficheNo === 'ODE-1')
+      .reduce((sum, row) => sum + row.amount, 0);
+    expect(giderSum).toBe(-15_000);
+    expect(giderSum).not.toBe(-30_000);
   });
 });

@@ -11,7 +11,7 @@ import { resolve } from 'node:path';
 import { createElement } from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { CashStatusFigures } from '../../components/reports/CashStatusFigures';
+import { CashStatusFigures, type CashStatusMovementLabels } from '../../components/reports/CashStatusFigures';
 import { clinicDashboardKpiTone } from '../../utils/clinicDashboardKpiTones';
 import {
   DAILY_REPORT_SOLID_CARD_FILL,
@@ -213,5 +213,115 @@ describe('Kasa Durumu yerleşimi', () => {
     expect(summary).not.toContain('cash-status-card-types');
     expect(summary).not.toContain('reservationDeposit={');
     expect(summary).not.toContain('paymentRows=');
+  });
+
+  it('kasa hareketlerini kasalar tablosunun içinde, pasta ve yöntem özeti olmadan gösterir', () => {
+    const movementLabels: CashStatusMovementLabels = {
+      title: 'Kasa Hareketleri',
+      empty: 'Seçili aralıkta kasa hareketi yok.',
+      total: 'Hareketler toplamı',
+      date: 'Tarih',
+      flow: 'Tip',
+      party: 'Kategori / Müşteri',
+      description: 'Açıklama',
+      method: 'Yöntem',
+      amount: 'Tutar',
+      flowIn: 'Gelir',
+      flowOut: 'Gider',
+      methodCash: 'Nakit',
+      methodCard: 'Kredi kartı',
+      methodTransfer: 'Havale',
+      categories: {
+        sale: 'Satış',
+        deposit: 'Peşinat',
+        collection: 'Tahsilat',
+        openingDebit: 'Açılış borç',
+        openingCredit: 'Açılış alacak',
+        expense: 'Gider',
+        payment: 'Cari ödeme',
+        virman: 'Virman',
+        bankIn: 'Bankadan çekilen',
+        bankOut: 'Bankaya yatırılan',
+        cashIn: 'Kasa giriş',
+        cashOut: 'Kasa çıkış',
+        other: 'Kasa hareketi',
+      },
+    };
+    render(
+      createElement(CashStatusFigures, {
+        totalIn: 263_500,
+        totalOut: 0,
+        balance: 195_000,
+        currency: 'IQD',
+        labels: LABELS,
+        movementLabels,
+        registerLines: [
+          { id: 'merkez', code: 'KASA.001', name: 'MERKEZ KASA', label: 'KASA.001 — MERKEZ KASA', amount: 195_000 },
+          { id: 'qicard', code: 'KASA.002', name: 'QICARD', label: 'KASA.002 — QICARD', amount: 0 },
+        ],
+        movementRows: [
+          {
+            id: 'in',
+            date: '2026-10-14',
+            flow: 'gelir',
+            amount: 1_367,
+            method: 'nakit',
+            party: 'Honda Türker',
+            description: '4 taksitten 1. taksit',
+            categoryCode: 'collection',
+            typeCode: 'CH_TAHSILAT',
+            ficheNo: 'T1',
+            registerId: 'merkez',
+          },
+          {
+            id: 'out',
+            date: '2026-10-12',
+            flow: 'gider',
+            amount: -2_000,
+            method: 'kart',
+            party: 'Reklam',
+            description: 'Instagram reklam',
+            categoryCode: 'expense',
+            typeCode: 'KASA_CIKIS',
+            ficheNo: 'G1',
+            registerId: 'merkez',
+          },
+        ],
+      }),
+    );
+
+    const registers = screen.getByTestId('cash-status-registers');
+    const movements = screen.getByTestId('cash-status-movements');
+    const kpiRow = screen.getByTestId('cash-status-kpi-row');
+    expect(registers.contains(movements)).toBe(true);
+    expect(kpiRow.contains(movements)).toBe(false);
+    expect(registers.textContent?.indexOf('Kasa Hareketleri')).toBeGreaterThan(
+      registers.textContent?.indexOf('Kasalar') ?? -1,
+    );
+    expect(movements.textContent).toContain('Tarih');
+    expect(movements.textContent).toContain('Tip');
+    expect(movements.textContent).toContain('Kategori / Müşteri');
+    expect(movements.textContent).toContain('Açıklama');
+    expect(movements.textContent).toContain('Yöntem');
+    expect(movements.textContent).toContain('Tutar');
+    expect(movements.textContent).toContain('Gelir');
+    expect(movements.textContent).toContain('Gider');
+    expect(movements.textContent).toContain('Honda Türker');
+    expect(movements.textContent).toContain('Nakit');
+    expect(movements.textContent).toContain('Kredi kartı');
+    expect(movements.textContent).toContain('+1.367');
+    expect(movements.textContent).toContain('-2.000');
+    expect(movements.innerHTML).toContain('text-green-700');
+    expect(movements.innerHTML).toContain('text-red-600');
+    expect(screen.queryByText('Ödeme Dağılımı')).toBeNull();
+    expect(screen.getByTestId('cash-status-card-in').textContent).toContain('263.500');
+    expect(screen.getByTestId('cash-status-card-balance').textContent).toContain('195.000');
+
+    const source = readFileSync(resolve('src/components/reports/CashStatusFigures.tsx'), 'utf8');
+    expect(source).toContain('ReportColumnTable');
+    expect(source).toContain('cash-status-movements');
+    expect(source).not.toContain('<table');
+    expect(source).not.toContain('PieChart');
+    expect(source).not.toContain('Recharts');
   });
 });

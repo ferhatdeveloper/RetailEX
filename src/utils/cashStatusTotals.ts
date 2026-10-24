@@ -556,6 +556,12 @@ export interface CashStatusRegisterLine {
   fiche_no?: string | null;
   islem_aciklamasi?: string | null;
   aciklama?: string | null;
+  cari_hesap_unvani?: string | null;
+  party_name?: string | null;
+  category?: string | null;
+  kategori?: string | null;
+  kasa_adi?: string | null;
+  register_name?: string | null;
   /** Yazılmış işaret. Virman hedef satırında +1, kaynakta −1. */
   sign?: number | null;
   target_register_id?: string | null;
@@ -1793,4 +1799,277 @@ export function cashStatusBlockTotals(
     grandTotal: round2(num(paymentGrand)),
     registerTotal: sumCashRegisterDistribution(cashRegisterDistributionLines(registerRows)),
   };
+}
+
+export type CashStatusMovementFlow = 'gelir' | 'gider';
+
+export type CashStatusMovementMethod = 'nakit' | 'kart' | 'havale';
+
+/** Kategori metni fişte yoksa ekran bu kodu çevirir. */
+export type CashStatusMovementCategory =
+  | 'sale'
+  | 'deposit'
+  | 'collection'
+  | 'openingDebit'
+  | 'openingCredit'
+  | 'expense'
+  | 'payment'
+  | 'virman'
+  | 'bankIn'
+  | 'bankOut'
+  | 'cashIn'
+  | 'cashOut'
+  | 'other';
+
+export interface CashStatusMovementRow {
+  id: string;
+  /** İstanbul takvim günü. Üç kutunun aralığıyla aynı gün. */
+  date: string;
+  flow: CashStatusMovementFlow;
+  /** Artı giriş, eksi çıkış. Virman kaynağı eksi, hedefi artı. */
+  amount: number;
+  method: CashStatusMovementMethod;
+  /** Cari, kategori veya virmanda kasa adı. Boşsa kategori kodu gösterilir. */
+  party: string;
+  description: string;
+  categoryCode: CashStatusMovementCategory;
+  typeCode: string;
+  ficheNo: string;
+  registerId: string;
+}
+
+export interface CashStatusMovementInput {
+  /**
+   * Kasa fişleri. Her fiş bir satırdır.
+   * Satış nakdi, gider toplamı, indirim ve açık cari buradan satır üretmez.
+   */
+  lines?: readonly CashStatusRegisterLine[];
+  dateFrom?: string;
+  dateTo?: string;
+  saleReceiptKeys?: Iterable<string>;
+  /**
+   * Satış nakdi peşinatı zaten içeriyorsa aynı satış fişi ikinci satır olmaz.
+   * Toplamın kendisi satır açmaz.
+   */
+  customerCollectionsInSalesCash?: boolean;
+  salesCash?: number;
+  reservation?: number;
+  discount?: number;
+  expense?: number;
+  countedExpenseKeys?: Iterable<string> | null;
+  /** Kasa kartı adı. Virman satırında kategori olarak durur. */
+  registerNames?: Readonly<Record<string, string>>;
+}
+
+function movementFicheKey(line: CashStatusRegisterLine): string {
+  return receiptKey(line.islem_no) || receiptKey(line.fiche_no);
+}
+
+function matchedSaleKey(line: CashStatusRegisterLine, keys: ReadonlySet<string>): string {
+  if (keys.size === 0) return '';
+  const direct = [line.islem_no, line.fiche_no].map(receiptKey).find((key) => key && keys.has(key));
+  if (direct) return direct;
+  const blob = [line.islem_aciklamasi, line.aciklama].map(receiptKey).filter(Boolean).join(' ');
+  if (!blob) return '';
+  for (const key of keys) {
+    if (key.length >= 4 && blob.includes(key)) return key;
+  }
+  return '';
+}
+
+function isDiscountMovement(line: CashStatusRegisterLine): boolean {
+  const blob = [line.islem_tipi, line.payment_method, line.ozel_kod, line.special_code, line.aciklama]
+    .map((value) => String(value || '').trim().toLocaleLowerCase('tr-TR'))
+    .join(' ');
+  return blob.includes('indirim') || blob.includes('iskonto') || blob.includes('discount');
+}
+
+function movementMethod(kind: DrawerKind): CashStatusMovementMethod {
+  if (kind === 'card') return 'kart';
+  if (kind === 'transfer') return 'havale';
+  return 'nakit';
+}
+
+function movementParty(line: CashStatusRegisterLine, registerName: string, virman: boolean): string {
+  const named = [line.cari_hesap_unvani, line.party_name, line.category, line.kategori]
+    .map((value) => String(value || '').trim())
+    .find(Boolean);
+  if (named) return named;
+  if (virman && registerName) return registerName;
+  return '';
+}
+
+function movementCategory(
+  line: CashStatusRegisterLine,
+  tip: string,
+  virman: boolean,
+): CashStatusMovementCategory {
+  if (virman) return 'virman';
+  if (isReservationCashLine(line)) return 'deposit';
+  if (tip === 'ACILIS_BORC' || tip === 'ACILIS') return 'openingDebit';
+  if (tip === 'ACILIS_ALACAK') return 'openingCredit';
+  if (tip === 'CH_ODEME' || tip === 'ALIS_FATURASI') return 'payment';
+  if (tip === 'BANKADAN_CEKILEN') return 'bankIn';
+  if (tip === 'BANKA_YATIRILAN') return 'bankOut';
+  if (PERIOD_SUMMARY_CASH_OUT_TYPES.has(tip)) return 'expense';
+  if (tip === 'CH_TAHSILAT') return 'collection';
+  if (SALE_INVOICE_COLLECTION_TYPES.has(tip) || looksLikeAutoSaleCashIn(line, tip)) return 'sale';
+  if (tip === 'KASA_GIRIS') return 'cashIn';
+  return 'other';
+}
+
+function movementPreference(line: CashStatusRegisterLine, tip: string): number {
+  let score = 0;
+  if (
+    tip === 'KASA_GIRIS'
+    || tip === 'KASA_CIKIS'
+    || tip === 'CH_TAHSILAT'
+    || tip === 'CH_ODEME'
+    || tip === 'GIDER_PUSULASI'
+    || tip === 'ACILIS_BORC'
+    || tip === 'ACILIS_ALACAK'
+    || tip === 'BANKA_YATIRILAN'
+    || tip === 'BANKADAN_CEKILEN'
+  ) {
+    score += 30;
+  }
+  if (SALE_INVOICE_COLLECTION_TYPES.has(tip) || tip === 'ALIS_FATURASI') score -= 15;
+  if (isReservationCashLine(line)) score -= 25;
+  return score;
+}
+
+function movementGroupKey(
+  line: CashStatusRegisterLine,
+  tip: string,
+  saleKeys: ReadonlySet<string>,
+  collectionsInSales: boolean,
+): string {
+  const fiche = movementFicheKey(line);
+  if (fiche && saleKeys.has(fiche)) return `fis:${fiche}`;
+  if (
+    collectionsInSales
+    && isReservationCashLine(line)
+  ) {
+    const insideSale = matchedSaleKey(line, saleKeys);
+    if (insideSale) return `fis:${insideSale}`;
+  }
+  if (fiche) return `fis:${fiche}`;
+  const matched = matchedSaleKey(line, saleKeys);
+  if (matched) return `fis:${matched}`;
+  const id = receiptKey(line.id);
+  if (id) return `id:${id}`;
+  const day = ledgerDay(line.islem_tarihi);
+  const registerId = String(line.kasa_id || '').trim();
+  const desc = receiptKey(line.islem_aciklamasi || line.aciklama);
+  return `anon:${day}|${tip}|${registerId}|${desc}|${round2(Math.abs(num(line.tutar))).toFixed(2)}`;
+}
+
+function registerCaption(
+  line: CashStatusRegisterLine,
+  names: Readonly<Record<string, string>> | undefined,
+): string {
+  const written = String(line.kasa_adi || line.register_name || '').trim();
+  if (written) return written;
+  const id = String(line.kasa_id || '').trim();
+  return String((id && names?.[id]) || '').trim();
+}
+
+function toMovementRow(
+  line: CashStatusRegisterLine,
+  names: Readonly<Record<string, string>> | undefined,
+  groupKey: string,
+): CashStatusMovementRow | null {
+  const signed = round2(voucherSignedAmount(line));
+  if (!(Math.abs(signed) > 0.004)) return null;
+  const tip = String(line.islem_tipi || '').trim().toUpperCase();
+  const virman = isCashVirmanType(tip);
+  const kind = drawerKind(line);
+  const registerId = String(line.kasa_id || '').trim();
+  const registerName = registerCaption(line, names);
+  const ficheNo = String(line.islem_no || line.fiche_no || '').trim();
+  const flow: CashStatusMovementFlow = signed > 0 ? 'gelir' : 'gider';
+  return {
+    id: `${groupKey}|${registerId}|${flow}|${ficheNo}`,
+    date: ledgerDay(line.islem_tarihi),
+    flow,
+    amount: signed,
+    method: movementMethod(kind),
+    party: movementParty(line, registerName, virman),
+    description: String(line.islem_aciklamasi || line.aciklama || '').trim(),
+    categoryCode: movementCategory(line, tip, virman),
+    typeCode: tip,
+    ficheNo,
+    registerId,
+  };
+}
+
+/**
+ * Kasa Durumu hareket listesi.
+ *
+ * Aralık, üç kutunun aralığıdır: filtresizken 1 Ocak–bugün, seçilince yalnız o günler.
+ * Aralık dışındaki fiş yoktur. Her kasa fişi bir satırdır.
+ * Giriş Gelir ve artı, çıkış Gider ve eksidir.
+ * Açılış alacak eksi Gider, açılış borç artı Gelirdir.
+ * Virman kaynakta eksi, hedefte artı listelenir; üç kutunun giren ve çıkanına yazılmaz.
+ * Peşinat nakitin içindeyse bir kez durur. Aynı satış fişi ikinci satır olmaz.
+ * Gider bir kez ve eksidir. İndirim satırı ve açık cari uydurulmaz.
+ * Satış nakdi, gider toplamı ve indirim parametresi satır açmaz.
+ */
+export function cashStatusMovementRows(input: CashStatusMovementInput): CashStatusMovementRow[] {
+  void input.salesCash;
+  void input.reservation;
+  void input.discount;
+  void input.expense;
+  void input.countedExpenseKeys;
+  const dateFrom = String(input.dateFrom || '').slice(0, 10);
+  const dateTo = String(input.dateTo || '').slice(0, 10);
+  const saleKeys = saleReceiptKeySet(input.saleReceiptKeys);
+  const collectionsInSales = input.customerCollectionsInSalesCash === true;
+  const lines = withCashVirmanLines(input.lines || []) as CashStatusRegisterLine[];
+  const names = input.registerNames;
+
+  const virman: CashStatusRegisterLine[] = [];
+  const grouped = new Map<string, { line: CashStatusRegisterLine; score: number; abs: number }>();
+
+  for (const line of lines) {
+    const day = ledgerDay(line.islem_tarihi);
+    if (day && dateFrom && day < dateFrom) continue;
+    if (day && dateTo && day > dateTo) continue;
+    if (isDiscountMovement(line)) continue;
+    const signed = voucherSignedAmount(line);
+    if (!(Math.abs(signed) > 0.004)) continue;
+    const kind = drawerKind(line);
+    if (kind === 'skip' || kind === 'open') continue;
+    const tip = String(line.islem_tipi || '').trim().toUpperCase();
+    if (isCashVirmanType(tip)) {
+      virman.push(line);
+      continue;
+    }
+    const key = movementGroupKey(line, tip, saleKeys, collectionsInSales);
+    const score = movementPreference(line, tip);
+    const abs = Math.abs(signed);
+    const current = grouped.get(key);
+    if (!current || score > current.score || (score === current.score && abs > current.abs + 0.004)) {
+      grouped.set(key, { line, score, abs });
+    }
+  }
+
+  const rows: CashStatusMovementRow[] = [];
+  for (const [key, picked] of grouped) {
+    const row = toMovementRow(picked.line, names, key);
+    if (row) rows.push(row);
+  }
+  virman.forEach((line, index) => {
+    const row = toMovementRow(line, names, `virman:${index}`);
+    if (row) rows.push(row);
+  });
+
+  rows.sort((a, b) => {
+    const byDate = b.date.localeCompare(a.date);
+    if (byDate !== 0) return byDate;
+    const byFiche = a.ficheNo.localeCompare(b.ficheNo, 'tr');
+    if (byFiche !== 0) return byFiche;
+    return a.registerId.localeCompare(b.registerId, 'tr');
+  });
+  return rows;
 }

@@ -70,7 +70,12 @@ import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDat
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
-import { CashRegisterDrawerGrid, CashStatusFigures, type CashStatusFigureLabels } from './CashStatusFigures';
+import {
+  CashRegisterDrawerGrid,
+  CashStatusFigures,
+  type CashStatusFigureLabels,
+  type CashStatusMovementLabels,
+} from './CashStatusFigures';
 import {
   displayUserCashierName,
   isPlaceholderCashierName,
@@ -150,6 +155,7 @@ import {
   cashRegisterExpenseGaps,
   cashRegisterStatusFromLedger,
   cashStatusDisplayedBalance,
+  cashStatusMovementRows,
   cashStatusThreeBoxes,
   cashStatusWithVouchers,
   foldReservationIntoCashStatus,
@@ -4602,6 +4608,24 @@ export function ReportsModule({
       customerCollectionsInSalesCash: true,
       balanceFromRegisters: cashStatusActive ? cashStatusQuery.balanceFromRegisters : undefined,
     });
+    const registerNames: Record<string, string> = {};
+    for (const kasa of cashRegisterCards) {
+      const id = String(kasa.id || '').trim();
+      if (!id) continue;
+      registerNames[id] = String(kasa.kasa_adi || kasa.kasa_kodu || id).trim();
+    }
+    const movements = cashStatusMovementRows({
+      salesCash: folded.todayCash,
+      reservation: reservationDeposit,
+      expense: cashExpensesForReport,
+      countedExpenseKeys,
+      lines: voucherLines,
+      dateFrom: ledgerFrom,
+      dateTo: ledgerTo,
+      saleReceiptKeys,
+      customerCollectionsInSalesCash: true,
+      registerNames,
+    });
     const voucherAmount = (code: string, fallback: number) => {
       if (code === 'NAKIT') return voucher.todayCash;
       if (code === 'KREDIKARTI') return voucher.card;
@@ -4658,6 +4682,7 @@ export function ReportsModule({
       totalOut: flow.totalOut,
       priorBalance: flow.priorBalance,
       formulaBalance: flow.balance,
+      movements,
     };
   };
 
@@ -5045,8 +5070,41 @@ export function ReportsModule({
       totalOut: Number(dist.totalOut) || 0,
       priorBalance: Number(dist.priorBalance) || 0,
       formulaBalance: Number(dist.formulaBalance) || 0,
+      movements: dist.movements,
     };
   };
+
+  const cashStatusMovementLabels = (): CashStatusMovementLabels => ({
+    title: tm('cashStatusMovementsTitle'),
+    empty: tm('cashStatusMovementsEmpty'),
+    total: tm('cashStatusMovementsTotal'),
+    date: tm('cashStatusColDate'),
+    flow: tm('cashStatusColFlow'),
+    party: tm('cashStatusColParty'),
+    description: tm('cashStatusColDescription'),
+    method: tm('cashStatusColMethod'),
+    amount: tm('cashStatusColAmount'),
+    flowIn: tm('cashStatusFlowIn'),
+    flowOut: tm('cashStatusFlowOut'),
+    methodCash: tm('cashStatusMethodCash'),
+    methodCard: tm('cashStatusMethodCard'),
+    methodTransfer: tm('cashStatusMethodHavale'),
+    categories: {
+      sale: tm('cashStatusCatSale'),
+      deposit: tm('cashStatusCatDeposit'),
+      collection: tm('cashStatusCatCollection'),
+      openingDebit: tm('cashStatusCatOpeningDebit'),
+      openingCredit: tm('cashStatusCatOpeningCredit'),
+      expense: tm('cashStatusCatExpense'),
+      payment: tm('cashStatusCatPayment'),
+      virman: tm('cashStatusCatVirman'),
+      bankIn: tm('cashStatusCatBankIn'),
+      bankOut: tm('cashStatusCatBankOut'),
+      cashIn: tm('cashStatusCatCashIn'),
+      cashOut: tm('cashStatusCatCashOut'),
+      other: tm('cashStatusCatOther'),
+    },
+  });
 
   const cashStatusFigureLabels = (): CashStatusFigureLabels => ({
     totalIn: tm('cashStatusTotalIn'),
@@ -8472,6 +8530,8 @@ export function ReportsModule({
                       balance={balance}
                       currency={reportCurrency}
                       registerLines={registerLines}
+                      movementRows={cashStatus.movements}
+                      movementLabels={cashStatusMovementLabels()}
                       onRegisterRowClick={() => setCashStatusPane('registers')}
                       labels={cashStatusFigureLabels()}
                     />

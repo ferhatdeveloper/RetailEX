@@ -1,16 +1,21 @@
 /**
- * Kasa Durumu özeti: tam üç kutu ve altta tam genişlik kasalar tablosu.
+ * Kasa Durumu özeti: tam üç kutu, altta tam genişlik kasalar tablosu
+ * ve aynı alanda kasa hareketleri tablosu.
  * Toplam giren Günlük Rapor Toplam Ciro dolu mavisi, toplam çıkan Toplam Gider
  * dolu kırmızısı, bakiye Net (Nakit) dolu yeşilidir. Yazı ve ikon beyazdır.
  * Renk `dailyReportCardTone` üzerinden gelir; yeni hex yoktur.
  * Açılış, günlük nakit, kapanış, avans, gider kartı, ödeme dağılımı
- * ve kart türleri bu özette yoktur. Yarım sayfa şerit yoktur.
+ * ve kart türleri bu özette yoktur. Pasta grafik ve yöntem özeti yoktur.
+ * Yarım sayfa şerit yoktur.
  */
 import { ArrowDownLeft, ArrowUpRight, Wallet, type LucideIcon } from 'lucide-react';
+import { formatReportDateCell } from '../../utils/dateLocale';
 import { formatNumber } from '../../utils/formatNumber';
 import {
   type CashRegisterDistributionLine,
   type CashRegisterDrawerLine,
+  type CashStatusMovementCategory,
+  type CashStatusMovementRow,
 } from '../../utils/cashStatusTotals';
 import {
   dailyReportCardTone,
@@ -86,6 +91,24 @@ export interface CashStatusFigureLabels {
   registersEmpty: string;
 }
 
+export interface CashStatusMovementLabels {
+  title: string;
+  empty: string;
+  total: string;
+  date: string;
+  flow: string;
+  party: string;
+  description: string;
+  method: string;
+  amount: string;
+  flowIn: string;
+  flowOut: string;
+  methodCash: string;
+  methodCard: string;
+  methodTransfer: string;
+  categories: Record<CashStatusMovementCategory, string>;
+}
+
 export function CashStatusFigures({
   totalIn,
   totalOut,
@@ -94,6 +117,8 @@ export function CashStatusFigures({
   registerLines,
   labels,
   onRegisterRowClick,
+  movementRows,
+  movementLabels,
 }: {
   /** Seçili aralıkta kasaya giren. */
   totalIn: number;
@@ -106,8 +131,15 @@ export function CashStatusFigures({
   registerLines?: CashRegisterDistributionLine[];
   labels: CashStatusFigureLabels;
   onRegisterRowClick?: (id: string) => void;
+  /** Kasalar ile aynı alanda. Aralık, üç kutunun aralığıdır. */
+  movementRows?: CashStatusMovementRow[];
+  movementLabels?: CashStatusMovementLabels;
 }) {
   const money = (amount: number) => `${formatNumber(amount, 2, false)} ${currency}`;
+  const signedMoney = (amount: number) => {
+    const body = `${formatNumber(amount, 2, false)} ${currency}`;
+    return amount > 0.004 ? `+${body}` : body;
+  };
 
   const registerPanel = registerLines ? (
     <div className="bg-white rounded-lg border p-4 w-full" data-testid="cash-status-registers">
@@ -145,6 +177,88 @@ export function CashStatusFigures({
           ]}
         />
       )}
+      {movementRows && movementLabels ? (
+        <div className="mt-6" data-testid="cash-status-movements">
+          <h3 className="text-lg mb-4">{movementLabels.title}</h3>
+          {movementRows.length === 0 ? (
+            <div className="p-4 text-center text-sm text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+              {movementLabels.empty}
+            </div>
+          ) : (
+            <ReportColumnTable
+              data={movementRows.map((row) => ({
+                ...row,
+                flowLabel: row.flow === 'gelir' ? movementLabels.flowIn : movementLabels.flowOut,
+                partyLabel: row.party || movementLabels.categories[row.categoryCode] || row.typeCode,
+                descriptionLabel: row.description || movementLabels.categories[row.categoryCode] || '—',
+                methodLabel: row.method === 'kart'
+                  ? movementLabels.methodCard
+                  : row.method === 'havale'
+                    ? movementLabels.methodTransfer
+                    : movementLabels.methodCash,
+              }))}
+              height={480}
+              storageNamespace="cash-status-movements"
+              footerLabel={movementLabels.total}
+              columns={[
+                {
+                  key: 'date',
+                  header: movementLabels.date,
+                  type: 'date',
+                  size: 120,
+                  cell: (row) => (
+                    <span className="tabular-nums text-slate-700">{formatReportDateCell(row.date)}</span>
+                  ),
+                },
+                {
+                  key: 'flowLabel',
+                  header: movementLabels.flow,
+                  size: 110,
+                  cell: (row) => (
+                    <span className={row.flow === 'gelir' ? 'font-medium text-green-700' : 'font-medium text-red-600'}>
+                      {row.flowLabel}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'partyLabel',
+                  header: movementLabels.party,
+                  size: 200,
+                  cell: (row) => <span className="text-slate-800">{row.partyLabel}</span>,
+                },
+                {
+                  key: 'descriptionLabel',
+                  header: movementLabels.description,
+                  size: 260,
+                  cell: (row) => <span className="text-slate-600">{row.descriptionLabel}</span>,
+                },
+                {
+                  key: 'methodLabel',
+                  header: movementLabels.method,
+                  size: 140,
+                  cell: (row) => <span className="text-slate-700">{row.methodLabel}</span>,
+                },
+                {
+                  key: 'amount',
+                  header: movementLabels.amount,
+                  type: 'number',
+                  align: 'right',
+                  size: 150,
+                  footerSum: true,
+                  footerFormat: (n) => signedMoney(n),
+                  cell: (row) => (
+                    <span
+                      className={`font-semibold tabular-nums ${row.amount < 0 ? 'text-red-600' : 'text-green-700'}`}
+                    >
+                      {signedMoney(row.amount)}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          )}
+        </div>
+      ) : null}
     </div>
   ) : null;
 
