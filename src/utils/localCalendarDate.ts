@@ -17,6 +17,60 @@ export function localTodayDateKey(): string {
     return localCalendarDateKey(new Date());
 }
 
+const ISTANBUL_TIME_ZONE = 'Europe/Istanbul';
+
+/**
+ * Takvim günü `timeZone` içinden okunur.
+ * `toISOString().slice(0, 10)` UTC gününe kaydırmaz; makine UTC olsa da İstanbul günü kalır.
+ */
+export function calendarDateKeyInTimeZone(
+    input: string | Date | number | undefined | null,
+    timeZone: string,
+): string {
+    if (input == null || input === '') return '';
+    const d = input instanceof Date ? input : new Date(input);
+    if (Number.isNaN(d.getTime())) return '';
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(d);
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+    if (!year || !month || !day) return '';
+    return `${year}-${month}-${day}`;
+}
+
+/** Europe/Istanbul takvim günü. Saat dilimi kayması UTC günü yazmaz. */
+export function istanbulCalendarDateKey(
+    input: string | Date | number | undefined | null = new Date(),
+): string {
+    return calendarDateKeyInTimeZone(input, ISTANBUL_TIME_ZONE);
+}
+
+export function istanbulTodayDateKey(now: Date = new Date()): string {
+    return istanbulCalendarDateKey(now);
+}
+
+/** İçinde bulunulan İstanbul yılının 1 Ocak günü. */
+export function istanbulYearStartDateKey(now: Date = new Date()): string {
+    const today = istanbulTodayDateKey(now);
+    const year = today.slice(0, 4);
+    return year ? `${year}-01-01` : '';
+}
+
+/**
+ * İstanbul takvim gününü yerel öğlen Date yapar.
+ * Hafta ve ay aralığı bu günün üzerinden kurulur; UTC gece yarısı günü kaydırmaz.
+ */
+export function istanbulCivilDate(now: Date = new Date()): Date {
+    const key = istanbulTodayDateKey(now);
+    const [year, month, day] = key.split('-').map((part) => parseInt(part, 10));
+    return new Date(year, (month || 1) - 1, day || 1, 12, 0, 0, 0);
+}
+
 /** Rapor / dönem tarihleri için makul yıl aralığı (ör. 182026 yazım hatası reddedilir). */
 const SQL_DATE_MIN_YEAR = 1990;
 const SQL_DATE_MAX_YEAR = 2100;

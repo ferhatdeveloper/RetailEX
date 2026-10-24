@@ -39,6 +39,7 @@ import { isReturnSale } from './posZReport';
 import { dbPaymentMethodToFormCode, type PaymentFormCode } from './paymentMethodUtils';
 import { isDepositSale } from './reportDepositFilter';
 import { PERIOD_SUMMARY_CASH_OUT_TYPES } from './reportUnifiedExpenses';
+import { istanbulCalendarDateKey } from './localCalendarDate';
 import { receivableAfterDiscount, saleCollectedSplit, type SalePaymentRow } from './saleCollectedAmounts';
 
 const CASH_CODE = 'NAKIT';
@@ -1080,11 +1081,17 @@ export interface CashStatusThreeBoxInput {
   saleReceiptKeys?: Iterable<string>;
   customerCollectionsInSalesCash?: boolean;
   /**
-   * Kasalar tablosunun toplamı. Aralık bugünde bitiyorsa bakiye budur.
-   * Geçmiş aralıkta bakiye bu alandan okunmaz.
+   * Kasalar tablosunun toplamı.
+   * Filtresiz yılda bakiye budur; yıl formülü (önceki + giren − çıkan) bunu ezmez.
    */
   registerTotal?: number | null;
-  /** Seçili aralığın son günü bugün veya sonrası. */
+  /**
+   * true: bakiye kasalar toplamıdır.
+   * false: bakiye her zaman önceki + giren − çıkan.
+   * Verilmezse eski kural: aralık bugünde bitiyorsa kasalar toplamı.
+   */
+  balanceFromRegisters?: boolean;
+  /** Seçili aralığın son günü bugün veya sonrası. `balanceFromRegisters` yokken okunur. */
   rangeEndsToday?: boolean;
 }
 
@@ -1096,8 +1103,9 @@ export interface CashStatusThreeBoxResult {
   /** Aralık başlamadan önceki kasa. Aralık içindeki açılış fişi burada değildir. */
   priorBalance: number;
   /**
-   * Aralık bugünde bitiyorsa kasalar toplamı.
-   * Geçmiş aralıkta: önceki + giren − çıkan.
+   * Filtresizken kasalar toplamı.
+   * Filtreliyken aralık sonu: önceki + giren − çıkan.
+   * Aralık bugünde bitiyorsa bu formül güncel bakiyedir.
    */
   balance: number;
 }
@@ -1110,8 +1118,8 @@ export interface CashStatusThreeBoxResult {
  * Çıkan: gider, açılış alacak (işaret −1), cari ödeme ve bankaya yatan. Bir kez.
  * Virman şirket bakiyesini değiştirmez; girene ve çıkana yazılmaz.
  * İndirim ve açık cari bu iki kutuya girmez.
- * Aralık bugünde bitiyorsa bakiye, kasalar tablosunun güncel toplamıdır.
- * Geçmiş aralıkta bakiye = aralık öncesi + giren − çıkan.
+ * Filtresiz yıl aralığında bakiye kasalar toplamıdır.
+ * Filtreliyken bakiye = aralık öncesi + giren − çıkan.
  */
 export function cashStatusThreeBoxes(input: CashStatusThreeBoxInput): CashStatusThreeBoxResult {
   const salesCash = round2(num(input.salesCash));
@@ -1163,23 +1171,33 @@ export function cashStatusThreeBoxes(input: CashStatusThreeBoxInput): CashStatus
   const totalIn = round2(salesCash + extraIn);
   const totalOut = round2((expenseProvided ? expenseParam : 0) + expenseFromLines + extraOut);
   const formulaBalance = round2(priorBalance + totalIn - totalOut);
-  const registerTotal = input.registerTotal;
-  const useRegisters = input.rangeEndsToday === true
-    && registerTotal != null
-    && Number.isFinite(Number(registerTotal));
   return {
     totalIn,
     totalOut,
     priorBalance: round2(priorBalance),
-    balance: useRegisters ? round2(num(registerTotal)) : formulaBalance,
+    balance: cashStatusDisplayedBalance({
+      formulaBalance,
+      registerTotal: input.registerTotal,
+      balanceFromRegisters: input.balanceFromRegisters,
+      rangeEndsToday: input.rangeEndsToday,
+    }),
   };
 }
 
-function formatLocalDay(value: Date): string {
-  if (Number.isNaN(value.getTime())) return '';
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${value.getFullYear()}-${month}-${day}`;
+/** Yeşil kutu. Filtresizken kasalar toplamı; filtreliyken aralık formülü. */
+export function cashStatusDisplayedBalance(input: {
+  formulaBalance: number;
+  registerTotal?: number | null;
+  balanceFromRegisters?: boolean;
+  rangeEndsToday?: boolean;
+}): number {
+  const formulaBalance = round2(num(input.formulaBalance));
+  const registerTotal = input.registerTotal;
+  const registerReady = registerTotal != null && Number.isFinite(Number(registerTotal));
+  const useRegisters = input.balanceFromRegisters === true
+    ? registerReady
+    : input.balanceFromRegisters == null && input.rangeEndsToday === true && registerReady;
+  return useRegisters ? round2(num(registerTotal)) : formulaBalance;
 }
 
 /**
@@ -1188,14 +1206,15 @@ function formatLocalDay(value: Date): string {
  * (Kasa Yönetimi bugün hesabı ile aynı yerel takvim).
  */
 function ledgerDay(value: unknown): string {
-  if (value instanceof Date) return formatLocalDay(value);
+  if (value instanceof Date) return istanbulCalendarDateKey(value);
   const raw = String(value ?? '').trim();
   const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
   if (!match) return '';
+  // Takvim günü olduğu gibi kalır. Saatli değer İstanbul gününe çevrilir; UTC günü yazılmaz.
   if (raw.length === 10) return match[1];
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return match[1];
-  return formatLocalDay(parsed);
+  return istanbulCalendarDateKey(parsed);
 }
 
 function balanceOf(registerId: string, lines: CashStatusRegisterLine[]): number {

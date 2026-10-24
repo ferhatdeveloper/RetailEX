@@ -4,8 +4,16 @@
  * Ekran örneği: hizmet nakdi 35.000 + rezervasyon 15.000.
  * Günlük nakit 50.000, kapanış 50.000, nakit satırı 50.000, genel toplam 50.000.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { computeCashBalanceForRegister } from '../../utils/cashBalance';
+import { istanbulTodayDateKey, istanbulYearStartDateKey } from '../../utils/localCalendarDate';
+import {
+  buildCashStatusRange,
+  emptyCashStatusDate,
+  resolveCashStatusQuery,
+} from '../../utils/reportDatePresets';
 import type { KasaIslemi } from '../../services/api/kasa';
 import {
   cashRefundsFromSales,
@@ -1861,5 +1869,261 @@ describe('Kasa Durumu üç kutu — giren, çıkan, bakiye', () => {
     expect(afterTotal).toBe(beforeTotal);
     expect(afterListed.find((row) => row.id === 'k1')?.amount).toBe(205_000);
     expect(afterListed.find((row) => row.id === 'k2')?.amount).toBe(20_000);
+  });
+});
+
+describe('Kasa Durumu filtresi — yılbaşı ve seçilen aralık', () => {
+  const noon = new Date('2026-10-24T09:00:00.000Z');
+  const registers = [
+    { id: 'k1', code: 'KASA.001', name: 'MERKEZ KASA' },
+    { id: 'k2', code: 'KASA.002', name: 'QICARD' },
+  ];
+  const lines = [
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 100_000,
+      islem_tarihi: '2025-12-20',
+      payment_method: 'cash',
+      islem_no: 'ONCEKI-YIL',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'ACILIS_ALACAK',
+      tutar: 8_000,
+      islem_tarihi: '2026-02-01',
+      payment_method: 'cash',
+      islem_no: 'ACILIS-ALACAK',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'ACILIS_BORC',
+      tutar: 12_000,
+      islem_tarihi: '2026-02-02',
+      payment_method: 'cash',
+      islem_no: 'ACILIS-BORC',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 50_000,
+      islem_tarihi: '2026-03-01',
+      payment_method: 'cash',
+      islem_no: 'MART',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_CIKIS',
+      tutar: 10_000,
+      islem_tarihi: '2026-06-01',
+      payment_method: 'cash',
+      islem_no: 'GDR-YIL',
+    },
+    {
+      kasa_id: 'k1',
+      target_register_id: 'k2',
+      islem_tipi: 'VIRMAN',
+      tutar: 20_000,
+      sign: -1,
+      islem_no: 'VRM-YIL',
+      islem_tarihi: '2026-04-10',
+      payment_method: 'cash',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 5_000,
+      islem_tarihi: '2026-10-24',
+      payment_method: 'cash',
+      islem_no: 'BUGUN',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'CH_TAHSILAT',
+      tutar: 10_000,
+      ozel_kod: 'REZERVASYON',
+      islem_tarihi: '2026-10-24',
+      payment_method: 'cash',
+      islem_no: 'PESINAT',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 40_000,
+      islem_tarihi: '2026-10-24',
+      payment_method: 'cash',
+      islem_no: 'FIS-40',
+      islem_aciklamasi: 'Satış faturası — FIS-40',
+    },
+  ];
+
+  it('filtresiz preset bugün değildir; giren ve çıkan 1 Ocak–bugün, bakiye kasalar toplamıdır', () => {
+    const empty = emptyCashStatusDate();
+    expect(empty.preset).toBe('none');
+    expect(empty.preset).not.toBe('today');
+    expect(empty.from).toBe('');
+    expect(empty.to).toBe('');
+
+    const open = resolveCashStatusQuery(empty, noon);
+    expect(open.from).toBe('2026-01-01');
+    expect(open.to).toBe('2026-10-24');
+    expect(open.filtered).toBe(false);
+    expect(open.balanceFromRegisters).toBe(true);
+    expect(istanbulYearStartDateKey(noon)).toBe('2026-01-01');
+    expect(istanbulTodayDateKey(noon)).toBe('2026-10-24');
+
+    const lateUtc = new Date('2026-10-24T21:30:00.000Z');
+    expect(istanbulTodayDateKey(lateUtc)).toBe('2026-10-25');
+    expect(resolveCashStatusQuery(empty, lateUtc).from).toBe('2026-01-01');
+    expect(resolveCashStatusQuery(empty, lateUtc).to).toBe('2026-10-25');
+
+    const boxes = cashStatusThreeBoxes({
+      salesCash: 40_000,
+      reservation: 10_000,
+      discount: 1_500,
+      expense: 10_000,
+      countedExpenseKeys: ['GDR-YIL'],
+      lines,
+      dateFrom: open.from,
+      dateTo: open.to,
+      saleReceiptKeys: ['FIS-40'],
+      customerCollectionsInSalesCash: true,
+      registerTotal: 195_000,
+      balanceFromRegisters: true,
+    });
+
+    expect(boxes.totalIn).toBe(107_000);
+    expect(boxes.totalIn).not.toBe(117_000);
+    expect(boxes.totalIn).not.toBe(147_000);
+    expect(boxes.totalOut).toBe(18_000);
+    expect(boxes.totalOut).not.toBe(28_000);
+    expect(boxes.priorBalance).toBe(100_000);
+    const yearFormula = boxes.priorBalance + boxes.totalIn - boxes.totalOut;
+    expect(yearFormula).toBe(189_000);
+    expect(yearFormula).not.toBe(195_000);
+    expect(boxes.balance).toBe(195_000);
+  });
+
+  it('Bugün seçilince yalnız bugünün hareketi ve bugün biten bakiye hesaplanır', () => {
+    const picked = buildCashStatusRange('today', 0, '', '', noon);
+    expect(picked.preset).toBe('today');
+    expect(picked.from).toBe('2026-10-24');
+    expect(picked.to).toBe('2026-10-24');
+    const query = resolveCashStatusQuery(picked, noon);
+    expect(query.filtered).toBe(true);
+    expect(query.balanceFromRegisters).toBe(false);
+
+    const boxes = cashStatusThreeBoxes({
+      salesCash: 40_000,
+      reservation: 10_000,
+      discount: 1_500,
+      expense: 0,
+      lines,
+      dateFrom: query.from,
+      dateTo: query.to,
+      saleReceiptKeys: ['FIS-40'],
+      customerCollectionsInSalesCash: true,
+      registerTotal: 999_999,
+      balanceFromRegisters: false,
+    });
+    expect(boxes.totalIn).toBe(45_000);
+    expect(boxes.totalIn).not.toBe(55_000);
+    expect(boxes.totalIn).not.toBe(85_000);
+    expect(boxes.totalOut).toBe(0);
+    expect(boxes.priorBalance).toBe(144_000);
+    expect(boxes.balance).toBe(boxes.priorBalance + boxes.totalIn - boxes.totalOut);
+    expect(boxes.balance).toBe(189_000);
+    expect(boxes.balance).not.toBe(195_000);
+    expect(boxes.balance).not.toBe(999_999);
+
+    const rows = cashRegisterStatusFromLedger({
+      registers,
+      lines,
+      dateFrom: query.from,
+      dateTo: query.to,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const listed = cashRegisterDistributionLines(rows);
+    expect(listed.find((row) => row.id === 'k2')?.amount).toBe(20_000);
+    expect(sumCashRegisterDistribution(listed)).toBe(
+      (listed.find((row) => row.id === 'k1')?.amount || 0) + 20_000,
+    );
+    const withoutMove = cashRegisterStatusFromLedger({
+      registers,
+      lines: lines.filter((line) => line.islem_no !== 'VRM-YIL'),
+      dateFrom: query.from,
+      dateTo: query.to,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const moved = sumCashRegisterDistribution(listed);
+    const still = sumCashRegisterDistribution(cashRegisterDistributionLines(withoutMove));
+    expect(moved).toBe(still);
+  });
+
+  it('filtre kalkınca yine yılbaşı–bugün ve kasalar toplamına döner', () => {
+    const picked = buildCashStatusRange('today', 0, '', '', noon);
+    expect(resolveCashStatusQuery(picked, noon).filtered).toBe(true);
+    const cleared = emptyCashStatusDate();
+    const again = resolveCashStatusQuery(cleared, noon);
+    expect(again.filtered).toBe(false);
+    expect(again.from).toBe('2026-01-01');
+    expect(again.to).toBe('2026-10-24');
+    expect(again.balanceFromRegisters).toBe(true);
+  });
+
+  it('saatli fiş UTC gününe kaymaz; takvim günü olduğu gibi kalır', () => {
+    const timed = cashStatusThreeBoxes({
+      salesCash: 0,
+      lines: [{
+        kasa_id: 'k1',
+        islem_tipi: 'KASA_GIRIS',
+        tutar: 7,
+        islem_tarihi: '2026-10-24T21:30:00.000Z',
+        payment_method: 'cash',
+      }],
+      dateFrom: '2026-10-25',
+      dateTo: '2026-10-25',
+    });
+    expect(timed.totalIn).toBe(7);
+    const utcDay = cashStatusThreeBoxes({
+      salesCash: 0,
+      lines: [{
+        kasa_id: 'k1',
+        islem_tipi: 'KASA_GIRIS',
+        tutar: 7,
+        islem_tarihi: '2026-10-24T21:30:00.000Z',
+        payment_method: 'cash',
+      }],
+      dateFrom: '2026-10-24',
+      dateTo: '2026-10-24',
+    });
+    expect(utcDay.totalIn).toBe(0);
+    const plain = cashStatusThreeBoxes({
+      salesCash: 0,
+      lines: [{
+        kasa_id: 'k1',
+        islem_tipi: 'KASA_GIRIS',
+        tutar: 7,
+        islem_tarihi: '2026-10-24',
+        payment_method: 'cash',
+      }],
+      dateFrom: '2026-10-24',
+      dateTo: '2026-10-24',
+    });
+    expect(plain.totalIn).toBe(7);
+  });
+
+  it('Kasa Durumu açılışı günlük raporun bugün aralığına bağlı değildir', () => {
+    const moduleSource = readFileSync(resolve('src/components/reports/ReportsModule.tsx'), 'utf8');
+    expect(moduleSource).toContain('emptyCashStatusDate()');
+    expect(moduleSource).toContain('balanceFromRegisters');
+    const marker = "selectedTab === 'cash-status' &&";
+    const cashBlock = moduleSource.slice(moduleSource.indexOf(marker));
+    const nextTab = cashBlock.indexOf("selectedTab === 'payment-distribution'");
+    const summary = nextTab > 0 ? cashBlock.slice(0, nextTab) : cashBlock;
+    expect(summary).toContain('cashStatusDate');
+    expect(summary).toContain('formulaBalance');
+    expect(summary).not.toContain('dailyReportDateRange');
+    expect(summary).toContain('allowEmpty');
   });
 });

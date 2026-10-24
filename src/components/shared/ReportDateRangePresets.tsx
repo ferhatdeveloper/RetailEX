@@ -5,13 +5,15 @@ import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import {
   buildReportDateRangeChange,
+  emptyCashStatusDate,
+  type CashStatusDateValue,
   type ReportDatePreset,
   type ReportDateRangeValue,
 } from '../../utils/reportDatePresets';
 
-export interface ReportDateRangePresetsProps {
-  value: ReportDateRangeValue;
-  onChange: (next: ReportDateRangeValue) => void;
+export interface ReportDateRangePresetsProps<T extends CashStatusDateValue = ReportDateRangeValue> {
+  value: T;
+  onChange: (next: T) => void;
   tm: (key: string) => string;
   min?: string;
   max?: string;
@@ -19,6 +21,17 @@ export interface ReportDateRangePresetsProps {
   showMonthNav?: boolean;
   accentColor?: string;
   accentText?: string;
+  /** Kasa Durumu: açılışta hiçbir düğme seçili olmasın, aynı düğme seçimi kaldırsın. */
+  allowEmpty?: boolean;
+  /** Tarih kutuları hazır aralıkta da görünsün. Boş değer filtre yok demektir. */
+  alwaysShowDates?: boolean;
+  /** Aralık hesabı. Verilmezse makine yerel günü kullanılır. */
+  buildRange?: (
+    preset: ReportDatePreset,
+    monthOffset: number,
+    customFrom?: string,
+    customTo?: string,
+  ) => T;
 }
 
 /** Rapor filtrelerinde sabit görünen tarih biçimi (gg.aa.yyyy). */
@@ -102,7 +115,7 @@ export function ReportYmdDatePicker({
   );
 }
 
-export function ReportDateRangePresets({
+export function ReportDateRangePresets<T extends CashStatusDateValue = ReportDateRangeValue>({
   value,
   onChange,
   tm,
@@ -112,22 +125,55 @@ export function ReportDateRangePresets({
   showMonthNav = true,
   accentColor,
   accentText,
-}: ReportDateRangePresetsProps) {
+  allowEmpty = false,
+  alwaysShowDates = false,
+  buildRange,
+}: ReportDateRangePresetsProps<T>) {
+  const resolveRange = (
+    preset: ReportDatePreset,
+    monthOffset = 0,
+    customFrom?: string,
+    customTo?: string,
+  ): T => {
+    if (buildRange) return buildRange(preset, monthOffset, customFrom, customTo);
+    return buildReportDateRangeChange(preset, monthOffset, customFrom, customTo) as T;
+  };
+
+  const clearRange = () => {
+    onChange(emptyCashStatusDate() as T);
+  };
+
   const applyPreset = (preset: ReportDatePreset, monthOffset = 0) => {
-    onChange(buildReportDateRangeChange(preset, monthOffset, value.from, value.to));
+    const samePreset = value.preset === preset && (preset !== 'month' || value.monthOffset === monthOffset);
+    if (allowEmpty && samePreset) {
+      clearRange();
+      return;
+    }
+    onChange(resolveRange(preset, monthOffset, value.from, value.to));
   };
 
   const handleFromChange = (from: string) => {
-    if (!from) return;
-    const to = from > value.to ? from : value.to;
-    onChange(buildReportDateRangeChange('custom', 0, from, to));
+    if (!from) {
+      if (allowEmpty) clearRange();
+      return;
+    }
+    const to = !value.to || from > value.to ? from : value.to;
+    onChange(resolveRange('custom', 0, from, to));
   };
 
   const handleToChange = (to: string) => {
-    if (!to) return;
-    const from = to < value.from ? to : value.from;
-    onChange(buildReportDateRangeChange('custom', 0, from, to));
+    if (!to) {
+      if (allowEmpty) clearRange();
+      return;
+    }
+    const from = !value.from || to < value.from ? to : value.from;
+    onChange(resolveRange('custom', 0, from, to));
   };
+
+  const showDateFields = alwaysShowDates
+    || value.preset === 'custom'
+    || value.preset === 'month'
+    || value.preset === 'lastMonth';
 
   return (
     <div className={`flex flex-wrap items-end gap-3 ${className}`.trim()}>
@@ -193,13 +239,14 @@ export function ReportDateRangePresets({
         </div>
       )}
 
-      {(value.preset === 'custom' || value.preset === 'month' || value.preset === 'lastMonth') && (
+      {showDateFields && (
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
             <span className="text-xs font-semibold text-slate-500">{tm('dateFrom')}</span>
             <ReportYmdDatePicker
               value={value.from}
               onChange={handleFromChange}
+              allowClear={allowEmpty}
               min={min}
               max={max}
             />
@@ -209,6 +256,7 @@ export function ReportDateRangePresets({
             <ReportYmdDatePicker
               value={value.to}
               onChange={handleToChange}
+              allowClear={allowEmpty}
               min={min}
               max={max}
             />

@@ -82,7 +82,7 @@ import { mergeExpensesWithCashOuts, mergeExpensesWithCashIns, reportCashInCatego
 import { productCardUnitCost } from '../../utils/productCardUnitCost';
 import type { BeautyAppointment, BeautySale, BeautyService, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
-import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
+import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, istanbulTodayDateKey } from '../../utils/localCalendarDate';
 import { formatDateTimeShort, formatReportDateCell, formatShortDate } from '../../utils/dateLocale';
 import {
   formatSaleWallClockDateTime,
@@ -92,7 +92,14 @@ import {
   saleWallClockRaw,
   saleWallClockTimestamp,
 } from '../../utils/saleWallClock';
-import { type ReportDatePreset, type ReportDateRangeValue } from '../../utils/reportDatePresets';
+import {
+  buildCashStatusRange,
+  emptyCashStatusDate,
+  resolveCashStatusQuery,
+  type CashStatusDateValue,
+  type ReportDatePreset,
+  type ReportDateRangeValue,
+} from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { buildErpServiceBreakdownGroups, type ErpServiceBreakdownLine } from '../../utils/serviceBreakdownReport';
   import {
@@ -142,6 +149,7 @@ import {
   cashRegisterDrawerLines,
   cashRegisterExpenseGaps,
   cashRegisterStatusFromLedger,
+  cashStatusDisplayedBalance,
   cashStatusThreeBoxes,
   cashStatusWithVouchers,
   foldReservationIntoCashStatus,
@@ -1252,6 +1260,12 @@ export function ReportsModule({
     setSelectedDateFrom(next.from);
     setSelectedDateTo(next.to);
   }, []);
+  /** Kasa Durumu kendi filtresidir. Açılışta hazır aralık seçili değildir. */
+  const [cashStatusDate, setCashStatusDate] = useState<CashStatusDateValue>(() => emptyCashStatusDate());
+  const cashStatusQuery = resolveCashStatusQuery(cashStatusDate);
+  const cashStatusActive = selectedTab === 'cash-status';
+  const ledgerFrom = cashStatusActive ? cashStatusQuery.from : selectedDateFrom;
+  const ledgerTo = cashStatusActive ? cashStatusQuery.to : selectedDateTo;
   const reportDateInputMin = '1990-01-01';
   const reportDateInputMax = '2100-12-31';
   /** Günlük/Z raporu: seçili tarih aralığı — bellekteki son N satış değil, DB sorgusu */
@@ -1394,8 +1408,8 @@ export function ReportsModule({
     try {
       const { salesAPI } = await import('../../services/api/sales');
       const [rows] = await Promise.all([
-        salesAPI.getByDateRange(selectedDateFrom, selectedDateTo),
-        rememberDepositRefs(selectedDateFrom, selectedDateTo),
+        salesAPI.getByDateRange(ledgerFrom, ledgerTo),
+        rememberDepositRefs(ledgerFrom, ledgerTo),
       ]);
       setReportRangeSales(Array.isArray(rows) ? rows : []);
     } catch (err) {
@@ -1404,7 +1418,7 @@ export function ReportsModule({
     } finally {
       setLoadingReportRangeSales(false);
     }
-  }, [selectedDateFrom, selectedDateTo, rememberDepositRefs]);
+  }, [ledgerFrom, ledgerTo, rememberDepositRefs]);
 
   const loadComparisonSales = useCallback(async () => {
     try {
@@ -1425,13 +1439,13 @@ export function ReportsModule({
   const loadCashExpenses = useCallback(async () => {
     try {
       const [expenseRows, cashLines, ledgerLines] = await Promise.all([
-        expenseAPI.getAll({ startDate: selectedDateFrom, endDate: selectedDateTo }),
+        expenseAPI.getAll({ startDate: ledgerFrom, endDate: ledgerTo }),
         fetchKasaIslemleri({
-          baslangic_tarihi: selectedDateFrom,
-          bitis_tarihi: `${selectedDateTo}T23:59:59`,
+          baslangic_tarihi: ledgerFrom,
+          bitis_tarihi: `${ledgerTo}T23:59:59`,
         }).catch(() => []),
         fetchKasaIslemleri({
-          bitis_tarihi: `${selectedDateTo}T23:59:59`,
+          bitis_tarihi: `${ledgerTo}T23:59:59`,
         }).catch(() => null),
       ]);
       const unifiedSrc = mergeExpensesWithCashOuts(
@@ -1488,7 +1502,7 @@ export function ReportsModule({
       setKasaLinesForSelectedDate([]);
       setCashRegisterLedgerLines([]);
     }
-  }, [selectedDateFrom, selectedDateTo]);
+  }, [ledgerFrom, ledgerTo]);
 
   const [deletingExpenseKey, setDeletingExpenseKey] = useState<string | null>(null);
 
@@ -1537,9 +1551,9 @@ export function ReportsModule({
     if (!sales?.length) return [] as Sale[];
     return sales.filter((s) => {
       const k = localCalendarDateKey(s.date);
-      return k >= selectedDateFrom && k <= selectedDateTo;
+      return k >= ledgerFrom && k <= ledgerTo;
     });
-  }, [reportRangeSales, sales, selectedDateFrom, selectedDateTo, loadingReportRangeSales]);
+  }, [reportRangeSales, sales, ledgerFrom, ledgerTo, loadingReportRangeSales]);
 
   /** Trend/hedef/müşteri — DB katalog; yedek bellek */
   const effectiveCatalogSales = useMemo(() => {
@@ -2960,7 +2974,7 @@ export function ReportsModule({
     if (!source || !Array.isArray(source)) return [];
     return source.filter((s) => {
       const k = localCalendarDateKey(s.date);
-      return k >= selectedDateFrom && k <= selectedDateTo;
+      return k >= ledgerFrom && k <= ledgerTo;
     });
   };
 
@@ -4571,8 +4585,8 @@ export function ReportsModule({
       expense: cashExpensesForReport,
       countedExpenseKeys,
       lines: voucherLines,
-      dateFrom: selectedDateFrom,
-      dateTo: selectedDateTo,
+      dateFrom: ledgerFrom,
+      dateTo: ledgerTo,
       saleReceiptKeys,
       customerCollectionsInSalesCash: true,
     });
@@ -4582,10 +4596,11 @@ export function ReportsModule({
       expense: cashExpensesForReport,
       countedExpenseKeys,
       lines: voucherLines,
-      dateFrom: selectedDateFrom,
-      dateTo: selectedDateTo,
+      dateFrom: ledgerFrom,
+      dateTo: ledgerTo,
       saleReceiptKeys,
       customerCollectionsInSalesCash: true,
+      balanceFromRegisters: cashStatusActive ? cashStatusQuery.balanceFromRegisters : undefined,
     });
     const voucherAmount = (code: string, fallback: number) => {
       if (code === 'NAKIT') return voucher.todayCash;
@@ -4978,12 +4993,12 @@ export function ReportsModule({
     const collectionBeforeExpense = Number(dist.collectionTotal ?? dist.listedTotal) || 0;
     const todayTotal = collectionBeforeExpense - acikCariAmount;
 
-    const todayKey = localTodayDateKey();
+    const todayKey = istanbulTodayDateKey();
     const ledgerReady = cashRegisterLedgerLines.length > 0 || kasaLinesForSelectedDate.length > 0;
     const openingCash = ledgerReady
       ? (Number(dist.openingCash) || 0)
       : (
-        selectedDateFrom === todayKey && selectedDateTo === todayKey
+        ledgerFrom === todayKey && ledgerTo === todayKey
           ? readOpeningCashForReports(businessType)
           : 0
       );
@@ -5035,11 +5050,11 @@ export function ReportsModule({
 
   const cashStatusFigureLabels = (): CashStatusFigureLabels => ({
     totalIn: tm('cashStatusTotalIn'),
-    totalInHint: tm('cashStatusTotalInHint'),
+    totalInHint: cashStatusQuery.filtered ? tm('cashStatusTotalInHint') : tm('cashStatusTotalInYearHint'),
     totalOut: tm('cashStatusTotalOut'),
-    totalOutHint: tm('cashStatusTotalOutHint'),
+    totalOutHint: cashStatusQuery.filtered ? tm('cashStatusTotalOutHint') : tm('cashStatusTotalOutYearHint'),
     balance: tm('cashStatusBalance'),
-    balanceHint: selectedDateTo >= localTodayDateKey()
+    balanceHint: (!cashStatusQuery.filtered || cashStatusQuery.to >= istanbulTodayDateKey())
       ? tm('cashStatusBalanceTodayHint')
       : tm('cashStatusBalancePastHint'),
     registersTitle: tm('cashStatusTabRegisters'),
@@ -5071,8 +5086,8 @@ export function ReportsModule({
         name: kasa.kasa_adi || kasa.kasa_kodu || kasa.id,
       })),
       lines: ledger,
-      dateFrom: selectedDateFrom,
-      dateTo: selectedDateTo,
+      dateFrom: ledgerFrom,
+      dateTo: ledgerTo,
       unassignedLabel: tm('cashStatusUnassignedRegister'),
       cashRefunds: cashRefundsFromSales(dailySalesForCash, dailyAppliedAvans),
       saleReceiptKeys,
@@ -8409,18 +8424,22 @@ export function ReportsModule({
                 unpostedExpense: cashStatus.expenses,
               });
               const registerTotal = sumCashRegisterDistribution(registerLines);
-              const rangeEndsToday = selectedDateTo >= localTodayDateKey();
-              const balance = rangeEndsToday && registerLines.length > 0
-                ? registerTotal
-                : cashStatus.formulaBalance;
+              const balance = cashStatusDisplayedBalance({
+                formulaBalance: cashStatus.formulaBalance,
+                registerTotal,
+                balanceFromRegisters: cashStatusQuery.balanceFromRegisters && registerLines.length > 0,
+              });
               return (
                 <div className="space-y-4">
                   <div className="bg-white rounded-lg border p-4">
                     <div className="flex flex-row flex-wrap items-center gap-3 sm:gap-4 min-w-0">
                       <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
                       <ReportDateRangePresets
-                        value={dailyReportDateRange}
-                        onChange={setDailyReportDateRange}
+                        value={cashStatusDate}
+                        onChange={setCashStatusDate}
+                        buildRange={(preset, monthOffset, from, to) => buildCashStatusRange(preset, monthOffset, from, to)}
+                        allowEmpty
+                        alwaysShowDates
                         tm={tm}
                         min={reportDateInputMin}
                         max={reportDateInputMax}

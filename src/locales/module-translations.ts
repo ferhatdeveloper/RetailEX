@@ -12110,6 +12110,18 @@ export const excelModuleTranslations = {
     ar: 'النقد الخارج في الفترة المحددة',
     ku: 'نەقدی دەرچوو لە ماوەی هەڵبژێردراو',
   },
+  cashStatusTotalInYearHint: {
+    tr: 'Yılbaşından bugüne kasaya giren',
+    en: 'Cash received from the start of the year through today',
+    ar: 'النقد الداخل من بداية السنة حتى اليوم',
+    ku: 'نەقدی هاتوو لە سەرەتای ساڵەوە تا ئەمڕۆ',
+  },
+  cashStatusTotalOutYearHint: {
+    tr: 'Yılbaşından bugüne kasadan çıkan',
+    en: 'Cash paid out from the start of the year through today',
+    ar: 'النقد الخارج من بداية السنة حتى اليوم',
+    ku: 'نەقدی دەرچوو لە سەرەتای ساڵەوە تا ئەمڕۆ',
+  },
   cashStatusBalanceTodayHint: {
     tr: 'Güncel kasa bakiyesi',
     en: 'Current cash balance',
