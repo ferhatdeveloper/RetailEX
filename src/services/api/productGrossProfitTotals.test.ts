@@ -49,8 +49,8 @@ describe('aggregateProductGrossProfitTotals (Dashboard KPI)', () => {
     expect(t.ciro).toBe(2600);
     expect(t.maliyet).toBe(1200);
     expect(t.brutKar).toBe(1400);
-    // (1400 / 2600) * 100
-    expect(t.marjPct).toBeCloseTo(53.846, 2);
+    // (1400 / 2600) × 100 = 53,846… → iki ondalık 53,85
+    expect(t.marjPct).toBe(53.85);
     expect(t.productCount).toBe(2);
     expect(t.profitableProducts).toBe(2);
     expect(t.lossProducts).toBe(0);

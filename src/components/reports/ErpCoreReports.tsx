@@ -9,6 +9,10 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useRegisterDatagridRefresh } from '../../hooks/useRegisterDatagridRefresh';
 import { formatNumber } from '../../utils/formatNumber';
+import {
+  formatProductGrossProfitMarginPct,
+  productGrossProfitMarginPctFromRows,
+} from '../../utils/productGrossProfitMargin';
 import { looksLikeUuid } from '../../utils/pgUuid';
 import { getGlobalCurrency, getFirmLedgerCurrency, formatLedgerAmount, getCurrencyDecimalPlaces } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
@@ -1341,7 +1345,14 @@ export function ProductGrossProfitReport() {
         type: 'number',
         align: 'right',
         size: 90,
-        cell: (row) => `${formatNumber(row.marginPct, 1, false)}%`,
+        footerSum: true,
+        footerFormat: (_sum, dataRows) => {
+          if (!dataRows.length) return '';
+          return `${formatProductGrossProfitMarginPct(
+            productGrossProfitMarginPctFromRows(dataRows),
+          )}%`;
+        },
+        cell: (row) => `${formatProductGrossProfitMarginPct(row.marginPct)}%`,
       },
     );
     return cols;
@@ -1367,7 +1378,7 @@ export function ProductGrossProfitReport() {
               String(r.revenue),
               String(r.cost),
               String(r.grossProfit),
-              String(r.marginPct.toFixed(1)),
+              String(r.marginPct.toFixed(2)),
             ];
           }),
         )

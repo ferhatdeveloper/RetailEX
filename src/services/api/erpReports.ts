@@ -67,6 +67,7 @@ import {
   SQL_PRODUCT_CARD_UNIT_COST,
 } from '../../utils/productCardUnitCost';
 import { lookupWeightedAvgUnitCost } from '../weightedAverageUnitCost';
+import { productGrossProfitMarginPct } from '../../utils/productGrossProfitMargin';
 import { inferQtyFromRevenue } from '../../utils/lineGrossProfit';
 import { appointmentDepositRef, foldDepositLinesByInvoice, foldSaleItemsWithDeposits, parseFicheDepositList, type FicheDepositRef } from '../../utils/beautyDepositAllocation';
 
@@ -258,7 +259,7 @@ async function applyWeightedAvgCostToGrossProfit(
         ...r,
         cost,
         grossProfit,
-        marginPct: Math.abs(r.revenue) > 0.009 ? (grossProfit / r.revenue) * 100 : 0,
+        marginPct: productGrossProfitMarginPct(r.revenue, grossProfit),
       };
     });
   } catch (e) {
@@ -333,7 +334,7 @@ function mergeProductGrossProfitRows(rows: ProductGrossProfitRow[]): ProductGros
   }
   return Array.from(map.values()).map((r) => ({
     ...r,
-    marginPct: Math.abs(r.revenue) > 0.009 ? (r.grossProfit / r.revenue) * 100 : 0,
+    marginPct: productGrossProfitMarginPct(r.revenue, r.grossProfit),
   }));
 }
 
@@ -342,7 +343,7 @@ function mergeProductGrossProfitRows(rows: ProductGrossProfitRow[]): ProductGros
  *   Ciro    = Σ revenue (işaretli; satış +, iade −)
  *   Maliyet = Σ cost     (işaretli; WAC × qty)
  *   Brüt Kâr = Ciro − Maliyet
- *   Marj %   = Ciro ≠ 0 ise (Brüt Kâr / Ciro) × 100, yoksa 0
+ *   Marj %   = Ciro ≠ 0 ise (Brüt Kâr / Ciro) × 100, iki ondalık; yoksa 0
  *
  * Dashboard ve Ürün Brüt Kârı raporu **aynı** satırları topladığı için
  * toplam Ciro/Maliyet/Brüt Kâr/Marj % birebir eşleşir.
@@ -378,7 +379,7 @@ export function aggregateProductGrossProfitTotals(rows: ProductGrossProfitRow[])
       topProduct = code && code !== '—' ? `${code} - ${name}` : name || null;
     }
   }
-  const marjPct = Math.abs(ciro) > 0.009 ? (brutKar / ciro) * 100 : 0;
+  const marjPct = productGrossProfitMarginPct(ciro, brutKar);
   return {
     ciro,
     maliyet,
@@ -2185,7 +2186,7 @@ export const erpReportsAPI = {
         Array.from(map.values())
           .map((r) => ({
             ...r,
-            marginPct: Math.abs(r.revenue) > 0.009 ? (r.grossProfit / r.revenue) * 100 : 0,
+            marginPct: productGrossProfitMarginPct(r.revenue, r.grossProfit),
           }))
           .sort((a, b) => b.grossProfit - a.grossProfit)
           .slice(0, ROW_LIMIT),
@@ -2292,7 +2293,7 @@ export const erpReportsAPI = {
           return {
             ...r,
             grossProfit,
-            marginPct: Math.abs(r.revenue) > 0.009 ? (grossProfit / r.revenue) * 100 : 0,
+            marginPct: productGrossProfitMarginPct(r.revenue, grossProfit),
           };
         }),
       ),
@@ -2306,7 +2307,7 @@ export const erpReportsAPI = {
    *   Ciro    = Σ (satış tutarı) − Σ (iade tutarı)  (işaretli)
    *   Maliyet = Σ (envanter birim alış × satılan miktar)  (işaretli; hizmet formülü ayrı)
    *   Brüt Kâr = Ciro − Maliyet
-   *   Marj %   = (Brüt Kâr / Ciro) × 100
+   *   Marj %   = (Brüt Kâr / Ciro) × 100, iki ondalık; ciro 0 ise 0
    *
    * Ürün Brüt Kârı raporundaki `getProductGrossProfit` envanter birim alışını uygular;
    * bu yardımcı onun satırlarını toplayıp özet döner — tek formül, tek SQL zinciri.
