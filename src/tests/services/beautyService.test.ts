@@ -879,3 +879,121 @@ describe('beautyService — in_progress randevu tamamlama akışı', () => {
         });
     });
 });
+
+describe('beautyService.getCommissionReport — prim raporu', () => {
+    const movement = (table: string, schema: string) => `${schema}.rex_007_02_${table}`;
+
+    beforeEach(() => {
+        queryMock.mockReset();
+        getMovementTableNameMock.mockImplementation(movement);
+        getCardTableNameMock.mockImplementation(
+            (table: string, schema = 'public') => `${schema}.rex_007_${table}`,
+        );
+    });
+
+    afterEach(() => {
+        getMovementTableNameMock.mockImplementation(
+            (table: string, schema: string) => `${schema}.rex_001_01_${table}`,
+        );
+        getCardTableNameMock.mockImplementation(
+            (table: string, schema = 'public') => `${schema}.${table}`,
+        );
+    });
+
+    it('geçersiz tarih aralığında sorgu atmadan boş döner', async () => {
+        const res = await beautyService.getCommissionReport('2026/10/01', '2026-10-24', {
+            includeDeposit: true,
+        });
+        expect(queryMock).not.toHaveBeenCalled();
+        expect(res.rows).toEqual([]);
+        expect(res.history_rows).toEqual([]);
+        expect(res.totals.total_revenue).toBe(0);
+        expect(res.totals.total_commission).toBe(0);
+    });
+
+    it('randevu peşinatını specialist_id ve firma dönem tablosundan okur; primi ciroya eklemez', async () => {
+        queryMock.mockImplementation(async (sql: string) => {
+            const compact = String(sql).replace(/\s+/g, ' ');
+            if (compact.includes('AS service_revenue')) {
+                return ok([
+                    {
+                        specialist_id: 'spc-1',
+                        name: 'Zahra',
+                        service_revenue: 110000,
+                        service_commission: 5000,
+                        product_revenue: 10000,
+                        product_commission: 0,
+                        total_revenue: 120000,
+                        total_commission: 5000,
+                        total_transactions: 2,
+                        total_deposit: 20000,
+                        total_outstanding: 90000,
+                    },
+                ]);
+            }
+            if (compact.includes('AS date_ymd')) {
+                return ok([
+                    {
+                        date_ymd: '2026-10-24',
+                        specialist_id: 'spc-1',
+                        name: 'Zahra',
+                        service_commission: 5000,
+                        product_commission: 0,
+                        total_commission: 5000,
+                    },
+                ]);
+            }
+            return ok([]);
+        });
+
+        const res = await beautyService.getCommissionReport('2026-10-01', '2026-10-24', {
+            includeDeposit: true,
+        });
+
+        const staffSql = String(queryMock.mock.calls[0][0]);
+        const compact = staffSql.replace(/\s+/g, ' ');
+        expect(compact).toContain('FROM beauty.rex_007_02_beauty_appointments a');
+        expect(compact).toContain('a.specialist_id AS staff_id');
+        expect(compact).toContain('WHERE a.specialist_id IS NOT NULL');
+        expect(compact).toContain('GROUP BY a.specialist_id');
+        expect(compact).not.toMatch(/\ba\.staff_id\b/);
+        expect(compact).not.toContain('beauty.rex_001_01_beauty_appointments');
+        expect(compact).toContain(
+            "COALESCE(SUM(CASE WHEN si.item_type = 'service' THEN si.total ELSE 0 END), 0)::float AS service_revenue",
+        );
+        expect(compact).toContain(
+            "COALESCE(SUM(CASE WHEN si.item_type = 'service' THEN si.commission_amount ELSE 0 END), 0)::float AS service_commission",
+        );
+        expect(compact).not.toContain('si.total + si.commission_amount');
+        expect(compact).not.toContain('si.total + a.deposit_amount');
+
+        expect(res.rows).toHaveLength(1);
+        expect(res.rows[0].service_revenue).toBe(110000);
+        expect(res.rows[0].product_revenue).toBe(10000);
+        expect(res.rows[0].total_revenue).toBe(120000);
+        expect(res.rows[0].total_commission).toBe(5000);
+        expect(res.rows[0].total_deposit).toBe(20000);
+        expect(res.totals.service_revenue).toBe(110000);
+        expect(res.totals.product_revenue).toBe(10000);
+        expect(res.totals.total_revenue).toBe(120000);
+        expect(res.totals.total_commission).toBe(5000);
+        expect(res.totals.total_revenue).toBe(
+            res.totals.service_revenue + res.totals.product_revenue,
+        );
+        expect(res.totals.total_revenue).not.toBe(
+            res.totals.service_revenue + res.totals.product_revenue + res.totals.total_commission,
+        );
+        expect(res.history_rows[0].total_commission).toBe(5000);
+    });
+
+    it('peşinat kapalıyken randevu tablosuna gitmez ve depozito sıfır kalır', async () => {
+        queryMock.mockImplementation(async () => ok([]));
+        const res = await beautyService.getCommissionReport('2026-10-01', '2026-10-24');
+        const staffSql = String(queryMock.mock.calls[0][0]);
+        expect(staffSql).not.toContain('beauty_appointments');
+        expect(staffSql).not.toContain('a.specialist_id');
+        expect(res.totals.total_deposit).toBe(0);
+        expect(res.totals.total_outstanding).toBe(0);
+        expect(res.rows).toEqual([]);
+    });
+});
