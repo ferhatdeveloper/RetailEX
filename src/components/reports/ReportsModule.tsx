@@ -127,6 +127,7 @@ import {
   cashRefundsFromSales,
   cashRegisterDistributionLines,
   cashRegisterDrawerLines,
+  cashRegisterExpenseGaps,
   cashRegisterStatusFromLedger,
   cashStatusBlockTotals,
   foldReservationIntoCashStatus,
@@ -1122,6 +1123,34 @@ function filterReportMenuBySearch(
       return label.includes(q) ? group : null;
     })
     .filter(Boolean);
+}
+
+function fillReportTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_match, key: string) => vars[key] ?? '');
+}
+
+/** Gider kolonuna yazılmayan kasa çıkışının adı. Kod, kaydın gerçek tipidir. */
+function cashDrawerOutflowLabel(code: string, tm: (key: string) => string): string {
+  const keyByCode: Record<string, string> = {
+    BANKA_YATIRILAN: 'bankDepositDesc',
+    VIRMAN: 'cashStatusOutflowVirman',
+    VERILEN_SERBEST_MESLEK: 'cashStatusOutflowProfession',
+    MUSTAHSIL_MAKBUZU: 'cashStatusOutflowProducer',
+    ACILIS_ALACAK: 'openingCredit',
+    KUR_FARKI_ALACAK: 'cashStatusOutflowFx',
+    ORTAK_PARA_CIKIS: 'cashStatusOutflowPartnerCash',
+    ORTAK_SERMAYE_CIKIS: 'cashStatusOutflowPartnerCapital',
+    ALIS_FATURASI: 'cashPurchaseInvoice',
+    CH_ODEME: 'chPayment',
+    KASA_CIKIS: 'cashOut',
+    GIDER_PUSULASI: 'expenseVoucher',
+    MAAS_ODEME: 'cashStatusOutflowSalary',
+    AVANS_ODEME: 'cashStatusOutflowAdvance',
+  };
+  const key = keyByCode[code];
+  if (!key) return code;
+  const text = tm(key);
+  return text && text !== key ? text : code;
 }
 
 export function ReportsModule({
@@ -4444,6 +4473,13 @@ export function ReportsModule({
       .map((t) => ({ ...t, label: tm(t.nameKey) }));
     const serviceCash = dist.byCode.NAKIT?.amount ?? 0;
     const reservationDeposit = dist.byCode.REZERVASYON_AVANS?.amount ?? 0;
+    // Gider: gider yönetimi (klinik) + kasa çıkış fişi. Bağlı pusula
+    // mergeExpensesWithCashOuts ile bir kez sayılır. Kayıt yoksa 0.
+    // Nakit tahsilattan bir kez düşülür. Kasa bakiyesi bu çıkışı zaten
+    // netlediği için genel toplam bakiyeden gideri ikinci kez düşmez.
+    const cashExpenseRows = dailyExpenseRowsForReport.filter(
+      (row) => row.isCash && Math.abs(Number(row.amount) || 0) > 0.004,
+    );
     // Rezervasyon nakdi çekmecedeki nakittir. Nakit satırına bir kez eklenir.
     // Ayrı satır bilgi olarak kalır; listedTotal ikinci kez saymaz.
     const folded = foldReservationIntoCashStatus({
@@ -4453,18 +4489,23 @@ export function ReportsModule({
       transferAmount: dist.byCode.HAVAL?.amount ?? 0,
       reservationCash: reservationDeposit,
       cashOut: 0,
+      expense: cashExpensesForReport,
+      expenseCount: cashExpenseRows.length,
       paymentTypes: visible,
     });
     const types = folded.paymentTypes.map((row) => {
       const source = visible.find((item) => item.code === row.code);
+      const label = row.deduction
+        ? (tm('cashStatusExpense') || 'Gider')
+        : (source?.label || row.label || row.code);
       return {
         ...(source || {}),
         ...row,
-        label: source?.label || row.label || row.code,
+        label,
       };
     });
     const chartData = types
-      .filter((row) => !row.informational && Math.abs(Number(row.amount) || 0) > 1e-9)
+      .filter((row) => !row.informational && !row.deduction && Math.abs(Number(row.amount) || 0) > 1e-9)
       .map((row) => ({
         name: row.label,
         value: row.amount,
@@ -4480,6 +4521,8 @@ export function ReportsModule({
       transfer,
       types,
       listedTotal: folded.grandTotal,
+      collectionTotal: folded.collectionTotal,
+      expense: folded.expense,
       serviceCash,
       reservationDeposit,
     };
@@ -4805,7 +4848,8 @@ export function ReportsModule({
      * Rezervasyon nakdi ise tahsil edilmiştir ve todayCash içindedir.
      */
     const acikCariAmount = dist.byCode.ACIK_CARI?.amount ?? 0;
-    const todayTotal = (Number(dist.listedTotal) || 0) - acikCariAmount;
+    const collectionBeforeExpense = Number(dist.collectionTotal ?? dist.listedTotal) || 0;
+    const todayTotal = collectionBeforeExpense - acikCariAmount;
 
     const todayKey = localTodayDateKey();
     const openingCash =
@@ -4865,6 +4909,7 @@ export function ReportsModule({
     distribution: tm('paymentDistribution'),
     grandTotal: tm('rptGrandTotal'),
     grandHint: tm('cashStatusGrandTotalHint'),
+    expenseHint: tm('cashStatusExpenseHint'),
     infoBadge: tm('cashStatusInfoBadge'),
     registersTitle: tm('cashStatusTabRegisters'),
     registerName: tm('rptCashRegisterName'),
@@ -4894,6 +4939,29 @@ export function ReportsModule({
 
   const renderCashRegisterPanels = () => {
     const rows = getCashRegisterStatusRows();
+    const moneyText = (amount: number) => `${formatNumber(amount, 2, false)} ${reportCurrency}`;
+    const gapHint = cashRegisterExpenseGaps(rows).map((gap) => {
+      const detail = gap.otherCashOuts
+        .map((slice) => `${cashDrawerOutflowLabel(slice.code, tm)} ${moneyText(slice.amount)}`)
+        .join(', ');
+      const parts = [
+        fillReportTemplate(tm('cashStatusDrawerGapLead'), {
+          register: gap.label,
+          gap: moneyText(gap.gap),
+        }),
+      ];
+      if (detail) {
+        parts.push(fillReportTemplate(tm('cashStatusDrawerGapOther'), { detail }));
+      }
+      if (Math.abs(gap.residual) > 0.004) {
+        parts.push(fillReportTemplate(tm('cashStatusDrawerGapResidual'), {
+          amount: moneyText(gap.residual),
+        }));
+      }
+      parts.push(tm('cashStatusDrawerGapKept'));
+      return parts.join(' ');
+    }).join(' ');
+    const hint = [tm('cashStatusDrawerHint'), gapHint].filter((part) => String(part || '').trim()).join(' ');
     return (
       <CashRegisterDrawerGrid
         rows={cashRegisterDrawerLines(rows)}
@@ -4904,10 +4972,11 @@ export function ReportsModule({
           card: tm('paymentCreditCard'),
           openAccount: tm('paymentOpenAccount'),
           transfer: tm('paymentTransfer'),
+          expense: tm('cashStatusExpense'),
           reservation: tm('paymentReservationDeposit'),
           balance: tm('cashStatusRegisterBalance'),
           footer: tm('cashStatusRegistersTotal'),
-          hint: tm('cashStatusDrawerHint'),
+          hint,
           empty: tm('cashStatusRegistersEmpty'),
         }}
       />

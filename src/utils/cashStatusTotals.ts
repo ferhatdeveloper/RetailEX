@@ -6,6 +6,10 @@
  * satırı bilgi amaçlıdır; genel toplama ikinci kez eklenmez.
  * Ciroya eklenmez (hizmet 50.000 ise +15.000 ciro yazılmaz).
  *
+ * Genel toplam = nakit (rezervasyon dahil) + kart + açık cari + havale − gider.
+ * Gider, klinik gideri ve kasa çıkış fişidir; nakit tahsilattan bir kez düşülür.
+ * Kasa bakiyesi bu çıkıştan sonra net ise gider ikinci kez düşülmez.
+ *
  * Örnek: hizmet nakdi 35.000 + rezervasyon nakdi 15.000
  *   günlük nakit 50.000, kapanış 50.000, genel toplam 50.000 (65.000 değil).
  */
@@ -15,10 +19,12 @@ import { computeCashBalanceForRegister } from './cashBalance';
 import { isReturnSale } from './posZReport';
 import { dbPaymentMethodToFormCode, type PaymentFormCode } from './paymentMethodUtils';
 import { isDepositSale } from './reportDepositFilter';
+import { PERIOD_SUMMARY_CASH_OUT_TYPES } from './reportUnifiedExpenses';
 import { saleCollectedSplit, type SalePaymentRow } from './saleCollectedAmounts';
 
 const CASH_CODE = 'NAKIT';
 const RESERVATION_CODE = 'REZERVASYON_AVANS';
+const EXPENSE_CODE = 'GIDER';
 const SKIP_DISTRIBUTION = new Set<PaymentFormCode>(['CEK', 'SENET']);
 
 const CASH_OUT_TYPES = new Set([
@@ -55,6 +61,8 @@ export interface CashStatusPaymentLine {
   percentage?: number;
   /** Bilgi satırı — genel toplama katılmaz (rezervasyon zaten nakittedir). */
   informational?: boolean;
+  /** Gider satırı. Tahsilattan bir kez düşülür; pasta dilimi değildir. */
+  deduction?: boolean;
   label?: string;
   color?: string;
   nameKey?: string;
@@ -68,8 +76,15 @@ export interface CashStatusFoldInput {
   transferAmount?: number;
   /** Henüz hizmet verilmemiş rezervasyon peşinatı (nakit). */
   reservationCash: number;
-  /** Nakit çıkışlar (gider, kasa çıkış). */
+  /** Nakit çıkışlar (kapanış bakiyesi). Genel toplam bunu ayrıca düşmez. */
   cashOut: number;
+  /**
+   * Klinik gideri + kasa çıkış fişi. Nakit tahsilattan bir kez düşülür.
+   * Kayıt yoksa 0. Kasa bakiyesi zaten net ise bu tutar bakiyeden tekrar düşülmez.
+   */
+  expense?: number;
+  /** Gider satırı adedi. Tutar 0 olsa da satır gösterilir. */
+  expenseCount?: number;
   /**
    * Dağılım satırları. NAKIT satırı hizmet nakdidir (rezervasyon hariç).
    * REZERVASYON_AVANS satırı bilgi olarak kalır.
@@ -81,46 +96,111 @@ export interface CashStatusFoldResult {
   todayCash: number;
   closingCash: number;
   reservationDeposit: number;
+  expense: number;
   paymentTypes: CashStatusPaymentLine[];
-  /** NAKIT (rezervasyon dahil) + kart + açık cari + havale. Rezervasyon satırı yok. */
+  /** Gider düşülmeden önceki tahsilat. Pasta paydası. Rezervasyon yok. */
+  collectionTotal: number;
+  /** NAKIT (rezervasyon dahil) + kart + açık cari + havale − gider. Rezervasyon satırı yok. */
   grandTotal: number;
+}
+
+export interface ReportCollectionParts {
+  /** Nakit tahsilat. Rezervasyon bunun içindedir. */
+  cash?: number;
+  card?: number;
+  openAccount?: number;
+  transfer?: number;
+  /** Bilgi. Toplama yazılmaz. */
+  reservation?: number;
+  /** Klinik gideri ve kasa çıkış fişi. Bir kez düşülür. */
+  expense?: number;
+}
+
+/**
+ * Ödeme dağılımı genel toplamı.
+ * Nakit (rezervasyon dahil) + kart + açık cari + havale − gider.
+ * Rezervasyon satırı toplama eklenmez.
+ */
+export function paymentReportGrandTotal(input: ReportCollectionParts): number {
+  const expense = Math.max(0, num(input.expense));
+  return round2(
+    num(input.cash) + num(input.card) + num(input.openAccount) + num(input.transfer) - expense,
+  );
+}
+
+export interface RegisterNetGrandParts {
+  /** Dönem sonu kasa bakiyesi. Gider düşülmüş net. */
+  registerNet?: number;
+  card?: number;
+  openAccount?: number;
+  transfer?: number;
+  /** Bilgi. Toplama yazılmaz. */
+  reservation?: number;
+  /**
+   * Kasa bakiyesinde zaten düşülmüş gider.
+   * Bu fonksiyon tutarı ikinci kez düşmez. Brüt formülle aynı sonuç:
+   * registerNet + açık cari = (registerNet + gider) + açık cari − gider.
+   */
+  expense?: number;
+}
+
+/**
+ * Kasa durumu genel toplamı, bakiye gider sonrası net ise.
+ * Rezervasyon eklenmez. Gider ikinci kez düşülmez.
+ */
+export function cashRegisterNetGrandTotal(input: RegisterNetGrandParts): number {
+  return round2(
+    num(input.registerNet) + num(input.card) + num(input.openAccount) + num(input.transfer),
+  );
+}
+
+function lineAmount(rows: CashStatusPaymentLine[], code: string): number {
+  const row = rows.find((item) => item.code === code);
+  if (!row || row.informational || row.deduction) return 0;
+  return num(row.amount);
 }
 
 /**
  * Rezervasyon nakdini günlük nakde ve kapanışa ekler.
  * Dağılımdaki nakit satırı aynı tutarı alır. Rezervasyon satırı
  * informational kalır ve grandTotal dışında tutulur.
+ * Gider satırı tahsilattan bir kez düşülür; pasta paydasına girmez.
  */
 export function foldReservationIntoCashStatus(input: CashStatusFoldInput): CashStatusFoldResult {
   const opening = num(input.openingCash);
   const serviceCash = num(input.serviceCash);
   const reservation = Math.max(0, num(input.reservationCash));
   const cashOut = Math.max(0, num(input.cashOut));
+  const expense = Math.max(0, num(input.expense));
   const todayCash = round2(serviceCash + reservation);
   const closingCash = round2(opening + todayCash - cashOut);
 
   let sawCash = false;
-  const paymentTypes: CashStatusPaymentLine[] = input.paymentTypes.map((row) => {
-    if (row.code === CASH_CODE) {
-      sawCash = true;
-      return {
-        ...row,
-        amount: round2(num(row.amount) + reservation),
-        informational: false,
-      };
-    }
-    if (row.code === RESERVATION_CODE) {
-      return {
-        ...row,
-        amount: round2(num(row.amount)),
-        informational: true,
-      };
-    }
-    if (SKIP_DISTRIBUTION.has(row.code as PaymentFormCode)) {
-      return { ...row, informational: true };
-    }
-    return { ...row, informational: row.informational === true };
-  });
+  const paymentTypes: CashStatusPaymentLine[] = input.paymentTypes
+    .filter((row) => row.code !== EXPENSE_CODE)
+    .map((row) => {
+      if (row.code === CASH_CODE) {
+        sawCash = true;
+        return {
+          ...row,
+          amount: round2(num(row.amount) + reservation),
+          informational: false,
+          deduction: false,
+        };
+      }
+      if (row.code === RESERVATION_CODE) {
+        return {
+          ...row,
+          amount: round2(num(row.amount)),
+          informational: true,
+          deduction: false,
+        };
+      }
+      if (SKIP_DISTRIBUTION.has(row.code as PaymentFormCode)) {
+        return { ...row, informational: true, deduction: false };
+      }
+      return { ...row, informational: row.informational === true, deduction: row.deduction === true };
+    });
 
   if (!sawCash && reservation > 0.004) {
     paymentTypes.unshift({
@@ -130,25 +210,42 @@ export function foldReservationIntoCashStatus(input: CashStatusFoldInput): CashS
     });
   }
 
-  const grandTotal = round2(
-    paymentTypes.reduce((sum, row) => {
-      if (row.informational) return sum;
-      if (SKIP_DISTRIBUTION.has(row.code as PaymentFormCode)) return sum;
-      return sum + num(row.amount);
-    }, 0),
-  );
+  const parts: ReportCollectionParts = {
+    cash: lineAmount(paymentTypes, CASH_CODE),
+    card: lineAmount(paymentTypes, 'KREDIKARTI'),
+    openAccount: lineAmount(paymentTypes, 'ACIK_CARI'),
+    transfer: lineAmount(paymentTypes, 'HAVAL'),
+    reservation,
+    expense,
+  };
+  const collectionTotal = paymentReportGrandTotal({ ...parts, expense: 0 });
+  const grandTotal = paymentReportGrandTotal(parts);
+
+  paymentTypes.push({
+    code: EXPENSE_CODE,
+    amount: expense,
+    count: Math.max(0, Math.round(num(input.expenseCount))),
+    informational: false,
+    deduction: true,
+    nameKey: 'cashStatusExpense',
+    color: '#e11d48',
+  });
 
   const withPct = paymentTypes.map((row) => ({
     ...row,
     percentage:
-      row.informational || grandTotal === 0 ? 0 : (num(row.amount) / grandTotal) * 100,
+      row.informational || row.deduction || collectionTotal === 0
+        ? 0
+        : (num(row.amount) / collectionTotal) * 100,
   }));
 
   return {
     todayCash,
     closingCash,
     reservationDeposit: reservation,
+    expense,
     paymentTypes: withPct,
+    collectionTotal,
     grandTotal,
   };
 }
@@ -176,6 +273,12 @@ export interface CashRegisterSeed {
   openingCash?: number;
 }
 
+/** Gider sayılmayan kasa çıkışı. Dipnot bu kodu ve tutarı olduğu gibi yazar. */
+export interface CashRegisterCashOutSlice {
+  code: string;
+  amount: number;
+}
+
 export interface CashRegisterStatusRow {
   id: string;
   code: string;
@@ -190,6 +293,16 @@ export interface CashRegisterStatusRow {
   payOpen: number;
   payTransfer: number;
   grandTotal: number;
+  /**
+   * Dönem içi nakit gider: gider pusulası, kasa çıkış, maaş, avans, cari ödeme.
+   * Satış iadesi burada değildir; nakit kolonundan bir kez düşülür.
+   * Kayıt yoksa 0.
+   */
+  expense: number;
+  /** Nakit gider tipi olmayan çıkış (banka, virman, kart gideri). Gider kolonuna yazılmaz. */
+  otherCashOuts: CashRegisterCashOutSlice[];
+  /** Çek ve senet. Kolon değildir; dipnot köprüsünde kalır. */
+  skipNet: number;
 }
 
 interface Bucket {
@@ -260,6 +373,9 @@ function bucketToRow(
     payOpen,
     payTransfer,
     grandTotal: round2(payCash + payCard + payOpen + payTransfer),
+    expense: 0,
+    otherCashOuts: [],
+    skipNet: 0,
   };
 }
 
@@ -634,6 +750,27 @@ function refundLineBlob(line: CashStatusRegisterLine): string {
     .toLocaleLowerCase('tr-TR');
 }
 
+/** Satış iadesi fişi defterde varsa gider değildir; nakit kolonundan bir kez düşülür. */
+function matchesListedRefund(
+  line: CashStatusRegisterLine,
+  refunds: readonly CashRegisterRefund[],
+): boolean {
+  if (!(signedLedgerAmount(line) < -0.004)) return false;
+  const blob = refundLineBlob(line);
+  if (!blob) return false;
+  return refunds.some((refund) => {
+    const fiche = String(refund.ficheNo || '').trim().toLocaleLowerCase('tr-TR');
+    return !!fiche && blob.includes(fiche);
+  });
+}
+
+function cashOutSlices(amounts: ReadonlyMap<string, number>): CashRegisterCashOutSlice[] {
+  return Array.from(amounts.entries())
+    .map(([code, amount]) => ({ code, amount: round2(amount) }))
+    .filter((row) => row.amount > 0.004)
+    .sort((a, b) => a.code.localeCompare(b.code, 'tr'));
+}
+
 /** Eksi kasa satırı aynı fişi taşıyorsa iade bakiyeye zaten yazılmıştır. */
 function refundAlreadyPosted(ficheNo: string, lines: readonly CashStatusRegisterLine[]): boolean {
   const fiche = String(ficheNo || '').trim().toLocaleLowerCase('tr-TR');
@@ -789,8 +926,12 @@ export function cashRefundsFromSales(
  * nakde hem karta yazılmaz. Kapanış, aynı formülle kasa bakiyesidir
  * (KALAN). Çıkış bakiyeden düşer. Nakit satış iadesi nakit kolonundan ve
  * kalandan bir kez düşülür; peşinat kasa girişidir, iade sayılmaz.
- * Rezervasyon bilgi tutarı genel toplama ikinci kez eklenmez. Çek ve senet
- * dağılım satırı değildir.
+ * Gider kolonu kasa kartındaki gider fişidir (gider pusulası, kasa çıkış,
+ * maaş, avans, cari ödeme). Nakitten bir kez düşülür. Kalan bu çıkışı
+ * zaten netliyorsa gider ikinci kez düşülmez. Kayıt yoksa gider 0 kalır
+ * ve kalan değiştirilmez. Rezervasyon nakdin içindedir; nakitten ve
+ * kalandan tekrar düşülmez, toplama eklenmez. Çek ve senet dağılım
+ * satırı değildir.
  * Kasaya bağlanmayan satır ayrı kalır; şirket satış özeti kasaya yapıştırılmaz.
  */
 export function cashRegisterStatusFromLedger(args: {
@@ -842,6 +983,10 @@ export function cashRegisterStatusFromLedger(args: {
     let transferIn = 0;
     let openIn = 0;
     let reservationCash = 0;
+    let expense = 0;
+    let skipNet = 0;
+    const otherOut = new Map<string, number>();
+    const refunds = args.cashRefunds || [];
 
     for (const line of bucket.lines) {
       const day = ledgerDay(line.islem_tarihi);
@@ -852,9 +997,24 @@ export function cashRegisterStatusFromLedger(args: {
         continue;
       }
       const signed = signedLedgerAmount(line);
-      if (!(signed > 0.004)) continue;
       const kind = drawerKind(line);
-      if (kind === 'skip') continue;
+      if (kind === 'skip') {
+        skipNet = round2(skipNet + signed);
+        continue;
+      }
+      if (signed < -0.004) {
+        if (!matchesListedRefund(line, refunds)) {
+          const tip = String(line.islem_tipi || '').trim().toUpperCase() || 'DIGER';
+          const abs = round2(-signed);
+          if (kind === 'cash' && PERIOD_SUMMARY_CASH_OUT_TYPES.has(tip)) {
+            expense = round2(expense + abs);
+          } else {
+            otherOut.set(tip, round2((otherOut.get(tip) || 0) + abs));
+          }
+        }
+        continue;
+      }
+      if (!(signed > 0.004)) continue;
       if (kind === 'card') {
         cardIn = round2(cardIn + signed);
         continue;
@@ -874,8 +1034,10 @@ export function cashRegisterStatusFromLedger(args: {
     periodLines.set(id, through);
     const openingCash = balanceOf(id, before);
     const closingCash = balanceOf(id, through);
+    const otherCashOuts = cashOutSlices(otherOut);
+    const otherTotal = round2(otherCashOuts.reduce((sum, slice) => sum + slice.amount, 0));
     const moved = Math.abs(openingCash) + Math.abs(closingCash) + cashIn + cardIn
-      + transferIn + openIn + reservationCash > 0.004;
+      + transferIn + openIn + reservationCash + expense + otherTotal + Math.abs(skipNet) > 0.004;
     if (id === CASH_REGISTER_UNASSIGNED_ID && !moved) continue;
     if (!known.has(id) && id !== CASH_REGISTER_UNASSIGNED_ID && !moved) continue;
 
@@ -893,6 +1055,9 @@ export function cashRegisterStatusFromLedger(args: {
       payOpen: openIn,
       payTransfer: transferIn,
       grandTotal: round2(cashIn + cardIn + openIn + transferIn),
+      expense,
+      otherCashOuts,
+      skipNet,
     });
   }
 
@@ -959,30 +1124,119 @@ export interface CashRegisterDrawerLine {
   card: number;
   openAccount: number;
   transfer: number;
-  /** Bilgi — nakde dahildir, genel toplama eklenmez. */
+  /** Kasa kartındaki gider fişi. Nakitten bir kez düşülür. Kayıt yoksa 0. */
+  expense: number;
+  /** Bilgi — nakde dahildir, genel toplama ve kalana eklenmez. */
   reservation: number;
-  /** Kapanış / kalan. Dağılım listesindeki tutarla aynı bakiyedir. */
+  /** Kalan. Nakit − gider; bakiye zaten net ise gider ikinci kez düşülmez. */
   balance: number;
+}
+
+/**
+ * Kalan = nakit − gider.
+ * Rezervasyon parametresi nakdin içindedir; bu fonksiyonda düşülmez.
+ * Gider kaydı yoksa defter bakiyesi olduğu gibi döner.
+ * Defter bakiyesi gideri zaten netlediyse tutar ikinci kez düşülmez.
+ * Defter henüz brüt ise gider bir kez düşülür.
+ */
+export function cashRegisterRemaining(args: {
+  cash: number;
+  expense: number;
+  reservation?: number;
+  ledgerBalance: number;
+}): number {
+  const cash = round2(num(args.cash));
+  const expense = Math.max(0, round2(num(args.expense)));
+  const ledger = round2(num(args.ledgerBalance));
+  if (expense <= 0.004) return ledger;
+  const net = round2(cash - expense);
+  if (Math.abs(ledger - net) <= 0.004) return ledger;
+  if (Math.abs(ledger - cash) <= 0.004) return net;
+  return ledger;
+}
+
+export interface CashRegisterExpenseGap {
+  id: string;
+  label: string;
+  /** Nakit − gider − kalan. Rezervasyon bu farka girmez. */
+  gap: number;
+  otherCashOuts: CashRegisterCashOutSlice[];
+  /**
+   * Görünen kart / havale / açık cari, açılış, çek ve gider sayılmayan
+   * çıkış açıklandıktan sonra kalan fark. Uydurma gider değildir.
+   */
+  residual: number;
+}
+
+/**
+ * Nakit − gider kalanı tutmuyorsa gerçek fark.
+ * Açılış, kart, havale ve açık cari görünen kolonlarla açıklanıyorsa satır dönmez.
+ * Gider kaydı olmayan çıkış ve sınıflanamayan fark döner.
+ */
+export function cashRegisterExpenseGaps(rows: CashRegisterStatusRow[]): CashRegisterExpenseGap[] {
+  const gaps: CashRegisterExpenseGap[] = [];
+  for (const row of rows || []) {
+    const cash = round2(row.payCash);
+    const expense = Math.max(0, round2(row.expense));
+    const balance = cashRegisterRemaining({
+      cash,
+      expense,
+      reservation: row.reservationDeposit,
+      ledgerBalance: row.closingCash,
+    });
+    const gap = round2(cash - expense - balance);
+    if (Math.abs(gap) <= 0.004) continue;
+    const other = row.otherCashOuts || [];
+    const otherTotal = round2(other.reduce((sum, slice) => sum + num(slice.amount), 0));
+    const explained = round2(
+      otherTotal
+      - round2(row.openingCash)
+      - round2(row.payCard)
+      - round2(row.payTransfer)
+      - round2(row.payOpen)
+      - round2(row.skipNet),
+    );
+    const residual = round2(gap - explained);
+    if (otherTotal <= 0.004 && Math.abs(residual) <= 0.004) continue;
+    gaps.push({
+      id: row.id,
+      label: formatCashRegisterDistributionLabel(row.code, row.name),
+      gap,
+      otherCashOuts: other,
+      residual,
+    });
+  }
+  return gaps;
 }
 
 /**
  * Kasalar sekmesi — kasanın içindeki ödeme kırılımı.
  * Satış fişi özeti değil; `cashRegisterStatusFromLedger` çıktısı.
- * Çek ve senet kolon değildir.
+ * Çek ve senet kolon değildir. Gider kolonu kasa kartı fişidir.
  */
 export function cashRegisterDrawerLines(rows: CashRegisterStatusRow[]): CashRegisterDrawerLine[] {
-  return (rows || []).map((row) => ({
-    id: row.id,
-    code: row.code,
-    name: row.name,
-    label: formatCashRegisterDistributionLabel(row.code, row.name),
-    cash: round2(row.payCash),
-    card: round2(row.payCard),
-    openAccount: round2(row.payOpen),
-    transfer: round2(row.payTransfer),
-    reservation: round2(row.reservationDeposit),
-    balance: round2(row.closingCash),
-  }));
+  return (rows || []).map((row) => {
+    const cash = round2(row.payCash);
+    const expense = round2(row.expense);
+    return {
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      label: formatCashRegisterDistributionLabel(row.code, row.name),
+      cash,
+      card: round2(row.payCard),
+      openAccount: round2(row.payOpen),
+      transfer: round2(row.payTransfer),
+      expense,
+      reservation: round2(row.reservationDeposit),
+      balance: cashRegisterRemaining({
+        cash,
+        expense,
+        reservation: row.reservationDeposit,
+        ledgerBalance: row.closingCash,
+      }),
+    };
+  });
 }
 
 /**

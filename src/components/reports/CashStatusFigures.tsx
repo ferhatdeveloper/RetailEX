@@ -26,6 +26,7 @@ export interface CashStatusFigureLabels {
   distribution: string;
   grandTotal: string;
   grandHint: string;
+  expenseHint: string;
   infoBadge: string;
   registersTitle: string;
   registerName: string;
@@ -66,7 +67,8 @@ export function CashStatusFigures({
   /** Özet ekranında dağılımın yanında duran ek panel (kart türleri). */
   aside?: ReactNode;
 }) {
-  const money = (amount: number) => `${formatNumber(amount, 2, false)} ${currency}`;
+  const money = (amount: number, deduction?: boolean) =>
+    `${deduction && amount > 0.004 ? '− ' : ''}${formatNumber(amount, 2, false)} ${currency}`;
 
   return (
     <div className="space-y-4">
@@ -133,7 +135,12 @@ export function CashStatusFigures({
               <>
                 <span className="flex items-center gap-2 min-w-0">
                   <div className="w-3 h-3 rounded shrink-0" style={{ backgroundColor: pt.color || '#94a3b8' }} />
-                  <span className="truncate">{pt.label || pt.code}</span>
+                  <span className="min-w-0">
+                    <span className="truncate block">{pt.label || pt.code}</span>
+                    {pt.deduction ? (
+                      <span className="block text-[11px] text-rose-700">{labels.expenseHint}</span>
+                    ) : null}
+                  </span>
                   {pt.informational ? (
                     <span className="text-[10px] uppercase tracking-wide text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
                       {labels.infoBadge}
@@ -141,10 +148,20 @@ export function CashStatusFigures({
                   ) : null}
                 </span>
                 <span className="font-semibold tabular-nums shrink-0" style={{ color: pt.color || '#334155' }}>
-                  {money(pt.amount)}
+                  {money(pt.amount, pt.deduction)}
                 </span>
               </>
             );
+            if (pt.deduction) {
+              return (
+                <div
+                  key={pt.code}
+                  className="w-full flex items-center justify-between p-3 bg-rose-50 rounded-lg border border-dashed border-rose-200 text-left"
+                >
+                  {body}
+                </div>
+              );
+            }
             if (pt.informational || !onPaymentClick) {
               return (
                 <div
@@ -224,6 +241,7 @@ export interface CashRegisterDrawerLabels {
   card: string;
   openAccount: string;
   transfer: string;
+  expense: string;
   reservation: string;
   balance: string;
   footer: string;
@@ -286,6 +304,7 @@ export function CashRegisterDrawerGrid({
           amountCol('card', labels.card, true),
           amountCol('openAccount', labels.openAccount, true),
           amountCol('transfer', labels.transfer, true),
+          amountCol('expense', labels.expense, true),
           amountCol('reservation', labels.reservation, false),
           amountCol('balance', labels.balance, true),
         ]}

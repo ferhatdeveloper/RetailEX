@@ -11,11 +11,15 @@ import {
   cashRefundsFromSales,
   cashRegisterDistributionLines,
   cashRegisterDrawerLines,
+  cashRegisterExpenseGaps,
+  cashRegisterRemaining,
   cashRegisterStatusFromLedger,
+  cashRegisterNetGrandTotal,
   cashStatusBlockTotals,
   foldReservationIntoCashStatus,
   listCashRegisterStatus,
   mergeRegisterSeeds,
+  paymentReportGrandTotal,
   seedsFromCashStatusSales,
   seedsFromRegisterCashLines,
   sumCashRegisterDistribution,
@@ -112,6 +116,108 @@ describe('foldReservationIntoCashStatus', () => {
     });
     expect(folded.grandTotal).toBe(35000);
     expect(folded.paymentTypes.find((row) => row.code === 'CEK')?.informational).toBe(true);
+  });
+});
+
+describe('gider bir kez — nakit 465.000, açık cari 30.000', () => {
+  it('gider 50.000 → genel toplam 445.000; rezervasyon +30.000 eklenmez', () => {
+    const grand = paymentReportGrandTotal({
+      cash: 465_000,
+      card: 0,
+      openAccount: 30_000,
+      transfer: 0,
+      reservation: 30_000,
+      expense: 50_000,
+    });
+    expect(grand).toBe(445_000);
+    expect(grand).not.toBe(495_000);
+    expect(grand).not.toBe(465_000 + 30_000 + 30_000 - 50_000);
+  });
+
+  it('gider 0 ise genel toplam 495.000', () => {
+    expect(paymentReportGrandTotal({
+      cash: 465_000,
+      card: 0,
+      openAccount: 30_000,
+      transfer: 0,
+      reservation: 30_000,
+      expense: 0,
+    })).toBe(495_000);
+  });
+
+  it('kasa net 415.000 + açık cari 30.000, gider bakiyede düşmüş → 445.000, ikinci kez düşülmez', () => {
+    const fromRegister = cashRegisterNetGrandTotal({
+      registerNet: 415_000,
+      card: 0,
+      openAccount: 30_000,
+      transfer: 0,
+      reservation: 30_000,
+      expense: 50_000,
+    });
+    const fromGross = paymentReportGrandTotal({
+      cash: 415_000 + 50_000,
+      card: 0,
+      openAccount: 30_000,
+      transfer: 0,
+      reservation: 30_000,
+      expense: 50_000,
+    });
+    expect(fromRegister).toBe(445_000);
+    expect(fromRegister).toBe(fromGross);
+    expect(fromRegister).not.toBe(415_000 + 30_000 - 50_000);
+    expect(fromRegister).not.toBe(415_000 + 30_000 + 30_000);
+  });
+
+  it('fold rezervasyonu bilgi bırakır, gideri bir kez düşer, pastaya yazmaz', () => {
+    const folded = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash: 435_000,
+      reservationCash: 30_000,
+      cashOut: 0,
+      expense: 50_000,
+      expenseCount: 1,
+      paymentTypes: [
+        { code: 'NAKIT', amount: 435_000, count: 8 },
+        { code: 'KREDIKARTI', amount: 0, count: 0 },
+        { code: 'ACIK_CARI', amount: 30_000, count: 2 },
+        { code: 'HAVAL', amount: 0, count: 0 },
+        { code: 'REZERVASYON_AVANS', amount: 30_000, count: 1 },
+      ],
+    });
+    const nakit = folded.paymentTypes.find((row) => row.code === 'NAKIT');
+    const rezervasyon = folded.paymentTypes.find((row) => row.code === 'REZERVASYON_AVANS');
+    const gider = folded.paymentTypes.find((row) => row.code === 'GIDER');
+    expect(folded.todayCash).toBe(465_000);
+    expect(nakit?.amount).toBe(465_000);
+    expect(rezervasyon?.informational).toBe(true);
+    expect(rezervasyon?.amount).toBe(30_000);
+    expect(rezervasyon?.percentage).toBe(0);
+    expect(gider?.deduction).toBe(true);
+    expect(gider?.amount).toBe(50_000);
+    expect(gider?.percentage).toBe(0);
+    expect(gider?.count).toBe(1);
+    expect(folded.collectionTotal).toBe(495_000);
+    expect(folded.grandTotal).toBe(445_000);
+    expect(nakit?.percentage).toBeCloseTo((465_000 / 495_000) * 100, 5);
+  });
+
+  it('fold gider kaydı yoksa satır 0 ve genel toplam 495.000', () => {
+    const folded = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash: 435_000,
+      reservationCash: 30_000,
+      cashOut: 0,
+      expense: 0,
+      paymentTypes: [
+        { code: 'NAKIT', amount: 435_000 },
+        { code: 'ACIK_CARI', amount: 30_000 },
+        { code: 'REZERVASYON_AVANS', amount: 30_000 },
+      ],
+    });
+    expect(folded.paymentTypes.find((row) => row.code === 'GIDER')?.amount).toBe(0);
+    expect(folded.paymentTypes.find((row) => row.code === 'GIDER')?.deduction).toBe(true);
+    expect(folded.grandTotal).toBe(495_000);
+    expect(folded.collectionTotal).toBe(495_000);
   });
 });
 
@@ -730,8 +836,131 @@ describe('cashRegisterStatusFromLedger — kasa kartı nakit/kart', () => {
     });
     const drawer = cashRegisterDrawerLines(rows);
     expect(drawer[0].cash).toBe(120_000);
+    expect(drawer[0].expense).toBe(0);
     expect(drawer[0].balance).toBe(120_000);
     expect(drawer[0].balance).not.toBe(110_000);
     expect(rows[0].reservationDeposit).toBe(0);
+  });
+
+  it('nakit 465.000, rezervasyon 30.000, gider 50.000 → kalan 415.000; rezervasyon düşülmez', () => {
+    const lines = [
+      line({ tutar: 435_000, payment_method: 'cash', islem_tipi: 'KASA_GIRIS' }),
+      line({
+        tutar: 30_000,
+        payment_method: 'Nakit',
+        ozel_kod: 'REZERVASYON',
+        islem_tipi: 'CH_TAHSILAT',
+      }),
+      line({ tutar: 50_000, payment_method: 'cash', islem_tipi: 'GIDER_PUSULASI' }),
+    ];
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines,
+      dateFrom: '2026-10-01',
+      dateTo: '2026-10-24',
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const drawer = cashRegisterDrawerLines(rows);
+    expect(drawer).toHaveLength(1);
+    expect(drawer[0].label).toBe('KASA.001 — MERKEZ KASA');
+    expect(drawer[0].cash).toBe(465_000);
+    expect(drawer[0].card).toBe(0);
+    expect(drawer[0].openAccount).toBe(0);
+    expect(drawer[0].transfer).toBe(0);
+    expect(drawer[0].reservation).toBe(30_000);
+    expect(drawer[0].expense).toBe(50_000);
+    expect(drawer[0].balance).toBe(415_000);
+    expect(drawer[0].balance).toBe(drawer[0].cash - drawer[0].expense);
+    expect(drawer[0].balance).not.toBe(drawer[0].cash - drawer[0].expense - drawer[0].reservation);
+    expect(drawer[0].balance).not.toBe(365_000);
+    expect(rows[0].grandTotal).toBe(465_000);
+    expect(cashRegisterExpenseGaps(rows)).toEqual([]);
+  });
+
+  it('gider kaydı yok ve nakit zaten 415.000 ise kalan 415.000', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines: [line({ tutar: 415_000, payment_method: 'cash', islem_tipi: 'KASA_GIRIS' })],
+      dateFrom: '2026-10-01',
+      dateTo: '2026-10-24',
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const drawer = cashRegisterDrawerLines(rows);
+    expect(drawer[0].cash).toBe(415_000);
+    expect(drawer[0].expense).toBe(0);
+    expect(drawer[0].reservation).toBe(0);
+    expect(drawer[0].balance).toBe(415_000);
+    expect(cashRegisterExpenseGaps(rows)).toEqual([]);
+  });
+
+  it('gider fişi yoksa banka çıkışı 0 gider yazar, kalanı bozmaz, farkı banka olarak bildirir', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines: [
+        line({ tutar: 465_000, payment_method: 'cash', islem_tipi: 'KASA_GIRIS' }),
+        line({ tutar: 50_000, payment_method: 'cash', islem_tipi: 'BANKA_YATIRILAN' }),
+      ],
+      dateFrom: '2026-10-01',
+      dateTo: '2026-10-24',
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const drawer = cashRegisterDrawerLines(rows);
+    expect(drawer[0].cash).toBe(465_000);
+    expect(drawer[0].expense).toBe(0);
+    expect(drawer[0].balance).toBe(415_000);
+    expect(drawer[0].balance).not.toBe(465_000);
+    const gaps = cashRegisterExpenseGaps(rows);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0].gap).toBe(50_000);
+    expect(gaps[0].otherCashOuts).toEqual([{ code: 'BANKA_YATIRILAN', amount: 50_000 }]);
+    expect(gaps[0].residual).toBe(0);
+  });
+});
+
+describe('cashRegisterRemaining — kalan = nakit − gider', () => {
+  it('465.000 nakit, 30.000 rezervasyon, 50.000 gider → 415.000; rezervasyon düşülmez', () => {
+    const withReservation = cashRegisterRemaining({
+      cash: 465_000,
+      expense: 50_000,
+      reservation: 30_000,
+      ledgerBalance: 415_000,
+    });
+    const withoutReservation = cashRegisterRemaining({
+      cash: 465_000,
+      expense: 50_000,
+      reservation: 0,
+      ledgerBalance: 415_000,
+    });
+    expect(withReservation).toBe(415_000);
+    expect(withoutReservation).toBe(415_000);
+    expect(withReservation).not.toBe(465_000 - 50_000 - 30_000);
+    expect(withReservation).not.toBe(365_000);
+  });
+
+  it('gider bakiyeye henüz yazılmamışsa bir kez düşülür', () => {
+    expect(cashRegisterRemaining({
+      cash: 465_000,
+      expense: 50_000,
+      reservation: 30_000,
+      ledgerBalance: 465_000,
+    })).toBe(415_000);
+  });
+
+  it('gider 0 ve nakit zaten 415.000 ise kalan 415.000', () => {
+    expect(cashRegisterRemaining({
+      cash: 415_000,
+      expense: 0,
+      reservation: 30_000,
+      ledgerBalance: 415_000,
+    })).toBe(415_000);
+  });
+
+  it('gider kaydı yokken kalan nakitten küçükse kalan bozulmaz', () => {
+    expect(cashRegisterRemaining({
+      cash: 465_000,
+      expense: 0,
+      reservation: 30_000,
+      ledgerBalance: 415_000,
+    })).toBe(415_000);
   });
 });
