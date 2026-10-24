@@ -3,11 +3,12 @@
  * Tutar formülleri burada yok; sıra, hangi kutunun çizileceği,
  * ciro altındaki miktar bilgisi ve seçili klinik paletinin tonları burada.
  *
- * Ekranda tam olarak beş kart vardır:
- * Toplam Ciro, Rezervasyon Tutarı, Toplam İndirim, Toplam Gider, Net (Nakit).
+ * Ekranda sekiz kart vardır:
+ * Toplam Satış, Rezervasyon Tutarı, Toplam Ciro, Toplam İndirim,
+ * Nakit, Satış iade, Toplam Gider, Net (Nakit).
  *
  * Kaldırılanlar (menü parametresi açık olsa da bu ekranda yok):
- * Toplam Satış, Nakit, Satış iade, Net (Brüt), kart, veresiye,
+ * Net (Brüt), kart, veresiye,
  * belge/tahsil/veresiye şeridi, kasa giriş, kasa çıkış, nakit gider.
  *
  * İndirim açık cari değildir. Rezervasyon ve peşinat ciro değildir.
@@ -20,9 +21,12 @@ import { isDepositSale, isRemovedSaleStatusLite } from './reportDepositFilter';
 import type { Sale } from '../core/types';
 
 export const DAILY_REPORT_SCREEN_CARD_KEYS = [
-  'total-revenue',
+  'total-sales',
   'reservation-amount',
+  'total-revenue',
   'total-discount',
+  'cash',
+  'sales-return',
   'total-expense',
   'net-cash',
 ] as const;
@@ -31,9 +35,12 @@ export type DailyReportScreenCardKey = (typeof DAILY_REPORT_SCREEN_CARD_KEYS)[nu
 
 /** Ekrandaki kart yazısı. İndirim açık cari değildir; rezervasyon ciro anahtarı değildir. */
 export const DAILY_REPORT_SCREEN_CARD_LABEL_KEY: Record<DailyReportScreenCardKey, string> = {
-  'total-revenue': 'totalRevenueLabel',
+  'total-sales': 'totalSales',
   'reservation-amount': 'dailyDepositCollected',
+  'total-revenue': 'totalRevenueLabel',
   'total-discount': 'reportsTotalDiscount',
+  cash: 'cashLabel',
+  'sales-return': 'reportsSalesReturnLabel',
   'total-expense': 'totalExpense',
   'net-cash': 'dailyNetAfterExpenseNakit',
 };
@@ -42,9 +49,6 @@ export const DAILY_REPORT_SCREEN_CARD_LABEL_KEY: Record<DailyReportScreenCardKey
 export const DAILY_REPORT_REVENUE_QTY_LABEL_KEY = 'reportsDailyRevenueQtyLabel';
 
 export const DAILY_REPORT_REMOVED_CARD_KEYS = [
-  'total-sales',
-  'cash',
-  'sales-return',
   'net-gross',
   'card',
   'credit-given',
@@ -92,11 +96,14 @@ const CARD_RECIPE: Record<
   DailyReportScreenCardKey,
   { a: keyof DailyReportPaletteInk; b: keyof DailyReportPaletteInk; blend: number; white: number; accent: number }
 > = {
-  'total-revenue': { a: 'accent', b: 'accentEdge', blend: 0.06, white: 0.84, accent: 0.05 },
-  'reservation-amount': { a: 'accentEdge', b: 'sidebarLine', blend: 0.28, white: 0.78, accent: 0.16 },
-  'total-discount': { a: 'sidebarLine', b: 'accent', blend: 0.52, white: 0.9, accent: 0.1 },
-  'total-expense': { a: 'accentEdge', b: 'sidebar', blend: 0.4, white: 0.7, accent: 0.22 },
-  'net-cash': { a: 'sidebar', b: 'accent', blend: 0.18, white: 0.62, accent: 0.14 },
+  'total-sales': { a: 'accent', b: 'accentEdge', blend: 0.05, white: 0.9, accent: 0.04 },
+  'reservation-amount': { a: 'accentEdge', b: 'accent', blend: 0.18, white: 0.86, accent: 0.1 },
+  'total-revenue': { a: 'sidebarLine', b: 'accent', blend: 0.58, white: 0.84, accent: 0.16 },
+  'total-discount': { a: 'accent', b: 'sidebarLine', blend: 0.34, white: 0.92, accent: 0.22 },
+  cash: { a: 'sidebar', b: 'accent', blend: 0.5, white: 0.8, accent: 0.28 },
+  'sales-return': { a: 'accent', b: 'accentEdge', blend: 0.7, white: 0.78, accent: 0.34 },
+  'total-expense': { a: 'accentEdge', b: 'accent', blend: 0.12, white: 0.74, accent: 0.4 },
+  'net-cash': { a: 'accent', b: 'sidebar', blend: 0.22, white: 0.7, accent: 0.48 },
 };
 
 const SCREEN_KEY_SET = new Set<string>(DAILY_REPORT_SCREEN_CARD_KEYS);
@@ -191,9 +198,42 @@ export function dailyReportScreenShowsCard(key: string): boolean {
   return SCREEN_KEY_SET.has(key);
 }
 
-/** Görünen kartlar, sabit beşli sıra. Menü bayrağı bu sırayı kısaltmaz. */
-export function visibleDailyReportScreenCardKeys(): DailyReportScreenCardKey[] {
-  return [...DAILY_REPORT_SCREEN_CARD_KEYS];
+export type DailyReportScreenCardFlags = {
+  totalSales: boolean;
+  totalRevenue: boolean;
+  totalDiscount: boolean;
+  cash: boolean;
+  salesReturn: boolean;
+  totalExpense: boolean;
+  net: boolean;
+};
+
+/** Görünen kartlar, sabit sırada. Net (Brüt) dönmez. */
+export function visibleDailyReportScreenCardKeys(
+  flags: DailyReportScreenCardFlags,
+): DailyReportScreenCardKey[] {
+  return DAILY_REPORT_SCREEN_CARD_KEYS.filter((key) => {
+    switch (key) {
+      case 'total-sales':
+        return flags.totalSales;
+      case 'reservation-amount':
+        return true;
+      case 'total-revenue':
+        return flags.totalRevenue;
+      case 'total-discount':
+        return flags.totalDiscount;
+      case 'cash':
+        return flags.cash;
+      case 'sales-return':
+        return flags.salesReturn;
+      case 'total-expense':
+        return flags.totalExpense;
+      case 'net-cash':
+        return flags.net;
+      default:
+        return false;
+    }
+  });
 }
 
 export interface DailyReportQuantityLine {

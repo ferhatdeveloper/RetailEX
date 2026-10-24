@@ -2,6 +2,7 @@ import {
   Banknote,
   Calendar,
   Percent,
+  ShoppingCart,
   TrendingDown,
   Wallet,
   type LucideIcon,
@@ -22,15 +23,18 @@ export type DailyReportKpiCardModel = {
 };
 
 const CARD_ICONS: Record<DailyReportScreenCardKey, LucideIcon> = {
-  'total-revenue': Banknote,
+  'total-sales': ShoppingCart,
   'reservation-amount': Calendar,
+  'total-revenue': Banknote,
   'total-discount': Percent,
-  'total-expense': TrendingDown,
+  cash: Banknote,
+  'sales-return': TrendingDown,
+  'total-expense': Wallet,
   'net-cash': Wallet,
 };
 
 /**
- * Günlük Rapor KPI ızgarası. Yalnızca beş ekran kartı çizilir.
+ * Günlük Rapor KPI ızgarası. Sekiz kart iki sırada durur.
  * Zemin, seçili klinik menü paletinin birbirinden ayrı açık tonudur.
  */
 export function DailyReportKpiGrid({ cards }: { cards: readonly DailyReportKpiCardModel[] }) {
@@ -40,7 +44,7 @@ export function DailyReportKpiGrid({ cards }: { cards: readonly DailyReportKpiCa
 
   return (
     <div
-      className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-5 auto-rows-fr"
+      className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4 auto-rows-fr"
       data-testid="daily-report-kpi-grid"
     >
       {visible.map((card) => {

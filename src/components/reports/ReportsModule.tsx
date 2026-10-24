@@ -31,7 +31,6 @@ import {
   type DailyReportScreenCardKey,
 } from '../../utils/dailyReportScreenCards';
 import { DailyReportKpiGrid, type DailyReportKpiCardModel } from './DailyReportKpiGrid';
-import { useClinicMenuPalette } from '../beauty/clinicMenuPalette';
 import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
 import { getCurrencyDecimalPlaces, getFirmLedgerCurrency, formatLedgerAmount } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
@@ -1167,7 +1166,6 @@ export function ReportsModule({
 }: ReportsModuleProps) {
   const { language, t, tm: globalTm } = useLanguage();
   const { darkMode } = useTheme();
-  const clinicPalette = useClinicMenuPalette();
   const { isMobile } = useResponsive();
   const tm = useCallback((key: string) => moduleTranslations[key]?.[language] || globalTm(key), [language, globalTm]);
 
@@ -6809,6 +6807,15 @@ export function ReportsModule({
     : ['grp-general', 'grp-design', 'grp-sales'];
 
   const dailyReportKpiByKey: Record<DailyReportScreenCardKey, DailyReportKpiCardModel> = {
+    'total-sales': {
+      key: 'total-sales',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-sales']),
+      value: String(dailyMainSales.length),
+      hint: [
+        `${tm('reportsSalesReturnCount').replace('{count}', String(dailyReturnRows.length))}${dailyReturnTotal > 0 ? ` · −${formatNumber(dailyReturnTotal, 2, false)}` : ''}`,
+        `${tm('reportsDetStatusCancelled')} / ${tm('reportsDetStatusRefunded')}: ${dailyUnifiedRows.length - dailyActiveRows.length}`,
+      ].join('\n'),
+    },
     'total-revenue': {
       key: 'total-revenue',
       label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-revenue']),
@@ -6831,6 +6838,18 @@ export function ReportsModule({
       label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-discount']),
       value: formatNumber(dailyDiscount, 2, false),
     },
+    cash: {
+      key: 'cash',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY.cash),
+      value: formatNumber(dailyCash, 2, false),
+      hint: tm('cebeGirenNakit'),
+    },
+    'sales-return': {
+      key: 'sales-return',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['sales-return']),
+      value: formatNumber(dailyReturnTotal, 2, false),
+      hint: tm('reportsPaymentTxnShort').replace('{n}', String(dailyReturnRows.length)),
+    },
     'total-expense': {
       key: 'total-expense',
       label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-expense']),
@@ -6844,7 +6863,15 @@ export function ReportsModule({
       hint: tm('dailyNetAfterExpenseHint'),
     },
   };
-  const dailyReportKpiCards = visibleDailyReportScreenCardKeys().map((key) => dailyReportKpiByKey[key]);
+  const dailyReportKpiCards = visibleDailyReportScreenCardKeys({
+    totalSales: showDailyCardTotalSales,
+    totalRevenue: showDailyCardTotalRevenue,
+    totalDiscount: showDailyCardTotalDiscount,
+    cash: showDailyCardCash,
+    salesReturn: showDailyCardSalesReturn,
+    totalExpense: showDailyCardTotalExpense,
+    net: showDailyCardNet,
+  }).map((key) => dailyReportKpiByKey[key]);
 
   const mobileMenuOpen = isMobile && !collapsed;
 
@@ -6995,10 +7022,10 @@ export function ReportsModule({
             {selectedTab === 'daily' && (
               <div className="space-y-4">
                 {/* Date Selector */}
-                <div className="bg-white rounded-lg border p-4">
+                <div className="bg-white rounded-lg border p-4" style={{ borderColor: clinicPalette.accentEdge }}>
                   <div className="flex flex-row flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-row flex-wrap items-center gap-3 sm:gap-4 min-w-0 flex-1">
-                      <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
+                      <Calendar className="w-5 h-5 shrink-0 hidden sm:block" style={{ color: clinicPalette.accent }} aria-hidden />
                       <ReportDateRangePresets
                         value={dailyReportDateRange}
                         onChange={setDailyReportDateRange}
@@ -7006,6 +7033,8 @@ export function ReportsModule({
                         min={reportDateInputMin}
                         max={reportDateInputMax}
                         className="min-w-0 flex-1"
+                        accentColor={clinicPalette.accent}
+                        accentText={clinicPalette.onAccent}
                       />
                     </div>
                     <div className="flex flex-row flex-nowrap items-center gap-2 shrink-0">
@@ -7028,7 +7057,16 @@ export function ReportsModule({
                         }}
                         trigger={['click']}
                       >
-                        <Button type="primary" icon={<PrinterOutlined />} className="shrink-0">
+                        <Button
+                          type="primary"
+                          icon={<PrinterOutlined />}
+                          className="shrink-0"
+                          style={{
+                            background: clinicPalette.accent,
+                            borderColor: clinicPalette.accent,
+                            color: clinicPalette.onAccent,
+                          }}
+                        >
                           {t.print} <CaretDownOutlined />
                         </Button>
                       </Dropdown>
@@ -7056,15 +7094,18 @@ export function ReportsModule({
                 ) : null}
 
                 {/* Sales List */}
-                <div className="bg-white rounded-lg border">
-                  <div className="p-4 border-b flex flex-wrap items-center justify-between gap-2">
+                <div className="bg-white rounded-lg border" style={{ borderColor: clinicPalette.accentEdge }}>
+                  <div className="p-4 border-b flex flex-wrap items-center justify-between gap-2" style={{ borderColor: clinicPalette.accentEdge }}>
                     <div>
-                      <h3 className="text-lg">{tm('salesDetails')}</h3>
+                      <h3 className="text-lg font-semibold" style={{ color: clinicPalette.accent }}>{tm('salesDetails')}</h3>
                       <p className="text-xs text-slate-500 mt-1">{tm('reportsClickRowReceiptPreview')}</p>
                       <p className="text-xs text-slate-500 mt-0.5">{tm('reportsDailyKindHint')}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                      <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs font-medium">
+                      <div
+                        className="inline-flex rounded-lg overflow-hidden text-xs font-medium border"
+                        style={{ borderColor: clinicPalette.accentEdge }}
+                      >
                         {([
                           ['all', tm('reportsDailyKindAll')],
                           ['service', tm('reportsDailyKindService')],
@@ -7074,7 +7115,10 @@ export function ReportsModule({
                             key={key}
                             type="button"
                             onClick={() => setDailyKindFilter(key)}
-                            className={`px-3 py-1.5 ${dailyKindFilter === key ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
+                            className={`px-3 py-1.5 ${dailyKindFilter === key ? '' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
+                            style={dailyKindFilter === key
+                              ? { backgroundColor: clinicPalette.accent, color: clinicPalette.onAccent }
+                              : undefined}
                           >
                             {label}
                           </button>
