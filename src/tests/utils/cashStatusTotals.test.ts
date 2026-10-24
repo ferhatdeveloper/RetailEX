@@ -18,6 +18,7 @@ import {
   cashStatusBlockTotals,
   cashStatusDistributionListRows,
   foldReservationIntoCashStatus,
+  paymentDistributionVisibleRows,
   listCashRegisterStatus,
   mergeRegisterSeeds,
   paymentReportGrandTotal,
@@ -164,6 +165,65 @@ describe('foldReservationIntoCashStatus', () => {
       reservation: 10000,
       expense: 5000,
     })).toBe(55000);
+  });
+
+  it('ödeme dağılımı kart ve listesinden kredi kartı ile havale düşer; genel toplam 45.000 kalır', () => {
+    const folded = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash: 40000,
+      cardAmount: 0,
+      transferAmount: 0,
+      reservationCash: 10000,
+      cashOut: 0,
+      expense: 5000,
+      expenseCount: 1,
+      paymentTypes: [
+        { code: 'NAKIT', amount: 40000, label: 'Nakit' },
+        { code: 'KREDIKARTI', amount: 0, label: 'Kredi Kartı' },
+        { code: 'ACIK_CARI', amount: 0, label: 'Açık Cari Hesap' },
+        { code: 'HAVAL', amount: 0, label: 'Havale/EFT' },
+        { code: 'REZERVASYON_AVANS', amount: 10000, label: 'Rezervasyon Avansı' },
+      ],
+    });
+
+    const visible = paymentDistributionVisibleRows(folded.paymentTypes);
+    expect(visible.map((row) => row.code)).toEqual([
+      'NAKIT',
+      'ACIK_CARI',
+      'REZERVASYON_AVANS',
+      'GIDER',
+    ]);
+    expect(visible.find((row) => row.code === 'NAKIT')?.amount).toBe(50000);
+    expect(visible.find((row) => row.code === 'ACIK_CARI')?.amount).toBe(0);
+    expect(visible.find((row) => row.code === 'REZERVASYON_AVANS')?.amount).toBe(10000);
+    expect(visible.find((row) => row.code === 'REZERVASYON_AVANS')?.informational).toBe(true);
+    expect(visible.find((row) => row.code === 'GIDER')?.amount).toBe(5000);
+    expect(visible.find((row) => row.code === 'GIDER')?.deduction).toBe(true);
+    expect(folded.grandTotal).toBe(45000);
+    expect(folded.grandTotal).not.toBe(55000);
+    expect(folded.grandTotal).not.toBe(40000);
+    expect(folded.paymentTypes.some((row) => row.code === 'KREDIKARTI')).toBe(true);
+    expect(folded.paymentTypes.some((row) => row.code === 'HAVAL')).toBe(true);
+
+    const withCardAndTransfer = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash: 40000,
+      cardAmount: 8000,
+      transferAmount: 2000,
+      reservationCash: 10000,
+      cashOut: 0,
+      expense: 5000,
+      paymentTypes: [
+        { code: 'NAKIT', amount: 40000 },
+        { code: 'KREDIKARTI', amount: 8000 },
+        { code: 'ACIK_CARI', amount: 0 },
+        { code: 'HAVAL', amount: 2000 },
+        { code: 'REZERVASYON_AVANS', amount: 10000 },
+      ],
+    });
+    expect(paymentDistributionVisibleRows(withCardAndTransfer.paymentTypes).map((row) => row.code))
+      .toEqual(['NAKIT', 'ACIK_CARI', 'REZERVASYON_AVANS', 'GIDER']);
+    expect(withCardAndTransfer.grandTotal).toBe(55000);
   });
 });
 

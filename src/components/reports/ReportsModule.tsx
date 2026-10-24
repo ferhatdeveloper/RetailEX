@@ -129,6 +129,7 @@ import {
   cashRegisterStatusFromLedger,
   cashStatusBlockTotals,
   foldReservationIntoCashStatus,
+  paymentDistributionVisibleRows,
   type CashStatusPaymentLine,
 } from '../../utils/cashStatusTotals';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
@@ -8498,6 +8499,8 @@ export function ReportsModule({
 
             {selectedTab === 'payment-distribution' && (() => {
               const paymentDist = getPaymentDistribution();
+              // Kart ve havale üst kartta ve listede gizlenir. listedTotal aynı formüldür.
+              const visibleTypes = paymentDistributionVisibleRows(paymentDist.types);
               const moneyLine = (amount: number, deduction?: boolean) =>
                 `${deduction && amount > 0.004 ? '− ' : ''}${formatNumber(amount, 2, false)} ${reportCurrency}`;
               const rowHint = (pt: { informational?: boolean; deduction?: boolean; count?: number; percentage?: number }) => {
@@ -8523,8 +8526,8 @@ export function ReportsModule({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                    {paymentDist.types.map((pt) => {
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {visibleTypes.map((pt) => {
                       const inner = (
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
@@ -8599,7 +8602,7 @@ export function ReportsModule({
                           </RePieChart>
                         </ResponsiveContainer>
                         <div className="space-y-3">
-                          {paymentDist.types.map((item) => {
+                          {visibleTypes.map((item) => {
                             const legend = (
                               <>
                                 <div className="flex items-center gap-3 min-w-0">

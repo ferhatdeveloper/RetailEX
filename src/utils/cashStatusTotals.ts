@@ -33,8 +33,8 @@ const EXPENSE_CODE = 'GIDER';
 const SKIP_DISTRIBUTION = new Set<PaymentFormCode>(['CEK', 'SENET']);
 
 /**
- * Kasa Durumu ödeme dağılımı listesinde gösterilmeyen satırlar.
- * Üstteki Günlük Kart kartı ayrıdır ve durur.
+ * Kasa Durumu listesinde ve Ödeme Dağılımı kart/listesinde gizlenen kodlar.
+ * Kasa Durumu üstündeki Günlük Kart kartı bu kümeye girmez.
  * Tutarlar `paymentReportGrandTotal` içinde kalır; formül değişmez.
  */
 const HIDDEN_CASH_STATUS_LIST_CODES = new Set(['KREDIKARTI', 'HAVAL']);
@@ -135,6 +135,16 @@ export interface ReportCollectionParts {
  */
 export function cashStatusDistributionListRows<T extends { code: string }>(rows: readonly T[]): T[] {
   return rows.filter((row) => !HIDDEN_CASH_STATUS_LIST_CODES.has(row.code));
+}
+
+/**
+ * Ödeme Dağılımı üst kartları ve Ödeme Yöntemi Dağılımı listesi.
+ * Kredi kartı ve havale gizlenir. Genel toplam bu fonksiyonda hesaplanmaz;
+ * nakit (rezervasyon dahil) + kart + açık cari + havale − gider aynı kalır.
+ * Kasa Durumu Günlük Kart kartı burada değildir.
+ */
+export function paymentDistributionVisibleRows<T extends { code: string }>(rows: readonly T[]): T[] {
+  return cashStatusDistributionListRows(rows);
 }
 
 /**
