@@ -43,6 +43,7 @@ import {
   productCardGroupHeader,
   DEFAULT_SPECIAL_CODE_COLUMN_VISIBILITY_SNAKE,
 } from '../../utils/productCardReportFields';
+import { useClinicMenuPalette } from '../beauty/clinicMenuPalette';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -1167,6 +1168,7 @@ export function ReportsModule({
   const { language, t, tm: globalTm } = useLanguage();
   const { darkMode } = useTheme();
   const { isMobile } = useResponsive();
+  const clinicPalette = useClinicMenuPalette();
   const tm = useCallback((key: string) => moduleTranslations[key]?.[language] || globalTm(key), [language, globalTm]);
 
   const labelDailyExpenseType = useCallback((code: string) => {
@@ -6807,15 +6809,6 @@ export function ReportsModule({
     : ['grp-general', 'grp-design', 'grp-sales'];
 
   const dailyReportKpiByKey: Record<DailyReportScreenCardKey, DailyReportKpiCardModel> = {
-    'total-sales': {
-      key: 'total-sales',
-      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-sales']),
-      value: String(dailyMainSales.length),
-      hint: [
-        `${tm('reportsSalesReturnCount').replace('{count}', String(dailyReturnRows.length))}${dailyReturnTotal > 0 ? ` · −${formatNumber(dailyReturnTotal, 2, false)}` : ''}`,
-        `${tm('reportsDetStatusCancelled')} / ${tm('reportsDetStatusRefunded')}: ${dailyUnifiedRows.length - dailyActiveRows.length}`,
-      ].join('\n'),
-    },
     'total-revenue': {
       key: 'total-revenue',
       label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-revenue']),
@@ -6838,18 +6831,6 @@ export function ReportsModule({
       label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-discount']),
       value: formatNumber(dailyDiscount, 2, false),
     },
-    cash: {
-      key: 'cash',
-      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY.cash),
-      value: formatNumber(dailyCash, 2, false),
-      hint: tm('cebeGirenNakit'),
-    },
-    'sales-return': {
-      key: 'sales-return',
-      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['sales-return']),
-      value: formatNumber(dailyReturnTotal, 2, false),
-      hint: tm('reportsPaymentTxnShort').replace('{n}', String(dailyReturnRows.length)),
-    },
     'total-expense': {
       key: 'total-expense',
       label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-expense']),
@@ -6863,15 +6844,7 @@ export function ReportsModule({
       hint: tm('dailyNetAfterExpenseHint'),
     },
   };
-  const dailyReportKpiCards = visibleDailyReportScreenCardKeys({
-    totalSales: showDailyCardTotalSales,
-    totalRevenue: showDailyCardTotalRevenue,
-    totalDiscount: showDailyCardTotalDiscount,
-    cash: showDailyCardCash,
-    salesReturn: showDailyCardSalesReturn,
-    totalExpense: showDailyCardTotalExpense,
-    net: showDailyCardNet,
-  }).map((key) => dailyReportKpiByKey[key]);
+  const dailyReportKpiCards = visibleDailyReportScreenCardKeys().map((key) => dailyReportKpiByKey[key]);
 
   const mobileMenuOpen = isMobile && !collapsed;
 

@@ -17,6 +17,8 @@ export interface ReportDateRangePresetsProps {
   max?: string;
   className?: string;
   showMonthNav?: boolean;
+  accentColor?: string;
+  accentText?: string;
 }
 
 /** Rapor filtrelerinde sabit görünen tarih biçimi (gg.aa.yyyy). */
@@ -29,13 +31,26 @@ const PRESET_BUTTONS: Array<{ id: ReportDatePreset; labelKey: string }> = [
   { id: 'lastMonth', labelKey: 'reportDatePresetLastMonth' },
 ];
 
-function presetButtonClass(active: boolean): string {
+function presetButtonClass(active: boolean, accented: boolean): string {
   return [
     'px-3 py-1.5 rounded-lg text-xs font-bold transition-colors',
     active
-      ? 'bg-blue-600 text-white shadow-sm'
+      ? (accented ? 'shadow-sm' : 'bg-blue-600 text-white shadow-sm')
       : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50',
   ].join(' ');
+}
+
+function presetButtonStyle(
+  active: boolean,
+  accentColor?: string,
+  accentText?: string,
+): React.CSSProperties | undefined {
+  if (!active || !accentColor) return undefined;
+  return {
+    backgroundColor: accentColor,
+    borderColor: accentColor,
+    color: accentText || '#ffffff',
+  };
 }
 
 function ymdToDayjs(ymd: string): Dayjs | null {
@@ -95,6 +110,8 @@ export function ReportDateRangePresets({
   max = '2100-12-31',
   className = '',
   showMonthNav = true,
+  accentColor,
+  accentText,
 }: ReportDateRangePresetsProps) {
   const applyPreset = (preset: ReportDatePreset, monthOffset = 0) => {
     onChange(buildReportDateRangeChange(preset, monthOffset, value.from, value.to));
@@ -120,7 +137,15 @@ export function ReportDateRangePresets({
             key={id}
             type="button"
             onClick={() => applyPreset(id, id === 'month' ? 0 : 0)}
-            className={presetButtonClass(value.preset === id && (id !== 'month' || value.monthOffset === 0))}
+            className={presetButtonClass(
+              value.preset === id && (id !== 'month' || value.monthOffset === 0),
+              Boolean(accentColor),
+            )}
+            style={presetButtonStyle(
+              value.preset === id && (id !== 'month' || value.monthOffset === 0),
+              accentColor,
+              accentText,
+            )}
           >
             {tm(labelKey)}
           </button>
@@ -133,9 +158,10 @@ export function ReportDateRangePresets({
           className={[
             'inline-flex items-center justify-center p-2 rounded-lg transition-colors',
             value.preset === 'custom'
-              ? 'bg-blue-600 text-white shadow-sm'
+              ? (accentColor ? 'shadow-sm' : 'bg-blue-600 text-white shadow-sm')
               : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50',
           ].join(' ')}
+          style={presetButtonStyle(value.preset === 'custom', accentColor, accentText)}
         >
           <Calendar className="w-4 h-4" />
         </button>
