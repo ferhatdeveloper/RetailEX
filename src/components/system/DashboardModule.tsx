@@ -196,7 +196,8 @@ export function DashboardModule({
 
   // Günlük Özet, Detaylı Satış ile aynı iş gününü kullanır.
   // UTC gece yarısı yerel karşılaştırmada düne kaymasın. Net = brüt − iade
-  // (bir kez). Peşinat ciro değildir. Stok kartı satış fiyatı değil birim alış.
+  // (bir kez). Peşinat ciro değildir. Ürün SMM birim alıştır.
+  // Hizmet SMM, Kar-Zarar ile aynıdır: satır unit_cost × miktar. Kâr = net − SMM.
   const dailyStrip = useMemo(() => {
     const stockProducts = products.map((p) => {
       const fetched = lookupWeightedAvgUnitCost(purchaseAvg, p);

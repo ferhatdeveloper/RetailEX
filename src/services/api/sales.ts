@@ -22,9 +22,109 @@ import {
 } from '../../utils/loginCashierName';
 import {
   isSalesReturnFiche,
+  isServiceLineType,
+  isUuidText,
   PURCHASE_RETURN_TRCODE,
+  restServiceUnitCost,
   SALES_RETURN_TRCODES,
 } from '../../utils/lastPurchaseCostSql';
+
+function positiveUnitCost(raw: unknown): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Satış kalemi. Hizmet SMM birimi `unit_cost`; doluysa sıfır yazılmaz. */
+function mapSaleItemRow(item: any): SaleItem {
+  const code = item.item_code != null ? String(item.item_code).trim() : '';
+  return {
+    productId: item.product_id != null ? String(item.product_id) : code,
+    productName: item.item_name || '',
+    productCode: code || undefined,
+    quantity: Number(item.quantity || 0),
+    price: Number(item.unit_price || 0),
+    discount: Number(item.discount_rate || 0),
+    total: Number(item.total_amount || item.net_amount || 0),
+    unit: item.unit || 'Adet',
+    lineType: dbItemTypeToInvoiceLine(item.item_type ?? item.type),
+    cost: positiveUnitCost(item.unit_cost),
+  };
+}
+
+/**
+ * Satır unit_cost boşsa Kar-Zarar hizmet zincirinin kart adımı.
+ * Satır birimi doluysa dokunulmaz. Sorgu düşerse kalemler yerinde kalır.
+ */
+async function fillServiceCardUnitCosts(sales: Sale[]): Promise<void> {
+  const pending: SaleItem[] = [];
+  const ids: string[] = [];
+  const codes: string[] = [];
+  for (const sale of sales) {
+    for (const item of sale.items || []) {
+      if (positiveUnitCost(item.cost) > 0) continue;
+      if (!isServiceLineType(item.lineType)) continue;
+      pending.push(item);
+      const pid = String(item.productId || '').trim();
+      if (isUuidText(pid)) ids.push(pid);
+      const code = String(item.productCode || '').trim();
+      if (code && !isUuidText(code)) codes.push(code);
+    }
+  }
+  if (pending.length === 0) return;
+
+  const purchaseById = new Map<string, number>();
+  const purchaseByCode = new Map<string, number>();
+  const beautyById = new Map<string, number>();
+
+  if (ids.length > 0 || codes.length > 0) {
+    try {
+      const { rows } = await postgres.query<{ id: string; code: string; purchase_price: number | string }>(
+        `SELECT id::text AS id, COALESCE(code, '') AS code, purchase_price
+           FROM services
+          WHERE ($1::uuid[] IS NOT NULL AND id = ANY($1::uuid[]))
+             OR ($2::text[] IS NOT NULL AND NULLIF(TRIM(code), '') = ANY($2::text[]))`,
+        [ids.length > 0 ? ids : null, codes.length > 0 ? codes : null],
+      );
+      for (const row of rows || []) {
+        const price = positiveUnitCost(row.purchase_price);
+        if (!(price > 0)) continue;
+        if (row.id) purchaseById.set(String(row.id), price);
+        const code = String(row.code || '').trim();
+        if (code) purchaseByCode.set(code, price);
+      }
+    } catch (e) {
+      console.warn('[SalesAPI] hizmet alış fiyatı okunamadı:', e);
+    }
+  }
+
+  if (ids.length > 0) {
+    try {
+      const { rows } = await postgres.query<{ id: string; cost_price: number | string }>(
+        `SELECT id::text AS id, cost_price
+           FROM beauty_services
+          WHERE id = ANY($1::uuid[])`,
+        [ids],
+      );
+      for (const row of rows || []) {
+        const price = positiveUnitCost(row.cost_price);
+        if (price > 0 && row.id) beautyById.set(String(row.id), price);
+      }
+    } catch (e) {
+      console.warn('[SalesAPI] güzellik hizmet maliyeti okunamadı:', e);
+    }
+  }
+
+  for (const item of pending) {
+    const pid = String(item.productId || '').trim();
+    const code = String(item.productCode || '').trim();
+    const unit = restServiceUnitCost({
+      lineUnitCost: item.cost,
+      purchasePrice: (pid && purchaseById.get(pid)) || (code && purchaseByCode.get(code)) || 0,
+      beautyCostPrice: pid ? beautyById.get(pid) : 0,
+    });
+    if (unit > 0) item.cost = unit;
+  }
+}
 
 async function enrichSalesWithLineItems(sales: Sale[]): Promise<Sale[]> {
   if (!sales.length) return sales;
@@ -42,20 +142,13 @@ async function enrichSalesWithLineItems(sales: Sale[]): Promise<Sale[]> {
       if (!byInvoice.has(key)) byInvoice.set(key, []);
       byInvoice.get(key)!.push(row);
     }
-    return sales.map((sale) => {
+    const enriched = sales.map((sale) => {
       const rawItems = byInvoice.get(sale.id) || [];
-      const items: SaleItem[] = rawItems.map((item: any) => ({
-        productId: item.product_id != null ? String(item.product_id) : String(item.item_code || ''),
-        productName: item.item_name || '',
-        quantity: Number(item.quantity || 0),
-        price: Number(item.unit_price || 0),
-        discount: Number(item.discount_rate || 0),
-        total: Number(item.total_amount || item.net_amount || 0),
-        unit: item.unit || 'Adet',
-        lineType: dbItemTypeToInvoiceLine(item.item_type ?? item.type),
-      }));
+      const items: SaleItem[] = rawItems.map((item: any) => mapSaleItemRow(item));
       return { ...sale, items };
     });
+    await fillServiceCardUnitCosts(enriched);
+    return enriched;
   } catch (e) {
     console.warn('[SalesAPI] enrichSalesWithLineItems failed:', e);
     return sales;
@@ -575,7 +668,8 @@ export const salesAPI = {
         ...returnsResult.data.filter((inv) => !isPurchaseReturnInvoice(inv)).map(mapInvoiceToSale),
       ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      return merged.slice(0, limit);
+      // Liste fişi kalemsiz gelir. Dashboard kârı satır unit_cost olmadan satışa eşitlenir.
+      return enrichSalesWithLineItems(merged.slice(0, limit));
     } catch (error) {
       console.error('[SalesAPI] getAll failed:', error);
       return [];

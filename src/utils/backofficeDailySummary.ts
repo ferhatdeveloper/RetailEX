@@ -7,9 +7,13 @@
  * yazarken Bugünkü Satış 0 kalır, aynı fişler Haftalık karta düşer.
  *
  * Net satış, Detaylı Satış ve Kar/Zarar ile aynıdır:
- * brüt hizmet + brüt ürün − iade (bir kez). Peşinat ciro değildir.
- * Stok kartı satış fiyatı değil, envanter listesi birim alışıdır
+ * brüt hizmet + brüt ürün − iade (bir kez). Peşinat ciro değildir
+ * ve kâra eklenmez, kârdan düşülmez.
+ * Ürün SMM, envanter listesi birim alışıdır
  * (ağırlıklı ortalama → katman ortalaması → kart alış).
+ * Hizmet SMM, Kar-Zarar ile aynı birimdir:
+ * satır unit_cost → hizmet kartı alış → kart maliyeti, × miktar.
+ * Dolu hizmet maliyeti sıfır kartla silinmez. Satış fiyatı SMM değildir.
  */
 import { isBusinessDayClockAnchor } from './saleWallClock';
 import { toSqlDateInputString } from './localCalendarDate';
@@ -57,7 +61,10 @@ export interface BackofficeSummaryItem {
   price?: number | null;
   unitPrice?: number | null;
   total?: number | null;
+  /** Birim maliyet. Kar-Zarar hizmet SMM’si bu alanı miktarla çarpar. */
   cost?: number | null;
+  unit_cost?: number | null;
+  unitCost?: number | null;
   lineType?: string | null;
   item_type?: string | null;
   type?: string | null;
@@ -247,6 +254,33 @@ function unitPurchaseOf(
   });
 }
 
+function positiveMoney(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function isServiceCard(product: BackofficeStockProduct | undefined): boolean {
+  if (!product) return false;
+  return product.isService === true || trLower(product.materialType) === 'service';
+}
+
+/**
+ * Hizmet birim SMM. Kar-Zarar sırası:
+ * satır unit_cost → kart alış → kart maliyet.
+ * Satış fiyatı kullanılmaz. Dolu satır maliyeti, sıfır kartla silinmez.
+ */
+function serviceUnitPurchase(
+  item: BackofficeSummaryItem,
+  catalog: BackofficeStockProduct | undefined,
+): number {
+  const line = positiveMoney(item.cost) || positiveMoney(item.unit_cost) || positiveMoney(item.unitCost);
+  if (line > 0) return line;
+  if (!isServiceCard(catalog)) return 0;
+  return positiveMoney(catalog?.purchase_price)
+    || positiveMoney(catalog?.purchasePrice)
+    || positiveMoney(catalog?.cost);
+}
+
 function emptyDay(): BackofficeDayFigures {
   return {
     netSales: 0,
@@ -313,7 +347,7 @@ function linesOfSale(
       lineKind: kind,
       quantity: money.qty,
       total: money.total,
-      cost: kind === 'service' ? finite(item.cost) : 0,
+      cost: kind === 'service' ? serviceUnitPurchase(item, catalog) : 0,
     };
   });
 }

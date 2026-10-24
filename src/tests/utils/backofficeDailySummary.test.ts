@@ -153,3 +153,94 @@ describe('Günlük Özet — 20.10.2026 net satış ve stok maliyeti', () => {
     expect(mixed.revenueChangePercent).toBeCloseTo(((120_000 - 50_000) / 50_000) * 100, 4);
   });
 });
+
+/**
+ * 24.10.2026 — Kar-Zarar ile aynı hizmet SMM.
+ * TORPI 2 × 20.000 = 40.000, SAC BOYA 1 × 10.000 = 10.000.
+ * Net 125.000 − SMM 50.000 = kâr 75.000, marj %60.
+ * Satış kartı 125.000 kalır. Peşinat kâra girmez.
+ * Sıfır hizmet kartı dolu satır maliyetini silmez.
+ */
+describe('Günlük Özet — 24.10.2026 hizmet kârı', () => {
+  const now = new Date(2026, 9, 24, 13, 20, 0);
+  const strip = summarizeBackofficeDailyStrip({
+    now,
+    products: [
+      { id: 'torpi', code: 'TORPI', name: 'TORPI', isService: true, materialType: 'service', cost: 0, price: 50_000, stock: 0 },
+      { id: 'sac', code: 'SACBOYA', name: 'SAC BOYA', isService: true, materialType: 'service', cost: 0, price: 25_000, stock: 0 },
+    ],
+    sales: [
+      {
+        id: 'fiche-1',
+        date: '2026-10-24',
+        status: 'completed',
+        total: 125_000,
+        items: [
+          { productName: 'TORPI', productId: 'torpi', quantity: 2, price: 50_000, total: 100_000, unit_cost: 20_000, lineType: 'Hizmet' },
+          { productName: 'SAC BOYA', productId: 'sac', quantity: 1, price: 25_000, total: 25_000, unit_cost: 10_000, lineType: 'Hizmet' },
+        ],
+      },
+      {
+        id: 'dep-1',
+        date: '2026-10-24',
+        status: 'completed',
+        total: 20_000,
+        isDeposit: true,
+        items: [{ productName: 'PEŞİNAT', quantity: 1, price: 20_000, total: 20_000, unit_cost: 20_000, lineType: 'Hizmet' }],
+      },
+    ],
+  });
+
+  it('satış 125.000 kalır, kâr 75.000 ve marj 60 olur', () => {
+    expect(strip.today.netSales).toBe(125_000);
+    expect(strip.today.returnAmount).toBe(0);
+    expect(strip.today.cogs).toBe(50_000);
+    expect(strip.today.profit).toBe(75_000);
+    expect(strip.today.profit).toBe(strip.today.netSales - strip.today.cogs);
+    expect(strip.today.marginPercent).toBe(60);
+    expect(strip.today.profit).not.toBe(strip.today.netSales);
+    expect(strip.today.marginPercent).not.toBe(100);
+    expect(strip.today.transactionCount).toBe(1);
+    expect(strip.week.netSales).toBe(125_000);
+    expect(strip.week.profit).toBe(75_000);
+  });
+
+  it('peşinat kâra girmez ve satıştan düşülmez', () => {
+    expect(strip.today.depositAmount).toBe(20_000);
+    expect(strip.today.netSales).toBe(125_000);
+    expect(strip.today.profit).toBe(75_000);
+    expect(strip.today.profit).not.toBe(75_000 - 20_000);
+    expect(strip.today.profit).not.toBe(125_000 + 20_000);
+    expect(strip.today.netSales).not.toBe(125_000 + 20_000);
+    expect(strip.today.netSales).not.toBe(125_000 - 20_000);
+    expect(strip.today.cogs).not.toBe(50_000 + 20_000);
+  });
+
+  it('satır birimi yokken hizmet kartı maliyeti düşülür', () => {
+    const fromCard = summarizeBackofficeDailyStrip({
+      now,
+      products: [
+        { id: 'torpi', code: 'TORPI', name: 'TORPI', isService: true, materialType: 'service', cost: 20_000, price: 50_000, stock: 0 },
+        { id: 'sac', code: 'SACBOYA', name: 'SAC BOYA', isService: true, materialType: 'service', purchase_price: 10_000, price: 25_000, stock: 0 },
+      ],
+      sales: [
+        {
+          id: 'fiche-card',
+          date: '2026-10-24',
+          status: 'completed',
+          total: 125_000,
+          items: [
+            { productName: 'TORPI', productId: 'torpi', quantity: 2, price: 50_000, total: 100_000, lineType: 'Hizmet' },
+            { productName: 'SAC BOYA', productId: 'sac', quantity: 1, price: 25_000, total: 25_000, lineType: 'Hizmet' },
+          ],
+        },
+      ],
+    });
+    expect(fromCard.today.netSales).toBe(125_000);
+    expect(fromCard.today.cogs).toBe(50_000);
+    expect(fromCard.today.profit).toBe(75_000);
+    expect(fromCard.today.marginPercent).toBe(60);
+    expect(fromCard.today.cogs).not.toBe(0);
+    expect(fromCard.today.cogs).not.toBe(125_000);
+  });
+});
