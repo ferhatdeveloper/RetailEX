@@ -12256,7 +12256,6 @@ export const excelModuleTranslations = {
     ar: 'دفع سلفة',
     ku: 'پارەدانی پێشوەختە',
   },
-  rptCashRegisters: { tr: 'Kasalar', en: 'Cash Registers', ar: 'الصناديق', ku: 'سندوقەکان' },
   rptCashRegisterName: { tr: 'Kasa', en: 'Cash Register', ar: 'الصندوق', ku: 'سندوق' },
 
   // Beauty module shell (sidebar / header) + POS strings

@@ -999,7 +999,7 @@ type ReportTab =
   // Stok Raporları
   'stock-status' | 'stock-aging' | 'stock-turnover' | 'stock-abc' | 'materials' | 'purchase-promotion-report' | 'expiring-products' | 'critical-stock' | 'warehouse-stock' |
   // Ödeme & İşlem
-  'payment-distribution' | 'discount-report' | 'cash-status' | 'cash-registers' | 'commission' |
+  'payment-distribution' | 'discount-report' | 'cash-status' | 'commission' |
   // Güzellik özel
   'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-staff-treatment-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report' | 'beauty-overdue-uncalled-report' | 'beauty-deposit-prepayment-report';
 
@@ -1020,6 +1020,7 @@ const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
   'stock-abc', // Stok ABC Analizi — menüden gizlendi; rapor kodu duruyor
   'end-of-day', // Gün Sonu Raporu — menüden gizlendi; rapor kodu duruyor
   'customer-sales', // Müşteri Satış — menü ve sayfa bağı kesildi; bileşen dosyası duruyor
+  'cash-registers', // Kasalar raporu — menü ve sayfa kaldırıldı; Kasa Durumu içindeki kasalar tablosu duruyor
   // Eski müşteriler / devam eden alacaklar — menüden kaldırıldı; bileşen dosyası duruyor
   ...UNLISTED_FINANCIAL_REPORT_KEYS,
 ]);
@@ -1077,7 +1078,14 @@ function resolveInitialReportTab(
   initialBusinessType: BusinessType,
   initialReportTab?: ReportTab,
 ): ReportTab {
-  if (initialReportTab && String(initialReportTab) !== 'customer-sales') return initialReportTab;
+  const requested = String(initialReportTab ?? '');
+  if (
+    initialReportTab &&
+    requested !== 'customer-sales' &&
+    requested !== 'cash-registers'
+  ) {
+    return initialReportTab;
+  }
   if (initialBusinessType === 'beauty') return 'beauty-service-report';
   if (initialBusinessType === 'restaurant') return 'product-reports';
   return 'daily';
@@ -1325,7 +1333,8 @@ export function ReportsModule({
   );
 
   useEffect(() => {
-    if (initialReportTab && String(initialReportTab) !== 'customer-sales') {
+    const requested = String(initialReportTab ?? '');
+    if (initialReportTab && requested !== 'customer-sales' && requested !== 'cash-registers') {
       setSelectedTab(initialReportTab);
     }
   }, [initialReportTab]);
@@ -6834,7 +6843,6 @@ export function ReportsModule({
           { key: 'payment-distribution', label: tm('odemeDagilimi'), icon: <CreditCard className="w-4 h-4" /> },
           { key: 'discount-report', label: tm('indirimRaporu'), icon: <TagsOutlined /> },
           { key: 'cash-status', label: tm('kasaDurumu'), icon: <BankOutlined /> },
-          { key: 'cash-registers', label: tm('rptCashRegisters') || 'Kasalar', icon: <BankOutlined /> },
           { key: 'commission', label: tm('komisyonRaporu'), icon: <SafetyCertificateOutlined /> },
         ],
       },
@@ -8614,25 +8622,6 @@ export function ReportsModule({
                 </div>
               );
             })()}
-
-            {selectedTab === 'cash-registers' && (
-              <div className="space-y-4">
-                <div className="bg-white rounded-lg border p-4">
-                  <div className="flex flex-row flex-wrap items-center gap-3 sm:gap-4 min-w-0">
-                    <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
-                    <ReportDateRangePresets
-                      value={dailyReportDateRange}
-                      onChange={setDailyReportDateRange}
-                      tm={tm}
-                      min={reportDateInputMin}
-                      max={reportDateInputMax}
-                      className="min-w-0 flex-1"
-                    />
-                  </div>
-                </div>
-                {renderCashRegisterPanels()}
-              </div>
-            )}
 
             {selectedTab === 'discount-report' && (() => {
               const discounts = getDiscountReport();
