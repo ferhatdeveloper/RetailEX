@@ -13,17 +13,25 @@ import { ReportChatAI } from './ReportChatAI';
 import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
 import { formatNumber } from '../../utils/formatNumber';
-import { dailySalesDetailNetAmount, sumDailySalesDetailNet } from '../../utils/dailySalesDetailNet';
+import { dailySalesDetailNetAmount } from '../../utils/dailySalesDetailNet';
+import {
+  buildDailySalesDetailExpenseRows,
+  sumDailySalesDetailCashBalance,
+} from '../../utils/dailySalesDetailCashBalance';
 import {
   dailyNetCollected,
   dailyNetSaleRevenue,
 } from '../../utils/dailyReportKpis';
 import {
+  DAILY_REPORT_REVENUE_QTY_LABEL_KEY,
   DAILY_REPORT_SCREEN_CARD_LABEL_KEY,
+  dailyReportRevenueQuantityHint,
+  sumDailyReportLineQuantity,
   visibleDailyReportScreenCardKeys,
   type DailyReportScreenCardKey,
 } from '../../utils/dailyReportScreenCards';
 import { DailyReportKpiGrid, type DailyReportKpiCardModel } from './DailyReportKpiGrid';
+import { useClinicMenuPalette } from '../beauty/clinicMenuPalette';
 import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
 import { getCurrencyDecimalPlaces, getFirmLedgerCurrency, formatLedgerAmount } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
@@ -765,7 +773,7 @@ function readOpeningCashForReports(businessType: BusinessType): number {
 /** Günlük rapor tablosu satırı — fiş önizleme / ERP silme için kaynak bilgisi */
 type DailyUnifiedRow = {
   key: string;
-  source: 'erp' | 'rest' | 'avans';
+  source: 'erp' | 'rest' | 'avans' | 'expense';
   receiptNumber: string;
   date: string;
   cashier?: string;
@@ -783,6 +791,8 @@ type DailyUnifiedRow = {
   isDeposit?: boolean;
   /** AVANS → FATURA (Basit Model): cari avanslardan gelen sanal satır */
   isAvans?: boolean;
+  /** Gider pusulası / kasa çıkışı. Net eksi; indirim ve ciro değildir. */
+  isExpense?: boolean;
   erpSale?: Sale;
   restOrder?: any;
   kind: SaleKindBucket;
@@ -1157,6 +1167,7 @@ export function ReportsModule({
 }: ReportsModuleProps) {
   const { language, t, tm: globalTm } = useLanguage();
   const { darkMode } = useTheme();
+  const clinicPalette = useClinicMenuPalette();
   const { isMobile } = useResponsive();
   const tm = useCallback((key: string) => moduleTranslations[key]?.[language] || globalTm(key), [language, globalTm]);
 
@@ -3070,6 +3081,24 @@ export function ReportsModule({
     );
   }, [dailyAvansList]);
   const dailyAvansInfoCount = dailyAvansList.length;
+  const dailyRevenueQuantity = useMemo(() => {
+    if (businessType === 'restaurant' && dailySalesActive.length === 0) {
+      return sumDailyReportLineQuantity(
+        restOrdersClosedOnSelectedDate.map((order) => ({
+          status: 'completed',
+          total: restOrderNetAmount(order),
+          items: (Array.isArray(order.items) ? order.items : [])
+            .filter((item: { is_void?: boolean }) => item?.is_void !== true)
+            .map((item: { quantity?: number; qty?: number; total?: number; subtotal?: number; unit_price?: number; unitPrice?: number }) => ({
+              quantity: Number(item.quantity ?? item.qty ?? 0),
+              total: Number(item.subtotal ?? item.total ?? 0),
+              price: Number(item.unit_price ?? item.unitPrice ?? 0),
+            })),
+        })),
+      );
+    }
+    return sumDailyReportLineQuantity(dailyMainSales);
+  }, [businessType, dailySalesActive.length, restOrdersClosedOnSelectedDate, dailyMainSales]);
 
   const extraCollections = extraCustomerCollectionsNotOnSales(
     kasaLinesForSelectedDate,
@@ -3619,6 +3648,7 @@ export function ReportsModule({
       all: tm('reportsDailyKindAll'),
       reservation: tm('reportsDailyKindReservation') || 'Rezervasyon',
       return: tm('reportsDailyKindReturn') || 'İade',
+      expense: tm('reportsDailyKindExpense') || 'Gider',
     };
     return dailyKindVisibleRows.map((row) => {
       const hour = formatSaleWallClockTime(dailyRowWallClockSource(row));
@@ -3740,20 +3770,9 @@ export function ReportsModule({
     [dailyExpenseRowsForReport],
   );
   /**
-   * Gider kartı kapalıysa net'ten gider düşülmez.
-   * Muhasebe çift yönü: veresiye satış → cari alacak (+) / gelir (+); tahsil edilene kadar
-   * kasa/banka akışı 0. Bu nedenle Net iki yorumlu gösterilir:
-   * - Net (Brüt) = brüt ciro − gider (gelir tablosu; veresiye dahil)
-   * - Net (Nakit) = tahsilat − gider (kasa/banka; veresiye hariç)
-   */
-  /**
-   * Net (Brüt) ve Net (Nakit) kartları her zaman ciro/tahsilattan gideri düşer
-   * — parametre (`showDailyCardTotalExpense`) kapansa bile AVANS_ODEME /
-   * CH_ODEME gibi kasa çıkışları kârı azaltır.
-   *
-   * Peşinat kazanç değildir. Net (Brüt) = net ciro − gider. Peşinat kartta
-   * durur, buraya eklenmez. Net (Nakit) = tahsil edilen − gider. Tahsil
-   * edilen nakit iadeyi zaten düştüğü için çıkış burada ikinci kez düşülmez.
+   * Net (Nakit) = tahsil edilen − gider. İndirim tahsilatın içindedir,
+   * karta ve tablo toplamına geri eklenmez. Peşinat kazanç değildir.
+   * Net (Brüt) kartı bu ekranda yok. Gider tabloya eksi satır olarak bir kez girer.
    */
   const dailyCashOutBookedReceipts = new Set(
     dailyExpenseRowsForReport
@@ -3772,14 +3791,72 @@ export function ReportsModule({
     reservationCard: reservationTopUp.card,
     expenseReceiptKeys: dailyCashOutBookedReceipts,
   });
-  const dailyNetBrutAlways = useMemo(
-    () => dailyTotal - totalExpensesForReport,
-    [dailyTotal, totalExpensesForReport],
-  );
   const dailyNetNakitAlways = useMemo(
     () => dailyCollected - totalExpensesForReport,
     [dailyCollected, totalExpensesForReport],
   );
+
+  const dailySalesDetailGridRows = useMemo(() => {
+    if (dailyKindFilter !== 'all' || dailyShowOnlyRemoved) return dailyKindGridRows;
+    const expenseRows = buildDailySalesDetailExpenseRows(
+      dailyKindGridRows,
+      dailyExpenseRowsForReport.map((row) => ({
+        key: row.key,
+        ficheNo: row.ficheNo,
+        amount: row.amount,
+        date: row.date,
+        description: row.description,
+        category: row.category,
+        partyName: row.partyName,
+        paymentMethod: row.paymentMethod,
+        isCash: row.isCash,
+      })),
+      tm('reportsDailyKindExpense') || 'Gider',
+    );
+    if (expenseRows.length === 0) return dailyKindGridRows;
+    const mapped = expenseRows.map((row) => {
+      const bucket = normalizePaymentMethodBucket(row.paymentMethod);
+      const paymentLabel = row.isCash || bucket === 'cash'
+        ? tm('cashLabel')
+        : bucket === 'card'
+          ? tm('cardLabel')
+          : bucket === 'transfer'
+            ? tm('reportsPaymentPieTransfer')
+            : tm('reportsPaymentOther');
+      const unified: DailyUnifiedRow = {
+        key: row.key,
+        source: 'expense',
+        receiptNumber: row.receiptNumber,
+        date: row.date,
+        customerName: row.customerName,
+        beforeDiscount: 0,
+        total: Number(row.total) || 0,
+        discount: 0,
+        paymentMethod: row.paymentMethod,
+        status: 'outflow',
+        collected: 0,
+        remaining: 0,
+        isExpense: true,
+        isDeposit: false,
+        isAvans: false,
+        kind: 'unknown',
+        serviceTotal: 0,
+        productTotal: 0,
+        serviceDiscount: 0,
+        productDiscount: 0,
+        serviceBefore: 0,
+        productBefore: 0,
+      };
+      return {
+        ...unified,
+        hour: formatSaleWallClockTime(dailyRowWallClockSource(unified)),
+        kindLabel: row.kindLabel,
+        paymentLabel,
+        statusLabel: tm('out') || 'Çıkış',
+      };
+    });
+    return [...dailyKindGridRows, ...mapped];
+  }, [dailyKindFilter, dailyShowOnlyRemoved, dailyKindGridRows, dailyExpenseRowsForReport, tm]);
 
   const dailyExpenseGridRows = useMemo(() => {
     return dailyExpenseRowsForReport.map((row) => {
@@ -3837,6 +3914,7 @@ export function ReportsModule({
 
   const openDailyRowReceiptModal = useCallback(
     async (row: DailyUnifiedRow) => {
+      if (row.isExpense || row.source === 'expense') return;
       setDailyRowReceiptModal(row);
       setDailyRowReceiptLoading(true);
       setDailyRowReceiptHtml('');
@@ -6731,14 +6809,11 @@ export function ReportsModule({
     : ['grp-general', 'grp-design', 'grp-sales'];
 
   const dailyReportKpiByKey: Record<DailyReportScreenCardKey, DailyReportKpiCardModel> = {
-    'total-sales': {
-      key: 'total-sales',
-      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-sales']),
-      value: String(dailyMainSales.length),
-      hint: [
-        `${tm('reportsSalesReturnCount').replace('{count}', String(dailyReturnRows.length))}${dailyReturnTotal > 0 ? ` · −${formatNumber(dailyReturnTotal, 2, false)}` : ''}`,
-        `${tm('reportsDetStatusCancelled')} / ${tm('reportsDetStatusRefunded')}: ${dailyUnifiedRows.length - dailyActiveRows.length}`,
-      ].join('\n'),
+    'total-revenue': {
+      key: 'total-revenue',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-revenue']),
+      value: formatNumber(dailyTotal, 2, false),
+      hint: dailyReportRevenueQuantityHint(tm(DAILY_REPORT_REVENUE_QTY_LABEL_KEY), dailyRevenueQuantity),
     },
     'reservation-amount': {
       key: 'reservation-amount',
@@ -6751,38 +6826,16 @@ export function ReportsModule({
       }`,
       testId: 'daily-deposit-card',
     },
-    'total-revenue': {
-      key: 'total-revenue',
-      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-revenue']),
-      value: formatNumber(dailyTotal, 2, false),
-    },
     'total-discount': {
       key: 'total-discount',
       label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-discount']),
       value: formatNumber(dailyDiscount, 2, false),
-    },
-    cash: {
-      key: 'cash',
-      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY.cash),
-      value: formatNumber(dailyCash, 2, false),
-      hint: tm('cebeGirenNakit'),
-    },
-    'sales-return': {
-      key: 'sales-return',
-      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['sales-return']),
-      value: formatNumber(dailyReturnTotal, 2, false),
-      hint: tm('reportsPaymentTxnShort').replace('{n}', String(dailyReturnRows.length)),
     },
     'total-expense': {
       key: 'total-expense',
       label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-expense']),
       value: formatNumber(totalExpensesForReport, 2, false),
       hint: `${tm('expenseCount')}: ${dailyExpenseRowsForReport.length}`,
-    },
-    'net-gross': {
-      key: 'net-gross',
-      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['net-gross']),
-      value: formatNumber(dailyNetBrutAlways, 2, false),
     },
     'net-cash': {
       key: 'net-cash',
@@ -6791,15 +6844,7 @@ export function ReportsModule({
       hint: tm('dailyNetAfterExpenseHint'),
     },
   };
-  const dailyReportKpiCards = visibleDailyReportScreenCardKeys({
-    totalSales: showDailyCardTotalSales,
-    totalRevenue: showDailyCardTotalRevenue,
-    totalDiscount: showDailyCardTotalDiscount,
-    cash: showDailyCardCash,
-    salesReturn: showDailyCardSalesReturn,
-    totalExpense: showDailyCardTotalExpense,
-    net: showDailyCardNet,
-  }).map((key) => dailyReportKpiByKey[key]);
+  const dailyReportKpiCards = visibleDailyReportScreenCardKeys().map((key) => dailyReportKpiByKey[key]);
 
   const mobileMenuOpen = isMobile && !collapsed;
 
@@ -7047,7 +7092,7 @@ export function ReportsModule({
                   </div>
                   <div className="p-2">
                     <ReportColumnTable
-                      data={dailyKindGridRows}
+                      data={dailySalesDetailGridRows}
                       height={560}
                       onRowClick={(row) => void openDailyRowReceiptModal(row)}
                       footerLabel={tm('totalSales')}
@@ -7064,6 +7109,13 @@ export function ReportsModule({
                             // "Ürün" rozeti ile karışır ve kullanıcı
                             // "avanslar ürün satışına dahil" şikayetinde
                             // bulunuyor (WhatsApp 09.10.2026 guzel DB).
+                            if (row.isExpense) {
+                              return (
+                                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-rose-100 text-rose-800">
+                                  {row.kindLabel}
+                                </span>
+                              );
+                            }
                             if (row.isAvans) {
                               return (
                                 <span className="px-2 py-0.5 rounded text-xs font-semibold bg-cyan-100 text-cyan-800">
@@ -7109,10 +7161,11 @@ export function ReportsModule({
                           // Avans tutarı zaten "Net" kolonunda ve cari bakiyede
                           // ayrı izlenir; burada brüt hizmet cirosu = hizmet brüt.
                           footerFormat: (_n, rows) => {
-                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; isAvans?: boolean; beforeDiscount?: number; total?: number; discount?: number }>).reduce(
+                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; isAvans?: boolean; isExpense?: boolean; beforeDiscount?: number; total?: number; discount?: number }>).reduce(
                               (acc, r) => {
                                 if (isDepositSale(r.erpSale as Partial<Sale> | undefined) || r.isDeposit === true) return acc;
                                 if ((r as { isAvans?: boolean }).isAvans === true) return acc;
+                                if (r.isExpense === true) return acc;
                                 return acc + (Number(r.beforeDiscount ?? ((Number(r.total) || 0) + (Number(r.discount) || 0))) || 0);
                               },
                               0,
@@ -7120,6 +7173,7 @@ export function ReportsModule({
                             return formatLedgerAmount(total, reportCurrency);
                           },
                           cell: (row) => {
+                            if (row.isExpense) return '—';
                             // Rezervasyon avansı (henüz hizmet verilmemiş peşinat):
                             // belge karşılığı yok, "İndirim Öncesi" boş bırakılır —
                             // aksi halde iki kez yazılmış gibi görünür.
@@ -7146,9 +7200,10 @@ export function ReportsModule({
                           // Deposit satırlarda 0 gösteriliyor; aynı şekilde footer
                           // toplamı da deposit'i katmamalı.
                           footerFormat: (_n, rows) => {
-                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; discount?: number }>).reduce(
+                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; isExpense?: boolean; discount?: number }>).reduce(
                               (acc, r) => {
                                 if (isDepositSale(r.erpSale as Partial<Sale> | undefined) || r.isDeposit === true) return acc;
+                                if (r.isExpense === true) return acc;
                                 return acc + (Number(r.discount) || 0);
                               },
                               0,
@@ -7156,6 +7211,7 @@ export function ReportsModule({
                             return formatLedgerAmount(total, reportCurrency);
                           },
                           cell: (row) => {
+                            if (row.isExpense) return '—';
                             if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) {
                               return '—';
                             }
@@ -7175,19 +7231,28 @@ export function ReportsModule({
                           // İade eksi kalır; Math.max(0, …) iadeyi 0 yapıp
                           // 110.000 + 20.000 = 130.000 bırakıyordu.
                           footerFormat: (_n, rows) => {
-                            const total = sumDailySalesDetailNet(
+                            const total = sumDailySalesDetailCashBalance(
                               rows as Array<{
                                 erpSale?: Sale;
                                 isDeposit?: boolean;
+                                isAvans?: boolean;
+                                isExpense?: boolean;
                                 beforeDiscount?: number;
                                 total?: number;
                                 discount?: number;
                               }>,
-                              (r) => isDepositSale(r.erpSale as Partial<Sale> | undefined) || r.isDeposit === true,
+                              (r) => isDepositSale(r.erpSale as Partial<Sale> | undefined),
                             );
                             return formatLedgerAmount(total, reportCurrency);
                           },
                           cell: (row) => {
+                            if (row.isExpense) {
+                              return (
+                                <div className="font-medium text-rose-700 tabular-nums">
+                                  {formatNumber(dailySalesDetailNetAmount(row), 2, false)}
+                                </div>
+                              );
+                            }
                             if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) {
                               return '—';
                             }
@@ -7241,6 +7306,19 @@ export function ReportsModule({
                           header: tm('paymentLabel_rep'),
                           size: 160,
                           cell: (row) => {
+                            if (row.isExpense) {
+                              const bucket = normalizePaymentMethodBucket(row.paymentMethod);
+                              const cls = bucket === 'card'
+                                ? 'bg-blue-100 text-blue-700'
+                                : bucket === 'cash' || row.paymentMethod === 'cash'
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-slate-100 text-slate-700';
+                              return (
+                                <span className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${cls}`}>
+                                  {row.paymentLabel}
+                                </span>
+                              );
+                            }
                             const bucket = normalizePaymentMethodBucket(row.paymentMethod);
                             // Karma ödeme için kırmızı-turuncu vurgu; diğerleri bucket renginde
                             const erpForKind = row.erpSale;
@@ -7291,6 +7369,13 @@ export function ReportsModule({
                           header: tm('status'),
                           size: 130,
                           cell: (row) => {
+                            if (row.isExpense) {
+                              return (
+                                <span className="inline-block px-2 py-1 rounded text-xs font-semibold bg-rose-100 text-rose-800">
+                                  {row.statusLabel}
+                                </span>
+                              );
+                            }
                             const st = String(row.status ?? 'completed').toLowerCase();
                             const isCancelled = st === 'cancelled' || st === 'canceled';
                             const isRefunded = st === 'refunded';

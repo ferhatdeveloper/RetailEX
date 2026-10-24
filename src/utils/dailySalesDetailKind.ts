@@ -3,12 +3,14 @@
  *
  * Ürün satışı "Ürün", hizmet satışı "Hizmet" kalır.
  * İade fişi (durum return/refunded veya eksi tutar) "İade" yazar.
+ * Gider satırı eksi tutarlıdır; etiket İade değil Gider olur.
  * Tutar, indirim öncesi ve net bu fonksiyonda değişmez.
  */
 
 export interface DailySalesDetailKindInput {
   isAvans?: boolean;
   isDeposit?: boolean;
+  isExpense?: boolean;
   kind?: string | null;
   status?: string | null;
   total?: number | null;
@@ -22,6 +24,7 @@ export interface DailySalesDetailKindLabels {
   all: string;
   reservation: string;
   return: string;
+  expense?: string;
 }
 
 const RAW_KEY = /^reportsDailyKind/i;
@@ -32,9 +35,9 @@ function labelText(value: string | undefined, fallback: string): string {
   return text;
 }
 
-/** İade fişi: durum veya eksi tutar. Avans ve depozito iade değildir. */
+/** İade fişi: durum veya eksi tutar. Avans, depozito ve gider iade değildir. */
 export function isDailySalesDetailReturn(row: DailySalesDetailKindInput): boolean {
-  if (row.isAvans === true || row.isDeposit === true) return false;
+  if (row.isAvans === true || row.isDeposit === true || row.isExpense === true) return false;
   const status = String(row.status ?? '').trim().toLowerCase();
   if (status === 'return' || status === 'refunded') return true;
   const total = Number(row.total);
@@ -48,6 +51,7 @@ export function dailySalesDetailKindLabel(
   row: DailySalesDetailKindInput,
   labels: DailySalesDetailKindLabels,
 ): string {
+  if (row.isExpense === true) return labelText(labels.expense, 'Gider');
   if (row.isAvans === true) return labelText(labels.reservation, 'Rezervasyon');
   if (isDailySalesDetailReturn(row)) return labelText(labels.return, 'İade');
   if (row.kind === 'service') return labelText(labels.service, 'Hizmet');

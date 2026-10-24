@@ -2,14 +2,13 @@ import {
   Banknote,
   Calendar,
   Percent,
-  ShoppingCart,
   TrendingDown,
-  TrendingUp,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
+import { useClinicMenuPalette } from '../beauty/clinicMenuPalette';
 import {
-  DAILY_REPORT_SCREEN_CARD_TONES,
+  dailyReportCardTone,
   dailyReportScreenShowsCard,
   type DailyReportScreenCardKey,
 } from '../../utils/dailyReportScreenCards';
@@ -23,32 +22,29 @@ export type DailyReportKpiCardModel = {
 };
 
 const CARD_ICONS: Record<DailyReportScreenCardKey, LucideIcon> = {
-  'total-sales': ShoppingCart,
-  'reservation-amount': Calendar,
   'total-revenue': Banknote,
+  'reservation-amount': Calendar,
   'total-discount': Percent,
-  cash: Banknote,
-  'sales-return': TrendingDown,
-  'total-expense': Wallet,
-  'net-gross': TrendingUp,
+  'total-expense': TrendingDown,
   'net-cash': Wallet,
 };
 
 /**
- * Günlük Rapor KPI ızgarası. Yalnızca ekran kart listesindeki anahtarlar çizilir.
- * Aynı yükseklik, eşit boşluk, koyu yazı, abartısız gölge.
+ * Günlük Rapor KPI ızgarası. Yalnızca beş ekran kartı çizilir.
+ * Zemin, seçili klinik menü paletinin birbirinden ayrı açık tonudur.
  */
 export function DailyReportKpiGrid({ cards }: { cards: readonly DailyReportKpiCardModel[] }) {
+  const palette = useClinicMenuPalette();
   const visible = cards.filter((card) => dailyReportScreenShowsCard(card.key));
   if (visible.length === 0) return null;
 
   return (
     <div
-      className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 auto-rows-fr"
+      className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-5 auto-rows-fr"
       data-testid="daily-report-kpi-grid"
     >
       {visible.map((card) => {
-        const tone = DAILY_REPORT_SCREEN_CARD_TONES[card.key];
+        const tone = dailyReportCardTone(palette, card.key);
         const Icon = CARD_ICONS[card.key];
         return (
           <div
@@ -59,17 +55,25 @@ export function DailyReportKpiGrid({ cards }: { cards: readonly DailyReportKpiCa
             style={{
               backgroundColor: tone.background,
               borderColor: tone.border,
-              boxShadow: '0 1px 2px rgba(15, 23, 42, 0.05)',
+              boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06)',
             }}
           >
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-medium leading-5 text-slate-700">{card.label}</p>
+              <p className="text-sm font-medium leading-5" style={{ color: tone.label }}>
+                {card.label}
+              </p>
               <Icon className="h-5 w-5 shrink-0" style={{ color: tone.accent }} aria-hidden />
             </div>
-            <p className="mt-3 text-2xl font-semibold tabular-nums leading-none tracking-tight text-slate-900">
+            <p
+              className="mt-3 text-2xl font-semibold tabular-nums leading-none tracking-tight"
+              style={{ color: tone.value }}
+            >
               {card.value}
             </p>
-            <p className="mt-auto min-h-[2.25rem] whitespace-pre-line pt-2 text-xs leading-snug text-slate-600">
+            <p
+              className="mt-auto min-h-[2.25rem] whitespace-pre-line pt-2 text-xs leading-snug"
+              style={{ color: tone.hint }}
+            >
               {card.hint || '\u00a0'}
             </p>
           </div>

@@ -12032,6 +12032,7 @@ export const excelModuleTranslations = {
   // Satış Detayları Tür kolonu: iade fişi. Arapça ve Kürtçe, kısa İade
   // etiketi olan reportsDetStatusRefunded ile aynıdır.
   reportsDailyKindReturn: { tr: 'İade', en: 'Return', ar: 'مرتجع', ku: 'گەڕێندراوەتەوە' },
+  reportsDailyKindExpense: { tr: 'Gider', en: 'Expense', ar: 'مصروف', ku: 'خەرجی' },
   // 09.10.2026 — Kullanıcı isteği: cari_avans satırları günlük rapor TÜR
   // kolonunda artık "Rezervasyon" rozeti görsün; "Ürün/Hizmet" filtresinden
   // otomatik olarak Hariç tutulur (avans bir hizmet rezervasyonu, ürün
@@ -12044,16 +12045,17 @@ export const excelModuleTranslations = {
     ku: 'نۆرە',
   },
   reportsDailyKindHint: {
-    tr: 'Hizmet ve ürün tutarlarını ayırır. Karma fiş seçilen türe göre bölünür. Rezervasyon avansı Satış Detayları tablosunda **tüm filtrelerde Hariç** — avans Ciro Dışı tahsilattır, çift yazıma yol açmaması için ayrı "Peşinat (Avans)" kartında izlenir.',
-    en: 'Separates service and product amounts. Mixed receipts are split by the selected type. Reservation advances are **excluded from all filters** in the Sales Details table — advances are off-revenue collections and are tracked separately on the Deposit (Advance) card.',
-    ar: 'يفصل مبالغ الخدمة والمنتج. تُقسَّم الإيصالات المختلطة حسب النوع المحدد. عربونات الحجز **مستبعدة من جميع الفلاتر** في جدول تفاصيل المبيعات — العرابين خارج الإيرادات ويُتابعان في بطاقة العربون المنفصلة.',
+    tr: 'Hizmet ve ürün tutarlarını ayırır. Karma fiş seçilen türe göre bölünür. Rezervasyon avansı Satış Detayları tablosunda **tüm filtrelerde Hariç** — avans Ciro Dışı tahsilattır, çift yazıma yol açmaması için ayrı "Peşinat (Avans)" kartında izlenir. Gider çıkış olarak eksi yazılır ve dip toplam kasa bakiyesinden bir kez düşülür.',
+    en: 'Separates service and product amounts. Mixed receipts are split by the selected type. Reservation advances are **excluded from all filters** in the Sales Details table — advances are off-revenue collections and are tracked separately on the Deposit (Advance) card. An expense is a negative outflow and is deducted once from the cash-balance footer.',
+    ar: 'يفصل مبالغ الخدمة والمنتج. تُقسَّم الإيصالات المختلطة حسب النوع المحدد. عربونات الحجز **مستبعدة من جميع الفلاتر** في جدول تفاصيل المبيعات — العرابين خارج الإيرادات ويُتابعان في بطاقة العربون المنفصلة. يظهر المصروف كخروج سالب ويُخصم مرة واحدة من رصيد الصندوق.',
     // 17.10.2026 — Avans artık TÜM filtrelerde Hariç (eskiden yalnızca
     // service/product). "Tümü" filtresinde de gizli; çift yazımı önlemek
     // için kullanıcıya açık mesaj verilir.
-    ku: 'بڕی خزمەتگوزاری و بەرهەم جیا دەکاتەوە. پسوڵەی تێکەڵ بە جۆری هەڵبژێردراو دابەش دەکرێت. نۆرەکان **لە هەموو فلتەرەکان** مەستەثنایە لە خشتەیەکی فرۆشتنەکاندا — لە کارتی سەربەخۆی نۆرە (نۆرەی پێشوەختە) شوێنیان دەگیرێت.',
+    ku: 'بڕی خزمەتگوزاری و بەرهەم جیا دەکاتەوە. پسوڵەی تێکەڵ بە جۆری هەڵبژێردراو دابەش دەکرێت. نۆرەکان **لە هەموو فلتەرەکان** مەستەثنایە لە خشتەیەکی فرۆشتنەکاندا — لە کارتی سەربەخۆی نۆرە (نۆرەی پێشوەختە) شوێنیان دەگیرێت. خەرجی وەک دەرچوونی نەرێنی دەردەکەوێت و جارێک لە باڵانسی سندووق دەردەکرێت.',
   },
   transactionCount: { tr: 'İşlem Sayısı', en: 'Transaction Count', ar: 'عدد العمليات', ku: 'ژمارەی کارەکان' },
   totalRevenueLabel: { tr: 'Toplam Ciro', en: 'Total Revenue', ar: 'إجمالي الإيرادات', ku: 'کۆی داهات' },
+  reportsDailyRevenueQtyLabel: { tr: 'Satış miktarı', en: 'Sales quantity', ar: 'كمية المبيعات', ku: 'بڕی فرۆشتن' },
   avgSaleLabel: { tr: 'Ortalama Satış', en: 'Average Sale', ar: 'متوسط المبيعات', ku: 'تێکڕای فرۆشتن' },
   cashLabel: { tr: 'Nakit', en: 'Cash', ar: 'نقد', ku: 'کاش' },
   cardLabel: { tr: 'Kart', en: 'Card', ar: 'بطاقة', ku: 'کارت' },
@@ -12453,6 +12455,7 @@ export const excelModuleTranslations = {
   bShellNavObstetrics: { tr: 'Kadın doğum', en: 'Obstetrics', ar: 'التوليد', ku: 'ژنێنی' },
   bShellNavDietitian: { tr: 'Diyetisyen', en: 'Dietitian', ar: 'أخصائي تغذية', ku: 'ڕژێنەوە' },
   bClinicSpecialtyTab: { tr: 'Klinik türü', en: 'Clinic type', ar: 'نوع العيادة', ku: 'جۆری کلینیک' },
+  bClinicOpsMenuColor: { tr: 'Menü rengi', en: 'Menu color', ar: 'لون القائمة', ku: 'ڕەنگی مێنو' },
   bClinicOpsPortal: { tr: 'Portal & talepler', en: 'Portal & requests', ar: 'البوابة والطلبات', ku: 'پۆرتاڵ و داواکاری' },
   bClinicOpsLocations: { tr: 'Şube / oda', en: 'Branch / room', ar: 'الفرع / الغرفة', ku: 'لق / ژوور' },
   bClinicOpsWait: { tr: 'Bekleme & kurumsal', en: 'Waitlist & corporate', ar: 'الانتظار والمؤسسي', ku: 'چاوەڕوانی و دامەزراوە' },

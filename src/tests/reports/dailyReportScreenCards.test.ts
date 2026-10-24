@@ -5,10 +5,12 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { DailyReportKpiGrid } from '../../components/reports/DailyReportKpiGrid';
 import { translate } from '../../locales/module-translations';
+import { CLINIC_MENU_PALETTES, clinicHexContrast, clinicMenuPaletteById, materializeClinicCustomPalette } from '../../components/beauty/clinicMenuPalette';
 import {
   DAILY_REPORT_REMOVED_CARD_KEYS,
   DAILY_REPORT_SCREEN_CARD_KEYS,
   DAILY_REPORT_SCREEN_CARD_LABEL_KEY,
+  dailyReportCardTone,
   dailyReportScreenShowsCard,
   visibleDailyReportScreenCardKeys,
 } from '../../utils/dailyReportScreenCards';
@@ -44,7 +46,7 @@ describe('günlük rapor ekran kartları', () => {
     }
   });
 
-  it('kalan kart sırası sabittir', () => {
+  it('kalan kart sırası sabittir ve Net (Brüt) yoktur', () => {
     expect(visibleDailyReportScreenCardKeys(ALL_ON)).toEqual([
       'total-sales',
       'reservation-amount',
@@ -53,12 +55,13 @@ describe('günlük rapor ekran kartları', () => {
       'cash',
       'sales-return',
       'total-expense',
-      'net-gross',
       'net-cash',
     ]);
+    expect(DAILY_REPORT_SCREEN_CARD_KEYS).not.toContain('net-gross');
+    expect(dailyReportScreenShowsCard('net-gross')).toBe(false);
   });
 
-  it('rezervasyon her zaman durur; net kapalıysa her iki net kartı da gizlenir', () => {
+  it('rezervasyon her zaman durur; net kapalıysa Net (Nakit) gizlenir', () => {
     const keys = visibleDailyReportScreenCardKeys({
       ...ALL_ON,
       totalSales: false,
@@ -83,7 +86,6 @@ describe('günlük rapor ekran kartları', () => {
       'Nakit',
       'Satış iade',
       'Toplam Gider',
-      'Net (Brüt)',
       'Net (Nakit)',
     ]);
     for (const banned of FORBIDDEN_ON_SCREEN) {
@@ -102,6 +104,9 @@ describe('günlük rapor ekran kartları', () => {
     const text = screen.getByTestId('daily-report-kpi-grid').textContent ?? '';
     expect(text).toContain('Toplam İndirim');
     expect(text).toContain('1.500');
+    expect(text).toContain('Net (Nakit)');
+    expect(text).not.toContain('Net (Brüt)');
+    expect(screen.queryByTestId('daily-report-card-net-gross')).toBeNull();
     expect(text).not.toContain('Veresiye verilen');
     for (const banned of FORBIDDEN_ON_SCREEN) {
       expect(text).not.toContain(banned);
@@ -141,6 +146,47 @@ describe('günlük rapor ekran kartları', () => {
     ]) {
       expect(kpi).not.toContain(token);
       expect(view).not.toContain(token);
+    }
+    expect(kpi).not.toContain('net-gross');
+    expect(kpi).not.toContain('dailyNetAfterExpenseBrut');
+    expect(view).not.toContain('net-gross');
+  });
+
+  it('kart tonları seçili klinik paletinden gelir ve yazı okunaklı kalır', () => {
+    const lavender = clinicMenuPaletteById('lavender');
+    const rose = clinicMenuPaletteById('rose');
+    for (const palette of CLINIC_MENU_PALETTES) {
+      const backgrounds = DAILY_REPORT_SCREEN_CARD_KEYS.map(
+        (key) => dailyReportCardTone(palette, key).background,
+      );
+      expect(new Set(backgrounds).size).toBe(backgrounds.length);
+      for (const key of DAILY_REPORT_SCREEN_CARD_KEYS) {
+        const tone = dailyReportCardTone(palette, key);
+        expect(clinicHexContrast(tone.background, tone.value)).toBeGreaterThanOrEqual(4.5);
+        expect(clinicHexContrast(tone.background, tone.label)).toBeGreaterThanOrEqual(4.5);
+        expect(clinicHexContrast(tone.background, tone.hint)).toBeGreaterThanOrEqual(4.5);
+        expect(clinicHexContrast(tone.background, tone.accent)).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+    expect(dailyReportCardTone(lavender, 'total-sales').background).not.toBe(
+      dailyReportCardTone(rose, 'total-sales').background,
+    );
+    expect(dailyReportCardTone(lavender, 'cash').background).not.toBe('#F2F5F8');
+
+    const custom = materializeClinicCustomPalette({
+      id: 'custom-0f766e01',
+      name: 'Deniz',
+      background: '#10243f',
+      accent: '#0f766e',
+      text: '#e2e8f0',
+    });
+    const customCash = dailyReportCardTone(custom, 'cash');
+    expect(customCash.background).not.toBe(dailyReportCardTone(lavender, 'cash').background);
+    for (const key of DAILY_REPORT_SCREEN_CARD_KEYS) {
+      const tone = dailyReportCardTone(custom, key);
+      expect(clinicHexContrast(tone.background, tone.value)).toBeGreaterThanOrEqual(4.5);
+      expect(clinicHexContrast(tone.background, tone.label)).toBeGreaterThanOrEqual(4.5);
+      expect(clinicHexContrast(tone.background, tone.accent)).toBeGreaterThanOrEqual(4.5);
     }
   });
 });
