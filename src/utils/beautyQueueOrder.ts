@@ -68,8 +68,10 @@ export function mergeQueueGroupForCardDisplay(group: BeautyAppointment[]): Beaut
 }
 
 /**
- * Takvimde birleşik sıra kartıyla aynı küme (POS sepetine tüm hizmetleri yüklemek için).
- * Aynı gün + aynı müşteri anahtarı; cihaz doluysa aynı cihaz, her iki tarafta cihaz boşsa aynı personel.
+ * Sıra kartı kümesi: aynı gün + aynı müşteri; cihaz doluysa aynı cihaz,
+ * cihaz boşsa aynı personel. Takvim saat kutularını birleştirmez.
+ * POS açılış sepeti bu kümeyi kullanmaz; anahtar fatura/fiş no + saat + randevu id
+ * (`beautyPosOpening`).
  */
 export function findBeautyAppointmentsSameQueueGroup(
     primary: BeautyAppointment,

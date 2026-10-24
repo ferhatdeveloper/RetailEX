@@ -68,7 +68,7 @@ import { ERP_SETTINGS } from '../../../services/postgres';
 import { toast } from 'sonner';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
-import { findBeautyAppointmentsSameQueueGroup } from '../../../utils/beautyQueueOrder';
+import { beautyPosOpeningAppointments, buildBeautyPosOpeningCarts } from '../../../utils/beautyPosOpening';
 import {
     appointmentFormTotal,
     appointmentRemainingAfterDeposit,
@@ -1173,9 +1173,11 @@ export function AppointmentPOS({
             }
             if (cancelled) return;
 
-            const siblings = findBeautyAppointmentsSameQueueGroup(primary, pool.length > 0 ? pool : [primary]);
+            // POS açılışı müşteri + gün + personel ile birleşmez.
+            // Sepet anahtarı fatura/fiş no + saat + randevu id'dir.
+            const openedRows = beautyPosOpeningAppointments(primary, pool.length > 0 ? pool : [primary]);
             // İptal / gelmedi randevuların hizmetleri POS'a (sepet / posta) yüklenmez.
-            const activeSiblings = siblings.filter(
+            const activeOpened = openedRows.filter(
                 (s) => !(
                     appointmentStatusMatches(s.status, AppointmentStatus.CANCELLED) ||
                     appointmentStatusMatches(s.status, AppointmentStatus.NO_SHOW)
@@ -1189,8 +1191,9 @@ export function AppointmentPOS({
                 setHydratedAppointmentId(primary.id);
                 return;
             }
+            const anchor = activeOpened[0] ?? primary;
             const lines: CartLine[] = [];
-            for (const apt of activeSiblings) {
+            for (const apt of activeOpened) {
                 const sid = String(apt.staff_id ?? apt.specialist_id ?? '').trim() || undefined;
                 const svcId = String(apt.service_id ?? '').trim();
                 const mapped = svcId ? services.find(s => String(s.id) === svcId) : undefined;
@@ -1244,9 +1247,9 @@ export function AppointmentPOS({
             if (lines.length > 0) {
                 setCart(lines);
             } else {
-                const serviceId = String(primary.service_id ?? '').trim();
+                const serviceId = String(anchor.service_id ?? '').trim();
                 const mappedService = serviceId ? services.find(s => String(s.id) === serviceId) : undefined;
-                const staffId = String(primary.staff_id ?? primary.specialist_id ?? '').trim() || undefined;
+                const staffId = String(anchor.staff_id ?? anchor.specialist_id ?? '').trim() || undefined;
                 const mappedProduct = serviceId ? products.find((p) => String(p.id) === serviceId) : undefined;
                 if (mappedService) {
                     setCart([{
@@ -1257,69 +1260,65 @@ export function AppointmentPOS({
                         // 14.10.2026 — Brüt fiyat tercih edilir (mapped.price);
                         // `apt.total_price` eski kodlarda düşülmüş haliyle
                         // yazılmış olabilir.
-                        unit_price: Number(mappedService.price ?? primary.total_price ?? 0),
+                        unit_price: Number(mappedService.price ?? anchor.total_price ?? 0),
                         qty: 1,
                         color: mappedService.color,
-                        duration_min: Number(primary.duration ?? mappedService.duration_min ?? 30),
+                        duration_min: Number(anchor.duration ?? mappedService.duration_min ?? 30),
                         staff_id: staffId,
                     }]);
-                } else if (mappedProduct || serviceId || (primary.service_name ?? '').trim()) {
+                } else if (mappedProduct || serviceId || (anchor.service_name ?? '').trim()) {
                     setCart([{
                         uid: uid(),
                         type: mappedProduct ? 'product' : 'service',
-                        item_id: serviceId || mappedProduct?.id || `apt-${primary.id}`,
-                        name: mappedProduct?.name ?? String(primary.service_name ?? '—'),
-                        unit_price: Number(mappedProduct?.price ?? primary.total_price ?? 0),
+                        item_id: serviceId || mappedProduct?.id || `apt-${anchor.id}`,
+                        name: mappedProduct?.name ?? String(anchor.service_name ?? '—'),
+                        unit_price: Number(mappedProduct?.price ?? anchor.total_price ?? 0),
                         qty: 1,
                         color: mappedProduct ? '#0d9488' : undefined,
-                        duration_min: Number(primary.duration ?? 30),
+                        duration_min: Number(anchor.duration ?? 30),
                         staff_id: staffId,
                     }]);
                 }
             }
 
-            const firstStaff = String(activeSiblings[0]?.staff_id ?? activeSiblings[0]?.specialist_id ?? '').trim() || undefined;
+            const anchorTime = String(anchor.appointment_time ?? anchor.time ?? rawTime ?? '').trim();
+            const firstStaff = String(anchor.staff_id ?? anchor.specialist_id ?? '').trim() || undefined;
             setDefaultSpecialistId(firstStaff ?? '');
-            setAptDate(safeDateYmd(rawDate, safeDateYmd(prefillDate ?? new Date().toISOString().slice(0, 10))));
-            setAptTime(safeTimeHHmm(rawTime || prefillTime || '09:00'));
-            setAptDevice(String(primary.device_id ?? '').trim());
-            setAptNotes(String(primary.notes ?? ''));
-            const trSrc = activeSiblings[0] ?? primary;
-            setReceiptTreatmentDegree(String(trSrc.treatment_degree ?? '').trim());
-            setReceiptTreatmentShots(String(trSrc.treatment_shots ?? '').trim());
-            setAptStatus(primary.status ?? AppointmentStatus.CONFIRMED);
-            const sumDur = activeSiblings.reduce(
+            setAptDate(safeDateYmd(
+                String(anchor.date ?? anchor.appointment_date ?? rawDate),
+                safeDateYmd(prefillDate ?? new Date().toISOString().slice(0, 10)),
+            ));
+            setAptTime(safeTimeHHmm(anchorTime || prefillTime || '09:00'));
+            setAptDevice(String(anchor.device_id ?? '').trim());
+            setAptNotes(String(anchor.notes ?? ''));
+            setReceiptTreatmentDegree(String(anchor.treatment_degree ?? '').trim());
+            setReceiptTreatmentShots(String(anchor.treatment_shots ?? '').trim());
+            setAptStatus(anchor.status ?? AppointmentStatus.CONFIRMED);
+            const sumDur = activeOpened.reduce(
                 (s, a) => s + Math.max(1, Math.round(Number(a.duration) || 30)),
                 0
             );
-            setAptActualDurationMin(Math.max(1, sumDur || Math.round(Number(primary.duration) || 30)));
+            setAptActualDurationMin(Math.max(1, sumDur || Math.round(Number(anchor.duration) || 30)));
             setHydratedAppointmentId(primary.id);
-            // Rezervasyon kullanıcı tutarıdır. Hizmet fiyatı düşürülmez,
-            // DEPOSIT satırı sepete yazılmaz. Paylara bölünmüş eski kayıtta
-            // kardeş tutarlar toplanır; avans kaynağı daha büyükse o gösterilir.
-            const storedDeposits = activeSiblings.map(
-                (a) => Number((a as { deposit_amount?: number }).deposit_amount) || 0,
-            );
-            setVisitStoredDeposits(storedDeposits);
-            let sourceAmount: number | null = null;
+            // Rezervasyon bu fişe yazılmış tutardır. Kardeş saatin peşinatı
+            // toplanmaz, kopyalanmaz ve bölünmez. Hizmet fiyatı düşürülmez.
+            let reservationShown = Number((anchor as { deposit_amount?: number }).deposit_amount) || 0;
             if (customerId) {
                 try {
                     const advances = await getOpenAdvances(customerId);
-                    const ids = [primary, ...activeSiblings]
-                        .map((a) => String(a?.id ?? '').trim())
-                        .filter((id) => id.length >= 8);
-                    let best = 0;
-                    for (const av of advances) {
-                        const notes = String(av.notes ?? '');
-                        if (!ids.some((id) => notes.includes(id))) continue;
-                        best = Math.max(best, Number(av.amount) || 0);
-                    }
-                    sourceAmount = best > 0 ? best : null;
+                    const carts = buildBeautyPosOpeningCarts(pool.length > 0 ? pool : [primary], {
+                        advances: advances.map((av) => ({ notes: av.notes, amount: av.amount })),
+                    });
+                    const openedCart = carts.find((cart) => cart.appointmentId === String(anchor.id ?? '').trim());
+                    if (openedCart) reservationShown = openedCart.reservationAmount;
                 } catch (avansErr) {
                     logger.warn('AppointmentPOS', 'hydrate: avans kaynağı okunamadı', avansErr);
                 }
             }
-            if (!cancelled) setVisitSourceAmount(sourceAmount);
+            if (!cancelled) {
+                setVisitStoredDeposits([reservationShown]);
+                setVisitSourceAmount(null);
+            }
         })();
 
         return () => {
@@ -1574,7 +1573,7 @@ export function AppointmentPOS({
             } catch {
                 pool = [];
             }
-            const siblings = findBeautyAppointmentsSameQueueGroup(
+            const siblings = beautyPosOpeningAppointments(
                 existingAppointment,
                 pool.length > 0 ? pool : [existingAppointment],
             );
@@ -1681,7 +1680,7 @@ export function AppointmentPOS({
                 } catch {
                     pool = [];
                 }
-                const siblings = findBeautyAppointmentsSameQueueGroup(
+                const siblings = beautyPosOpeningAppointments(
                     existingAppointment,
                     pool.length > 0 ? pool : [existingAppointment],
                 );
@@ -2297,7 +2296,7 @@ export function AppointmentPOS({
             } catch {
                 pool = [];
             }
-            const siblings = findBeautyAppointmentsSameQueueGroup(
+            const siblings = beautyPosOpeningAppointments(
                 existingAppointment,
                 pool.length > 0 ? pool : [existingAppointment],
             );
@@ -3149,33 +3148,8 @@ export function AppointmentPOS({
                             : {}),
                 });
 
-                // Standart ödeme: aynı kuyruk grubundaki diğer randevuları da
-                // tamamla. Peşinatlı ön ödemede kardeş randevular otomatik
-                // tamamlanmaz — sadece bu randevu "başladı" olur; her biri
-                // hizmet verildiğinde ayrıca tamamlanır.
-                if (!isPesinatliPrePayment) {
-                    try {
-                        const dayYmd = beautyAppointmentDateKey(existingAppointment)
-                            || safeDateYmd(aptDate);
-                        const pool = await beautyService.getAppointmentsInRange(dayYmd, dayYmd);
-                        const siblings = findBeautyAppointmentsSameQueueGroup(
-                            existingAppointment,
-                            pool.length > 0 ? pool : [existingAppointment],
-                        );
-                        const siblingUpdates = siblings
-                            .filter((sib) =>
-                                !!sib?.id
-                                && sib.id !== existingAppointment.id
-                                && !appointmentStatusMatches(sib.status, AppointmentStatus.COMPLETED),
-                            )
-                            .map((sib) => updateAppointment(sib.id, { status: AppointmentStatus.COMPLETED }));
-                        if (siblingUpdates.length > 0) {
-                            await Promise.allSettled(siblingUpdates);
-                        }
-                    } catch (syncErr) {
-                        logger.error('AppointmentPOS', 'payComplete: sibling completion sync failed', syncErr);
-                    }
-                }
+                // Bu fişin durumu yukarıda yazıldı. Aynı müşteri, gün ve personeldeki
+                // diğer saat / fatura bu ödemeyle tamamlanmaz.
             } else if (!isStandaloneProductSales && canBookApt) {
                 // Direkt ödeme ile açılan işlemde randevu kapatılır (completed veya
                 // peşinatlı ise "başladı").
