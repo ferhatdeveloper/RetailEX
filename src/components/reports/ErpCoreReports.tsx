@@ -9,6 +9,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useRegisterDatagridRefresh } from '../../hooks/useRegisterDatagridRefresh';
 import { formatNumber } from '../../utils/formatNumber';
+import { cashFlowVirmanColumns } from '../../utils/cashVirman';
 import {
   formatProductGrossProfitMarginPct,
   productGrossProfitMarginPctFromRows,
@@ -315,6 +316,7 @@ function cashBankTxnLabel(tm: (k: string) => string, raw: string): string {
     case 'CH_ODEME':
       return tm('payment') || 'Ödeme';
     case 'VIRMAN':
+    case 'VIRMAN_TARGET':
       return tm('erpTxnVirman') || 'Virman';
     case 'BANKA_GIRIS':
       return tm('bankDeposit') || 'Banka giriş';
@@ -411,10 +413,16 @@ export function CashBankMovementReport() {
         .map((r) => {
           const tt = String(r.transactionType || '').toUpperCase();
           const amount = Math.abs(Number(r.amount) || 0);
-          const signed = Number(r.netAmount) || 0;
-          const inflowAmount = CASH_INFLOW_TYPES.has(tt) ? amount : 0;
-          const outflowAmount = CASH_OUTFLOW_TYPES.has(tt) ? amount : 0;
-          const transferAmount = tt === 'VIRMAN' ? signed : 0;
+          const virman = cashFlowVirmanColumns({
+            transactionType: r.transactionType,
+            ficheNo: r.ficheNo,
+            sign: r.sign,
+            amount,
+            targetRegisterId: r.targetRegisterId,
+            currency: r.currency,
+          });
+          const inflowAmount = virman ? virman.inflow : (CASH_INFLOW_TYPES.has(tt) ? amount : 0);
+          const outflowAmount = virman ? virman.outflow : (CASH_OUTFLOW_TYPES.has(tt) ? amount : 0);
           return {
             ...r,
             sourceLabel: r.source === 'cash' ? tm('erpSourceCash') : tm('erpSourceBank'),
@@ -424,8 +432,7 @@ export function CashBankMovementReport() {
             accountLabel: String(r.accountName || '').trim() || '—',
             inflowAmount,
             outflowAmount,
-            transferAmount,
-            classifiedNet: inflowAmount - outflowAmount + transferAmount,
+            classifiedNet: inflowAmount - outflowAmount,
           };
         }),
     [rows, tm],

@@ -16,6 +16,11 @@
 
 import { computeKasaIslemiSign, type KasaIslemi } from '../services/api/kasa';
 import { computeCashBalanceForRegister } from './cashBalance';
+import {
+  cashVirmanDirection,
+  isCashVirmanType,
+  withCashVirmanLines,
+} from './cashVirman';
 import { isReturnSale } from './posZReport';
 import { dbPaymentMethodToFormCode, type PaymentFormCode } from './paymentMethodUtils';
 import { isDepositSale } from './reportDepositFilter';
@@ -508,6 +513,12 @@ export interface CashStatusRegisterLine {
   fiche_no?: string | null;
   islem_aciklamasi?: string | null;
   aciklama?: string | null;
+  /** Yazılmış işaret. Virman hedef satırında +1, kaynakta −1. */
+  sign?: number | null;
+  target_register_id?: string | null;
+  doviz_kodu?: string | null;
+  currency?: string | null;
+  currency_code?: string | null;
 }
 
 /**
@@ -683,6 +694,8 @@ function drawerKind(line: CashStatusRegisterLine): DrawerKind {
 function signedLedgerAmount(line: CashStatusRegisterLine): number {
   const amount = Math.abs(num(line.tutar));
   if (!(amount > 0)) return 0;
+  const virman = cashVirmanDirection(line);
+  if (virman) return amount * virman;
   const sign = computeKasaIslemiSign(String(line.islem_tipi || ''));
   if (!sign) return 0;
   return amount * sign;
@@ -945,6 +958,7 @@ export function cashRegisterStatusFromLedger(args: {
 }): CashRegisterStatusRow[] {
   const dateFrom = String(args.dateFrom || '').slice(0, 10);
   const dateTo = String(args.dateTo || '').slice(0, 10);
+  const ledgerLines = withCashVirmanLines(args.lines || []) as CashStatusRegisterLine[];
   const known = new Set<string>();
   const byId = new Map<string, { code: string; name: string; lines: CashStatusRegisterLine[] }>();
 
@@ -963,7 +977,7 @@ export function cashRegisterStatusFromLedger(args: {
     ensure(id, String(register.code || '').trim(), String(register.name || register.code || id));
   }
 
-  for (const line of args.lines || []) {
+  for (const line of ledgerLines) {
     const id = String(line.kasa_id || '').trim() || CASH_REGISTER_UNASSIGNED_ID;
     const row = ensure(
       id,
@@ -1002,9 +1016,18 @@ export function cashRegisterStatusFromLedger(args: {
         skipNet = round2(skipNet + signed);
         continue;
       }
+      const tipUpper = String(line.islem_tipi || '').trim().toUpperCase();
+      if (isCashVirmanType(tipUpper)) {
+        // Kaynak −tutar, hedef +tutar. Gider değildir. Toplam satırda birbirini götürür.
+        if (kind === 'card') cardIn = round2(cardIn + signed);
+        else if (kind === 'transfer') transferIn = round2(transferIn + signed);
+        else if (kind === 'open') openIn = round2(openIn + signed);
+        else if (kind === 'cash') cashIn = round2(cashIn + signed);
+        continue;
+      }
       if (signed < -0.004) {
         if (!matchesListedRefund(line, refunds)) {
-          const tip = String(line.islem_tipi || '').trim().toUpperCase() || 'DIGER';
+          const tip = tipUpper || 'DIGER';
           const abs = round2(-signed);
           if (kind === 'cash' && PERIOD_SUMMARY_CASH_OUT_TYPES.has(tip)) {
             expense = round2(expense + abs);

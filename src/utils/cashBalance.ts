@@ -12,6 +12,7 @@
  */
 
 import { computeKasaIslemiSign, type KasaIslemi } from '../services/api/kasa';
+import { cashVirmanDirection, cashVirmanAmount, withCashVirmanLines } from './cashVirman';
 
 /**
  * Kasa bakiyesini cash_lines üzerinden hesaplar (snapshot değil).
@@ -20,13 +21,19 @@ import { computeKasaIslemiSign, type KasaIslemi } from '../services/api/kasa';
  * @param cashLines - cash_lines satırları (KasaIslemi[] — fetchKasaIslemleri çıktısı)
  * @returns toplam bakiye (negatif olabilir)
  */
+function signedCashLine(cl: KasaIslemi): number {
+  const direction = cashVirmanDirection(cl);
+  const amt = direction ? cashVirmanAmount(cl) : Math.abs(Number(cl?.tutar) || 0);
+  if (!amt) return 0;
+  if (direction) return amt * direction;
+  return amt * computeKasaIslemiSign(cl.islem_tipi);
+}
+
 export function computeCashBalance(cashLines: ReadonlyArray<KasaIslemi>): number {
   if (!Array.isArray(cashLines) || cashLines.length === 0) return 0;
   let total = 0;
-  for (const cl of cashLines) {
-    const amt = Math.abs(Number(cl?.tutar) || 0);
-    if (!amt) continue;
-    total += amt * computeKasaIslemiSign(cl.islem_tipi);
+  for (const cl of withCashVirmanLines(cashLines)) {
+    total += signedCashLine(cl);
   }
   return total;
 }
@@ -47,11 +54,9 @@ export function computeCashBalanceForRegister(
   if (!registerId) return 0;
   if (!Array.isArray(cashLines) || cashLines.length === 0) return 0;
   let total = 0;
-  for (const cl of cashLines) {
+  for (const cl of withCashVirmanLines(cashLines)) {
     if (String(cl?.kasa_id || '') !== String(registerId)) continue;
-    const amt = Math.abs(Number(cl?.tutar) || 0);
-    if (!amt) continue;
-    total += amt * computeKasaIslemiSign(cl.islem_tipi);
+    total += signedCashLine(cl);
   }
   return total;
 }

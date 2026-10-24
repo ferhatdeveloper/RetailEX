@@ -26,6 +26,7 @@ import {
   computeCashBalance,
   computeCashBalanceForRegister,
 } from '../../../utils/cashBalance';
+import { cashVirmanDirection, withCashVirmanLines } from '../../../utils/cashVirman';
 import { KasaDefinitionModal } from './KasaDefinitionModal';
 import { KasaIslemleriModal } from './KasaIslemleriModal';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
@@ -177,11 +178,14 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
     }),
     kasaColumnHelper.accessor('bakiye', {
       header: (tm('balance') || 'Bakiye').toUpperCase(),
-      cell: info => (
-        <span className="font-semibold">
-          {formatCurrency(info.getValue())} {info.row.original.id_doviz_kodu || amountCurrency}
-        </span>
-      ),
+      cell: info => {
+        const bal = computeCashBalanceForRegister(info.row.original.id, transactions);
+        return (
+          <span className="font-semibold">
+            {formatCurrency(bal)} {info.row.original.id_doviz_kodu || amountCurrency}
+          </span>
+        );
+      },
       size: 140
     }),
     kasaColumnHelper.accessor('olusturma_tarihi', {
@@ -291,13 +295,20 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
     return toLocalDateInputValue(d) === todayKey;
   };
 
+  const movementLines = useMemo(
+    () => withCashVirmanLines(transactions),
+    [transactions],
+  );
+
+  const lineSign = (t: KasaIslemi) => cashVirmanDirection(t) || computeKasaIslemiSign(t.islem_tipi);
+
   const stats = useMemo(() => {
     const absAmt = (t: KasaIslemi) => Math.abs(parseKasaAmount(t.tutar));
     let todayCollection = 0;
     let todayPayment = 0;
-    for (const t of transactions) {
+    for (const t of movementLines) {
       if (!isTodayTxn(t)) continue;
-      const sign = computeKasaIslemiSign(t.islem_tipi);
+      const sign = lineSign(t);
       if (sign > 0) todayCollection += absAmt(t);
       else if (sign < 0) todayPayment += absAmt(t);
     }
@@ -307,21 +318,21 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
     // cash_lines üzerinden Σ |tutar| × sign formülüyle hesaplanır.
     const balance = computeCashBalance(transactions);
     return { todayCollection, todayPayment, balance };
-  }, [transactions, todayKey]);
+  }, [movementLines, transactions, todayKey]);
 
   const kpiDetailRows = useMemo(() => {
     if (kpiDetail === 'collection') {
-      return transactions.filter(
-        (t) => isTodayTxn(t) && computeKasaIslemiSign(t.islem_tipi) > 0
+      return movementLines.filter(
+        (t) => isTodayTxn(t) && lineSign(t) > 0
       );
     }
     if (kpiDetail === 'payment') {
-      return transactions.filter(
-        (t) => isTodayTxn(t) && computeKasaIslemiSign(t.islem_tipi) < 0
+      return movementLines.filter(
+        (t) => isTodayTxn(t) && lineSign(t) < 0
       );
     }
     return [];
-  }, [kpiDetail, transactions, todayKey]);
+  }, [kpiDetail, movementLines, todayKey]);
 
   const kpiDetailTitle =
     kpiDetail === 'collection'
@@ -570,7 +581,7 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
             ) : (
               <ul className="space-y-2">
                 {kpiDetailRows.map((tx) => {
-                  const sign = computeKasaIslemiSign(tx.islem_tipi);
+                  const sign = lineSign(tx);
                   const amt = Math.abs(parseKasaAmount(tx.tutar));
                   return (
                     <li

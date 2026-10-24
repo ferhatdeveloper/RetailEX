@@ -79,6 +79,7 @@ import {
   type CashFlowNameIndexes,
 } from '../../utils/cashFlowAccountName';
 import { foldCashFlowByFiche } from '../../utils/cashFlowByFiche';
+import { cashVirmanDirection, withCashVirmanLines } from '../../utils/cashVirman';
 
 const ROW_LIMIT = 3000;
 
@@ -147,6 +148,12 @@ export interface CashBankMovementRow {
   sign: number;
   netAmount: number;
   accountName: string;
+  /** Virman hedef kasası. Kaynak satırda dolu, hedef satırda kaynak kasa. */
+  targetRegisterId?: string;
+  /** Satırın para birimi. USD virmanı IQD toplama yazılmaz. */
+  currency?: string;
+  /** Karşı kasanın adı. Eksik hedef satırı bu adla gösterilir. */
+  targetRegisterName?: string;
 }
 
 export interface PurchaseSummaryRow {
@@ -633,6 +640,12 @@ function mapCashBankMovementRow(r: {
   sign?: unknown;
   account_name?: unknown;
   accountName?: unknown;
+  target_register_id?: unknown;
+  targetRegisterId?: unknown;
+  target_register_name?: unknown;
+  targetRegisterName?: unknown;
+  currency_code?: unknown;
+  currency?: unknown;
 }): CashBankMovementRow {
   const amount = Number(r.amount ?? 0);
   const sign = Number(r.sign ?? 1) || 1;
@@ -650,7 +663,28 @@ function mapCashBankMovementRow(r: {
     sign,
     netAmount: amount * sign,
     accountName: String(r.account_name ?? r.accountName ?? ''),
+    targetRegisterId: String(r.target_register_id ?? r.targetRegisterId ?? ''),
+    targetRegisterName: String(r.target_register_name ?? r.targetRegisterName ?? ''),
+    currency: String(r.currency_code ?? r.currency ?? '').trim().toUpperCase(),
   };
+}
+
+/** Virman: kaynak çıkış, hedef giriş. Eksik hedef satırı şirket görünümünde eklenir. */
+function applyCashVirmanFlow<T extends CashBankMovementRow>(
+  rows: readonly T[],
+  imputeMissing: boolean,
+): T[] {
+  return withCashVirmanLines(rows, { imputeMissing }).map((row) => {
+    const direction = cashVirmanDirection(row);
+    const sign = direction || (Number(row.sign) < 0 ? -1 : 1);
+    const amount = Math.abs(Number(row.amount) || 0);
+    return {
+      ...row,
+      sign,
+      amount,
+      netAmount: amount * sign,
+    };
+  });
 }
 
 /**
@@ -1182,12 +1216,16 @@ function buildCashBankMovementParts(opts: {
           COALESCE(cl.definition, '') AS definition,
           COALESCE(cl.amount, 0) AS amount,
           COALESCE(cl.sign, 1) AS sign,
+          COALESCE(cl.target_register_id::text, '') AS target_register_id,
+          COALESCE(tgt.name, tgt.code, '') AS target_register_name,
+          COALESCE(cl.currency_code, '') AS currency_code,
           COALESCE(cl.customer_id::text, '') AS customer_id,
           ${partyExpr} AS party_id,
           ${cardExpr} AS expense_card_id,
           ${rich ? rich.selectExpr : 'COALESCE(c.name, s.name, \'\')'} AS account_name
         FROM cash_lines cl
         LEFT JOIN cash_registers cr ON cr.id = cl.register_id
+        LEFT JOIN cash_registers tgt ON tgt.id = cl.target_register_id
         ${
           rich
             ? rich.joins
@@ -1219,6 +1257,9 @@ function buildCashBankMovementParts(opts: {
           COALESCE(bl.definition, '') AS definition,
           COALESCE(bl.amount, 0) AS amount,
           COALESCE(bl.sign, 1) AS sign,
+          ''::text AS target_register_id,
+          ''::text AS target_register_name,
+          ''::text AS currency_code,
           COALESCE(bl.customer_id::text, '') AS customer_id,
           ''::text AS party_id,
           ''::text AS expense_card_id,
@@ -1681,6 +1722,8 @@ export const erpReportsAPI = {
           const d = String(r.date || '').slice(0, 10);
           if (d < start || d > end) continue;
           const reg = regMap.get(rid);
+          const targetId = String(r.target_register_id || '');
+          const targetReg = targetId ? regMap.get(targetId) : undefined;
           drafts.push(
             cashFlowDraft(
               {
@@ -1695,6 +1738,9 @@ export const erpReportsAPI = {
                 definition: r.definition,
                 amount: r.amount,
                 sign: r.sign,
+                target_register_id: r.target_register_id,
+                target_register_name: targetReg?.name || '',
+                currency_code: r.currency_code,
                 customer_id: r.customer_id,
                 party_id: r.party_id,
                 expense_card_id: r.expense_card_id,
@@ -1751,8 +1797,8 @@ export const erpReportsAPI = {
         }
       }
 
-      const named = foldCashFlowByFiche(await withCashFlowNames(drafts));
-      return named.sort((a, b) => b.date.localeCompare(a.date)).slice(0, ROW_LIMIT);
+      const named = applyCashVirmanFlow(await withCashFlowNames(drafts), !registerId);
+      return foldCashFlowByFiche(named).sort((a, b) => b.date.localeCompare(a.date)).slice(0, ROW_LIMIT);
     }
 
     const values: unknown[] = [start, end];
@@ -1787,7 +1833,11 @@ export const erpReportsAPI = {
       );
       rawRows = rows || [];
     }
-    return foldCashFlowByFiche(await withCashFlowNames(rawRows.map((row) => cashFlowDraft(row))));
+    const named = applyCashVirmanFlow(
+      await withCashFlowNames(rawRows.map((row) => cashFlowDraft(row))),
+      !registerId,
+    );
+    return foldCashFlowByFiche(named);
   },
 
   async getPurchaseSummary(opts: {
