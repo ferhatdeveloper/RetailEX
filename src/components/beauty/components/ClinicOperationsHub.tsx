@@ -12,6 +12,7 @@ import { ERP_SETTINGS } from '../../../services/postgres';
 import type { BeautyClinicAnalytics } from '../../../types/beauty';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { ClinicSpecialtyModePanel } from './ClinicSpecialtyModePanel';
+import { ClinicMenuPalettePicker } from './ClinicMenuPalettePicker';
 import { normalizeAllowStaffSlotOverlap } from '../../../utils/beautyPortalOverlap';
 
 export function ClinicOperationsHub() {
@@ -72,6 +73,7 @@ export function ClinicOperationsHub() {
 
     return (
         <div className="flex flex-col h-full min-h-0 gap-3 p-3 sm:p-4 overflow-auto min-w-0" style={{ background: '#f7f6fb' }}>
+            <ClinicMenuPalettePicker />
             <div className="flex gap-2 shrink-0 min-w-0 overflow-x-auto overflow-y-hidden pb-1 -mx-1 px-1 overscroll-x-contain touch-pan-x">
                 {TABS.map(t => {
                     const Icon = t.icon;

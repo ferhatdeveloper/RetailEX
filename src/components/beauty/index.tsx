@@ -49,12 +49,12 @@ import { AppointmentPOS } from './components/AppointmentPOS';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import { ClinicShellLanguageCluster } from './components/ClinicShellLanguageCluster';
 import {
-    CLINIC_CLASSIC_SHELL,
     clinicV2TabAfterCrmMenu,
     readClinicV2CrmMenu,
     useClinicShellV2,
     useClinicV2CrmMenu,
 } from './clinicShellV2';
+import { useClinicMenuPalette } from './clinicMenuPalette';
 import { CLINIC_V2_INBOX_TAB_ID, ClinicV2SideRail } from './components/ClinicV2SideRail';
 import { ClinicReportCenter } from './components/ClinicReportCenter';
 import { CLINIC_REPORT_CENTER_TAB, GENERAL_REPORTS_TAB } from '../../utils/clinicReportCenter';
@@ -124,7 +124,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const showNavText = !isMobile ? !collapsed : mobileNavOpen;
     const [showLanguageModal, setShowLanguageModal] = useState(false);
-    const shell = CLINIC_CLASSIC_SHELL;
+    const shell = useClinicMenuPalette();
     const shellV2 = useClinicShellV2();
     const crmMenuOn = useClinicV2CrmMenu();
     const [rtlMode, setRtlMode] = useState(() => localStorage.getItem('retailos_rtl_mode') === 'true');
@@ -494,6 +494,8 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
             )}
             {!surveyOverlayOpen && !shellV2 && (
             <aside
+                data-testid="clinic-classic-nav"
+                data-palette={shell.id}
                 className={`flex flex-col transition-all duration-200 ease-out ${
                     isMobile ? 'fixed inset-y-0 left-0 z-[60] shadow-2xl' : 'shrink-0'
                 }`}
@@ -518,14 +520,14 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                             borderRadius: 6,
                         }}
                     >
-                        {specialty === 'dental' ? <Smile size={14} color="#fff" /> : <Sparkles size={14} color="#fff" />}
+                        {specialty === 'dental' ? <Smile size={14} color="#fff" /> : <Sparkles size={14} color={shell.onAccent} />}
                     </div>
                     {showNavText && (
                         <div className="ml-2.5 min-w-0">
-                            <p style={{ color: '#fff', fontWeight: 800, fontSize: 13, lineHeight: 1.2, letterSpacing: '-0.01em' }}>
+                            <p style={{ color: shell.text, fontWeight: 800, fontSize: 13, lineHeight: 1.2, letterSpacing: '-0.01em' }}>
                                 {specialty === 'dental' ? tm('bShellBrandTitleDental') : tm('bShellBrandTitle')}
                             </p>
-                            <p style={{ color: 'rgba(167,139,250,0.5)', fontWeight: 700, fontSize: 9, letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+                            <p style={{ color: shell.muted, fontWeight: 700, fontSize: 9, letterSpacing: '0.15em', textTransform: 'uppercase' }}>
                                 {specialty === 'dental' ? tm('bShellBrandSubtitleDental') : tm('bShellBrandSubtitle')}
                             </p>
                         </div>
@@ -534,9 +536,9 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                         type="button"
                         onClick={() => (isMobile ? setMobileNavOpen(false) : setCollapsed(c => !c))}
                         className="ml-auto shrink-0 flex items-center justify-center transition-colors"
-                        style={{ width: 24, height: 24, borderRadius: 4, color: 'rgba(167,139,250,0.4)' }}
-                        onMouseEnter={e => (e.currentTarget.style.color = 'rgba(196,181,253,0.8)')}
-                        onMouseLeave={e => (e.currentTarget.style.color = 'rgba(167,139,250,0.4)')}
+                        style={{ width: 24, height: 24, borderRadius: 4, color: shell.icon }}
+                        onMouseEnter={e => (e.currentTarget.style.color = shell.iconHover)}
+                        onMouseLeave={e => (e.currentTarget.style.color = shell.icon)}
                         aria-label={isMobile ? tm('close') : undefined}
                     >
                         {isMobile ? <X size={14} /> : collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
@@ -549,7 +551,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                         <div key={group.title} style={{ marginBottom: 16 }}>
                             {showNavText && (
                                 <p style={{
-                                    color: 'rgba(167,139,250,0.35)', fontWeight: 800,
+                                    color: shell.group, fontWeight: 800,
                                     fontSize: 9, letterSpacing: '0.18em', textTransform: 'uppercase',
                                     padding: '0 16px', marginBottom: 4,
                                 }}>
@@ -574,22 +576,25 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                                             justifyContent: !showNavText ? 'center' : 'flex-start',
                                             gap: 9,
                                             background: active ? shell.accent : 'transparent',
+                                            borderTop: 'none',
+                                            borderRight: 'none',
+                                            borderBottom: 'none',
                                             borderLeft: active ? `2px solid ${shell.accentEdge}` : '2px solid transparent',
-                                            color: active ? '#fff' : 'rgba(196,181,253,0.65)',
+                                            color: active ? shell.onAccent : shell.item,
                                             fontSize: 13, fontWeight: active ? 700 : 500,
-                                            cursor: 'pointer', border: 'none', outline: 'none',
+                                            cursor: 'pointer', outline: 'none',
                                             transition: 'background 0.12s, color 0.12s',
                                         }}
                                         onMouseEnter={e => {
                                             if (!active) {
                                                 e.currentTarget.style.background = shell.focusRing;
-                                                e.currentTarget.style.color = 'rgba(221,214,254,0.9)';
+                                                e.currentTarget.style.color = shell.itemHover;
                                             }
                                         }}
                                         onMouseLeave={e => {
                                             if (!active) {
                                                 e.currentTarget.style.background = 'transparent';
-                                                e.currentTarget.style.color = 'rgba(196,181,253,0.65)';
+                                                e.currentTarget.style.color = shell.item;
                                             }
                                         }}
                                     >
@@ -618,19 +623,22 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                                 justifyContent: !showNavText ? 'center' : 'flex-start',
                                 gap: 9,
                                 background: 'transparent',
+                                borderTop: 'none',
+                                borderRight: 'none',
+                                borderBottom: 'none',
                                 borderLeft: '2px solid transparent',
-                                color: 'rgba(196,181,253,0.65)',
+                                color: shell.item,
                                 fontSize: 13, fontWeight: 600,
-                                cursor: 'pointer', border: 'none', outline: 'none',
+                                cursor: 'pointer', outline: 'none',
                                 transition: 'background 0.12s, color 0.12s',
                             }}
                             onMouseEnter={e => {
                                 e.currentTarget.style.background = shell.focusRing;
-                                e.currentTarget.style.color = 'rgba(221,214,254,0.9)';
+                                e.currentTarget.style.color = shell.itemHover;
                             }}
                             onMouseLeave={e => {
                                 e.currentTarget.style.background = 'transparent';
-                                e.currentTarget.style.color = 'rgba(196,181,253,0.65)';
+                                e.currentTarget.style.color = shell.item;
                             }}
                         >
                             <LayoutGrid size={15} style={{ flexShrink: 0, opacity: 0.7 }} />
@@ -645,15 +653,15 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                         <div style={{
                             width: 30, height: 30, background: shell.accent, borderRadius: 6,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            color: '#fff', fontWeight: 800, fontSize: 12, flexShrink: 0,
+                            color: shell.onAccent, fontWeight: 800, fontSize: 12, flexShrink: 0,
                         }}>C</div>
                         {showNavText && (
                             <>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <p style={{ color: '#fff', fontWeight: 700, fontSize: 12, lineHeight: 1.3 }}>{tm('bShellUserAdmin')}</p>
-                                    <p style={{ color: 'rgba(167,139,250,0.5)', fontSize: 10, fontWeight: 600 }}>{tm('bShellRoleAdmin')}</p>
+                                    <p style={{ color: shell.text, fontWeight: 700, fontSize: 12, lineHeight: 1.3 }}>{tm('bShellUserAdmin')}</p>
+                                    <p style={{ color: shell.muted, fontSize: 10, fontWeight: 600 }}>{tm('bShellRoleAdmin')}</p>
                                 </div>
-                                <button style={{ color: 'rgba(167,139,250,0.4)', flexShrink: 0 }}>
+                                <button style={{ color: shell.icon, flexShrink: 0 }}>
                                     <Settings2 size={13} />
                                 </button>
                             </>

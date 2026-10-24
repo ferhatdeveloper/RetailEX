@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CLINIC_MENU_PALETTE_PLUM } from './clinicMenuPalette';
 
 /** Klinik panosu V2 açık/kapalı. Kabuk rengi değişmez. */
 export const CLINIC_V2_STORAGE_KEY = 'retailex_clinic_shell_v2';
@@ -28,12 +29,13 @@ export const CLINIC_V2_PALETTE = {
     block: '#f8fafc',
 } as const;
 
+/** Varsayılan mor kabuk. Seçilen palet `clinicMenuPalette` içindedir. */
 export const CLINIC_CLASSIC_SHELL = {
-    sidebar: '#12082a',
-    sidebarLine: '#1f0f3a',
-    accent: '#7c3aed',
-    accentEdge: '#a78bfa',
-    focusRing: 'rgba(124,58,237,0.12)',
+    sidebar: CLINIC_MENU_PALETTE_PLUM.sidebar,
+    sidebarLine: CLINIC_MENU_PALETTE_PLUM.sidebarLine,
+    accent: CLINIC_MENU_PALETTE_PLUM.accent,
+    accentEdge: CLINIC_MENU_PALETTE_PLUM.accentEdge,
+    focusRing: CLINIC_MENU_PALETTE_PLUM.focusRing,
 } as const;
 
 export function readClinicShellV2(): boolean {

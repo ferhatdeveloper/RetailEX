@@ -55,7 +55,7 @@ describe('Klinik V2 sol şerit', () => {
     it('V2 kapalıyken eski menü maddeleri kaynakta durur', () => {
         const indexSrc = readFileSync(resolve('src/components/beauty/index.tsx'), 'utf8');
         expect(indexSrc).toContain('background: shell.sidebar');
-        expect(indexSrc).toContain('CLINIC_CLASSIC_SHELL');
+        expect(indexSrc).toContain('useClinicMenuPalette');
         expect(indexSrc).toContain('{!surveyOverlayOpen && !shellV2 && (');
         expect(indexSrc).toContain('<ClinicBoardPage');
         expect(indexSrc).not.toContain('ClinicDashboardV2');
