@@ -907,6 +907,11 @@ type DailyExpenseRow = {
   amount: number;
   paymentMethod: string;
   isCash: boolean;
+  /** expenses.created_at veya bağlı kasa satırının oluşturulma anı */
+  createdAt: string;
+  /** expenses.created_by. Kasa çıkışında kullanıcı kolonu yoksa boş */
+  enteredById: string;
+  enteredByName: string;
 };
 
 type BeautyAppointmentProductRow = {
@@ -1431,12 +1436,14 @@ export function ReportsModule({
         const typeCode = isCashOut
           ? String(e.notes || '').trim().toUpperCase() || 'KASA_CIKIS'
           : 'GIDER_PUSULASI';
+        const fiche = String(e.document_number || '').trim();
+        const createdAt = String(e.created_at || '').trim();
         return {
           key: isCashOut ? rawId : `exp-${rawId}`,
           sourceKind: isCashOut ? 'cash' : 'expense',
           sourceId,
           date: String(e.expense_date || e.created_at || ''),
-          ficheNo: String(e.document_number || '').trim() || '—',
+          ficheNo: fiche && fiche !== '—' && fiche !== '-' ? fiche : '—',
           typeCode,
           category: String(e.category || ''),
           description: String(e.description || ''),
@@ -1444,6 +1451,9 @@ export function ReportsModule({
           amount: Number(e.amount) || 0,
           paymentMethod: method || 'cash',
           isCash: isCashOut ? true : isCash,
+          createdAt,
+          enteredById: String(e.created_by || '').trim(),
+          enteredByName: '',
         };
       });
 
@@ -3805,6 +3815,9 @@ export function ReportsModule({
         ficheNo: row.ficheNo,
         amount: row.amount,
         date: row.date,
+        createdAt: row.createdAt,
+        enteredById: row.enteredById,
+        enteredByName: row.enteredByName,
         description: row.description,
         category: row.category,
         partyName: row.partyName,
@@ -3812,6 +3825,7 @@ export function ReportsModule({
         isCash: row.isCash,
       })),
       tm('reportsDailyKindExpense') || 'Gider',
+      userNameById,
     );
     if (expenseRows.length === 0) return dailyKindGridRows;
     const mapped = expenseRows.map((row) => {
@@ -3849,33 +3863,42 @@ export function ReportsModule({
       };
       return {
         ...unified,
-        hour: formatSaleWallClockTime(dailyRowWallClockSource(unified)),
+        cashier: row.cashier,
+        hour: row.hour,
         kindLabel: row.kindLabel,
         paymentLabel,
         statusLabel: tm('out') || 'Çıkış',
       };
     });
     return [...dailyKindGridRows, ...mapped];
-  }, [dailyKindFilter, dailyShowOnlyRemoved, dailyKindGridRows, dailyExpenseRowsForReport, tm]);
+  }, [dailyKindFilter, dailyShowOnlyRemoved, dailyKindGridRows, dailyExpenseRowsForReport, tm, userNameById]);
 
   const dailyExpenseGridRows = useMemo(() => {
     return dailyExpenseRowsForReport.map((row) => {
-      const dateRaw = String(row.date || '');
-      const parsed = new Date(dateRaw);
+      const createdAt = String(row.createdAt || '').trim();
+      const hasClock = Boolean(createdAt) && !isBusinessDayClockAnchor(createdAt);
       let timeLabel: string;
-      if (Number.isNaN(parsed.getTime())) {
-        timeLabel = dateRaw.slice(11, 19) || dateRaw.slice(0, 10) || '—';
-      } else if (isBusinessDayClockAnchor(dateRaw)) {
-        timeLabel =
-          selectedDateFrom !== selectedDateTo
-            ? formatShortDate(dateRaw) || '—'
-            : '—';
-      } else if (selectedDateFrom !== selectedDateTo) {
-        timeLabel = parsed.toLocaleString('tr-TR');
-      } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateRaw.slice(0, 10)) && dateRaw.length <= 10) {
-        timeLabel = '—';
+      if (hasClock) {
+        timeLabel = selectedDateFrom !== selectedDateTo
+          ? formatSaleWallClockDateTime({ date: row.date, created_at: createdAt })
+          : formatSaleWallClockTime({ date: row.date, created_at: createdAt });
       } else {
-        timeLabel = parsed.toLocaleTimeString('tr-TR');
+        const dateRaw = String(row.date || '');
+        const parsed = new Date(dateRaw);
+        if (Number.isNaN(parsed.getTime())) {
+          timeLabel = dateRaw.slice(11, 19) || dateRaw.slice(0, 10) || '—';
+        } else if (isBusinessDayClockAnchor(dateRaw)) {
+          timeLabel =
+            selectedDateFrom !== selectedDateTo
+              ? formatShortDate(dateRaw) || '—'
+              : '—';
+        } else if (selectedDateFrom !== selectedDateTo) {
+          timeLabel = parsed.toLocaleString('tr-TR');
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateRaw.slice(0, 10)) && dateRaw.length <= 10) {
+          timeLabel = '—';
+        } else {
+          timeLabel = parsed.toLocaleTimeString('tr-TR');
+        }
       }
       const bucket = normalizePaymentMethodBucket(row.paymentMethod);
       const payLabel =

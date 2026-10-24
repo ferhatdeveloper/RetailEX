@@ -12,11 +12,15 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildDailySalesDetailExpenseRows,
+  dailyExpenseSourceHour,
   dailySalesDetailExpenseNet,
   sumDailySalesDetailCashBalance,
 } from '../../utils/dailySalesDetailCashBalance';
 import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
 import { moduleTranslations } from '../../locales/module-translations';
+import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
+import type { Expense } from '../../services/api/expenses';
+import type { KasaIslemi } from '../../services/api/kasa';
 
 const sales = [
   { receiptNumber: 'BEA-2026-00001', beforeDiscount: 50_000, total: 50_000, discount: 0 },
@@ -97,10 +101,156 @@ describe('satış detayları kasa bakiyesi', () => {
     ])).toBe(133_500);
   });
 
+  it('gider satırında fiş no, saat ve ekleyen kişi kaynak kayıttan gelir', () => {
+    const createdAt = '2026-10-24T11:57:00';
+    const names = new Map<string, string>([['user-admin', 'admin']]);
+    const sourced = buildDailySalesDetailExpenseRows(
+      sales,
+      [{
+        ...officeRent,
+        description: 'EKİM KİRASI',
+        createdAt,
+        enteredById: 'user-admin',
+        enteredByName: '',
+      }],
+      'Gider',
+      names,
+    );
+    expect(sourced).toHaveLength(1);
+    expect(sourced[0].receiptNumber).toBe('GDR-2026-00001');
+    expect(sourced[0].hour).toBe(dailyExpenseSourceHour({ createdAt }));
+    expect(sourced[0].hour).not.toBe('—');
+    expect(sourced[0].hour).toContain('57');
+    expect(sourced[0].cashier).toBe('admin');
+    expect(sourced[0].cashier).not.toBe('EKİM KİRASI');
+    expect(sourced[0].customerName).toBe('EKİM KİRASI');
+    expect(sourced[0].total).toBe(-5_000);
+    expect(sourced[0].discount).toBe(0);
+    const table = [...sales, reservation, ...sourced];
+    expect(sumDailySalesDetailCashBalance(table)).toBe(133_500);
+
+    const missing = buildDailySalesDetailExpenseRows(sales, [{
+      key: 'bos',
+      amount: 5_000,
+      date: '2026-10-24',
+      createdAt: '2026-10-24',
+      description: 'EKİM KİRASI',
+      paymentMethod: 'cash',
+      isCash: true,
+    }]);
+    expect(missing[0].receiptNumber).toBe('—');
+    expect(missing[0].hour).toBe('—');
+    expect(missing[0].cashier).toBe('—');
+    expect(missing[0].total).toBe(-5_000);
+    expect(sumDailySalesDetailCashBalance([...sales, reservation, ...missing])).toBe(133_500);
+
+    const noon = buildDailySalesDetailExpenseRows(sales, [{
+      key: 'ogle',
+      ficheNo: 'GDR-2026-00001',
+      amount: 5_000,
+      date: '2026-10-24',
+      createdAt: '2026-10-24T12:00:00.000Z',
+      description: 'EKİM KİRASI',
+      paymentMethod: 'cash',
+      isCash: true,
+    }]);
+    expect(noon[0].receiptNumber).toBe('GDR-2026-00001');
+    expect(noon[0].hour).toBe('—');
+    expect(noon[0].total).toBe(-5_000);
+  });
+
+  it('bağlı kasa fişi belge no boşsa fiş no ve saat kayıttan gelir; tutar bir kez düşülür', () => {
+    const expense = {
+      id: 'exp-ekim',
+      category: 'Kira',
+      description: 'EKİM KİRASI',
+      amount: 5_000,
+      payment_method: 'cash',
+      store_id: '',
+      expense_date: '2026-10-24',
+      document_number: '',
+      created_by: 'user-admin',
+      created_at: '',
+      firm_nr: '001',
+      cash_line_id: 'line-ekim',
+    } as Expense;
+    const cash = {
+      id: 'line-ekim',
+      firma_id: '001',
+      kasa_id: 'reg-1',
+      islem_tarihi: '2026-10-24',
+      islem_tipi: 'GIDER_PUSULASI',
+      islem_aciklamasi: 'EKİM KİRASI',
+      islem_no: 'GDR-2026-00001',
+      tutar: 5_000,
+      olusturma_tarihi: '2026-10-24T11:57:00',
+    } as KasaIslemi;
+    const unified = mergeExpensesWithCashOuts([expense], [cash]);
+    expect(unified).toHaveLength(1);
+    expect(unified[0].amount).toBe(5_000);
+    expect(unified[0].document_number).toBe('GDR-2026-00001');
+    expect(unified[0].created_at).toBe('2026-10-24T11:57:00');
+    expect(unified[0].created_by).toBe('user-admin');
+
+    const kept = mergeExpensesWithCashOuts(
+      [{ ...expense, document_number: 'BELGE-9', created_at: '2026-10-24T08:01:00' }],
+      [{ ...cash, islem_no: 'BASKA-1', olusturma_tarihi: '2026-10-24T09:00:00' }],
+    );
+    expect(kept).toHaveLength(1);
+    expect(kept[0].document_number).toBe('BELGE-9');
+    expect(kept[0].created_at).toBe('2026-10-24T08:01:00');
+    expect(kept[0].amount).toBe(5_000);
+
+    const names = new Map<string, string>([['user-admin', 'admin']]);
+    const rows = buildDailySalesDetailExpenseRows(sales, [{
+      key: unified[0].id,
+      ficheNo: unified[0].document_number,
+      amount: unified[0].amount,
+      date: unified[0].expense_date,
+      createdAt: unified[0].created_at,
+      enteredById: unified[0].created_by,
+      description: unified[0].description,
+      paymentMethod: unified[0].payment_method,
+      isCash: true,
+    }], 'Gider', names);
+    expect(rows[0].receiptNumber).toBe('GDR-2026-00001');
+    expect(rows[0].hour).toContain('57');
+    expect(rows[0].cashier).toBe('admin');
+    expect(rows[0].total).toBe(-5_000);
+    expect(sumDailySalesDetailCashBalance([...sales, reservation, ...rows])).toBe(133_500);
+
+    const onlyCash = mergeExpensesWithCashOuts([], [{ ...cash, id: 'line-nakit' }]);
+    expect(onlyCash).toHaveLength(1);
+    expect(onlyCash[0].amount).toBe(5_000);
+    expect(onlyCash[0].document_number).toBe('GDR-2026-00001');
+    expect(onlyCash[0].created_at).toBe('2026-10-24T11:57:00');
+    expect(String(onlyCash[0].created_by || '')).toBe('');
+    const cashRows = buildDailySalesDetailExpenseRows(sales, [{
+      key: String(onlyCash[0].id),
+      ficheNo: onlyCash[0].document_number,
+      amount: onlyCash[0].amount,
+      date: onlyCash[0].expense_date,
+      createdAt: onlyCash[0].created_at,
+      enteredById: onlyCash[0].created_by,
+      description: onlyCash[0].description,
+      paymentMethod: 'cash',
+      isCash: true,
+    }], 'Gider', names);
+    expect(cashRows[0].receiptNumber).toBe('GDR-2026-00001');
+    expect(cashRows[0].hour).toContain('57');
+    expect(cashRows[0].cashier).toBe('—');
+    expect(cashRows[0].total).toBe(-5_000);
+    expect(sumDailySalesDetailCashBalance([...sales, reservation, ...cashRows])).toBe(133_500);
+  });
+
   it('ekran gider satırını ızgaraya bağlar ve Net (Brüt) kartını çizmez', () => {
     const src = readFileSync(resolve('src/components/reports/ReportsModule.tsx'), 'utf8');
     expect(src).toContain('buildDailySalesDetailExpenseRows');
     expect(src).toContain('sumDailySalesDetailCashBalance');
+    expect(src).toContain('createdAt: row.createdAt');
+    expect(src).toContain('enteredById: row.enteredById');
+    expect(src).toContain('cashier: row.cashier');
+    expect(src).toContain('hour: row.hour');
     expect(src).toContain('data={dailySalesDetailGridRows}');
     expect(src).not.toContain("'net-gross'");
     expect(src).not.toContain('dailyNetBrutAlways');

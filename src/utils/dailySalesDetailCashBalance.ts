@@ -11,6 +11,8 @@
  * 135.000 (indirimi geri eklemek veya brüt − gider) ve
  * 132.000 (indirimi ikinci kez düşmek) yanlıştır.
  */
+import { resolveCashierDisplayName } from './loginCashierName';
+import { formatSaleWallClockTime, isBusinessDayClockAnchor } from './saleWallClock';
 import {
   dailySalesDetailNetAmount,
   sumDailySalesDetailNet,
@@ -22,6 +24,12 @@ export interface DailySalesDetailExpenseInput {
   ficheNo?: string | null;
   amount?: number | null;
   date?: string | null;
+  /** Gider pusulası veya kasa çıkışının gerçek kayıt anı. İş günü sabiti saat değildir. */
+  createdAt?: string | null;
+  /** Kayıttaki kullanıcı kimliği. Ad yoksa harita ile çözülür; uydurulmaz. */
+  enteredById?: string | null;
+  /** Kayıtta yazılı ad. Yoksa boş kalır. */
+  enteredByName?: string | null;
   description?: string | null;
   category?: string | null;
   partyName?: string | null;
@@ -33,6 +41,10 @@ export interface DailySalesDetailExpenseGridRow extends DailySalesDetailNetInput
   key: string;
   receiptNumber: string;
   date: string;
+  /** Duvar saati. Kayıtta gerçek saat yoksa — */
+  hour: string;
+  /** Gideri ekleyen kişi. Kayıtta yoksa — */
+  cashier: string;
   customerName: string;
   paymentMethod: string;
   isCash: boolean;
@@ -73,11 +85,31 @@ function expenseLabel(raw: DailySalesDetailExpenseInput): string {
   return party || '—';
 }
 
+function blankFiche(raw: unknown): string {
+  const text = String(raw ?? '').trim();
+  if (!text || text === '—' || text === '-') return '';
+  return text;
+}
+
+/** Kayıttaki gerçek saat. Tarih-only ve öğle/gece sabiti saat üretmez. */
+export function dailyExpenseSourceHour(raw: {
+  date?: string | null;
+  createdAt?: string | null;
+}): string {
+  const created = String(raw.createdAt ?? '').trim();
+  const clock = created && !isBusinessDayClockAnchor(created) ? created : '';
+  return formatSaleWallClockTime({
+    date: raw.date ?? '',
+    created_at: clock || undefined,
+  });
+}
+
 /** Gider pusulası ve kasa çıkışını eksi satıra çevirir. Çift fiş eklemez. */
 export function buildDailySalesDetailExpenseRows(
   sales: readonly DailySalesDetailCashRow[],
   expenses: readonly DailySalesDetailExpenseInput[],
   kindLabel = 'Gider',
+  userNameById?: Map<string, string>,
 ): DailySalesDetailExpenseGridRow[] {
   const booked = new Set<string>();
   for (const sale of sales) {
@@ -88,15 +120,18 @@ export function buildDailySalesDetailExpenseRows(
   for (const expense of expenses) {
     const amount = Math.abs(Number(expense.amount) || 0);
     if (!(amount > EPS)) continue;
-    const fiche = String(expense.ficheNo ?? '').trim();
+    const fiche = blankFiche(expense.ficheNo);
     const key = receiptKey(fiche);
     if (key && booked.has(key)) continue;
     if (key) booked.add(key);
     const method = String(expense.paymentMethod ?? '').trim() || 'cash';
+    const names = userNameById ?? new Map<string, string>();
     out.push({
       key: `expense-${expense.key}`,
       receiptNumber: fiche || '—',
       date: expense.date == null ? '' : String(expense.date),
+      hour: dailyExpenseSourceHour(expense),
+      cashier: resolveCashierDisplayName(expense.enteredByName, expense.enteredById, names),
       customerName: expenseLabel(expense),
       beforeDiscount: 0,
       total: -amount,

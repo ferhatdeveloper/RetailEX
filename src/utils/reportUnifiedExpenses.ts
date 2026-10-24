@@ -95,6 +95,33 @@ export function reportCashOutCategory(typeCode: string): string {
   return CASH_OUT_CATEGORY_TR[u] || u || 'Kasa çıkış';
 }
 
+function blankRecordText(value: unknown): boolean {
+  const text = String(value ?? '').trim();
+  return !text || text === '—' || text === '-';
+}
+
+/**
+ * Bağlı kasa çıkışındaki fiş no ve kayıt anını gider pusulasına taşır.
+ * Dolu belge no ve created_at ezilmez. Tutar ve ekleyen kişi değişmez.
+ * Kasa satırında alan yoksa boş kalır.
+ */
+function attachLinkedCashIdentity(expense: Expense, cashById: ReadonlyMap<string, KasaIslemi>): Expense {
+  const linkedId = String(expense.cash_line_id || '').trim();
+  if (!linkedId) return expense;
+  const line = cashById.get(linkedId);
+  if (!line) return expense;
+  const next: Expense = { ...expense };
+  if (blankRecordText(next.document_number)) {
+    const fiche = String(line.islem_no || '').trim();
+    if (!blankRecordText(fiche)) next.document_number = fiche;
+  }
+  if (blankRecordText(next.created_at)) {
+    const created = String(line.olusturma_tarihi || '').trim();
+    if (created) next.created_at = created;
+  }
+  return next;
+}
+
 /** Expense + bağlanmamış kasa çıkışları → tek liste (detay modal / aggregasyon). */
 export function mergeExpensesWithCashOuts(
   expenses: Expense[],
@@ -119,7 +146,13 @@ export function mergeExpensesWithCashOuts(
 
   const allowedTypes = options?.allowedCashOutTypes ?? REPORT_CASH_OUT_TYPES;
 
-  const unified: Expense[] = allExpenses.map((e) => ({ ...e }));
+  const cashById = new Map<string, KasaIslemi>();
+  for (const line of Array.isArray(cashLines) ? cashLines : []) {
+    const id = String(line.id || '').trim();
+    if (id) cashById.set(id, line);
+  }
+
+  const unified: Expense[] = allExpenses.map((e) => attachLinkedCashIdentity(e, cashById));
 
   for (const cl of Array.isArray(cashLines) ? cashLines : []) {
     const type = String(cl.islem_tipi || '').trim().toUpperCase();
@@ -149,6 +182,7 @@ export function mergeExpensesWithCashOuts(
       const descKey = `${day}|${normalizeGiderAciklama(cl.islem_aciklamasi || cl.cari_hesap_unvani)}`;
       if (expenseDescKeys.has(descKey)) continue;
     }
+    const createdAt = String(cl.olusturma_tarihi || '').trim();
     unified.push({
       id: `cash-${cl.id || `${day}-${type}-${amt}`}`,
       category: reportCashOutCategory(type),
@@ -161,6 +195,7 @@ export function mergeExpensesWithCashOuts(
       expense_date: day,
       notes: type,
       created_by: '',
+      created_at: createdAt || undefined,
       firm_nr: String(cl.firma_id || ''),
       cash_line_id: cl.id || null,
     } as Expense);
