@@ -23,6 +23,25 @@ import {
 } from '../../utils/dailyReportScreenCards';
 import { ReportColumnTable } from './shared/ReportDataGrid';
 
+/**
+ * Izgara yüksekliği satır sayısına göre sıkı hesaplanır.
+ *
+ * DevExDataGrid yüksekliği TÜM grid'e uygulanır (toolbar + kolon başlığı +
+ * gövde + dip toplam + sayfalama). Satırdan az yükseklik verilirse tablo
+ * kırpılır; fazla yükseklik verilirse altta boşluk kalır (eski
+ * `260 + n*36` formülü 2 satırlık tabloda ~230px boşluk bırakıyordu).
+ *
+ * Ölçülen sabit bileşenler: araç çubuğu 39px, kolon başlığı 23px,
+ * dip toplam satırı 29px, sayfalama 59px → 150px.
+ * Satır yüksekliği compact modda 22px.
+ */
+export function gridHeightForRows(rowCount: number, maxHeight: number): number {
+  const rows = Math.max(1, Math.floor(rowCount));
+  const chrome = 150;
+  const rowHeight = 22;
+  return Math.min(maxHeight, Math.max(180, chrome + rows * rowHeight));
+}
+
 /** Üç kutu, Günlük Rapor dolu kart anahtarlarına bağlıdır. */
 type CashStatusSolidToneKey = Extract<
   DailyReportScreenCardKey,
@@ -100,6 +119,8 @@ export interface CashStatusMovementLabels {
   party: string;
   description: string;
   method: string;
+  /** Kasa adı kolonu başlığı. */
+  register: string;
   amount: string;
   flowIn: string;
   flowOut: string;
@@ -151,7 +172,7 @@ export function CashStatusFigures({
       ) : (
         <ReportColumnTable
           data={registerLines}
-          height={Math.min(420, 260 + registerLines.length * 36)}
+          height={gridHeightForRows(registerLines.length, 420)}
           storageNamespace="cash-status-register-distribution"
           footerLabel={labels.registersTotal}
           onRowClick={onRegisterRowClick ? (row) => onRegisterRowClick(row.id) : undefined}
@@ -191,13 +212,14 @@ export function CashStatusFigures({
                 flowLabel: row.flow === 'gelir' ? movementLabels.flowIn : movementLabels.flowOut,
                 partyLabel: row.party || movementLabels.categories[row.categoryCode] || row.typeCode,
                 descriptionLabel: row.description || movementLabels.categories[row.categoryCode] || '—',
+                registerLabel: row.registerName || row.registerId || '—',
                 methodLabel: row.method === 'kart'
                   ? movementLabels.methodCard
                   : row.method === 'havale'
                     ? movementLabels.methodTransfer
                     : movementLabels.methodCash,
               }))}
-              height={480}
+              height={gridHeightForRows(movementRows.length, 560)}
               storageNamespace="cash-status-movements"
               footerLabel={movementLabels.total}
               columns={[
@@ -237,6 +259,14 @@ export function CashStatusFigures({
                   header: movementLabels.method,
                   size: 140,
                   cell: (row) => <span className="text-slate-700">{row.methodLabel}</span>,
+                },
+                {
+                  key: 'registerLabel',
+                  header: movementLabels.register,
+                  size: 180,
+                  cell: (row) => (
+                    <span className="text-slate-600">{row.registerLabel || '—'}</span>
+                  ),
                 },
                 {
                   key: 'amount',

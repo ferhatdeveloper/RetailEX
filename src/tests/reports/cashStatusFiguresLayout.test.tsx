@@ -1,4 +1,6 @@
 /**
+ * @vitest-environment jsdom
+ *
  * Kasa Durumu yerleşimi.
  * Özet tam üç kutudur. Zemin Günlük Rapor dolu kartlarıdır:
  * giren = Toplam Ciro mavisi, çıkan = Toplam Gider kırmızısı, bakiye = Net (Nakit) yeşili.
@@ -9,9 +11,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createElement } from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { CashStatusFigures, type CashStatusMovementLabels } from '../../components/reports/CashStatusFigures';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CashStatusFigures, gridHeightForRows, type CashStatusMovementLabels } from '../../components/reports/CashStatusFigures';
 import { clinicDashboardKpiTone } from '../../utils/clinicDashboardKpiTones';
 import {
   DAILY_REPORT_SOLID_CARD_FILL,
@@ -74,6 +76,10 @@ function renderScreen() {
 }
 
 describe('Kasa Durumu yerleşimi', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it('özeti üç kutuya indirir; kırmızı çizilen paneller yoktur', () => {
     const { container } = renderScreen();
     const text = container.textContent ?? '';
@@ -225,6 +231,7 @@ describe('Kasa Durumu yerleşimi', () => {
       party: 'Kategori / Müşteri',
       description: 'Açıklama',
       method: 'Yöntem',
+      register: 'Kasa',
       amount: 'Tutar',
       flowIn: 'Gelir',
       flowOut: 'Gider',
@@ -272,6 +279,7 @@ describe('Kasa Durumu yerleşimi', () => {
             typeCode: 'CH_TAHSILAT',
             ficheNo: 'T1',
             registerId: 'merkez',
+            registerName: 'MERKEZ KASA',
           },
           {
             id: 'out',
@@ -284,7 +292,8 @@ describe('Kasa Durumu yerleşimi', () => {
             categoryCode: 'expense',
             typeCode: 'KASA_CIKIS',
             ficheNo: 'G1',
-            registerId: 'merkez',
+            registerId: 'qicard',
+            registerName: 'QICARD',
           },
         ],
       }),
@@ -323,5 +332,98 @@ describe('Kasa Durumu yerleşimi', () => {
     expect(source).not.toContain('<table');
     expect(source).not.toContain('PieChart');
     expect(source).not.toContain('Recharts');
+  });
+
+  it('kasa hareketleri tablosunda kasa adı kolonunu gösterir', () => {
+    const movementLabels: CashStatusMovementLabels = {
+      title: 'Kasa Hareketleri',
+      empty: 'Seçili aralıkta kasa hareketi yok.',
+      total: 'Hareketler toplamı',
+      date: 'Tarih',
+      flow: 'Tip',
+      party: 'Kategori / Müşteri',
+      description: 'Açıklama',
+      method: 'Yöntem',
+      register: 'Kasa',
+      amount: 'Tutar',
+      flowIn: 'Gelir',
+      flowOut: 'Gider',
+      methodCash: 'Nakit',
+      methodCard: 'Kredi kartı',
+      methodTransfer: 'Havale',
+      categories: {
+        sale: 'Satış',
+        deposit: 'Peşinat',
+        collection: 'Tahsilat',
+        openingDebit: 'Açılış borç',
+        openingCredit: 'Açılış alacak',
+        expense: 'Gider',
+        payment: 'Cari ödeme',
+        virman: 'Virman',
+        bankIn: 'Bankadan çekilen',
+        bankOut: 'Bankaya yatırılan',
+        cashIn: 'Kasa giriş',
+        cashOut: 'Kasa çıkış',
+        other: 'Kasa hareketi',
+      },
+    };
+    render(
+      createElement(CashStatusFigures, {
+        totalIn: 263_500,
+        totalOut: 0,
+        balance: 195_000,
+        currency: 'IQD',
+        labels: LABELS,
+        movementLabels,
+        registerLines: [
+          { id: 'merkez', code: 'KASA.001', name: 'MERKEZ KASA', label: 'KASA.001 — MERKEZ KASA', amount: 195_000 },
+        ],
+        movementRows: [
+          {
+            id: 'in',
+            date: '2026-10-14',
+            flow: 'gelir',
+            amount: 1_367,
+            method: 'nakit',
+            party: 'Honda Türker',
+            description: 'Tahsilat',
+            categoryCode: 'collection',
+            typeCode: 'CH_TAHSILAT',
+            ficheNo: 'T1',
+            registerId: 'merkez',
+            registerName: 'MERKEZ KASA',
+          },
+        ],
+      }),
+    );
+
+    const movements = screen.getByTestId('cash-status-movements');
+    // Kolon başlığı görünür.
+    expect(movements.textContent).toContain('Kasa');
+    // Satırda kasa adı yazılır.
+    expect(movements.textContent).toContain('MERKEZ KASA');
+  });
+
+  it('kasalar tablosunun yüksekliği satır sayısına göre sıkı hesaplanır (boşluk yok)', () => {
+    // Ölçülen chrome: toolbar 39 + başlık 23 + tfoot 29 + sayfalama 59 = 150px.
+    // Satır 22px. 2 satır → 150 + 44 = 194px.
+    // Eski formül 332px veriyordu (içinde ~130px boşluk).
+    expect(gridHeightForRows(2, 420)).toBe(194);
+    // 1 satır → 150 + 22 = 172, minimum 180px'e yükseltilir.
+    expect(gridHeightForRows(1, 420)).toBe(180);
+    // 0 satır → minimum 180px.
+    expect(gridHeightForRows(0, 420)).toBe(180);
+    // Çok satır → üst sınır uygulanır.
+    expect(gridHeightForRows(100, 420)).toBe(420);
+    expect(gridHeightForRows(100, 560)).toBe(560);
+    // 14 satır → 150 + 308 = 458 (üst sınır 560 değil).
+    expect(gridHeightForRows(14, 560)).toBe(458);
+    // 5 satır → 150 + 110 = 260.
+    expect(gridHeightForRows(5, 560)).toBe(260);
+
+    const source = readFileSync(resolve('src/components/reports/CashStatusFigures.tsx'), 'utf8');
+    // Eski, boşluk bırakan formül artık kullanılmıyor.
+    expect(source).not.toContain('260 + registerLines.length');
+    expect(source).not.toContain('height={480}');
   });
 });

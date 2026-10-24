@@ -1836,6 +1836,8 @@ export interface CashStatusMovementRow {
   typeCode: string;
   ficheNo: string;
   registerId: string;
+  /** Kasa adı (Kasa Durumu hareket tablosunda gösterilir). Boşsa registerId yazılır. */
+  registerName: string;
 }
 
 export interface CashStatusMovementInput {
@@ -2000,6 +2002,7 @@ function toMovementRow(
     typeCode: tip,
     ficheNo,
     registerId,
+    registerName: registerName || registerId,
   };
 }
 

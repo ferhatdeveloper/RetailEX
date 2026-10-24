@@ -5083,6 +5083,7 @@ export function ReportsModule({
     party: tm('cashStatusColParty'),
     description: tm('cashStatusColDescription'),
     method: tm('cashStatusColMethod'),
+    register: tm('cashStatusColRegister'),
     amount: tm('cashStatusColAmount'),
     flowIn: tm('cashStatusFlowIn'),
     flowOut: tm('cashStatusFlowOut'),
