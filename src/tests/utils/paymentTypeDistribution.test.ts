@@ -157,6 +157,63 @@ describe('paymentTypeDistribution', () => {
     expect(folded.grandTotal).not.toBe(135_000);
   });
 
+  it('ACIK_CARI satırındaki 1.500 iskonto açık cariye ve genel toplama yazılmaz', () => {
+    // Ekran yolu: nakit zaten net (128.500), iskonto ayrıca ACIK_CARI satırı.
+    // Rezervasyon 10.000 nakde bir kez eklenir → 138.500. Gider 5.000 bir kez düşülür.
+    // Eski hata: out[ACIK_CARI] += 1.500, genel toplam 138.500 + 1.500 − 5.000 = 135.000.
+    const dist = buildPaymentTypeDistribution(
+      [
+        {
+          id: 's1',
+          total: 130_000,
+          discount: 1_500,
+          paymentMethod: 'nakit',
+          payments: [
+            { method: 'NAKIT', amount: 128_500 },
+            { method: 'ACIK_CARI', amount: 1_500 },
+          ],
+        },
+      ],
+      { extraReservation: 10_000, includeZero: true },
+    );
+
+    expect(dist.byCode.NAKIT.amount).toBe(128_500);
+    expect(dist.byCode.ACIK_CARI.amount).toBe(0);
+
+    const folded = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash: dist.byCode.NAKIT.amount,
+      reservationCash: dist.byCode.REZERVASYON_AVANS.amount,
+      expense: 5_000,
+      expenseCount: 1,
+      paymentTypes: dist.types.map((row) => ({
+        code: row.code,
+        amount: row.amount,
+        count: row.count,
+      })),
+    });
+
+    expect(folded.todayCash).toBe(138_500);
+    expect(folded.paymentTypes.find((row) => row.code === 'NAKIT')?.amount).toBe(138_500);
+    expect(folded.paymentTypes.find((row) => row.code === 'ACIK_CARI')?.amount).toBe(0);
+    expect(folded.grandTotal).toBe(133_500);
+    expect(folded.grandTotal).not.toBe(135_000);
+  });
+
+  it('iskontoyu da içeren açık cari satırı gerçek veresiyeye iner, nakit kalır', () => {
+    const split = allocateSaleAmountsByFormCode(
+      100_000,
+      [
+        { method: 'NAKIT', amount: 50_000 },
+        { method: 'ACIK_CARI', amount: 50_000 },
+      ],
+      'veresiye',
+      10_000,
+    );
+    expect(split.NAKIT).toBe(50_000);
+    expect(split.ACIK_CARI).toBe(40_000);
+  });
+
   it('nakit satırı 138.500 iken iskonto 1.500 ikinci kez eklenmez', () => {
     const split = allocateSaleAmountsByFormCode(
       140_000,

@@ -130,6 +130,22 @@ describe('saleCollectedSplit — belge vs tahsilat', () => {
     expect(s.remaining).toBe(0); // iskonto cari değil
   });
 
+  it('ACIK_CARI satırındaki 1.500 iskonto kalan cariye yazılmaz, nakit düşülmez', () => {
+    const s = saleCollectedSplit({
+      total: 130_000,
+      discount: 1_500,
+      paymentMethod: 'nakit',
+      payments: [
+        { method: 'NAKIT', amount: 128_500 },
+        { method: 'ACIK_CARI', amount: 1_500 },
+      ],
+    });
+    expect(s.cash).toBe(128_500);
+    expect(s.collected).toBe(128_500);
+    expect(s.remaining).toBe(0);
+    expect(s.credit).toBe(0);
+  });
+
   it('saf veresiye (payments yok) + iskonto: kalan = brüt − iskonto', () => {
     // 50.000 brüt veresiye, 10.000 iskonto → kalan 40.000 (cari borç)
     const s = saleCollectedSplit({

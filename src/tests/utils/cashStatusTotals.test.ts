@@ -469,6 +469,24 @@ describe('listCashRegisterStatus', () => {
     expect(seeds[0].openAccount ?? 0).toBe(0);
   });
 
+  it('ACIK_CARI satırındaki 1.500 iskonto kasa tohumunda açık cariye yazılmaz', () => {
+    const seeds = seedsFromCashStatusSales([
+      {
+        total: 130_000,
+        discount: 1_500,
+        paymentMethod: 'nakit',
+        payments: [
+          { method: 'NAKIT', amount: 128_500, cash_register_id: 'k1' },
+          { method: 'ACIK_CARI', amount: 1_500, cash_register_id: 'k1' },
+        ],
+        cashRegisterId: 'k1',
+      },
+    ]);
+    expect(seeds).toHaveLength(1);
+    expect(seeds[0].serviceCash).toBe(128_500);
+    expect(seeds[0].openAccount ?? 0).toBe(0);
+  });
+
   it('çek tahsilatı kasa tohumuna yazılmaz', () => {
     const seeds = seedsFromCashStatusSales([
       {

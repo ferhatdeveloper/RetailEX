@@ -9,7 +9,7 @@ import {
   SYSTEM_PAYMENT_FORM_CODES,
   type PaymentFormCode,
 } from './paymentMethodUtils';
-import type { SalePaymentRow } from './saleCollectedAmounts';
+import { receivableAfterDiscount, type SalePaymentRow } from './saleCollectedAmounts';
 
 export type PaymentTypeDistItem = {
   code: PaymentFormCode;
@@ -70,19 +70,6 @@ function resolveFormCode(raw: unknown): PaymentFormCode {
   return code || 'ACIK_CARI';
 }
 
-/**
- * Brüt belge ile tahsilat arasındaki farktan iskonto düşülür.
- * Kalan, ödenmemiş satış (açık cari) ise yazılır. İskonto cari borç değildir.
- * İskonto varken 1 birim altı yuvarlama açık cariye gitmez.
- * İskonto yokken eski eşik (1e-6) durur.
- */
-function unpaidAfterDiscount(absDocument: number, allocated: number, discount: number): number {
-  const discountAbs = Math.max(0, Math.abs(Number(discount) || 0));
-  const gap = absDocument - allocated - discountAbs;
-  const tolerance = discountAbs > 0 ? 1 : 1e-6;
-  return gap > tolerance ? gap : 0;
-}
-
 /** Belge tutarını yapıdaki form kodlarına böler (çoklu ödeme satırları dahil). */
 export function allocateSaleAmountsByFormCode(
   documentTotal: number,
@@ -99,18 +86,21 @@ export function allocateSaleAmountsByFormCode(
 
   const rows = Array.isArray(payments) ? payments.filter((p) => p != null) : [];
   if (rows.length > 0) {
-    let allocated = 0;
+    let nonCredit = 0;
     for (const row of rows) {
       const amt = Math.abs(Number(row.amount) || 0);
       if (!(amt > 0)) continue;
       const code = resolveFormCode(row.method);
+      // Açık cari satırı burada yazılmaz. İskonto çoğu fişte bu satıra
+      // konur (brüt − net). Tavan aşağıda kurulur; nakit satırı kalır.
+      if (code === 'ACIK_CARI') continue;
       out[code] += amt * sign;
-      allocated += amt;
+      nonCredit += amt;
     }
-    // Eksik kısım gerçek veresiyedir. İskonto bu farktan düşülür;
-    // nakit satırı (zaten net) ikinci kez değiştirilmez.
-    const gap = unpaidAfterDiscount(absDoc, allocated, discountAbs);
-    if (gap > 0) out.ACIK_CARI += gap * sign;
+    // Tavan = brüt − peşin tahsilat − iskonto. Gerçek veresiye kalır.
+    // İskonto kadar ACIK_CARI satırı (ekran: 1.500) bu tavana sığmaz.
+    const open = receivableAfterDiscount(absDoc, nonCredit, discountAbs);
+    if (open > 0) out.ACIK_CARI += open * sign;
     return out;
   }
 

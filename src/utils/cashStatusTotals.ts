@@ -27,7 +27,7 @@ import { isReturnSale } from './posZReport';
 import { dbPaymentMethodToFormCode, type PaymentFormCode } from './paymentMethodUtils';
 import { isDepositSale } from './reportDepositFilter';
 import { PERIOD_SUMMARY_CASH_OUT_TYPES } from './reportUnifiedExpenses';
-import { saleCollectedSplit, type SalePaymentRow } from './saleCollectedAmounts';
+import { receivableAfterDiscount, saleCollectedSplit, type SalePaymentRow } from './saleCollectedAmounts';
 
 const CASH_CODE = 'NAKIT';
 const RESERVATION_CODE = 'REZERVASYON_AVANS';
@@ -610,19 +610,40 @@ export function seedsFromCashStatusSales(sales: CashStatusSaleSlice[]): CashRegi
     const fallback = String(sale.cashRegisterId || '').trim();
     const rows = Array.isArray(sale.payments) ? sale.payments.filter((row) => row != null) : [];
     if (rows.length > 0) {
-      let allocated = 0;
+      let nonCredit = 0;
+      const creditParts: Array<{ reg: string; amt: number }> = [];
       for (const row of rows) {
         const amt = Math.abs(num(row.amount));
         if (!(amt > 0)) continue;
         const code = formCodeOf(row.method) || 'ACIK_CARI';
         const reg = String(row.cash_register_id || fallback).trim();
+        if (code === 'ACIK_CARI') {
+          creditParts.push({ reg, amt });
+          continue;
+        }
         addFormAmount(touch(reg), code, amt * sign);
-        allocated += amt;
+        nonCredit += amt;
       }
       const discountAbs = Math.max(0, Math.abs(num(sale.discount)));
-      const gap = absDoc - allocated - discountAbs;
+      const open = receivableAfterDiscount(absDoc, nonCredit, discountAbs);
+      const explicit = creditParts.reduce((sum, part) => sum + part.amt, 0);
       const tolerance = discountAbs > 0 ? 1 : 0.004;
-      if (gap > tolerance) addFormAmount(touch(fallback), 'ACIK_CARI', gap * sign);
+      if (open > tolerance) {
+        if (explicit > open + tolerance && explicit > 0) {
+          const factor = open / explicit;
+          for (const part of creditParts) {
+            addFormAmount(touch(part.reg), 'ACIK_CARI', part.amt * factor * sign);
+          }
+        } else if (explicit > tolerance) {
+          for (const part of creditParts) {
+            addFormAmount(touch(part.reg), 'ACIK_CARI', part.amt * sign);
+          }
+          const gap = open - explicit;
+          if (gap > tolerance) addFormAmount(touch(fallback), 'ACIK_CARI', gap * sign);
+        } else {
+          addFormAmount(touch(fallback), 'ACIK_CARI', open * sign);
+        }
+      }
       continue;
     }
     const code = formCodeOf(sale.paymentMethod) || 'ACIK_CARI';

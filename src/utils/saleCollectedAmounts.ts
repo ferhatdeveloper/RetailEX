@@ -20,6 +20,24 @@ const ROUNDING_TOLERANCE_IQD = 1;
 // Float hassasiyeti için ayrı eşik (yazılım içi matematik; UI’a yansımaz)
 const FLOAT_EPSILON = 1e-6;
 
+/**
+ * Açık cari tavanı: brüt belge − peşin tahsilat − iskonto.
+ * İskonto cari borç değildir. Peşin satır (nakit/kart/havale) değiştirilmez.
+ * `payments[]` içindeki ACIK_CARI satırı bu tavanı aşarsa iskonto o satırdadır.
+ */
+export function receivableAfterDiscount(
+  absDocument: number,
+  collectedNonCredit: number,
+  discount: number,
+): number {
+  const discountAbs = Math.max(0, Math.abs(Number(discount) || 0));
+  const gap = Math.abs(Number(absDocument) || 0)
+    - Math.max(0, Number(collectedNonCredit) || 0)
+    - discountAbs;
+  const tolerance = discountAbs > 0 ? ROUNDING_TOLERANCE_IQD : FLOAT_EPSILON;
+  return gap > tolerance ? gap : 0;
+}
+
 export type SaleCollectedSplit = {
   document: number;
   cash: number;
@@ -133,6 +151,12 @@ export function splitPaymentRows(
       }
     } else if (remaining <= FLOAT_EPSILON && Math.abs(document) - collected - discountAbs > ROUNDING_TOLERANCE_IQD) {
       remaining = Math.max(0, Math.abs(document) - collected - discountAbs);
+    }
+    // İskonto payments[] içinde veresiye / açık cari satırıysa kalan bu tavanı aşamaz.
+    // Nakit satırı (iskonto zaten düşülmüş net) ikinci kez değişmez.
+    if (discountAbs > FLOAT_EPSILON && remaining > FLOAT_EPSILON) {
+      const ceiling = receivableAfterDiscount(Math.abs(document), collected, discountAbs);
+      if (remaining > ceiling + ROUNDING_TOLERANCE_IQD) remaining = ceiling;
     }
     return {
       document,
