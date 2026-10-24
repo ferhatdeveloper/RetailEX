@@ -1,47 +1,73 @@
 /**
  * Kasa Durumu özeti: tam üç kutu ve altta tam genişlik kasalar tablosu.
- * Toplam giren mavi, toplam çıkan kırmızı, bakiye yeşildir.
+ * Toplam giren Günlük Rapor Toplam Ciro dolu mavisi, toplam çıkan Toplam Gider
+ * dolu kırmızısı, bakiye Net (Nakit) dolu yeşilidir. Yazı ve ikon beyazdır.
+ * Renk `dailyReportCardTone` üzerinden gelir; yeni hex yoktur.
  * Açılış, günlük nakit, kapanış, avans, gider kartı, ödeme dağılımı
  * ve kart türleri bu özette yoktur. Yarım sayfa şerit yoktur.
  */
-import type { ReactNode } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Wallet, type LucideIcon } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
 import {
   type CashRegisterDistributionLine,
   type CashRegisterDrawerLine,
 } from '../../utils/cashStatusTotals';
+import {
+  dailyReportCardTone,
+  type DailyReportScreenCardKey,
+} from '../../utils/dailyReportScreenCards';
 import { ReportColumnTable } from './shared/ReportDataGrid';
+
+/** Üç kutu, Günlük Rapor dolu kart anahtarlarına bağlıdır. */
+type CashStatusSolidToneKey = Extract<
+  DailyReportScreenCardKey,
+  'total-revenue' | 'total-expense' | 'net-cash'
+>;
 
 function CashKpiCard({
   testId,
-  borderClass,
-  amountClass,
-  icon,
+  toneKey,
+  icon: Icon,
   title,
   amount,
   hint,
-  hintClass = 'text-slate-500',
 }: {
   testId: string;
-  borderClass: string;
-  amountClass: string;
-  icon: ReactNode;
+  toneKey: CashStatusSolidToneKey;
+  icon: LucideIcon;
   title: string;
   amount: string;
   hint?: string;
-  hintClass?: string;
 }) {
+  const tone = dailyReportCardTone(toneKey);
   return (
-    <div data-testid={testId} className={`bg-white rounded-lg border-2 ${borderClass} p-4 h-full`}>
-      <div className="flex items-center justify-between gap-3 h-full">
-        <div className="min-w-0">
-          <p className="text-sm text-gray-600">{title}</p>
-          <p className={`text-2xl mt-1 font-bold tabular-nums ${amountClass}`}>{amount}</p>
-          {hint ? <p className={`text-xs mt-1 leading-snug ${hintClass}`}>{hint}</p> : null}
-        </div>
-        {icon}
+    <div
+      data-testid={testId}
+      data-cash-tone={toneKey}
+      className="flex h-full min-h-[9rem] flex-col rounded-xl border px-4 py-3.5"
+      style={{
+        backgroundColor: tone.background,
+        borderColor: tone.border,
+        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06)',
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-medium leading-5" style={{ color: tone.label }}>
+          {title}
+        </p>
+        <Icon className="h-5 w-5 shrink-0" style={{ color: tone.accent }} aria-hidden />
       </div>
+      <p
+        className="mt-3 text-2xl font-semibold tabular-nums leading-none tracking-tight"
+        style={{ color: tone.value }}
+      >
+        {amount}
+      </p>
+      {hint ? (
+        <p className="mt-auto min-h-[2.25rem] pt-2 text-xs leading-snug" style={{ color: tone.hint }}>
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -127,33 +153,27 @@ export function CashStatusFigures({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="cash-status-kpi-row">
         <CashKpiCard
           testId="cash-status-card-in"
-          borderClass="border-blue-200"
-          amountClass="text-blue-600"
-          icon={<ArrowDownLeft className="w-12 h-12 text-blue-600 opacity-20 shrink-0" />}
+          toneKey="total-revenue"
+          icon={ArrowDownLeft}
           title={labels.totalIn}
           amount={money(totalIn)}
           hint={labels.totalInHint}
-          hintClass="text-blue-700"
         />
         <CashKpiCard
           testId="cash-status-card-out"
-          borderClass="border-rose-200"
-          amountClass="text-rose-600"
-          icon={<ArrowUpRight className="w-12 h-12 text-rose-600 opacity-20 shrink-0" />}
+          toneKey="total-expense"
+          icon={ArrowUpRight}
           title={labels.totalOut}
           amount={money(totalOut)}
           hint={labels.totalOutHint}
-          hintClass="text-rose-700"
         />
         <CashKpiCard
           testId="cash-status-card-balance"
-          borderClass="border-green-200"
-          amountClass="text-green-600"
-          icon={<Wallet className="w-12 h-12 text-green-600 opacity-20 shrink-0" />}
+          toneKey="net-cash"
+          icon={Wallet}
           title={labels.balance}
           amount={money(balance)}
           hint={labels.balanceHint}
-          hintClass="text-green-700"
         />
       </div>
       {registerPanel}

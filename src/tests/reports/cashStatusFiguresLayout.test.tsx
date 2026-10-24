@@ -1,8 +1,10 @@
 /**
  * Kasa Durumu yerleşimi.
- * Özet tam üç kutudur: toplam giren mavi, toplam çıkan kırmızı, bakiye yeşil.
+ * Özet tam üç kutudur. Zemin Günlük Rapor dolu kartlarıdır:
+ * giren = Toplam Ciro mavisi, çıkan = Toplam Gider kırmızısı, bakiye = Net (Nakit) yeşili.
+ * Yazı ve ikon beyazdır. Soluk çerçeve yoktur.
  * Açılış, günlük nakit, kapanış, avans, gider kartı, ödeme dağılımı ve kart türleri yoktur.
- * Kasalar tablosu altta tam genişliktedir.
+ * Kasalar tablosu altta tam genişliktedir. Tutarlar değişmez.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -10,6 +12,11 @@ import { createElement } from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { CashStatusFigures } from '../../components/reports/CashStatusFigures';
+import { clinicDashboardKpiTone } from '../../utils/clinicDashboardKpiTones';
+import {
+  DAILY_REPORT_SOLID_CARD_FILL,
+  dailyReportCardTone,
+} from '../../utils/dailyReportScreenCards';
 
 vi.mock('../../contexts/FirmaDonemContext', () => ({
   useFirmaDonem: () => ({ selectedFirm: null }),
@@ -27,6 +34,14 @@ vi.mock('../../contexts/LanguageContext', () => ({
 vi.mock('../../contexts/ThemeContext', () => ({
   useTheme: () => ({ darkMode: false }),
 }));
+
+function cssColor(hex: string): string {
+  const body = hex.replace('#', '');
+  const r = Number.parseInt(body.slice(0, 2), 16);
+  const g = Number.parseInt(body.slice(2, 4), 16);
+  const b = Number.parseInt(body.slice(4, 6), 16);
+  return `rgb(${r}, ${g}, ${b})`;
+}
 
 const LABELS = {
   totalIn: 'Toplam giren',
@@ -67,20 +82,57 @@ describe('Kasa Durumu yerleşimi', () => {
     const outgoing = screen.getByTestId('cash-status-card-out');
     const balance = screen.getByTestId('cash-status-card-balance');
 
+    const revenueTone = dailyReportCardTone('total-revenue');
+    const expenseTone = dailyReportCardTone('total-expense');
+    const netTone = dailyReportCardTone('net-cash');
+    expect(revenueTone.background).toBe(DAILY_REPORT_SOLID_CARD_FILL['total-revenue']);
+    expect(revenueTone.background).toBe(clinicDashboardKpiTone('completed').background);
+    expect(expenseTone.background).toBe(DAILY_REPORT_SOLID_CARD_FILL['total-expense']);
+    expect(expenseTone.background).toBe(clinicDashboardKpiTone('cancelled').background);
+    expect(netTone.background).toBe(DAILY_REPORT_SOLID_CARD_FILL['net-cash']);
+    expect(netTone.background).toBe(clinicDashboardKpiTone('collection').background);
+
     expect(incoming.textContent).toContain('Toplam giren');
     expect(incoming.textContent).toContain('263.500');
     expect(incoming.textContent).toContain('IQD');
-    expect(incoming.className).toContain('border-blue-200');
-    expect(incoming.className).toContain('border-2');
+    expect(incoming.getAttribute('data-cash-tone')).toBe('total-revenue');
+    expect(incoming.style.backgroundColor).toBe(cssColor(revenueTone.background));
+    expect(incoming.style.borderColor).toBe(cssColor(revenueTone.border));
+    expect(incoming.className).not.toContain('bg-white');
+    expect(incoming.className).not.toContain('border-blue-200');
+    expect(incoming.className).not.toContain('border-2');
 
     expect(outgoing.textContent).toContain('Toplam çıkan');
     expect(outgoing.textContent).toContain('0');
-    expect(outgoing.className).toContain('border-rose-200');
+    expect(outgoing.getAttribute('data-cash-tone')).toBe('total-expense');
+    expect(outgoing.style.backgroundColor).toBe(cssColor(expenseTone.background));
+    expect(outgoing.className).not.toContain('border-rose-200');
+    expect(outgoing.className).not.toContain('bg-white');
 
     expect(balance.textContent).toContain('Bakiye');
     expect(balance.textContent).toContain('225.000');
-    expect(balance.className).toContain('border-green-200');
+    expect(balance.getAttribute('data-cash-tone')).toBe('net-cash');
+    expect(balance.style.backgroundColor).toBe(cssColor(netTone.background));
+    expect(balance.className).not.toContain('border-green-200');
+    expect(balance.className).not.toContain('bg-white');
     expect(balance.textContent).toContain('Güncel kasa bakiyesi');
+
+    for (const [card, tone] of [
+      [incoming, revenueTone],
+      [outgoing, expenseTone],
+      [balance, netTone],
+    ] as const) {
+      const lines = card.querySelectorAll('p');
+      const icon = card.querySelector('svg');
+      expect(lines[0]?.style.color).toBe(cssColor(tone.label));
+      expect(lines[1]?.style.color).toBe(cssColor(tone.value));
+      expect(lines[2]?.style.color).toBe(cssColor(tone.hint));
+      expect(icon?.style.color).toBe(cssColor(tone.accent));
+      expect(tone.label).toBe('#ffffff');
+      expect(tone.value).toBe('#ffffff');
+      expect(tone.hint).toBe('#ffffff');
+      expect(tone.accent).toBe('#ffffff');
+    }
 
     expect(screen.queryByText('Açılış Kasası')).toBeNull();
     expect(screen.queryByText('Günlük Nakit')).toBeNull();
@@ -135,6 +187,16 @@ describe('Kasa Durumu yerleşimi', () => {
     const source = readFileSync(resolve('src/components/reports/CashStatusFigures.tsx'), 'utf8');
     expect(source).toContain('ReportColumnTable');
     expect(source).toContain('md:grid-cols-3');
+    expect(source).toContain("toneKey=\"total-revenue\"");
+    expect(source).toContain("toneKey=\"total-expense\"");
+    expect(source).toContain("toneKey=\"net-cash\"");
+    expect(source).toContain('dailyReportCardTone');
+    expect(source).not.toContain('border-blue-200');
+    expect(source).not.toContain('border-rose-200');
+    expect(source).not.toContain('border-green-200');
+    expect(source).not.toContain('#2563eb');
+    expect(source).not.toContain('#f04438');
+    expect(source).not.toContain('#12b76a');
     expect(source).not.toContain('<table');
     expect(source).not.toContain('lg:grid-cols-4');
     expect(source).not.toContain('cash-status-distribution');
