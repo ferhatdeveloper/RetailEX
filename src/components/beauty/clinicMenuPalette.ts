@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Klinik V1 sol menü paleti. Anahtar yoksa bugünkü mor kabuk kalır.
+ * Klinik V1 sol menü paleti. Anahtar yoksa veya değer boşsa lavanta döner.
+ * Kayıtlı seçim (mor, gül, özel palet) olduğu gibi kalır.
  * V2 beyaz şerit bu paleti kullanmaz.
  * Ödeme penceresi de `useClinicMenuPalette` ile aynı tokenı okur.
  * Özel paletler ve yazı ayarı ayrı anahtarlarda durur; seçim hazır palet anahtarına yazılır.
@@ -29,6 +30,9 @@ export const CLINIC_MENU_PALETTE_IDS = [
 ] as const;
 
 export type ClinicMenuPaletteId = (typeof CLINIC_MENU_PALETTE_IDS)[number];
+
+/** Anahtar yokken veya değer boşken. Kayıtlı seçimi ezmez. */
+export const CLINIC_MENU_PALETTE_DEFAULT_ID: ClinicMenuPaletteId = 'lavender';
 
 export type ClinicMenuPalette = {
     id: string;
@@ -528,7 +532,7 @@ export function clinicMenuPaletteById(id: string): ClinicMenuPalette {
     if (found) return found;
     const custom = findCustomRecord(id);
     if (custom) return materializeClinicCustomPalette(custom);
-    return PLUM;
+    return CLINIC_MENU_PALETTES.find((palette) => palette.id === CLINIC_MENU_PALETTE_DEFAULT_ID) ?? PLUM;
 }
 
 export function listClinicMenuPalettes(): ClinicMenuPalette[] {
@@ -544,13 +548,14 @@ function isSelectablePaletteId(id: string): boolean {
 
 export function readClinicMenuPaletteId(): string {
     try {
-        if (typeof localStorage === 'undefined') return PLUM.id;
+        if (typeof localStorage === 'undefined') return CLINIC_MENU_PALETTE_DEFAULT_ID;
         const raw = localStorage.getItem(CLINIC_MENU_PALETTE_KEY);
-        if (raw && isSelectablePaletteId(raw)) return raw;
+        if (raw == null || raw.trim() === '') return CLINIC_MENU_PALETTE_DEFAULT_ID;
+        if (isSelectablePaletteId(raw)) return raw;
     } catch {
         /* depolama kapalı */
     }
-    return PLUM.id;
+    return CLINIC_MENU_PALETTE_DEFAULT_ID;
 }
 
 export function readClinicMenuPalette(): ClinicMenuPalette {
@@ -610,11 +615,11 @@ export function removeClinicCustomPalette(id: string): void {
     }
     if (raw === id) {
         try {
-            localStorage.setItem(CLINIC_MENU_PALETTE_KEY, PLUM.id);
+            localStorage.setItem(CLINIC_MENU_PALETTE_KEY, CLINIC_MENU_PALETTE_DEFAULT_ID);
         } catch {
             /* depolama kapalı */
         }
-        dispatchPalette(PLUM.id);
+        dispatchPalette(CLINIC_MENU_PALETTE_DEFAULT_ID);
         return;
     }
     dispatchPalette(readClinicMenuPaletteId());

@@ -143,7 +143,7 @@ describe('Klinik operasyon ayar kabuğu', () => {
         expect(html.indexOf('clinic-menu-palette-pearl')).toBeLessThan(html.indexOf('clinic-custom-palette-form'));
         expect(html.indexOf('clinic-custom-palette-form')).toBeLessThan(html.indexOf('clinic-font-settings'));
         expect(html.indexOf('clinic-font-settings')).toBeLessThan(html.indexOf('clinic-ops-settings-nav'));
-        expect(screen.getByTestId('clinic-menu-palette-plum').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('clinic-menu-palette-lavender').getAttribute('aria-pressed')).toBe('true');
     });
 
     it('yazı tipi ve punto ayar kabuğunda kalır', async () => {

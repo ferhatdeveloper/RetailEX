@@ -110,10 +110,11 @@ describe('Klinik menü renk paleti', () => {
         localStorage.removeItem(CLINIC_V2_CRM_MENU_KEY);
     });
 
-    it('varsayılan mor palettir ve gül seçilince menü o tokenları kullanır', () => {
+    it('varsayılan lavanta palettir ve gül seçilince menü o tokenları kullanır', () => {
         const plum = clinicMenuPaletteById('plum');
+        const lavender = clinicMenuPaletteById('lavender');
         const rose = clinicMenuPaletteById('rose');
-        expect(readClinicMenuPaletteId()).toBe('plum');
+        expect(readClinicMenuPaletteId()).toBe('lavender');
         expect(plum.sidebar).toBe('#12082a');
         expect(plum.sidebar).toBe(CLINIC_CLASSIC_SHELL.sidebar);
         expect(plum.accent).toBe('#7c3aed');
@@ -124,17 +125,17 @@ describe('Klinik menü renk paleti', () => {
 
         mountClinic();
         const nav = screen.getByTestId('clinic-classic-nav');
-        expect(nav.getAttribute('data-palette')).toBe('plum');
-        expectStyleToken(nav, plum.sidebar);
-        expectStyleToken(nav, plum.sidebarLine);
+        expect(nav.getAttribute('data-palette')).toBe('lavender');
+        expectStyleToken(nav, lavender.sidebar);
+        expectStyleToken(nav, lavender.sidebarLine);
 
         const dashboard = screen.getByRole('button', { name: 'Dashboard' });
         const clients = screen.getByRole('button', { name: 'Müşteriler' });
-        expectStyleToken(dashboard, plum.accent);
-        expectStyleToken(dashboard, plum.onAccent);
-        expectStyleToken(clients, plum.item);
-        expectStyleToken(screen.getByText('Operasyonlar'), plum.group);
-        expect(screen.getByTestId('clinic-menu-palette-plum').getAttribute('aria-pressed')).toBe('true');
+        expectStyleToken(dashboard, lavender.accent);
+        expectStyleToken(dashboard, lavender.onAccent);
+        expectStyleToken(clients, lavender.item);
+        expectStyleToken(screen.getByText('Operasyonlar'), lavender.group);
+        expect(screen.getByTestId('clinic-menu-palette-lavender').getAttribute('aria-pressed')).toBe('true');
 
         const crmBefore = localStorage.getItem(CLINIC_V2_CRM_MENU_KEY);
         const shellBefore = localStorage.getItem(CLINIC_V2_STORAGE_KEY);
@@ -156,8 +157,8 @@ describe('Klinik menü renk paleti', () => {
         expect(screen.getByTestId('clinic-menu-palette-rose').textContent).toBe('Gül');
     });
 
-    it('yeni palet kimliği kaydolur ve menü tokenı değişir, varsayılan plum kalır', () => {
-        expect(readClinicMenuPaletteId()).toBe('plum');
+    it('yeni palet kimliği kaydolur ve menü tokenı değişir, boş depo lavanta kalır', () => {
+        expect(readClinicMenuPaletteId()).toBe('lavender');
         const powder = clinicMenuPaletteById('powder');
         const taken = new Set(
             CLINIC_MENU_PALETTES.filter((palette) => palette.id !== 'powder').map((palette) => palette.sidebar),
@@ -167,8 +168,8 @@ describe('Klinik menü renk paleti', () => {
 
         mountClinic();
         const nav = screen.getByTestId('clinic-classic-nav');
-        expect(nav.getAttribute('data-palette')).toBe('plum');
-        expectStyleToken(nav, clinicMenuPaletteById('plum').sidebar);
+        expect(nav.getAttribute('data-palette')).toBe('lavender');
+        expectStyleToken(nav, clinicMenuPaletteById('lavender').sidebar);
 
         fireEvent.click(screen.getByTestId('clinic-menu-palette-powder'));
         expect(localStorage.getItem(CLINIC_MENU_PALETTE_KEY)).toBe('powder');
@@ -183,17 +184,32 @@ describe('Klinik menü renk paleti', () => {
         expect(screen.getByTestId('clinic-menu-palette-plum').getAttribute('aria-pressed')).toBe('false');
     });
 
-    it('kayıt anahtarda kalır, bilinmeyen değer mora döner', () => {
+    it('kayıtlı seçim durur, boş veya bilinmeyen değer lavantaya döner', () => {
         localStorage.setItem(CLINIC_MENU_PALETTE_KEY, 'rose');
         const first = mountClinic();
+        expect(readClinicMenuPaletteId()).toBe('rose');
         expect(screen.getByTestId('clinic-classic-nav').getAttribute('data-palette')).toBe('rose');
         expectStyleToken(screen.getByTestId('clinic-classic-nav'), clinicMenuPaletteById('rose').sidebar);
         first.unmount();
 
-        localStorage.setItem(CLINIC_MENU_PALETTE_KEY, 'Gül');
-        const second = mountClinic();
+        localStorage.setItem(CLINIC_MENU_PALETTE_KEY, 'plum');
+        const savedPlum = mountClinic();
         expect(readClinicMenuPaletteId()).toBe('plum');
         expect(screen.getByTestId('clinic-classic-nav').getAttribute('data-palette')).toBe('plum');
+        expectStyleToken(screen.getByTestId('clinic-classic-nav'), clinicMenuPaletteById('plum').sidebar);
+        savedPlum.unmount();
+
+        localStorage.setItem(CLINIC_MENU_PALETTE_KEY, '');
+        expect(readClinicMenuPaletteId()).toBe('lavender');
+        localStorage.setItem(CLINIC_MENU_PALETTE_KEY, '   ');
+        expect(readClinicMenuPaletteId()).toBe('lavender');
+        localStorage.removeItem(CLINIC_MENU_PALETTE_KEY);
+        expect(readClinicMenuPaletteId()).toBe('lavender');
+
+        localStorage.setItem(CLINIC_MENU_PALETTE_KEY, 'Gül');
+        const second = mountClinic();
+        expect(readClinicMenuPaletteId()).toBe('lavender');
+        expect(screen.getByTestId('clinic-classic-nav').getAttribute('data-palette')).toBe('lavender');
         second.unmount();
     });
 
@@ -285,21 +301,21 @@ describe('Klinik menü renk paleti', () => {
         expect(screen.getByTestId('clinic-font-size-xl').textContent).toBe('Çok büyük');
     });
 
-    it('boş depoda mor palet, sistem yazısı ve normal punto kalır', () => {
+    it('boş depoda lavanta paleti, sistem yazısı ve normal punto kalır', () => {
         expect(localStorage.getItem(CLINIC_MENU_PALETTE_KEY)).toBeNull();
         expect(localStorage.getItem(CLINIC_CUSTOM_PALETTES_KEY)).toBeNull();
         expect(localStorage.getItem(CLINIC_FONT_KEY)).toBeNull();
-        expect(readClinicMenuPaletteId()).toBe('plum');
+        expect(readClinicMenuPaletteId()).toBe('lavender');
         expect(readClinicFont().family).toBe('system');
         expect(readClinicFont().size).toBe('md');
         expect(readClinicFont().stack).toBe('inherit');
 
         mountClinic();
         const nav = screen.getByTestId('clinic-classic-nav');
-        expect(nav.getAttribute('data-palette')).toBe('plum');
+        expect(nav.getAttribute('data-palette')).toBe('lavender');
         expect(nav.getAttribute('data-font-family')).toBe('system');
         expect(nav.getAttribute('data-font-size')).toBe('md');
-        expectStyleToken(nav, clinicMenuPaletteById('plum').sidebar);
+        expectStyleToken(nav, clinicMenuPaletteById('lavender').sidebar);
         expect(screen.getByRole('button', { name: 'Dashboard' }).style.fontSize).toBe('13px');
         expect(screen.getByTestId('clinic-font-family-system').getAttribute('aria-pressed')).toBe('true');
         expect(screen.getByTestId('clinic-font-size-md').getAttribute('aria-pressed')).toBe('true');
@@ -316,7 +332,7 @@ describe('Klinik menü renk paleti', () => {
         expect(weak.ok).toBe(false);
         if (!weak.ok) expect(weak.reason).toBe('contrast');
         expect(localStorage.getItem(CLINIC_CUSTOM_PALETTES_KEY)).toBeNull();
-        expect(readClinicMenuPaletteId()).toBe('plum');
+        expect(readClinicMenuPaletteId()).toBe('lavender');
 
         const view = mountClinic();
         fireEvent.change(screen.getByTestId('clinic-custom-palette-name'), { target: { value: 'Şafak' } });
@@ -391,7 +407,7 @@ describe('Klinik menü renk paleti', () => {
         expect(screen.getByRole('button', { name: 'Dashboard' }).style.fontSize).toBe('15px');
         expect(screen.getByTestId('clinic-font-family-serif').getAttribute('aria-pressed')).toBe('true');
         expect(screen.getByTestId('clinic-font-size-lg').getAttribute('aria-pressed')).toBe('true');
-        expect(readClinicMenuPaletteId()).toBe('plum');
+        expect(readClinicMenuPaletteId()).toBe('lavender');
         second.unmount();
 
         const keys = [
