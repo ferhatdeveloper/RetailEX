@@ -2283,12 +2283,13 @@ export function ReportsModule({
     }
   }, [selectedTab, loadComparisonSales, comparisonPeriod]);
 
-  // Günlük rapor: her 30 sn'de bir tazele (yeni satış/kasa kartlara yansısın).
+  // 2026-10-21 kullanıcı talebi: Günlük raporda otomatik yenileme KAPALI.
+  // Veri yalnızca kullanıcının "Yenile" butonuna basmasıyla güncellenecek;
+  // 30 saniyede bir yapılan refreshAllReportsData çağrısı kaldırıldı.
   useEffect(() => {
     if (selectedTab !== 'daily') return;
-    const id = setInterval(() => void refreshAllReportsData(), 30_000);
-    return () => clearInterval(id);
-  }, [selectedTab, refreshAllReportsData]);
+    return undefined;
+  }, [selectedTab]);
 
   useEffect(() => {
     if (selectedTab === 'analysis' && businessType !== 'restaurant') {

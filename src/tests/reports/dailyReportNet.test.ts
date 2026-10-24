@@ -140,6 +140,7 @@ import {
   PERIOD_SUMMARY_CASH_OUT_TYPES,
   REPORT_CASH_IN_TYPES,
   REPORT_CASH_OUT_TYPES,
+  REPORT_CASH_OUT_TYPES_LEGACY,
 } from '../../utils/reportUnifiedExpenses';
 
 describe('periodSummaryCashOutTypes — gider filtre (Ferhat 72M)', () => {
@@ -159,9 +160,20 @@ describe('periodSummaryCashOutTypes — gider filtre (Ferhat 72M)', () => {
     expect(PERIOD_SUMMARY_CASH_OUT_TYPES.has('ORTAK_DAGITIM_KAR')).toBe(true);
   });
 
-  it('REPORT_CASH_OUT_TYPES (günlük rapor) tüm kasa çıkışlarını içerir', () => {
+  it('REPORT_CASH_OUT_TYPES (günlük rapor) kasa çıkışlarını içerir', () => {
     expect(REPORT_CASH_OUT_TYPES.has('MAAS_ODEME')).toBe(true);
     expect(REPORT_CASH_OUT_TYPES.has('CH_ODEME')).toBe(true);
+    expect(REPORT_CASH_OUT_TYPES.has('KASA_CIKIS')).toBe(true);
+  });
+
+  it('REPORT_CASH_OUT_TYPES ORTAK_SERMAYE_ODEME / ORTAK_DAGITIM_KAR çıkarıldı (kâr dağıtımı, gider değil)', () => {
+    expect(REPORT_CASH_OUT_TYPES.has('ORTAK_SERMAYE_ODEME')).toBe(false);
+    expect(REPORT_CASH_OUT_TYPES.has('ORTAK_DAGITIM_KAR')).toBe(false);
+  });
+
+  it('REPORT_CASH_OUT_TYPES_LEGACY 7 kalem ile geriye dönük uyumluluk (Ferhat datası)', () => {
+    expect(REPORT_CASH_OUT_TYPES_LEGACY.has('ORTAK_SERMAYE_ODEME')).toBe(true);
+    expect(REPORT_CASH_OUT_TYPES_LEGACY.has('ORTAK_DAGITIM_KAR')).toBe(true);
   });
 });
 
@@ -387,7 +399,10 @@ describe('mergeExpensesWithCashOuts — Bug 31 linkedCashIds skip', () => {
     expect(merged.some((m) => m.notes === 'MAAS_ODEME')).toBe(true);
   });
 
-  it('ORTAK_SERMAYE_ODEME: cash_line_id Expense tablosunda olsa bile dahil edilir', () => {
+  it('ORTAK_SERMAYE_ODEME: günlük rapor GİDERİNDEN çıkarıldı (2026-10-21 kullanıcı isteği)', () => {
+    // Ortak sermaye ödemesi / kâr dağıtımı işletme gideri DEĞİLDİR.
+    // Günlük rapor Toplam Gider kartında gösterilmez (REPORT_CASH_OUT_TYPES'dan çıkarıldı).
+    // Sadece Dönem Özeti (PERIOD_SUMMARY_CASH_OUT_TYPES) bunu Gider'a dahil etmeye devam eder.
     const expenses: Expense[] = [
       makeExpense({ id: 'exp-ortak', amount: 2_000, cash_line_id: 'cl-ortak' }),
     ];
@@ -395,7 +410,19 @@ describe('mergeExpensesWithCashOuts — Bug 31 linkedCashIds skip', () => {
       makeCashLine({ id: 'cl-ortak', islem_tipi: 'ORTAK_SERMAYE_ODEME', tutar: 2_000 }),
     ];
     const merged = mergeExpensesWithCashOuts(expenses, cashLines);
-    expect(merged.length).toBe(2);
+    expect(merged.some((m) => m.notes === 'ORTAK_SERMAYE_ODEME')).toBe(false);
+  });
+
+  it('ORTAK_SERMAYE_ODEME: Dönem Özeti geri-çevrim davranışı korunur (PERIOD_SUMMARY_CASH_OUT_TYPES 7 kalem)', () => {
+    const expenses: Expense[] = [
+      makeExpense({ id: 'exp-ortak', amount: 2_000, cash_line_id: 'cl-ortak' }),
+    ];
+    const cashLines: KasaIslemi[] = [
+      makeCashLine({ id: 'cl-ortak', islem_tipi: 'ORTAK_SERMAYE_ODEME', tutar: 2_000 }),
+    ];
+    const merged = mergeExpensesWithCashOuts(expenses, cashLines, {
+      allowedCashOutTypes: new Set(['GIDER_PUSULASI', 'ORTAK_SERMAYE_ODEME']),
+    });
     expect(merged.some((m) => m.notes === 'ORTAK_SERMAYE_ODEME')).toBe(true);
   });
 

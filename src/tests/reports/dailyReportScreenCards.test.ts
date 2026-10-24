@@ -1,4 +1,6 @@
 /**
+ * @vitest-environment jsdom
+ *
  * Günlük Rapor üst kartları.
  *
  * Sıra: Toplam Ciro, Rezervasyon Tutarı, Toplam İndirim, Toplam Gider, Net (Nakit).
@@ -8,8 +10,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createElement } from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import { DailyReportKpiGrid } from '../../components/reports/DailyReportKpiGrid';
 import { translate } from '../../locales/module-translations';
 import { sumDailySalesDetailCashBalance } from '../../utils/dailySalesDetailCashBalance';
@@ -58,6 +60,10 @@ const FORBIDDEN_ON_SCREEN = [
 ];
 
 describe('günlük rapor ekran kartları', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it('kaldırılan anahtarlar kart listesinde yoktur', () => {
     const visible = visibleDailyReportScreenCardKeys();
     for (const key of DAILY_REPORT_REMOVED_CARD_KEYS) {

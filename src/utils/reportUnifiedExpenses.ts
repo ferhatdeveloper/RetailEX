@@ -16,8 +16,22 @@ export function normalizeGiderAciklama(value: unknown): string {
   return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
 }
 
-/** Günlük Rapor `DAILY_CASH_OUT_TYPES` ile aynı küme */
+/** Günlük Rapor `DAILY_CASH_OUT_TYPES` ile aynı küme.
+ * ORTAK_SERMAYE_ODEME ve ORTAK_DAGITIM_KAR kâr dağıtımı / ortaklık sermaye
+ * ödemesidir; işletme gideri DEĞİLDİR. 2026-10-21 kullanıcı isteği ile
+ * Toplam Gider kartından çıkarıldı. */
 export const REPORT_CASH_OUT_TYPES = new Set([
+  'GIDER_PUSULASI',
+  'MAAS_ODEME',
+  'AVANS_ODEME',
+  'CH_ODEME',
+  'KASA_CIKIS',
+]);
+
+/** 7-kalem eski davranışı (ORTAK_SERMAYE_ODEME, ORTAK_DAGITIM_KAR dahil).
+ * Geriye dönük uyumluluk ve Dönem Özeti (PeriodSummaryReport) tarafından
+ * kâr dağıtımı/sermaye ödemesi ayrımı ihtiyaç duyulursa kullanılır. */
+export const REPORT_CASH_OUT_TYPES_LEGACY = new Set([
   'GIDER_PUSULASI',
   'MAAS_ODEME',
   'AVANS_ODEME',
