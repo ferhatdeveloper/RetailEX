@@ -433,6 +433,8 @@ export const salesAPI = {
           doviz_kodu: 'YEREL',
           dovizli_tutar: 0,
           target_register_id: undefined,
+          cashier: resolvedCashier,
+          created_by_user_id: sale.userId || currentLoginUserId(),
         };
         await createKasaIslemi(islem);
       };
@@ -599,6 +601,8 @@ export const salesAPI = {
               cari_hesap_unvani: params.customerName || 'Peşin Müşteri',
               doviz_kodu: 'YEREL',
               dovizli_tutar: 0,
+              cashier: resolvedReturnCashier,
+              created_by_user_id: currentLoginUserId(),
             };
             await createKasaIslemi(islem);
           }

@@ -382,6 +382,122 @@ describe('satış detayları kasa bakiyesi', () => {
     expect(sumDailySalesDetailCashBalance([...sales, reservation, ...idRows])).toBe(133_500);
   });
 
+  it('KL fişinde kasiyer admin ise admin, boşsa tire; Kasa giriş açıklamadır; tutar aynı kalır', () => {
+    const createdAt = '2026-10-24T16:33:00';
+    const userId = '11111111-1111-4111-8111-111111111111';
+    const names = new Map<string, string>([[userId, 'admin']]);
+    const baseCash = {
+      id: 'line-kasa-giris',
+      firma_id: '001',
+      kasa_id: 'reg-1',
+      islem_tarihi: '2026-10-24',
+      islem_tipi: 'KASA_CIKIS',
+      islem_aciklamasi: 'Kasa giriş',
+      cari_hesap_unvani: '',
+      islem_no: 'KL-MVMFWBU2-CU5ZA',
+      tutar: 5_000,
+      olusturma_tarihi: createdAt,
+    } as KasaIslemi;
+
+    const withName = mergeExpensesWithCashOuts([], [{ ...baseCash, cashier: 'admin' }]);
+    expect(withName).toHaveLength(1);
+    expect(withName[0].amount).toBe(5_000);
+    expect(withName[0].description).toBe('Kasa giriş');
+    expect(withName[0].entered_by_name).toBe('admin');
+    expect(withName[0].document_number).toBe('KL-MVMFWBU2-CU5ZA');
+    const namedRows = buildDailySalesDetailExpenseRows(sales, [{
+      key: String(withName[0].id),
+      ficheNo: withName[0].document_number,
+      amount: withName[0].amount,
+      date: withName[0].expense_date,
+      createdAt: withName[0].created_at,
+      enteredById: withName[0].created_by,
+      enteredByName: withName[0].entered_by_name,
+      description: withName[0].description,
+      category: withName[0].category,
+      paymentMethod: 'cash',
+      isCash: true,
+    }], 'Gider', names);
+    expect(namedRows[0].receiptNumber).toBe('KL-MVMFWBU2-CU5ZA');
+    expect(namedRows[0].hour).toContain('33');
+    expect(namedRows[0].cashier).toBe('admin');
+    expect(namedRows[0].customerName).toBe('Kasa giriş');
+    expect(namedRows[0].discount).toBe(0);
+    expect(namedRows[0].total).toBe(-5_000);
+    expect(sumDailySalesDetailCashBalance([...sales, reservation, ...namedRows])).toBe(133_500);
+
+    expect(readCashLineActor({ ...baseCash, cashier: 'Kasa giriş' }).name).toBe('');
+    const blank = mergeExpensesWithCashOuts([], [{
+      ...baseCash,
+      id: 'line-bos',
+      cashier: 'Kasa giriş',
+      created_by_user_id: '',
+      created_by: '',
+      user_id: '',
+    }]);
+    expect(blank).toHaveLength(1);
+    expect(blank[0].amount).toBe(5_000);
+    expect(String(blank[0].entered_by_name || '')).toBe('');
+    expect(blank[0].description).toBe('Kasa giriş');
+    const blankRows = buildDailySalesDetailExpenseRows(sales, [{
+      key: String(blank[0].id),
+      ficheNo: blank[0].document_number,
+      amount: blank[0].amount,
+      date: blank[0].expense_date,
+      createdAt: blank[0].created_at,
+      enteredById: blank[0].created_by,
+      enteredByName: blank[0].entered_by_name,
+      description: blank[0].description,
+      paymentMethod: 'cash',
+      isCash: true,
+    }], 'Gider', names);
+    expect(blankRows).toHaveLength(1);
+    expect(blankRows[0].cashier).toBe('—');
+    expect(blankRows[0].customerName).toBe('Kasa giriş');
+    expect(blankRows[0].total).toBe(-5_000);
+    expect(sumDailySalesDetailCashBalance([...sales, reservation, ...blankRows])).toBe(133_500);
+
+    const idOnly = mergeExpensesWithCashOuts([], [{
+      ...baseCash,
+      id: 'line-uuid',
+      cashier: '',
+      created_by_user_id: userId,
+    }]);
+    const idRows = buildDailySalesDetailExpenseRows(sales, [{
+      key: String(idOnly[0].id),
+      ficheNo: idOnly[0].document_number,
+      amount: idOnly[0].amount,
+      date: idOnly[0].expense_date,
+      createdAt: idOnly[0].created_at,
+      enteredById: idOnly[0].created_by,
+      enteredByName: idOnly[0].entered_by_name,
+      description: 'Kasa giriş',
+      paymentMethod: 'cash',
+      isCash: true,
+    }], 'Gider', names);
+    expect(idRows[0].cashier).toBe('admin');
+    expect(idRows[0].customerName).toBe('Kasa giriş');
+    expect(idRows[0].total).toBe(-5_000);
+    expect(sumDailySalesDetailCashBalance([...sales, reservation, ...idRows])).toBe(133_500);
+
+    const unmapped = buildDailySalesDetailExpenseRows(sales, [{
+      key: 'no-map',
+      ficheNo: 'KL-MVMFWBU2-CU5ZA',
+      amount: 5_000,
+      date: '2026-10-24',
+      createdAt,
+      enteredById: '22222222-2222-4222-8222-222222222222',
+      enteredByName: '',
+      description: 'Kasa giriş',
+      paymentMethod: 'cash',
+      isCash: true,
+    }], 'Gider', names);
+    expect(unmapped[0].cashier).toBe('—');
+    expect(unmapped[0].customerName).toBe('Kasa giriş');
+    expect(unmapped[0].total).toBe(-5_000);
+    expect(sumDailySalesDetailCashBalance([...sales, reservation, ...unmapped])).toBe(133_500);
+  });
+
   it('ekran gider satırını ızgaraya bağlar ve Net (Brüt) kartını çizmez', () => {
     const src = readFileSync(resolve('src/components/reports/ReportsModule.tsx'), 'utf8');
     expect(src).toContain('buildDailySalesDetailExpenseRows');

@@ -366,6 +366,8 @@ export const expenseAPI = {
               dovizli_tutar: expense.amount,
               ozel_kod: expense.category || '',
               skipExpenseMirror: true,
+              ...(actor.cashier ? { cashier: actor.cashier } : {}),
+              ...(actor.createdByUserId ? { created_by_user_id: actor.createdByUserId, created_by: actor.createdByUserId } : {}),
             });
 
             const linked = await postgrest.patch<any[]>(

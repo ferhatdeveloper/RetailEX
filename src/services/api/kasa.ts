@@ -57,24 +57,37 @@ function cashLineActorPayload(islem: Pick<KasaIslemi, 'cashier' | 'created_by_us
   };
 }
 
-async function postCashLine(
+async function sendCashLineRest(
+  method: 'post' | 'patch',
   path: string,
   body: Record<string, unknown>,
   prefer: 'return=representation' | 'return=minimal' = 'return=representation',
 ): Promise<any> {
   const { postgrest } = await import('./postgrestClient');
+  const run = (payload: Record<string, unknown>) =>
+    method === 'post'
+      ? postgrest.post<any[]>(path, payload, { schema: 'public', prefer })
+      : postgrest.patch<any[]>(path, payload, { schema: 'public', prefer });
   try {
-    return await postgrest.post<any[]>(path, body, { schema: 'public', prefer });
+    return await run(body);
   } catch (err) {
     const msg = String((err as Error)?.message || err);
     const hasActor = Object.prototype.hasOwnProperty.call(body, 'cashier')
       || Object.prototype.hasOwnProperty.call(body, 'created_by_user_id');
-    if (!hasActor || !/cashier|created_by_user_id|PGRST204|schema cache/i.test(msg)) throw err;
+    if (!hasActor || !/cashier|created_by_user_id|PGRST204|schema cache|42703|column/i.test(msg)) throw err;
     const next = { ...body };
     delete next.cashier;
     delete next.created_by_user_id;
-    return await postgrest.post<any[]>(path, next, { schema: 'public', prefer });
+    return await run(next);
   }
+}
+
+async function postCashLine(
+  path: string,
+  body: Record<string, unknown>,
+  prefer: 'return=representation' | 'return=minimal' = 'return=representation',
+): Promise<any> {
+  return sendCashLineRest('post', path, body, prefer);
 }
 
 function storedCariTypeFromKind(
@@ -1525,10 +1538,16 @@ async function createKasaIslemiViaPostgrest(
 export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi> {
   try {
     const skipExpenseMirror = Boolean(incoming.skipExpenseMirror);
+    const actorSeed = resolveCashLineActorWrite({
+      cashier: incoming.cashier,
+      createdByUserId: incoming.created_by_user_id || incoming.created_by || incoming.user_id,
+    });
     let islem = {
       ...incoming,
       islem_tipi: String(incoming.islem_tipi || '').trim().toUpperCase(),
       tutar: Math.abs(parseKasaAmount(incoming.tutar)),
+      ...(actorSeed.cashier ? { cashier: actorSeed.cashier } : {}),
+      ...(actorSeed.createdByUserId ? { created_by_user_id: actorSeed.createdByUserId } : {}),
     };
     delete (islem as { skipExpenseMirror?: boolean }).skipExpenseMirror;
     // Fiş No (fiche_no): caller `islem_no` veya `fiche_no` set etmişse onu kullan;
@@ -3334,6 +3353,11 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
     if (newRegisterId) patchBody.register_id = newRegisterId;
     if (customerId !== undefined) patchBody.customer_id = customerId;
     if (partyId !== undefined) patchBody.party_id = partyId;
+    const actorColsRest = cashLineActorPayload(islem);
+    if (!String(row.cashier || '').trim() && actorColsRest.cashier) patchBody.cashier = actorColsRest.cashier;
+    if (!String(row.created_by_user_id || '').trim() && actorColsRest.created_by_user_id) {
+      patchBody.created_by_user_id = actorColsRest.created_by_user_id;
+    }
 
     // Nakit önce: satır tutarı değişip kasa bakiyesinin eski 450k'da kalmasını önle.
     for (const d of cashDeltas) {
@@ -3342,10 +3366,10 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
 
     let updatedRow: any;
     try {
-      const patched = await postgrest.patch<any[]>(
+      const patched = await sendCashLineRest(
+        'patch',
         `${linesPath}?id=eq.${encodeURIComponent(id)}`,
         patchBody,
-        { schema: 'public', prefer: 'return=representation' },
       );
       updatedRow = Array.isArray(patched) ? patched[0] : patched;
       await applyCariAndPartyDeltasOnUpdate({
@@ -3431,6 +3455,8 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
     kasaIslemiPostedCash(oldAmount, oldSign),
     kasaIslemiPostedCash(newAmount, newSign),
   );
+  const writeActorOnUpdate = await ensureCashLineActorColumns();
+  const actorColsUpdate = writeActorOnUpdate ? cashLineActorPayload(islem) : null;
 
   await postgres.query('BEGIN');
   try {
@@ -3446,6 +3472,12 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
            register_id = COALESCE($8::text::uuid, register_id),
            customer_id = $9::text::uuid,
            party_id = $10::text::uuid
+           ${writeActorOnUpdate ? `,
+           cashier = CASE
+             WHEN NULLIF(BTRIM(COALESCE(cashier, '')), '') IS NULL THEN $12::text
+             ELSE cashier
+           END,
+           created_by_user_id = COALESCE(created_by_user_id, $13::text::uuid)` : ''}
        WHERE id = $11::text::uuid
        RETURNING *`,
       [
@@ -3460,6 +3492,7 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
         customerId,
         partyId,
         id,
+        ...(writeActorOnUpdate ? [actorColsUpdate?.cashier ?? null, actorColsUpdate?.created_by_user_id ?? null] : []),
       ],
     );
 

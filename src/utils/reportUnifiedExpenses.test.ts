@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { mergeExpensesWithCashOuts, expenseEnteredBy } from './reportUnifiedExpenses';
 import { resolveCashLineActorWrite } from './cashLineActor';
+import { useAuthStore } from '../store/useAuthStore';
 import type { Expense } from '../services/api/expenses';
 import type { KasaIslemi } from '../services/api/kasa';
 
@@ -84,9 +85,34 @@ describe('expenseEnteredBy', () => {
       name: '',
     });
   });
+
+  it('Kasa giriş açıklaması kasiyer adı sayılmaz', () => {
+    expect(expenseEnteredBy({ created_by: '', entered_by_name: 'Kasa giriş', last_edited_by: '' })).toEqual({
+      id: '',
+      name: '',
+    });
+  });
 });
 
+function installMemoryStorage(): void {
+  const mem = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => (mem.has(key) ? mem.get(key)! : null),
+    setItem: (key: string, value: string) => { mem.set(key, String(value)); },
+    removeItem: (key: string) => { mem.delete(key); },
+    clear: () => { mem.clear(); },
+    key: (index: number) => Array.from(mem.keys())[index] ?? null,
+    get length() { return mem.size; },
+  };
+  Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true });
+}
+
 describe('resolveCashLineActorWrite', () => {
+  beforeEach(() => {
+    installMemoryStorage();
+    useAuthStore.setState({ user: null, isAuthenticated: false });
+  });
+
   it('yazılı adı ve kimliği korur; kullanıcı adı kimlik olmaz', () => {
     const actor = resolveCashLineActorWrite({
       cashier: 'Ayşe',
@@ -98,5 +124,30 @@ describe('resolveCashLineActorWrite', () => {
     const namedOnly = resolveCashLineActorWrite({ cashier: 'admin', createdByUserId: 'admin' });
     expect(namedOnly.cashier).toBe('admin');
     expect(namedOnly.createdByUserId).toBe('');
+  });
+
+  it('bellek oturumu boşsa satış oturumundaki kullanıcı adı yazılır', () => {
+    localStorage.setItem('exretail_session', JSON.stringify({
+      token: 'local-session-auth',
+      user: {
+        id: '11111111-1111-4111-8111-111111111111',
+        username: 'admin',
+        full_name: 'Yönetici',
+      },
+    }));
+    const fromSession = resolveCashLineActorWrite({ cashier: 'Kasa giriş' });
+    expect(fromSession.cashier).toBe('admin');
+    expect(fromSession.cashier).not.toBe('Kasa giriş');
+    expect(fromSession.createdByUserId).toBe('11111111-1111-4111-8111-111111111111');
+  });
+
+  it('oturum da boşsa satış fişindeki kasiyer önbelleği yazılır; ikisi de yoksa ad boş kalır', () => {
+    localStorage.setItem('retailex_pos_cashier_001_no_user', 'admin');
+    expect(resolveCashLineActorWrite().cashier).toBe('admin');
+
+    localStorage.clear();
+    const empty = resolveCashLineActorWrite({ cashier: 'Kasa giriş', createdByUserId: 'Kasa giriş' });
+    expect(empty.cashier).toBe('');
+    expect(empty.createdByUserId).toBe('');
   });
 });

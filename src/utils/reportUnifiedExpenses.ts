@@ -8,6 +8,7 @@
 import type { Expense } from '../services/api/expenses';
 import type { KasaIslemi } from '../services/api/kasa';
 import { readCashLineActor } from './cashLineActor';
+import { isCashMovementLabel } from './loginCashierName';
 import { localCalendarDateKey, toSqlDateInputString } from './localCalendarDate';
 
 export function normalizeGiderAciklama(value: unknown): string {
@@ -108,7 +109,8 @@ function blankRecordText(value: unknown): boolean {
  */
 export function expenseEnteredBy(row: object | null | undefined): { id: string; name: string } {
   const src = (row ?? {}) as Record<string, unknown>;
-  const name = blankRecordText(src.entered_by_name) ? '' : String(src.entered_by_name).trim();
+  const rawName = blankRecordText(src.entered_by_name) ? '' : String(src.entered_by_name).trim();
+  const name = rawName && !isCashMovementLabel(rawName) ? rawName : '';
   let id = '';
   for (const key of ['created_by', 'last_edited_by', 'approved_by'] as const) {
     const text = String(src[key] ?? '').trim();

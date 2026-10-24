@@ -76,15 +76,104 @@ export function resolveCashierDisplayName(
   // 2) Yoksa created_by_user_id'den username (login user fallback).
   // 3) Yoksa '—'.
   const stored = sanitizeStoredCashierName(storedCashier);
-  if (stored) return stored;
+  if (stored && !isCashMovementLabel(stored)) return stored;
   const uid = String(createdByUserId ?? '').trim();
   const fromUser = uid ? String(userNameById.get(uid) ?? '').trim() : '';
-  if (fromUser && !isPlaceholderCashierName(fromUser)) return fromUser;
+  if (fromUser && !isPlaceholderCashierName(fromUser) && !isCashMovementLabel(fromUser)) return fromUser;
   return '—';
 }
 
+/**
+ * Kasa açıklaması ve ödeme etiketi. Kasiyer adı değildir.
+ * «Kasa giriş» müşteri/açıklama kolonunda kalır; kişi yerine yazılmaz.
+ */
+const CASH_MOVEMENT_LABELS = [
+  'kasa giriş',
+  'kasa cikis',
+  'kasa çıkış',
+  'kasa para girişi',
+  'kasa para çıkışı',
+  'gider',
+  'gider pusulası',
+  'gider pusulasi',
+  'nakit',
+  'bilinmeyen kasiyer',
+];
+
+export function isCashMovementLabel(raw: unknown): boolean {
+  const s = String(raw ?? '').trim().toLocaleLowerCase('tr-TR');
+  if (!s) return false;
+  return CASH_MOVEMENT_LABELS.includes(s);
+}
+
+function readStorageJson(key: string): unknown {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function userFromUnknown(value: unknown): LoginCashierUser | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as LoginCashierUser;
+  const name = displayUserCashierName(row);
+  const id = String(row.id ?? '').trim();
+  if (!name && !id) return null;
+  return row;
+}
+
+/**
+ * Giriş yapan kullanıcı.
+ * Önce bellek oturumu, boşsa satış fişinin okuduğu oturum kaydı
+ * (`exretail_session`) ve kalıcı oturum deposu.
+ */
+export function readPersistedLoginUser(): LoginCashierUser | null {
+  const live = userFromUnknown(useAuthStore.getState().user);
+  if (live && displayUserCashierName(live)) return live;
+  const session = readStorageJson('exretail_session') as { user?: unknown } | null;
+  const sessionUser = userFromUnknown(session?.user);
+  if (sessionUser && displayUserCashierName(sessionUser)) return sessionUser;
+  const persisted = readStorageJson('retailos_user') as { state?: { user?: unknown }; user?: unknown } | null;
+  const stored = userFromUnknown(persisted?.state?.user ?? persisted?.user);
+  if (stored && displayUserCashierName(stored)) return stored;
+  return live || sessionUser || stored;
+}
+
+/** Satış fişindeki Personel Değiştir adı. Birden fazla farklı ad varsa seçilmez. */
+function readPosCashierName(userId: string): string {
+  try {
+    if (typeof localStorage === 'undefined') return '';
+    const suffix = userId ? `_${userId}` : '';
+    const names: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith('retailex_pos_cashier_')) continue;
+      if (suffix && !key.endsWith(suffix)) continue;
+      const name = sanitizeStoredCashierName(localStorage.getItem(key));
+      if (name && !isCashMovementLabel(name)) names.push(name);
+    }
+    const unique = [...new Set(names)];
+    return unique.length === 1 ? unique[0] : '';
+  } catch {
+    return '';
+  }
+}
+
 export function currentLoginCashierName(): string {
-  return displayUserCashierName(useAuthStore.getState().user);
+  const user = readPersistedLoginUser();
+  const fromPos = readPosCashierName(String(user?.id ?? '').trim());
+  if (fromPos) return fromPos;
+  const fromUser = displayUserCashierName(user);
+  if (fromUser && !isPlaceholderCashierName(fromUser) && !isCashMovementLabel(fromUser)) return fromUser;
+  if (!String(user?.id ?? '').trim()) {
+    const anyPos = readPosCashierName('');
+    if (anyPos) return anyPos;
+  }
+  return '';
 }
 
 /**
@@ -115,7 +204,7 @@ export function resolveWriteCashierName(raw?: unknown): string {
 // (ensureWriteCashierName kaldırıldı — doğrudan resolveWriteCashierName kullanılır)
 
 export function currentLoginUserId(): string | undefined {
-  const id = useAuthStore.getState().user?.id;
+  const id = readPersistedLoginUser()?.id;
   const s = String(id ?? '').trim();
   return s || undefined;
 }

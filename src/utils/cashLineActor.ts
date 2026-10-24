@@ -7,6 +7,7 @@
 import {
   currentLoginCashierName,
   currentLoginUserId,
+  isCashMovementLabel,
   isPlaceholderCashierName,
   sanitizeStoredCashierName,
 } from './loginCashierName';
@@ -77,16 +78,25 @@ export function copyCashLineActorFields(
   return out;
 }
 
-/** Kasa satırına yazılacak ekleyen kişi. Geçersiz kimlik ve yer tutucu ad yazılmaz. */
+/**
+ * Kasa satırına yazılacak ekleyen kişi.
+ * Geçersiz kimlik, yer tutucu ve kasa açıklaması («Kasa giriş») yazılmaz.
+ * Bellek oturumu boşsa satış fişinin kullandığı kullanıcı adı kullanılır.
+ * O da yoksa ad boş kalır; uydurma ad yazılmaz.
+ */
 export function resolveCashLineActorWrite(explicit?: {
   cashier?: unknown;
   createdByUserId?: unknown;
 }): { cashier: string; createdByUserId: string } {
   const named = sanitizeStoredCashierName(explicit?.cashier);
-  const cashier = named || currentLoginCashierName();
+  const explicitName = named && !isCashMovementLabel(named) ? named : '';
+  const cashier = explicitName || currentLoginCashierName();
   const rawId = String(explicit?.createdByUserId ?? '').trim() || String(currentLoginUserId() ?? '').trim();
   const createdByUserId = isUuid(rawId) ? rawId : '';
-  return { cashier, createdByUserId };
+  return {
+    cashier: cashier && !isCashMovementLabel(cashier) ? cashier : '',
+    createdByUserId,
+  };
 }
 
 export function readCashLineActor(row: object | null | undefined): CashLineActor {
@@ -96,7 +106,7 @@ export function readCashLineActor(row: object | null | undefined): CashLineActor
   let nameColumn = '';
   for (const key of CASH_LINE_ACTOR_NAME_COLUMNS) {
     const value = fields[key];
-    if (!value || isPlaceholderCashierName(value) || isUuid(value)) continue;
+    if (!value || isPlaceholderCashierName(value) || isUuid(value) || isCashMovementLabel(value)) continue;
     name = value;
     nameColumn = key;
     break;
@@ -105,7 +115,7 @@ export function readCashLineActor(row: object | null | undefined): CashLineActor
   let idColumn = '';
   for (const key of CASH_LINE_ACTOR_ID_COLUMNS) {
     const value = fields[key];
-    if (!value || isPlaceholderCashierName(value)) continue;
+    if (!value || isPlaceholderCashierName(value) || isCashMovementLabel(value)) continue;
     if (isOpaqueIdentity(value)) {
       if (!id) {
         id = value;

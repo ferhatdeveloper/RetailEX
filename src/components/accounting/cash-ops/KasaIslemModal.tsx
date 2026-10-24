@@ -30,6 +30,7 @@ import type { Invoice, PartyPartner } from '../../../core/types/models';
 import { formatNumber, parseNumber } from '../../../utils/formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency } from '../../../utils/currency';
 import { getCariBalanceDirection } from '../../../utils/cariAccountStatement';
+import { resolveCashLineActorWrite } from '../../../utils/cashLineActor';
 
 interface KasaIslemModalProps {
   kasa: Kasa;
@@ -379,6 +380,10 @@ export function KasaIslemModal({
         }
         postedTip = postedCashTypeForInvoiceIslem(islemTipi as KasaInvoiceIslemTipi);
       }
+      const actor = resolveCashLineActorWrite({
+        cashier: formData.cashier,
+        createdByUserId: formData.created_by_user_id || formData.created_by || formData.user_id,
+      });
       const submitFormData: KasaIslemi = {
         ...(formData as KasaIslemi),
         tutar: submitTutar,
@@ -386,6 +391,8 @@ export function KasaIslemModal({
         islem_tipi: postedTip,
         islem_no: invoiceFiche || formData.islem_no,
         party_id: islemTipi === 'CH_ODEME' && ortakAdina ? formData.party_id : undefined,
+        ...(actor.cashier ? { cashier: actor.cashier } : {}),
+        ...(actor.createdByUserId ? { created_by_user_id: actor.createdByUserId } : {}),
         // Geçmiş tarih audit bilgisi: UI onayı varsa true; aksi halda false (güvenlik).
         is_back_dated: isOperationDateBackDated && backDatedConfirmed,
       };

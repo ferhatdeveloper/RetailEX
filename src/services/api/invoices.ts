@@ -34,6 +34,8 @@ import {
   paymentMethodImpliesSupplierDebt,
 } from '../../utils/paymentMethodUtils';
 import { cariCashStoredBalanceDelta } from './accountBalance';
+import { ensureCashLineActorColumns } from './kasa';
+import { resolveCashLineActorWrite } from '../../utils/cashLineActor';
 import {
   invoiceCashLineInsertUpdatesStoredCari,
   invoiceChTahsilatStoredDelta,
@@ -1397,6 +1399,7 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
             await writeCashRegisterLineSql(
               firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
               cashCustomerId, cashPartyId, null, 1, 'CH_TAHSILAT', subRowMethod,
+              { cashier: (inv as { cashier?: unknown }).cashier, createdByUserId: (inv as { created_by_user_id?: unknown }).created_by_user_id },
             );
           }
         } catch (e: any) {
@@ -1457,6 +1460,7 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
           await writeCashRegisterLineSql(
             firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
             cashCustomerId, cashPartyId, null, sign, transactionType, rowMethod,
+            { cashier: (inv as { cashier?: unknown }).cashier, createdByUserId: (inv as { created_by_user_id?: unknown }).created_by_user_id },
           );
         }
         wroteAnyCashLine = true;
@@ -1497,6 +1501,7 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
         firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama,
         cashCustomerId, cashPartyId, null, sign, transactionType,
         String((inv as any).payment_method || ''),
+        { cashier: (inv as { cashier?: unknown }).cashier, createdByUserId: (inv as { created_by_user_id?: unknown }).created_by_user_id },
       );
     }
   } catch (e: any) {
@@ -1559,6 +1564,7 @@ async function writeCashRegisterLineSql(
   sign = 1,
   transactionType = 'KASA_GIRIS',
   paymentMethod?: string | null,
+  actorHint?: { cashier?: unknown; createdByUserId?: unknown },
 ): Promise<void> {
   const firmPad = String(firmNr).padStart(3, '0');
   const cashRegistersTable = `rex_${firmPad}_cash_registers`;
@@ -1597,6 +1603,8 @@ async function writeCashRegisterLineSql(
   // bu satır kasa hareketine yine yazılır (legacy), payment_method'a ne geldi
   // yazılır. Cari tarafındaki borç durumu ayrıca cari mutabakatı ile belirlenir.
   const normalizedPm = normalizePaymentMethodForCashLine(paymentMethod, transactionType);
+  const actor = resolveCashLineActorWrite(actorHint);
+  const writeActor = (actor.cashier || actor.createdByUserId) ? await ensureCashLineActorColumns() : false;
   const upsertResult = await postgres.query<{ id: string; inserted: boolean }>(
     `INSERT INTO cash_lines (
        firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
@@ -1606,6 +1614,7 @@ async function writeCashRegisterLineSql(
        target_register_id, bank_id, bank_account_id, expense_card_id,
        tax_rate, withholding_tax_rate,
        payment_method
+       ${writeActor ? ', cashier, created_by_user_id' : ''}
      ) VALUES (
        $1::text, $2::text, $3::text::uuid, $4::text, $5::text,
        $6::numeric, $9::integer,
@@ -1615,6 +1624,7 @@ async function writeCashRegisterLineSql(
        NULL, NULL, NULL, NULL,
        0, 0,
        $12::text
+       ${writeActor ? ', $13::text, $14::text::uuid' : ''}
      )
      ON CONFLICT (fiche_no) DO UPDATE
        SET amount = EXCLUDED.amount,
@@ -1625,10 +1635,13 @@ async function writeCashRegisterLineSql(
            customer_id = EXCLUDED.customer_id,
            party_id = EXCLUDED.party_id,
            payment_method = EXCLUDED.payment_method,
+           ${writeActor ? `cashier = COALESCE(NULLIF(BTRIM(cash_lines.cashier), ''), EXCLUDED.cashier),
+           created_by_user_id = COALESCE(cash_lines.created_by_user_id, EXCLUDED.created_by_user_id),` : ''}
            updated_at = NOW()
      RETURNING id, (xmax = 0) AS inserted`,
     [String(firmNr), periodNr, targetRegisterId, ficheNo, tarih,
-     amount, aciklama, customerId, sign, transactionType, partyId, normalizedPm]
+     amount, aciklama, customerId, sign, transactionType, partyId, normalizedPm,
+     ...(writeActor ? [actor.cashier || null, actor.createdByUserId || null] : [])]
   );
   const inserted = upsertResult.rows?.[0]?.inserted === true;
 
@@ -1764,6 +1777,12 @@ async function writeCashRegisterLineRest(
     withholding_tax_rate: 0,
     payment_method: normalizePaymentMethodForCashLine(paymentMethod, transactionType),
   };
+  const actor = resolveCashLineActorWrite({
+    cashier: (inv as { cashier?: unknown }).cashier,
+    createdByUserId: (inv as { created_by_user_id?: unknown }).created_by_user_id,
+  });
+  if (actor.cashier) cashLineBody.cashier = actor.cashier;
+  if (actor.createdByUserId) cashLineBody.created_by_user_id = actor.createdByUserId;
 
   if (existing?.id) {
     try {
@@ -1786,10 +1805,24 @@ async function writeCashRegisterLineRest(
   // 3) INSERT (UNIQUE çakışması için PostgREST Prefer: resolution=ignore-duplicates)
   let insertedOk = false;
   try {
-    await postgrest.post<any>(cashLinesTable, cashLineBody, {
-      schema: 'public',
-      prefer: 'return=minimal',
-    });
+    try {
+      await postgrest.post<any>(cashLinesTable, cashLineBody, {
+        schema: 'public',
+        prefer: 'return=minimal',
+      });
+    } catch (actorErr: any) {
+      const msg = String(actorErr?.message || actorErr);
+      const hasActor = Object.prototype.hasOwnProperty.call(cashLineBody, 'cashier')
+        || Object.prototype.hasOwnProperty.call(cashLineBody, 'created_by_user_id');
+      if (!hasActor || !/cashier|created_by_user_id|PGRST204|schema cache|42703|column/i.test(msg)) throw actorErr;
+      const next = { ...cashLineBody };
+      delete next.cashier;
+      delete next.created_by_user_id;
+      await postgrest.post<any>(cashLinesTable, next, {
+        schema: 'public',
+        prefer: 'return=minimal',
+      });
+    }
     insertedOk = true;
   } catch (insertErr: any) {
     // Çakışma → PATCH'e düş; tarih/şema hataları buradan görünür

@@ -22,6 +22,7 @@ import { useSaleStore } from '../store/useSaleStore';
 import { useCustomerStore } from '../store/useCustomerStore';
 import { cariCashStoredBalanceDelta } from './api/accountBalance';
 import { currentLoginCashierName, currentLoginStoreId, currentLoginUserId, resolveWriteCashierName } from '../utils/loginCashierName';
+import { resolveCashLineActorWrite } from '../utils/cashLineActor';
 import {
     buildReminderText,
     sendAtakSms,
@@ -11615,14 +11616,29 @@ export const beautyService = {
             const ficheNo = `BEAUTY-REMAINDER-${aptId}`;
             const tarih = new Date().toISOString().slice(0, 10);
             const aciklama = `Güzellik randevu kalan ödeme — ${aptId}${cashier ? ` (${cashier})` : ''}${notes ? ` — ${notes}` : ''}`;
-            const upsert = await postgres.query<{ id: string; inserted: boolean }>(
-                `INSERT INTO cash_lines (
+            const cashActor = resolveCashLineActorWrite({
+                cashier,
+                createdByUserId: currentLoginUserId(),
+            });
+            const cashLineParams = [
+                firmNr,
+                periodNr,
+                targetRegisterId,
+                ficheNo,
+                tarih,
+                amount,
+                aciklama,
+                1, // sign = +1 (tahsilat kasaya girer)
+                customerId,
+            ];
+            const cashLineSql = (withActor: boolean) => `INSERT INTO cash_lines (
                     firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
                     definition, transaction_type,
                     customer_id, party_id, currency_code, exchange_rate, f_amount,
                     transfer_status, special_code,
                     target_register_id, bank_id, bank_account_id, expense_card_id,
                     tax_rate, withholding_tax_rate
+                    ${withActor ? ', cashier, created_by_user_id' : ''}
                 ) VALUES (
                     $1::text, $2::text, $3::text::uuid, $4::text, $5::text,
                     $6::numeric, $8::integer,
@@ -11631,6 +11647,7 @@ export const beautyService = {
                     0, '',
                     NULL, NULL, NULL, NULL,
                     0, 0
+                    ${withActor ? ', $10::text, $11::text::uuid' : ''}
                 )
                 ON CONFLICT (fiche_no) DO UPDATE
                   SET amount = EXCLUDED.amount,
@@ -11639,20 +11656,24 @@ export const beautyService = {
                       register_id = EXCLUDED.register_id,
                       transaction_type = EXCLUDED.transaction_type,
                       customer_id = EXCLUDED.customer_id,
+                      ${withActor ? `cashier = COALESCE(NULLIF(BTRIM(cash_lines.cashier), ''), EXCLUDED.cashier),
+                      created_by_user_id = COALESCE(cash_lines.created_by_user_id, EXCLUDED.created_by_user_id),` : ''}
                       updated_at = NOW()
-                RETURNING id, (xmax = 0) AS inserted`,
-                [
-                    firmNr,
-                    periodNr,
-                    targetRegisterId,
-                    ficheNo,
-                    tarih,
-                    amount,
-                    aciklama,
-                    1, // sign = +1 (tahsilat kasaya girer)
-                    customerId,
-                ],
-            );
+                RETURNING id, (xmax = 0) AS inserted`;
+            let upsert: { rows?: Array<{ id: string; inserted: boolean }> };
+            try {
+                upsert = await postgres.query<{ id: string; inserted: boolean }>(
+                    cashLineSql(true),
+                    [...cashLineParams, cashActor.cashier || null, cashActor.createdByUserId || null],
+                );
+            } catch (actorErr) {
+                const msg = String((actorErr as Error)?.message || actorErr);
+                if (!/cashier|created_by_user_id|42703|column/i.test(msg)) throw actorErr;
+                upsert = await postgres.query<{ id: string; inserted: boolean }>(
+                    cashLineSql(false),
+                    cashLineParams,
+                );
+            }
             const inserted = upsert.rows?.[0]?.inserted === true;
             if (inserted) {
                 // Kasa bakiyesi güncelle
