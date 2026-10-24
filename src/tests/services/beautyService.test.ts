@@ -996,4 +996,127 @@ describe('beautyService.getCommissionReport — prim raporu', () => {
         expect(res.totals.total_outstanding).toBe(0);
         expect(res.rows).toEqual([]);
     });
+
+    it('uzman kalemlerinde peşinatı düşer, primi ciroya eklemez, iadeyi bir kez eksi yazar', async () => {
+        queryMock.mockResolvedValueOnce(
+            ok([
+                {
+                    line_id: 'ln-svc',
+                    specialist_id: 'spc-zahra',
+                    date_ymd: '2026-10-12',
+                    customer_name: 'Ayşe',
+                    fiche_no: 'BEA-12',
+                    item_name: 'Saç kesimi',
+                    item_type: 'service',
+                    revenue: 150000,
+                    commission_amount: 15000,
+                    is_deposit: false,
+                    payment_status: 'paid',
+                },
+                {
+                    line_id: 'ln-prd',
+                    specialist_id: 'spc-zahra',
+                    date_ymd: '2026-10-13',
+                    customer_name: '',
+                    fiche_no: 'BEA-13',
+                    item_name: 'Şampuan',
+                    item_type: 'product',
+                    revenue: 15000,
+                    commission_amount: 0,
+                    is_deposit: false,
+                    payment_status: 'paid',
+                },
+                {
+                    line_id: 'ln-dep',
+                    specialist_id: 'spc-zahra',
+                    date_ymd: '2026-10-14',
+                    customer_name: 'Ayşe',
+                    fiche_no: 'BEA-DEP',
+                    item_name: 'Saç kesimi',
+                    item_type: 'service',
+                    revenue: 20000,
+                    commission_amount: 2000,
+                    is_deposit: true,
+                    payment_status: 'paid',
+                },
+                {
+                    line_id: 'ln-pes',
+                    specialist_id: 'spc-zahra',
+                    date_ymd: '2026-10-15',
+                    customer_name: 'Ayşe',
+                    fiche_no: 'BEA-PES',
+                    item_name: 'Peşinat',
+                    item_type: 'service',
+                    revenue: 9000,
+                    commission_amount: 900,
+                    is_deposit: false,
+                    payment_status: 'paid',
+                },
+                {
+                    line_id: 'ln-ret',
+                    specialist_id: 'spc-zahra',
+                    date_ymd: '2026-10-16',
+                    customer_name: 'Ayşe',
+                    fiche_no: 'BEA-RET',
+                    item_name: 'Saç kesimi',
+                    item_type: 'service',
+                    revenue: -10000,
+                    commission_amount: -1000,
+                    is_deposit: false,
+                    payment_status: 'paid',
+                },
+                {
+                    line_id: 'ln-ret-plus',
+                    specialist_id: 'spc-zahra',
+                    date_ymd: '2026-10-17',
+                    customer_name: 'Ayşe',
+                    fiche_no: 'BEA-RET2',
+                    item_name: 'İade saç boyası',
+                    item_type: 'product',
+                    revenue: 5000,
+                    commission_amount: 500,
+                    is_deposit: false,
+                    payment_status: 'paid',
+                },
+            ]),
+        );
+
+        const res = await beautyService.getCommissionReportLines('2026-10-01', '2026-10-24', 'spc-zahra');
+        const sql = String(queryMock.mock.calls[0][0]).replace(/\s+/g, ' ');
+        expect(sql).toContain('si.staff_id::text = $3');
+        expect(sql).toContain('COALESCE(s.is_deposit, false) = false');
+        expect(sql).toContain('COALESCE(si.total, 0)::float AS revenue');
+        expect(sql).toContain('COALESCE(si.commission_amount, 0)::float AS commission_amount');
+        expect(sql).not.toContain('si.total + si.commission_amount');
+        expect(sql).not.toContain('deposit_amount');
+        expect(queryMock.mock.calls[0][1]).toEqual(['2026-10-01', '2026-10-24', 'spc-zahra']);
+
+        expect(res.map((row) => row.line_id)).toEqual(['ln-svc', 'ln-prd', 'ln-ret', 'ln-ret-plus']);
+        expect(res[0]).toMatchObject({
+            specialist_id: 'spc-zahra',
+            customer_or_fiche: 'Ayşe',
+            item_name: 'Saç kesimi',
+            kind: 'service',
+            revenue: 150000,
+            commission_amount: 15000,
+            commission_rate: 10,
+        });
+        expect(res[0].revenue).not.toBe(150000 + 15000);
+        expect(res[1].customer_or_fiche).toBe('BEA-13');
+        expect(res[1].kind).toBe('product');
+        expect(res[1].revenue).toBe(15000);
+        expect(res[2].revenue).toBe(-10000);
+        expect(res[2].commission_amount).toBe(-1000);
+        expect(res[2].revenue).not.toBe(0);
+        expect(res[3].revenue).toBe(-5000);
+        expect(res[3].commission_amount).toBe(-500);
+        expect(res.some((row) => row.item_name === 'Peşinat')).toBe(false);
+        expect(res.some((row) => row.revenue === 20000)).toBe(false);
+    });
+
+    it('geçersiz tarih veya boş uzmanda kalem sorgusu atmaz', async () => {
+        await expect(beautyService.getCommissionReportLines('2026/10/01', '2026-10-24', 'spc-1')).resolves.toEqual([]);
+        await expect(beautyService.getCommissionReportLines('2026-10-01', '2026-10-24', '  ')).resolves.toEqual([]);
+        expect(queryMock).not.toHaveBeenCalled();
+    });
 });

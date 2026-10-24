@@ -13,6 +13,11 @@ import {
 } from '../utils/invoiceCodeFormat';
 import { packBranchAddress, unpackBranchAddress } from './beautyBranchPlace';
 import type { BeautyProductReturnLine } from '../utils/beautyProductSalesNet';
+import {
+    isCommissionDepositFlag,
+    mapCommissionReportLine,
+    type CommissionReportLine,
+} from '../utils/commissionReportLines';
 import { useSaleStore } from '../store/useSaleStore';
 import { useCustomerStore } from '../store/useCustomerStore';
 import { cariCashStoredBalanceDelta } from './api/accountBalance';
@@ -8188,6 +8193,72 @@ export const beautyService = {
         }
 
         return { rows: normalized, history_rows: historyRows, totals };
+    },
+
+    /**
+     * Prim raporu satır dökümü — bir uzmanın seçili aralıktaki hizmet ve ürün kalemleri.
+     * Prim ciroya eklenmez. Peşinat fişi ve peşinat kalemi dönmez.
+     * İade bir kez eksi işaretlenir.
+     */
+    async getCommissionReportLines(
+        startYmd: string,
+        endYmd: string,
+        specialistId: string,
+    ): Promise<CommissionReportLine[]> {
+        const start = String(startYmd || '').trim();
+        const end = String(endYmd || '').trim();
+        const staffId = String(specialistId || '').trim();
+        if (!staffId || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+            return [];
+        }
+        const st = postgres.getMovementTableName('beauty_sales', 'beauty');
+        const it = postgres.getMovementTableName('beauty_sale_items', 'beauty');
+        const ct = postgres.getCardTableName('customers');
+        const { rows } = await postgres.query(
+            `
+            SELECT
+                si.id::text AS line_id,
+                si.staff_id::text AS specialist_id,
+                to_char(s.created_at, 'YYYY-MM-DD') AS date_ymd,
+                COALESCE(NULLIF(TRIM(c.name), ''), '') AS customer_name,
+                COALESCE(NULLIF(TRIM(s.invoice_number), ''), '') AS fiche_no,
+                COALESCE(NULLIF(TRIM(si.name), ''), '') AS item_name,
+                COALESCE(si.item_type, '') AS item_type,
+                COALESCE(si.total, 0)::float AS revenue,
+                COALESCE(si.commission_amount, 0)::float AS commission_amount,
+                COALESCE(s.is_deposit, false) AS is_deposit,
+                COALESCE(s.payment_status, 'paid') AS payment_status
+            FROM ${it} si
+            JOIN ${st} s ON s.id = si.sale_id
+            LEFT JOIN ${ct} c ON c.id = s.customer_id
+            WHERE si.staff_id IS NOT NULL
+              AND si.staff_id::text = $3
+              AND COALESCE(s.payment_status, 'paid') = 'paid'
+              AND COALESCE(s.is_deposit, false) = false
+              AND s.created_at >= ($1::date)
+              AND s.created_at < (($2::date) + INTERVAL '1 day')
+            ORDER BY s.created_at ASC, si.created_at ASC, si.id ASC
+            `,
+            [start, end, staffId],
+        );
+        const lines: CommissionReportLine[] = [];
+        for (const row of rows as Array<Record<string, unknown>>) {
+            const line = mapCommissionReportLine({
+                lineId: row.line_id == null ? '' : String(row.line_id),
+                specialistId: row.specialist_id == null ? staffId : String(row.specialist_id),
+                dateYmd: row.date_ymd == null ? '' : String(row.date_ymd),
+                customerName: row.customer_name == null ? '' : String(row.customer_name),
+                ficheNo: row.fiche_no == null ? '' : String(row.fiche_no),
+                itemName: row.item_name == null ? '' : String(row.item_name),
+                itemType: row.item_type == null ? '' : String(row.item_type),
+                revenue: Number(row.revenue),
+                commissionAmount: Number(row.commission_amount),
+                isDeposit: isCommissionDepositFlag(row.is_deposit),
+                paymentStatus: row.payment_status == null ? '' : String(row.payment_status),
+            });
+            if (line) lines.push(line);
+        }
+        return lines;
     },
 
     // =========================================================================
