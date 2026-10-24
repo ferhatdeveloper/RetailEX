@@ -4,7 +4,12 @@
  * Kimlik ad listesinde çözülür. Alan yoksa ad ve kimlik boş kalır.
  * Tutar, açıklama ve cari unvanı buraya alınmaz.
  */
-import { isPlaceholderCashierName } from './loginCashierName';
+import {
+  currentLoginCashierName,
+  currentLoginUserId,
+  isPlaceholderCashierName,
+  sanitizeStoredCashierName,
+} from './loginCashierName';
 
 /** Satıştaki `cashier` ile aynı sırada ad kolonları. */
 export const CASH_LINE_ACTOR_NAME_COLUMNS = [
@@ -70,6 +75,18 @@ export function copyCashLineActorFields(
     if (text) out[key] = text;
   }
   return out;
+}
+
+/** Kasa satırına yazılacak ekleyen kişi. Geçersiz kimlik ve yer tutucu ad yazılmaz. */
+export function resolveCashLineActorWrite(explicit?: {
+  cashier?: unknown;
+  createdByUserId?: unknown;
+}): { cashier: string; createdByUserId: string } {
+  const named = sanitizeStoredCashierName(explicit?.cashier);
+  const cashier = named || currentLoginCashierName();
+  const rawId = String(explicit?.createdByUserId ?? '').trim() || String(currentLoginUserId() ?? '').trim();
+  const createdByUserId = isUuid(rawId) ? rawId : '';
+  return { cashier, createdByUserId };
 }
 
 export function readCashLineActor(row: object | null | undefined): CashLineActor {

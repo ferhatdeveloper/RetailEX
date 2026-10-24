@@ -3400,9 +3400,19 @@ BEGIN
       store_id             UUID,
       is_back_dated        BOOLEAN DEFAULT FALSE,
       payment_method       VARCHAR(50),
-      created_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      created_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      cashier              VARCHAR(120),
+      created_by_user_id   UUID
     );
   ', v_prefix || '_cash_lines');
+  EXECUTE format(
+    'ALTER TABLE %I ADD COLUMN IF NOT EXISTS cashier VARCHAR(120)',
+    v_prefix || '_cash_lines'
+  );
+  EXECUTE format(
+    'ALTER TABLE %I ADD COLUMN IF NOT EXISTS created_by_user_id UUID',
+    v_prefix || '_cash_lines'
+  );
 
   -- 3b. Cari hesap hareketleri (Logo CLFLINE)
   EXECUTE format('

@@ -102,6 +102,25 @@ function blankRecordText(value: unknown): boolean {
 }
 
 /**
+ * Gider satırındaki ekleyen kişi.
+ * Önce `created_by`, boşsa son düzenleyen veya onaylayan kimliği.
+ * Yazılı ad `entered_by_name`. Hepsi boşsa kimlik ve ad boş kalır.
+ */
+export function expenseEnteredBy(row: object | null | undefined): { id: string; name: string } {
+  const src = (row ?? {}) as Record<string, unknown>;
+  const name = blankRecordText(src.entered_by_name) ? '' : String(src.entered_by_name).trim();
+  let id = '';
+  for (const key of ['created_by', 'last_edited_by', 'approved_by'] as const) {
+    const text = String(src[key] ?? '').trim();
+    if (!blankRecordText(text)) {
+      id = text;
+      break;
+    }
+  }
+  return { id, name };
+}
+
+/**
  * Kasa satırındaki kullanıcıyı gider kaydına taşır.
  * Dolu `created_by` ezilmez. Tutar değişmez.
  * Ad `entered_by_name`, kimlik `created_by` olur. İkisi de yoksa boş kalır.

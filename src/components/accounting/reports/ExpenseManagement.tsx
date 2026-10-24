@@ -25,6 +25,7 @@ import { expenseAPI, ExpenseSaveError, parseExpenseAmount, type Expense } from '
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import { expenseCategoryAPI, type ExpenseCategory as ApiExpenseCategory } from '../../../services/api/masterData';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { currentLoginUserId } from '../../../utils/loginCashierName';
 
 interface ExpenseLocal extends Expense {
   store_name?: string;
@@ -351,6 +352,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
         store_id: formData.store_id || undefined,
         cost_center_id: formData.cost_center_id || undefined,
         cash_register_id: formData.cash_register_id || undefined,
+        ...(editingExpense ? {} : { created_by: currentLoginUserId() || '' }),
       };
 
       setSavingExpense(true);

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { mergeExpensesWithCashOuts } from './reportUnifiedExpenses';
+import { mergeExpensesWithCashOuts, expenseEnteredBy } from './reportUnifiedExpenses';
+import { resolveCashLineActorWrite } from './cashLineActor';
 import type { Expense } from '../services/api/expenses';
 import type { KasaIslemi } from '../services/api/kasa';
 
@@ -66,5 +67,36 @@ describe('mergeExpensesWithCashOuts — kasa kardeş fiş', () => {
       [cashLine({ id: 'pay-1', tutar: 20000, islem_tipi: 'CH_ODEME', islem_aciklamasi: 'Tedarikçi' })],
     );
     expect(unified).toHaveLength(2);
+  });
+});
+
+describe('expenseEnteredBy', () => {
+  it('created_by boşsa son düzenleyen kimliği kullanılır', () => {
+    expect(expenseEnteredBy({ created_by: '', last_edited_by: 'user-1', entered_by_name: '' })).toEqual({
+      id: 'user-1',
+      name: '',
+    });
+  });
+
+  it('üçü de boşsa kimlik ve ad boş kalır', () => {
+    expect(expenseEnteredBy({ created_by: '—', last_edited_by: '', approved_by: '-' })).toEqual({
+      id: '',
+      name: '',
+    });
+  });
+});
+
+describe('resolveCashLineActorWrite', () => {
+  it('yazılı adı ve kimliği korur; kullanıcı adı kimlik olmaz', () => {
+    const actor = resolveCashLineActorWrite({
+      cashier: 'Ayşe',
+      createdByUserId: '11111111-1111-4111-8111-111111111111',
+    });
+    expect(actor.cashier).toBe('Ayşe');
+    expect(actor.createdByUserId).toBe('11111111-1111-4111-8111-111111111111');
+
+    const namedOnly = resolveCashLineActorWrite({ cashier: 'admin', createdByUserId: 'admin' });
+    expect(namedOnly.cashier).toBe('admin');
+    expect(namedOnly.createdByUserId).toBe('');
   });
 });

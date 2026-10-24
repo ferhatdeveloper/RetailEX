@@ -3,8 +3,9 @@
  */
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
-import { createKasaIslemi, deleteKasaIslemi } from './kasa';
+import { createKasaIslemi, deleteKasaIslemi, ensureCashLineActorColumns } from './kasa';
 import { parseDecimalStringForInput } from '../../utils/numberFormatter';
+import { resolveCashLineActorWrite } from '../../utils/cashLineActor';
 
 /**
  * IQD / TR tutar ayrıştırma: "45.000" → 45000, "450.000" → 450000.
@@ -286,8 +287,12 @@ export const expenseAPI = {
       if (!Number.isFinite(expenseAmount) || expenseAmount <= 0) {
         throw new Error('Geçersiz gider tutarı');
       }
-      // Normalize for downstream inserts
-      expense = { ...expense, amount: expenseAmount };
+      const actor = resolveCashLineActorWrite({ createdByUserId: expense.created_by });
+      expense = {
+        ...expense,
+        amount: expenseAmount,
+        created_by: actor.createdByUserId || String(expense.created_by || '').trim(),
+      };
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const fn = padExpenseFirmNr();
@@ -437,14 +442,18 @@ export const expenseAPI = {
             );
           }
 
+          const writeActor = await ensureCashLineActorColumns();
+          const actor = resolveCashLineActorWrite({ createdByUserId: expense.created_by });
           const ficheNo = `EXP-${ERP_SETTINGS.firmNr}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
           const { rows: lineRows } = await postgres.query(
             `INSERT INTO cash_lines (
                firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type,
                currency_code, exchange_rate, f_amount, transfer_status, special_code, tax_rate, withholding_tax_rate
+               ${writeActor ? ', cashier, created_by_user_id' : ''}
              ) VALUES (
                $1::text, $2::text, $3::text::uuid, $4::text, $5::text::date, $6::text::numeric, -1,
                $7::text, 'GIDER_PUSULASI', $8::text, 1, $9::text::numeric, 0, $10::text, 0, 0
+               ${writeActor ? ', $11::text, $12::text::uuid' : ''}
              ) RETURNING id`,
             [
               firmNr,
@@ -456,7 +465,8 @@ export const expenseAPI = {
               expense.description || 'Gider',
               kasa.currency_code || 'IQD',
               expense.amount,
-              expense.category || ''
+              expense.category || '',
+              ...(writeActor ? [actor.cashier || null, actor.createdByUserId || null] : []),
             ]
           );
           const cashLineId = lineRows[0]?.id;

@@ -388,7 +388,8 @@ describe('satış detayları kasa bakiyesi', () => {
     expect(src).toContain('sumDailySalesDetailCashBalance');
     expect(src).toContain('createdAt: row.createdAt');
     expect(src).toContain('enteredById: row.enteredById');
-    expect(src).toContain('enteredByName: String(e.entered_by_name || \'\').trim()');
+    expect(src).toContain('enteredById: enteredBy.id');
+    expect(src).toContain('enteredByName: enteredBy.name');
     expect(src).toContain('cashier: row.cashier');
     expect(src).toContain('hour: row.hour');
     expect(src).toContain('data={dailySalesDetailGridRows}');

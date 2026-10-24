@@ -17,13 +17,64 @@ import {
   isBeautyFicheNo,
   type SalesRowForDepositCheck,
 } from '../../utils/cashLineReservationDeposit';
-import { copyCashLineActorFields } from '../../utils/cashLineActor';
+import { copyCashLineActorFields, resolveCashLineActorWrite } from '../../utils/cashLineActor';
 
 function padKasaFirmNr(): string {
   return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
 }
 function padKasaPeriodNr(): string {
   return String(ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
+}
+
+let cashLineActorColumnsReady = false;
+
+/** Dönem kasa satırına ekleyen kişi kolonları. Kolon yoksa gider kaydı yine yazılır. */
+export async function ensureCashLineActorColumns(): Promise<boolean> {
+  if (cashLineActorColumnsReady) return true;
+  if (DB_SETTINGS.connectionProvider === 'rest_api') return false;
+  try {
+    await postgres.query(`ALTER TABLE cash_lines ADD COLUMN IF NOT EXISTS cashier VARCHAR(120)`);
+    await postgres.query(`ALTER TABLE cash_lines ADD COLUMN IF NOT EXISTS created_by_user_id UUID`);
+    cashLineActorColumnsReady = true;
+    return true;
+  } catch (err) {
+    console.warn('[Kasa] Ekleyen kişi kolonları eklenemedi:', (err as Error)?.message || err);
+    return false;
+  }
+}
+
+function cashLineActorPayload(islem: Pick<KasaIslemi, 'cashier' | 'created_by_user_id' | 'created_by' | 'user_id'>): {
+  cashier: string | null;
+  created_by_user_id: string | null;
+} {
+  const actor = resolveCashLineActorWrite({
+    cashier: islem.cashier,
+    createdByUserId: islem.created_by_user_id || islem.created_by || islem.user_id,
+  });
+  return {
+    cashier: actor.cashier || null,
+    created_by_user_id: actor.createdByUserId || null,
+  };
+}
+
+async function postCashLine(
+  path: string,
+  body: Record<string, unknown>,
+  prefer: 'return=representation' | 'return=minimal' = 'return=representation',
+): Promise<any> {
+  const { postgrest } = await import('./postgrestClient');
+  try {
+    return await postgrest.post<any[]>(path, body, { schema: 'public', prefer });
+  } catch (err) {
+    const msg = String((err as Error)?.message || err);
+    const hasActor = Object.prototype.hasOwnProperty.call(body, 'cashier')
+      || Object.prototype.hasOwnProperty.call(body, 'created_by_user_id');
+    if (!hasActor || !/cashier|created_by_user_id|PGRST204|schema cache/i.test(msg)) throw err;
+    const next = { ...body };
+    delete next.cashier;
+    delete next.created_by_user_id;
+    return await postgrest.post<any[]>(path, next, { schema: 'public', prefer });
+  }
 }
 
 function storedCariTypeFromKind(
@@ -1149,11 +1200,11 @@ async function createKasaIslemiViaPostgrest(
     withholding_tax_rate: islem.withholding_tax_rate || 0,
     is_back_dated: Boolean(islem.is_back_dated),
   };
+  const actorCols = cashLineActorPayload(islem);
+  if (actorCols.cashier) lineBody.cashier = actorCols.cashier;
+  if (actorCols.created_by_user_id) lineBody.created_by_user_id = actorCols.created_by_user_id;
 
-  const rows = await postgrest.post<any[]>(linesPath, lineBody, {
-    schema: 'public',
-    prefer: 'return=representation',
-  });
+  const rows = await postCashLine(linesPath, lineBody);
   const mainRow = Array.isArray(rows) ? rows[0] : rows;
 
   const bumpKasaBalance = async (registerId: string | undefined, delta: number) => {
@@ -1376,9 +1427,11 @@ async function createKasaIslemiViaPostgrest(
       special_code: islem.ozel_kod || '',
       target_register_id: islem.kasa_id,
     };
+    if (actorCols.cashier) counterBody.cashier = actorCols.cashier;
+    if (actorCols.created_by_user_id) counterBody.created_by_user_id = actorCols.created_by_user_id;
     // Çift ayak atomikliği: karşı satır INSERT başarısızsa ana INSERT'i geri al.
     try {
-      await postgrest.post(linesPath, counterBody, { schema: 'public', prefer: 'return=minimal' });
+      await postCashLine(linesPath, counterBody, 'return=minimal');
     } catch (e) {
       try {
         await postgrest.delete(
@@ -1621,6 +1674,8 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     }
 
     // Start transaction
+    const writeActor = await ensureCashLineActorColumns();
+    const actorColsPg = cashLineActorPayload(islem);
     await postgres.query('BEGIN');
     console.log('[Kasa] Transaction STARTED. Type:', islem.islem_tipi, 'Target:', islem.target_register_id);
 
@@ -1629,7 +1684,7 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
          firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type,
          customer_id, party_id, currency_code, exchange_rate, f_amount, transfer_status, special_code,
          target_register_id, bank_id, bank_account_id, expense_card_id, tax_rate, withholding_tax_rate,
-         is_back_dated
+         is_back_dated${writeActor ? ', cashier, created_by_user_id' : ''}
        )
          VALUES (
            $1::text,
@@ -1654,7 +1709,7 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
            $19::text::uuid,
            $20::text::numeric,
            $21::text::numeric,
-           $22::boolean
+           $22::boolean${writeActor ? ', $23::text, $24::text::uuid' : ''}
          ) RETURNING *`,
       [
         ERP_SETTINGS.firmNr,
@@ -1679,6 +1734,7 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
         islem.tax_rate || 0,
         islem.withholding_tax_rate || 0,
         Boolean(islem.is_back_dated),
+        ...(writeActor ? [actorColsPg.cashier, actorColsPg.created_by_user_id] : []),
       ]
     );
 
@@ -1857,7 +1913,7 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
         `INSERT INTO ${table} (
            firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type, 
            customer_id, currency_code, exchange_rate, f_amount, transfer_status, special_code,
-           target_register_id
+           target_register_id${writeActor ? ', cashier, created_by_user_id' : ''}
          ) 
            VALUES (
              $1::text,
@@ -1875,7 +1931,7 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
              $13::text::numeric, 
              0, 
              $14::text,
-             $15::text::uuid
+             $15::text::uuid${writeActor ? ', $16::text, $17::text::uuid' : ''}
            )`,
         [
           ERP_SETTINGS.firmNr,
@@ -1892,7 +1948,8 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
           1,
           islem.dovizli_tutar || 0,
           islem.ozel_kod || '',
-          islem.kasa_id // Link back to source register
+          islem.kasa_id, // Link back to source register
+          ...(writeActor ? [actorColsPg.cashier, actorColsPg.created_by_user_id] : []),
         ]
       );
 
@@ -3046,11 +3103,16 @@ async function upsertExpenseLinkedToCashLine(opts: {
 
   const rows = await listExpensesForMirrorDate(day || new Date().toISOString().slice(0, 10));
   const existing = pickExpenseForKasaGider(rows, { cashLineId, definition: def });
+  const actor = resolveCashLineActorWrite();
+  const createdBy = actor.createdByUserId || null;
 
   try {
     if (existing?.id) {
       if (!String(existing.document_number || '').trim() && opts.ficheNo) {
         patchBody.document_number = opts.ficheNo;
+      }
+      if (!String(existing.created_by || '').trim() && createdBy) {
+        patchBody.created_by = createdBy;
       }
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
@@ -3069,7 +3131,8 @@ async function upsertExpenseLinkedToCashLine(opts: {
              payment_method = 'cash',
              cash_line_id = $4::text::uuid,
              cash_register_id = COALESCE($5::text::uuid, cash_register_id),
-             document_number = COALESCE(NULLIF(document_number, ''), $6::text)
+             document_number = COALESCE(NULLIF(document_number, ''), $6::text),
+             created_by = COALESCE(created_by, $9::text::uuid)
          WHERE id = $7::text::uuid AND firm_nr = $8`,
         [
           amt,
@@ -3080,6 +3143,7 @@ async function upsertExpenseLinkedToCashLine(opts: {
           opts.ficheNo || null,
           existing.id,
           firm,
+          createdBy,
         ],
       );
       return;
@@ -3100,6 +3164,7 @@ async function upsertExpenseLinkedToCashLine(opts: {
           firm_nr: firm,
           cash_line_id: cashLineId,
           cash_register_id: opts.registerId || null,
+          ...(createdBy ? { created_by: createdBy } : {}),
         },
         { schema: 'public', prefer: 'return=minimal' },
       );
@@ -3108,8 +3173,8 @@ async function upsertExpenseLinkedToCashLine(opts: {
     await postgres.query(
       `INSERT INTO ${expenseTableSqlKasa()} (
          category, description, amount, payment_method, document_number,
-         expense_date, firm_nr, cash_line_id, cash_register_id
-       ) VALUES ($1, $2, $3::text::numeric, 'cash', $4, $5::text::date, $6, $7::text::uuid, $8::text::uuid)`,
+         expense_date, firm_nr, cash_line_id, cash_register_id, created_by
+       ) VALUES ($1, $2, $3::text::numeric, 'cash', $4, $5::text::date, $6, $7::text::uuid, $8::text::uuid, $9::text::uuid)`,
       [
         category,
         def,
@@ -3119,6 +3184,7 @@ async function upsertExpenseLinkedToCashLine(opts: {
         firm,
         cashLineId,
         opts.registerId || null,
+        createdBy,
       ],
     );
   } catch (err) {

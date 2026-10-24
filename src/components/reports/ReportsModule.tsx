@@ -74,7 +74,7 @@ import {
   resolveCashierDisplayName,
   resolveWriteCashierName,
 } from '../../utils/loginCashierName';
-import { mergeExpensesWithCashOuts, mergeExpensesWithCashIns, reportCashInCategory } from '../../utils/reportUnifiedExpenses';
+import { mergeExpensesWithCashOuts, mergeExpensesWithCashIns, reportCashInCategory, expenseEnteredBy } from '../../utils/reportUnifiedExpenses';
 import { productCardUnitCost } from '../../utils/productCardUnitCost';
 import type { BeautyAppointment, BeautySale, BeautyService, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
@@ -1439,6 +1439,7 @@ export function ReportsModule({
           : 'GIDER_PUSULASI';
         const fiche = String(e.document_number || '').trim();
         const createdAt = String(e.created_at || '').trim();
+        const enteredBy = expenseEnteredBy(e);
         return {
           key: isCashOut ? rawId : `exp-${rawId}`,
           sourceKind: isCashOut ? 'cash' : 'expense',
@@ -1453,8 +1454,8 @@ export function ReportsModule({
           paymentMethod: method || 'cash',
           isCash: isCashOut ? true : isCash,
           createdAt,
-          enteredById: String(e.created_by || '').trim(),
-          enteredByName: String(e.entered_by_name || '').trim(),
+          enteredById: enteredBy.id,
+          enteredByName: enteredBy.name,
         };
       });
 
