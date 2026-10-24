@@ -7926,6 +7926,9 @@ export const beautyService = {
         const st = postgres.getMovementTableName('beauty_sales', 'beauty');
         const it = postgres.getMovementTableName('beauty_sale_items', 'beauty');
         const spt = postgres.getCardTableName('beauty_specialists', 'beauty');
+        // Randevu kartı `specialist_id` tutar; satış satırı `staff_id`.
+        // Peşinat bu raporda ciroya eklenmez, ayrı kolon olarak gelir.
+        const apt = postgres.getMovementTableName('beauty_appointments', 'beauty');
         const start = String(startYmd || '').trim();
         const end = String(endYmd || '').trim();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
@@ -7960,8 +7963,8 @@ export const beautyService = {
                 COALESCE(SUM(si.commission_amount), 0)::float AS total_commission,
                 COUNT(si.id)::int AS total_transactions,
                 ${
-                    // includeDeposit=true ise randevu VIEW'i ile LEFT JOIN — uzman başına
-                    // deposit/remainder toplamı. Not: VIEW tek firmaya sabit (migration 181).
+                    // Peşinat ve kalan, randevu tablosundan uzman başına toplanır.
+                    // Prim ve peşinat satış cirosuna eklenmez.
                     opts?.includeDeposit
                         ? `
                 COALESCE(dps.total_deposit, 0)::float    AS total_deposit,
@@ -7982,14 +7985,14 @@ export const beautyService = {
                     ? `
             LEFT JOIN (
                 SELECT
-                    a.staff_id,
+                    a.specialist_id AS staff_id,
                     COALESCE(SUM(a.deposit_amount), 0)::float      AS total_deposit,
                     COALESCE(SUM(GREATEST(0, ROUND((a.total_price - a.deposit_amount - a.remainder_paid_amount)::numeric, 2))), 0)::float AS total_outstanding
-                FROM beauty.rex_001_01_beauty_appointments a
-                WHERE a.staff_id IS NOT NULL
+                FROM ${apt} a
+                WHERE a.specialist_id IS NOT NULL
                   AND a.appointment_date >= ($1::date)
                   AND a.appointment_date <  (($2::date) + INTERVAL '1 day')
-                GROUP BY a.staff_id
+                GROUP BY a.specialist_id
             ) dps ON dps.staff_id = si.staff_id
             `
                     : ''
