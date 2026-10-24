@@ -28,6 +28,7 @@ import { clinicDashboardTahsilatTotal } from '../../../utils/clinicDashboardKasa
 import { BeautyServiceReportCrmModal } from '../../reports/BeautyServiceReportCrmModal';
 import { useClinicShellV2 } from '../clinicShellV2';
 import { ClinicDashboardV2 } from './ClinicDashboardV2';
+import { ClinicDashboardKpiCard } from './ClinicDashboardKpiCard';
 import '../ClinicStyles.css';
 
 // ─── Design tokens (flat) ────────────────────────────────────────────────────
@@ -52,27 +53,6 @@ const T = {
     blue:        '#2563eb',
     blueLight:   '#dbeafe',
 };
-
-// ─── Flat KPI card ───────────────────────────────────────────────────────────
-function KpiCard({ label, value, sub, accent, icon: Icon }: {
-    label: string; value: string | number; sub?: string;
-    accent: string; accentBg?: string; icon: React.ElementType;
-}) {
-    return (
-        <div style={{
-            background: T.surface, border: `1px solid ${T.border}`,
-            borderTop: `3px solid ${accent}`,
-            borderRadius: 8, padding: '16px 18px',
-        }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</span>
-                <Icon size={15} style={{ color: accent }} />
-            </div>
-            <p style={{ fontSize: 26, fontWeight: 800, color: T.textPrimary, letterSpacing: '-0.02em', lineHeight: 1 }}>{value}</p>
-            {sub && <p style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, marginTop: 4 }}>{sub}</p>}
-        </div>
-    );
-}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 type CallTab = 'today' | 'tomorrow' | 'week' | 'month' | 'range';
@@ -588,12 +568,12 @@ export function ClinicDashboard() {
 
             {/* ── KPI Strip ───────────────────────────────────────── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
-                <KpiCard label={tm('cebeGirenNakit')} value={fmt(stats.revenue)} sub={stats.remainingCari > 0 ? `${tm('kalanCari')}: ${fmt(stats.remainingCari)}` : undefined} accent={T.violet}  icon={TrendingUp} />
-                <KpiCard label={tm('bKpiReservationLabel')} value={fmt(stats.reservation)} sub={stats.reservation > 0 ? tm('bKpiReservationSub') : tm('bKpiReservationSub')} accent="#0d9488" icon={Wallet} />
-                <KpiCard label={tm('bKpiCompletedLabel')}         value={stats.completed}      sub={tm('bKpiCompletionRateSub').replace('{n}', String(stats.rate))} accent={T.green}   icon={CheckCircle2} />
-                <KpiCard label={tm('bKpiPendingLabel')}           value={stats.pending}        sub={tm('bKpiInProgressSub').replace('{n}', String(stats.inProg))} accent={T.amber} icon={Clock} />
-                <KpiCard label={tm('bKpiCancelledLabel') || 'İptal'} value={stats.cancelled} accent={T.pink} icon={Activity} />
-                <KpiCard label={tm('bKpiExpectedRevenue')} value={fmt(stats.expectedRevenue)} sub={tm('bKpiRemainingAppointmentsSub').replace('{n}', String(stats.remaining))} accent={T.blue} icon={Wallet} />
+                <ClinicDashboardKpiCard toneKey="collection" label={tm('cebeGirenNakit')} value={fmt(stats.revenue)} sub={stats.remainingCari > 0 ? `${tm('kalanCari')}: ${fmt(stats.remainingCari)}` : undefined} icon={TrendingUp} />
+                <ClinicDashboardKpiCard toneKey="reservation" label={tm('bKpiReservationLabel')} value={fmt(stats.reservation)} sub={stats.reservation > 0 ? tm('bKpiReservationSub') : tm('bKpiReservationSub')} icon={Wallet} />
+                <ClinicDashboardKpiCard toneKey="completed" label={tm('bKpiCompletedLabel')} value={stats.completed} sub={tm('bKpiCompletionRateSub').replace('{n}', String(stats.rate))} icon={CheckCircle2} />
+                <ClinicDashboardKpiCard toneKey="pending" label={tm('bKpiPendingLabel')} value={stats.pending} sub={tm('bKpiInProgressSub').replace('{n}', String(stats.inProg))} icon={Clock} />
+                <ClinicDashboardKpiCard toneKey="cancelled" label={tm('bKpiCancelledLabel') || 'İptal'} value={stats.cancelled} icon={Activity} />
+                <ClinicDashboardKpiCard toneKey="expected-revenue" label={tm('bKpiExpectedRevenue')} value={fmt(stats.expectedRevenue)} sub={tm('bKpiRemainingAppointmentsSub').replace('{n}', String(stats.remaining))} icon={Wallet} />
             </div>
 
             {/* ── Ön arama / aktivite (Bugün · Yarın · Hafta · Ay) ───────────── */}
