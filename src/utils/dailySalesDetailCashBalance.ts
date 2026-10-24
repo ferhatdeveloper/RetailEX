@@ -11,6 +11,7 @@
  * 135.000 (indirimi geri eklemek veya brüt − gider) ve
  * 132.000 (indirimi ikinci kez düşmek) yanlıştır.
  */
+import { dailySalesDetailInvoiceDateRaw } from './dailySalesDetailInvoiceDate';
 import { resolveCashierDisplayName } from './loginCashierName';
 import { formatSaleWallClockTime, isBusinessDayClockAnchor } from './saleWallClock';
 import {
@@ -41,6 +42,8 @@ export interface DailySalesDetailExpenseGridRow extends DailySalesDetailNetInput
   key: string;
   receiptNumber: string;
   date: string;
+  /** Belge günü (`YYYY-MM-DD`). Duvar saati değil. */
+  invoiceDate: string;
   /** Duvar saati. Kayıtta gerçek saat yoksa — */
   hour: string;
   /** Gideri ekleyen kişi. Kayıtta yoksa — */
@@ -126,10 +129,12 @@ export function buildDailySalesDetailExpenseRows(
     if (key) booked.add(key);
     const method = String(expense.paymentMethod ?? '').trim() || 'cash';
     const names = userNameById ?? new Map<string, string>();
+    const documentDate = expense.date == null ? '' : String(expense.date);
     out.push({
       key: `expense-${expense.key}`,
       receiptNumber: fiche || '—',
-      date: expense.date == null ? '' : String(expense.date),
+      date: documentDate,
+      invoiceDate: dailySalesDetailInvoiceDateRaw({ date: documentDate }),
       hour: dailyExpenseSourceHour(expense),
       cashier: resolveCashierDisplayName(expense.enteredByName, expense.enteredById, names),
       customerName: expenseLabel(expense),

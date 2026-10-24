@@ -32,6 +32,10 @@ import {
 } from '../../utils/dailyReportScreenCards';
 import { DailyReportKpiGrid, type DailyReportKpiCardModel } from './DailyReportKpiGrid';
 import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
+import {
+  dailySalesDetailInvoiceDateLabel,
+  dailySalesDetailInvoiceDateRaw,
+} from '../../utils/dailySalesDetailInvoiceDate';
 import { getCurrencyDecimalPlaces, getFirmLedgerCurrency, formatLedgerAmount } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { useProductStore, useCustomerStore } from '../../store';
@@ -3719,6 +3723,10 @@ export function ReportsModule({
       return {
         ...row,
         hour,
+        invoiceDate: dailySalesDetailInvoiceDateRaw({
+          date: row.date,
+          erpSale: row.erpSale,
+        }),
         // 09.10.2026 — cari_avans satırları için TÜR kolonu "Rezervasyon"
         // rozeti gösterir (eskiden `kind='product'` üzerinden "Ürün"
         // yazıyordu). İade fişi de ürün/hizmet kind'inde kalır; etiket
@@ -3870,6 +3878,7 @@ export function ReportsModule({
         ...unified,
         cashier: row.cashier,
         hour: row.hour,
+        invoiceDate: row.invoiceDate || dailySalesDetailInvoiceDateRaw({ date: row.date }),
         kindLabel: row.kindLabel,
         paymentLabel,
         statusLabel: tm('out') || 'Çıkış',
@@ -5614,6 +5623,7 @@ export function ReportsModule({
         return `
         <tr>
           <td>${escHtml(row.receiptNumber)}</td>
+          <td>${escHtml(dailySalesDetailInvoiceDateLabel({ date: row.date, erpSale: row.erpSale }))}</td>
           <td>${escHtml(formatSaleWallClockTime(dailyRowWallClockSource(row)))}</td>
           <td>${escHtml(kindPrintLabel(row))}</td>
           <td>${escHtml(cashier)}</td>
@@ -5672,7 +5682,7 @@ export function ReportsModule({
           : '';
         return `
     <div class="sale-block">
-      <div class="row"><span class="wrap">${escHtml(row.receiptNumber)}</span><span>${escHtml(formatSaleWallClockTime(dailyRowWallClockSource(row)))}</span></div>
+      <div class="row"><span class="wrap">${escHtml(row.receiptNumber)}</span><span>${escHtml(dailySalesDetailInvoiceDateLabel({ date: row.date, erpSale: row.erpSale }))} ${escHtml(formatSaleWallClockTime(dailyRowWallClockSource(row)))}</span></div>
       <div class="sub wrap">${escHtml(kindPrintLabel(row))} · ${escHtml(cashier)} · ${escHtml(device)} · ${escHtml(customerNameText(row.customerName))}</div>
       <div class="row"><span>${escHtml(L('reportsPrintBefore'))}</span><span>${before}</span></div>
       <div class="row"><span>${escHtml(L('reportsColDiscount'))}</span><span>${disc}</span></div>
@@ -5709,6 +5719,7 @@ export function ReportsModule({
         return `
         <tr>
           <td>${escHtml(row.receiptNumber)}</td>
+          <td>${escHtml(dailySalesDetailInvoiceDateLabel({ date: row.date, erpSale: row.erpSale }))}</td>
           <td>${escHtml(formatSaleWallClockTime(dailyRowWallClockSource(row)))}</td>
           <td>${escHtml(statusLabel)}</td>
           <td style="text-align:right">${formatNumber(before, 2, false)}</td>
@@ -5802,14 +5813,14 @@ export function ReportsModule({
   </div>
   <h3 style="font-size:14px;margin:0 0 8px">${escHtml(L('reportsPrintPosLinesTitle'))}</h3>
   <table class="t">
-    <thead><tr><th>${escHtml(L('receiptFicheNo'))}</th><th>${escHtml(L('hourLabel'))}</th><th>${escHtml(L('reportsDailyKindLabel'))}</th><th>${escHtml(L('cashierLabel'))}</th><th>${escHtml(L('reportsDeviceLabel'))}</th><th>${escHtml(L('customerLabel_rep'))}</th><th style="text-align:right">${escHtml(L('reportsBeforeDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsColDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsNetAmount'))}</th><th>${escHtml(L('paymentLabel_rep'))}</th></tr></thead>
-    <tbody>${saleRowsA4 || `<tr><td colspan="10" style="text-align:center;color:#64748b">${escHtml(L('reportsPrintNoRecords'))}</td></tr>`}</tbody>
+    <thead><tr><th>${escHtml(L('receiptFicheNo'))}</th><th>${escHtml(L('dateLabel'))}</th><th>${escHtml(L('hourLabel'))}</th><th>${escHtml(L('reportsDailyKindLabel'))}</th><th>${escHtml(L('cashierLabel'))}</th><th>${escHtml(L('reportsDeviceLabel'))}</th><th>${escHtml(L('customerLabel_rep'))}</th><th style="text-align:right">${escHtml(L('reportsBeforeDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsColDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsNetAmount'))}</th><th>${escHtml(L('paymentLabel_rep'))}</th></tr></thead>
+    <tbody>${saleRowsA4 || `<tr><td colspan="11" style="text-align:center;color:#64748b">${escHtml(L('reportsPrintNoRecords'))}</td></tr>`}</tbody>
   </table>
   ${
     removedRowsA4
       ? `<h3 style="font-size:14px;margin:16px 0 8px">${escHtml(`${L('reportsDetStatusCancelled')} / ${L('reportsDetStatusRefunded')}`)}</h3>
   <table class="t">
-    <thead><tr><th>${escHtml(L('receiptFicheNo'))}</th><th>${escHtml(L('hourLabel'))}</th><th>${escHtml(L('status'))}</th><th style="text-align:right">${escHtml(L('reportsBeforeDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsNetAmount'))}</th></tr></thead>
+    <thead><tr><th>${escHtml(L('receiptFicheNo'))}</th><th>${escHtml(L('dateLabel'))}</th><th>${escHtml(L('hourLabel'))}</th><th>${escHtml(L('status'))}</th><th style="text-align:right">${escHtml(L('reportsBeforeDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsNetAmount'))}</th></tr></thead>
     <tbody>${removedRowsA4}</tbody>
   </table>`
       : ''
@@ -7211,6 +7222,15 @@ export function ReportsModule({
                       footerLabel={tm('totalSales')}
                       columns={[
                         { key: 'receiptNumber', header: tm('receiptFicheNo'), size: 140 },
+                        {
+                          key: 'invoiceDate',
+                          header: tm('dateLabel'),
+                          type: 'date',
+                          size: 110,
+                          cell: (row) => dailySalesDetailInvoiceDateLabel(
+                            row.invoiceDate || { date: row.date, erpSale: row.erpSale },
+                          ),
+                        },
                         { key: 'hour', header: tm('hourLabel'), size: 100 },
                         {
                           key: 'kindLabel',
