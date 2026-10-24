@@ -7,6 +7,7 @@
 
 import type { Expense } from '../services/api/expenses';
 import type { KasaIslemi } from '../services/api/kasa';
+import { readCashLineActor } from './cashLineActor';
 import { localCalendarDateKey, toSqlDateInputString } from './localCalendarDate';
 
 export function normalizeGiderAciklama(value: unknown): string {
@@ -101,8 +102,22 @@ function blankRecordText(value: unknown): boolean {
 }
 
 /**
- * Bağlı kasa çıkışındaki fiş no ve kayıt anını gider pusulasına taşır.
- * Dolu belge no ve created_at ezilmez. Tutar ve ekleyen kişi değişmez.
+ * Kasa satırındaki kullanıcıyı gider kaydına taşır.
+ * Dolu `created_by` ezilmez. Tutar değişmez.
+ * Ad `entered_by_name`, kimlik `created_by` olur. İkisi de yoksa boş kalır.
+ */
+function applyCashLineActor(expense: Expense, line: KasaIslemi | null | undefined): Expense {
+  if (!line) return expense;
+  const actor = readCashLineActor(line);
+  const next: Expense = { ...expense };
+  if (blankRecordText(next.created_by) && actor.id) next.created_by = actor.id;
+  if (blankRecordText(next.entered_by_name) && actor.name) next.entered_by_name = actor.name;
+  return next;
+}
+
+/**
+ * Bağlı kasa çıkışındaki fiş no, kayıt anı ve ekleyen kişiyi gider pusulasına taşır.
+ * Dolu belge no, created_at ve created_by ezilmez. Tutar değişmez.
  * Kasa satırında alan yoksa boş kalır.
  */
 function attachLinkedCashIdentity(expense: Expense, cashById: ReadonlyMap<string, KasaIslemi>): Expense {
@@ -119,7 +134,7 @@ function attachLinkedCashIdentity(expense: Expense, cashById: ReadonlyMap<string
     const created = String(line.olusturma_tarihi || '').trim();
     if (created) next.created_at = created;
   }
-  return next;
+  return applyCashLineActor(next, line);
 }
 
 /** Expense + bağlanmamış kasa çıkışları → tek liste (detay modal / aggregasyon). */
@@ -183,7 +198,7 @@ export function mergeExpensesWithCashOuts(
       if (expenseDescKeys.has(descKey)) continue;
     }
     const createdAt = String(cl.olusturma_tarihi || '').trim();
-    unified.push({
+    unified.push(applyCashLineActor({
       id: `cash-${cl.id || `${day}-${type}-${amt}`}`,
       category: reportCashOutCategory(type),
       description: String(cl.islem_aciklamasi || cl.cari_hesap_unvani || '').trim(),
@@ -198,7 +213,7 @@ export function mergeExpensesWithCashOuts(
       created_at: createdAt || undefined,
       firm_nr: String(cl.firma_id || ''),
       cash_line_id: cl.id || null,
-    } as Expense);
+    } as Expense, cl));
   }
 
   return unified;

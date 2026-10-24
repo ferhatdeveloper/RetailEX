@@ -81,6 +81,11 @@ export interface Expense {
   expense_date: string;
   notes?: string;
   created_by: string;
+  /**
+   * Rapor birleştirmesi: kasa satırında yazılı kullanıcı adı.
+   * Veritabanı kolonu değildir; güncelleme gövdesine yazılmaz.
+   */
+  entered_by_name?: string;
   firm_nr: string;
   cash_line_id?: string;
   cash_register_id?: string;
@@ -519,7 +524,7 @@ export const expenseAPI = {
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
       const normalizeUpdateEntry = (key: string, value: unknown): unknown | undefined => {
-        if (['id', 'firm_nr', 'created_at', 'cost_center_name'].includes(key) || value === undefined) return undefined;
+        if (['id', 'firm_nr', 'created_at', 'cost_center_name', 'entered_by_name'].includes(key) || value === undefined) return undefined;
         let normalizedValue = value;
         if (key === 'amount') {
           const n = Math.abs(parseExpenseAmount(value));

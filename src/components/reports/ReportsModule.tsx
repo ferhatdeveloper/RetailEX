@@ -909,8 +909,9 @@ type DailyExpenseRow = {
   isCash: boolean;
   /** expenses.created_at veya bağlı kasa satırının oluşturulma anı */
   createdAt: string;
-  /** expenses.created_by. Kasa çıkışında kullanıcı kolonu yoksa boş */
+  /** expenses.created_by veya kasa satırındaki kullanıcı kimliği. İkisi de boşsa boş */
   enteredById: string;
+  /** Kasa satırında yazılı kullanıcı adı. Yoksa boş; kimlik ad listesinden çözülür */
   enteredByName: string;
 };
 
@@ -1453,7 +1454,7 @@ export function ReportsModule({
           isCash: isCashOut ? true : isCash,
           createdAt,
           enteredById: String(e.created_by || '').trim(),
-          enteredByName: '',
+          enteredByName: String(e.entered_by_name || '').trim(),
         };
       });
 

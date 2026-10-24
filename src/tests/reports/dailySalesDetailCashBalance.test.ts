@@ -19,6 +19,7 @@ import {
 import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
 import { moduleTranslations } from '../../locales/module-translations';
 import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
+import { readCashLineActor } from '../../utils/cashLineActor';
 import type { Expense } from '../../services/api/expenses';
 import type { KasaIslemi } from '../../services/api/kasa';
 
@@ -243,12 +244,151 @@ describe('satış detayları kasa bakiyesi', () => {
     expect(sumDailySalesDetailCashBalance([...sales, reservation, ...cashRows])).toBe(133_500);
   });
 
+  it('created_by boşken kasa satırındaki kullanıcı adı kasiyer olur; ikisi de boşsa —', () => {
+    const expense = {
+      id: 'exp-ekim',
+      category: 'Kira',
+      description: 'EKİM KİRASI',
+      amount: 5_000,
+      payment_method: 'cash',
+      store_id: '',
+      expense_date: '2026-10-24',
+      document_number: '',
+      created_by: '',
+      created_at: '',
+      firm_nr: '001',
+      cash_line_id: 'line-ekim',
+    } as Expense;
+    const cash = {
+      id: 'line-ekim',
+      firma_id: '001',
+      kasa_id: 'reg-1',
+      islem_tarihi: '2026-10-24',
+      islem_tipi: 'GIDER_PUSULASI',
+      islem_aciklamasi: 'EKİM KİRASI',
+      cari_hesap_unvani: 'EKİM KİRASI',
+      islem_no: 'KL-MVM0ETHL8-9TF896',
+      tutar: 5_000,
+      olusturma_tarihi: '2026-10-24T12:02:00',
+      cashier: 'Ayşe',
+      created_by: '',
+      user_id: '',
+    } as KasaIslemi;
+    const actor = readCashLineActor(cash);
+    expect(actor.nameColumn).toBe('cashier');
+    expect(actor.name).toBe('Ayşe');
+    expect(actor.id).toBe('');
+
+    const unified = mergeExpensesWithCashOuts([expense], [cash]);
+    expect(unified).toHaveLength(1);
+    expect(unified[0].amount).toBe(5_000);
+    expect(unified[0].created_by).toBe('');
+    expect(unified[0].entered_by_name).toBe('Ayşe');
+    expect(unified[0].document_number).toBe('KL-MVM0ETHL8-9TF896');
+
+    const names = new Map<string, string>([['user-admin', 'admin']]);
+    const rows = buildDailySalesDetailExpenseRows(sales, [{
+      key: unified[0].id,
+      ficheNo: unified[0].document_number,
+      amount: unified[0].amount,
+      date: unified[0].expense_date,
+      createdAt: unified[0].created_at,
+      enteredById: unified[0].created_by,
+      enteredByName: unified[0].entered_by_name,
+      description: unified[0].description,
+      paymentMethod: unified[0].payment_method,
+      isCash: true,
+    }], 'Gider', names);
+    expect(rows[0].receiptNumber).toBe('KL-MVM0ETHL8-9TF896');
+    expect(rows[0].cashier).toBe('Ayşe');
+    expect(rows[0].cashier).not.toBe('admin');
+    expect(rows[0].cashier).not.toBe('EKİM KİRASI');
+    expect(rows[0].customerName).toBe('EKİM KİRASI');
+    expect(rows[0].discount).toBe(0);
+    expect(rows[0].total).toBe(-5_000);
+    expect(sumDailySalesDetailCashBalance([...sales, reservation, ...rows])).toBe(133_500);
+
+    const blankCash = {
+      ...cash,
+      id: 'line-bos',
+      cashier: '',
+      created_by: '',
+      user_id: '',
+      created_by_user_id: '',
+      olusturan: '',
+      kaydeden: '',
+      username: '',
+    } as KasaIslemi;
+    const blankActor = readCashLineActor(blankCash);
+    expect(blankActor.name).toBe('');
+    expect(blankActor.id).toBe('');
+    expect(blankActor.emptyColumns).toEqual(expect.arrayContaining([
+      'cashier',
+      'created_by',
+      'user_id',
+      'olusturan',
+      'kaydeden',
+    ]));
+    const blankUnified = mergeExpensesWithCashOuts(
+      [{ ...expense, id: 'exp-bos', cash_line_id: 'line-bos' }],
+      [blankCash],
+    );
+    expect(blankUnified).toHaveLength(1);
+    expect(blankUnified[0].amount).toBe(5_000);
+    expect(String(blankUnified[0].created_by || '')).toBe('');
+    expect(String(blankUnified[0].entered_by_name || '')).toBe('');
+    const blankRows = buildDailySalesDetailExpenseRows(sales, [{
+      key: String(blankUnified[0].id),
+      ficheNo: blankUnified[0].document_number,
+      amount: blankUnified[0].amount,
+      date: blankUnified[0].expense_date,
+      createdAt: blankUnified[0].created_at,
+      enteredById: blankUnified[0].created_by,
+      enteredByName: blankUnified[0].entered_by_name,
+      description: 'EKİM KİRASI',
+      paymentMethod: 'cash',
+      isCash: true,
+    }], 'Gider', names);
+    expect(blankRows[0].cashier).toBe('—');
+    expect(blankRows[0].discount).toBe(0);
+    expect(blankRows[0].total).toBe(-5_000);
+    expect(sumDailySalesDetailCashBalance([...sales, reservation, ...blankRows])).toBe(133_500);
+
+    const idOnly = mergeExpensesWithCashOuts([], [{
+      ...blankCash,
+      id: 'line-kimlik',
+      user_id: 'user-ayse',
+      cashier: '',
+    }]);
+    expect(idOnly).toHaveLength(1);
+    expect(idOnly[0].amount).toBe(5_000);
+    expect(idOnly[0].created_by).toBe('user-ayse');
+    const idNames = new Map<string, string>([['user-ayse', 'Ayşe']]);
+    const idRows = buildDailySalesDetailExpenseRows(sales, [{
+      key: String(idOnly[0].id),
+      ficheNo: idOnly[0].document_number,
+      amount: idOnly[0].amount,
+      date: idOnly[0].expense_date,
+      createdAt: idOnly[0].created_at,
+      enteredById: idOnly[0].created_by,
+      enteredByName: idOnly[0].entered_by_name,
+      description: 'EKİM KİRASI',
+      paymentMethod: 'cash',
+      isCash: true,
+    }], 'Gider', idNames);
+    expect(readCashLineActor(idOnly[0] ? { user_id: 'user-ayse' } : {}).idColumn).toBe('user_id');
+    expect(idRows[0].cashier).toBe('Ayşe');
+    expect(idRows[0].total).toBe(-5_000);
+    expect(sumDailySalesDetailCashBalance([...sales, reservation, ...idRows])).toBe(133_500);
+  });
+
   it('ekran gider satırını ızgaraya bağlar ve Net (Brüt) kartını çizmez', () => {
     const src = readFileSync(resolve('src/components/reports/ReportsModule.tsx'), 'utf8');
     expect(src).toContain('buildDailySalesDetailExpenseRows');
     expect(src).toContain('sumDailySalesDetailCashBalance');
     expect(src).toContain('createdAt: row.createdAt');
     expect(src).toContain('enteredById: row.enteredById');
+    expect(src).toContain('enteredByName: String(e.entered_by_name || \'\').trim()');
     expect(src).toContain('cashier: row.cashier');
     expect(src).toContain('hour: row.hour');
     expect(src).toContain('data={dailySalesDetailGridRows}');

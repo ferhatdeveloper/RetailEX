@@ -17,6 +17,7 @@ import {
   isBeautyFicheNo,
   type SalesRowForDepositCheck,
 } from '../../utils/cashLineReservationDeposit';
+import { copyCashLineActorFields } from '../../utils/cashLineActor';
 
 function padKasaFirmNr(): string {
   return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
@@ -414,6 +415,23 @@ export interface KasaIslemi {
   party_id?: string;
   party_code?: string;
   party_name?: string;
+  /**
+   * Ekleyen kişi. Satış fişindeki `cashier` / `created_by_user_id` ile aynı kaynak.
+   * Şemada kolon yoksa SELECT bunları döndürmez; rapor o zaman boş bırakır.
+   */
+  cashier?: string;
+  olusturan?: string;
+  kaydeden?: string;
+  username?: string;
+  user_name?: string;
+  kullanici_adi?: string;
+  kullanici?: string;
+  created_by_name?: string;
+  created_by_user_id?: string;
+  user_id?: string;
+  created_by?: string;
+  olusturan_id?: string;
+  kaydeden_id?: string;
 }
 
 /** Kasa → mevcut faturaya tahsilat/ödeme (fatura motoru ayrı; yalnızca kasa satırı). */
@@ -2010,6 +2028,7 @@ function mapDbIslemToIslem(row: any): KasaIslemi {
     withholding_tax_rate: row.withholding_tax_rate !== undefined ? parseFloat(row.withholding_tax_rate || 0) : undefined,
     party_id: row.party_id || undefined,
     olusturma_tarihi: row.created_at,
+    ...copyCashLineActorFields(row),
   };
 }
 
