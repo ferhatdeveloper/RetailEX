@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { foldReservationIntoCashStatus } from '../../utils/cashStatusTotals';
 import {
   allocateSaleAmountsByFormCode,
   buildPaymentTypeDistribution,
@@ -107,6 +108,118 @@ describe('paymentTypeDistribution', () => {
           receiptNumber: 'R1',
           date: '2024-09-19',
           isDeposit: true,
+        },
+      ],
+      'ACIK_CARI',
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('nakit 138.500 içinde 1.500 iskonto açık cariye ve genel toplama yazılmaz', () => {
+    // Brüt hizmet 130.000, tahsilat 128.500 (iskonto 1.500 zaten netin içinde).
+    // Rezervasyon 10.000 nakde bir kez eklenir → görünen nakit 138.500.
+    // Gider 5.000 bir kez düşülür. Gerçek veresiye 0.
+    // Eski hata: açık cari 1.500, genel toplam 138.500 + 1.500 − 5.000 = 135.000.
+    const dist = buildPaymentTypeDistribution(
+      [
+        {
+          id: 's1',
+          total: 130_000,
+          discount: 1_500,
+          paymentMethod: 'nakit',
+          payments: [{ method: 'NAKIT', amount: 128_500 }],
+        },
+      ],
+      { extraReservation: 10_000, includeZero: true },
+    );
+
+    expect(dist.byCode.NAKIT.amount).toBe(128_500);
+    expect(dist.byCode.ACIK_CARI.amount).toBe(0);
+    expect(dist.byCode.REZERVASYON_AVANS.amount).toBe(10_000);
+
+    const folded = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash: dist.byCode.NAKIT.amount,
+      reservationCash: dist.byCode.REZERVASYON_AVANS.amount,
+      expense: 5_000,
+      expenseCount: 1,
+      paymentTypes: dist.types.map((row) => ({
+        code: row.code,
+        amount: row.amount,
+        count: row.count,
+      })),
+    });
+
+    expect(folded.todayCash).toBe(138_500);
+    expect(folded.paymentTypes.find((row) => row.code === 'NAKIT')?.amount).toBe(138_500);
+    expect(folded.paymentTypes.find((row) => row.code === 'ACIK_CARI')?.amount).toBe(0);
+    expect(folded.grandTotal).toBe(133_500);
+    expect(folded.grandTotal).not.toBe(135_000);
+  });
+
+  it('nakit satırı 138.500 iken iskonto 1.500 ikinci kez eklenmez', () => {
+    const split = allocateSaleAmountsByFormCode(
+      140_000,
+      [{ method: 'NAKIT', amount: 138_500 }],
+      'nakit',
+      1_500,
+    );
+    expect(split.NAKIT).toBe(138_500);
+    expect(split.ACIK_CARI).toBe(0);
+
+    const folded = foldReservationIntoCashStatus({
+      openingCash: 0,
+      serviceCash: split.NAKIT,
+      reservationCash: 0,
+      expense: 5_000,
+      paymentTypes: [
+        { code: 'NAKIT', amount: split.NAKIT },
+        { code: 'ACIK_CARI', amount: split.ACIK_CARI },
+      ],
+    });
+    expect(folded.todayCash).toBe(138_500);
+    expect(folded.paymentTypes.find((row) => row.code === 'ACIK_CARI')?.amount).toBe(0);
+    expect(folded.grandTotal).toBe(133_500);
+  });
+
+  it('gerçek veresiye açık caride kalır, iskonto eklenmez', () => {
+    const split = allocateSaleAmountsByFormCode(
+      100_000,
+      [{ method: 'NAKIT', amount: 50_000 }],
+      'veresiye',
+      1_500,
+    );
+    expect(split.NAKIT).toBe(50_000);
+    expect(split.ACIK_CARI).toBe(48_500);
+  });
+
+  it('iskonto yokken ödenmemiş kalan açık cariye yazılır', () => {
+    const split = allocateSaleAmountsByFormCode(
+      100_000,
+      [{ method: 'NAKIT', amount: 60_000 }],
+      'nakit',
+    );
+    expect(split.NAKIT).toBe(60_000);
+    expect(split.ACIK_CARI).toBe(40_000);
+  });
+
+  it('saf veresiye belgede iskonto açık cariden düşülür', () => {
+    const split = allocateSaleAmountsByFormCode(50_000, null, 'veresiye', 10_000);
+    expect(split.ACIK_CARI).toBe(40_000);
+    expect(split.NAKIT).toBe(0);
+  });
+
+  it('iskonto farkı açık cari hareketine yazılmaz', () => {
+    const rows = buildPaymentTypeMovements(
+      [
+        {
+          id: 's1',
+          total: 140_000,
+          discount: 1_500,
+          paymentMethod: 'nakit',
+          payments: [{ method: 'NAKIT', amount: 138_500 }],
+          receiptNumber: 'F-1',
+          date: '2026-10-24',
         },
       ],
       'ACIK_CARI',

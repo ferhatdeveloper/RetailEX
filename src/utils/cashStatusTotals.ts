@@ -7,6 +7,8 @@
  * Ciroya eklenmez (hizmet 50.000 ise +15.000 ciro yazılmaz).
  *
  * Genel toplam = nakit (rezervasyon dahil) + kart + açık cari + havale − gider.
+ * Açık cari ödenmemiş satıştır. İskonto bu alana ve toplama yazılmaz;
+ * nakit tutar iskontoyu zaten düşmüşse ikinci kez düşülmez.
  * Gider, klinik gideri ve kasa çıkış fişidir; nakit tahsilattan bir kez düşülür.
  * Kasa bakiyesi bu çıkıştan sonra net ise gider ikinci kez düşülmez.
  *
@@ -521,6 +523,8 @@ export interface CashStatusSaleSlice {
   cashRegisterId?: string | null;
   isDeposit?: boolean;
   notes?: string | null;
+  /** Brüt belgeden düşülen iskonto. Açık cariye yazılmaz. */
+  discount?: number | null;
 }
 
 export interface CashStatusRegisterLine {
@@ -615,12 +619,18 @@ export function seedsFromCashStatusSales(sales: CashStatusSaleSlice[]): CashRegi
         addFormAmount(touch(reg), code, amt * sign);
         allocated += amt;
       }
-      const gap = absDoc - allocated;
-      if (gap > 0.004) addFormAmount(touch(fallback), 'ACIK_CARI', gap * sign);
+      const discountAbs = Math.max(0, Math.abs(num(sale.discount)));
+      const gap = absDoc - allocated - discountAbs;
+      const tolerance = discountAbs > 0 ? 1 : 0.004;
+      if (gap > tolerance) addFormAmount(touch(fallback), 'ACIK_CARI', gap * sign);
       continue;
     }
     const code = formCodeOf(sale.paymentMethod) || 'ACIK_CARI';
-    addFormAmount(touch(fallback), code, signed);
+    const discountAbs = Math.max(0, Math.abs(num(sale.discount)));
+    const signedNet = code === 'ACIK_CARI'
+      ? Math.max(0, absDoc - discountAbs) * sign
+      : signed;
+    addFormAmount(touch(fallback), code, signedNet);
   }
 
   const seeds: CashRegisterSeed[] = [];

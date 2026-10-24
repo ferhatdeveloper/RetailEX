@@ -46,6 +46,11 @@ export type PaymentTypeSaleInput = {
   isDeposit?: boolean;
   /** Notlardan türetilmiş peşinat etiketi (örn. parent_sale:, sale_group:) */
   notes?: string;
+  /**
+   * Belge iskontosu. `total` brüt cirodur; tahsilat nettir.
+   * Brüt − tahsilat farkının iskonto kadarı açık cari değildir.
+   */
+  discount?: number | null;
 };
 
 function emptyAmounts(): Record<PaymentFormCode, number> {
@@ -65,17 +70,32 @@ function resolveFormCode(raw: unknown): PaymentFormCode {
   return code || 'ACIK_CARI';
 }
 
+/**
+ * Brüt belge ile tahsilat arasındaki farktan iskonto düşülür.
+ * Kalan, ödenmemiş satış (açık cari) ise yazılır. İskonto cari borç değildir.
+ * İskonto varken 1 birim altı yuvarlama açık cariye gitmez.
+ * İskonto yokken eski eşik (1e-6) durur.
+ */
+function unpaidAfterDiscount(absDocument: number, allocated: number, discount: number): number {
+  const discountAbs = Math.max(0, Math.abs(Number(discount) || 0));
+  const gap = absDocument - allocated - discountAbs;
+  const tolerance = discountAbs > 0 ? 1 : 1e-6;
+  return gap > tolerance ? gap : 0;
+}
+
 /** Belge tutarını yapıdaki form kodlarına böler (çoklu ödeme satırları dahil). */
 export function allocateSaleAmountsByFormCode(
   documentTotal: number,
   payments?: SalePaymentRow[] | null,
   paymentMethod?: unknown,
+  discount?: number | null,
 ): Record<PaymentFormCode, number> {
   const out = emptyAmounts();
   const signedDoc = Number(documentTotal) || 0;
   if (signedDoc === 0) return out;
   const sign = signedDoc < 0 ? -1 : 1;
   const absDoc = Math.abs(signedDoc);
+  const discountAbs = Math.max(0, Math.abs(Number(discount) || 0));
 
   const rows = Array.isArray(payments) ? payments.filter((p) => p != null) : [];
   if (rows.length > 0) {
@@ -87,26 +107,31 @@ export function allocateSaleAmountsByFormCode(
       out[code] += amt * sign;
       allocated += amt;
     }
-    const gap = absDoc - allocated;
-    if (gap > 1e-6) {
-      // Eksik kısım cari / açık hesap (veresiye kalan)
-      out.ACIK_CARI += gap * sign;
-    }
+    // Eksik kısım gerçek veresiyedir. İskonto bu farktan düşülür;
+    // nakit satırı (zaten net) ikinci kez değiştirilmez.
+    const gap = unpaidAfterDiscount(absDoc, allocated, discountAbs);
+    if (gap > 0) out.ACIK_CARI += gap * sign;
     return out;
   }
 
   const code = resolveFormCode(paymentMethod);
+  if (code === 'ACIK_CARI') {
+    const netCredit = Math.max(0, absDoc - discountAbs);
+    out.ACIK_CARI = netCredit * sign;
+    return out;
+  }
   out[code] = signedDoc;
   return out;
 }
 
 export function allocateErpSaleByFormCode(
-  sale: Pick<Sale, 'total' | 'paymentMethod' | 'payments'>,
+  sale: Pick<Sale, 'total' | 'paymentMethod' | 'payments'> & { discount?: number | null },
 ): Record<PaymentFormCode, number> {
   return allocateSaleAmountsByFormCode(
     Number(sale.total) || 0,
     sale.payments,
     sale.paymentMethod,
+    sale.discount,
   );
 }
 
@@ -137,7 +162,12 @@ export function buildPaymentTypeDistribution(
   const counts = emptyAmounts();
 
   for (const sale of sales) {
-    const split = allocateSaleAmountsByFormCode(sale.total, sale.payments, sale.paymentMethod);
+    const split = allocateSaleAmountsByFormCode(
+      sale.total,
+      sale.payments,
+      sale.paymentMethod,
+      sale.discount,
+    );
     // Rezervasyon avansı (is_deposit): Açık Cari (veresiye) bucket'ına
     // yazılmaz — henüz hizmet verilmemiş peşinat henüz alacak değil. Tutarı
     // Nakit'e kaydır (kasa paraya girdiği için nakit olarak raporlanır;
@@ -230,7 +260,12 @@ export function buildPaymentTypeMovements(
   const out: PaymentTypeMovement[] = [];
 
   for (const sale of sales) {
-    const split = allocateSaleAmountsByFormCode(sale.total, sale.payments, sale.paymentMethod);
+    const split = allocateSaleAmountsByFormCode(
+      sale.total,
+      sale.payments,
+      sale.paymentMethod,
+      sale.discount,
+    );
     const isDepositSale = sale.isDeposit === true ||
       /parent_sale:|sale_group:|deposit:1/.test(String(sale.notes ?? ''));
     // Rezervasyon avansı: ACIK_CARI altında görünmemeli. methodCode ACIK_CARI ise

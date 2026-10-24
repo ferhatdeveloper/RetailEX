@@ -4424,6 +4424,9 @@ export function ReportsModule({
       // filtresinden geçtiği için deposit fişler buraya gelmez; bilgi amaçlı.
       isDeposit: false,
       notes: row.erpSale?.notes,
+      // Brüt fiş − net tahsilat = iskonto ise açık cariye yazılmaz.
+      // Restoran satırında total zaten nettir; iskonto ikinci kez düşülmez.
+      discount: row.erpSale ? Number(row.erpSale.discount) || 0 : 0,
     }));
     const dist = buildPaymentTypeDistribution(saleInputs, {
       extraCash: extraCollections,
@@ -4538,6 +4541,7 @@ export function ReportsModule({
       description: row.customerName || row.receiptNumber || '—',
       isDeposit: false,
       notes: row.erpSale?.notes,
+      discount: row.erpSale ? Number(row.erpSale.discount) || 0 : 0,
     }));
     const rows = buildPaymentTypeMovements(saleInputs, code, {
       extraCash: extraCollections,
