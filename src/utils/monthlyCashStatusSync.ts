@@ -205,7 +205,7 @@ export function computeMonthlyCashSummary(
   const unifiedExpenses = mergeExpensesWithCashOuts(
     Array.isArray(input.expenses) ? input.expenses : [],
     cashLines,
-    { allowedCashOutTypes: PERIOD_SUMMARY_CASH_OUT_TYPES },
+    { allowedCashOutTypes: PERIOD_SUMMARY_CASH_OUT_TYPES, omitOrphanCashMirrors: true },
   );
   const gider = unifiedExpenses.reduce(
     (sum, e) => sum + (Math.abs(Number(e.amount) || 0)),

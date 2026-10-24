@@ -3,6 +3,7 @@
  * Gider Yönetimi satırları + kasa çıkışları (cari ödeme, maaş, avans…).
  * cash_line_id ile bağlı gider pusulaları çift sayılmaz.
  * Aynı gün + aynı açıklama (ör. EYLUL KIRASI) kasa kardeş fişi de çift sayılmaz.
+ * Kasa fişi silinmiş ayna (`cash_line_id` dolu, listede yok) rapora yazılmaz.
  */
 
 import type { Expense } from '../services/api/expenses';
@@ -142,7 +143,7 @@ function applyCashLineActor(expense: Expense, line: KasaIslemi | null | undefine
  * Kasa satırında alan yoksa boş kalır.
  */
 function attachLinkedCashIdentity(expense: Expense, cashById: ReadonlyMap<string, KasaIslemi>): Expense {
-  const linkedId = String(expense.cash_line_id || '').trim();
+  const linkedId = cashLineKey(expense.cash_line_id);
   if (!linkedId) return expense;
   const line = cashById.get(linkedId);
   if (!line) return expense;
@@ -158,20 +159,53 @@ function attachLinkedCashIdentity(expense: Expense, cashById: ReadonlyMap<string
   return applyCashLineActor(next, line);
 }
 
+function cashLineKey(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+/**
+ * Kasa fişi silinmiş gider aynası.
+ * `cash_line_id` boşsa bağsız giderdir; durur.
+ * Kimlik dolu ve kasa listesinde yoksa fiş silinmiştir.
+ */
+export function isOrphanCashExpenseMirror(
+  expense: { cash_line_id?: string | null },
+  cashLineIds: { has(id: string): boolean },
+): boolean {
+  const linkedId = cashLineKey(expense.cash_line_id);
+  if (!linkedId) return false;
+  return !cashLineIds.has(linkedId);
+}
+
 /** Expense + bağlanmamış kasa çıkışları → tek liste (detay modal / aggregasyon). */
 export function mergeExpensesWithCashOuts(
   expenses: Expense[],
   cashLines: KasaIslemi[],
-  options?: { allowedCashOutTypes?: Set<string> },
+  options?: { allowedCashOutTypes?: Set<string>; omitOrphanCashMirrors?: boolean },
 ): Expense[] {
   const allExpenses = Array.isArray(expenses) ? expenses : [];
+  const allowedTypes = options?.allowedCashOutTypes ?? REPORT_CASH_OUT_TYPES;
+
+  const cashById = new Map<string, KasaIslemi>();
+  for (const line of Array.isArray(cashLines) ? cashLines : []) {
+    const id = cashLineKey(line.id);
+    if (id) cashById.set(id, line);
+  }
+
+  // Boş kasa listesi (okuma hatası) aynayı düşürmez; fiş gerçekten silindiyse
+  // listede başka satır varken kayıp cash_line_id rapordan çıkar.
+  const omitOrphans = options?.omitOrphanCashMirrors === true && cashById.size > 0;
+  const visibleExpenses = omitOrphans
+    ? allExpenses.filter((expense) => !isOrphanCashExpenseMirror(expense, cashById))
+    : allExpenses;
+
   const linkedCashIds = new Set(
-    allExpenses
-      .map((e) => String(e.cash_line_id || '').trim())
+    visibleExpenses
+      .map((e) => cashLineKey(e.cash_line_id))
       .filter(Boolean),
   );
   const expenseDescKeys = new Set(
-    allExpenses
+    visibleExpenses
       .map((e) => {
         const day = String(e.expense_date || '').slice(0, 10);
         const desc = normalizeGiderAciklama(e.description);
@@ -180,15 +214,7 @@ export function mergeExpensesWithCashOuts(
       .filter(Boolean),
   );
 
-  const allowedTypes = options?.allowedCashOutTypes ?? REPORT_CASH_OUT_TYPES;
-
-  const cashById = new Map<string, KasaIslemi>();
-  for (const line of Array.isArray(cashLines) ? cashLines : []) {
-    const id = String(line.id || '').trim();
-    if (id) cashById.set(id, line);
-  }
-
-  const unified: Expense[] = allExpenses.map((e) => attachLinkedCashIdentity(e, cashById));
+  const unified: Expense[] = visibleExpenses.map((e) => attachLinkedCashIdentity(e, cashById));
 
   for (const cl of Array.isArray(cashLines) ? cashLines : []) {
     const type = String(cl.islem_tipi || '').trim().toUpperCase();
@@ -205,7 +231,7 @@ export function mergeExpensesWithCashOuts(
       type === 'CH_ODEME' ||
       type === 'AVANS_ODEME' ||
       type === 'ORTAK_DAGITIM_KAR';
-    if (!skipLinkedCheck && cl.id && linkedCashIds.has(String(cl.id))) continue;
+    if (!skipLinkedCheck && cl.id && linkedCashIds.has(cashLineKey(cl.id))) continue;
     const amt = Math.abs(Number(cl.tutar) || 0);
     if (!amt) continue;
     const day =

@@ -517,7 +517,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         // MAAS_ODEME, AVANS_ODEME, ORTAK_SERMAYE_ODEME, ORTAK_DAGITIM_KAR,
         // GIDER_PUSULASI, KASA_CIKIS) dahil — 780965d6 öncesi 7-kalem
         // davranışına geri dönüldü. CH_TAHSILAT hariç (kasa +, cari -).
-        { allowedCashOutTypes: PERIOD_SUMMARY_CASH_OUT_TYPES },
+        { allowedCashOutTypes: PERIOD_SUMMARY_CASH_OUT_TYPES, omitOrphanCashMirrors: true },
       ),
     [expensesBaseQuery.data, cashLinesQuery.data],
   );

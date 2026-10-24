@@ -1423,6 +1423,8 @@ export function ReportsModule({
       const unifiedSrc = mergeExpensesWithCashOuts(
         Array.isArray(expenseRows) ? expenseRows : [],
         Array.isArray(cashLines) ? cashLines : [],
+        // Silinen kasa fişinin gider aynası (cash_line_id listede yok) sayılmaz.
+        { omitOrphanCashMirrors: true },
       );
 
       const unified: DailyExpenseRow[] = unifiedSrc.map((e) => {

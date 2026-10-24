@@ -19,6 +19,8 @@ import {
 import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
 import { moduleTranslations } from '../../locales/module-translations';
 import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
+import { cashStatusWithVouchers } from '../../utils/cashStatusTotals';
+import { expenseCashBalanceDeltaOnDelete } from '../../services/api/expenses';
 import { readCashLineActor } from '../../utils/cashLineActor';
 import type { Expense } from '../../services/api/expenses';
 import type { KasaIslemi } from '../../services/api/kasa';
@@ -516,5 +518,135 @@ describe('satış detayları kasa bakiyesi', () => {
     expect(pack.en).toBe('Expense');
     expect(pack.ar).toBe('مصروف');
     expect(pack.ku).toBe('خەرجی');
+  });
+});
+
+describe('silinen kasa çıkışı günlük rapordan düşer', () => {
+  const day = '2026-10-24';
+  const deletedFiche = 'KL-MVMFWBU2-CU5ZA';
+  const salaryFiche = 'KL-MVMHZNQ-A4RML';
+  const mirror = {
+    id: 'exp-kasa-giris',
+    category: 'Gider',
+    description: 'Kasa giriş',
+    amount: 5_000,
+    payment_method: 'cash',
+    store_id: '',
+    expense_date: day,
+    document_number: deletedFiche,
+    created_by: '',
+    firm_nr: '001',
+    cash_line_id: 'line-kasa-giris',
+  } as Expense;
+
+  const salary = {
+    id: 'line-maas',
+    firma_id: '001',
+    kasa_id: 'reg-1',
+    islem_tarihi: day,
+    islem_tipi: 'MAAS_ODEME',
+    islem_aciklamasi: 'maaş ödemesi',
+    islem_no: salaryFiche,
+    tutar: 10_000,
+    sign: -1,
+  } as KasaIslemi;
+
+  const deletedCash = {
+    id: 'line-kasa-giris',
+    firma_id: '001',
+    kasa_id: 'reg-1',
+    islem_tarihi: day,
+    islem_tipi: 'KASA_CIKIS',
+    islem_aciklamasi: 'Kasa giriş',
+    islem_no: deletedFiche,
+    tutar: 5_000,
+    sign: -1,
+  } as KasaIslemi;
+
+  const virman = {
+    id: 'line-virman',
+    firma_id: '001',
+    kasa_id: 'reg-1',
+    target_register_id: 'reg-2',
+    islem_tarihi: day,
+    islem_tipi: 'VIRMAN',
+    islem_aciklamasi: 'Kasa virmanı',
+    islem_no: 'KL-VIRMAN-1',
+    tutar: 7_000,
+    sign: -1,
+  } as KasaIslemi;
+
+  function giderOf(rows: readonly { amount?: number | null }[]): number {
+    return rows.reduce((sum, row) => sum + Math.abs(Number(row.amount) || 0), 0);
+  }
+
+  it('kasa çıkışı silinince birleşik listede o fiş yok, tutar bir kez düşer, maaş kalır, net 128.500', () => {
+    const before = mergeExpensesWithCashOuts(
+      [mirror],
+      [deletedCash, salary, virman],
+      { omitOrphanCashMirrors: true },
+    );
+    expect(giderOf(before)).toBe(15_000);
+    expect(before.some((row) => row.document_number === deletedFiche)).toBe(true);
+    expect(before.some((row) => row.document_number === salaryFiche)).toBe(true);
+    expect(before.some((row) => row.notes === 'VIRMAN')).toBe(false);
+
+    const after = mergeExpensesWithCashOuts(
+      [mirror],
+      [salary, virman],
+      { omitOrphanCashMirrors: true },
+    );
+    expect(after.some((row) => row.document_number === deletedFiche || row.cash_line_id === 'line-kasa-giris')).toBe(false);
+    expect(after.some((row) => row.document_number === salaryFiche)).toBe(true);
+    expect(after).toHaveLength(1);
+    expect(giderOf(after)).toBe(10_000);
+    expect(giderOf(before) - giderOf(after)).toBe(5_000);
+    expect(expenseCashBalanceDeltaOnDelete(5_000, -1)).toBe(5_000);
+
+    const rows = buildDailySalesDetailExpenseRows(sales, after.map((row) => ({
+      key: String(row.id),
+      ficheNo: row.document_number,
+      amount: row.amount,
+      date: row.expense_date,
+      description: row.description,
+      category: row.category,
+      paymentMethod: 'cash',
+      isCash: true,
+    })), 'Gider');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].receiptNumber).toBe(salaryFiche);
+    expect(rows[0].customerName).toBe('maaş ödemesi');
+    expect(rows[0].total).toBe(-10_000);
+    expect(rows.some((row) => row.receiptNumber === deletedFiche)).toBe(false);
+
+    const ciro = sales.reduce((sum, row) => sum + row.beforeDiscount, 0);
+    const indirim = sales.reduce((sum, row) => sum + row.discount, 0);
+    expect(ciro).toBe(140_000);
+    expect(indirim).toBe(1_500);
+    expect(reservation.total).toBe(10_000);
+    expect(sumDailySalesDetailCashBalance(sales)).toBe(138_500);
+    expect(sumDailySalesDetailCashBalance([...sales, reservation, ...rows])).toBe(128_500);
+
+    const voucher = cashStatusWithVouchers({
+      salesCash: 138_500,
+      reservation: 10_000,
+      discount: 1_500,
+      expense: giderOf(after),
+      countedExpenseKeys: [salaryFiche, salary.id],
+      lines: [salary, virman],
+      saleReceiptKeys: sales.map((row) => row.receiptNumber),
+      customerCollectionsInSalesCash: true,
+    });
+    expect(voucher.expense).toBe(10_000);
+    expect(voucher.todayCash).toBe(138_500);
+    expect(voucher.openAccount).toBe(0);
+    expect(voucher.reservation).toBe(10_000);
+    expect(voucher.grandTotal).toBe(128_500);
+    expect(sales.map((row) => row.receiptNumber)).toEqual([
+      'BEA-2026-00001',
+      'BEA-2026-00002',
+      'BEA-2026-00003',
+      'BEA-2026-00004',
+    ]);
   });
 });

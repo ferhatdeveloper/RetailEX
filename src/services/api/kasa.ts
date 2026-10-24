@@ -2317,8 +2317,9 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
       }
     }
 
-    // 7) Bağlı gider pusulası (Gider Yönetimi / güzellik) — önce expenses, sonra cash_line
-    await deleteExpenseLinkedToCashLine(id);
+    // 7) Bağlı gider pusulası (Gider Yönetimi / güzellik) — önce expenses, sonra cash_line.
+    // Bakiye yukarıda bir kez tersine alındı. Ayna silinirken tutar ikinci kez eklenmez.
+    await deleteExpenseLinkedToCashLine(id, expenseMirrorFiche(trType, ficheNo));
 
     // 7b) Müşteri/tedarikçi CH_TAHSILAT/CH_ODEME ledger iptal kayıtları (direct path).
     // createKasaIslemi içinde yazılan party_ledger_movements (cash_line_id bağlı) ve
@@ -2652,8 +2653,8 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
     }
   }
 
-  // Bağlı gider pusulası
-  await deleteExpenseLinkedToCashLine(String(id));
+  // Bağlı gider pusulası. Bakiye yukarıda bir kez tersine alındı.
+  await deleteExpenseLinkedToCashLine(String(id), expenseMirrorFiche(trType, ficheNo));
 
   // Müşteri/tedarikçi CH_TAHSILAT/CH_ODEME ledger iptal kayıtları (PostgREST).
   // createKasaIslemi'de yazılan party_ledger_movements + account_movements satırları
@@ -3211,21 +3212,59 @@ async function upsertExpenseLinkedToCashLine(opts: {
   }
 }
 
-async function deleteExpenseLinkedToCashLine(cashLineId: string): Promise<void> {
+/** Gider aynası yalnız kasa çıkış fişine bağlanır. Satış fiş no'su gider silmez. */
+function expenseMirrorFiche(trType: string, ficheNo: string): string {
+  const tip = String(trType || '').trim().toUpperCase();
+  const fiche = String(ficheNo || '').trim();
+  if (!fiche) return '';
+  if (
+    tip === 'GIDER_PUSULASI'
+    || tip === 'KASA_CIKIS'
+    || tip === 'MAAS_ODEME'
+    || tip === 'AVANS_ODEME'
+    || tip === 'CH_ODEME'
+    || tip === 'ORTAK_DAGITIM_KAR'
+    || tip === 'ORTAK_SERMAYE_ODEME'
+  ) {
+    return fiche;
+  }
+  return '';
+}
+
+async function deleteExpenseLinkedToCashLine(cashLineId: string, ficheNo = ''): Promise<void> {
   const id = String(cashLineId || '').trim();
-  if (!id) return;
+  const fiche = String(ficheNo || '').trim();
+  if (!id && !fiche) return;
   try {
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
-      await postgrest.delete(
-        `${expenseTablePathKasa()}?cash_line_id=eq.${encodeURIComponent(id)}`,
-        { schema: 'public', prefer: 'return=minimal' },
-      );
+      const path = expenseTablePathKasa();
+      if (id) {
+        await postgrest.delete(
+          `${path}?cash_line_id=eq.${encodeURIComponent(id)}`,
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+      }
+      // cash_line_id yazılmamış ayna: aynı fiş no. Başka kasa satırına bağlı kayıt kalır.
+      if (fiche) {
+        await postgrest.delete(
+          `${path}?document_number=eq.${encodeURIComponent(fiche)}&cash_line_id=is.null`,
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+      }
       return;
     }
+    // Mantıksal tablo adı: postgres rewriter rex_{firma}_expenses yazar.
+    // Bakiye burada değişmez; deleteKasaIslemi tutarı bir kez geri almıştır.
     await postgres.query(
-      `DELETE FROM ${expenseTableSqlKasa()} WHERE cash_line_id = $1::text::uuid`,
-      [id],
+      `DELETE FROM expenses
+       WHERE ($1::text <> '' AND cash_line_id = NULLIF($1::text, '')::uuid)
+          OR (
+            $2::text <> ''
+            AND btrim(COALESCE(document_number, '')) = $2::text
+            AND cash_line_id IS NULL
+          )`,
+      [id, fiche],
     );
   } catch (err) {
     console.warn('[Kasa] deleteExpenseLinkedToCashLine failed:', err);

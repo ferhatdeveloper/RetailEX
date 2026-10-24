@@ -712,7 +712,8 @@ export const expenseAPI = {
         const cashLineId = String(existing.cash_line_id || '').trim();
         if (cashLineId) {
           try {
-            // deleteKasaIslemi cash_line tutarı × sign ile bakiyeyi tersine alır; sonra satırı siler.
+            // deleteKasaIslemi cash_line tutarı × sign ile bakiyeyi bir kez tersine alır
+            // ve bağlı gider aynasını siler. Burada tutar ikinci kez eklenmez.
             await deleteKasaIslemi(cashLineId);
           } catch (cashErr) {
             // Satır yoksa (eski orphan id) yalnızca gider satırını sil — bakiyeye tekrar amount EKLEME.
@@ -734,9 +735,12 @@ export const expenseAPI = {
       if (!existing) return false;
 
       const cashLineId = String(existing.cash_line_id || '').trim();
+      let cashCleared = false;
       if (cashLineId) {
         try {
+          // Bakiye bir kez geri alınır. Ayna aynı çağrıda silinirse alttaki DELETE 0 satır döner.
           await deleteKasaIslemi(cashLineId);
+          cashCleared = true;
         } catch (cashErr) {
           console.warn('[ExpenseAPI] delete: cash_line zaten yok veya silinemedi:', cashErr);
         }
@@ -748,7 +752,7 @@ export const expenseAPI = {
         [id, firm]
       );
       await postgres.query('COMMIT');
-      return rowCount > 0;
+      return rowCount > 0 || cashCleared;
     } catch (error) {
       console.error('[ExpenseAPI] delete failed:', error);
       try {

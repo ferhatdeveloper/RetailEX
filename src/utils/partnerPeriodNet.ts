@@ -63,7 +63,7 @@ export async function computeYearMonthlyNets(year: number): Promise<PartnerMonth
     Array.isArray(cashLines) ? cashLines : [],
     // Ciro/Gider kök neden — maaş, ortak sermaye, cari ödeme vb. kasa
     // hareketleri Gider değildir; yalnızca gerçek işletme giderleri sayılır.
-    { allowedCashOutTypes: PERIOD_SUMMARY_CASH_OUT_TYPES },
+    { allowedCashOutTypes: PERIOD_SUMMARY_CASH_OUT_TYPES, omitOrphanCashMirrors: true },
   );
 
   const saleMap = new Map<string, number>();
