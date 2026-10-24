@@ -70,6 +70,14 @@ import { lookupWeightedAvgUnitCost } from '../weightedAverageUnitCost';
 import { productGrossProfitMarginPct } from '../../utils/productGrossProfitMargin';
 import { inferQtyFromRevenue } from '../../utils/lineGrossProfit';
 import { appointmentDepositRef, foldDepositLinesByInvoice, foldSaleItemsWithDeposits, parseFicheDepositList, type FicheDepositRef } from '../../utils/beautyDepositAllocation';
+import { looksLikeUuid } from '../../utils/pgUuid';
+import {
+  applyCashFlowAccountName,
+  cashFlowAccountSql,
+  cashFlowSalesFicheKeys,
+  type CashFlowLineRef,
+  type CashFlowNameIndexes,
+} from '../../utils/cashFlowAccountName';
 
 const ROW_LIMIT = 3000;
 
@@ -718,6 +726,521 @@ async function fetchSalesCashRefundSources(params: {
   }
 }
 
+interface CashFlowDraft {
+  row: CashBankMovementRow;
+  ref: CashFlowLineRef;
+}
+
+function cashFlowAvansTable(): string {
+  const firm = padFirm().replace(/\W/g, '') || '001';
+  const periodDigits = String(padPeriod()).replace(/\D/g, '') || '01';
+  const period = periodDigits.padStart(2, '0').slice(0, 10);
+  return `rex_${firm}_${period}_cari_avans`;
+}
+
+function cashFlowDraft(
+  r: Parameters<typeof mapCashBankMovementRow>[0] & {
+    customer_id?: unknown;
+    party_id?: unknown;
+    expense_card_id?: unknown;
+  },
+  source?: 'cash' | 'bank',
+): CashFlowDraft {
+  const row = mapCashBankMovementRow({ ...r, source: source ?? r.source });
+  return {
+    row,
+    ref: {
+      id: row.id,
+      ficheNo: row.ficheNo,
+      customerId: String(r.customer_id ?? '').trim(),
+      partyId: String(r.party_id ?? '').trim(),
+      expenseCardId: String(r.expense_card_id ?? '').trim(),
+      accountName: row.accountName,
+    },
+  };
+}
+
+function uniqCashFlowUuids(values: string[]): string[] {
+  return [...new Set(values.map((v) => v.trim()).filter((v) => looksLikeUuid(v)))];
+}
+
+function chunkCashFlow<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+function putCashFlowNames(
+  target: Map<string, string>,
+  rows: Array<{ id?: unknown; name?: unknown }>,
+) {
+  for (const row of rows) {
+    const id = String(row.id ?? '').trim();
+    const name = String(row.name ?? '').trim();
+    if (id && name) target.set(id, name);
+  }
+}
+
+function safeCashFlowToken(value: string): boolean {
+  return /^[A-Za-z0-9._/-]+$/.test(value);
+}
+
+async function sqlCashFlowIdNames(table: string, ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!ids.length) return out;
+  try {
+    const { rows } = await postgres.query<{ id: string; name: string }>(
+      `SELECT id::text AS id, COALESCE(name, '') AS name FROM ${table} WHERE id = ANY($1::uuid[])`,
+      [ids],
+    );
+    putCashFlowNames(out, rows || []);
+  } catch (err) {
+    console.warn(
+      `[erpReports] nakit akış ${table} adı okunamadı:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+  return out;
+}
+
+async function sqlCashFlowSales(fiches: string[]): Promise<Array<Record<string, unknown>>> {
+  if (!fiches.length) return [];
+  try {
+    const { rows } = await postgres.query<Record<string, unknown>>(
+      `SELECT fiche_no, customer_id::text AS customer_id, COALESCE(customer_name, '') AS customer_name
+         FROM sales
+        WHERE fiche_no = ANY($1::text[])`,
+      [fiches],
+    );
+    return rows || [];
+  } catch (err) {
+    console.warn(
+      '[erpReports] nakit akış satış cari adı okunamadı:',
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+}
+
+async function sqlCashFlowAvans(lineIds: string[]): Promise<Array<Record<string, unknown>>> {
+  if (!lineIds.length) return [];
+  try {
+    const { rows } = await postgres.query<Record<string, unknown>>(
+      `SELECT cash_line_id::text AS cash_line_id, customer_id::text AS customer_id
+         FROM ${cashFlowAvansTable()}
+        WHERE cash_line_id = ANY($1::uuid[])`,
+      [lineIds],
+    );
+    return rows || [];
+  } catch (err) {
+    console.warn(
+      '[erpReports] nakit akış rezervasyon cari adı okunamadı:',
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+}
+
+async function sqlCashFlowExpenses(lineIds: string[]): Promise<Array<Record<string, unknown>>> {
+  if (!lineIds.length) return [];
+  try {
+    const { rows } = await postgres.query<Record<string, unknown>>(
+      `SELECT cash_line_id::text AS cash_line_id, cost_center_id::text AS cost_center_id
+         FROM expenses
+        WHERE cash_line_id = ANY($1::uuid[])`,
+      [lineIds],
+    );
+    return rows || [];
+  } catch (err) {
+    console.warn(
+      '[erpReports] nakit akış gider carisi okunamadı:',
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+}
+
+async function restCashFlowIdNames(tablePath: string, ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!ids.length) return out;
+  const { postgrest } = await import('./postgrestClient');
+  for (const chunk of chunkCashFlow(ids, 40)) {
+    try {
+      const rows = await postgrest.get<Array<{ id?: string; name?: string }>>(
+        tablePath,
+        { select: 'id,name', id: `in.(${chunk.join(',')})`, limit: chunk.length },
+        { schema: 'public' },
+      );
+      putCashFlowNames(out, Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.warn(
+        `[erpReports] nakit akış ${tablePath} adı okunamadı:`,
+        err instanceof Error ? err.message : err,
+      );
+      break;
+    }
+  }
+  return out;
+}
+
+async function restCashFlowRows(
+  tablePath: string,
+  column: string,
+  tokens: string[],
+  select: string,
+): Promise<Array<Record<string, unknown>>> {
+  const safe = tokens.filter(safeCashFlowToken);
+  if (!safe.length) return [];
+  const { postgrest } = await import('./postgrestClient');
+  const out: Array<Record<string, unknown>> = [];
+  for (const chunk of chunkCashFlow(safe, 40)) {
+    try {
+      const rows = await postgrest.get<Array<Record<string, unknown>>>(
+        tablePath,
+        { select, [column]: `in.(${chunk.join(',')})`, limit: chunk.length },
+        { schema: 'public' },
+      );
+      if (Array.isArray(rows)) out.push(...rows);
+    } catch (err) {
+      console.warn(
+        `[erpReports] nakit akış ${tablePath} okunamadı:`,
+        err instanceof Error ? err.message : err,
+      );
+      break;
+    }
+  }
+  return out;
+}
+
+function cashFlowNameIndexesFromParts(opts: {
+  customers: Map<string, string>;
+  suppliers: Map<string, string>;
+  parties: Map<string, string>;
+  expenseCards: Map<string, string>;
+  salesRows: Array<Record<string, unknown>>;
+  avansRows: Array<Record<string, unknown>>;
+  expenseRows: Array<Record<string, unknown>>;
+  centers: Map<string, string>;
+}): CashFlowNameIndexes {
+  const salesCustomerByFiche = new Map<string, string>();
+  for (const row of opts.salesRows) {
+    const fiche = String(row.fiche_no ?? '').trim();
+    if (!fiche) continue;
+    const customerId = String(row.customer_id ?? '').trim();
+    const card = customerId ? opts.customers.get(customerId) : '';
+    const written = String(row.customer_name ?? '').trim();
+    const name = (card && card.trim()) || written;
+    if (name) salesCustomerByFiche.set(fiche, name);
+  }
+  const reservationCustomerByLineId = new Map<string, string>();
+  for (const row of opts.avansRows) {
+    const lineId = String(row.cash_line_id ?? '').trim();
+    const customerId = String(row.customer_id ?? '').trim();
+    const name = customerId ? opts.customers.get(customerId) : '';
+    if (lineId && name) reservationCustomerByLineId.set(lineId, name);
+  }
+  const expenseAccountByLineId = new Map<string, string>();
+  for (const row of opts.expenseRows) {
+    const lineId = String(row.cash_line_id ?? '').trim();
+    const centerId = String(row.cost_center_id ?? '').trim();
+    const name = centerId ? opts.centers.get(centerId) : '';
+    if (lineId && name) expenseAccountByLineId.set(lineId, name);
+  }
+  return {
+    customers: opts.customers,
+    suppliers: opts.suppliers,
+    parties: opts.parties,
+    expenseCards: opts.expenseCards,
+    salesCustomerByFiche,
+    reservationCustomerByLineId,
+    expenseAccountByLineId,
+  };
+}
+
+async function absorbExtraCustomers(
+  customers: Map<string, string>,
+  ids: string[],
+  load: (missing: string[]) => Promise<Map<string, string>>,
+) {
+  const missing = uniqCashFlowUuids(ids).filter((id) => !customers.has(id));
+  if (!missing.length) return;
+  const extra = await load(missing);
+  for (const [id, name] of extra) customers.set(id, name);
+}
+
+async function loadCashFlowNameIndexesSql(refs: CashFlowLineRef[]): Promise<CashFlowNameIndexes> {
+  const customerIds = uniqCashFlowUuids(refs.map((r) => r.customerId));
+  const partyIds = uniqCashFlowUuids(refs.map((r) => r.partyId));
+  const looseCustomerIds = refs.filter((r) => !r.partyId.trim()).map((r) => r.customerId);
+  const supplierIds = uniqCashFlowUuids([...partyIds, ...looseCustomerIds]);
+  const partyProbe = uniqCashFlowUuids([...partyIds, ...looseCustomerIds]);
+  const cardIds = uniqCashFlowUuids(refs.map((r) => r.expenseCardId));
+  const lineIds = uniqCashFlowUuids(refs.map((r) => r.id));
+  const fiches = [...new Set(refs.flatMap((r) => cashFlowSalesFicheKeys(r.ficheNo)))].filter(
+    (fiche) => fiche.length > 0 && fiche.length <= 120,
+  );
+
+  const [customers, suppliers, parties, expenseCards, salesRows, avansRows, expenseRows] =
+    await Promise.all([
+      sqlCashFlowIdNames('customers', customerIds),
+      sqlCashFlowIdNames('suppliers', supplierIds),
+      sqlCashFlowIdNames('parties', partyProbe),
+      sqlCashFlowIdNames('expense_cards', cardIds),
+      sqlCashFlowSales(fiches),
+      sqlCashFlowAvans(lineIds),
+      sqlCashFlowExpenses(lineIds),
+    ]);
+
+  await absorbExtraCustomers(
+    customers,
+    [
+      ...salesRows.map((row) => String(row.customer_id ?? '')),
+      ...avansRows.map((row) => String(row.customer_id ?? '')),
+    ],
+    (ids) => sqlCashFlowIdNames('customers', ids),
+  );
+  const centers = await sqlCashFlowIdNames(
+    'cost_centers',
+    uniqCashFlowUuids(expenseRows.map((row) => String(row.cost_center_id ?? ''))),
+  );
+  return cashFlowNameIndexesFromParts({
+    customers,
+    suppliers,
+    parties,
+    expenseCards,
+    salesRows,
+    avansRows,
+    expenseRows,
+    centers,
+  });
+}
+
+async function loadCashFlowNameIndexesRest(refs: CashFlowLineRef[]): Promise<CashFlowNameIndexes> {
+  const fn = padFirm();
+  const pn = padPeriod();
+  const customerIds = uniqCashFlowUuids(refs.map((r) => r.customerId));
+  const partyIds = uniqCashFlowUuids(refs.map((r) => r.partyId));
+  const looseCustomerIds = refs.filter((r) => !r.partyId.trim()).map((r) => r.customerId);
+  const supplierIds = uniqCashFlowUuids([...partyIds, ...looseCustomerIds]);
+  const partyProbe = uniqCashFlowUuids([...partyIds, ...looseCustomerIds]);
+  const cardIds = uniqCashFlowUuids(refs.map((r) => r.expenseCardId));
+  const lineIds = uniqCashFlowUuids(refs.map((r) => r.id));
+  const fiches = [...new Set(refs.flatMap((r) => cashFlowSalesFicheKeys(r.ficheNo)))];
+
+  const [customers, suppliers, parties, expenseCards, salesRows, avansRows, expenseRows] =
+    await Promise.all([
+      restCashFlowIdNames(`/rex_${fn}_customers`, customerIds),
+      restCashFlowIdNames(`/rex_${fn}_suppliers`, supplierIds),
+      restCashFlowIdNames(`/rex_${fn}_parties`, partyProbe),
+      restCashFlowIdNames(`/rex_${fn}_expense_cards`, cardIds),
+      restCashFlowRows(
+        `/rex_${fn}_${pn}_sales`,
+        'fiche_no',
+        fiches,
+        'fiche_no,customer_id,customer_name',
+      ),
+      restCashFlowRows(
+        `/rex_${fn}_${pn}_cari_avans`,
+        'cash_line_id',
+        lineIds,
+        'cash_line_id,customer_id',
+      ),
+      restCashFlowRows(
+        `/rex_${fn}_expenses`,
+        'cash_line_id',
+        lineIds,
+        'cash_line_id,cost_center_id',
+      ),
+    ]);
+
+  await absorbExtraCustomers(
+    customers,
+    [
+      ...salesRows.map((row) => String(row.customer_id ?? '')),
+      ...avansRows.map((row) => String(row.customer_id ?? '')),
+    ],
+    (ids) => restCashFlowIdNames(`/rex_${fn}_customers`, ids),
+  );
+  const centers = await restCashFlowIdNames(
+    `/rex_${fn}_cost_centers`,
+    uniqCashFlowUuids(expenseRows.map((row) => String(row.cost_center_id ?? ''))),
+  );
+  return cashFlowNameIndexesFromParts({
+    customers,
+    suppliers,
+    parties,
+    expenseCards,
+    salesRows,
+    avansRows,
+    expenseRows,
+    centers,
+  });
+}
+
+async function hydrateCashLineAccountRefs(refs: CashFlowLineRef[]): Promise<CashFlowLineRef[]> {
+  const ids = uniqCashFlowUuids(refs.map((r) => r.id));
+  if (!ids.length) return refs;
+  let rows: Array<Record<string, unknown>> = [];
+  try {
+    const result = await postgres.query<Record<string, unknown>>(
+      `SELECT id::text AS id,
+              COALESCE(customer_id::text, '') AS customer_id,
+              COALESCE(party_id::text, '') AS party_id,
+              COALESCE(expense_card_id::text, '') AS expense_card_id
+         FROM cash_lines
+        WHERE id = ANY($1::uuid[])`,
+      [ids],
+    );
+    rows = result.rows || [];
+  } catch {
+    try {
+      const result = await postgres.query<Record<string, unknown>>(
+        `SELECT id::text AS id, COALESCE(customer_id::text, '') AS customer_id
+           FROM cash_lines
+          WHERE id = ANY($1::uuid[])`,
+        [ids],
+      );
+      rows = result.rows || [];
+    } catch (err) {
+      console.warn(
+        '[erpReports] nakit akış cari kimliği okunamadı:',
+        err instanceof Error ? err.message : err,
+      );
+      return refs;
+    }
+  }
+  const byId = new Map(rows.map((row) => [String(row.id ?? ''), row]));
+  return refs.map((ref) => {
+    const hit = byId.get(ref.id);
+    if (!hit) return ref;
+    return {
+      ...ref,
+      customerId: String(hit.customer_id ?? ref.customerId).trim(),
+      partyId: String(hit.party_id ?? ref.partyId).trim(),
+      expenseCardId: String(hit.expense_card_id ?? ref.expenseCardId).trim(),
+    };
+  });
+}
+
+async function withCashFlowNames(drafts: CashFlowDraft[]): Promise<CashBankMovementRow[]> {
+  const pendingAt = drafts
+    .map((draft, index) => (!String(draft.row.accountName || '').trim() ? index : -1))
+    .filter((index) => index >= 0);
+  if (!pendingAt.length) return drafts.map((draft) => draft.row);
+
+  let refs = pendingAt.map((index) => drafts[index].ref);
+  if (DB_SETTINGS.connectionProvider !== 'rest_api') {
+    refs = await hydrateCashLineAccountRefs(refs);
+  }
+  let indexes: CashFlowNameIndexes;
+  try {
+    indexes =
+      DB_SETTINGS.connectionProvider === 'rest_api'
+        ? await loadCashFlowNameIndexesRest(refs)
+        : await loadCashFlowNameIndexesSql(refs);
+  } catch (err) {
+    console.warn(
+      '[erpReports] nakit akış cari adı okunamadı:',
+      err instanceof Error ? err.message : err,
+    );
+    return drafts.map((draft) => draft.row);
+  }
+  const refByIndex = new Map(pendingAt.map((index, nth) => [index, refs[nth]]));
+  return drafts.map((draft, index) => {
+    const ref = refByIndex.get(index);
+    if (!ref) return draft.row;
+    return applyCashFlowAccountName(draft.row, ref, indexes);
+  });
+}
+
+function buildCashBankMovementParts(opts: {
+  mode: 'rich' | 'plain';
+  wantCash: boolean;
+  wantBank: boolean;
+  cashRegisterClause: string;
+}): string[] {
+  const avansTable = cashFlowAvansTable();
+  const parts: string[] = [];
+  if (opts.wantCash) {
+    const rich = opts.mode === 'rich' ? cashFlowAccountSql('cl', avansTable) : null;
+    const partyExpr =
+      opts.mode === 'rich' ? 'COALESCE(cl.party_id::text, \'\')' : '\'\'::text';
+    const cardExpr =
+      opts.mode === 'rich' ? 'COALESCE(cl.expense_card_id::text, \'\')' : '\'\'::text';
+    parts.push(`
+        SELECT
+          cl.id::text AS id,
+          'cash'::text AS source,
+          cl.register_id::text AS register_id,
+          COALESCE(cr.name, cr.code, '') AS register_name,
+          COALESCE(cr.code, '') AS register_code,
+          COALESCE(cl.fiche_no, '') AS fiche_no,
+          ${sqlUtcDate('cl.date')}::text AS date,
+          COALESCE(cl.transaction_type, '') AS transaction_type,
+          COALESCE(cl.definition, '') AS definition,
+          COALESCE(cl.amount, 0) AS amount,
+          COALESCE(cl.sign, 1) AS sign,
+          COALESCE(cl.customer_id::text, '') AS customer_id,
+          ${partyExpr} AS party_id,
+          ${cardExpr} AS expense_card_id,
+          ${rich ? rich.selectExpr : 'COALESCE(c.name, s.name, \'\')'} AS account_name
+        FROM cash_lines cl
+        LEFT JOIN cash_registers cr ON cr.id = cl.register_id
+        ${
+          rich
+            ? rich.joins
+            : `
+        LEFT JOIN LATERAL (
+          SELECT name FROM customers WHERE id = cl.customer_id LIMIT 1
+        ) c ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT name FROM suppliers WHERE id = cl.customer_id LIMIT 1
+        ) s ON TRUE`
+        }
+        WHERE ${sqlUtcDate('cl.date')} >= $1::date
+          AND ${sqlUtcDate('cl.date')} <= $2::date
+          ${opts.cashRegisterClause}
+      `);
+  }
+  if (opts.wantBank) {
+    const rich = opts.mode === 'rich' ? cashFlowAccountSql('bl', avansTable) : null;
+    parts.push(`
+        SELECT
+          bl.id::text AS id,
+          'bank'::text AS source,
+          bl.register_id::text AS register_id,
+          COALESCE(br.name, br.code, '') AS register_name,
+          COALESCE(br.code, '') AS register_code,
+          COALESCE(bl.fiche_no, '') AS fiche_no,
+          ${sqlUtcDate('bl.date')}::text AS date,
+          COALESCE(bl.transaction_type, '') AS transaction_type,
+          COALESCE(bl.definition, '') AS definition,
+          COALESCE(bl.amount, 0) AS amount,
+          COALESCE(bl.sign, 1) AS sign,
+          COALESCE(bl.customer_id::text, '') AS customer_id,
+          ''::text AS party_id,
+          ''::text AS expense_card_id,
+          ${rich ? rich.selectExpr : 'COALESCE(c.name, s.name, \'\')'} AS account_name
+        FROM bank_lines bl
+        LEFT JOIN bank_registers br ON br.id = bl.register_id
+        ${
+          rich
+            ? rich.joins
+            : `
+        LEFT JOIN LATERAL (
+          SELECT name FROM customers WHERE id = bl.customer_id LIMIT 1
+        ) c ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT name FROM suppliers WHERE id = bl.customer_id LIMIT 1
+        ) s ON TRUE`
+        }
+        WHERE ${sqlUtcDate('bl.date')} >= $1::date
+          AND ${sqlUtcDate('bl.date')} <= $2::date
+      `);
+  }
+  return parts;
+}
+
 export const erpReportsAPI = {
   async getCariAging(opts?: {
     cardType?: 'customer' | 'supplier' | 'all';
@@ -1129,7 +1652,7 @@ export const erpReportsAPI = {
       const { postgrest } = await import('./postgrestClient');
       const fn = padFirm();
       const pn = padPeriod();
-      const out: CashBankMovementRow[] = [];
+      const drafts: CashFlowDraft[] = [];
 
       if (wantCash) {
         const [lines, regs] = await Promise.all([
@@ -1156,20 +1679,26 @@ export const erpReportsAPI = {
           const d = String(r.date || '').slice(0, 10);
           if (d < start || d > end) continue;
           const reg = regMap.get(rid);
-          out.push(
-            mapCashBankMovementRow({
-              id: r.id ?? `c-${d}-${r.fiche_no}`,
-              source: 'cash',
-              register_id: rid,
-              register_name: reg?.name || '',
-              register_code: reg?.code || '',
-              fiche_no: r.fiche_no,
-              date: d,
-              transaction_type: r.transaction_type,
-              definition: r.definition,
-              amount: r.amount,
-              sign: r.sign,
-            }),
+          drafts.push(
+            cashFlowDraft(
+              {
+                id: r.id ?? `c-${d}-${r.fiche_no}`,
+                source: 'cash',
+                register_id: rid,
+                register_name: reg?.name || '',
+                register_code: reg?.code || '',
+                fiche_no: r.fiche_no,
+                date: d,
+                transaction_type: r.transaction_type,
+                definition: r.definition,
+                amount: r.amount,
+                sign: r.sign,
+                customer_id: r.customer_id,
+                party_id: r.party_id,
+                expense_card_id: r.expense_card_id,
+              },
+              'cash',
+            ),
           );
         }
       }
@@ -1198,93 +1727,65 @@ export const erpReportsAPI = {
           if (d < start || d > end) continue;
           const rid = String(r.register_id || '');
           const reg = regMap.get(rid);
-          out.push(
-            mapCashBankMovementRow({
-              id: r.id ?? `b-${d}-${r.fiche_no}`,
-              source: 'bank',
-              register_id: rid,
-              register_name: reg?.name || '',
-              register_code: reg?.code || '',
-              fiche_no: r.fiche_no,
-              date: d,
-              transaction_type: r.transaction_type,
-              definition: r.definition,
-              amount: r.amount,
-              sign: r.sign,
-            }),
+          drafts.push(
+            cashFlowDraft(
+              {
+                id: r.id ?? `b-${d}-${r.fiche_no}`,
+                source: 'bank',
+                register_id: rid,
+                register_name: reg?.name || '',
+                register_code: reg?.code || '',
+                fiche_no: r.fiche_no,
+                date: d,
+                transaction_type: r.transaction_type,
+                definition: r.definition,
+                amount: r.amount,
+                sign: r.sign,
+                customer_id: r.customer_id,
+              },
+              'bank',
+            ),
           );
         }
       }
 
-      return out.sort((a, b) => b.date.localeCompare(a.date)).slice(0, ROW_LIMIT);
+      const named = await withCashFlowNames(drafts);
+      return named.sort((a, b) => b.date.localeCompare(a.date)).slice(0, ROW_LIMIT);
     }
 
-    const parts: string[] = [];
     const values: unknown[] = [start, end];
     const cashRegisterClause = registerId
       ? ` AND cl.register_id::text = $${values.push(registerId)}`
       : '';
-    if (wantCash) {
-      parts.push(`
-        SELECT
-          cl.id::text AS id,
-          'cash'::text AS source,
-          cl.register_id::text AS register_id,
-          COALESCE(cr.name, cr.code, '') AS register_name,
-          COALESCE(cr.code, '') AS register_code,
-          COALESCE(cl.fiche_no, '') AS fiche_no,
-          ${sqlUtcDate('cl.date')}::text AS date,
-          COALESCE(cl.transaction_type, '') AS transaction_type,
-          COALESCE(cl.definition, '') AS definition,
-          COALESCE(cl.amount, 0) AS amount,
-          COALESCE(cl.sign, 1) AS sign,
-          COALESCE(c.name, s.name, '') AS account_name
-        FROM cash_lines cl
-        LEFT JOIN cash_registers cr ON cr.id = cl.register_id
-        LEFT JOIN LATERAL (
-          SELECT name FROM customers WHERE id = cl.customer_id LIMIT 1
-        ) c ON TRUE
-        LEFT JOIN LATERAL (
-          SELECT name FROM suppliers WHERE id = cl.customer_id LIMIT 1
-        ) s ON TRUE
-        WHERE ${sqlUtcDate('cl.date')} >= $1::date
-          AND ${sqlUtcDate('cl.date')} <= $2::date
-          ${cashRegisterClause}
-      `);
+    const queryParts = (mode: 'rich' | 'plain') =>
+      buildCashBankMovementParts({
+        mode,
+        wantCash,
+        wantBank,
+        cashRegisterClause,
+      });
+    const richParts = queryParts('rich');
+    if (!richParts.length) return [];
+    let rawRows: Array<Record<string, unknown>> = [];
+    try {
+      const { rows } = await postgres.query<Record<string, unknown>>(
+        `${richParts.join(' UNION ALL ')} ORDER BY date DESC LIMIT ${ROW_LIMIT}`,
+        values,
+      );
+      rawRows = rows || [];
+    } catch (err) {
+      console.warn(
+        '[erpReports] nakit akış cari bağları kurulamadı, yalın liste:',
+        err instanceof Error ? err.message : err,
+      );
+      const plainParts = queryParts('plain');
+      const { rows } = await postgres.query<Record<string, unknown>>(
+        `${plainParts.join(' UNION ALL ')} ORDER BY date DESC LIMIT ${ROW_LIMIT}`,
+        values,
+      );
+      rawRows = rows || [];
     }
-    if (wantBank) {
-      parts.push(`
-        SELECT
-          bl.id::text AS id,
-          'bank'::text AS source,
-          bl.register_id::text AS register_id,
-          COALESCE(br.name, br.code, '') AS register_name,
-          COALESCE(br.code, '') AS register_code,
-          COALESCE(bl.fiche_no, '') AS fiche_no,
-          ${sqlUtcDate('bl.date')}::text AS date,
-          COALESCE(bl.transaction_type, '') AS transaction_type,
-          COALESCE(bl.definition, '') AS definition,
-          COALESCE(bl.amount, 0) AS amount,
-          COALESCE(bl.sign, 1) AS sign,
-          COALESCE(c.name, s.name, '') AS account_name
-        FROM bank_lines bl
-        LEFT JOIN bank_registers br ON br.id = bl.register_id
-        LEFT JOIN LATERAL (
-          SELECT name FROM customers WHERE id = bl.customer_id LIMIT 1
-        ) c ON TRUE
-        LEFT JOIN LATERAL (
-          SELECT name FROM suppliers WHERE id = bl.customer_id LIMIT 1
-        ) s ON TRUE
-        WHERE ${sqlUtcDate('bl.date')} >= $1::date
-          AND ${sqlUtcDate('bl.date')} <= $2::date
-      `);
-    }
-    if (!parts.length) return [];
-    const { rows } = await postgres.query(
-      `${parts.join(' UNION ALL ')} ORDER BY date DESC LIMIT ${ROW_LIMIT}`,
-      values,
-    );
-    return (rows || []).map((r: any) => mapCashBankMovementRow(r));
+    return withCashFlowNames(rawRows.map((row) => cashFlowDraft(row)));
   },
 
   async getPurchaseSummary(opts: {
