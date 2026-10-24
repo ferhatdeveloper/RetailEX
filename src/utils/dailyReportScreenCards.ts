@@ -1,10 +1,14 @@
 /**
  * Günlük Rapor ekranında görünen KPI kartları.
  * Tutar formülleri burada yok; sıra, hangi kutunun çizileceği,
- * ciro altındaki miktar bilgisi ve seçili klinik paletinin tonları burada.
+ * ciro altındaki miktar bilgisi ve beş kartın zemini burada.
  *
  * Ekranda tam beş kart vardır, başka KPI kartı yoktur:
  * Toplam Ciro, Rezervasyon Tutarı, Toplam İndirim, Toplam Gider, Net (Nakit).
+ *
+ * Zeminler klinik menü paletine bağlı değildir.
+ * Ciro dolu mavi, rezervasyon dolu turuncu, gider dolu kırmızı, net nakit dolu yeşil;
+ * yazı beyazdır. İndirim kartı açık lavanta zeminde kalır.
  *
  * Kaldırılanlar (menü parametresi açık olsa da bu ekranda yok):
  * Toplam Satış, Nakit, Satış iade, Net (Brüt), kart, veresiye,
@@ -68,15 +72,6 @@ export const DAILY_REPORT_REMOVED_CARD_KEYS = [
 
 export type DailyReportRemovedCardKey = (typeof DAILY_REPORT_REMOVED_CARD_KEYS)[number];
 
-/** Seçili klinik menü paletinin kart boyası için gereken mürekkep. */
-export interface DailyReportPaletteInk {
-  tone?: 'dark' | 'light';
-  accent: string;
-  accentEdge: string;
-  sidebar: string;
-  sidebarLine: string;
-}
-
 export interface DailyReportCardTone {
   background: string;
   border: string;
@@ -86,105 +81,50 @@ export interface DailyReportCardTone {
   hint: string;
 }
 
-type Rgb = [number, number, number];
+const SOLID_INK = '#ffffff';
 
-const CARD_RECIPE: Record<
-  DailyReportScreenCardKey,
-  { a: keyof DailyReportPaletteInk; b: keyof DailyReportPaletteInk; blend: number; white: number; accent: number }
-> = {
-  'total-revenue': { a: 'accent', b: 'accentEdge', blend: 0.06, white: 0.84, accent: 0.05 },
-  'reservation-amount': { a: 'accentEdge', b: 'sidebarLine', blend: 0.28, white: 0.78, accent: 0.16 },
-  'total-discount': { a: 'sidebarLine', b: 'accent', blend: 0.52, white: 0.9, accent: 0.1 },
-  'total-expense': { a: 'accentEdge', b: 'sidebar', blend: 0.4, white: 0.7, accent: 0.22 },
-  'net-cash': { a: 'sidebar', b: 'accent', blend: 0.18, white: 0.62, accent: 0.14 },
+/**
+ * Dolu kart zeminleri. Mavi, kırmızı ve turuncu ikinci görseldeki kartlarla aynıdır.
+ * Yeşil aynı doygunluk bandındadır; neon limon veya turkuaz değildir.
+ * Klinik menü paleti bu dört rengi değiştirmez.
+ */
+export const DAILY_REPORT_SOLID_CARD_FILL = {
+  'total-revenue': '#2563eb',
+  'reservation-amount': '#f59e0b',
+  'total-expense': '#f04438',
+  'net-cash': '#12b76a',
+} as const;
+
+/**
+ * İndirim kartı açık lavanta paletinde kalır.
+ * Zemin, kenar ve yazı önceki lavanta kartının aynısıdır; maviye veya kırmızıya çekilmez.
+ */
+export const DAILY_REPORT_DISCOUNT_TONE: DailyReportCardTone = {
+  background: '#ede7f7',
+  border: '#c4b0e5',
+  accent: '#5b21b6',
+  value: '#3b1d7b',
+  label: '#502a9b',
+  hint: '#513b90',
 };
 
 const SCREEN_KEY_SET = new Set<string>(DAILY_REPORT_SCREEN_CARD_KEYS);
 
-function parseHex(raw: string): Rgb | null {
-  let body = raw.trim();
-  if (body.startsWith('#')) body = body.slice(1);
-  if (body.length !== 6) return null;
-  const n = Number.parseInt(body, 16);
-  if (!Number.isFinite(n) || n < 0 || n > 0xffffff) return null;
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function rgbHex(rgb: Rgb): string {
-  const part = (n: number) => {
-    const clamped = Math.max(0, Math.min(255, Math.round(n)));
-    const hex = clamped.toString(16);
-    return hex.length === 1 ? `0${hex}` : hex;
-  };
-  return `#${part(rgb[0])}${part(rgb[1])}${part(rgb[2])}`;
-}
-
-function mixRgb(from: Rgb, to: Rgb, amount: number): Rgb {
-  const t = Math.max(0, Math.min(1, amount));
-  return [
-    from[0] + (to[0] - from[0]) * t,
-    from[1] + (to[1] - from[1]) * t,
-    from[2] + (to[2] - from[2]) * t,
-  ];
-}
-
-function linearChannel(value: number): number {
-  const s = value / 255;
-  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-}
-
-function contrast(a: Rgb, b: Rgb): number {
-  const lum = (rgb: Rgb) =>
-    0.2126 * linearChannel(rgb[0]) + 0.7152 * linearChannel(rgb[1]) + 0.0722 * linearChannel(rgb[2]);
-  const hi = Math.max(lum(a), lum(b));
-  const lo = Math.min(lum(a), lum(b));
-  return (hi + 0.05) / (lo + 0.05);
-}
-
-function ink(palette: DailyReportPaletteInk, key: keyof DailyReportPaletteInk, fallback: Rgb): Rgb {
-  const raw = palette[key];
-  if (typeof raw !== 'string') return fallback;
-  return parseHex(raw) ?? fallback;
-}
-
-function readable(background: Rgb, preferred: Rgb): Rgb {
-  if (contrast(background, preferred) >= 4.8) return preferred;
-  const dark: Rgb = [15, 23, 42];
-  let color = preferred;
-  for (let step = 1; step <= 8; step += 1) {
-    color = mixRgb(preferred, dark, step / 8);
-    if (contrast(background, color) >= 4.8) return color;
-  }
-  return dark;
-}
-
-/** Kart zemini seçili paletin accent / kenar / şerit mürekkebinden açılır. */
-export function dailyReportCardTone(
-  palette: DailyReportPaletteInk,
-  key: DailyReportScreenCardKey,
-): DailyReportCardTone {
-  const recipe = CARD_RECIPE[key];
-  const accent = ink(palette, 'accent', [91, 33, 182]);
-  const seed = mixRgb(
-    ink(palette, recipe.a, accent),
-    ink(palette, recipe.b, accent),
-    recipe.blend,
-  );
-  const washed = mixRgb(seed, [255, 255, 255], recipe.white);
-  const background = mixRgb(washed, accent, recipe.accent);
-  const border = mixRgb(background, accent, 0.28);
-  const icon = readable(background, accent);
-  const value = readable(background, mixRgb(accent, [15, 23, 42], 0.42));
-  const label = readable(background, mixRgb(accent, [51, 65, 85], 0.28));
-  const hint = readable(background, mixRgb(accent, [71, 85, 105], 0.5));
+function solidCardTone(background: string): DailyReportCardTone {
   return {
-    background: rgbHex(background),
-    border: rgbHex(border),
-    accent: rgbHex(icon),
-    value: rgbHex(value),
-    label: rgbHex(label),
-    hint: rgbHex(hint),
+    background,
+    border: background,
+    accent: SOLID_INK,
+    value: SOLID_INK,
+    label: SOLID_INK,
+    hint: SOLID_INK,
   };
+}
+
+/** Beş kartın zemini. Dört kart dolu renktir; indirim lavanta paletindedir. */
+export function dailyReportCardTone(key: DailyReportScreenCardKey): DailyReportCardTone {
+  if (key === 'total-discount') return DAILY_REPORT_DISCOUNT_TONE;
+  return solidCardTone(DAILY_REPORT_SOLID_CARD_FILL[key]);
 }
 
 export function dailyReportScreenShowsCard(key: string): boolean {

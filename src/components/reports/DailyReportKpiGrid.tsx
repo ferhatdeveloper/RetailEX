@@ -6,7 +6,6 @@ import {
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
-import { useClinicMenuPalette } from '../beauty/clinicMenuPalette';
 import {
   dailyReportCardTone,
   dailyReportScreenShowsCard,
@@ -31,10 +30,10 @@ const CARD_ICONS: Record<DailyReportScreenCardKey, LucideIcon> = {
 
 /**
  * Günlük Rapor KPI ızgarası. Yalnızca beş ekran kartı çizilir.
- * Zemin, seçili klinik menü paletinin birbirinden ayrı açık tonudur.
+ * Ciro mavi, rezervasyon turuncu, gider kırmızı, net nakit yeşil — dolu zemin, beyaz yazı.
+ * İndirim kartı açık lavanta zeminde kalır.
  */
 export function DailyReportKpiGrid({ cards }: { cards: readonly DailyReportKpiCardModel[] }) {
-  const palette = useClinicMenuPalette();
   const visible = cards.filter((card) => dailyReportScreenShowsCard(card.key));
   if (visible.length === 0) return null;
 
@@ -44,7 +43,7 @@ export function DailyReportKpiGrid({ cards }: { cards: readonly DailyReportKpiCa
       data-testid="daily-report-kpi-grid"
     >
       {visible.map((card) => {
-        const tone = dailyReportCardTone(palette, card.key);
+        const tone = dailyReportCardTone(card.key);
         const Icon = CARD_ICONS[card.key];
         return (
           <div

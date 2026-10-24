@@ -12,19 +12,28 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { DailyReportKpiGrid } from '../../components/reports/DailyReportKpiGrid';
 import { translate } from '../../locales/module-translations';
-import { CLINIC_MENU_PALETTES, clinicHexContrast, clinicMenuPaletteById, materializeClinicCustomPalette } from '../../components/beauty/clinicMenuPalette';
 import { sumDailySalesDetailCashBalance } from '../../utils/dailySalesDetailCashBalance';
 import {
+  DAILY_REPORT_DISCOUNT_TONE,
   DAILY_REPORT_REMOVED_CARD_KEYS,
   DAILY_REPORT_REVENUE_QTY_LABEL_KEY,
   DAILY_REPORT_SCREEN_CARD_KEYS,
   DAILY_REPORT_SCREEN_CARD_LABEL_KEY,
+  DAILY_REPORT_SOLID_CARD_FILL,
   dailyReportCardTone,
   dailyReportRevenueQuantityHint,
   dailyReportScreenShowsCard,
   sumDailyReportLineQuantity,
   visibleDailyReportScreenCardKeys,
 } from '../../utils/dailyReportScreenCards';
+
+function cssColor(hex: string): string {
+  const body = hex.replace('#', '');
+  const r = Number.parseInt(body.slice(0, 2), 16);
+  const g = Number.parseInt(body.slice(2, 4), 16);
+  const b = Number.parseInt(body.slice(4, 6), 16);
+  return `rgb(${r}, ${g}, ${b})`;
+}
 
 const SCREEN_ORDER = [
   'total-revenue',
@@ -156,42 +165,85 @@ describe('günlük rapor ekran kartları', () => {
     }
   });
 
-  it('kart tonları seçili klinik paletinden gelir ve yazı okunaklı kalır', () => {
-    const lavender = clinicMenuPaletteById('lavender');
-    const rose = clinicMenuPaletteById('rose');
-    for (const palette of CLINIC_MENU_PALETTES) {
-      const backgrounds = DAILY_REPORT_SCREEN_CARD_KEYS.map(
-        (key) => dailyReportCardTone(palette, key).background,
-      );
-      expect(new Set(backgrounds).size).toBe(backgrounds.length);
-      for (const key of DAILY_REPORT_SCREEN_CARD_KEYS) {
-        const tone = dailyReportCardTone(palette, key);
-        expect(clinicHexContrast(tone.background, tone.value)).toBeGreaterThanOrEqual(4.5);
-        expect(clinicHexContrast(tone.background, tone.label)).toBeGreaterThanOrEqual(4.5);
-        expect(clinicHexContrast(tone.background, tone.hint)).toBeGreaterThanOrEqual(4.5);
-        expect(clinicHexContrast(tone.background, tone.accent)).toBeGreaterThanOrEqual(4.5);
-      }
-    }
-    expect(dailyReportCardTone(lavender, 'total-revenue').background).not.toBe(
-      dailyReportCardTone(rose, 'total-revenue').background,
+  it('kart sırası aynı kalır; ciro mavi, gider kırmızı, net yeşil, indirim lavanta paletindedir', () => {
+    expect(visibleDailyReportScreenCardKeys()).toEqual([...SCREEN_ORDER]);
+
+    const revenue = dailyReportCardTone('total-revenue');
+    const reservation = dailyReportCardTone('reservation-amount');
+    const discount = dailyReportCardTone('total-discount');
+    const expense = dailyReportCardTone('total-expense');
+    const net = dailyReportCardTone('net-cash');
+
+    expect(revenue.background).toBe(DAILY_REPORT_SOLID_CARD_FILL['total-revenue']);
+    expect(revenue.background).toBe('#2563eb');
+    expect(revenue.value).toBe('#ffffff');
+    expect(revenue.label).toBe('#ffffff');
+    expect(revenue.hint).toBe('#ffffff');
+    expect(revenue.accent).toBe('#ffffff');
+
+    expect(reservation.background).toBe('#f59e0b');
+    expect(reservation.value).toBe('#ffffff');
+    expect(reservation.label).toBe('#ffffff');
+    expect(reservation.hint).toBe('#ffffff');
+
+    expect(expense.background).toBe('#f04438');
+    expect(expense.value).toBe('#ffffff');
+    expect(expense.label).toBe('#ffffff');
+    expect(expense.hint).toBe('#ffffff');
+
+    expect(net.background).toBe('#12b76a');
+    expect(net.value).toBe('#ffffff');
+    expect(net.label).toBe('#ffffff');
+    expect(net.hint).toBe('#ffffff');
+
+    expect(discount).toEqual(DAILY_REPORT_DISCOUNT_TONE);
+    expect(discount.background).toBe('#ede7f7');
+    expect(discount.accent).toBe('#5b21b6');
+    expect(discount.value).not.toBe('#ffffff');
+    expect(discount.background).not.toBe(revenue.background);
+    expect(discount.background).not.toBe(expense.background);
+    expect(discount.background).not.toBe(net.background);
+    expect(discount.background).not.toBe(reservation.background);
+
+    const fills = [revenue, reservation, discount, expense, net].map((tone) => tone.background);
+    expect(new Set(fills).size).toBe(5);
+
+    const values: Record<(typeof SCREEN_ORDER)[number], string> = {
+      'total-revenue': '140.000',
+      'reservation-amount': '10.000',
+      'total-discount': '1.500',
+      'total-expense': '5.000',
+      'net-cash': '133.500',
+    };
+    render(
+      createElement(DailyReportKpiGrid, {
+        cards: visibleDailyReportScreenCardKeys().map((key) => ({
+          key,
+          label: translate(DAILY_REPORT_SCREEN_CARD_LABEL_KEY[key], 'tr'),
+          value: values[key],
+          hint: key === 'total-revenue' ? 'Satış miktarı: 4' : undefined,
+        })),
+      }),
     );
 
-    const custom = materializeClinicCustomPalette({
-      id: 'custom-0f766e01',
-      name: 'Deniz',
-      background: '#10243f',
-      accent: '#0f766e',
-      text: '#e2e8f0',
-    });
-    const customRevenue = dailyReportCardTone(custom, 'total-revenue');
-    expect(customRevenue.background).not.toBe(dailyReportCardTone(lavender, 'total-revenue').background);
-    for (const key of DAILY_REPORT_SCREEN_CARD_KEYS) {
-      const tone = dailyReportCardTone(custom, key);
-      expect(clinicHexContrast(tone.background, tone.value)).toBeGreaterThanOrEqual(4.5);
-      expect(clinicHexContrast(tone.background, tone.label)).toBeGreaterThanOrEqual(4.5);
-      expect(clinicHexContrast(tone.background, tone.hint)).toBeGreaterThanOrEqual(4.5);
-      expect(clinicHexContrast(tone.background, tone.accent)).toBeGreaterThanOrEqual(4.5);
+    const painted = [
+      ['total-revenue', '#2563eb', '#ffffff'],
+      ['reservation-amount', '#f59e0b', '#ffffff'],
+      ['total-discount', '#ede7f7', '#3b1d7b'],
+      ['total-expense', '#f04438', '#ffffff'],
+      ['net-cash', '#12b76a', '#ffffff'],
+    ] as const;
+    const order: string[] = [];
+    for (const [key, background, ink] of painted) {
+      const card = screen.getByTestId(`daily-report-card-${key}`);
+      order.push(card.getAttribute('data-daily-card-key') ?? '');
+      expect(card.style.backgroundColor).toBe(cssColor(background));
+      const lines = card.querySelectorAll('p');
+      expect(lines[1]?.style.color).toBe(cssColor(ink));
+      expect(lines[0]?.style.color).toBe(cssColor(key === 'total-discount' ? '#502a9b' : '#ffffff'));
+      expect(lines[2]?.style.color).toBe(cssColor(key === 'total-discount' ? '#513b90' : '#ffffff'));
     }
+    expect(order).toEqual([...SCREEN_ORDER]);
   });
 
   it('ciro alt bilgisi satır miktarının toplamıdır ve tutara eklenmez', () => {
