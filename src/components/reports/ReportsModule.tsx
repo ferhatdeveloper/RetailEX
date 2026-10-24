@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed, Wallet, X, Trash2 } from 'lucide-react';
+import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed, X, Trash2 } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
@@ -17,9 +17,13 @@ import { dailySalesDetailNetAmount, sumDailySalesDetailNet } from '../../utils/d
 import {
   dailyNetCollected,
   dailyNetSaleRevenue,
-  listCashReturnOutflows,
-  sumCashReturnOutflow,
 } from '../../utils/dailyReportKpis';
+import {
+  DAILY_REPORT_SCREEN_CARD_LABEL_KEY,
+  visibleDailyReportScreenCardKeys,
+  type DailyReportScreenCardKey,
+} from '../../utils/dailyReportScreenCards';
+import { DailyReportKpiGrid, type DailyReportKpiCardModel } from './DailyReportKpiGrid';
 import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
 import { getCurrencyDecimalPlaces, getFirmLedgerCurrency, formatLedgerAmount } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
@@ -54,7 +58,6 @@ import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDat
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
-import { DailyCashFlowModal } from './DailyCashFlowModal';
 import { CashRegisterDrawerGrid, CashStatusFigures, type CashStatusFigureLabels } from './CashStatusFigures';
 import {
   displayUserCashierName,
@@ -63,7 +66,7 @@ import {
   resolveCashierDisplayName,
   resolveWriteCashierName,
 } from '../../utils/loginCashierName';
-import { mergeExpensesWithCashOuts, mergeExpensesWithCashIns, REPORT_CASH_IN_TYPES, reportCashInCategory } from '../../utils/reportUnifiedExpenses';
+import { mergeExpensesWithCashOuts, mergeExpensesWithCashIns, reportCashInCategory } from '../../utils/reportUnifiedExpenses';
 import { productCardUnitCost } from '../../utils/productCardUnitCost';
 import type { BeautyAppointment, BeautySale, BeautyService, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
@@ -1243,13 +1246,6 @@ export function ReportsModule({
   const [cashRegisterLedgerLines, setCashRegisterLedgerLines] = useState<KasaIslemi[]>([]);
   const [cashRegisterCards, setCashRegisterCards] = useState<Kasa[]>([]);
   const [dailyExpenseRows, setDailyExpenseRows] = useState<DailyExpenseRow[]>([]);
-  const [dailyCashInRows, setDailyCashInRows] = useState<KasaIslemi[]>([]);
-  // Bug 29 follow-up: CH_TAHSILAT (cari tahsilatları) — Kasa Para Girişi
-  // modal'ında ayrı bölümde gösterilir. Üst toplama katılmaz (ledger
-  // simetrisi: kasa + / cari - → Net Kalan'a etkisi yok).
-  const [dailyCariTahsilatRows, setDailyCariTahsilatRows] = useState<KasaIslemi[]>([]);
-  const [dailyCashInModalOpen, setDailyCashInModalOpen] = useState(false);
-  const [dailyCashOutModalOpen, setDailyCashOutModalOpen] = useState(false);
   const [comparisonPeriod, setComparisonPeriod] = useState<'week' | 'month'>('week');
   const [comparisonOrders, setComparisonOrders] = useState<any[]>([]);
   const [loadingComparisonOrders, setLoadingComparisonOrders] = useState(false);
@@ -1443,32 +1439,12 @@ export function ReportsModule({
       unified.sort((a, b) => String(b.date).localeCompare(String(a.date)));
       setDailyExpenseRows(unified);
 
-      // Günlük kasa para girişleri (sign=+1). Yeni kartlar bu listeden beslenir.
-      const cashInList: KasaIslemi[] = Array.isArray(cashLines)
-        ? cashLines.filter((cl) => {
-            const t = String(cl.islem_tipi || '').trim().toUpperCase();
-            return REPORT_CASH_IN_TYPES.has(t);
-          })
-        : [];
-      setDailyCashInRows(cashInList);
-      // Bug 29 follow-up: Cari tahsilatları (CH_TAHSILAT) ayrı listede —
-      // Kasa Para Girişi modal'ında alt bölümde gösterilecek. Net Kalan'a
-      // katılmaz (ledger simetrisi).
-      const cariTahsilatList: KasaIslemi[] = Array.isArray(cashLines)
-        ? cashLines.filter((cl) => {
-            const t = String(cl.islem_tipi || '').trim().toUpperCase();
-            return t === 'CH_TAHSILAT';
-          })
-        : [];
-      setDailyCariTahsilatRows(cariTahsilatList);
       setKasaLinesForSelectedDate(Array.isArray(cashLines) ? cashLines : []);
       setCashRegisterLedgerLines(
         Array.isArray(ledgerLines) ? ledgerLines : (Array.isArray(cashLines) ? cashLines : []),
       );
     } catch {
       setDailyExpenseRows([]);
-      setDailyCashInRows([]);
-      setDailyCariTahsilatRows([]);
       setKasaLinesForSelectedDate([]);
       setCashRegisterLedgerLines([]);
     }
@@ -3135,7 +3111,6 @@ export function ReportsModule({
   for (const increase of appliedCashBySaleId.values()) appliedCashIncrease += increase;
   let avansCashShown = 0;
   let avansCardShown = 0;
-  let avansCashCount = 0;
   for (const row of dailyAvansList) {
     const amount = Math.abs(Number((row as { amount?: number }).amount) || 0);
     if (amount <= 0.004) continue;
@@ -3145,7 +3120,6 @@ export function ReportsModule({
       continue;
     }
     avansCashShown += amount;
-    avansCashCount += 1;
     const status = String((row as { status?: string }).status || '').trim().toLowerCase();
     const saleId = String((row as { applied_sale_id?: string }).applied_sale_id || '').trim();
     const cashLineId = String((row as { cash_line_id?: string }).cash_line_id || '').trim();
@@ -3740,10 +3714,6 @@ export function ReportsModule({
     'daily-report-card-sales-return',
     reportMenuParams,
   );
-  const showDailyCardDocumentAmount = isReportMenuParamEnabled(
-    'daily-report-card-document-amount',
-    reportMenuParams,
-  );
   const showDailyCardAmountCollected = isReportMenuParamEnabled(
     'daily-report-card-amount-collected',
     reportMenuParams,
@@ -3756,19 +3726,7 @@ export function ReportsModule({
     'daily-report-card-total-expense',
     reportMenuParams,
   );
-  const showDailyCardCashExpenses = isReportMenuParamEnabled(
-    'daily-report-card-cash-expenses',
-    reportMenuParams,
-  );
   const showDailyCardNet = isReportMenuParamEnabled('daily-report-card-net', reportMenuParams);
-  const showDailyCardCashIn = isReportMenuParamEnabled(
-    'daily-report-card-cash-in',
-    reportMenuParams,
-  );
-  const showDailyCardCashOut = isReportMenuParamEnabled(
-    'daily-report-card-cash-out',
-    reportMenuParams,
-  );
   const dailyExpenseRowsForReport = useMemo(() => {
     if (showDailySupplierPayments) return dailyExpenseRows;
     return dailyExpenseRows.filter((r) => r.typeCode !== 'CH_ODEME');
@@ -3781,17 +3739,6 @@ export function ReportsModule({
     () => dailyExpenseRowsForReport.reduce((sum, row) => sum + (row.isCash ? row.amount : 0), 0),
     [dailyExpenseRowsForReport],
   );
-  /** Günlük kasa para girişi toplamı — sign=+1 (KASA_GIRIS, ORTAK_SERMAYE_TAHSILAT, ORTAK_PARA_GIRIS).
-   * 10.10.2026: Rezervasyon avansı tahsilatı (CH_TAHSILAT + ozel_kod=REZERVASYON)
-   * cash_lines içinde değilse `dailyCashInRows`'a ayrıca eklenir; burada
-   * `extraReservation` ile birlikte toplanır. Ciro'ya katılmaz; alınan avans
-   * (pasif) olarak ayrı izlenir. */
-  const totalDailyCashIn = useMemo(
-    () =>
-      dailyCashInRows.reduce((s, cl) => s + (Math.abs(Number(cl.tutar) || 0)), 0) + reservationTopUp.cash,
-    [dailyCashInRows, reservationTopUp.cash],
-  );
-  const dailyCashInCount = dailyCashInRows.length + (reservationTopUp.cash > 0.004 ? avansCashCount : 0);
   /**
    * Gider kartı kapalıysa net'ten gider düşülmez.
    * Muhasebe çift yönü: veresiye satış → cari alacak (+) / gelir (+); tahsil edilene kadar
@@ -3813,11 +3760,6 @@ export function ReportsModule({
       .map((row) => String(row.ficheNo || '').trim().toLowerCase())
       .filter(Boolean),
   );
-  const dailyCashReturnOutflows = listCashReturnOutflows(
-    dailySalesForCash,
-    dailyAppliedAvans,
-    dailyCashOutBookedReceipts,
-  );
   // Tahsil edilen = kasada kalan para. Nakit iade bir kez düşülür.
   // Aynı fiş gider çıkışına yazıldıysa burada tekrar düşülmez; gider
   // kartı onu zaten net nakitten indirir. Peşinat hizmetin içindeyse
@@ -3830,26 +3772,6 @@ export function ReportsModule({
     reservationCard: reservationTopUp.card,
     expenseReceiptKeys: dailyCashOutBookedReceipts,
   });
-  const dailyCashReturnOutTotal = sumCashReturnOutflow(dailyCashReturnOutflows);
-  const dailyCashOutTotal = cashExpensesForReport + dailyCashReturnOutTotal;
-  const dailyCashOutCount = dailyExpenseRowsForReport.length + dailyCashReturnOutflows.length;
-  const dailyCashOutRows = useMemo(() => {
-    const returns: DailyExpenseRow[] = dailyCashReturnOutflows.map((row) => ({
-      key: `sale-return-${row.id}`,
-      sourceKind: 'cash',
-      sourceId: row.id,
-      date: row.date,
-      ficheNo: row.receiptNumber || '—',
-      typeCode: 'SATIS_IADE',
-      category: 'Satış İade',
-      description: 'Nakit iade',
-      partyName: row.customerName,
-      amount: row.amount,
-      paymentMethod: 'cash',
-      isCash: true,
-    }));
-    return [...dailyExpenseRowsForReport, ...returns];
-  }, [dailyCashReturnOutflows, dailyExpenseRowsForReport]);
   const dailyNetBrutAlways = useMemo(
     () => dailyTotal - totalExpensesForReport,
     [dailyTotal, totalExpensesForReport],
@@ -6799,6 +6721,77 @@ export function ReportsModule({
     ? ['grp-beauty-reports', 'grp-general', 'grp-sales']
     : ['grp-general', 'grp-design', 'grp-sales'];
 
+  const dailyReportKpiByKey: Record<DailyReportScreenCardKey, DailyReportKpiCardModel> = {
+    'total-sales': {
+      key: 'total-sales',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-sales']),
+      value: String(dailyMainSales.length),
+      hint: [
+        `${tm('reportsSalesReturnCount').replace('{count}', String(dailyReturnRows.length))}${dailyReturnTotal > 0 ? ` · −${formatNumber(dailyReturnTotal, 2, false)}` : ''}`,
+        `${tm('reportsDetStatusCancelled')} / ${tm('reportsDetStatusRefunded')}: ${dailyUnifiedRows.length - dailyActiveRows.length}`,
+      ].join('\n'),
+    },
+    'reservation-amount': {
+      key: 'reservation-amount',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['reservation-amount']),
+      value: formatNumber(dailyDepositTotal + dailyAvansInfoTotal, 2, false),
+      hint: `${tm('dailyDepositCountShort') || 'Adet'}: ${dailyDepositCount + dailyAvansInfoCount}${
+        dailyAvansInfoCount > 0
+          ? ` · rezervasyon (avans ${dailyAvansInfoCount})`
+          : (dailyDepositCount > 0 ? ' · rezervasyon' : '')
+      }`,
+      testId: 'daily-deposit-card',
+    },
+    'total-revenue': {
+      key: 'total-revenue',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-revenue']),
+      value: formatNumber(dailyTotal, 2, false),
+    },
+    'total-discount': {
+      key: 'total-discount',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-discount']),
+      value: formatNumber(dailyDiscount, 2, false),
+    },
+    cash: {
+      key: 'cash',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY.cash),
+      value: formatNumber(dailyCash, 2, false),
+      hint: tm('cebeGirenNakit'),
+    },
+    'sales-return': {
+      key: 'sales-return',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['sales-return']),
+      value: formatNumber(dailyReturnTotal, 2, false),
+      hint: tm('reportsPaymentTxnShort').replace('{n}', String(dailyReturnRows.length)),
+    },
+    'total-expense': {
+      key: 'total-expense',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-expense']),
+      value: formatNumber(totalExpensesForReport, 2, false),
+      hint: `${tm('expenseCount')}: ${dailyExpenseRowsForReport.length}`,
+    },
+    'net-gross': {
+      key: 'net-gross',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['net-gross']),
+      value: formatNumber(dailyNetBrutAlways, 2, false),
+    },
+    'net-cash': {
+      key: 'net-cash',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['net-cash']),
+      value: formatNumber(dailyNetNakitAlways, 2, false),
+      hint: tm('dailyNetAfterExpenseHint'),
+    },
+  };
+  const dailyReportKpiCards = visibleDailyReportScreenCardKeys({
+    totalSales: showDailyCardTotalSales,
+    totalRevenue: showDailyCardTotalRevenue,
+    totalDiscount: showDailyCardTotalDiscount,
+    cash: showDailyCardCash,
+    salesReturn: showDailyCardSalesReturn,
+    totalExpense: showDailyCardTotalExpense,
+    net: showDailyCardNet,
+  }).map((key) => dailyReportKpiByKey[key]);
+
   const mobileMenuOpen = isMobile && !collapsed;
 
   return (
@@ -6989,293 +6982,23 @@ export function ReportsModule({
                   </div>
                 </div>
 
-                {/* Stats */}
-                {(showDailyCardTotalSales ||
-                  showDailyCardTotalRevenue ||
-                  showDailyCardTotalDiscount ||
-                  showDailyCardCash ||
-                  showDailyCardCard ||
-                  showDailyCardRemainingAccount ||
-                  showDailyCardSalesReturn) && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
-                  {showDailyCardTotalSales ? (
-                  <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('totalSales')}</p>
-                        <p className="text-3xl font-bold mt-1" style={{ color: bizConfig.color }}>{dailyMainSales.length}</p>
-                        <p className="text-xs text-slate-500 mt-1">
-                          {tm('reportsSalesReturnCount').replace('{count}', String(dailyReturnRows.length))}
-                          {dailyReturnTotal > 0 ? ` · −${formatNumber(dailyReturnTotal, 2, false)}` : ''}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {tm('reportsDetStatusCancelled')} / {tm('reportsDetStatusRefunded')}: {dailyUnifiedRows.length - dailyActiveRows.length}
-                        </p>
-                      </div>
-                      <ShoppingCart className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
-                    </div>
-                  </div>
-                  ) : null}
-
-                  {/* Bug 28 — Peşinat ayrı kartı (randevuya bağlı avanslar) */}
-                  <div className="bg-white rounded-lg p-4 border-2 border-cyan-100" data-testid="daily-deposit-card">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('dailyDepositCollected') || 'Peşinat (Avans)'}</p>
-                        <p className="text-2xl font-bold mt-1 text-cyan-700">{formatNumber(dailyDepositTotal + dailyAvansInfoTotal, 2, false)}</p>
-                        <p className="text-xs text-slate-500 mt-1">
-                          {(tm('dailyDepositCountShort') || 'Adet')}: {dailyDepositCount + dailyAvansInfoCount}
-                          {dailyAvansInfoCount > 0
-                            ? ' · rezervasyon (avans ' + dailyAvansInfoCount + ')'
-                            : (dailyDepositCount > 0 ? ' · rezervasyon' : '')}
-                        </p>
-                      </div>
-                      <Calendar className="w-12 h-12 text-cyan-300 opacity-40" aria-hidden />
-                    </div>
-                  </div>
-
-                  {showDailyCardTotalRevenue ? (
-                  <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('totalRevenueLabel')}</p>
-                        <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyTotal, 2, false)}</p>
-                      </div>
-                      <Banknote className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
-                    </div>
-                  </div>
-                  ) : null}
-
-                  {showDailyCardTotalDiscount ? (
-                  <div className="bg-white rounded-lg p-4 border-2 border-orange-100">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('reportsTotalDiscount')}</p>
-                        <p className="text-2xl font-bold mt-1 text-orange-600">{formatNumber(dailyDiscount, 2, false)}</p>
-                      </div>
-                      <Percent className="w-12 h-12 text-orange-400 opacity-30" />
-                    </div>
-                  </div>
-                  ) : null}
-
-                  {showDailyCardCash ? (
-                  <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('cashLabel')}</p>
-                        <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyCash, 2, false)}</p>
-                        <p className="text-xs text-slate-500 mt-1">{tm('cebeGirenNakit')}</p>
-                      </div>
-                      <Banknote className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
-                    </div>
-                  </div>
-                  ) : null}
-
-                  {showDailyCardCard ? (
-                  <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('cardLabel')}</p>
-                        <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyCard, 2, false)}</p>
-                      </div>
-                      <CreditCard className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
-                    </div>
-                  </div>
-                  ) : null}
-
-                  {showDailyCardRemainingAccount ? (
-                  <div className="bg-white rounded-lg p-4 border-2 border-amber-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('veresiyeVerilen')}</p>
-                        <p className="text-2xl font-bold mt-1 text-amber-700">{formatNumber(dailyRemaining, 2, false)}</p>
-                        <p className="text-xs text-slate-500 mt-1">{tm('kalanCari')}</p>
-                      </div>
-                      <Wallet className="w-12 h-12 text-amber-400 opacity-40" />
-                    </div>
-                  </div>
-                  ) : null}
-
-                  {showDailyCardSalesReturn ? (
-                  <div className="bg-white rounded-lg p-4 border-2 border-red-100">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('reportsSalesReturnLabel')}</p>
-                        <p className="text-2xl font-bold mt-1 text-red-600">{formatNumber(dailyReturnTotal, 2, false)}</p>
-                        <p className="text-xs text-slate-500 mt-1">{tm('reportsPaymentTxnShort').replace('{n}', String(dailyReturnRows.length))}</p>
-                      </div>
-                      <TrendingDown className="w-12 h-12 text-red-400 opacity-40" />
-                    </div>
-                  </div>
-                  ) : null}
-                </div>
-                )}
-
-                {(() => {
-                  const stripItems = [
-                    showDailyCardDocumentAmount
-                      ? {
-                          key: 'belge',
-                          label: tm('belgeTutari'),
-                          value: formatNumber(dailyTotal, 2, false),
-                          valueClassName: 'text-slate-800',
-                          className: 'border-2 border-slate-200',
-                        }
-                      : null,
-                    showDailyCardAmountCollected
-                      ? {
-                          key: 'tahsil',
-                          label: tm('tahsilEdilen'),
-                          value: formatNumber(dailyCollected, 2, false),
-                          valueClassName: 'text-emerald-700',
-                          className: 'border-2 border-emerald-200',
-                        }
-                      : null,
-                    showDailyCardRemainingAccount
-                      ? {
-                          key: 'kalan',
-                          label: tm('veresiyeVerilen'),
-                          value: formatNumber(dailyRemaining, 2, false),
-                          valueClassName: 'text-amber-700',
-                          className: 'border-2 border-amber-200',
-                        }
-                      : null,
-                  ].filter(Boolean) as {
-                    key: string;
-                    label: string;
-                    value: string;
-                    valueClassName: string;
-                    className: string;
-                  }[];
-                  if (stripItems.length === 0) return null;
-                  return <ReportKpiStrip items={stripItems} />;
-                })()}
+                <DailyReportKpiGrid cards={dailyReportKpiCards} />
 
                 {reservationAggregate.count > 0 ? (
-                  // Rezervasyon brüt, adet ve kalan. Peşinat ayrı karttadır;
-                  // ciroya ve Net (Brüt)'e eklenmez.
-                  <div className="bg-violet-50/60 rounded-lg p-3 border border-violet-200 text-sm flex flex-wrap gap-x-6 gap-y-1" data-testid="daily-reservation-summary">
-                    <span className="text-violet-700 font-semibold">
+                  <p
+                    className="px-1 text-xs leading-relaxed text-slate-600"
+                    data-testid="daily-reservation-summary"
+                  >
+                    <span className="font-medium text-slate-700">
                       {tm('reservationGrossLabel') || 'Rezervasyon Brüt'}: {formatNumber(reservationAggregate.gross, 2, false)}
                     </span>
-                    <span className="text-violet-700 font-semibold">
-                      {tm('reservationCountLabel') || 'Rezervasyon Miktarı'}: {reservationAggregate.count} {tm('dailyDepositCountShort') || 'adet'}
-                    </span>
-                    <span className="text-violet-700 font-semibold">
-                      {tm('dailyDepositCollected') || 'Rezervasyon Tutarı'}: {formatNumber(reservationAggregate.deposit, 2, false)}
-                    </span>
-                    <span className="text-violet-600">
-                      {tm('reservationPendingLabel') || 'Kalan'}: {formatNumber(reservationAggregate.pending, 2, false)}
-                    </span>
-                  </div>
-                ) : null}
-
-                {(showDailyCardCashIn || showDailyCardCashOut) ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {showDailyCardCashIn ? (
-                  <button
-                    type="button"
-                    onClick={() => setDailyCashInModalOpen(true)}
-                    className="bg-white rounded-lg p-4 border-2 border-emerald-100 text-left hover:bg-emerald-50/40 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('dailyCashIn')}</p>
-                        <p className="text-2xl font-bold mt-1 text-emerald-700">{formatNumber(totalDailyCashIn, 2, false)}</p>
-                        <p className="text-xs text-slate-500 mt-1">{tm('dailyCount')}: {dailyCashInCount}</p>
-                      </div>
-                      <Banknote className="w-12 h-12 text-emerald-400 opacity-40" />
-                    </div>
-                  </button>
-                  ) : null}
-                  {showDailyCardCashOut ? (
-                  <button
-                    type="button"
-                    onClick={() => setDailyCashOutModalOpen(true)}
-                    className="bg-white rounded-lg p-4 border-2 border-rose-100 text-left hover:bg-rose-50/40 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('dailyCashOut')}</p>
-                        <p className="text-2xl font-bold mt-1 text-rose-700">{formatNumber(dailyCashOutTotal, 2, false)}</p>
-                        <p className="text-xs text-slate-500 mt-1">{tm('dailyCount')}: {dailyCashOutCount}</p>
-                      </div>
-                      <Wallet className="w-12 h-12 text-rose-400 opacity-40" />
-                    </div>
-                  </button>
-                  ) : null}
-                </div>
-                ) : null}
-
-                {(showDailyCardTotalExpense || showDailyCardCashExpenses || showDailyCardNet) ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {showDailyCardTotalExpense ? (
-                  <div className="bg-white rounded-lg p-4 border-2 border-rose-100">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('totalExpense')}</p>
-                        <p className="text-2xl font-bold mt-1 text-rose-600">{formatNumber(totalExpensesForReport, 2, false)}</p>
-                        <p className="text-xs text-slate-500 mt-1">
-                          {tm('expenseCount')}: {dailyExpenseRowsForReport.length}
-                        </p>
-                      </div>
-                      <Wallet className="w-12 h-12 text-rose-400 opacity-40" />
-                    </div>
-                  </div>
-                  ) : null}
-                  {showDailyCardCashExpenses ? (
-                  <div className="bg-white rounded-lg p-4 border-2 border-orange-100">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">{tm('expenseCashTotal')}</p>
-                        <p className="text-2xl font-bold mt-1 text-orange-700">{formatNumber(cashExpensesForReport, 2, false)}</p>
-                      </div>
-                      <Banknote className="w-12 h-12 text-orange-400 opacity-30" />
-                    </div>
-                  </div>
-                  ) : null}
-                  {showDailyCardNet ? (
-                  <div className="bg-white rounded-lg p-4 border-2 border-emerald-100">
-                    <div className="flex items-center justify-between">
-                      <div className="w-full">
-                        <p className="text-sm text-gray-600">{tm('dailyNetAfterExpenseBrut')}</p>
-                        <p className={`text-2xl font-bold mt-1 ${dailyNetBrutAlways >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                          {formatNumber(dailyNetBrutAlways, 2, false)}
-                        </p>
-                        <div className="mt-3 pt-3 border-t border-slate-100">
-                          <p className="text-xs text-slate-500">{tm('dailyNetAfterExpenseNakit')}</p>
-                          <p className={`text-lg font-bold mt-0.5 ${dailyNetNakitAlways >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                            {formatNumber(dailyNetNakitAlways, 2, false)}
-                          </p>
-                          <p className="text-[10px] text-slate-500 mt-1 leading-snug">{tm('dailyNetAfterExpenseHint')}</p>
-                        </div>
-                      </div>
-                      <TrendingUp className="w-12 h-12 text-emerald-400 opacity-30 shrink-0" />
-                    </div>
-                  </div>
-                  ) : null}
-                </div>
-                ) : null}
-
-                {dailyCashInModalOpen ? (
-                  <DailyCashFlowModal
-                    kind="cash-in"
-                    cashLines={dailyCashInRows}
-                    cariTahsilatlar={dailyCariTahsilatRows}
-                    title={tm('dailyCashIn')}
-                    currency={reportCurrency}
-                    onClose={() => setDailyCashInModalOpen(false)}
-                  />
-                ) : null}
-
-                {dailyCashOutModalOpen ? (
-                  <DailyCashFlowModal
-                    kind="cash-out"
-                    expenseRows={dailyCashOutRows}
-                    title={tm('dailyCashOut')}
-                    currency={reportCurrency}
-                    onClose={() => setDailyCashOutModalOpen(false)}
-                  />
+                    {' · '}
+                    {tm('reservationCountLabel') || 'Rezervasyon Miktarı'}: {reservationAggregate.count} {tm('dailyDepositCountShort') || 'adet'}
+                    {' · '}
+                    {tm('dailyDepositCollected') || 'Rezervasyon Tutarı'}: {formatNumber(reservationAggregate.deposit, 2, false)}
+                    {' · '}
+                    {tm('reservationPendingLabel') || 'Kalan'}: {formatNumber(reservationAggregate.pending, 2, false)}
+                  </p>
                 ) : null}
 
                 {/* Sales List */}
