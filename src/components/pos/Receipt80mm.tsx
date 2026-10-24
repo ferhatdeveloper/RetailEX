@@ -21,6 +21,11 @@ import { RECEIPT_A4_DOCUMENT_CSS } from '../../utils/receiptA4DocumentCss';
 import { RECEIPT_A5_DOCUMENT_CSS } from '../../utils/receiptA5DocumentCss';
 import { ReceiptStandardDocument } from './ReceiptStandardDocument';
 import { beautyReceiptStaffNames, isBeautyReceiptSale } from '../../utils/beautyReceiptLayout';
+import {
+  appointmentReceiptBanner,
+  appointmentReceiptPayState,
+  receiptUnpaidBalance,
+} from '../../utils/receiptUnpaidBalance';
 
 interface Receipt80mmProps {
   sale: Sale;
@@ -34,6 +39,11 @@ interface Receipt80mmProps {
   printPaperFormat?: PosReceiptPrintFormat;
   /** Üst bilgi altı kesik çizgili bant (örn. randevu — ödeme alınmadı) */
   headerBanner?: string;
+  /**
+   * Randevu fişi: başlık ödenen tutara göre seçilir.
+   * Kısmi ödemede "ödeme alınmadı" kalmaz; tam ödemede kalan 0.
+   */
+  headerBannerKind?: 'appointment';
 }
 
 const RECEIPT_LANGS = ['tr', 'en', 'ar', 'ku', 'uz'] as const;
@@ -62,7 +72,8 @@ export function Receipt80mm({
   printImmediately = false,
   initialPrintLanguage,
   printPaperFormat,
-  headerBanner
+  headerBanner,
+  headerBannerKind,
 }: Receipt80mmProps) {
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
@@ -154,6 +165,7 @@ export function Receipt80mm({
           total: 'JAMI',
           paymentDetails: "TO'LOV TAFSILOTLARI",
           paid: "TO'LANGAN",
+          remaining: 'QOLDIQ',
           change: 'QAYTIM',
           thanks: 'Bizni tanlaganingiz uchun rahmat',
           returnPolicy: "Bu chek qaytarish va almashtirish uchun kerak.",
@@ -302,6 +314,18 @@ export function Receipt80mm({
       }
   `;
 
+  const receiptPaidAmount = Number(paymentData?.totalPaid) || 0;
+  const unpaidBalance = receiptUnpaidBalance(Number(sale?.total) || 0, receiptPaidAmount);
+  const displayHeaderBanner = useMemo(() => {
+    if (headerBannerKind === 'appointment') {
+      return appointmentReceiptBanner(
+        selectedLang,
+        appointmentReceiptPayState(Number(sale?.total) || 0, receiptPaidAmount),
+      );
+    }
+    return headerBanner;
+  }, [headerBannerKind, headerBanner, selectedLang, sale?.total, receiptPaidAmount]);
+
   // Add null/undefined checks
   if (!sale || !paymentData) {
     return (
@@ -343,6 +367,7 @@ export function Receipt80mm({
     discount: sale.discount,
     total: sale.total,
     totalPaid: paymentData?.totalPaid ?? 0,
+    remaining: unpaidBalance,
     change: paymentData?.change ?? 0,
     currencyCode: baseCurrency,
     language: selectedLang,
@@ -658,7 +683,8 @@ export function Receipt80mm({
                 moneyDecimals={moneyDecimals}
                 lineProductName={lineProductName}
                 receiptDeviceName={receiptDeviceName}
-                headerBanner={headerBanner}
+                headerBanner={displayHeaderBanner}
+                showUnpaidBalance={isBeautyReceipt || headerBannerKind === 'appointment'}
                 isRTL={isRTL}
                 formatDate={formatDate}
                 paperFormat={isA5Format ? 'A5' : 'A4'}
@@ -682,9 +708,9 @@ export function Receipt80mm({
               )}
             </div>
 
-            {headerBanner?.trim() && (
+            {displayHeaderBanner?.trim() && (
               <div className="text-center border-2 border-gray-900 rounded-md px-2 py-2 mb-3 text-[12px] font-black tracking-wide text-gray-950 print:text-[11px] print:font-black receipt-print-dark">
-                {headerBanner.trim()}
+                {displayHeaderBanner.trim()}
               </div>
             )}
 
@@ -825,7 +851,7 @@ export function Receipt80mm({
               </tbody>
             </table>
 
-            {paymentData.payments?.length > 0 && (
+            {(paymentData.payments?.length > 0 || headerBannerKind === 'appointment') && (
               <table data-section="payments" className="w-full table-fixed border-collapse text-[13px] mb-3 font-bold print:text-[11px]">
                 <colgroup>
                   <col style={{ width: '55%' }} />
@@ -839,7 +865,7 @@ export function Receipt80mm({
                   </tr>
                 </thead>
                 <tbody>
-                  {paymentData.payments.map((payment: any, index: number) => (
+                  {(paymentData.payments ?? []).map((payment: any, index: number) => (
                     <tr key={index} className="border-b border-gray-300">
                       <td className={`py-1.5 ${isRTL ? 'text-right' : 'text-left'}`}>
                         {payment.method === 'cash' ? t.cash :
@@ -859,6 +885,12 @@ export function Receipt80mm({
                     <td className={`py-1.5 font-extrabold ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.paid}</td>
                     <td className={`py-1.5 font-black tabular-nums ${isRTL ? 'text-left' : 'text-right'}`}>
                       {fmtMoney(paymentData.totalPaid || 0)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className={`py-1.5 font-extrabold ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.remaining}</td>
+                    <td className={`py-1.5 font-black tabular-nums ${isRTL ? 'text-left' : 'text-right'}`}>
+                      {fmtMoney(unpaidBalance)}
                     </td>
                   </tr>
                   {paymentData.change > 0 ? (
@@ -901,9 +933,9 @@ export function Receipt80mm({
               <div className="text-[12px] font-bold text-gray-900 mt-0.5 print:text-[10px] print:font-bold">{receiptSettings?.companyName ? (selectedFirm?.title || '') : (selectedFirm?.title || '')}</div>
             </div>
 
-            {headerBanner?.trim() && (
+            {displayHeaderBanner?.trim() && (
               <div className="text-center border-[3px] border-dashed border-gray-900 rounded-md px-2 py-2 mb-2 text-[12px] font-black tracking-wide text-gray-950 print:text-[11px] print:font-black receipt-print-dark">
-                {headerBanner.trim()}
+                {displayHeaderBanner.trim()}
               </div>
             )}
 

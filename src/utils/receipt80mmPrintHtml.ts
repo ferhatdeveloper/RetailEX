@@ -9,6 +9,7 @@ import { formatNumber } from './formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency, getCurrencyDecimalPlaces, moneyEpsilon } from './currency';
 import { receiptNotesForDisplay } from './receiptNotes';
 import { beautyReceiptStaffNames, isBeautyReceiptSale } from './beautyReceiptLayout';
+import { receiptUnpaidBalance } from './receiptUnpaidBalance';
 import { getPrintString, resolvePrintLocale, type SupportedPrintLocale } from '../locales/printKeys';
 /** Receipt80mm / POS fiş dili */
 export type Receipt80mmPrintLocale = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
@@ -485,12 +486,8 @@ ${showLineStaff ? `<div style="font-size:9px;font-weight:700;margin-top:2px;colo
 <thead><tr><th colspan="2" style="padding:6px 2px;border-top:2px solid #000;border-bottom:2px solid #000;text-align:${ta};font-weight:900">${escapeHtml(T.paymentDetails)}</th></tr></thead>
 <tbody>
 ${beautyPayRows}
-<tr><td style="padding:6px 2px;border-top:2px solid #000;font-weight:800;text-align:${ta}">${escapeHtml(T.paid)}</td><td style="padding:6px 2px;border-top:2px solid #000;font-weight:900;text-align:end">${escapeHtml(fmtMoney(paymentData.totalPaid || 0))}</td></tr>
-${
-  remaining > moneyEpsilon(baseCurrency)
-    ? `<tr><td style="padding:5px 2px;font-weight:800;text-align:${ta}">${escapeHtml(T.remaining)}</td><td style="padding:5px 2px;font-weight:800;text-align:end">${escapeHtml(fmtMoney(remaining))}</td></tr>`
-    : ''
-}
+<tr><td style="padding:6px 2px;border-top:2px solid #000;font-weight:800;text-align:${ta}">${escapeHtml(TEXT[locale].paid)}</td><td style="padding:6px 2px;border-top:2px solid #000;font-weight:900;text-align:end">${escapeHtml(fmtMoney(paymentData.totalPaid || 0))}</td></tr>
+<tr><td style="padding:5px 2px;font-weight:800;text-align:${ta}">${escapeHtml(TEXT[locale].remaining)}</td><td style="padding:5px 2px;font-weight:800;text-align:end">${escapeHtml(fmtMoney(receiptUnpaidBalance(Number(sale.total) || 0, Number(paymentData.totalPaid) || 0)))}</td></tr>
 ${
   paymentData.change > moneyEpsilon(baseCurrency)
     ? `<tr><td style="padding:5px 2px;font-weight:800;color:#15803d;text-align:${ta}">${escapeHtml(T.change)}</td><td style="padding:5px 2px;font-weight:800;color:#15803d;text-align:end">${escapeHtml(fmtMoney(paymentData.change))}</td></tr>`

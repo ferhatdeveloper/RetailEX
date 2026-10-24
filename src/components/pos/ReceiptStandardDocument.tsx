@@ -3,6 +3,7 @@ import type { ReceiptSettings } from '../../services/receiptSettingsService';
 import { formatMoneyWithCode } from '../../utils/currency';
 import { formatNumber } from '../../utils/formatNumber';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
+import { receiptUnpaidBalance } from '../../utils/receiptUnpaidBalance';
 import { customerReceiptRows } from '../../utils/saleCustomerSnapshot';
 import { RECEIPT_A4_DOCUMENT_CSS } from '../../utils/receiptA4DocumentCss';
 import { RECEIPT_A5_DOCUMENT_CSS } from '../../utils/receiptA5DocumentCss';
@@ -37,6 +38,8 @@ export type ReceiptStandardDocumentProps = {
   lineProductName: (item: SaleItem) => string;
   receiptDeviceName: string;
   headerBanner?: string;
+  /** Güzellik / randevu fişi: ÖDENEN altında kalan bakiye. */
+  showUnpaidBalance?: boolean;
   isRTL: boolean;
   formatDate: (date: string) => string;
   paperFormat?: ReceiptPaperFormat;
@@ -71,6 +74,7 @@ export function ReceiptStandardDocument({
   lineProductName,
   receiptDeviceName,
   headerBanner,
+  showUnpaidBalance = false,
   isRTL,
   formatDate,
   paperFormat = 'A4',
@@ -237,10 +241,16 @@ export function ReceiptStandardDocument({
                   </div>
                 );
               })}
-              {(paymentData.totalPaid ?? 0) > 0 ? (
+              {(showUnpaidBalance || (paymentData.totalPaid ?? 0) > 0) ? (
                 <div className={rx('pay-row')} style={{ marginTop: 8, fontWeight: 800 }}>
                   <span>{lbl('paid', 'Ödenen')}</span>
                   <span>{fmtMoney(paymentData.totalPaid || 0)}</span>
+                </div>
+              ) : null}
+              {showUnpaidBalance ? (
+                <div className={rx('pay-row')} style={{ fontWeight: 800 }}>
+                  <span>{lbl('remaining', 'KALAN')}</span>
+                  <span>{fmtMoney(receiptUnpaidBalance(sale.total, paymentData.totalPaid || 0))}</span>
                 </div>
               ) : null}
               {(paymentData.change ?? 0) > 0 ? (

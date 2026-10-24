@@ -296,6 +296,8 @@ export interface Translations {
     total: string;
     paymentDetails: string;
     paid: string;
+    /** Ödenmemiş bakiye (toplam − ödenen). Ciro satırı değildir. */
+    remaining: string;
     change: string;
     thanks: string;
     returnPolicy: string;
@@ -2133,6 +2135,7 @@ export const translations: any = {
       total: 'TOPLAM',
       paymentDetails: 'ÖDEME DETAYLARI',
       paid: 'ÖDENEN',
+      remaining: 'KALAN',
       change: 'PARA ÜSTÜ',
       thanks: 'Bizi Tercih Ettiğiniz İçin Teşekkürler',
       returnPolicy: 'Bu fiş iade ve değişim işlemlerinde gereklidir.',
@@ -4693,6 +4696,7 @@ export const translations: any = {
       total: 'TOTAL',
       paymentDetails: 'PAYMENT DETAILS',
       paid: 'PAID',
+      remaining: 'REMAINING',
       change: 'CHANGE',
       thanks: 'Thank You For Choosing Us',
       returnPolicy: 'This receipt is required for returns and exchanges.',
@@ -6417,6 +6421,7 @@ export const translations: any = {
       total: 'الإجمالي',
       paymentDetails: 'تفاصيل الدفع',
       paid: 'المدفوع',
+      remaining: 'المتبقي',
       change: 'الباقي',
       thanks: 'شکراً لاختياركم لنا',
       returnPolicy: 'هذا الإيصال مطلوب لعمليات الإرجاع والاستبدال.',
@@ -8189,6 +8194,7 @@ export const translations: any = {
       total: 'کۆی گشتی',
       paymentDetails: 'وردەکارییەکانی پارەدان',
       paid: 'دراو',
+      remaining: 'ماوە',
       change: 'ماوە',
       thanks: 'سپاس بۆ هەڵبژاردنمان',
       returnPolicy: 'ئەم وەسڵە پێویستە بۆ گەڕاندنەوە و گۆڕینی کاڵاکان.',

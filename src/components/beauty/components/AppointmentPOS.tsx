@@ -801,6 +801,8 @@ export function AppointmentPOS({
     const [receiptPrintImmediately, setReceiptPrintImmediately] = useState(false);
     /** Randevu fişi — üst bant; ödeme fişinde temizlenir */
     const [receiptHeaderBanner, setReceiptHeaderBanner] = useState<string | undefined>(undefined);
+    /** Randevu oluştur fişi: başlık ödenen tutara göre (kısmi / tam / alınmadı). */
+    const [receiptBannerKind, setReceiptBannerKind] = useState<'appointment' | undefined>(undefined);
 
     /** Çift tıklama / üst üste tıklamada aynı randevunun iki kez oluşmasını engeller */
     const bookingSubmitRef = useRef(false);
@@ -2599,6 +2601,7 @@ export function AppointmentPOS({
                 beautyTreatmentDegree: receiptTreatmentDegree.trim() || undefined,
                 beautyTreatmentShots: receiptTreatmentShots.trim() || undefined,
             };
+            setReceiptBannerKind('appointment');
             setReceiptHeaderBanner(tm('bAppointmentReceiptBanner'));
             setCompletedSale(bookingSale);
             setCompletedPaymentData({
@@ -3464,6 +3467,7 @@ export function AppointmentPOS({
                 beautyTreatmentShots: receiptTreatmentShots.trim() || undefined,
             };
 
+            setReceiptBannerKind(undefined);
             setReceiptHeaderBanner(undefined);
             setCompletedSale(sale);
             setCompletedPaymentData(paymentData);
@@ -6167,9 +6171,11 @@ export function AppointmentPOS({
                     }
                     printPaperFormat={typeof completedPaymentData.printFormat === 'string' ? completedPaymentData.printFormat : undefined}
                     headerBanner={receiptHeaderBanner}
+                    headerBannerKind={receiptBannerKind}
                     onClose={() => {
                         setShowReceiptModal(false);
                         setReceiptPrintImmediately(false);
+                        setReceiptBannerKind(undefined);
                         setReceiptHeaderBanner(undefined);
                         setCompletedSale(null);
                         setCompletedPaymentData(null);
