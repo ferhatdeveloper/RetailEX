@@ -17,6 +17,7 @@ import {
   cashRegisterNetGrandTotal,
   cashStatusBlockTotals,
   cashStatusDistributionListRows,
+  cashStatusWithVouchers,
   foldReservationIntoCashStatus,
   paymentDistributionVisibleRows,
   listCashRegisterStatus,
@@ -1034,6 +1035,25 @@ describe('cashRegisterStatusFromLedger — kasa kartı nakit/kart', () => {
     expect(cashRegisterExpenseGaps(rows)).toEqual([]);
   });
 
+  it('138.500 tahsilat ve 38.500 açılış alacak kapanışı 100.000 bırakır', () => {
+    const lines = [
+      line({ tutar: 138_500, payment_method: 'cash', islem_tipi: 'KASA_GIRIS', islem_tarihi: '2026-10-10' }),
+      line({ tutar: 38_500, payment_method: 'cash', islem_tipi: 'ACILIS_ALACAK', islem_tarihi: '2026-10-20' }),
+    ];
+    const rows = cashRegisterStatusFromLedger({
+      registers: merkez,
+      lines,
+      dateFrom: '2026-01-01',
+      dateTo: '2026-10-24',
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const listed = cashRegisterDistributionLines(rows);
+    expect(rows[0].openingCash).toBe(0);
+    expect(rows[0].closingCash).toBe(100_000);
+    expect(listed[0].amount).toBe(100_000);
+    expect(sumCashRegisterDistribution(listed)).toBe(100_000);
+  });
+
   it('gider fişi yoksa banka çıkışı 0 gider yazar, kalanı bozmaz, farkı banka olarak bildirir', () => {
     const rows = cashRegisterStatusFromLedger({
       registers: merkez,
@@ -1103,5 +1123,315 @@ describe('cashRegisterRemaining — kalan = nakit − gider', () => {
       reservation: 30_000,
       ledgerBalance: 415_000,
     })).toBe(415_000);
+  });
+});
+
+describe('kasa fişleri — açılış alacak rapora bir kez girer', () => {
+  const range = { dateFrom: '2026-01-01', dateTo: '2026-10-24' };
+
+  it('138.500 tahsilat + 38.500 ACILIS_ALACAK → nakit, kapanış ve genel toplam 100.000', () => {
+    const result = cashStatusWithVouchers({
+      salesCash: 138_500,
+      reservation: 10_000,
+      discount: 1_500,
+      openAccount: 0,
+      saleReceiptKeys: ['fis-138'],
+      customerCollectionsInSalesCash: true,
+      lines: [
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'KASA_GIRIS',
+          tutar: 138_500,
+          islem_no: 'FIS-138',
+          islem_tarihi: '2026-10-10',
+          payment_method: 'cash',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'CH_TAHSILAT',
+          tutar: 10_000,
+          ozel_kod: 'REZERVASYON',
+          islem_tarihi: '2026-10-11',
+          payment_method: 'Nakit',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'ACILIS_ALACAK',
+          tutar: 38_500,
+          islem_tarihi: '2026-10-20',
+          payment_method: 'cash',
+        },
+      ],
+      ...range,
+    });
+
+    expect(result.openingCash).toBe(0);
+    expect(result.todayCash).toBe(100_000);
+    expect(result.closingCash).toBe(100_000);
+    expect(result.grandTotal).toBe(100_000);
+    expect(result.openAccount).toBe(0);
+    expect(result.reservation).toBe(10_000);
+    expect(result.cashDelta).toBe(-38_500);
+    expect(result.todayCash).not.toBe(138_500);
+    expect(result.todayCash).not.toBe(110_000);
+    expect(result.grandTotal).not.toBe(148_500);
+  });
+
+  it('aralık içindeki açılış alacak açılışa gizlenmez', () => {
+    const result = cashStatusWithVouchers({
+      salesCash: 138_500,
+      lines: [{
+        kasa_id: 'k1',
+        islem_tipi: 'ACILIS_ALACAK',
+        tutar: 38_500,
+        islem_tarihi: '2026-06-15',
+        payment_method: 'cash',
+      }],
+      ...range,
+    });
+    expect(result.openingCash).toBe(0);
+    expect(result.todayCash).toBe(100_000);
+    expect(result.closingCash).toBe(100_000);
+  });
+
+  it('aralıktan önceki açılış alacak açılış bakiyesidir', () => {
+    const result = cashStatusWithVouchers({
+      salesCash: 138_500,
+      lines: [{
+        kasa_id: 'k1',
+        islem_tipi: 'ACILIS_ALACAK',
+        tutar: 38_500,
+        islem_tarihi: '2025-12-31',
+        payment_method: 'cash',
+      }],
+      ...range,
+    });
+    expect(result.openingCash).toBe(-38_500);
+    expect(result.todayCash).toBe(138_500);
+    expect(result.closingCash).toBe(100_000);
+  });
+
+  it('ACILIS_BORC nakde bir kez eklenir', () => {
+    const result = cashStatusWithVouchers({
+      salesCash: 138_500,
+      lines: [{
+        kasa_id: 'k1',
+        islem_tipi: 'ACILIS_BORC',
+        tutar: 10_000,
+        islem_tarihi: '2026-03-01',
+        payment_method: 'cash',
+      }],
+      ...range,
+    });
+    expect(result.openingCash).toBe(0);
+    expect(result.todayCash).toBe(148_500);
+    expect(result.grandTotal).toBe(148_500);
+    expect(result.cashDelta).toBe(10_000);
+  });
+
+  it('virman genel toplamı değiştirmez', () => {
+    const result = cashStatusWithVouchers({
+      salesCash: 100_000,
+      lines: [{
+        kasa_id: 'merkez',
+        target_register_id: 'qicard',
+        islem_tipi: 'VIRMAN',
+        tutar: 20_000,
+        sign: -1,
+        islem_no: 'VRM-1',
+        islem_tarihi: '2026-10-01',
+        payment_method: 'cash',
+      }],
+      ...range,
+    });
+    expect(result.cashDelta).toBe(0);
+    expect(result.todayCash).toBe(100_000);
+    expect(result.grandTotal).toBe(100_000);
+    expect(result.expense).toBe(0);
+  });
+
+  it('peşinat nakde tekrar eklenmez', () => {
+    const result = cashStatusWithVouchers({
+      salesCash: 138_500,
+      reservation: 10_000,
+      lines: [{
+        kasa_id: 'k1',
+        islem_tipi: 'CH_TAHSILAT',
+        ozel_kod: 'REZERVASYON',
+        tutar: 10_000,
+        islem_tarihi: '2026-02-01',
+        payment_method: 'cash',
+      }],
+      ...range,
+    });
+    expect(result.todayCash).toBe(138_500);
+    expect(result.grandTotal).toBe(138_500);
+    expect(result.reservation).toBe(10_000);
+  });
+
+  it('indirim açık cari değildir ve toplama eklenmez', () => {
+    const result = cashStatusWithVouchers({
+      salesCash: 138_500,
+      discount: 1_500,
+      openAccount: 0,
+      ...range,
+    });
+    expect(result.openAccount).toBe(0);
+    expect(result.todayCash).toBe(138_500);
+    expect(result.grandTotal).toBe(138_500);
+  });
+
+  it('gider bir kez düşülür', () => {
+    const doubled = cashStatusWithVouchers({
+      salesCash: 138_500,
+      expense: 5_000,
+      lines: [{
+        kasa_id: 'k1',
+        islem_tipi: 'GIDER_PUSULASI',
+        tutar: 5_000,
+        islem_tarihi: '2026-04-01',
+        payment_method: 'cash',
+      }],
+      ...range,
+    });
+    expect(doubled.expense).toBe(5_000);
+    expect(doubled.todayCash).toBe(138_500);
+    expect(doubled.grandTotal).toBe(133_500);
+    expect(doubled.closingCash).toBe(133_500);
+    expect(doubled.grandTotal).not.toBe(128_500);
+
+    const fromLine = cashStatusWithVouchers({
+      salesCash: 138_500,
+      lines: [{
+        kasa_id: 'k1',
+        islem_tipi: 'KASA_CIKIS',
+        tutar: 4_000,
+        islem_tarihi: '2026-04-02',
+        payment_method: 'cash',
+      }],
+      ...range,
+    });
+    expect(fromLine.expense).toBe(4_000);
+    expect(fromLine.todayCash).toBe(138_500);
+    expect(fromLine.grandTotal).toBe(134_500);
+    expect(fromLine.grandTotal).not.toBe(130_500);
+  });
+
+  it('manuel kasa girişi, banka ve cari tahsilat kendi işaretleriyle girer; satış fişi eklenmez', () => {
+    const result = cashStatusWithVouchers({
+      salesCash: 138_500,
+      saleReceiptKeys: ['fis-138'],
+      lines: [
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'KASA_GIRIS',
+          tutar: 138_500,
+          islem_no: 'FIS-138',
+          islem_tarihi: '2026-01-15',
+          payment_method: 'cash',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'KASA_GIRIS',
+          tutar: 8_000,
+          islem_no: 'MANUEL-1',
+          islem_tarihi: '2026-02-01',
+          payment_method: 'cash',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'BANKA_YATIRILAN',
+          tutar: 3_000,
+          islem_tarihi: '2026-02-02',
+          payment_method: 'cash',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'BANKADAN_CEKILEN',
+          tutar: 1_000,
+          islem_tarihi: '2026-02-03',
+          payment_method: 'cash',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'CH_TAHSILAT',
+          tutar: 2_000,
+          islem_no: 'TAH-1',
+          islem_tarihi: '2026-02-04',
+          payment_method: 'cash',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'CH_ODEME',
+          tutar: 500,
+          islem_tarihi: '2026-02-05',
+          payment_method: 'cash',
+        },
+      ],
+      ...range,
+    });
+    expect(result.todayCash).toBe(146_500);
+    expect(result.expense).toBe(500);
+    expect(result.grandTotal).toBe(146_000);
+    expect(result.todayCash).not.toBe(138_500 + 138_500);
+  });
+
+  it('sayılmış gider ikinci kez düşülmez, sayılmamış cari ödeme bir kez düşülür', () => {
+    const result = cashStatusWithVouchers({
+      salesCash: 138_500,
+      expense: 5_000,
+      countedExpenseKeys: ['gider-1'],
+      lines: [
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'GIDER_PUSULASI',
+          tutar: 5_000,
+          islem_no: 'GIDER-1',
+          islem_tarihi: '2026-04-01',
+          payment_method: 'cash',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'CH_ODEME',
+          tutar: 2_000,
+          islem_no: 'ODE-1',
+          islem_tarihi: '2026-04-02',
+          payment_method: 'cash',
+        },
+      ],
+      ...range,
+    });
+    expect(result.expense).toBe(7_000);
+    expect(result.todayCash).toBe(138_500);
+    expect(result.grandTotal).toBe(131_500);
+    expect(result.grandTotal).not.toBe(126_500);
+  });
+
+  it('satıştaki cari tahsilat ikinci kez eklenmez', () => {
+    const result = cashStatusWithVouchers({
+      salesCash: 138_500,
+      customerCollectionsInSalesCash: true,
+      lines: [{
+        kasa_id: 'k1',
+        islem_tipi: 'CH_TAHSILAT',
+        tutar: 2_000,
+        islem_no: 'TAH-1',
+        islem_tarihi: '2026-02-04',
+        payment_method: 'cash',
+      }],
+      ...range,
+    });
+    expect(result.todayCash).toBe(138_500);
+    expect(result.cashDelta).toBe(0);
+  });
+
+  it('ACILIS_ALACAK kasa çıkış tohumu, ACILIS_BORC giriş tohumudur', () => {
+    const seeds = seedsFromRegisterCashLines([
+      { kasa_id: 'k1', islem_tipi: 'ACILIS_ALACAK', tutar: 38_500 },
+      { kasa_id: 'k1', islem_tipi: 'ACILIS_BORC', tutar: 10_000 },
+    ]);
+    expect(seeds).toHaveLength(1);
+    expect(seeds[0].cashOut).toBe(38_500);
+    expect(seeds[0].serviceCash).toBe(10_000);
   });
 });

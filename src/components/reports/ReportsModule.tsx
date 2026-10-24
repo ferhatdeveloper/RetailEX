@@ -139,6 +139,7 @@ import {
   cashRegisterExpenseGaps,
   cashRegisterStatusFromLedger,
   cashStatusBlockTotals,
+  cashStatusWithVouchers,
   foldReservationIntoCashStatus,
   paymentDistributionVisibleRows,
   type CashStatusPaymentLine,
@@ -4515,14 +4516,69 @@ export function ReportsModule({
       expenseCount: cashExpenseRows.length,
       paymentTypes: visible,
     });
+    const saleReceiptKeys = new Set<string>();
+    const rememberReceipt = (value: unknown) => {
+      // Fiş no koddur: FIS-138 ile fis-138 aynı tahsilattır.
+      const key = String(value ?? '').trim().replace(/İ/g, 'I').toLowerCase();
+      if (!key || key === '—' || key === '-') return;
+      saleReceiptKeys.add(key);
+    };
+    for (const row of nonDepositRows) rememberReceipt(row.receiptNumber);
+    for (const sale of dailySalesForCash) rememberReceipt(sale.receiptNumber);
+    const voucherLines = cashRegisterLedgerLines.length > 0
+      ? cashRegisterLedgerLines
+      : kasaLinesForSelectedDate;
+    const countedExpenseKeys = new Set<string>();
+    const rememberExpenseKey = (value: unknown) => {
+      const key = String(value ?? '').trim().replace(/İ/g, 'I').toLowerCase();
+      if (!key || key === '—' || key === '-') return;
+      countedExpenseKeys.add(key);
+    };
+    for (const row of dailyExpenseRowsForReport) {
+      rememberExpenseKey(row.ficheNo);
+      rememberExpenseKey(row.sourceId);
+    }
+    // Satış nakdi (rezervasyon bir kez içinde) durur. Açılış alacak ve
+    // satışta olmayan kasa fişleri kendi işaretleriyle eklenir.
+    const voucher = cashStatusWithVouchers({
+      salesCash: folded.todayCash,
+      card: dist.byCode.KREDIKARTI?.amount ?? 0,
+      openAccount: acik?.amount ?? dist.byCode.ACIK_CARI?.amount ?? 0,
+      transfer: dist.byCode.HAVAL?.amount ?? 0,
+      reservation: reservationDeposit,
+      expense: cashExpensesForReport,
+      countedExpenseKeys,
+      lines: voucherLines,
+      dateFrom: selectedDateFrom,
+      dateTo: selectedDateTo,
+      saleReceiptKeys,
+      customerCollectionsInSalesCash: true,
+    });
+    const voucherAmount = (code: string, fallback: number) => {
+      if (code === 'NAKIT') return voucher.todayCash;
+      if (code === 'KREDIKARTI') return voucher.card;
+      if (code === 'ACIK_CARI') return voucher.openAccount;
+      if (code === 'HAVAL') return voucher.transfer;
+      if (code === 'GIDER') return voucher.expense;
+      return fallback;
+    };
+    const collectionBase = Math.round(
+      (voucher.todayCash + voucher.card + voucher.openAccount + voucher.transfer + Number.EPSILON) * 100,
+    ) / 100;
     const types = folded.paymentTypes.map((row) => {
       const source = visible.find((item) => item.code === row.code);
       const label = row.deduction
         ? (tm('cashStatusExpense') || 'Gider')
         : (source?.label || row.label || row.code);
+      const amount = voucherAmount(row.code, Number(row.amount) || 0);
+      const percentage = row.informational || row.deduction || collectionBase === 0
+        ? 0
+        : (amount / collectionBase) * 100;
       return {
         ...(source || {}),
         ...row,
+        amount,
+        percentage,
         label,
       };
     });
@@ -4538,15 +4594,18 @@ export function ReportsModule({
     return {
       ...dist,
       chartData,
-      cash: cash ? { ...cash, amount: folded.todayCash } : cash,
-      card,
-      transfer,
+      cash: cash ? { ...cash, amount: voucher.todayCash } : cash,
+      card: card ? { ...card, amount: voucher.card } : card,
+      transfer: transfer ? { ...transfer, amount: voucher.transfer } : transfer,
       types,
-      listedTotal: folded.grandTotal,
-      collectionTotal: folded.collectionTotal,
-      expense: folded.expense,
+      listedTotal: voucher.grandTotal,
+      collectionTotal: collectionBase,
+      expense: voucher.expense,
       serviceCash,
       reservationDeposit,
+      todayCash: voucher.todayCash,
+      openingCash: voucher.openingCash,
+      closingCash: voucher.closingCash,
     };
   };
 
@@ -4869,7 +4928,11 @@ export function ReportsModule({
      */
     const serviceCash = Number(dist.serviceCash) || 0;
     const reservationDeposit = Number(dist.reservationDeposit) || 0;
-    const todayCash = serviceCash + reservationDeposit;
+    /**
+     * Günlük nakit, satış tahsilatı artı dönem kasa fişleridir.
+     * Açılış alacak bu tutardan bir kez düşer. Rezervasyon ayrıca eklenmez.
+     */
+    const todayCash = Number(dist.todayCash) || 0;
     /**
      * Açık cari henüz tahsil edilmemiş alacaktır; kasa toplamına girmez.
      * Rezervasyon nakdi ise tahsil edilmiştir ve todayCash içindedir.
@@ -4879,13 +4942,19 @@ export function ReportsModule({
     const todayTotal = collectionBeforeExpense - acikCariAmount;
 
     const todayKey = localTodayDateKey();
-    const openingCash =
-      selectedDateFrom === todayKey && selectedDateTo === todayKey
-        ? readOpeningCashForReports(businessType)
-        : 0;
-    const expenses = cashExpensesForReport;
-
-    const closingCash = openingCash + todayCash - expenses;
+    const ledgerReady = cashRegisterLedgerLines.length > 0 || kasaLinesForSelectedDate.length > 0;
+    const openingCash = ledgerReady
+      ? (Number(dist.openingCash) || 0)
+      : (
+        selectedDateFrom === todayKey && selectedDateTo === todayKey
+          ? readOpeningCashForReports(businessType)
+          : 0
+      );
+    const expenses = Number(dist.expense) || 0;
+    const closingFromVouchers = Number(dist.closingCash);
+    const closingCash = ledgerReady && Number.isFinite(closingFromVouchers)
+      ? closingFromVouchers
+      : Math.round(((openingCash + todayCash - expenses) + Number.EPSILON) * 100) / 100;
     const netCashMovement = todayCash - expenses;
     const totalCollection = todayCash + cardTotal + transferTotal;
 

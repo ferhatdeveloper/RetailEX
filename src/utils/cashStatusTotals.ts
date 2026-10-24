@@ -12,11 +12,23 @@
  * Gider, klinik gideri ve kasa çıkış fişidir; nakit tahsilattan bir kez düşülür.
  * Kasa bakiyesi bu çıkıştan sonra net ise gider ikinci kez düşülmez.
  *
+ * Açılış fişi (alacak) kasa çıkışıdır (işaret −1) ve nakitten bir kez düşer.
+ * Açılış fişi (borç) kasa girişidir (işaret +1) ve nakde bir kez eklenir.
+ * Aralık içindeki açılış fişi dönem hareketidir; açılış bakiyesine gizlenmez.
+ * Açılış bakiyesi, seçili aralıktan önceki kasadır.
+ * Satış faturasının tahsilatı günlük nakitteyse aynı fiş ikinci kez eklenmez.
+ * Virman şirket nakdini değiştirmez. Peşinat ve indirim toplama eklenmez.
+ *
  * Örnek: hizmet nakdi 35.000 + rezervasyon nakdi 15.000
  *   günlük nakit 50.000, kapanış 50.000, genel toplam 50.000 (65.000 değil).
  */
 
-import { computeKasaIslemiSign, type KasaIslemi } from '../services/api/kasa';
+import {
+  computeKasaIslemiSign,
+  isKasaInvoiceIslemTipi,
+  postedCashTypeForInvoiceIslem,
+  type KasaIslemi,
+} from '../services/api/kasa';
 import { computeCashBalanceForRegister } from './cashBalance';
 import {
   cashVirmanDirection,
@@ -45,7 +57,7 @@ const CASH_OUT_TYPES = new Set([
   'CH_ODEME',
   'KASA_CIKIS',
   'BANKA_YATIRILAN',
-  'ACILIS_BORC',
+  'ACILIS_ALACAK',
   'GIDER_PUSULASI',
   'VERILEN_SERBEST_MESLEK',
   'ALIS_FATURASI',
@@ -697,6 +709,11 @@ export function seedsFromRegisterCashLines(
       touch(reg).reservationCash = round2(touch(reg).reservationCash + amount);
       continue;
     }
+    // ACILIS_BORC kasa girişidir (+1). ACILIS_ALACAK aşağıda çıkıştır (−1).
+    if (tip === 'ACILIS_BORC' || tip === 'ACILIS') {
+      touch(reg).serviceCash = round2(touch(reg).serviceCash + amount);
+      continue;
+    }
     if (CASH_OUT_TYPES.has(tip)) {
       touch(reg).cashOut = round2(touch(reg).cashOut + amount);
     }
@@ -756,6 +773,231 @@ function signedLedgerAmount(line: CashStatusRegisterLine): number {
   const sign = computeKasaIslemiSign(String(line.islem_tipi || ''));
   if (!sign) return 0;
   return amount * sign;
+}
+
+/**
+ * Fatura menüsünden düşen fiş, kasa satırında satış/hizmet tahsilatı
+ * veya alış ödemesi olarak durur. İşaret, kayda geçen cari fişin
+ * işaretidir: satış ve hizmet +1, alış −1.
+ */
+function voucherSignedAmount(line: CashStatusRegisterLine): number {
+  const amount = Math.abs(num(line.tutar));
+  if (!(amount > 0)) return 0;
+  const virman = cashVirmanDirection(line);
+  if (virman) return amount * virman;
+  const tip = String(line.islem_tipi || '').trim().toUpperCase();
+  const posted = isKasaInvoiceIslemTipi(tip) ? postedCashTypeForInvoiceIslem(tip) : tip;
+  const sign = computeKasaIslemiSign(posted);
+  if (!sign) return 0;
+  return amount * sign;
+}
+
+/**
+ * Fiş no koddur. `I` / `İ` ve `i` aynı fiştir.
+ * Türkçe küçük harf `I` harfini `ı` yapar; FIS-138 ile fis-138 ayrılır.
+ */
+function receiptKey(value: unknown): string {
+  return String(value ?? '').trim().replace(/İ/g, 'I').toLowerCase();
+}
+
+function saleReceiptKeySet(keys: Iterable<string> | null | undefined): Set<string> {
+  const out = new Set<string>();
+  if (!keys) return out;
+  for (const key of keys) {
+    const folded = receiptKey(key);
+    if (folded && folded !== '—' && folded !== '-') out.add(folded);
+  }
+  return out;
+}
+
+function expenseKeyHit(line: CashStatusRegisterLine, keys: ReadonlySet<string>): boolean {
+  if (keys.size === 0) return false;
+  const direct = [line.id, line.islem_no, line.fiche_no].map(receiptKey).filter(Boolean);
+  return direct.some((key) => keys.has(key));
+}
+
+function lineMatchesSaleReceipt(line: CashStatusRegisterLine, keys: ReadonlySet<string>): boolean {
+  if (keys.size === 0) return false;
+  const direct = [line.islem_no, line.fiche_no].map(receiptKey).filter(Boolean);
+  if (direct.some((key) => keys.has(key))) return true;
+  const blob = [line.islem_aciklamasi, line.aciklama].map(receiptKey).filter(Boolean).join(' ');
+  if (!blob) return false;
+  for (const key of keys) {
+    if (key.length >= 4 && blob.includes(key)) return true;
+  }
+  return false;
+}
+
+const SALE_INVOICE_COLLECTION_TYPES = new Set(['SATIS_FATURASI', 'HIZMET_FATURASI']);
+
+/**
+ * Satış tahsilatı günlük nakitteyse aynı kasa fişi eklenmez.
+ * Cari tahsilat raporun ek tahsilatına girdiyse ikinci kez yazılmaz.
+ */
+function skipSaleCollectionAlreadyInCash(
+  line: CashStatusRegisterLine,
+  tip: string,
+  saleReceiptKeys: ReadonlySet<string>,
+  customerCollectionsInSalesCash: boolean,
+): boolean {
+  if (tip === 'KASA_GIRIS' && lineMatchesSaleReceipt(line, saleReceiptKeys)) return true;
+  if (tip === 'CH_TAHSILAT' && (customerCollectionsInSalesCash || lineMatchesSaleReceipt(line, saleReceiptKeys))) {
+    return true;
+  }
+  if (SALE_INVOICE_COLLECTION_TYPES.has(tip) && (customerCollectionsInSalesCash || lineMatchesSaleReceipt(line, saleReceiptKeys))) {
+    return true;
+  }
+  return false;
+}
+
+export interface CashStatusVoucherInput {
+  /**
+   * Satış tahsilatı. Rezervasyon bu tutarın içindeyse ayrıca eklenmez.
+   * Çağıran, ekrandaki günlük nakdi (rezervasyon bir kez dahil) geçirir.
+   */
+  salesCash: number;
+  card?: number;
+  openAccount?: number;
+  transfer?: number;
+  /** Bilgi. Nakde ve genel toplama tekrar yazılmaz. */
+  reservation?: number;
+  /** Açık cari değildir. Toplama yazılmaz. */
+  discount?: number;
+  /**
+   * Dönem gideri. Verilirse bu tutar bir kez düşülür.
+   * Verilmezse gider fişlerinin mutlak tutarı bir kez gider olur.
+   */
+  expense?: number;
+  /**
+   * Gider toplamına alınmış fiş no / satır kimliği.
+   * Bu kümedeki gider fişi ikinci kez düşülmez.
+   * Küme verilmezse `expense` tüm gider fişlerini kapsar.
+   * Boş küme, hiçbir gider fişinin toplama girmediği anlamına gelir.
+   */
+  countedExpenseKeys?: Iterable<string> | null;
+  lines?: readonly CashStatusRegisterLine[];
+  dateFrom?: string;
+  dateTo?: string;
+  /** Satış fiş numaraları. Eşleşen tahsilat satırı eklenmez. */
+  saleReceiptKeys?: Iterable<string>;
+  /**
+   * Rapor, satıştaki ve ek cari tahsilatı NAKIT kovasına yazdıysa true.
+   * CH_TAHSILAT o zaman ikinci kez eklenmez.
+   */
+  customerCollectionsInSalesCash?: boolean;
+}
+
+export interface CashStatusVoucherResult {
+  /** Aralıktan önceki kasa. Aralık içindeki açılış fişi burada değildir. */
+  openingCash: number;
+  /** Satış nakdi + dönem kasa fişleri (açılış alacak eksi, açılış borç artı). */
+  todayCash: number;
+  closingCash: number;
+  reservation: number;
+  expense: number;
+  openAccount: number;
+  card: number;
+  transfer: number;
+  grandTotal: number;
+  /** Dönem fişlerinin nakit işareti. Satış tahsilatı bu deltanın dışındadır. */
+  cashDelta: number;
+}
+
+/**
+ * Kasa Durumu KPI ve genel toplam — kasa fişlerinin işareti.
+ *
+ * Satış nakdi olduğu gibi kalır. ACILIS_ALACAK (−1) nakitten bir kez düşer.
+ * ACILIS_BORC (+1) nakde bir kez eklenir. KASA_GIRIS, BANKADAN_CEKILEN ve
+ * satışta olmayan cari tahsilat artıdır. BANKA_YATIRILAN eksidir.
+ * KASA_CIKIS, CH_ODEME ve gider pusulası giderdir; bir kez düşülür.
+ * Virman kaynakta düşer, hedefte artar, genel toplam aynı kalır.
+ * Peşinat bilgi satırıdır. İndirim açık cariye ve toplama yazılmaz.
+ * Aralık içindeki açılış fişi dönem hareketidir. Açılış, aralık öncesidir.
+ */
+export function cashStatusWithVouchers(input: CashStatusVoucherInput): CashStatusVoucherResult {
+  const salesCash = round2(num(input.salesCash));
+  const cardBase = round2(num(input.card));
+  const openBase = round2(num(input.openAccount));
+  const transferBase = round2(num(input.transfer));
+  const reservation = round2(Math.max(0, num(input.reservation)));
+  const expenseProvided = input.expense != null;
+  const expenseParam = expenseProvided ? Math.max(0, round2(num(input.expense))) : 0;
+  const dateFrom = String(input.dateFrom || '').slice(0, 10);
+  const dateTo = String(input.dateTo || '').slice(0, 10);
+  const saleReceiptKeys = saleReceiptKeySet(input.saleReceiptKeys);
+  const expenseKeysProvided = input.countedExpenseKeys != null;
+  const countedExpenseKeys = saleReceiptKeySet(input.countedExpenseKeys);
+  const collectionsInSales = input.customerCollectionsInSalesCash === true;
+  const lines = withCashVirmanLines(input.lines || []) as CashStatusRegisterLine[];
+
+  let openingCash = 0;
+  let cashDelta = 0;
+  let cardDelta = 0;
+  let transferDelta = 0;
+  let openDelta = 0;
+  let expenseFromLines = 0;
+
+  const addKind = (kind: DrawerKind, signed: number) => {
+    if (kind === 'card') cardDelta = round2(cardDelta + signed);
+    else if (kind === 'transfer') transferDelta = round2(transferDelta + signed);
+    else if (kind === 'open') openDelta = round2(openDelta + signed);
+    else if (kind === 'cash') cashDelta = round2(cashDelta + signed);
+  };
+
+  for (const line of lines) {
+    const day = ledgerDay(line.islem_tarihi);
+    if (day && dateTo && day > dateTo) continue;
+    const before = Boolean(day && dateFrom && day < dateFrom);
+    const signed = voucherSignedAmount(line);
+    if (!(Math.abs(signed) > 0.004)) continue;
+    const kind = drawerKind(line);
+    if (kind === 'skip') continue;
+    if (before) {
+      if (kind === 'cash') openingCash = round2(openingCash + signed);
+      continue;
+    }
+    const tip = String(line.islem_tipi || '').trim().toUpperCase();
+    if (isReservationCashLine(line)) continue;
+    if (skipSaleCollectionAlreadyInCash(line, tip, saleReceiptKeys, collectionsInSales)) continue;
+    if (isCashVirmanType(tip)) {
+      addKind(kind, signed);
+      continue;
+    }
+    if (PERIOD_SUMMARY_CASH_OUT_TYPES.has(tip)) {
+      const coveredByTotal = expenseProvided && (
+        !expenseKeysProvided || expenseKeyHit(line, countedExpenseKeys)
+      );
+      if (!coveredByTotal) expenseFromLines = round2(expenseFromLines + Math.abs(signed));
+      continue;
+    }
+    addKind(kind, signed);
+  }
+
+  const todayCash = round2(salesCash + cashDelta);
+  const card = round2(cardBase + cardDelta);
+  const openAccount = round2(openBase + openDelta);
+  const transfer = round2(transferBase + transferDelta);
+  const expense = round2((expenseProvided ? expenseParam : 0) + expenseFromLines);
+  const grandTotal = paymentReportGrandTotal({
+    cash: todayCash,
+    card,
+    openAccount,
+    transfer,
+    reservation,
+    expense,
+  });
+  return {
+    openingCash: round2(openingCash),
+    todayCash,
+    closingCash: round2(openingCash + todayCash - expense),
+    reservation,
+    expense,
+    openAccount,
+    card,
+    transfer,
+    grandTotal,
+    cashDelta: round2(cashDelta),
+  };
 }
 
 function formatLocalDay(value: Date): string {
