@@ -1435,3 +1435,110 @@ describe('kasa fişleri — açılış alacak rapora bir kez girer', () => {
     expect(seeds[0].serviceCash).toBe(10_000);
   });
 });
+
+describe('Kasa Durumu — 138.500 nakit, 15.000 gider, kapanış 85.000', () => {
+  const day = '2026-10-24';
+  const range = { dateFrom: day, dateTo: day };
+  const merkez = [{ id: 'k1', code: 'KASA.001', name: 'MERKEZ KASA' }];
+  const qicard = { id: 'k2', code: 'KASA.002', name: 'QICARD' };
+
+  const lines = [
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'ACILIS_ALACAK',
+      tutar: 38_500,
+      islem_tarihi: '2026-10-01',
+      payment_method: 'cash',
+      islem_no: 'ACILIS-1',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 128_500,
+      islem_tarihi: day,
+      payment_method: 'cash',
+      islem_no: 'BEA-2026-00001',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'CH_TAHSILAT',
+      tutar: 10_000,
+      ozel_kod: 'REZERVASYON',
+      islem_tarihi: day,
+      payment_method: 'cash',
+      islem_no: 'RSV-10',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 75_000,
+      islem_tarihi: day,
+      payment_method: 'cash',
+      islem_no: 'INV-DOUBLE',
+      islem_aciklamasi: 'Satış faturası — INV-DOUBLE',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_CIKIS',
+      tutar: 5_000,
+      islem_tarihi: day,
+      payment_method: 'cash',
+      islem_no: 'GDR-1',
+    },
+    {
+      kasa_id: 'k1',
+      islem_tipi: 'MAAS_ODEME',
+      tutar: 10_000,
+      islem_tarihi: day,
+      payment_method: 'cash',
+      islem_no: 'MAAS-1',
+    },
+  ];
+
+  it('fatura aynası nakde eklenmez, gider bir kez düşer, peşinat ve indirim eklenmez', () => {
+    const result = cashStatusWithVouchers({
+      salesCash: 138_500,
+      reservation: 10_000,
+      discount: 1_500,
+      openAccount: 0,
+      expense: 0,
+      countedExpenseKeys: ['GDR-1', 'MAAS-1'],
+      saleReceiptKeys: ['BEA-2026-00001'],
+      customerCollectionsInSalesCash: true,
+      lines,
+      ...range,
+    });
+
+    expect(result.openingCash).toBe(-38_500);
+    expect(result.todayCash).toBe(138_500);
+    expect(result.todayCash).not.toBe(213_500);
+    expect(result.expense).toBe(15_000);
+    expect(result.expense).not.toBe(30_000);
+    expect(result.closingCash).toBe(85_000);
+    expect(result.closingCash).not.toBe(175_000);
+    expect(result.reservation).toBe(10_000);
+    expect(result.openAccount).toBe(0);
+    expect(result.cashDelta).toBe(0);
+    expect(result.todayCash).not.toBe(138_500 + 10_000);
+    expect(result.closingCash).toBe(result.openingCash + result.todayCash - result.expense);
+  });
+
+  it('kasa listesi kapanışla aynı 85.000, fatura aynası ikinci kez yazılmaz', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers: [...merkez, qicard],
+      lines,
+      dateFrom: day,
+      dateTo: day,
+      unassignedLabel: 'Kasaya bağlanmayan',
+      saleReceiptKeys: ['BEA-2026-00001'],
+    });
+    const listed = cashRegisterDistributionLines(rows);
+    const merkezRow = listed.find((row) => row.id === 'k1');
+    const qicardRow = listed.find((row) => row.id === 'k2');
+    expect(merkezRow?.amount).toBe(85_000);
+    expect(merkezRow?.amount).not.toBe(175_000);
+    expect(qicardRow?.amount).toBe(0);
+    expect(sumCashRegisterDistribution(listed)).toBe(85_000);
+    expect(rows.find((row) => row.id === 'k1')?.expense).toBe(15_000);
+  });
+});

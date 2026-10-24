@@ -831,8 +831,40 @@ function lineMatchesSaleReceipt(line: CashStatusRegisterLine, keys: ReadonlySet<
 const SALE_INVOICE_COLLECTION_TYPES = new Set(['SATIS_FATURASI', 'HIZMET_FATURASI']);
 
 /**
+ * Fatura kaydının kasa aynası. Satış tahsilatı günlük nakitteyse
+ * bu satır ikinci kez eklenmez. Açıklamadaki fiş no satış anahtarıyla
+ * eşleşmese de "Satış faturası" / "Güzellik Satışı" aynası nakdi şişirmez.
+ */
+const AUTO_SALE_CASH_MARKERS = [
+  'satış faturası',
+  'satis faturasi',
+  'verilen hizmet faturası',
+  'verilen hizmet faturasi',
+  'güzellik satış',
+  'guzellik satis',
+  'market satış',
+  'market satis',
+];
+
+function autoSaleCashBlob(line: CashStatusRegisterLine): string {
+  return [line.islem_aciklamasi, line.aciklama, line.islem_no, line.fiche_no]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLocaleLowerCase('tr-TR');
+}
+
+function looksLikeAutoSaleCashIn(line: CashStatusRegisterLine, tip: string): boolean {
+  if (tip !== 'KASA_GIRIS' && !SALE_INVOICE_COLLECTION_TYPES.has(tip)) return false;
+  const blob = autoSaleCashBlob(line);
+  if (!blob) return false;
+  return AUTO_SALE_CASH_MARKERS.some((marker) => blob.includes(marker));
+}
+
+/**
  * Satış tahsilatı günlük nakitteyse aynı kasa fişi eklenmez.
  * Cari tahsilat raporun ek tahsilatına girdiyse ikinci kez yazılmaz.
+ * Fatura aynası (fiş no satıştan farklı olsa da) satış nakdine eklenmez.
  */
 function skipSaleCollectionAlreadyInCash(
   line: CashStatusRegisterLine,
@@ -841,6 +873,12 @@ function skipSaleCollectionAlreadyInCash(
   customerCollectionsInSalesCash: boolean,
 ): boolean {
   if (tip === 'KASA_GIRIS' && lineMatchesSaleReceipt(line, saleReceiptKeys)) return true;
+  if (
+    customerCollectionsInSalesCash
+    && looksLikeAutoSaleCashIn(line, tip)
+  ) {
+    return true;
+  }
   if (tip === 'CH_TAHSILAT' && (customerCollectionsInSalesCash || lineMatchesSaleReceipt(line, saleReceiptKeys))) {
     return true;
   }
@@ -848,6 +886,24 @@ function skipSaleCollectionAlreadyInCash(
     return true;
   }
   return false;
+}
+
+/**
+ * Satış fişiyle aynı tahsilatın fatura aynası.
+ * Fiş no satışta varsa satır kalır (çekmecedeki asıl giriş).
+ * Fiş no satışta yoksa ikinci kayıttır; bakiyeden düşülür.
+ */
+function withoutDuplicateSaleInvoices(
+  lines: CashStatusRegisterLine[],
+  saleReceiptKeys: Iterable<string> | null | undefined,
+): CashStatusRegisterLine[] {
+  const keys = saleReceiptKeySet(saleReceiptKeys);
+  if (keys.size === 0) return lines;
+  return lines.filter((line) => {
+    const tip = String(line.islem_tipi || '').trim().toUpperCase();
+    if (!looksLikeAutoSaleCashIn(line, tip)) return true;
+    return lineMatchesSaleReceipt(line, keys);
+  });
 }
 
 export interface CashStatusVoucherInput {
@@ -964,7 +1020,9 @@ export function cashStatusWithVouchers(input: CashStatusVoucherInput): CashStatu
       continue;
     }
     if (PERIOD_SUMMARY_CASH_OUT_TYPES.has(tip)) {
-      const coveredByTotal = expenseProvided && (
+      // Sıfır gider toplamı satırı "sayılmış" saymaz. Anahtar dolu olsa da
+      // tutar 0 ise fiş henüz nakitten düşmemiştir; bir kez düşülür.
+      const coveredByTotal = expenseProvided && expenseParam > 0.004 && (
         !expenseKeysProvided || expenseKeyHit(line, countedExpenseKeys)
       );
       if (!coveredByTotal) expenseFromLines = round2(expenseFromLines + Math.abs(signed));
@@ -1254,10 +1312,17 @@ export function cashRegisterStatusFromLedger(args: {
   unassignedLabel: string;
   /** Satış fişindeki nakit iade. Defter satırı yoksa kalan da bu tutarı düşer. */
   cashRefunds?: readonly CashRegisterRefund[];
+  /**
+   * Satış fiş numaraları. Fatura aynası (fiş no bu kümede değilse)
+   * çekmece bakiyesine ikinci kez yazılmaz.
+   */
+  saleReceiptKeys?: Iterable<string>;
 }): CashRegisterStatusRow[] {
   const dateFrom = String(args.dateFrom || '').slice(0, 10);
   const dateTo = String(args.dateTo || '').slice(0, 10);
-  const ledgerLines = withCashVirmanLines(args.lines || []) as CashStatusRegisterLine[];
+  const ledgerLines = withCashVirmanLines(
+    withoutDuplicateSaleInvoices(args.lines || [], args.saleReceiptKeys),
+  ) as CashStatusRegisterLine[];
   const known = new Set<string>();
   const byId = new Map<string, { code: string; name: string; lines: CashStatusRegisterLine[] }>();
 
@@ -1421,14 +1486,32 @@ export interface CashRegisterDistributionLine {
  */
 export function cashRegisterDistributionLines(
   rows: CashRegisterStatusRow[],
+  options?: { unpostedExpense?: number },
 ): CashRegisterDistributionLine[] {
-  return (rows || []).map((row) => ({
-    id: row.id,
-    code: row.code,
-    name: row.name,
-    label: formatCashRegisterDistributionLabel(row.code, row.name),
-    amount: round2(row.closingCash),
-  }));
+  const postedExpense = round2(
+    (rows || []).reduce((sum, row) => sum + Math.max(0, num(row.expense)), 0),
+  );
+  const extraExpense = Math.max(0, round2(num(options?.unpostedExpense) - postedExpense));
+  let targetId = '';
+  let bestCash = -1;
+  if (extraExpense > 0.004) {
+    for (const row of rows || []) {
+      if (row.payCash > bestCash) {
+        bestCash = row.payCash;
+        targetId = row.id;
+      }
+    }
+  }
+  return (rows || []).map((row) => {
+    const cut = extraExpense > 0.004 && row.id === targetId ? extraExpense : 0;
+    return {
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      label: formatCashRegisterDistributionLabel(row.code, row.name),
+      amount: round2(row.closingCash - cut),
+    };
+  });
 }
 
 export function sumCashRegisterDistribution(lines: CashRegisterDistributionLine[]): number {

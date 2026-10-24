@@ -4555,6 +4555,7 @@ export function ReportsModule({
       countedExpenseKeys.add(key);
     };
     for (const row of dailyExpenseRowsForReport) {
+      if (!row.isCash) continue;
       rememberExpenseKey(row.ficheNo);
       rememberExpenseKey(row.sourceId);
     }
@@ -5039,6 +5040,17 @@ export function ReportsModule({
     const ledger = cashRegisterLedgerLines.length > 0
       ? cashRegisterLedgerLines
       : kasaLinesForSelectedDate;
+    const saleReceiptKeys = new Set<string>();
+    const rememberReceipt = (value: unknown) => {
+      const key = String(value ?? '').trim().replace(/İ/g, 'I').toLowerCase();
+      if (!key || key === '—' || key === '-') return;
+      saleReceiptKeys.add(key);
+    };
+    for (const row of dailyActiveRows) {
+      if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) continue;
+      rememberReceipt(row.receiptNumber);
+    }
+    for (const sale of dailySalesForCash) rememberReceipt(sale.receiptNumber);
     return cashRegisterStatusFromLedger({
       registers: cashRegisterCards.map((kasa) => ({
         id: kasa.id,
@@ -5050,6 +5062,7 @@ export function ReportsModule({
       dateTo: selectedDateTo,
       unassignedLabel: tm('cashStatusUnassignedRegister'),
       cashRefunds: cashRefundsFromSales(dailySalesForCash, dailyAppliedAvans),
+      saleReceiptKeys,
     });
   };
 
@@ -8422,7 +8435,9 @@ export function ReportsModule({
                       closingCash={cashStatus.closingCash}
                       currency={reportCurrency}
                       paymentRows={cashStatus.paymentTypes}
-                      registerLines={cashRegisterDistributionLines(registerRows)}
+                      registerLines={cashRegisterDistributionLines(registerRows, {
+                        unpostedExpense: cashStatus.expenses,
+                      })}
                       grandTotal={blockTotals.grandTotal}
                       onRegisterRowClick={() => setCashStatusPane('registers')}
                       labels={cashStatusFigureLabels(
