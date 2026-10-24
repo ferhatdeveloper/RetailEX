@@ -54,7 +54,7 @@ import {
     useClinicShellV2,
     useClinicV2CrmMenu,
 } from './clinicShellV2';
-import { useClinicMenuPalette } from './clinicMenuPalette';
+import { clinicFontPx, useClinicMenuFont, useClinicMenuPalette } from './clinicMenuPalette';
 import { CLINIC_V2_INBOX_TAB_ID, ClinicV2SideRail } from './components/ClinicV2SideRail';
 import { ClinicReportCenter } from './components/ClinicReportCenter';
 import { CLINIC_REPORT_CENTER_TAB, GENERAL_REPORTS_TAB } from '../../utils/clinicReportCenter';
@@ -125,6 +125,8 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const showNavText = !isMobile ? !collapsed : mobileNavOpen;
     const [showLanguageModal, setShowLanguageModal] = useState(false);
     const shell = useClinicMenuPalette();
+    const menuFont = useClinicMenuFont();
+    const menuPx = (base: number) => clinicFontPx(base, menuFont.size);
     const shellV2 = useClinicShellV2();
     const crmMenuOn = useClinicV2CrmMenu();
     const [rtlMode, setRtlMode] = useState(() => localStorage.getItem('retailos_rtl_mode') === 'true');
@@ -496,6 +498,8 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
             <aside
                 data-testid="clinic-classic-nav"
                 data-palette={shell.id}
+                data-font-family={menuFont.family}
+                data-font-size={menuFont.size}
                 className={`flex flex-col transition-all duration-200 ease-out ${
                     isMobile ? 'fixed inset-y-0 left-0 z-[60] shadow-2xl' : 'shrink-0'
                 }`}
@@ -504,6 +508,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     transform: isMobile && !mobileNavOpen ? 'translateX(-100%)' : undefined,
                     background: shell.sidebar,
                     borderRight: `1px solid ${shell.sidebarLine}`,
+                    fontFamily: menuFont.stack,
                 }}
             >
                 {/* Brand */}
@@ -524,10 +529,10 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     </div>
                     {showNavText && (
                         <div className="ml-2.5 min-w-0">
-                            <p style={{ color: shell.text, fontWeight: 800, fontSize: 13, lineHeight: 1.2, letterSpacing: '-0.01em' }}>
+                            <p style={{ color: shell.text, fontWeight: 800, fontSize: menuPx(13), lineHeight: 1.2, letterSpacing: '-0.01em' }}>
                                 {specialty === 'dental' ? tm('bShellBrandTitleDental') : tm('bShellBrandTitle')}
                             </p>
-                            <p style={{ color: shell.muted, fontWeight: 700, fontSize: 9, letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+                            <p style={{ color: shell.muted, fontWeight: 700, fontSize: menuPx(9), letterSpacing: '0.15em', textTransform: 'uppercase' }}>
                                 {specialty === 'dental' ? tm('bShellBrandSubtitleDental') : tm('bShellBrandSubtitle')}
                             </p>
                         </div>
@@ -552,7 +557,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                             {showNavText && (
                                 <p style={{
                                     color: shell.group, fontWeight: 800,
-                                    fontSize: 9, letterSpacing: '0.18em', textTransform: 'uppercase',
+                                    fontSize: menuPx(9), letterSpacing: '0.18em', textTransform: 'uppercase',
                                     padding: '0 16px', marginBottom: 4,
                                 }}>
                                     {group.title}
@@ -581,7 +586,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                                             borderBottom: 'none',
                                             borderLeft: active ? `2px solid ${shell.accentEdge}` : '2px solid transparent',
                                             color: active ? shell.onAccent : shell.item,
-                                            fontSize: 13, fontWeight: active ? 700 : 500,
+                                            fontSize: menuPx(13), fontWeight: active ? 700 : 500,
                                             cursor: 'pointer', outline: 'none',
                                             transition: 'background 0.12s, color 0.12s',
                                         }}
@@ -628,7 +633,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                                 borderBottom: 'none',
                                 borderLeft: '2px solid transparent',
                                 color: shell.item,
-                                fontSize: 13, fontWeight: 600,
+                                fontSize: menuPx(13), fontWeight: 600,
                                 cursor: 'pointer', outline: 'none',
                                 transition: 'background 0.12s, color 0.12s',
                             }}
@@ -653,13 +658,13 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                         <div style={{
                             width: 30, height: 30, background: shell.accent, borderRadius: 6,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            color: shell.onAccent, fontWeight: 800, fontSize: 12, flexShrink: 0,
+                            color: shell.onAccent, fontWeight: 800, fontSize: menuPx(12), flexShrink: 0,
                         }}>C</div>
                         {showNavText && (
                             <>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <p style={{ color: shell.text, fontWeight: 700, fontSize: 12, lineHeight: 1.3 }}>{tm('bShellUserAdmin')}</p>
-                                    <p style={{ color: shell.muted, fontSize: 10, fontWeight: 600 }}>{tm('bShellRoleAdmin')}</p>
+                                    <p style={{ color: shell.text, fontWeight: 700, fontSize: menuPx(12), lineHeight: 1.3 }}>{tm('bShellUserAdmin')}</p>
+                                    <p style={{ color: shell.muted, fontSize: menuPx(10), fontWeight: 600 }}>{tm('bShellRoleAdmin')}</p>
                                 </div>
                                 <button style={{ color: shell.icon, flexShrink: 0 }}>
                                     <Settings2 size={13} />

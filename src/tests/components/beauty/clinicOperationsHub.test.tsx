@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { translate } from '../../../locales/module-translations';
-import { CLINIC_MENU_PALETTE_KEY } from '../../../components/beauty/clinicMenuPalette';
+import { CLINIC_CUSTOM_PALETTES_KEY, CLINIC_FONT_KEY, CLINIC_MENU_PALETTE_KEY } from '../../../components/beauty/clinicMenuPalette';
 import {
     CLINIC_OPS_GROUPS,
     ClinicOperationsHub,
@@ -47,6 +47,8 @@ vi.mock('../../../services/beautyService', () => ({
 describe('Klinik operasyon ayar kabuğu', () => {
     beforeEach(() => {
         localStorage.removeItem(CLINIC_MENU_PALETTE_KEY);
+        localStorage.removeItem(CLINIC_CUSTOM_PALETTES_KEY);
+        localStorage.removeItem(CLINIC_FONT_KEY);
     });
 
     it('ayar grupları solda listelenir ve seçilen form sağda kalır', async () => {
@@ -116,5 +118,23 @@ describe('Klinik operasyon ayar kabuğu', () => {
         const src = readFileSync(resolve('src/components/beauty/components/ClinicOperationsHub.tsx'), 'utf8');
         expect(src).not.toContain('overflow-x-auto');
         expect(src).toContain('cops-save');
+    });
+
+    it('yazı tipi ve punto ayar kabuğunda kalır', async () => {
+        localStorage.setItem(CLINIC_FONT_KEY, JSON.stringify({ family: 'serif', size: 'xl' }));
+        render(<ClinicOperationsHub />);
+        const shell = screen.getByTestId('clinic-ops-settings');
+        expect(shell.getAttribute('data-font-family')).toBe('serif');
+        expect(shell.getAttribute('data-font-size')).toBe('xl');
+        expect(shell.getAttribute('style') ?? '').toContain('Georgia');
+        expect(shell.getAttribute('style') ?? '').toContain('1.25');
+        const css = shell.querySelector('style')?.textContent ?? '';
+        expect(css).toContain('font-size: 16.575px');
+        expect(css).toContain('calc(16.575px * var(--clinic-font-scale, 1))');
+        expect(css).toContain('calc(14px * var(--clinic-font-scale, 1))');
+        expect(screen.getByTestId('clinic-ops-settings-group-overview').getAttribute('style') ?? '').toContain('var(--clinic-font-scale, 1)');
+        expect(screen.getByTestId('clinic-font-family-serif').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('clinic-font-size-xl').getAttribute('aria-pressed')).toBe('true');
+        expect(await screen.findByText('Klinik analitik (90 gün)')).toBeTruthy();
     });
 });

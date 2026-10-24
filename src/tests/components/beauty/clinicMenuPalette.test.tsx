@@ -7,10 +7,14 @@ import { ThemeProvider } from '../../../contexts/ThemeContext';
 import BeautyModule from '../../../components/beauty';
 import { ClinicMenuPalettePicker } from '../../../components/beauty/components/ClinicMenuPalettePicker';
 import {
+    CLINIC_CUSTOM_PALETTES_KEY,
+    CLINIC_FONT_KEY,
     CLINIC_MENU_PALETTE_KEY,
     CLINIC_MENU_PALETTES,
     clinicMenuPaletteById,
+    readClinicFont,
     readClinicMenuPaletteId,
+    saveClinicCustomPalette,
 } from '../../../components/beauty/clinicMenuPalette';
 import { CLINIC_CLASSIC_SHELL, CLINIC_V2_CRM_MENU_KEY, CLINIC_V2_STORAGE_KEY } from '../../../components/beauty/clinicShellV2';
 
@@ -100,6 +104,8 @@ function mountClinic() {
 describe('Klinik menü renk paleti', () => {
     beforeEach(() => {
         localStorage.removeItem(CLINIC_MENU_PALETTE_KEY);
+        localStorage.removeItem(CLINIC_CUSTOM_PALETTES_KEY);
+        localStorage.removeItem(CLINIC_FONT_KEY);
         localStorage.removeItem(CLINIC_V2_STORAGE_KEY);
         localStorage.removeItem(CLINIC_V2_CRM_MENU_KEY);
     });
@@ -247,5 +253,144 @@ describe('Klinik menü renk paleti', () => {
         expect(indexSrc).toContain('data-testid="clinic-classic-nav"');
         expect(indexSrc).toContain('background: active ? shell.accent : \'transparent\'');
         expect(indexSrc).toContain('color: active ? shell.onAccent : shell.item');
+    });
+
+    it('boş depoda mor palet, sistem yazısı ve normal punto kalır', () => {
+        expect(localStorage.getItem(CLINIC_MENU_PALETTE_KEY)).toBeNull();
+        expect(localStorage.getItem(CLINIC_CUSTOM_PALETTES_KEY)).toBeNull();
+        expect(localStorage.getItem(CLINIC_FONT_KEY)).toBeNull();
+        expect(readClinicMenuPaletteId()).toBe('plum');
+        expect(readClinicFont().family).toBe('system');
+        expect(readClinicFont().size).toBe('md');
+        expect(readClinicFont().stack).toBe('inherit');
+
+        mountClinic();
+        const nav = screen.getByTestId('clinic-classic-nav');
+        expect(nav.getAttribute('data-palette')).toBe('plum');
+        expect(nav.getAttribute('data-font-family')).toBe('system');
+        expect(nav.getAttribute('data-font-size')).toBe('md');
+        expectStyleToken(nav, clinicMenuPaletteById('plum').sidebar);
+        expect(screen.getByRole('button', { name: 'Dashboard' }).style.fontSize).toBe('13px');
+        expect(screen.getByTestId('clinic-font-family-system').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('clinic-font-size-md').getAttribute('aria-pressed')).toBe('true');
+        expect(localStorage.getItem(CLINIC_FONT_KEY)).toBeNull();
+    });
+
+    it('özel palet kaydolur ve seçilince vurgu rengi o palettir', () => {
+        const weak = saveClinicCustomPalette({
+            name: 'Soluk',
+            background: '#f4f4f5',
+            accent: '#9f1239',
+            text: '#ececee',
+        });
+        expect(weak.ok).toBe(false);
+        if (!weak.ok) expect(weak.reason).toBe('contrast');
+        expect(localStorage.getItem(CLINIC_CUSTOM_PALETTES_KEY)).toBeNull();
+        expect(readClinicMenuPaletteId()).toBe('plum');
+
+        const view = mountClinic();
+        fireEvent.change(screen.getByTestId('clinic-custom-palette-name'), { target: { value: 'Şafak' } });
+        fireEvent.change(screen.getByTestId('clinic-custom-palette-background'), { target: { value: '#102033' } });
+        fireEvent.change(screen.getByTestId('clinic-custom-palette-accent'), { target: { value: '#9f1239' } });
+        fireEvent.change(screen.getByTestId('clinic-custom-palette-text'), { target: { value: '#f8fafc' } });
+        fireEvent.click(screen.getByTestId('clinic-custom-palette-save'));
+
+        const raw = localStorage.getItem(CLINIC_CUSTOM_PALETTES_KEY);
+        expect(raw).toBeTruthy();
+        const stored = JSON.parse(raw ?? '[]') as Array<{ id: string; name: string; accent: string; background: string; text: string }>;
+        expect(stored).toHaveLength(1);
+        expect(stored[0].name).toBe('Şafak');
+        expect(stored[0].accent).toBe('#9f1239');
+        expect(stored[0].background).toBe('#102033');
+        expect(stored[0].text).toBe('#f8fafc');
+        expect(localStorage.getItem(CLINIC_MENU_PALETTE_KEY)).toBe(stored[0].id);
+
+        const saved = clinicMenuPaletteById(stored[0].id);
+        expect(saved.accent).toBe('#9f1239');
+        expect(saved.customName).toBe('Şafak');
+        expect(contrast(saved.sidebar, saved.text)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(saved.accent, saved.onAccent)).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(saved.sidebar, saved.item)).toBeGreaterThanOrEqual(4.5);
+
+        const nav = screen.getByTestId('clinic-classic-nav');
+        const dashboard = screen.getByRole('button', { name: 'Dashboard' });
+        expect(nav.getAttribute('data-palette')).toBe(stored[0].id);
+        expectStyleToken(nav, '#102033');
+        expectStyleToken(dashboard, '#9f1239');
+        expect(screen.getByTestId(`clinic-menu-palette-${stored[0].id}`).textContent).toBe('Şafak');
+        expect(screen.getByTestId(`clinic-menu-palette-${stored[0].id}`).getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('clinic-menu-palette-plum').getAttribute('aria-pressed')).toBe('false');
+
+        fireEvent.click(screen.getByTestId('clinic-menu-palette-rose'));
+        expect(localStorage.getItem(CLINIC_MENU_PALETTE_KEY)).toBe('rose');
+        expect(JSON.parse(localStorage.getItem(CLINIC_CUSTOM_PALETTES_KEY) ?? '[]')).toHaveLength(1);
+        fireEvent.click(screen.getByTestId(`clinic-menu-palette-${stored[0].id}`));
+        expect(nav.getAttribute('data-palette')).toBe(stored[0].id);
+        expectStyleToken(dashboard, saved.accent);
+        expect(CLINIC_MENU_PALETTES.map((palette) => palette.id)).toContain('plum');
+
+        view.unmount();
+        mountClinic();
+        const refreshed = screen.getByTestId('clinic-classic-nav');
+        expect(refreshed.getAttribute('data-palette')).toBe(stored[0].id);
+        expectStyleToken(refreshed, '#102033');
+        expectStyleToken(screen.getByRole('button', { name: 'Dashboard' }), '#9f1239');
+        expect(readClinicMenuPaletteId()).toBe(stored[0].id);
+    });
+
+    it('punto ve yazı tipi anahtarları yenilemede durur', () => {
+        const first = mountClinic();
+        fireEvent.click(screen.getByTestId('clinic-font-family-serif'));
+        fireEvent.click(screen.getByTestId('clinic-font-size-lg'));
+        expect(JSON.parse(localStorage.getItem(CLINIC_FONT_KEY) ?? '{}')).toEqual({ family: 'serif', size: 'lg' });
+        const nav = screen.getByTestId('clinic-classic-nav');
+        expect(nav.getAttribute('data-font-family')).toBe('serif');
+        expect(nav.getAttribute('data-font-size')).toBe('lg');
+        expect(nav.getAttribute('style') ?? '').toContain('Georgia');
+        expect(screen.getByRole('button', { name: 'Dashboard' }).style.fontSize).toBe('15px');
+        expect(screen.getByTestId('clinic-font-family-serif').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('clinic-font-size-lg').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('clinic-menu-palette-picker').getAttribute('data-font-family')).toBe('serif');
+        first.unmount();
+
+        expect(JSON.parse(localStorage.getItem(CLINIC_FONT_KEY) ?? '{}')).toEqual({ family: 'serif', size: 'lg' });
+        const second = mountClinic();
+        expect(screen.getByTestId('clinic-classic-nav').getAttribute('data-font-family')).toBe('serif');
+        expect(screen.getByTestId('clinic-classic-nav').getAttribute('data-font-size')).toBe('lg');
+        expect(screen.getByTestId('clinic-classic-nav').getAttribute('style') ?? '').toContain('Georgia');
+        expect(screen.getByRole('button', { name: 'Dashboard' }).style.fontSize).toBe('15px');
+        expect(screen.getByTestId('clinic-font-family-serif').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('clinic-font-size-lg').getAttribute('aria-pressed')).toBe('true');
+        expect(readClinicMenuPaletteId()).toBe('plum');
+        second.unmount();
+
+        const keys = [
+            'bClinicCustomPaletteTitle',
+            'bClinicCustomPaletteHint',
+            'bClinicCustomPaletteName',
+            'bClinicCustomPaletteBackground',
+            'bClinicCustomPaletteAccent',
+            'bClinicCustomPaletteText',
+            'bClinicCustomPaletteSave',
+            'bClinicCustomPaletteContrast',
+            'bClinicFontTitle',
+            'bClinicFontFamily',
+            'bClinicFontSize',
+            'bClinicFontFamily_system',
+            'bClinicFontFamily_inter',
+            'bClinicFontFamily_serif',
+            'bClinicFontFamily_mono',
+            'bClinicFontSize_sm',
+            'bClinicFontSize_md',
+            'bClinicFontSize_lg',
+            'bClinicFontSize_xl',
+        ];
+        for (const key of keys) {
+            for (const lang of ['tr', 'en', 'ar', 'ku'] as const) {
+                const label = translate(key, lang);
+                expect(label.trim().length).toBeGreaterThan(0);
+                expect(label).not.toBe(key);
+            }
+        }
     });
 });

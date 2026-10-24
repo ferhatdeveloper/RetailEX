@@ -14,6 +14,7 @@ import type { BeautyClinicAnalytics } from '../../../types/beauty';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { ClinicSpecialtyModePanel } from './ClinicSpecialtyModePanel';
 import { ClinicMenuPalettePicker } from './ClinicMenuPalettePicker';
+import { useClinicMenuFont } from '../clinicMenuPalette';
 import { normalizeAllowStaffSlotOverlap } from '../../../utils/beautyPortalOverlap';
 
 export type ClinicOpsGroupId =
@@ -51,6 +52,7 @@ export const CLINIC_OPS_GROUPS: readonly ClinicOpsGroup[] = [
 export function ClinicOperationsHub() {
     const { user } = useAuth();
     const { tm } = useLanguage();
+    const menuFont = useClinicMenuFont();
     const [tab, setTab] = useState<ClinicOpsGroupId>('overview');
     const [analytics, setAnalytics] = useState<BeautyClinicAnalytics | null>(null);
     const [loading, setLoading] = useState(false);
@@ -82,8 +84,16 @@ export function ClinicOperationsHub() {
     return (
         <div
             data-testid="clinic-ops-settings"
-            className="flex h-full min-h-0"
-            style={{ gap: 20, background: '#fcfcfc', padding: 20 }}
+            data-font-family={menuFont.family}
+            data-font-size={menuFont.size}
+            className="cops-font flex h-full min-h-0"
+            style={{
+                gap: 20,
+                background: '#fcfcfc',
+                padding: 20,
+                fontFamily: menuFont.stack,
+                ['--clinic-font-scale' as string]: String(menuFont.scale),
+            }}
         >
             <style>{COPS_CSS}</style>
             <aside className="cops-side flex shrink-0 flex-col overflow-y-auto">
@@ -139,6 +149,11 @@ const COPS_CSS = `
 .cops-title { margin: 0; font-size: 16.575px; font-weight: 500; line-height: 1; color: #071437; }
 .cops-save { height: 44px; border: 0; border-radius: 6.175px; background: #1b84ff; color: #fff; font-size: 14.3px; font-weight: 500; padding: 0 20.5px; box-shadow: none; cursor: pointer; }
 .cops-save:disabled { opacity: 0.6; cursor: default; }
+.cops-font .cops-title { font-size: calc(16.575px * var(--clinic-font-scale, 1)); }
+.cops-font .cops-nav button { font-size: calc(13px * var(--clinic-font-scale, 1)); }
+.cops-font .text-sm { font-size: calc(14px * var(--clinic-font-scale, 1)); }
+.cops-font .text-xs { font-size: calc(12px * var(--clinic-font-scale, 1)); }
+.cops-font .text-\\[11px\\] { font-size: calc(11px * var(--clinic-font-scale, 1)); }
 `;
 
 function OpsMenuLink({
@@ -162,7 +177,7 @@ function OpsMenuLink({
                 color: selected ? '#1b84ff' : '#4b5675',
                 borderLeft: `3px solid ${selected ? '#1b84ff' : 'transparent'}`,
                 borderRadius: 6,
-                fontSize: 13,
+                fontSize: 'calc(13px * var(--clinic-font-scale, 1))',
                 fontWeight: 500,
                 lineHeight: '18px',
                 padding: '8px 13px',
