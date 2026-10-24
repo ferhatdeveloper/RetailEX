@@ -245,10 +245,9 @@ describe('Klinik menü renk paleti', () => {
         const v2 = readFileSync(resolve('src/components/beauty/components/ClinicV2SettingsShell.tsx'), 'utf8');
         const rail = readFileSync(resolve('src/components/beauty/components/ClinicV2SideRail.tsx'), 'utf8');
         const indexSrc = readFileSync(resolve('src/components/beauty/index.tsx'), 'utf8');
-        expect(hub).toContain('<ClinicMenuPalettePicker variant="page" />');
-        expect(hub).toContain("tab === 'menuColor'");
-        expect(hub).not.toContain('variant="rail"');
-        expect(hub).not.toContain('clinic-menu-color-card');
+        expect(hub).toContain('<ClinicMenuPalettePicker variant="rail" />');
+        expect(hub).toContain('data-testid="clinic-menu-color-card"');
+        expect(hub).not.toContain("tab === 'menuColor'");
         expect(hub).toContain('data-testid="clinic-ops-settings-nav"');
         expect(hub).not.toContain('overflow-x-auto');
         expect(v2).not.toContain('ClinicMenuPalettePicker');

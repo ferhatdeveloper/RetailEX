@@ -12453,7 +12453,6 @@ export const excelModuleTranslations = {
   bShellNavObstetrics: { tr: 'Kadın doğum', en: 'Obstetrics', ar: 'التوليد', ku: 'ژنێنی' },
   bShellNavDietitian: { tr: 'Diyetisyen', en: 'Dietitian', ar: 'أخصائي تغذية', ku: 'ڕژێنەوە' },
   bClinicSpecialtyTab: { tr: 'Klinik türü', en: 'Clinic type', ar: 'نوع العيادة', ku: 'جۆری کلینیک' },
-  bClinicOpsMenuColor: { tr: 'Menü rengi', en: 'Menu color', ar: 'لون القائمة', ku: 'ڕەنگی مێنو' },
   bClinicOpsPortal: { tr: 'Portal & talepler', en: 'Portal & requests', ar: 'البوابة والطلبات', ku: 'پۆرتاڵ و داواکاری' },
   bClinicOpsLocations: { tr: 'Şube / oda', en: 'Branch / room', ar: 'الفرع / الغرفة', ku: 'لق / ژوور' },
   bClinicOpsWait: { tr: 'Bekleme & kurumsal', en: 'Waitlist & corporate', ar: 'الانتظار والمؤسسي', ku: 'چاوەڕوانی و دامەزراوە' },

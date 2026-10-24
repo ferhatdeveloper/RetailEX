@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     Building2, Globe, ClipboardList, Users, Briefcase,
-    Package, Layers, Link2, Activity, FileWarning, Stethoscope, Camera, LayoutTemplate, Palette,
+    Package, Layers, Link2, Activity, FileWarning, Stethoscope, Camera, LayoutTemplate,
     type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,6 @@ import { normalizeAllowStaffSlotOverlap } from '../../../utils/beautyPortalOverl
 
 export type ClinicOpsGroupId =
     | 'overview'
-    | 'menuColor'
     | 'specialty'
     | 'portal'
     | 'locations'
@@ -36,10 +35,9 @@ export type ClinicOpsGroup = {
     icon: LucideIcon;
 };
 
-/** V1 klinik operasyon grupları. Menü rengi kendi sayfasıdır; palet formu sol şeritte durmaz. */
+/** V1 klinik operasyon grupları. Sıra eski yatay şeritle aynıdır. */
 export const CLINIC_OPS_GROUPS: readonly ClinicOpsGroup[] = [
     { id: 'overview', labelKey: 'bPanelTabSummary', icon: Activity },
-    { id: 'menuColor', labelKey: 'bClinicOpsMenuColor', icon: Palette },
     { id: 'specialty', labelKey: 'bClinicSpecialtyTab', icon: LayoutTemplate },
     { id: 'portal', labelKey: 'bClinicOpsPortal', icon: Globe },
     { id: 'locations', labelKey: 'bClinicOpsLocations', icon: Building2 },
@@ -98,7 +96,10 @@ export function ClinicOperationsHub() {
             }}
         >
             <style>{COPS_CSS}</style>
-            <aside className="cops-side flex h-full min-h-0 shrink-0 flex-col overflow-y-auto">
+            <aside className="cops-side flex h-full min-h-0 shrink-0 flex-col gap-3 overflow-y-auto">
+                <div className="cops-card shrink-0" data-testid="clinic-menu-color-card">
+                    <ClinicMenuPalettePicker variant="rail" />
+                </div>
                 <nav
                     aria-label={tm('bShellNavClinicOps')}
                     data-testid="clinic-ops-settings-nav"
@@ -123,7 +124,6 @@ export function ClinicOperationsHub() {
                     {tab === 'overview' && (
                         <OverviewPanel analytics={analytics} loading={loading} onRefresh={refresh} />
                     )}
-                    {tab === 'menuColor' && <ClinicMenuPalettePicker variant="page" />}
                     {tab === 'specialty' && <ClinicSpecialtyModePanel />}
                     {tab === 'portal' && (
                         <PortalPanel portalUrl={portalUrl} onRefresh={refresh} userId={user?.id} />
@@ -142,7 +142,7 @@ export function ClinicOperationsHub() {
 }
 
 const COPS_CSS = `
-.cops-side { width: 230px; flex-basis: 230px; }
+.cops-side { width: 440px; flex-basis: 440px; }
 .cops-card { background: #fff; border: 1px solid #f1f1f4; border-radius: 8px; box-shadow: rgba(0,0,0,0.03) 0px 3px 4px 0px; }
 .cops-nav { padding: 8px 20px 16px; }
 .cops-head { height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #f1f1f4; padding: 0 24px; }
