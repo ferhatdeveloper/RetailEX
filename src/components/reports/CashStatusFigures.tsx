@@ -1,11 +1,14 @@
 /**
  * Kasa Durumu kartları ve ödeme dağılımı.
- * Liste satırları bu blokta kalır. Kredi kartı ve havale satırları
- * gizlenir; üstteki Günlük Kart kartı ve genel toplam durur.
- * Hemen altında kasa kartları (kod — ad, içindeki bakiye) listelenir.
+ * Üst sıra: açılış, günlük nakit, alınan avans, kapanış.
+ * Günlük Kart kutusu gizlidir; kart tahsilatı bu yüzden nakde yazılmaz.
+ * Rezervasyon avansı ve gider, üst kutularla aynı kart biçimindedir.
+ * İkisi bilgi ve düşüm kartıdır; nakde ve kapanışa ikinci kez girmez.
+ * Nakit ve açık cari liste satırı olarak kalır.
+ * Kasa ızgarası en altta kalır. Genel toplam çubuğu ve alt açıklama yoktur.
  */
 import type { ReactNode } from 'react';
-import { Banknote, CreditCard, HandCoins } from 'lucide-react';
+import { Banknote, HandCoins, Receipt } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
 import {
   cashStatusDistributionListRows,
@@ -14,6 +17,9 @@ import {
   type CashStatusPaymentLine,
 } from '../../utils/cashStatusTotals';
 import { ReportColumnTable } from './shared/ReportDataGrid';
+
+/** Ödeme dağılımında liste yerine üst kutu biçiminde duran satırlar. */
+const CASH_STATUS_SPOTLIGHT_CODES = new Set(['REZERVASYON_AVANS', 'GIDER']);
 
 export interface CashStatusFigureLabels {
   opening: string;
@@ -42,12 +48,10 @@ export function CashStatusFigures({
   openingCash,
   todayCash,
   reservationDeposit,
-  todayCard,
   closingCash,
   currency,
   paymentRows,
   registerLines,
-  grandTotal,
   labels,
   onPaymentClick,
   onRegisterRowClick,
@@ -56,13 +60,21 @@ export function CashStatusFigures({
   openingCash: number;
   todayCash: number;
   reservationDeposit: number;
-  todayCard: number;
+  /**
+   * Günlük kart tahsilatı. Kutu gizlidir.
+   * Gizlemek kart tutarını nakde eklemez; hesap aynı kalır.
+   */
+  todayCard?: number;
   closingCash: number;
   currency: string;
   paymentRows: CashStatusPaymentLine[];
-  /** Ödeme tipi satırlarının hemen altındaki kasa listesi. Boş dizi boş durumdur. */
+  /** Ödeme dağılımının altındaki kasa ızgarası. Boş dizi boş durumdur. */
   registerLines?: CashRegisterDistributionLine[];
-  grandTotal: number;
+  /**
+   * Eski yeşil genel toplam. Çubuk gösterilmez.
+   * Kapanış bu tutardan okunmaz; açılış + günlük nakit − gider aynı kalır.
+   */
+  grandTotal?: number;
   labels: CashStatusFigureLabels;
   onPaymentClick?: (code: string) => void;
   onRegisterRowClick?: (id: string) => void;
@@ -72,10 +84,57 @@ export function CashStatusFigures({
   const money = (amount: number, deduction?: boolean) =>
     `${deduction && amount > 0.004 ? '− ' : ''}${formatNumber(amount, 2, false)} ${currency}`;
 
+  const distributionRows = cashStatusDistributionListRows(paymentRows);
+  const spotlightRows = distributionRows.filter((row) => CASH_STATUS_SPOTLIGHT_CODES.has(row.code));
+  const listRows = distributionRows.filter((row) => !CASH_STATUS_SPOTLIGHT_CODES.has(row.code));
+
+  const spotlightCard = (pt: CashStatusPaymentLine) => {
+    const title = pt.label || pt.code;
+    if (pt.code === 'GIDER' || pt.deduction) {
+      return (
+        <div
+          key={pt.code}
+          data-testid="cash-status-card-expense"
+          className="bg-white rounded-lg border-2 border-rose-200 p-4"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm text-gray-600">{title}</p>
+              <p className="text-2xl text-rose-600 mt-1 font-bold">{money(pt.amount, true)}</p>
+              <p className="text-xs text-rose-700 mt-1">{labels.expenseHint}</p>
+            </div>
+            <Receipt className="w-12 h-12 text-rose-600 opacity-20 shrink-0" />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div
+        key={pt.code}
+        data-testid="cash-status-card-reservation-info"
+        className="bg-white rounded-lg border-2 border-sky-200 p-4"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm text-gray-600 flex flex-wrap items-center gap-2">
+              <span>{title}</span>
+              <span className="text-[10px] uppercase tracking-wide text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
+                {labels.infoBadge}
+              </span>
+            </p>
+            <p className="text-2xl text-sky-600 mt-1 font-bold">{money(pt.amount)}</p>
+            <p className="text-xs text-slate-500 mt-1">{labels.reservationHint}</p>
+          </div>
+          <HandCoins className="w-12 h-12 text-sky-600 opacity-20 shrink-0" />
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-testid="cash-status-kpi-row">
+        <div className="bg-white rounded-lg border-2 border-blue-200 p-4" data-testid="cash-status-card-opening">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">{labels.opening}</p>
@@ -87,7 +146,7 @@ export function CashStatusFigures({
             <Banknote className="w-12 h-12 text-blue-600 opacity-20" />
           </div>
         </div>
-        <div className="bg-white rounded-lg border-2 border-green-200 p-4">
+        <div className="bg-white rounded-lg border-2 border-green-200 p-4" data-testid="cash-status-card-today-cash">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">{labels.todayCash}</p>
@@ -97,7 +156,7 @@ export function CashStatusFigures({
             <Banknote className="w-12 h-12 text-green-600 opacity-20" />
           </div>
         </div>
-        <div className="bg-white rounded-lg border-2 border-cyan-200 p-4">
+        <div className="bg-white rounded-lg border-2 border-cyan-200 p-4" data-testid="cash-status-card-reservation">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">{labels.reservation}</p>
@@ -107,16 +166,7 @@ export function CashStatusFigures({
             <HandCoins className="w-12 h-12 text-cyan-600 opacity-20" />
           </div>
         </div>
-        <div className="bg-white rounded-lg border-2 border-purple-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">{labels.todayCard}</p>
-              <p className="text-2xl text-purple-600 mt-1 font-bold">{money(todayCard)}</p>
-            </div>
-            <CreditCard className="w-12 h-12 text-purple-600 opacity-20" />
-          </div>
-        </div>
-        <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
+        <div className="bg-white rounded-lg border-2 border-orange-200 p-4" data-testid="cash-status-card-closing">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">{labels.closing}</p>
@@ -128,11 +178,17 @@ export function CashStatusFigures({
         </div>
       </div>
 
+      {spotlightRows.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="cash-status-spotlight-row">
+          {spotlightRows.map(spotlightCard)}
+        </div>
+      ) : null}
+
       <div className={aside ? 'grid grid-cols-1 lg:grid-cols-2 gap-4' : ''}>
-      <div className="bg-white rounded-lg border p-4">
+      <div className="bg-white rounded-lg border p-4" data-testid="cash-status-distribution">
         <h3 className="text-lg mb-4">{labels.distribution}</h3>
         <div className="space-y-3">
-          {cashStatusDistributionListRows(paymentRows).map((pt) => {
+          {listRows.map((pt) => {
             const body = (
               <>
                 <span className="flex items-center gap-2 min-w-0">
@@ -191,7 +247,7 @@ export function CashStatusFigures({
                 {labels.registersEmpty}
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2" data-testid="cash-status-registers">
                 <h4 className="text-sm font-semibold text-slate-700">{labels.registersTitle}</h4>
                 <ReportColumnTable
                   data={registerLines}
@@ -220,15 +276,9 @@ export function CashStatusFigures({
                     },
                   ]}
                 />
-                <p className="text-xs text-slate-500 px-1">{labels.registerListHint}</p>
               </div>
             )
           ) : null}
-          <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
-            <span className="font-semibold">{labels.grandTotal}</span>
-            <span className="font-bold text-green-700 text-lg tabular-nums">{money(grandTotal)}</span>
-          </div>
-          <p className="text-xs text-slate-500 px-1">{labels.grandHint}</p>
         </div>
       </div>
       {aside}
