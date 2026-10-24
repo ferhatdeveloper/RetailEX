@@ -7,8 +7,11 @@ import {
   FINANCIAL_REPORT_GROUP_KEY,
   omitRepeatedPeriodSummaryUnderFinance,
   omitUnlistedFinancialReports,
+  omitUnlistedPaymentReports,
+  PAYMENT_REPORT_GROUP_KEY,
   PERIOD_SUMMARY_MENU_KEYS,
   UNLISTED_FINANCIAL_REPORT_KEYS,
+  UNLISTED_PAYMENT_REPORT_KEYS,
 } from '../../utils/reportMenuPeriodSummary';
 
 describe('omitRepeatedPeriodSummaryUnderFinance', () => {
@@ -112,5 +115,48 @@ describe('omitUnlistedFinancialReports', () => {
   it('finansal olmayan grubu değiştirmez', () => {
     const groups = [{ key: 'grp-sales', children: [{ key: 'contact-account-legacy' }] }];
     expect(omitUnlistedFinancialReports(groups)).toEqual(groups);
+  });
+});
+
+describe('omitUnlistedPaymentReports', () => {
+  it('ödeme dağılımını çıkarır; indirim, kasa durumu ve kasalar kalır', () => {
+    const groups = [
+      {
+        key: PAYMENT_REPORT_GROUP_KEY,
+        children: [
+          { key: 'payment-distribution' },
+          { key: 'discount-report' },
+          { key: 'cash-status' },
+          { key: 'cash-registers' },
+          { key: 'commission' },
+        ],
+      },
+    ];
+    const next = omitUnlistedPaymentReports(groups);
+    const keys = (next[0]?.children ?? []).map((child) => child.key);
+    expect(keys).toEqual([
+      'discount-report',
+      'cash-status',
+      'cash-registers',
+      'commission',
+    ]);
+    expect(keys).not.toContain('payment-distribution');
+    for (const removed of UNLISTED_PAYMENT_REPORT_KEYS) {
+      expect(keys).not.toContain(removed);
+    }
+  });
+
+  it('ödeme grubu dışındaki menüyü ve klinik maddelerini değiştirmez', () => {
+    const groups = [
+      {
+        key: FINANCIAL_REPORT_GROUP_KEY,
+        children: [{ key: 'invoice-items-detail' }, { key: 'cash-ledger' }],
+      },
+      {
+        key: 'grp-beauty-reports',
+        children: [{ key: 'institution' }, { key: 'income' }],
+      },
+    ];
+    expect(omitUnlistedPaymentReports(groups)).toEqual(groups);
   });
 });

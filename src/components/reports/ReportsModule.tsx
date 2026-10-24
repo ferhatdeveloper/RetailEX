@@ -7,7 +7,9 @@ import { PeriodSummaryReport } from './PeriodSummaryReport';
 import {
   omitRepeatedPeriodSummaryUnderFinance,
   omitUnlistedFinancialReports,
+  omitUnlistedPaymentReports,
   UNLISTED_FINANCIAL_REPORT_KEYS,
+  UNLISTED_PAYMENT_REPORT_KEYS,
 } from '../../utils/reportMenuPeriodSummary';
 import { ReportChatAI } from './ReportChatAI';
 import { SalesTrendReport } from './SalesTrendReport';
@@ -215,7 +217,6 @@ import {
   ApartmentOutlined,
   DeploymentUnitOutlined,
   ExclamationCircleOutlined,
-  CreditCardOutlined,
   TagsOutlined,
   BankOutlined,
   SafetyCertificateOutlined,
@@ -974,7 +975,7 @@ type ReportTab =
   // Stok Raporları
   'stock-status' | 'stock-aging' | 'stock-turnover' | 'stock-abc' | 'materials' | 'purchase-promotion-report' | 'expiring-products' | 'critical-stock' | 'warehouse-stock' |
   // Ödeme & İşlem
-  'payment-distribution' | 'discount-report' | 'cash-status' | 'cash-registers' | 'commission' |
+  'discount-report' | 'cash-status' | 'cash-registers' | 'commission' |
   // Güzellik özel
   'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-staff-treatment-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report' | 'beauty-overdue-uncalled-report' | 'beauty-deposit-prepayment-report';
 
@@ -997,6 +998,8 @@ const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
   'customer-sales', // Müşteri Satış — menü ve sayfa bağı kesildi; bileşen dosyası duruyor
   // Eski müşteriler / devam eden alacaklar — menüden kaldırıldı; bileşen dosyası duruyor
   ...UNLISTED_FINANCIAL_REPORT_KEYS,
+  // Ödeme Dağılımı — Genel Raporlar menüsünden ve sekmeden çıkarıldı
+  ...UNLISTED_PAYMENT_REPORT_KEYS,
 ]);
 
 /** Yalnızca iş kolu Restoran iken menüde / sekmede anlamlı */
@@ -1052,7 +1055,11 @@ function resolveInitialReportTab(
   initialBusinessType: BusinessType,
   initialReportTab?: ReportTab,
 ): ReportTab {
-  if (initialReportTab && String(initialReportTab) !== 'customer-sales') return initialReportTab;
+  if (
+    initialReportTab
+    && String(initialReportTab) !== 'customer-sales'
+    && !(UNLISTED_PAYMENT_REPORT_KEYS as readonly string[]).includes(String(initialReportTab))
+  ) return initialReportTab;
   if (initialBusinessType === 'beauty') return 'beauty-service-report';
   if (initialBusinessType === 'restaurant') return 'product-reports';
   return 'daily';
@@ -1278,7 +1285,11 @@ export function ReportsModule({
   );
 
   useEffect(() => {
-    if (initialReportTab && String(initialReportTab) !== 'customer-sales') {
+    if (
+      initialReportTab
+      && String(initialReportTab) !== 'customer-sales'
+      && !(UNLISTED_PAYMENT_REPORT_KEYS as readonly string[]).includes(String(initialReportTab))
+    ) {
       setSelectedTab(initialReportTab);
     }
   }, [initialReportTab]);
@@ -6642,7 +6653,6 @@ export function ReportsModule({
         label: tm('odemeVeIslemler'),
         type: 'group',
         children: [
-          { key: 'payment-distribution', label: tm('odemeDagilimi'), icon: <CreditCardOutlined /> },
           { key: 'discount-report', label: tm('indirimRaporu'), icon: <TagsOutlined /> },
           { key: 'cash-status', label: tm('kasaDurumu'), icon: <BankOutlined /> },
           { key: 'cash-registers', label: tm('rptCashRegisters') || 'Kasalar', icon: <BankOutlined /> },
@@ -6652,8 +6662,9 @@ export function ReportsModule({
     ];
 
     return filterReportMenuGroups(
-      omitUnlistedFinancialReports(
-        omitRepeatedPeriodSummaryUnderFinance([
+      omitUnlistedPaymentReports(
+        omitUnlistedFinancialReports(
+          omitRepeatedPeriodSummaryUnderFinance([
           ...(businessType === 'beauty'
             ? [
                 {
@@ -6684,7 +6695,8 @@ export function ReportsModule({
               { key: 'turnover-reports', label: tm('ciroRaporlari'), icon: <Banknote className="w-4 h-4" /> },
             ] : []
           },
-        ]),
+          ]),
+        ),
       ),
       reportMenuParams,
     );
@@ -8424,131 +8436,6 @@ export function ReportsModule({
                       )}
                     />
                   )}
-                </div>
-              );
-            })()}
-
-            {selectedTab === 'payment-distribution' && (() => {
-              const paymentDist = getPaymentDistribution();
-              return (
-                <div className="space-y-4">
-                  <div className="bg-white rounded-lg border p-4">
-                    <div className="flex flex-row flex-wrap items-center gap-3 sm:gap-4 min-w-0">
-                      <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
-                      <ReportDateRangePresets
-                        value={dailyReportDateRange}
-                        onChange={setDailyReportDateRange}
-                        tm={tm}
-                        min={reportDateInputMin}
-                        max={reportDateInputMax}
-                        className="min-w-0 flex-1"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                    {paymentDist.types.map((pt) => (
-                      <button
-                        key={pt.code}
-                        type="button"
-                        onClick={() => setPaymentTypeDetailCode(pt.code as PaymentFormCode)}
-                        className={`rounded-lg border-2 p-4 text-left hover:shadow-md transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${pt.informational ? 'bg-slate-50 border-dashed' : 'bg-white'}`}
-                        style={{ borderColor: pt.informational ? '#a5f3fc' : `${pt.color}55` }}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-sm text-gray-600 truncate">{pt.label}</p>
-                            <p className="text-xl mt-1 font-bold tabular-nums truncate" style={{ color: pt.color }}>
-                              {formatNumber(pt.amount, 2, false)} {reportCurrency}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {pt.informational
-                                ? tm('cashStatusReservationInfo')
-                                : tm('reportsPaymentTxnLine')
-                                  .replace('{count}', String(pt.count))
-                                  .replace('{pct}', (pt.percentage ?? 0).toFixed(1))}
-                            </p>
-                          </div>
-                          <CreditCard className="w-10 h-10 opacity-20 shrink-0" style={{ color: pt.color }} />
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg border-2 border-green-200 bg-green-50 px-4 py-3">
-                    <span className="font-semibold">{tm('rptGrandTotal')}</span>
-                    <span className="text-lg font-bold text-green-700 tabular-nums">
-                      {formatNumber(paymentDist.listedTotal, 2, false)} {reportCurrency}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 px-1 -mt-2">{tm('cashStatusGrandTotalHint')}</p>
-
-                  <div className="bg-white rounded-lg border p-4">
-                    <h3 className="text-lg mb-4 flex items-center gap-2">
-                      <PieChartIcon className="w-5 h-5 text-blue-600" />
-                      {t.paymentMethodDistribution}
-                    </h3>
-                    {paymentDist.chartData.length === 0 ? (
-                      <div className="p-8 text-center text-sm text-slate-500 bg-slate-50 rounded-lg">
-                        {tm('reportsPaymentDistNoPositive')}
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <ResponsiveContainer width="100%" height={300}>
-                          <RePieChart>
-                            <Pie
-                              data={paymentDist.chartData}
-                              cx="50%"
-                              cy="50%"
-                              labelLine={false}
-                              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                              outerRadius={100}
-                              fill="#8884d8"
-                              dataKey="value"
-                            >
-                              {paymentDist.chartData.map((entry: { code?: string; color?: string }, index: number) => (
-                                <Cell key={`cell-${entry.code || index}`} fill={entry.color || '#94a3b8'} />
-                              ))}
-                            </Pie>
-                            <Tooltip formatter={(value: number) => `${formatNumber(value, 2, false)} ${reportCurrency}`} />
-                          </RePieChart>
-                        </ResponsiveContainer>
-                        <div className="space-y-3">
-                          {paymentDist.types.map((item) => (
-                            <button
-                              key={item.code}
-                              type="button"
-                              onClick={() => setPaymentTypeDetailCode(item.code as PaymentFormCode)}
-                              className={`w-full flex items-center justify-between p-3 rounded-lg hover:bg-slate-100 transition-colors text-left cursor-pointer ${item.informational ? 'bg-slate-50 border border-dashed border-cyan-200' : 'bg-gray-50'}`}
-                            >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-4 h-4 rounded shrink-0" style={{ backgroundColor: item.color }} />
-                                <span className="font-medium truncate">{item.label}</span>
-                                {item.informational ? (
-                                  <span className="text-[10px] uppercase tracking-wide text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
-                                    {tm('cashStatusInfoBadge')}
-                                  </span>
-                                ) : null}
-                              </div>
-                              <div className="text-right shrink-0">
-                                <p className="font-semibold tabular-nums">{formatNumber(item.amount, 2, false)} {reportCurrency}</p>
-                                <p className="text-xs text-gray-500">
-                                  {item.informational
-                                    ? tm('cashStatusReservationInfo')
-                                    : tm('reportsPaymentTxnShort').replace('{n}', String(item.count))}
-                                </p>
-                              </div>
-                            </button>
-                          ))}
-                          <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
-                            <span className="font-semibold">{tm('rptGrandTotal')}</span>
-                            <span className="font-bold text-green-700 text-lg tabular-nums">
-                              {formatNumber(paymentDist.listedTotal, 2, false)} {reportCurrency}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
                 </div>
               );
             })()}
