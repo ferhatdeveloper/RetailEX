@@ -1,5 +1,5 @@
 import { X, CreditCard, Banknote, Wallet, Plus, Trash2, CheckCircle, Calculator, ShoppingCart, Minus, Globe, Tag, TrendingDown, Loader2, Printer, ChevronDown, FileText, Receipt, Calendar, Info, User } from 'lucide-react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { toast } from 'sonner';
 import type { CartItem } from './types';
 import type { Campaign, Customer } from '../../core/types';
@@ -13,6 +13,7 @@ import {
   type PosReceiptPrintFormat
 } from '../../services/receiptSettingsService';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useClinicMenuPalette } from '../beauty/clinicMenuPalette';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import {
@@ -497,6 +498,12 @@ export function POSPaymentModal({
   );
   const formatSummaryMoney = (value: number) => formatMoneyWithCode(value, baseCurrency);
   const { darkMode } = useTheme();
+  const menuPalette = useClinicMenuPalette();
+  const payAccent = menuPalette.accent;
+  const payOnAccent = menuPalette.onAccent;
+  const payTint = menuPalette.focusRing;
+  const payEdge = menuPalette.accentEdge;
+  const payInk = darkMode ? menuPalette.accentEdge : menuPalette.accent;
 
   // Kasa listesini yükle (aktif kasalar)
   useEffect(() => {
@@ -1244,23 +1251,37 @@ const handleCollectCustomerDebt = async () => {
   return (
     <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div
+        data-pos-pay=""
         className={`w-full ${showNumpad ? 'max-w-6xl' : 'max-w-4xl'} max-h-[95vh] flex flex-col shadow-2xl transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-white'
           }`}
+        style={{
+          ['--pos-pay-accent']: payAccent,
+          ['--pos-pay-on']: payOnAccent,
+          ['--pos-pay-tint']: payTint,
+          ['--pos-pay-edge']: payEdge,
+          ['--pos-pay-ink']: payInk,
+        } as CSSProperties}
       >
-        {/* Header */}
-        <div className={`p-3 border-b flex items-center justify-between ${darkMode ? 'border-gray-700 bg-gradient-to-r from-gray-700 to-gray-600' : 'border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700'
-          }`}>
-          <h3 className="text-base text-white flex items-center gap-2">
+        {/* Header — menü paleti vurgu rengi */}
+        <div
+          data-testid="pos-payment-header"
+          className="p-3 border-b flex items-center justify-between"
+          style={{ backgroundColor: payAccent, color: payOnAccent, borderColor: payAccent }}
+        >
+          <h3 className="text-base flex items-center gap-2" style={{ color: payOnAccent }}>
             <CreditCard className="w-5 h-5" />
             {t.paymentTitle || 'Ödeme Al'}
           </h3>
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              data-testid="pos-payment-numpad"
               onClick={() => setShowNumpad(!showNumpad)}
-              className={`px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition-colors ${showNumpad
-                ? 'bg-white/20 text-white'
-                : 'bg-white/10 text-white/80 hover:bg-white/20'
+              className={`px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition-colors border ${showNumpad
+                ? 'bg-white/25'
+                : 'bg-white/15 hover:bg-white/25'
                 }`}
+              style={{ color: payOnAccent, borderColor: payEdge }}
             >
               <Calculator className="w-4 h-4" />
               {t.numpad || 'Numpad'}
@@ -1273,11 +1294,12 @@ const handleCollectCustomerDebt = async () => {
                   : tm('posPaymentBackBlocked') ||
                     'Bu işlem parametre ile kapatıldı. Ödeme ekranından satışa geri dönüşe izin verilmiyor.'
               }
-              className={`text-white p-1 ${
+              className={`p-1 ${
                 allowPaymentBackToSale
-                  ? 'hover:text-gray-200'
+                  ? 'hover:opacity-80'
                   : 'opacity-40 cursor-not-allowed'
               }`}
+              style={{ color: payOnAccent }}
             >
               <X className="w-5 h-5" />
             </button>
@@ -1300,32 +1322,44 @@ const handleCollectCustomerDebt = async () => {
             {/* Left - Summary */}
             <div className="space-y-3">
               {/* Discount Input */}
-              <div className={`border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-blue-50 border-blue-200'}`}>
-                <h4 className={`text-sm mb-3 flex items-center gap-2 ${darkMode ? 'text-blue-400' : 'text-blue-800'}`}>
+              <div
+                className={`border p-4 ${darkMode ? 'bg-gray-800' : ''}`}
+                style={{ backgroundColor: darkMode ? undefined : payTint, borderColor: payEdge }}
+              >
+                <h4 className="text-sm mb-3 flex items-center gap-2" style={{ color: payInk }}>
                   <TrendingDown className="w-4 h-4" />
                   {t.discountOptional || 'İlave İndirim (Opsiyonel)'}
                 </h4>
 
                 <div className="flex gap-2 mb-3">
                   <button
+                    type="button"
+                    data-testid="pos-payment-discount-percent"
                     onClick={() => setDiscountType('percentage')}
                     className={`flex-1 px-3 py-2 text-xs border transition-colors ${discountType === 'percentage'
-                      ? 'bg-blue-600 text-white border-blue-600'
+                      ? ''
                       : darkMode
-                        ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-blue-400'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                        ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-[var(--pos-pay-accent)]'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-[var(--pos-pay-accent)]'
                       }`}
+                    style={discountType === 'percentage'
+                      ? { backgroundColor: payAccent, color: payOnAccent, borderColor: payAccent }
+                      : undefined}
                   >
                     %
                   </button>
                   <button
+                    type="button"
                     onClick={() => setDiscountType('amount')}
                     className={`flex-1 px-3 py-2 text-xs border transition-colors ${discountType === 'amount'
-                      ? 'bg-blue-600 text-white border-blue-600'
+                      ? ''
                       : darkMode
-                        ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-blue-400'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                        ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-[var(--pos-pay-accent)]'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-[var(--pos-pay-accent)]'
                       }`}
+                    style={discountType === 'amount'
+                      ? { backgroundColor: payAccent, color: payOnAccent, borderColor: payAccent }
+                      : undefined}
                   >
                     <Banknote className="w-3.5 h-3.5 inline mr-1" />
                     {baseCurrency}
@@ -1339,7 +1373,9 @@ const handleCollectCustomerDebt = async () => {
                   placeholder={discountType === 'percentage' ? t.discountPercentage || 'İndirim %' : t.discountAmount || 'İndirim Tutarı'}
                   step={discountType === 'percentage' ? '1' : (discountAmountDecimals > 0 ? '0.01' : '1')}
                   min="0"
-                  className={`w-full px-3 py-2.5 text-sm border focus:outline-none focus:border-blue-600 mb-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'
+                  onFocus={(e) => { e.currentTarget.style.borderColor = payAccent; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = ''; }}
+                  className={`w-full px-3 py-2.5 text-sm border focus:outline-none mb-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'
                     }`}
                 />
 
@@ -1348,11 +1384,14 @@ const handleCollectCustomerDebt = async () => {
                     {[5, 10, 15, 20].map((percent) => (
                       <button
                         key={percent}
+                        type="button"
+                        data-testid={`pos-payment-discount-${percent}`}
                         onClick={() => setDiscountValue(percent.toString())}
-                        className={`px-2 py-1.5 text-xs border transition-colors ${darkMode
-                          ? 'bg-gray-700 border-gray-600 text-blue-400 hover:bg-gray-600'
-                          : 'bg-white border-blue-300 text-blue-700 hover:bg-blue-100'
+                        className={`px-2 py-1.5 text-xs border transition-colors hover:bg-[var(--pos-pay-tint)] ${darkMode
+                          ? 'bg-gray-700'
+                          : 'bg-white'
                           }`}
+                        style={{ borderColor: payInk, color: payInk }}
                       >
                         %{percent}
                       </button>
@@ -1363,11 +1402,13 @@ const handleCollectCustomerDebt = async () => {
                     {quickDiscountAmounts.map((amount) => (
                       <button
                         key={amount}
+                        type="button"
                         onClick={() => setDiscountValue(amount.toString())}
-                        className={`px-2 py-1.5 text-xs border transition-colors ${darkMode
-                          ? 'bg-gray-700 border-gray-600 text-blue-400 hover:bg-gray-600'
-                          : 'bg-white border-blue-300 text-blue-700 hover:bg-blue-100'
+                        className={`px-2 py-1.5 text-xs border transition-colors hover:bg-[var(--pos-pay-tint)] ${darkMode
+                          ? 'bg-gray-700'
+                          : 'bg-white'
                           }`}
+                        style={{ borderColor: payInk, color: payInk }}
                       >
                         {formatMoneyWithCode(amount, baseCurrency)}
                       </button>
@@ -1432,7 +1473,8 @@ const handleCollectCustomerDebt = async () => {
                           {t.remainingAmount || 'KALAN TUTAR'}:
                         </span>
                         <span
-                          className={`font-bold font-mono px-3 py-1 rounded ${darkMode ? 'text-blue-400 bg-blue-900/30' : 'text-blue-700 bg-blue-50'}`}
+                          className="font-bold font-mono px-3 py-1 rounded"
+                          style={{ color: payInk, backgroundColor: payTint }}
                           data-testid="payment-modal-remaining-total"
                         >
                           {formatCurrency(finalTotal)}
@@ -1444,8 +1486,11 @@ const handleCollectCustomerDebt = async () => {
                       <span className={`font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
                         {t.total || 'TOPLAM'}:
                       </span>
-                      <span className={`font-bold font-mono px-3 py-1 rounded ${darkMode ? 'text-blue-400 bg-blue-900/30' : 'text-blue-700 bg-blue-50'
-                        }`}>
+                      <span
+                        data-testid="pos-payment-total"
+                        className="font-bold font-mono px-3 py-1 rounded"
+                        style={{ color: payInk, backgroundColor: payTint }}
+                      >
                         {formatCurrency(finalTotal)}
                       </span>
                     </div>
@@ -1504,7 +1549,7 @@ const handleCollectCustomerDebt = async () => {
                           {payment.method === 'cash' ? (
                             <Banknote className="w-4 h-4 text-green-600" />
                           ) : payment.method === 'card' ? (
-                            <CreditCard className="w-4 h-4 text-blue-600" />
+                            <CreditCard className="w-4 h-4" style={{ color: payAccent }} />
                           ) : payment.method === 'pesinatli' ? (
                             <Calendar className="w-4 h-4 text-purple-600" />
                           ) : (
@@ -1612,22 +1657,33 @@ const handleCollectCustomerDebt = async () => {
                   {paymentMethods.map(method => (
                     <button
                       key={method.id}
+                      type="button"
+                      data-testid={`pos-payment-method-${method.id}`}
                       onClick={() => !method.disabled && setCurrentMethod(method.id as any)}
                       className={`p-3 border transition-all flex items-center gap-2 ${currentMethod === method.id
-                        ? darkMode
-                          ? 'border-blue-500 bg-blue-900/30 shadow-md'
-                          : 'border-blue-600 bg-blue-50 shadow-md'
+                        ? 'shadow-md'
                         : darkMode
-                          ? 'border-gray-600 bg-gray-800'
-                          : 'border-gray-300 bg-white hover:border-blue-500 hover:bg-blue-50'
+                          ? 'border-gray-600 bg-gray-800 hover:border-[var(--pos-pay-accent)] hover:bg-[var(--pos-pay-tint)]'
+                          : 'border-gray-300 bg-white hover:border-[var(--pos-pay-accent)] hover:bg-[var(--pos-pay-tint)]'
                         } ${method.disabled ? 'opacity-50 cursor-not-allowed grayscale' : ''}`}
+                      style={currentMethod === method.id
+                        ? { borderColor: payAccent, backgroundColor: payTint }
+                        : undefined}
                       disabled={method.disabled}
                     >
-                      <div className={`w-8 h-8 flex items-center justify-center ${currentMethod === method.id ? 'bg-blue-600' : darkMode ? 'bg-gray-700' : 'bg-gray-200'
-                        }`}>
-                        <method.icon className={`w-4 h-4 ${currentMethod === method.id ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
+                      <div
+                        className={`w-8 h-8 flex items-center justify-center ${currentMethod === method.id ? '' : darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}
+                        style={currentMethod === method.id ? { backgroundColor: payAccent } : undefined}
+                      >
+                        <method.icon
+                          className={`w-4 h-4 ${currentMethod === method.id ? '' : darkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                          style={currentMethod === method.id ? { color: payOnAccent } : undefined}
+                        />
                       </div>
-                      <span className={`text-sm ${currentMethod === method.id ? 'text-blue-700 font-medium' : darkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+                      <span
+                        className={`text-sm ${currentMethod === method.id ? 'font-medium' : darkMode ? 'text-gray-300' : 'text-gray-900'}`}
+                        style={currentMethod === method.id ? { color: payInk } : undefined}
+                      >
                         {method.name}
                       </span>
                     </button>
@@ -1797,14 +1853,16 @@ const handleCollectCustomerDebt = async () => {
                 {[1000, 5000, 10000, 20000, 50000, 100000].map(amount => (
                   <button
                     key={amount}
+                    type="button"
+                    data-testid={`pos-payment-quick-${amount}`}
                     onClick={() => {
                       const current = parseFormattedNumber(currentAmount);
                       setCurrentAmount(formatNumberInput((current + amount).toString()));
                     }}
-                    className={`py-2 text-sm transition-colors ${darkMode
-                      ? 'bg-blue-900/30 hover:bg-blue-900/50 text-blue-400 border border-blue-700'
-                      : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200'
-                      }`}
+                    className="py-2 text-sm transition-colors border"
+                    style={{ backgroundColor: payTint, color: payInk, borderColor: payEdge }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = payAccent; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = payEdge; }}
                   >
                     +{formatNumberTR(amount, 2, true)}
                   </button>
@@ -1946,21 +2004,19 @@ const handleCollectCustomerDebt = async () => {
                   </button>
 
                   <button
+                    type="button"
                     onClick={() => handleNumpadClick('clear')}
-                    className={`p-4 font-medium transition-colors ${darkMode
-                      ? 'bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 active:bg-blue-900/80'
-                      : 'bg-blue-200 hover:bg-blue-300 text-blue-700 active:bg-blue-400'
-                      }`}
+                    className="p-4 font-medium transition-colors"
+                    style={{ backgroundColor: payTint, color: payInk }}
                   >
                     ⫿
                   </button>
 
                   <button
+                    type="button"
                     onClick={() => handleNumpadClick('backspace')}
-                    className={`p-4 font-medium transition-colors ${darkMode
-                      ? 'bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 active:bg-blue-900/80'
-                      : 'bg-blue-200 hover:bg-blue-300 text-blue-700 active:bg-blue-400'
-                      }`}
+                    className="p-4 font-medium transition-colors"
+                    style={{ backgroundColor: payTint, color: payInk }}
                   >
                     ×
                   </button>
@@ -1980,11 +2036,10 @@ const handleCollectCustomerDebt = async () => {
                   ))}
 
                   <button
+                    type="button"
                     onClick={() => handleNumpadClick('clear')}
-                    className={`p-4 font-medium transition-colors ${darkMode
-                      ? 'bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 active:bg-blue-900/80'
-                      : 'bg-blue-200 hover:bg-blue-300 text-blue-700 active:bg-blue-400'
-                      }`}
+                    className="p-4 font-medium transition-colors"
+                    style={{ backgroundColor: payTint, color: payInk }}
                   >
                     C
                   </button>
@@ -2004,11 +2059,10 @@ const handleCollectCustomerDebt = async () => {
                   ))}
 
                   <button
+                    type="button"
                     onClick={() => setCurrentAmount(Math.floor(finalTotal).toString())}
-                    className={`p-4 text-xs font-medium transition-colors ${darkMode
-                      ? 'bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 active:bg-blue-900/80'
-                      : 'bg-blue-200 hover:bg-blue-300 text-blue-700 active:bg-blue-400'
-                      }`}
+                    className="p-4 text-xs font-medium transition-colors"
+                    style={{ backgroundColor: payTint, color: payInk }}
                   >
                     {t.priceLabel || 'Fiyat'}
                   </button>
@@ -2028,12 +2082,11 @@ const handleCollectCustomerDebt = async () => {
                   ))}
 
                   <button
+                    type="button"
                     onClick={handleAddPayment}
                     disabled={!currentAmount || parseFormattedNumber(currentAmount) <= 0}
-                    className={`row-span-2 p-4 text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${darkMode
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white active:bg-blue-800'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white active:bg-blue-800'
-                      }`}
+                    className="row-span-2 p-4 text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: payAccent, color: payOnAccent }}
                   >
                     {t.okLabel || 'Tamam'}
                   </button>
@@ -2074,9 +2127,10 @@ const handleCollectCustomerDebt = async () => {
                   type="checkbox"
                   checked={autoPrint}
                   onChange={(e) => setAutoPrint(e.target.checked)}
-                  className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition-all"
+                  className="w-5 h-5 rounded border-gray-300 transition-all"
+                  style={{ accentColor: payAccent }}
                 />
-                <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-blue-600'}`}>
+                <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-[var(--pos-pay-ink)]'}`}>
                   {t.autoPrintReceipt || 'Otomatik Yazdır'}
                 </span>
               </label>
@@ -2087,9 +2141,10 @@ const handleCollectCustomerDebt = async () => {
                     type="checkbox"
                     checked={showReceiptPreview}
                     onChange={(e) => setShowReceiptPreview(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition-all"
+                    className="w-5 h-5 rounded border-gray-300 transition-all"
+                    style={{ accentColor: payAccent }}
                   />
-                  <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-blue-600'}`}>
+                  <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-[var(--pos-pay-ink)]'}`}>
                     {t.showReceiptPreviewLabel}
                   </span>
                 </label>
@@ -2103,7 +2158,7 @@ const handleCollectCustomerDebt = async () => {
               <select
                 value={receiptLanguage}
                 onChange={(e) => setReceiptLanguage(e.target.value as any)}
-                className={`text-sm bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0 ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-blue-600'}`}
+                className={`text-sm bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0 ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-[var(--pos-pay-ink)]'}`}
               >
                 <option value="tr">Türkçe</option>
                 <option value="en">English</option>
@@ -2120,7 +2175,7 @@ const handleCollectCustomerDebt = async () => {
               <select
                 value={printFormat}
                 onChange={(e) => void handlePrintFormatChange(e.target.value as PosReceiptPrintFormat)}
-                className={`text-sm bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0 ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-blue-600'}`}
+                className={`text-sm bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0 ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-[var(--pos-pay-ink)]'}`}
               >
                 <option value="80mm">80mm</option>
                 <option value="A5">A5</option>
@@ -2135,11 +2190,8 @@ const handleCollectCustomerDebt = async () => {
           <div
             role="status"
             data-testid="pos-cashier-info-banner"
-            className={`px-4 py-2 border-t flex items-center gap-2 text-sm ${
-              darkMode
-                ? 'border-blue-700 bg-blue-950/40 text-blue-200'
-                : 'border-blue-200 bg-blue-50 text-blue-800'
-            }`}
+            className="px-4 py-2 border-t flex items-center gap-2 text-sm"
+            style={{ borderColor: payEdge, backgroundColor: payTint, color: payInk }}
           >
             <User className="w-4 h-4 shrink-0" />
             <span>
@@ -2176,14 +2228,13 @@ const handleCollectCustomerDebt = async () => {
               onClick={() => void handlePrintDraftReceipt()}
               disabled={draftPrintLoading}
               aria-busy={draftPrintLoading}
-              className={`flex-1 px-4 py-3 rounded font-medium flex items-center justify-center gap-2 border-2 transition-colors min-h-[3rem] ${draftPrintLoading
-                ? darkMode
-                  ? 'border-blue-400 bg-blue-950/40 text-blue-100'
-                  : 'border-blue-500 bg-blue-50 text-blue-800'
-                : darkMode
-                  ? 'border-blue-500 text-blue-200 hover:bg-blue-950/50'
-                  : 'border-blue-600 text-blue-700 hover:bg-blue-50'
-                } disabled:cursor-wait`}
+              data-testid="pos-payment-print"
+              className="flex-1 px-4 py-3 rounded font-medium flex items-center justify-center gap-2 border-2 transition-colors min-h-[3rem] hover:bg-[var(--pos-pay-tint)] disabled:cursor-wait"
+              style={{
+                borderColor: payAccent,
+                color: payInk,
+                backgroundColor: draftPrintLoading ? payTint : undefined,
+              }}
             >
               {draftPrintLoading ? (
                 <>
