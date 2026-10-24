@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-    Building2, Globe, Bell, ClipboardList, Users, Briefcase,
+    Building2, Globe, ClipboardList, Users, Briefcase,
     Package, Layers, Link2, Activity, FileWarning, Stethoscope, Camera, LayoutTemplate,
+    type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -15,37 +16,42 @@ import { ClinicSpecialtyModePanel } from './ClinicSpecialtyModePanel';
 import { ClinicMenuPalettePicker } from './ClinicMenuPalettePicker';
 import { normalizeAllowStaffSlotOverlap } from '../../../utils/beautyPortalOverlap';
 
+export type ClinicOpsGroupId =
+    | 'overview'
+    | 'specialty'
+    | 'portal'
+    | 'locations'
+    | 'wait'
+    | 'clinical'
+    | 'stock'
+    | 'biz'
+    | 'integrations'
+    | 'audit';
+
+export type ClinicOpsGroup = {
+    id: ClinicOpsGroupId;
+    labelKey: string;
+    icon: LucideIcon;
+};
+
+/** V1 klinik operasyon grupları. Sıra eski yatay şeritle aynıdır. */
+export const CLINIC_OPS_GROUPS: readonly ClinicOpsGroup[] = [
+    { id: 'overview', labelKey: 'bPanelTabSummary', icon: Activity },
+    { id: 'specialty', labelKey: 'bClinicSpecialtyTab', icon: LayoutTemplate },
+    { id: 'portal', labelKey: 'bClinicOpsPortal', icon: Globe },
+    { id: 'locations', labelKey: 'bClinicOpsLocations', icon: Building2 },
+    { id: 'wait', labelKey: 'bClinicOpsWait', icon: Users },
+    { id: 'clinical', labelKey: 'bClinicOpsClinical', icon: Stethoscope },
+    { id: 'stock', labelKey: 'bClinicOpsStock', icon: Package },
+    { id: 'biz', labelKey: 'bClinicOpsBiz', icon: Briefcase },
+    { id: 'integrations', labelKey: 'bClinicOpsIntegrations', icon: Link2 },
+    { id: 'audit', labelKey: 'bClinicOpsAudit', icon: FileWarning },
+];
+
 export function ClinicOperationsHub() {
     const { user } = useAuth();
     const { tm } = useLanguage();
-    const TABS = useMemo(
-        () =>
-            [
-                { id: 'overview' as const, label: 'Özet', icon: Activity },
-                { id: 'specialty' as const, label: tm('bClinicSpecialtyTab'), icon: LayoutTemplate },
-                { id: 'portal' as const, label: 'Portal & talepler', icon: Globe },
-                { id: 'locations' as const, label: 'Şube / oda', icon: Building2 },
-                { id: 'wait' as const, label: 'Bekleme & kurumsal', icon: Users },
-                { id: 'clinical' as const, label: 'Klinik not & foto', icon: Stethoscope },
-                { id: 'stock' as const, label: 'Sarf & parti', icon: Package },
-                { id: 'biz' as const, label: 'Üyelik & kampanya', icon: Briefcase },
-                { id: 'integrations' as const, label: 'Entegrasyon', icon: Link2 },
-                { id: 'audit' as const, label: 'Denetim', icon: FileWarning },
-            ] as const,
-        [tm]
-    );
-    type HubTabId =
-        | 'overview'
-        | 'specialty'
-        | 'portal'
-        | 'locations'
-        | 'wait'
-        | 'clinical'
-        | 'stock'
-        | 'biz'
-        | 'integrations'
-        | 'audit';
-    const [tab, setTab] = useState<HubTabId>('overview');
+    const [tab, setTab] = useState<ClinicOpsGroupId>('overview');
     const [analytics, setAnalytics] = useState<BeautyClinicAnalytics | null>(null);
     const [loading, setLoading] = useState(false);
     const [portalUrl, setPortalUrl] = useState('');
@@ -71,47 +77,101 @@ export function ClinicOperationsHub() {
         void refresh();
     }, [refresh]);
 
-    return (
-        <div className="flex flex-col h-full min-h-0 gap-3 p-3 sm:p-4 overflow-auto min-w-0" style={{ background: '#f7f6fb' }}>
-            <ClinicMenuPalettePicker />
-            <div className="flex gap-2 shrink-0 min-w-0 overflow-x-auto overflow-y-hidden pb-1 -mx-1 px-1 overscroll-x-contain touch-pan-x">
-                {TABS.map(t => {
-                    const Icon = t.icon;
-                    const active = tab === t.id;
-                    return (
-                        <button
-                            key={t.id}
-                            type="button"
-                            onClick={() => setTab(t.id as HubTabId)}
-                            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2.5 min-h-[44px] text-sm font-semibold transition-colors"
-                            style={{
-                                background: active ? '#7c3aed' : '#fff',
-                                color: active ? '#fff' : '#475569',
-                                border: '1px solid ' + (active ? '#7c3aed' : '#e2e8f0'),
-                            }}
-                        >
-                            <Icon size={16} />
-                            {t.label}
-                        </button>
-                    );
-                })}
-            </div>
+    const current = CLINIC_OPS_GROUPS.find((item) => item.id === tab) ?? CLINIC_OPS_GROUPS[0];
 
-            {tab === 'overview' && (
-                <OverviewPanel analytics={analytics} loading={loading} onRefresh={refresh} />
-            )}
-            {tab === 'specialty' && <ClinicSpecialtyModePanel />}
-            {tab === 'portal' && (
-                <PortalPanel portalUrl={portalUrl} onRefresh={refresh} userId={user?.id} />
-            )}
-            {tab === 'locations' && <LocationsPanel />}
-            {tab === 'wait' && <WaitCorporatePanel />}
-            {tab === 'clinical' && <ClinicalPanel userId={user?.id} />}
-            {tab === 'stock' && <StockPanel />}
-            {tab === 'biz' && <BizPanel />}
-            {tab === 'integrations' && <IntegrationPanel />}
-            {tab === 'audit' && <AuditPanel />}
+    return (
+        <div
+            data-testid="clinic-ops-settings"
+            className="flex h-full min-h-0"
+            style={{ gap: 20, background: '#fcfcfc', padding: 20 }}
+        >
+            <style>{COPS_CSS}</style>
+            <aside className="cops-side flex shrink-0 flex-col overflow-y-auto">
+                <div className="cops-card">
+                    <ClinicMenuPalettePicker variant="rail" />
+                    <nav
+                        aria-label={tm('bShellNavClinicOps')}
+                        data-testid="clinic-ops-settings-nav"
+                        className="cops-nav flex flex-col"
+                    >
+                        {CLINIC_OPS_GROUPS.map((item) => (
+                            <OpsMenuLink
+                                key={item.id}
+                                item={item}
+                                label={tm(item.labelKey)}
+                                selected={tab === item.id}
+                                onClick={() => setTab(item.id)}
+                            />
+                        ))}
+                    </nav>
+                </div>
+            </aside>
+            <section className="cops-card flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                <header className="cops-head shrink-0">
+                    <h1 className="cops-title">{tm(current.labelKey)}</h1>
+                </header>
+                <div data-testid="clinic-ops-settings-panel" className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                    {tab === 'overview' && (
+                        <OverviewPanel analytics={analytics} loading={loading} onRefresh={refresh} />
+                    )}
+                    {tab === 'specialty' && <ClinicSpecialtyModePanel />}
+                    {tab === 'portal' && (
+                        <PortalPanel portalUrl={portalUrl} onRefresh={refresh} userId={user?.id} />
+                    )}
+                    {tab === 'locations' && <LocationsPanel />}
+                    {tab === 'wait' && <WaitCorporatePanel />}
+                    {tab === 'clinical' && <ClinicalPanel userId={user?.id} />}
+                    {tab === 'stock' && <StockPanel />}
+                    {tab === 'biz' && <BizPanel />}
+                    {tab === 'integrations' && <IntegrationPanel />}
+                    {tab === 'audit' && <AuditPanel />}
+                </div>
+            </section>
         </div>
+    );
+}
+
+const COPS_CSS = `
+.cops-side { width: 230px; flex-basis: 230px; }
+.cops-card { background: #fff; border: 1px solid #f1f1f4; border-radius: 8px; box-shadow: rgba(0,0,0,0.03) 0px 3px 4px 0px; }
+.cops-nav { padding: 8px 20px 16px; }
+.cops-head { height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #f1f1f4; padding: 0 24px; }
+.cops-title { margin: 0; font-size: 16.575px; font-weight: 500; line-height: 1; color: #071437; }
+.cops-save { height: 44px; border: 0; border-radius: 6.175px; background: #1b84ff; color: #fff; font-size: 14.3px; font-weight: 500; padding: 0 20.5px; box-shadow: none; cursor: pointer; }
+.cops-save:disabled { opacity: 0.6; cursor: default; }
+`;
+
+function OpsMenuLink({
+    item, label, selected, onClick,
+}: {
+    item: ClinicOpsGroup;
+    label: string;
+    selected: boolean;
+    onClick: () => void;
+}) {
+    const Icon = item.icon;
+    return (
+        <button
+            type="button"
+            data-testid={`clinic-ops-settings-group-${item.id}`}
+            aria-pressed={selected}
+            onClick={onClick}
+            className="flex w-full items-center gap-2 text-left"
+            style={{
+                background: selected ? '#f9f9f9' : 'transparent',
+                color: selected ? '#1b84ff' : '#4b5675',
+                borderLeft: `3px solid ${selected ? '#1b84ff' : 'transparent'}`,
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 500,
+                lineHeight: '18px',
+                padding: '8px 13px',
+                boxShadow: 'none',
+            }}
+        >
+            <Icon size={16} color={selected ? '#1b84ff' : '#a1a5b7'} aria-hidden />
+            <span className="truncate">{label}</span>
+        </button>
     );
 }
 
@@ -557,9 +617,9 @@ function PortalPanel({
                 </div>
             </Card>
 
-            <Button className="w-full max-w-md" onClick={() => void saveAll()}>
+            <button type="button" className="cops-save" onClick={() => void saveAll()}>
                 Tüm portal ayarlarını kaydet
-            </Button>
+            </button>
 
             <Card className="p-4">
                 <h3 className="font-bold mb-2">Bekleyen online talepler</h3>

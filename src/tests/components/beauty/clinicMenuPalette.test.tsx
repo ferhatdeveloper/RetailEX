@@ -150,6 +150,33 @@ describe('Klinik menü renk paleti', () => {
         expect(screen.getByTestId('clinic-menu-palette-rose').textContent).toBe('Gül');
     });
 
+    it('yeni palet kimliği kaydolur ve menü tokenı değişir, varsayılan plum kalır', () => {
+        expect(readClinicMenuPaletteId()).toBe('plum');
+        const powder = clinicMenuPaletteById('powder');
+        const taken = new Set(
+            CLINIC_MENU_PALETTES.filter((palette) => palette.id !== 'powder').map((palette) => palette.sidebar),
+        );
+        expect(taken.has(powder.sidebar)).toBe(false);
+        expect(powder.accent).not.toBe(clinicMenuPaletteById('rose').accent);
+
+        mountClinic();
+        const nav = screen.getByTestId('clinic-classic-nav');
+        expect(nav.getAttribute('data-palette')).toBe('plum');
+        expectStyleToken(nav, clinicMenuPaletteById('plum').sidebar);
+
+        fireEvent.click(screen.getByTestId('clinic-menu-palette-powder'));
+        expect(localStorage.getItem(CLINIC_MENU_PALETTE_KEY)).toBe('powder');
+        expect(readClinicMenuPaletteId()).toBe('powder');
+        expect(nav.getAttribute('data-palette')).toBe('powder');
+        expectStyleToken(nav, powder.sidebar);
+        expectStyleToken(nav, powder.sidebarLine);
+        expectStyleToken(screen.getByRole('button', { name: 'Dashboard' }), powder.accent);
+        expectStyleToken(screen.getByRole('button', { name: 'Dashboard' }), powder.onAccent);
+        expect(screen.getByTestId('clinic-menu-palette-powder').textContent).toBe('Pudra');
+        expect(screen.getByTestId('clinic-menu-palette-powder').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('clinic-menu-palette-plum').getAttribute('aria-pressed')).toBe('false');
+    });
+
     it('kayıt anahtarda kalır, bilinmeyen değer mora döner', () => {
         localStorage.setItem(CLINIC_MENU_PALETTE_KEY, 'rose');
         const first = mountClinic();
@@ -172,6 +199,10 @@ describe('Klinik menü renk paleti', () => {
             sage: { tr: 'Adaçayı', en: 'Sage', ar: 'مريمية', ku: 'چای مریەم' },
             champagne: { tr: 'Şampanya', en: 'Champagne', ar: 'شمبانيا', ku: 'شامپانیا' },
             navy: { tr: 'Gece lacivert', en: 'Night navy', ar: 'كحلي ليلي', ku: 'شینی شەو' },
+            powder: { tr: 'Pudra', en: 'Powder', ar: 'بودرة', ku: 'پودرە' },
+            coral: { tr: 'Mercan', en: 'Coral', ar: 'مرجاني', ku: 'مەرجان' },
+            olive: { tr: 'Zeytin', en: 'Olive', ar: 'زيتوني', ku: 'زەیتوون' },
+            pearl: { tr: 'İnci', en: 'Pearl', ar: 'لؤلؤي', ku: 'مرواری' },
         };
         expect(CLINIC_MENU_PALETTES.map((palette) => palette.id)).toEqual([
             'plum',
@@ -180,6 +211,10 @@ describe('Klinik menü renk paleti', () => {
             'sage',
             'champagne',
             'navy',
+            'powder',
+            'coral',
+            'olive',
+            'pearl',
         ]);
         for (const palette of CLINIC_MENU_PALETTES) {
             for (const lang of ['tr', 'en', 'ar', 'ku'] as const) {
@@ -204,7 +239,9 @@ describe('Klinik menü renk paleti', () => {
         const v2 = readFileSync(resolve('src/components/beauty/components/ClinicV2SettingsShell.tsx'), 'utf8');
         const rail = readFileSync(resolve('src/components/beauty/components/ClinicV2SideRail.tsx'), 'utf8');
         const indexSrc = readFileSync(resolve('src/components/beauty/index.tsx'), 'utf8');
-        expect(hub).toContain('<ClinicMenuPalettePicker />');
+        expect(hub).toContain('<ClinicMenuPalettePicker variant="rail" />');
+        expect(hub).toContain('data-testid="clinic-ops-settings-nav"');
+        expect(hub).not.toContain('overflow-x-auto');
         expect(v2).not.toContain('ClinicMenuPalettePicker');
         expect(rail).not.toContain('useClinicMenuPalette');
         expect(indexSrc).toContain('data-testid="clinic-classic-nav"');

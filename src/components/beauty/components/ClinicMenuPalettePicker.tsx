@@ -6,18 +6,24 @@ import {
 } from '../clinicMenuPalette';
 
 /** V1 mor menünün ayar ekranı. V2 beyaz şerit ayrı kabuktur. */
-export function ClinicMenuPalettePicker() {
+export function ClinicMenuPalettePicker({ variant = 'banner' }: { variant?: 'banner' | 'rail' }) {
     const { tm } = useLanguage();
     const current = useClinicMenuPalette();
+    const rail = variant === 'rail';
 
     return (
         <section
             data-testid="clinic-menu-palette-picker"
-            className="shrink-0 rounded-xl border border-slate-200 bg-white p-4"
+            className={rail ? 'shrink-0' : 'shrink-0 rounded-xl border border-slate-200 bg-white p-4'}
+            style={rail ? { padding: '16px 16px 4px' } : undefined}
         >
-            <h2 className="text-sm font-bold text-slate-800">{tm('bClinicMenuPaletteTitle')}</h2>
-            <p className="mt-1 text-xs leading-5 text-slate-500">{tm('bClinicMenuPaletteHint')}</p>
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <h2 className={rail ? 'text-[13px] font-semibold text-[#252f4a]' : 'text-sm font-bold text-slate-800'}>
+                {tm('bClinicMenuPaletteTitle')}
+            </h2>
+            <p className={rail ? 'mt-1 text-[12px] leading-snug text-[#7e8299]' : 'mt-1 text-xs leading-5 text-slate-500'}>
+                {tm('bClinicMenuPaletteHint')}
+            </p>
+            <div className={rail ? 'mt-3 grid grid-cols-2 gap-1.5' : 'mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5'}>
                 {CLINIC_MENU_PALETTES.map((palette) => {
                     const selected = palette.id === current.id;
                     return (
