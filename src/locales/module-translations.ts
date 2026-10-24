@@ -12397,7 +12397,7 @@ export const excelModuleTranslations = {
   bClinicMenuPalette_coral: { tr: 'Mercan', en: 'Coral', ar: 'مرجاني', ku: 'مەرجان' },
   bClinicMenuPalette_olive: { tr: 'Zeytin', en: 'Olive', ar: 'زيتوني', ku: 'زەیتوون' },
   bClinicMenuPalette_pearl: { tr: 'İnci', en: 'Pearl', ar: 'لؤلؤي', ku: 'مرواری' },
-  bClinicCustomPaletteTitle: { tr: 'Özel palet', en: 'Custom palette', ar: 'لوحة مخصصة', ku: 'پالێتی تایبەت' },
+  bClinicCustomPaletteTitle: { tr: 'Palet oluştur', en: 'Create palette', ar: 'إنشاء لوحة', ku: 'پالێت دروست بکە' },
   bClinicCustomPaletteHint: {
     tr: 'Ad, arka plan, vurgu ve yazı rengi verin. Yazı ile zemin okunaklı değilse kayıt olmaz.',
     en: 'Set a name, background, accent and text color. It is not saved when text and background are hard to read.',
@@ -12408,8 +12408,8 @@ export const excelModuleTranslations = {
   bClinicCustomPaletteBackground: { tr: 'Arka plan', en: 'Background', ar: 'الخلفية', ku: 'پاشبنەما' },
   bClinicCustomPaletteAccent: { tr: 'Vurgu', en: 'Accent', ar: 'التمييز', ku: 'جیاکەرەوە' },
   bClinicCustomPaletteText: { tr: 'Yazı rengi', en: 'Text color', ar: 'لون النص', ku: 'ڕەنگی نووسین' },
-  bClinicCustomPaletteSave: { tr: 'Paleti kaydet', en: 'Save palette', ar: 'حفظ اللوحة', ku: 'پالێت پاشەکەوت بکە' },
-  bClinicCustomPaletteRemove: { tr: 'Paleti sil', en: 'Remove palette', ar: 'حذف اللوحة', ku: 'پالێت بسڕەوە' },
+  bClinicCustomPaletteSave: { tr: 'Kaydet', en: 'Save', ar: 'حفظ', ku: 'پاشەکەوت' },
+  bClinicCustomPaletteRemove: { tr: 'Sil', en: 'Remove', ar: 'حذف', ku: 'سڕینەوە' },
   bClinicCustomPaletteNeedName: { tr: 'Palet adı gerekli.', en: 'Palette name is required.', ar: 'اسم اللوحة مطلوب.', ku: 'ناوی پالێت پێویستە.' },
   bClinicCustomPaletteBadColor: { tr: 'Renk değeri geçersiz.', en: 'Color value is invalid.', ar: 'قيمة اللون غير صالحة.', ku: 'بەهای ڕەنگ نادروستە.' },
   bClinicCustomPaletteContrast: {
@@ -12453,6 +12453,7 @@ export const excelModuleTranslations = {
   bShellNavObstetrics: { tr: 'Kadın doğum', en: 'Obstetrics', ar: 'التوليد', ku: 'ژنێنی' },
   bShellNavDietitian: { tr: 'Diyetisyen', en: 'Dietitian', ar: 'أخصائي تغذية', ku: 'ڕژێنەوە' },
   bClinicSpecialtyTab: { tr: 'Klinik türü', en: 'Clinic type', ar: 'نوع العيادة', ku: 'جۆری کلینیک' },
+  bClinicOpsMenuColor: { tr: 'Menü rengi', en: 'Menu color', ar: 'لون القائمة', ku: 'ڕەنگی مێنو' },
   bClinicOpsPortal: { tr: 'Portal & talepler', en: 'Portal & requests', ar: 'البوابة والطلبات', ku: 'پۆرتاڵ و داواکاری' },
   bClinicOpsLocations: { tr: 'Şube / oda', en: 'Branch / room', ar: 'الفرع / الغرفة', ku: 'لق / ژوور' },
   bClinicOpsWait: { tr: 'Bekleme & kurumsal', en: 'Waitlist & corporate', ar: 'الانتظار والمؤسسي', ku: 'چاوەڕوانی و دامەزراوە' },

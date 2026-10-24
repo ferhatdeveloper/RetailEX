@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     Building2, Globe, ClipboardList, Users, Briefcase,
-    Package, Layers, Link2, Activity, FileWarning, Stethoscope, Camera, LayoutTemplate,
+    Package, Layers, Link2, Activity, FileWarning, Stethoscope, Camera, LayoutTemplate, Palette,
     type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import { normalizeAllowStaffSlotOverlap } from '../../../utils/beautyPortalOverl
 
 export type ClinicOpsGroupId =
     | 'overview'
+    | 'menuColor'
     | 'specialty'
     | 'portal'
     | 'locations'
@@ -35,9 +36,10 @@ export type ClinicOpsGroup = {
     icon: LucideIcon;
 };
 
-/** V1 klinik operasyon grupları. Sıra eski yatay şeritle aynıdır. */
+/** V1 klinik operasyon grupları. Menü rengi kendi sayfasıdır; palet formu sol şeritte durmaz. */
 export const CLINIC_OPS_GROUPS: readonly ClinicOpsGroup[] = [
     { id: 'overview', labelKey: 'bPanelTabSummary', icon: Activity },
+    { id: 'menuColor', labelKey: 'bClinicOpsMenuColor', icon: Palette },
     { id: 'specialty', labelKey: 'bClinicSpecialtyTab', icon: LayoutTemplate },
     { id: 'portal', labelKey: 'bClinicOpsPortal', icon: Globe },
     { id: 'locations', labelKey: 'bClinicOpsLocations', icon: Building2 },
@@ -96,25 +98,22 @@ export function ClinicOperationsHub() {
             }}
         >
             <style>{COPS_CSS}</style>
-            <aside className="cops-side flex shrink-0 flex-col overflow-y-auto">
-                <div className="cops-card">
-                    <ClinicMenuPalettePicker variant="rail" />
-                    <nav
-                        aria-label={tm('bShellNavClinicOps')}
-                        data-testid="clinic-ops-settings-nav"
-                        className="cops-nav flex flex-col"
-                    >
-                        {CLINIC_OPS_GROUPS.map((item) => (
-                            <OpsMenuLink
-                                key={item.id}
-                                item={item}
-                                label={tm(item.labelKey)}
-                                selected={tab === item.id}
-                                onClick={() => setTab(item.id)}
-                            />
-                        ))}
-                    </nav>
-                </div>
+            <aside className="cops-side flex h-full min-h-0 shrink-0 flex-col overflow-y-auto">
+                <nav
+                    aria-label={tm('bShellNavClinicOps')}
+                    data-testid="clinic-ops-settings-nav"
+                    className="cops-card cops-nav flex min-h-0 flex-col"
+                >
+                    {CLINIC_OPS_GROUPS.map((item) => (
+                        <OpsMenuLink
+                            key={item.id}
+                            item={item}
+                            label={tm(item.labelKey)}
+                            selected={tab === item.id}
+                            onClick={() => setTab(item.id)}
+                        />
+                    ))}
+                </nav>
             </aside>
             <section className="cops-card flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                 <header className="cops-head shrink-0">
@@ -124,6 +123,7 @@ export function ClinicOperationsHub() {
                     {tab === 'overview' && (
                         <OverviewPanel analytics={analytics} loading={loading} onRefresh={refresh} />
                     )}
+                    {tab === 'menuColor' && <ClinicMenuPalettePicker variant="page" />}
                     {tab === 'specialty' && <ClinicSpecialtyModePanel />}
                     {tab === 'portal' && (
                         <PortalPanel portalUrl={portalUrl} onRefresh={refresh} userId={user?.id} />

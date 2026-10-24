@@ -54,6 +54,7 @@ describe('Klinik operasyon ayar kabuğu', () => {
     it('ayar grupları solda listelenir ve seçilen form sağda kalır', async () => {
         expect(CLINIC_OPS_GROUPS.map((group) => group.id)).toEqual([
             'overview',
+            'menuColor',
             'specialty',
             'portal',
             'locations',
@@ -76,11 +77,11 @@ describe('Klinik operasyon ayar kabuğu', () => {
         const shell = screen.getByTestId('clinic-ops-settings');
         const nav = screen.getByTestId('clinic-ops-settings-nav');
         const panel = screen.getByTestId('clinic-ops-settings-panel');
-        const picker = screen.getByTestId('clinic-menu-palette-picker');
         expect(nav.className).toContain('flex-col');
-        expect(shell.contains(picker)).toBe(true);
-        expect(panel.contains(picker)).toBe(false);
-        expect(nav.closest('aside')?.contains(picker)).toBe(true);
+        expect(screen.queryByTestId('clinic-menu-palette-picker')).toBeNull();
+        expect(screen.queryByTestId('clinic-custom-palette-form')).toBeNull();
+        expect(screen.queryByTestId('clinic-menu-color-card')).toBeNull();
+        expect(nav.closest('aside')?.querySelector('[data-testid="clinic-menu-palette-picker"]')).toBeNull();
         expect(shell.innerHTML.indexOf('clinic-ops-settings-nav')).toBeLessThan(
             shell.innerHTML.indexOf('clinic-ops-settings-panel'),
         );
@@ -107,6 +108,7 @@ describe('Klinik operasyon ayar kabuğu', () => {
         expect(await screen.findByText('Şubeler')).toBeTruthy();
         expect(screen.queryByText('Klinik analitik (90 gün)')).toBeNull();
         expect(panel.contains(screen.getByText('Şubeler'))).toBe(true);
+        expect(screen.queryByTestId('clinic-menu-palette-picker')).toBeNull();
 
         const css = shell.querySelector('style')?.textContent ?? '';
         expect(css).toContain('font-size: 16.575px');
@@ -118,6 +120,53 @@ describe('Klinik operasyon ayar kabuğu', () => {
         const src = readFileSync(resolve('src/components/beauty/components/ClinicOperationsHub.tsx'), 'utf8');
         expect(src).not.toContain('overflow-x-auto');
         expect(src).toContain('cops-save');
+    });
+
+    it('Menü rengi grubu seçilince palet formu ana içerikte render olur', async () => {
+        render(<ClinicOperationsHub />);
+        const nav = screen.getByTestId('clinic-ops-settings-nav');
+        const panel = screen.getByTestId('clinic-ops-settings-panel');
+        const aside = nav.closest('aside');
+        const menu = screen.getByTestId('clinic-ops-settings-group-menuColor');
+
+        expect(nav.contains(menu)).toBe(true);
+        expect(menu.textContent).toBe('Menü rengi');
+        expect(aside?.querySelector('[data-testid="clinic-custom-palette-form"]')).toBeNull();
+        expect(screen.queryByTestId('clinic-menu-palette-picker')).toBeNull();
+        expect(screen.queryByTestId('clinic-menu-color-card')).toBeNull();
+        expect(await screen.findByText('Klinik analitik (90 gün)')).toBeTruthy();
+
+        fireEvent.click(menu);
+
+        const picker = screen.getByTestId('clinic-menu-palette-picker');
+        const form = screen.getByTestId('clinic-custom-palette-form');
+        expect(menu.getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Menü rengi');
+        expect(picker.getAttribute('data-variant')).toBe('page');
+        expect(panel.contains(picker)).toBe(true);
+        expect(panel.contains(form)).toBe(true);
+        expect(panel.contains(screen.getByTestId('clinic-font-settings'))).toBe(true);
+        expect(panel.contains(screen.getByTestId('clinic-menu-palette-plum'))).toBe(true);
+        expect(aside?.contains(picker)).toBe(false);
+        expect(aside?.contains(form)).toBe(false);
+        expect(nav.contains(form)).toBe(false);
+        expect(screen.getAllByTestId('clinic-menu-palette-picker')).toHaveLength(1);
+        expect(screen.getAllByTestId('clinic-custom-palette-form')).toHaveLength(1);
+        expect(screen.getByTestId('clinic-menu-palette-plum').getAttribute('aria-pressed')).toBe('true');
+        expect(form.textContent).toContain('Palet adı');
+        expect(form.textContent).toContain('Arka plan');
+        expect(form.textContent).toContain('Vurgu');
+        expect(form.textContent).toContain('Yazı rengi');
+        const html = panel.innerHTML;
+        expect(html.indexOf('clinic-menu-palette-presets')).toBeLessThan(html.indexOf('clinic-custom-palette-form'));
+        expect(html.indexOf('clinic-custom-palette-form')).toBeLessThan(html.indexOf('clinic-font-settings'));
+
+        fireEvent.click(screen.getByTestId('clinic-ops-settings-group-overview'));
+        expect(screen.queryByTestId('clinic-menu-palette-picker')).toBeNull();
+        expect(screen.queryByTestId('clinic-custom-palette-form')).toBeNull();
+        expect(aside?.querySelector('[data-testid="clinic-menu-palette-picker"]')).toBeNull();
+        expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Özet');
+        expect(await screen.findByText('Klinik analitik (90 gün)')).toBeTruthy();
     });
 
     it('yazı tipi ve punto ayar kabuğunda kalır', async () => {
@@ -133,8 +182,14 @@ describe('Klinik operasyon ayar kabuğu', () => {
         expect(css).toContain('calc(16.575px * var(--clinic-font-scale, 1))');
         expect(css).toContain('calc(14px * var(--clinic-font-scale, 1))');
         expect(screen.getByTestId('clinic-ops-settings-group-overview').getAttribute('style') ?? '').toContain('var(--clinic-font-scale, 1)');
+        expect(await screen.findByText('Klinik analitik (90 gün)')).toBeTruthy();
+        expect(screen.queryByTestId('clinic-font-family-serif')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('clinic-ops-settings-group-menuColor'));
+        const panel = screen.getByTestId('clinic-ops-settings-panel');
         expect(screen.getByTestId('clinic-font-family-serif').getAttribute('aria-pressed')).toBe('true');
         expect(screen.getByTestId('clinic-font-size-xl').getAttribute('aria-pressed')).toBe('true');
-        expect(await screen.findByText('Klinik analitik (90 gün)')).toBeTruthy();
+        expect(panel.contains(screen.getByTestId('clinic-font-settings'))).toBe(true);
+        expect(screen.getByTestId('clinic-ops-settings-nav').contains(screen.getByTestId('clinic-font-settings'))).toBe(false);
     });
 });

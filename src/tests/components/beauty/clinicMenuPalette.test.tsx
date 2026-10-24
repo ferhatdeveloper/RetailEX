@@ -245,7 +245,10 @@ describe('Klinik menü renk paleti', () => {
         const v2 = readFileSync(resolve('src/components/beauty/components/ClinicV2SettingsShell.tsx'), 'utf8');
         const rail = readFileSync(resolve('src/components/beauty/components/ClinicV2SideRail.tsx'), 'utf8');
         const indexSrc = readFileSync(resolve('src/components/beauty/index.tsx'), 'utf8');
-        expect(hub).toContain('<ClinicMenuPalettePicker variant="rail" />');
+        expect(hub).toContain('<ClinicMenuPalettePicker variant="page" />');
+        expect(hub).toContain("tab === 'menuColor'");
+        expect(hub).not.toContain('variant="rail"');
+        expect(hub).not.toContain('clinic-menu-color-card');
         expect(hub).toContain('data-testid="clinic-ops-settings-nav"');
         expect(hub).not.toContain('overflow-x-auto');
         expect(v2).not.toContain('ClinicMenuPalettePicker');
@@ -253,6 +256,34 @@ describe('Klinik menü renk paleti', () => {
         expect(indexSrc).toContain('data-testid="clinic-classic-nav"');
         expect(indexSrc).toContain('background: active ? shell.accent : \'transparent\'');
         expect(indexSrc).toContain('color: active ? shell.onAccent : shell.item');
+    });
+
+    it('oluştur alanı Menü rengi bölümünde, hazır paletlerin hemen altında render olur', () => {
+        render(<ClinicMenuPalettePicker variant="rail" />);
+        const section = screen.getByTestId('clinic-menu-palette-picker');
+        expect(section.querySelector('h2')?.textContent).toBe('Menü rengi');
+        const form = screen.getByTestId('clinic-custom-palette-form');
+        const fonts = screen.getByTestId('clinic-font-settings');
+        expect(section.contains(form)).toBe(true);
+        expect(section.contains(fonts)).toBe(true);
+        expect(form.textContent).toContain('Palet oluştur');
+        expect(form.textContent).toContain('Palet adı');
+        expect(form.textContent).toContain('Arka plan');
+        expect(form.textContent).toContain('Vurgu');
+        expect(form.textContent).toContain('Yazı rengi');
+        expect(screen.getByTestId('clinic-custom-palette-save').textContent).toBe('Kaydet');
+        const html = section.innerHTML;
+        expect(html.indexOf('clinic-menu-palette-presets')).toBeLessThan(html.indexOf('clinic-custom-palette-form'));
+        expect(html.indexOf('clinic-menu-palette-pearl')).toBeLessThan(html.indexOf('clinic-custom-palette-form'));
+        expect(html.indexOf('clinic-custom-palette-form')).toBeLessThan(html.indexOf('clinic-font-settings'));
+        expect(screen.getByTestId('clinic-font-family-system').textContent).toBe('Sistem');
+        expect(screen.getByTestId('clinic-font-family-inter').textContent).toBe('Inter');
+        expect(screen.getByTestId('clinic-font-family-serif').textContent).toBe('Serif');
+        expect(screen.getByTestId('clinic-font-family-mono').textContent).toBe('Eş aralıklı');
+        expect(screen.getByTestId('clinic-font-size-sm').textContent).toBe('Küçük');
+        expect(screen.getByTestId('clinic-font-size-md').textContent).toBe('Normal');
+        expect(screen.getByTestId('clinic-font-size-lg').textContent).toBe('Büyük');
+        expect(screen.getByTestId('clinic-font-size-xl').textContent).toBe('Çok büyük');
     });
 
     it('boş depoda mor palet, sistem yazısı ve normal punto kalır', () => {
