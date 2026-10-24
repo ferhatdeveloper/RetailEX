@@ -142,9 +142,10 @@ import {
   cashRegisterDrawerLines,
   cashRegisterExpenseGaps,
   cashRegisterStatusFromLedger,
-  cashStatusBlockTotals,
+  cashStatusThreeBoxes,
   cashStatusWithVouchers,
   foldReservationIntoCashStatus,
+  sumCashRegisterDistribution,
   paymentDistributionVisibleRows,
   type CashStatusPaymentLine,
 } from '../../utils/cashStatusTotals';
@@ -4575,6 +4576,17 @@ export function ReportsModule({
       saleReceiptKeys,
       customerCollectionsInSalesCash: true,
     });
+    const flow = cashStatusThreeBoxes({
+      salesCash: folded.todayCash,
+      reservation: reservationDeposit,
+      expense: cashExpensesForReport,
+      countedExpenseKeys,
+      lines: voucherLines,
+      dateFrom: selectedDateFrom,
+      dateTo: selectedDateTo,
+      saleReceiptKeys,
+      customerCollectionsInSalesCash: true,
+    });
     const voucherAmount = (code: string, fallback: number) => {
       if (code === 'NAKIT') return voucher.todayCash;
       if (code === 'KREDIKARTI') return voucher.card;
@@ -4627,6 +4639,10 @@ export function ReportsModule({
       todayCash: voucher.todayCash,
       openingCash: voucher.openingCash,
       closingCash: voucher.closingCash,
+      totalIn: flow.totalIn,
+      totalOut: flow.totalOut,
+      priorBalance: flow.priorBalance,
+      formulaBalance: flow.balance,
     };
   };
 
@@ -5010,30 +5026,27 @@ export function ReportsModule({
       cards,
       paymentTypes: dist.types as CashStatusPaymentLine[],
       distributionTotal: Number(dist.listedTotal) || 0,
+      totalIn: Number(dist.totalIn) || 0,
+      totalOut: Number(dist.totalOut) || 0,
+      priorBalance: Number(dist.priorBalance) || 0,
+      formulaBalance: Number(dist.formulaBalance) || 0,
     };
   };
 
-  const cashStatusFigureLabels = (openingHint?: string): CashStatusFigureLabels => ({
-    opening: tm('openingCash'),
-    openingHint,
-    todayCash: tm('todayCash'),
-    todayCashHint: tm('cashStatusIncludesReservation'),
-    reservation: tm('cashStatusReservationDeposit') || 'Alınan Avans (Rezervasyon)',
-    reservationHint: tm('cashStatusReservationInfo'),
-    todayCard: tm('todayCard'),
-    closing: tm('closingCash'),
-    closingHint: tm('cashStatusIncludesReservation'),
-    distribution: tm('paymentDistribution'),
-    grandTotal: tm('rptGrandTotal'),
-    grandHint: tm('cashStatusGrandTotalHint'),
-    expenseHint: tm('cashStatusExpenseHint'),
-    infoBadge: tm('cashStatusInfoBadge'),
+  const cashStatusFigureLabels = (): CashStatusFigureLabels => ({
+    totalIn: tm('cashStatusTotalIn'),
+    totalInHint: tm('cashStatusTotalInHint'),
+    totalOut: tm('cashStatusTotalOut'),
+    totalOutHint: tm('cashStatusTotalOutHint'),
+    balance: tm('cashStatusBalance'),
+    balanceHint: selectedDateTo >= localTodayDateKey()
+      ? tm('cashStatusBalanceTodayHint')
+      : tm('cashStatusBalancePastHint'),
     registersTitle: tm('cashStatusTabRegisters'),
     registerName: tm('rptCashRegisterName'),
     registerAmount: tm('cashStatusRegisterAmount'),
     registersTotal: tm('cashStatusRegistersTotal'),
     registersEmpty: tm('cashStatusRegistersEmpty'),
-    registerListHint: tm('cashStatusRegisterListHint'),
   });
 
   const getCashRegisterStatusRows = () => {
@@ -8392,7 +8405,14 @@ export function ReportsModule({
             {selectedTab === 'cash-status' && (() => {
               const cashStatus = getCashStatus();
               const registerRows = getCashRegisterStatusRows();
-              const blockTotals = cashStatusBlockTotals(cashStatus.distributionTotal, registerRows);
+              const registerLines = cashRegisterDistributionLines(registerRows, {
+                unpostedExpense: cashStatus.expenses,
+              });
+              const registerTotal = sumCashRegisterDistribution(registerLines);
+              const rangeEndsToday = selectedDateTo >= localTodayDateKey();
+              const balance = rangeEndsToday && registerLines.length > 0
+                ? registerTotal
+                : cashStatus.formulaBalance;
               return (
                 <div className="space-y-4">
                   <div className="bg-white rounded-lg border p-4">
@@ -8428,46 +8448,13 @@ export function ReportsModule({
 
                   {cashStatusPane === 'registers' ? renderCashRegisterPanels() : (
                     <CashStatusFigures
-                      openingCash={cashStatus.openingCash}
-                      todayCash={cashStatus.todayCash}
-                      reservationDeposit={cashStatus.reservationDeposit}
-                      todayCard={cashStatus.todayCard}
-                      closingCash={cashStatus.closingCash}
+                      totalIn={cashStatus.totalIn}
+                      totalOut={cashStatus.totalOut}
+                      balance={balance}
                       currency={reportCurrency}
-                      paymentRows={cashStatus.paymentTypes}
-                      registerLines={cashRegisterDistributionLines(registerRows, {
-                        unpostedExpense: cashStatus.expenses,
-                      })}
-                      grandTotal={blockTotals.grandTotal}
+                      registerLines={registerLines}
                       onRegisterRowClick={() => setCashStatusPane('registers')}
-                      labels={cashStatusFigureLabels(
-                        selectedDateFrom !== localTodayDateKey() || selectedDateTo !== localTodayDateKey()
-                          ? tm('cashStatusOpeningPastHint')
-                          : undefined,
-                      )}
-                      onPaymentClick={(code) => setPaymentTypeDetailCode(code as PaymentFormCode)}
-                      aside={(
-                        <div className="bg-white rounded-lg border p-4">
-                          <h3 className="text-lg mb-4">{tm('cardTypes')}</h3>
-                          <p className="text-xs text-gray-500 mb-3">
-                            Fişlerde kart markası yok; ödeme tipine göre (kredi kartı / sanal POS) gruplanır.
-                          </p>
-                          <div className="space-y-3">
-                            {cashStatus.cards.length === 0 ? (
-                              <div className="p-4 text-center text-sm text-gray-500 bg-gray-50 rounded-lg">
-                                Seçili günde kartlı ödeme yok veya tutar sıfır.
-                              </div>
-                            ) : (
-                              cashStatus.cards.map((card) => (
-                                <div key={card.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                  <span>{card.name}</span>
-                                  <span className="font-semibold text-blue-600">{formatNumber(card.amount, 2, false)} {reportCurrency}</span>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      )}
+                      labels={cashStatusFigureLabels()}
                     />
                   )}
                 </div>

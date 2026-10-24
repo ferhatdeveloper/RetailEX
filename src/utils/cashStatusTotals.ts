@@ -1058,6 +1058,123 @@ export function cashStatusWithVouchers(input: CashStatusVoucherInput): CashStatu
   };
 }
 
+export interface CashStatusThreeBoxInput {
+  /**
+   * Satış tahsilatı. Peşinat bu tutarın içindeyse ayrıca eklenmez.
+   * Aralık içindeki açılış alacak bu tutardan düşülmez; çıkan kutusuna yazılır.
+   */
+  salesCash: number;
+  /** Bilgi. Girene ve çıkana eklenmez. */
+  reservation?: number;
+  /** İndirim açık cari değildir. Girene ve çıkana eklenmez. */
+  discount?: number;
+  /**
+   * Dönem gideri. Verilirse bir kez çıkana yazılır.
+   * Aynı fiş satırı ikinci kez çıkana girmez.
+   */
+  expense?: number;
+  countedExpenseKeys?: Iterable<string> | null;
+  lines?: readonly CashStatusRegisterLine[];
+  dateFrom?: string;
+  dateTo?: string;
+  saleReceiptKeys?: Iterable<string>;
+  customerCollectionsInSalesCash?: boolean;
+  /**
+   * Kasalar tablosunun toplamı. Aralık bugünde bitiyorsa bakiye budur.
+   * Geçmiş aralıkta bakiye bu alandan okunmaz.
+   */
+  registerTotal?: number | null;
+  /** Seçili aralığın son günü bugün veya sonrası. */
+  rangeEndsToday?: boolean;
+}
+
+export interface CashStatusThreeBoxResult {
+  /** Seçili aralıkta kasaya giren. Peşinat bir kez. */
+  totalIn: number;
+  /** Seçili aralıkta kasadan çıkan. Gider bir kez. */
+  totalOut: number;
+  /** Aralık başlamadan önceki kasa. Aralık içindeki açılış fişi burada değildir. */
+  priorBalance: number;
+  /**
+   * Aralık bugünde bitiyorsa kasalar toplamı.
+   * Geçmiş aralıkta: önceki + giren − çıkan.
+   */
+  balance: number;
+}
+
+/**
+ * Kasa Durumu üç kutusu.
+ *
+ * Giren: satış tahsilatı (peşinat bunun içindeyse ikinci kez yok) ve aralıktaki
+ * kasa girişi. Açılış borç (işaret +1) girendir.
+ * Çıkan: gider, açılış alacak (işaret −1), cari ödeme ve bankaya yatan. Bir kez.
+ * Virman şirket bakiyesini değiştirmez; girene ve çıkana yazılmaz.
+ * İndirim ve açık cari bu iki kutuya girmez.
+ * Aralık bugünde bitiyorsa bakiye, kasalar tablosunun güncel toplamıdır.
+ * Geçmiş aralıkta bakiye = aralık öncesi + giren − çıkan.
+ */
+export function cashStatusThreeBoxes(input: CashStatusThreeBoxInput): CashStatusThreeBoxResult {
+  const salesCash = round2(num(input.salesCash));
+  const expenseProvided = input.expense != null;
+  const expenseParam = expenseProvided ? Math.max(0, round2(num(input.expense))) : 0;
+  const dateFrom = String(input.dateFrom || '').slice(0, 10);
+  const dateTo = String(input.dateTo || '').slice(0, 10);
+  const saleReceiptKeys = saleReceiptKeySet(input.saleReceiptKeys);
+  const expenseKeysProvided = input.countedExpenseKeys != null;
+  const countedExpenseKeys = saleReceiptKeySet(input.countedExpenseKeys);
+  const collectionsInSales = input.customerCollectionsInSalesCash === true;
+  const lines = withCashVirmanLines(input.lines || []) as CashStatusRegisterLine[];
+  // İndirim parametresi kasaya yazılmaz. Açık cari satırı da aşağıda atlanır.
+  void input.discount;
+  void input.reservation;
+
+  let priorBalance = 0;
+  let extraIn = 0;
+  let extraOut = 0;
+  let expenseFromLines = 0;
+
+  for (const line of lines) {
+    const day = ledgerDay(line.islem_tarihi);
+    if (day && dateTo && day > dateTo) continue;
+    const before = Boolean(day && dateFrom && day < dateFrom);
+    const signed = voucherSignedAmount(line);
+    if (!(Math.abs(signed) > 0.004)) continue;
+    const kind = drawerKind(line);
+    if (kind !== 'cash') continue;
+    if (before) {
+      priorBalance = round2(priorBalance + signed);
+      continue;
+    }
+    const tip = String(line.islem_tipi || '').trim().toUpperCase();
+    if (isReservationCashLine(line)) continue;
+    if (skipSaleCollectionAlreadyInCash(line, tip, saleReceiptKeys, collectionsInSales)) continue;
+    if (isCashVirmanType(tip)) continue;
+    if (PERIOD_SUMMARY_CASH_OUT_TYPES.has(tip)) {
+      const coveredByTotal = expenseProvided && expenseParam > 0.004 && (
+        !expenseKeysProvided || expenseKeyHit(line, countedExpenseKeys)
+      );
+      if (!coveredByTotal) expenseFromLines = round2(expenseFromLines + Math.abs(signed));
+      continue;
+    }
+    if (signed > 0.004) extraIn = round2(extraIn + signed);
+    else extraOut = round2(extraOut + Math.abs(signed));
+  }
+
+  const totalIn = round2(salesCash + extraIn);
+  const totalOut = round2((expenseProvided ? expenseParam : 0) + expenseFromLines + extraOut);
+  const formulaBalance = round2(priorBalance + totalIn - totalOut);
+  const registerTotal = input.registerTotal;
+  const useRegisters = input.rangeEndsToday === true
+    && registerTotal != null
+    && Number.isFinite(Number(registerTotal));
+  return {
+    totalIn,
+    totalOut,
+    priorBalance: round2(priorBalance),
+    balance: useRegisters ? round2(num(registerTotal)) : formulaBalance,
+  };
+}
+
 function formatLocalDay(value: Date): string {
   if (Number.isNaN(value.getTime())) return '';
   const month = String(value.getMonth() + 1).padStart(2, '0');

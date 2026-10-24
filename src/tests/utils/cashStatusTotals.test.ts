@@ -17,6 +17,7 @@ import {
   cashRegisterNetGrandTotal,
   cashStatusBlockTotals,
   cashStatusDistributionListRows,
+  cashStatusThreeBoxes,
   cashStatusWithVouchers,
   foldReservationIntoCashStatus,
   paymentDistributionVisibleRows,
@@ -1540,5 +1541,325 @@ describe('Kasa Durumu — 138.500 nakit, 15.000 gider, kapanış 85.000', () => 
     expect(qicardRow?.amount).toBe(0);
     expect(sumCashRegisterDistribution(listed)).toBe(85_000);
     expect(rows.find((row) => row.id === 'k1')?.expense).toBe(15_000);
+  });
+});
+
+describe('Kasa Durumu üç kutu — giren, çıkan, bakiye', () => {
+  const today = '2026-10-24';
+  const registers = [
+    { id: 'k1', code: 'KASA.001', name: 'MERKEZ KASA' },
+    { id: 'k2', code: 'KASA.002', name: 'QICARD' },
+  ];
+
+  it('263.500 giren ve −38.500 önceki bakiye, gider 0 ise bakiye 225.000 ve kasalar toplamıdır', () => {
+    const lines = [
+      {
+        kasa_id: 'k1',
+        islem_tipi: 'ACILIS_ALACAK',
+        tutar: 38_500,
+        islem_tarihi: '2026-10-01',
+        payment_method: 'cash',
+        islem_no: 'ACILIS-1',
+      },
+      {
+        kasa_id: 'k1',
+        islem_tipi: 'KASA_GIRIS',
+        tutar: 263_500,
+        islem_tarihi: today,
+        payment_method: 'cash',
+        islem_no: 'FIS-263',
+        islem_aciklamasi: 'Satış faturası — FIS-263',
+      },
+    ];
+    const rows = cashRegisterStatusFromLedger({
+      registers,
+      lines,
+      dateFrom: today,
+      dateTo: today,
+      unassignedLabel: 'Kasaya bağlanmayan',
+      saleReceiptKeys: ['FIS-263'],
+    });
+    const listed = cashRegisterDistributionLines(rows);
+    const registerTotal = sumCashRegisterDistribution(listed);
+    expect(registerTotal).toBe(225_000);
+    expect(listed.find((row) => row.id === 'k1')?.amount).toBe(225_000);
+    expect(listed.find((row) => row.id === 'k2')?.amount).toBe(0);
+
+    const boxes = cashStatusThreeBoxes({
+      salesCash: 263_500,
+      reservation: 10_000,
+      discount: 1_500,
+      expense: 0,
+      lines,
+      dateFrom: today,
+      dateTo: today,
+      saleReceiptKeys: ['FIS-263'],
+      customerCollectionsInSalesCash: true,
+      registerTotal,
+      rangeEndsToday: true,
+    });
+
+    expect(boxes.totalIn).toBe(263_500);
+    expect(boxes.totalIn).not.toBe(273_500);
+    expect(boxes.totalOut).toBe(0);
+    expect(boxes.priorBalance).toBe(-38_500);
+    expect(boxes.priorBalance + boxes.totalIn - boxes.totalOut).toBe(225_000);
+    expect(boxes.balance).toBe(registerTotal);
+    expect(boxes.balance).toBe(225_000);
+  });
+
+  it('aralık içindeki açılış alacak çıkandır, açılış borç girendir', () => {
+    const boxes = cashStatusThreeBoxes({
+      salesCash: 263_500,
+      lines: [
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'ACILIS_ALACAK',
+          tutar: 38_500,
+          islem_tarihi: '2026-10-20',
+          payment_method: 'cash',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'ACILIS_BORC',
+          tutar: 10_000,
+          islem_tarihi: '2026-10-21',
+          payment_method: 'cash',
+        },
+      ],
+      dateFrom: '2026-10-01',
+      dateTo: '2026-10-24',
+    });
+    expect(boxes.priorBalance).toBe(0);
+    expect(boxes.totalIn).toBe(273_500);
+    expect(boxes.totalOut).toBe(38_500);
+    expect(boxes.balance).toBe(235_000);
+    expect(boxes.balance).toBe(boxes.priorBalance + boxes.totalIn - boxes.totalOut);
+  });
+
+  it('geçmiş aralıkta bakiye önceki + giren − çıkandır; sonraki gün kasaya yazılmaz', () => {
+    const lines = [
+      {
+        kasa_id: 'k1',
+        islem_tipi: 'KASA_GIRIS',
+        tutar: 100_000,
+        islem_tarihi: '2026-09-01',
+        payment_method: 'cash',
+        islem_no: 'ONCE',
+      },
+      {
+        kasa_id: 'k1',
+        islem_tipi: 'KASA_GIRIS',
+        tutar: 50_000,
+        islem_tarihi: '2026-10-05',
+        payment_method: 'cash',
+        islem_no: 'ARALIK',
+      },
+      {
+        kasa_id: 'k1',
+        islem_tipi: 'BANKA_YATIRILAN',
+        tutar: 20_000,
+        islem_tarihi: '2026-10-06',
+        payment_method: 'cash',
+        islem_no: 'BANKA',
+      },
+      {
+        kasa_id: 'k1',
+        islem_tipi: 'KASA_GIRIS',
+        tutar: 99_000,
+        islem_tarihi: '2026-10-20',
+        payment_method: 'cash',
+        islem_no: 'SONRA',
+      },
+    ];
+    const boxes = cashStatusThreeBoxes({
+      salesCash: 0,
+      lines,
+      dateFrom: '2026-10-01',
+      dateTo: '2026-10-10',
+      rangeEndsToday: false,
+      registerTotal: 999_999,
+    });
+    expect(boxes.priorBalance).toBe(100_000);
+    expect(boxes.totalIn).toBe(50_000);
+    expect(boxes.totalOut).toBe(20_000);
+    expect(boxes.balance).toBe(130_000);
+    expect(boxes.balance).toBe(boxes.priorBalance + boxes.totalIn - boxes.totalOut);
+    expect(boxes.balance).not.toBe(229_000);
+
+    const rows = cashRegisterStatusFromLedger({
+      registers,
+      lines,
+      dateFrom: '2026-10-01',
+      dateTo: '2026-10-10',
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const listed = cashRegisterDistributionLines(rows);
+    expect(listed.find((row) => row.id === 'k1')?.amount).toBe(130_000);
+    expect(sumCashRegisterDistribution(listed)).toBe(boxes.balance);
+  });
+
+  it('peşinat ikinci kez girene eklenmez, satış fişi ikinci kez giren olmaz', () => {
+    const boxes = cashStatusThreeBoxes({
+      salesCash: 263_500,
+      reservation: 10_000,
+      saleReceiptKeys: ['FIS-263'],
+      customerCollectionsInSalesCash: true,
+      lines: [
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'CH_TAHSILAT',
+          tutar: 10_000,
+          ozel_kod: 'REZERVASYON',
+          islem_tarihi: today,
+          payment_method: 'cash',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'KASA_GIRIS',
+          tutar: 263_500,
+          islem_no: 'FIS-263',
+          islem_tarihi: today,
+          payment_method: 'cash',
+          islem_aciklamasi: 'Satış faturası — FIS-263',
+        },
+      ],
+      dateFrom: today,
+      dateTo: today,
+    });
+    expect(boxes.totalIn).toBe(263_500);
+    expect(boxes.totalIn).not.toBe(273_500);
+    expect(boxes.totalIn).not.toBe(527_000);
+    expect(boxes.totalOut).toBe(0);
+  });
+
+  it('indirim ve açık cari girene veya çıkana eklenmez', () => {
+    const boxes = cashStatusThreeBoxes({
+      salesCash: 263_500,
+      discount: 1_500,
+      lines: [{
+        kasa_id: 'k1',
+        islem_tipi: 'KASA_GIRIS',
+        tutar: 5_000,
+        islem_tarihi: today,
+        payment_method: 'ACIK_CARI',
+        islem_no: 'VERESIYE',
+      }],
+      dateFrom: today,
+      dateTo: today,
+    });
+    expect(boxes.totalIn).toBe(263_500);
+    expect(boxes.totalOut).toBe(0);
+    expect(boxes.balance).toBe(263_500);
+  });
+
+  it('gider, cari ödeme ve bankaya yatan bir kez çıkana girer', () => {
+    const boxes = cashStatusThreeBoxes({
+      salesCash: 263_500,
+      expense: 15_000,
+      countedExpenseKeys: ['GDR-1', 'ODE-1'],
+      lines: [
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'KASA_CIKIS',
+          tutar: 5_000,
+          islem_tarihi: today,
+          payment_method: 'cash',
+          islem_no: 'GDR-1',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'CH_ODEME',
+          tutar: 10_000,
+          islem_tarihi: today,
+          payment_method: 'cash',
+          islem_no: 'ODE-1',
+        },
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'BANKA_YATIRILAN',
+          tutar: 3_000,
+          islem_tarihi: today,
+          payment_method: 'cash',
+          islem_no: 'BANKA-1',
+        },
+      ],
+      dateFrom: today,
+      dateTo: today,
+    });
+    expect(boxes.totalOut).toBe(18_000);
+    expect(boxes.totalOut).not.toBe(33_000);
+    expect(boxes.totalIn).toBe(263_500);
+    expect(boxes.balance).toBe(245_500);
+  });
+
+  it('virman şirket bakiyesini değiştirmez', () => {
+    const without = cashStatusThreeBoxes({
+      salesCash: 225_000,
+      lines: [],
+      dateFrom: '2026-10-01',
+      dateTo: today,
+    });
+    const withVirman = cashStatusThreeBoxes({
+      salesCash: 225_000,
+      lines: [{
+        kasa_id: 'k1',
+        target_register_id: 'k2',
+        islem_tipi: 'VIRMAN',
+        tutar: 20_000,
+        sign: -1,
+        islem_no: 'VRM-1',
+        islem_tarihi: '2026-10-10',
+        payment_method: 'cash',
+      }],
+      dateFrom: '2026-10-01',
+      dateTo: today,
+    });
+    expect(withVirman.totalIn).toBe(without.totalIn);
+    expect(withVirman.totalOut).toBe(without.totalOut);
+    expect(withVirman.balance).toBe(without.balance);
+    expect(withVirman.balance).toBe(225_000);
+
+    const baseLines = [{
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 225_000,
+      islem_tarihi: '2026-10-02',
+      payment_method: 'cash',
+      islem_no: 'GIRIS',
+    }];
+    const movedLines = [
+      ...baseLines,
+      {
+        kasa_id: 'k1',
+        target_register_id: 'k2',
+        islem_tipi: 'VIRMAN',
+        tutar: 20_000,
+        sign: -1,
+        islem_no: 'VRM-1',
+        islem_tarihi: '2026-10-10',
+        payment_method: 'cash',
+      },
+    ];
+    const beforeRows = cashRegisterStatusFromLedger({
+      registers,
+      lines: baseLines,
+      dateFrom: '2026-10-01',
+      dateTo: today,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const afterRows = cashRegisterStatusFromLedger({
+      registers,
+      lines: movedLines,
+      dateFrom: '2026-10-01',
+      dateTo: today,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const beforeTotal = sumCashRegisterDistribution(cashRegisterDistributionLines(beforeRows));
+    const afterListed = cashRegisterDistributionLines(afterRows);
+    const afterTotal = sumCashRegisterDistribution(afterListed);
+    expect(afterTotal).toBe(beforeTotal);
+    expect(afterListed.find((row) => row.id === 'k1')?.amount).toBe(205_000);
+    expect(afterListed.find((row) => row.id === 'k2')?.amount).toBe(20_000);
   });
 });
