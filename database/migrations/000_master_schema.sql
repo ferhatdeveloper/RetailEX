@@ -1476,7 +1476,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   UNIQUE(key, firm_nr)
 );
 
-COMMENT ON TABLE app_settings IS 'Uygulama ayarları; key+firm_nr ile benzersiz. receipt_settings: fiş logosu ve firma bilgisi. invoice_code_formats: fatura kod formatı (default.pattern, byType.{trcode}.pattern). Boş pattern = YYYYMMDD+rastgele damga.';
+COMMENT ON TABLE app_settings IS 'Uygulama ayarları; key+firm_nr ile benzersiz. receipt_settings: fiş logosu ve firma bilgisi. invoice_code_formats: fatura kod formatı (default.pattern, byType.{trcode}.pattern). Boş pattern ve boş sayısal sayaç = 00001 (5 hane). Kayıtlı fatura numaraları güncellenmez.';
 
 CREATE TABLE IF NOT EXISTS sync_queue (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),

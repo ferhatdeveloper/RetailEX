@@ -1,7 +1,7 @@
 /**
  * Fatura / ürün / hizmet kod formatı — app_settings JSON.
  * Fatura mevcut invoice_code_formats anahtarını kullanır; ürün ve hizmet ayrı key.
- * Format yoksa 7 haneli sayısal sıra (0000001…).
+ * Fatura formatı yoksa 5 hane (00001). Ürün / hizmet formatı yoksa 7 hane (0000001).
  */
 import { postgres, ERP_SETTINGS } from './postgres';
 import {
@@ -126,7 +126,7 @@ async function codeExists(entity: 'product' | 'service', code: string): Promise<
 
 /**
  * Tanımlı format varsa sıradaki benzersiz kod.
- * Format yoksa 7 haneli sayısal sıra (0000001…).
+ * Fatura formatı yoksa 00001; ürün / hizmet formatı yoksa 0000001.
  */
 export async function allocateNextEntityCode(
   entity: CodeFormatEntity,
@@ -152,7 +152,7 @@ export async function allocateNextEntityCode(
   return formatInvoiceCode(compiled, seq);
 }
 
-/** Format yokken senkron yedek — 0000001. */
+/** Ürün: format yokken senkron yedek — 0000001. */
 export function generateDefaultProductCode(_now: Date = new Date()): string {
   return formatDefaultNumericEntityCode(1n);
 }

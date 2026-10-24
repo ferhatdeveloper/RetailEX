@@ -179,9 +179,77 @@ export type CreateBeautySaleResult = {
   erpSynced?: boolean;
 };
 
-/** Web beautyService: BEA-{year}-{base36} */
-function nextBeautyInvoiceNumber(): string {
-  return `BEA-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
+/**
+ * Web `nextPrefixedInvoiceNumber`: BEA-{yıl}-00001.
+ * Rastgele ek yok. Kayıtlı numaralar yeniden yazılmaz.
+ */
+function nextBeautyInvoiceFromCodes(codes: readonly string[], year: number): string {
+  const prefix = `BEA-${year}-`;
+  let max = 0n;
+  let width = 5;
+  for (const raw of codes) {
+    const code = String(raw || '').trim();
+    if (!code.startsWith(prefix)) continue;
+    const mid = code.slice(prefix.length);
+    if (!/^[0-9]+$/.test(mid)) continue;
+    const n = BigInt(mid);
+    if (n > max) max = n;
+    if (mid.length > width) width = mid.length;
+  }
+  const next = max + 1n;
+  return `${prefix}${next.toString().padStart(width, '0')}`;
+}
+
+async function nextBeautyInvoiceNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `BEA-${year}-`;
+  let codes: string[] = [];
+  try {
+    codes = await runDataTransport({
+      label: 'beautyInvoiceSeq',
+      viaRest: async () => {
+        const [beautyRows, salesRows] = await Promise.all([
+          postgrestGet<Array<{ invoice_number?: string }>>(
+            beautySalesPath(),
+            { select: 'invoice_number', invoice_number: `like.${prefix}*`, limit: 8000 },
+            BEAUTY_SCHEMA,
+          ),
+          postgrestGet<Array<{ fiche_no?: string }>>(
+            `/${salesTable()}`,
+            { select: 'fiche_no', fiche_no: `like.${prefix}*`, limit: 8000 },
+          ),
+        ]);
+        const out: string[] = [];
+        for (const row of Array.isArray(beautyRows) ? beautyRows : []) {
+          const code = String(row?.invoice_number ?? '').trim();
+          if (code) out.push(code);
+        }
+        for (const row of Array.isArray(salesRows) ? salesRows : []) {
+          const code = String(row?.fiche_no ?? '').trim();
+          if (code) out.push(code);
+        }
+        return out;
+      },
+      viaBridge: async () => {
+        const beauty = await pgQuery<{ invoice_number?: string | null }>(
+          `SELECT invoice_number FROM ${beautySalesTable()} WHERE invoice_number LIKE $1 LIMIT 8000`,
+          [`${prefix}%`],
+        );
+        const sales = await pgQuery<{ fiche_no?: string | null }>(
+          `SELECT fiche_no FROM ${salesTable()} WHERE fiche_no LIKE $1 LIMIT 8000`,
+          [`${prefix}%`],
+        );
+        return [
+          ...(beauty.rows || []).map((r) => String(r.invoice_number ?? '').trim()),
+          ...(sales.rows || []).map((r) => String(r.fiche_no ?? '').trim()),
+        ].filter(Boolean);
+      },
+    });
+  } catch (err) {
+    rethrowTransportInfra(err, 'beautyInvoiceSeq');
+    codes = [];
+  }
+  return nextBeautyInvoiceFromCodes(codes, year);
 }
 
 function isUuid(raw: string | null | undefined): boolean {
@@ -1145,7 +1213,7 @@ export async function createBeautySale(input: CreateBeautySaleInput): Promise<Cr
   if (!input.items.length) throw new Error('Sepet boş');
 
   const id = newUuid();
-  const invoiceNumber = nextBeautyInvoiceNumber();
+  const invoiceNumber = await nextBeautyInvoiceNumber();
   const tax = input.tax ?? 0;
   const paidAmount = input.paidAmount ?? input.total;
   const notes = [input.customerName?.trim(), input.notes?.trim()].filter(Boolean).join(' — ') || null;

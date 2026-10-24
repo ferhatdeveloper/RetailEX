@@ -6,6 +6,11 @@ import type { Sale, SaleItem } from '../core/types/models';
 import { applyOpenAdvancesToSale } from './avansService';
 import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
 import { postgres, ERP_SETTINGS } from './postgres';
+import {
+    beautyInvoicePrefix,
+    invoiceNumberLikePattern,
+    nextPrefixedInvoiceNumber,
+} from '../utils/invoiceCodeFormat';
 import { packBranchAddress, unpackBranchAddress } from './beautyBranchPlace';
 import type { BeautyProductReturnLine } from '../utils/beautyProductSalesNet';
 import { useSaleStore } from '../store/useSaleStore';
@@ -193,6 +198,59 @@ function erpFirmNrForRow(): string {
 
 function erpPeriodNrForRow(): string {
     return String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
+}
+
+/**
+ * Güzellik fatura no: BEA-{yıl}-00001. Sayaç boşsa 00001, sonraki 00002.
+ * Rastgele ek üretilmez. Kayıtlı invoice_number / fiche_no güncellenmez.
+ */
+async function allocateBeautyInvoiceNumber(kind: 'sale' | 'checkout' = 'sale'): Promise<string> {
+    const prefix = beautyInvoicePrefix(new Date().getFullYear(), kind);
+    const existing = await listBeautyInvoiceCodes(prefix);
+    return nextPrefixedInvoiceNumber(existing, prefix);
+}
+
+async function listBeautyInvoiceCodes(prefix: string): Promise<string[]> {
+    const codes: string[] = [];
+    const push = (raw: unknown) => {
+        const code = String(raw ?? '').trim();
+        if (code) codes.push(code);
+    };
+    try {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const like = `like.${prefix}*`;
+            const beautyRows = await postgrest.get<Array<{ invoice_number?: string }>>(
+                `/rex_${fn}_${pn}_beauty_sales`,
+                { select: 'invoice_number', invoice_number: like, limit: 8000 },
+                { schema: 'beauty' },
+            );
+            for (const row of Array.isArray(beautyRows) ? beautyRows : []) push(row?.invoice_number);
+            const salesRows = await postgrest.get<Array<{ fiche_no?: string }>>(
+                `/rex_${fn}_${pn}_sales`,
+                { select: 'fiche_no', fiche_no: like, limit: 8000 },
+                { schema: 'public' },
+            );
+            for (const row of Array.isArray(salesRows) ? salesRows : []) push(row?.fiche_no);
+            return codes;
+        }
+        const like = invoiceNumberLikePattern(prefix);
+        const { rows } = await postgres.query<{ code: string }>(
+            `SELECT invoice_number AS code FROM beauty_sales
+              WHERE invoice_number LIKE $1 ESCAPE '\\'
+             UNION ALL
+             SELECT fiche_no AS code FROM sales
+              WHERE fiche_no LIKE $1 ESCAPE '\\'
+             LIMIT 8000`,
+            [like],
+        );
+        for (const row of rows || []) push(row?.code);
+    } catch (e) {
+        console.warn('[beautyService] listBeautyInvoiceCodes failed', e);
+    }
+    return codes;
 }
 
 function stripUndefinedFields<T extends Record<string, unknown>>(obj: T): Partial<T> {
@@ -7160,7 +7218,7 @@ export const beautyService = {
         // modunda AppointmentPOS handlePayComplete bu fonksiyonu
         // çağırmıyor. Parametre imzası geriye uyumlu tutulur.
         const id = uuidv4();
-        const invoiceNumber = `BEA-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
+        const invoiceNumber = await allocateBeautyInvoiceNumber('sale');
         const docTotal = Number(sale.total ?? 0);
         const settlement = resolvePosCheckoutSettlement(docTotal, sale.payments ?? null);
         const hasPayRows = Array.isArray(sale.payments) && sale.payments.length > 0;
@@ -7679,7 +7737,7 @@ export const beautyService = {
      * Kalem ayrı `beauty_sales` kayıtları yazıldıktan sonra: tek ERP/kasa hareketi ve tek müşteri puanı (toplam tutar).
      */
     async syncBeautyCheckoutToErp(sale: Partial<BeautySale>, items: Partial<BeautySaleItem>[]): Promise<void> {
-        const invoiceNumber = `BEA-${new Date().getFullYear()}-CHK-${Date.now().toString(36).toUpperCase()}`;
+        const invoiceNumber = await allocateBeautyInvoiceNumber('checkout');
         await runBeautySaleErpAndLoyalty(sale, items, { invoiceNumber });
     },
 

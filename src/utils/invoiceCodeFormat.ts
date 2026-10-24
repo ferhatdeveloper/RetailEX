@@ -2,16 +2,28 @@
  * Fatura / malzeme / hizmet kod formatı — Logo benzeri şablon.
  *
  * Örnek şablon: FTR-{YYYY}-{SEQ:6} → FTR-2026-000001
- * Şablon boşsa varsayılan: 7 haneli sıfır dolgulu sıra (0000001, 0000002, …).
+ * Fatura şablonu boşsa ve sayısal sayaç yoksa: 5 hane (00001, 00002).
+ * Ürün / hizmet şablonu boşsa: 7 hane (0000001). Kayıtlı numaralar yeniden yazılmaz.
  */
 
 export const INVOICE_CODE_FORMAT_SETTINGS_KEY = 'invoice_code_formats';
 
-/** İlk kayıt ve format yokken kullanılan sıra genişliği (malzeme / fatura / hizmet). */
+/** Ürün / hizmet: format yokken sıra genişliği. */
 export const DEFAULT_ENTITY_CODE_SEQ_DIGITS = 7;
 
-/** Implicit şablon — app_settings boşken allocate bu kalıbı kullanır. */
+/** Ürün / hizmet implicit şablon. */
 export const DEFAULT_ENTITY_CODE_PATTERN = `{SEQ:${DEFAULT_ENTITY_CODE_SEQ_DIGITS}}`;
+
+/**
+ * Fatura: sayaç boşken veya yeni firma/dönemde ilk numara.
+ * 5 hane, sıfır dolgulu (00001, 00002).
+ */
+export const FIRST_INVOICE_SEQ_DIGITS = 5;
+
+/** Fatura implicit şablon — app_settings boşken allocate bu kalıbı kullanır. */
+export const DEFAULT_INVOICE_CODE_PATTERN = `{SEQ:${FIRST_INVOICE_SEQ_DIGITS}}`;
+
+export type BeautyInvoiceKind = 'sale' | 'checkout';
 
 export interface InvoiceCodeFormatRule {
   /** Boş = bu yuvada format yok (tür için varsayılana / damgaya düş) */
@@ -41,12 +53,30 @@ export function formatDefaultNumericEntityCode(seq: bigint | number = 1n): strin
   return v.toString().padStart(DEFAULT_ENTITY_CODE_SEQ_DIGITS, '0');
 }
 
+/** Boş fatura sayacının ilk kodu: 00001. */
+export function formatFirstInvoiceSequence(seq: bigint | number = 1n): string {
+  const n = typeof seq === 'bigint' ? seq : BigInt(Math.max(0, Math.trunc(Number(seq)) || 0));
+  const v = n < 1n ? 1n : n;
+  return v.toString().padStart(FIRST_INVOICE_SEQ_DIGITS, '0');
+}
+
 /**
- * Format / allocate yokken senkron yedek — 7 haneli ilk kod.
- * (Eski davranış: YYYYMMDD + rastgele damga.)
+ * Format / allocate yokken senkron yedek — 5 haneli ilk fatura numarası.
+ * Mevcut fiş numaralarını değiştirmez; yalnızca yeni aday üretir.
  */
 export function generateDefaultInvoiceStamp(_now: Date = new Date()): string {
-  return formatDefaultNumericEntityCode(1n);
+  return formatFirstInvoiceSequence(1n);
+}
+
+/** Güzellik fişi öneki. Satış: BEA-2026- · kasa özeti: BEA-2026-CHK- */
+export function beautyInvoicePrefix(year: number, kind: BeautyInvoiceKind = 'sale'): string {
+  const y = Number.isFinite(year) ? Math.trunc(year) : new Date().getFullYear();
+  return kind === 'checkout' ? `BEA-${y}-CHK-` : `BEA-${y}-`;
+}
+
+/** SQL LIKE kalıbı. Önekteki % ve _ olduğu gibi eşleşir. */
+export function invoiceNumberLikePattern(prefix: string): string {
+  return `${escapeLikeLiteral(prefix)}%`;
 }
 
 export function isInvoiceCodePatternDefined(pattern: string | undefined | null): boolean {
@@ -157,6 +187,42 @@ export function nextInvoiceSequenceFromCodes(
     if (seq != null && seq > max) max = seq;
   }
   return max + 1n < 1n ? 1n : max + 1n;
+}
+
+/**
+ * Sayısal eşleşme yoksa şablon genişliği (boş faturada 5).
+ * Daha uzun kayıtlı sıra varsa hane korunur; eski kodlar yeniden yazılmaz.
+ */
+export function resolveSequenceWidth(
+  compiled: CompiledInvoiceCodePattern,
+  codes: readonly string[],
+): number {
+  let observed = 0;
+  for (const code of codes) {
+    if (extractInvoiceCodeSequence(compiled, code) == null) continue;
+    const raw = String(code || '');
+    const mid = raw.slice(compiled.prefix.length, raw.length - compiled.suffix.length);
+    if (mid.length > observed) observed = mid.length;
+  }
+  if (observed === 0) return compiled.seqWidth;
+  return Math.max(compiled.seqWidth, observed);
+}
+
+/**
+ * Önek + sıra. Sayaç boşsa 00001, sonraki 00002.
+ * Rastgele ek (BEA-2026-HVM0DFHN) sayısal sıraya girmez.
+ */
+export function nextPrefixedInvoiceNumber(
+  existing: readonly string[],
+  prefix: string,
+  digits: number = FIRST_INVOICE_SEQ_DIGITS,
+): string {
+  const width = Math.min(12, Math.max(1, Math.trunc(digits) || FIRST_INVOICE_SEQ_DIGITS));
+  const compiled = compileInvoiceCodePattern(`${prefix}{SEQ:${width}}`);
+  if (!compiled) return `${prefix}${formatFirstInvoiceSequence(1n)}`;
+  const seq = nextInvoiceSequenceFromCodes(compiled, existing);
+  const seqWidth = resolveSequenceWidth(compiled, existing);
+  return formatInvoiceCode({ ...compiled, seqWidth }, seq);
 }
 
 export function previewInvoiceCode(

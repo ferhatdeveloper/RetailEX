@@ -200,40 +200,50 @@ ON CONFLICT (code) DO NOTHING;
 
 -- ============================================================================
 -- 7. DEMO FATURALAR — SATIŞ (rex_001_01_sales)
+-- Yeni kurulum: SAT-2026-00001 … 00006. Eski 4 haneli fiş varsa satır eklenmez;
+-- kayıtlı fatura numarası UPDATE edilmez. Tutarlar aynıdır.
 -- ============================================================================
 
 INSERT INTO rex_001_01_sales
   (firm_nr, period_nr, fiche_no, fiche_type, date, customer_id, total_net, total_vat, total_gross, currency, currency_rate, payment_method, status, is_cancelled)
-VALUES
-  ('001','01','SAT-2026-0001','S', '2026-01-05 10:30:00', (SELECT id FROM rex_001_customers WHERE code='CUST-001'), 45000.00, 9000.00,  54000.00, 'IQD', 1, 'cash',   'completed', false),
-  ('001','01','SAT-2026-0002','S', '2026-01-07 14:15:00', (SELECT id FROM rex_001_customers WHERE code='CORP-001'), 95000.00,19000.00, 114000.00, 'IQD', 1, 'credit', 'completed', false),
-  ('001','01','SAT-2026-0003','S', '2026-01-10 09:20:00', (SELECT id FROM rex_001_customers WHERE code='CUST-002'), 25000.00, 5000.00,  30000.00, 'IQD', 1, 'cash',   'completed', false),
-  ('001','01','SAT-2026-0004','S', '2026-01-12 16:00:00', (SELECT id FROM rex_001_customers WHERE code='CORP-002'),  1500.00,  150.00,   1650.00, 'IQD', 1, 'cash',   'completed', false),
-  ('001','01','SAT-2026-0005','S', '2026-01-15 11:45:00', (SELECT id FROM rex_001_customers WHERE code='CUST-003'), 38000.00, 7600.00,  45600.00, 'IQD', 1, 'credit', 'completed', false),
-  -- USD fatura örneği
-  ('001','01','SAT-2026-0006','S', '2026-01-18 13:30:00', (SELECT id FROM rex_001_customers WHERE code='CORP-003'),   250.00,   50.00,    300.00, 'USD', 1300, 'cash', 'completed', false)
-ON CONFLICT (fiche_no) DO NOTHING;
+SELECT v.firm_nr, v.period_nr, v.fiche_no, v.fiche_type, v.date::timestamptz, v.customer_id,
+       v.total_net, v.total_vat, v.total_gross, v.currency, v.currency_rate, v.payment_method, v.status, v.is_cancelled
+FROM (VALUES
+  ('001','01','SAT-2026-00001','S', '2026-01-05 10:30:00', (SELECT id FROM rex_001_customers WHERE code='CUST-001'), 45000.00, 9000.00,  54000.00, 'IQD', 1::numeric, 'cash',   'completed', false),
+  ('001','01','SAT-2026-00002','S', '2026-01-07 14:15:00', (SELECT id FROM rex_001_customers WHERE code='CORP-001'), 95000.00,19000.00, 114000.00, 'IQD', 1::numeric, 'credit', 'completed', false),
+  ('001','01','SAT-2026-00003','S', '2026-01-10 09:20:00', (SELECT id FROM rex_001_customers WHERE code='CUST-002'), 25000.00, 5000.00,  30000.00, 'IQD', 1::numeric, 'cash',   'completed', false),
+  ('001','01','SAT-2026-00004','S', '2026-01-12 16:00:00', (SELECT id FROM rex_001_customers WHERE code='CORP-002'),  1500.00,  150.00,   1650.00, 'IQD', 1::numeric, 'cash',   'completed', false),
+  ('001','01','SAT-2026-00005','S', '2026-01-15 11:45:00', (SELECT id FROM rex_001_customers WHERE code='CUST-003'), 38000.00, 7600.00,  45600.00, 'IQD', 1::numeric, 'credit', 'completed', false),
+  ('001','01','SAT-2026-00006','S', '2026-01-18 13:30:00', (SELECT id FROM rex_001_customers WHERE code='CORP-003'),   250.00,   50.00,    300.00, 'USD', 1300::numeric, 'cash', 'completed', false)
+) AS v(firm_nr, period_nr, fiche_no, fiche_type, date, customer_id, total_net, total_vat, total_gross, currency, currency_rate, payment_method, status, is_cancelled)
+WHERE NOT EXISTS (
+  SELECT 1 FROM rex_001_01_sales s
+  WHERE s.fiche_no IN (
+    'SAT-2026-00001','SAT-2026-00002','SAT-2026-00003','SAT-2026-00004','SAT-2026-00005','SAT-2026-00006',
+    'SAT-2026-0001','SAT-2026-0002','SAT-2026-0003','SAT-2026-0004','SAT-2026-0005','SAT-2026-0006'
+  )
+);
 
 -- Fatura kalemleri
 INSERT INTO rex_001_01_sale_items
   (firm_nr, period_nr, invoice_id, product_id, item_code, item_name, quantity, unit_price, vat_rate, net_amount, total_amount, unit, unit_multiplier, base_quantity, currency, unit_price_fc)
 SELECT '001','01', s.id, p.id, p.code, p.name, 1, 45000.00, 20, 45000.00, 54000.00, 'Adet', 1, 1, 'IQD', 45000.00
 FROM rex_001_01_sales s, rex_001_products p
-WHERE s.fiche_no='SAT-2026-0001' AND p.code='PHONE-001'
+WHERE s.fiche_no='SAT-2026-00001' AND p.code='PHONE-001'
   AND NOT EXISTS (SELECT 1 FROM rex_001_01_sale_items WHERE invoice_id=s.id AND item_code=p.code);
 
 INSERT INTO rex_001_01_sale_items
   (firm_nr, period_nr, invoice_id, product_id, item_code, item_name, quantity, unit_price, vat_rate, net_amount, total_amount, unit, unit_multiplier, base_quantity, currency, unit_price_fc)
 SELECT '001','01', s.id, p.id, p.code, p.name, 1, 95000.00, 20, 95000.00, 114000.00, 'Adet', 1, 1, 'IQD', 95000.00
 FROM rex_001_01_sales s, rex_001_products p
-WHERE s.fiche_no='SAT-2026-0002' AND p.code='PC-001'
+WHERE s.fiche_no='SAT-2026-00002' AND p.code='PC-001'
   AND NOT EXISTS (SELECT 1 FROM rex_001_01_sale_items WHERE invoice_id=s.id AND item_code=p.code);
 
 INSERT INTO rex_001_01_sale_items
   (firm_nr, period_nr, invoice_id, product_id, item_code, item_name, quantity, unit_price, vat_rate, net_amount, total_amount, unit, unit_multiplier, base_quantity, currency, unit_price_fc)
 SELECT '001','01', s.id, p.id, p.code, p.name, 1, 25000.00, 20, 25000.00, 30000.00, 'Adet', 1, 1, 'IQD', 25000.00
 FROM rex_001_01_sales s, rex_001_products p
-WHERE s.fiche_no='SAT-2026-0003' AND p.code='PHONE-003'
+WHERE s.fiche_no='SAT-2026-00003' AND p.code='PHONE-003'
   AND NOT EXISTS (SELECT 1 FROM rex_001_01_sale_items WHERE invoice_id=s.id AND item_code=p.code);
 
 -- Koli satışı (çarpan örneği: 2 KOLI = 48 ADET)
@@ -241,7 +251,7 @@ INSERT INTO rex_001_01_sale_items
   (firm_nr, period_nr, invoice_id, product_id, item_code, item_name, quantity, unit_price, vat_rate, net_amount, total_amount, unit, unit_multiplier, base_quantity, currency, unit_price_fc)
 SELECT '001','01', s.id, p.id, p.code, p.name, 2, 288.00, 10, 576.00, 633.60, 'KOLI', 24, 48, 'IQD', 288.00
 FROM rex_001_01_sales s, rex_001_products p
-WHERE s.fiche_no='SAT-2026-0004' AND p.code='SNACK-001'
+WHERE s.fiche_no='SAT-2026-00004' AND p.code='SNACK-001'
   AND NOT EXISTS (SELECT 1 FROM rex_001_01_sale_items WHERE invoice_id=s.id AND item_code=p.code);
 
 -- USD fatura kalemi
@@ -249,20 +259,30 @@ INSERT INTO rex_001_01_sale_items
   (firm_nr, period_nr, invoice_id, product_id, item_code, item_name, quantity, unit_price, vat_rate, net_amount, total_amount, unit, unit_multiplier, base_quantity, currency, unit_price_fc)
 SELECT '001','01', s.id, p.id, p.code, p.name, 2, 162500.00, 20, 325000.00, 390000.00, 'Adet', 1, 2, 'USD', 250.00
 FROM rex_001_01_sales s, rex_001_products p
-WHERE s.fiche_no='SAT-2026-0006' AND p.code='PHONE-001'
+WHERE s.fiche_no='SAT-2026-00006' AND p.code='PHONE-001'
   AND NOT EXISTS (SELECT 1 FROM rex_001_01_sale_items WHERE invoice_id=s.id AND item_code=p.code);
 
 -- ============================================================================
 -- 8. DEMO ALIŞ FATURALARI (supplier invoices)
 -- ============================================================================
 
+-- Yeni kurulum: ALI-2026-00001 … 00003. Eski 4 haneli alış fişi duruyorsa eklenmez.
 INSERT INTO rex_001_01_sales
   (firm_nr, period_nr, fiche_no, fiche_type, date, customer_id, total_net, total_vat, total_gross, currency, currency_rate, payment_method, status, notes)
-VALUES
-  ('001','01','ALI-2026-0001','A', '2026-01-03 09:00:00', (SELECT id FROM rex_001_suppliers WHERE code='SUP-001'), 120000.00, 24000.00, 144000.00, 'IQD', 1, 'credit', 'completed', 'Telefon stoğu alımı'),
-  ('001','01','ALI-2026-0002','A', '2026-01-06 11:00:00', (SELECT id FROM rex_001_suppliers WHERE code='SUP-002'),   8000.00,    800.00,   8800.00, 'IQD', 1, 'cash',   'completed', 'Atıştırmalık stoğu'),
-  ('001','01','ALI-2026-0003','A', '2026-01-08 10:30:00', (SELECT id FROM rex_001_suppliers WHERE code='SUP-003'),   4000.00,    400.00,   4400.00, 'USD', 1300, 'credit','completed', 'İçecek stoğu USD')
-ON CONFLICT (fiche_no) DO NOTHING;
+SELECT v.firm_nr, v.period_nr, v.fiche_no, v.fiche_type, v.date::timestamptz, v.customer_id,
+       v.total_net, v.total_vat, v.total_gross, v.currency, v.currency_rate, v.payment_method, v.status, v.notes
+FROM (VALUES
+  ('001','01','ALI-2026-00001','A', '2026-01-03 09:00:00', (SELECT id FROM rex_001_suppliers WHERE code='SUP-001'), 120000.00, 24000.00, 144000.00, 'IQD', 1::numeric, 'credit', 'completed', 'Telefon stoğu alımı'),
+  ('001','01','ALI-2026-00002','A', '2026-01-06 11:00:00', (SELECT id FROM rex_001_suppliers WHERE code='SUP-002'),   8000.00,    800.00,   8800.00, 'IQD', 1::numeric, 'cash',   'completed', 'Atıştırmalık stoğu'),
+  ('001','01','ALI-2026-00003','A', '2026-01-08 10:30:00', (SELECT id FROM rex_001_suppliers WHERE code='SUP-003'),   4000.00,    400.00,   4400.00, 'USD', 1300::numeric, 'credit','completed', 'İçecek stoğu USD')
+) AS v(firm_nr, period_nr, fiche_no, fiche_type, date, customer_id, total_net, total_vat, total_gross, currency, currency_rate, payment_method, status, notes)
+WHERE NOT EXISTS (
+  SELECT 1 FROM rex_001_01_sales s
+  WHERE s.fiche_no IN (
+    'ALI-2026-00001','ALI-2026-00002','ALI-2026-00003',
+    'ALI-2026-0001','ALI-2026-0002','ALI-2026-0003'
+  )
+);
 
 -- ============================================================================
 -- 9. DEMO KASA İŞLEMLERİ (rex_001_01_cash_lines)
@@ -455,9 +475,12 @@ WHERE c.code = 'BCust-001' AND pk.name LIKE 'Bacak%'
 -- Güzellik POS Satışı
 INSERT INTO beauty.rex_001_01_beauty_sales
   (invoice_number, customer_id, subtotal, discount, total, payment_method, payment_status, paid_amount)
-SELECT 'BPOS-2026-001', c.id, 4300.00, 0, 4300.00, 'cash', 'paid', 4300.00
+SELECT 'BPOS-2026-00001', c.id, 4300.00, 0, 4300.00, 'cash', 'paid', 4300.00
 FROM rex_001_customers c WHERE c.code = 'BCust-002'
-  AND NOT EXISTS (SELECT 1 FROM beauty.rex_001_01_beauty_sales bs WHERE bs.invoice_number='BPOS-2026-001');
+  AND NOT EXISTS (
+    SELECT 1 FROM beauty.rex_001_01_beauty_sales bs
+    WHERE bs.invoice_number IN ('BPOS-2026-00001', 'BPOS-2026-001')
+  );
 
 -- ============================================================================
 -- 14. CRM — LEADLER (beauty)

@@ -539,13 +539,15 @@ INSERT INTO beauty.rex_020_01_beauty_sales
   (invoice_number, customer_id, subtotal, discount, tax, total, payment_method, payment_status, paid_amount, remaining_amount)
 SELECT v.inv, c.id, v.sub, 0, v.tax, v.tot, 'cash', 'paid', v.tot, 0
 FROM (VALUES
-  ('BPOS-2026-001', 'BCust-001', 2500.00, 0, 2500.00),
-  ('BPOS-2026-002', 'BCust-002', 1200.00, 0, 1200.00),
-  ('BPOS-2026-003', 'BCust-003', 1800.00, 0, 1800.00)
+  ('BPOS-2026-00001', 'BCust-001', 2500.00, 0, 2500.00),
+  ('BPOS-2026-00002', 'BCust-002', 1200.00, 0, 1200.00),
+  ('BPOS-2026-00003', 'BCust-003', 1800.00, 0, 1800.00)
 ) AS v(inv, ccode, sub, tax, tot)
 JOIN public.rex_020_customers c ON c.code = v.ccode
 WHERE NOT EXISTS (
-  SELECT 1 FROM beauty.rex_020_01_beauty_sales bs WHERE bs.invoice_number = v.inv
+  SELECT 1 FROM beauty.rex_020_01_beauty_sales bs
+  WHERE bs.invoice_number = v.inv
+     OR bs.invoice_number IN ('BPOS-2026-001', 'BPOS-2026-002', 'BPOS-2026-003')
 );
 
 -- Admin: dört demo firmaya erişim

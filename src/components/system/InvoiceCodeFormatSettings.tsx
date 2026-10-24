@@ -7,6 +7,7 @@ import {
 } from '../../services/invoiceCodeFormatService';
 import {
   buildInvoiceCodePattern,
+  FIRST_INVOICE_SEQ_DIGITS,
   isInvoiceCodePatternDefined,
   previewInvoiceCode,
   type InvoiceCodeFormatsSettings,
@@ -46,7 +47,7 @@ export function InvoiceCodeFormatSettings() {
   const [typeCode, setTypeCode] = useState('');
   const [prefix, setPrefix] = useState('');
   const [includeYear, setIncludeYear] = useState(false);
-  const [seqDigits, setSeqDigits] = useState(7);
+  const [seqDigits, setSeqDigits] = useState(FIRST_INVOICE_SEQ_DIGITS);
   const [pattern, setPattern] = useState('');
 
   const applyPatternToFields = (raw: string) => {
@@ -56,13 +57,13 @@ export function InvoiceCodeFormatSettings() {
     if (m) {
       setPrefix(m[1] || '');
       setIncludeYear(Boolean(m[2]));
-      setSeqDigits(Math.min(12, Math.max(1, parseInt(m[3], 10) || 7)));
+      setSeqDigits(Math.min(12, Math.max(1, parseInt(m[3], 10) || FIRST_INVOICE_SEQ_DIGITS)));
       return;
     }
     if (!trimmed) {
       setPrefix('');
       setIncludeYear(false);
-      setSeqDigits(7);
+      setSeqDigits(FIRST_INVOICE_SEQ_DIGITS);
     }
   };
 
@@ -220,7 +221,7 @@ export function InvoiceCodeFormatSettings() {
               max={12}
               value={seqDigits}
               onChange={(e) => {
-                const v = Math.min(12, Math.max(1, Number(e.target.value) || 7));
+                const v = Math.min(12, Math.max(1, Number(e.target.value) || FIRST_INVOICE_SEQ_DIGITS));
                 setSeqDigits(v);
                 syncPatternFromFields(prefix, includeYear, v);
               }}
@@ -236,14 +237,14 @@ export function InvoiceCodeFormatSettings() {
             value={pattern}
             onChange={(e) => applyPatternToFields(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-            placeholder="{SEQ:7}"
+            placeholder="{SEQ:5}"
           />
           <p className="text-xs text-gray-500 mt-1">{tm('invoiceCodeFormatPatternHint')}</p>
           <button
             type="button"
             onClick={() =>
               applyPatternToFields(
-                buildInvoiceCodePattern({ prefix: '', includeYear: false, seqDigits: 7 })
+                buildInvoiceCodePattern({ prefix: '', includeYear: false, seqDigits: FIRST_INVOICE_SEQ_DIGITS })
               )
             }
             className="mt-2 text-xs text-blue-700 hover:underline"

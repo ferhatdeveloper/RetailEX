@@ -3,25 +3,58 @@ import {
   buildInvoiceCodePattern,
   compileInvoiceCodePattern,
   DEFAULT_ENTITY_CODE_PATTERN,
+  DEFAULT_INVOICE_CODE_PATTERN,
   extractInvoiceCodeSequence,
   formatDefaultNumericEntityCode,
+  formatFirstInvoiceSequence,
   formatInvoiceCode,
   generateDefaultInvoiceStamp,
   isInvoiceCodePatternDefined,
   nextInvoiceSequenceFromCodes,
+  nextPrefixedInvoiceNumber,
   previewInvoiceCode,
   resolveInvoiceCodePattern,
+  resolveSequenceWidth,
 } from '../../utils/invoiceCodeFormat';
 
 describe('invoiceCodeFormat', () => {
-  it('boş şablon tanımsızdır; format yoksa 7 haneli 0000001', () => {
+  it('boş şablon tanımsızdır; ürün 7 hane, fatura 5 hane 00001', () => {
     expect(isInvoiceCodePatternDefined('')).toBe(false);
     expect(isInvoiceCodePatternDefined('  ')).toBe(false);
     expect(isInvoiceCodePatternDefined('FTR-{YYYY}-{SEQ:6}')).toBe(true);
     expect(DEFAULT_ENTITY_CODE_PATTERN).toBe('{SEQ:7}');
+    expect(DEFAULT_INVOICE_CODE_PATTERN).toBe('{SEQ:5}');
     expect(formatDefaultNumericEntityCode(1n)).toBe('0000001');
     expect(formatDefaultNumericEntityCode(12)).toBe('0000012');
-    expect(generateDefaultInvoiceStamp(new Date('2026-09-17T18:48:36.000Z'))).toBe('0000001');
+    expect(formatFirstInvoiceSequence(1n)).toBe('00001');
+    expect(generateDefaultInvoiceStamp(new Date('2026-09-17T18:48:36.000Z'))).toBe('00001');
+  });
+
+  it('boş sayaçta ilk fatura 00001, sonraki 00002', () => {
+    expect(nextPrefixedInvoiceNumber([], '')).toBe('00001');
+    expect(nextPrefixedInvoiceNumber(['00001'], '')).toBe('00002');
+    const compiled = compileInvoiceCodePattern(DEFAULT_INVOICE_CODE_PATTERN)!;
+    expect(resolveSequenceWidth(compiled, [])).toBe(5);
+    expect(nextInvoiceSequenceFromCodes(compiled, [])).toBe(1n);
+    expect(formatInvoiceCode(compiled, 1n)).toBe('00001');
+    expect(formatInvoiceCode(compiled, 2n)).toBe('00002');
+  });
+
+  it('BEA yılı korunur; rastgele ek sıraya girmez; kayıtlı 00001 sonrası 00002', () => {
+    expect(nextPrefixedInvoiceNumber([], 'BEA-2026-')).toBe('BEA-2026-00001');
+    expect(nextPrefixedInvoiceNumber(['BEA-2026-HVM0DFHN', 'BEA-2026-HVM0D5ZK'], 'BEA-2026-')).toBe(
+      'BEA-2026-00001',
+    );
+    expect(nextPrefixedInvoiceNumber(['BEA-2026-00001', 'BEA-2026-HVM0DFHN'], 'BEA-2026-')).toBe(
+      'BEA-2026-00002',
+    );
+    expect(nextPrefixedInvoiceNumber(['BEA-2026-CHK-00001'], 'BEA-2026-CHK-')).toBe('BEA-2026-CHK-00002');
+  });
+
+  it('daha uzun kayıtlı sayısal sıra hanesini korur', () => {
+    expect(nextPrefixedInvoiceNumber(['0000007'], '')).toBe('0000008');
+    const compiled = compileInvoiceCodePattern('{SEQ:5}')!;
+    expect(resolveSequenceWidth(compiled, ['0000007'])).toBe(7);
   });
 
   it('{SEQ:7} ilk kodu 0000001 üretir', () => {

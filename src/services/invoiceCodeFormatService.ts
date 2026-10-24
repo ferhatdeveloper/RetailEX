@@ -1,15 +1,16 @@
 /**
  * Fatura kod formatı — app_settings (key=invoice_code_formats, firma bazlı).
- * Format yoksa null döner; çağıran mevcut damgayı kullanır.
+ * Format yoksa 5 haneli sıra (00001). Kayıtlı fiş numaraları güncellenmez.
  */
 import { postgres, ERP_SETTINGS } from './postgres';
 import {
   INVOICE_CODE_FORMAT_SETTINGS_KEY,
-  DEFAULT_ENTITY_CODE_PATTERN,
+  DEFAULT_INVOICE_CODE_PATTERN,
   compileInvoiceCodePattern,
   formatInvoiceCode,
   nextInvoiceSequenceFromCodes,
   resolveInvoiceCodePattern,
+  resolveSequenceWidth,
   type InvoiceCodeFormatsSettings,
 } from '../utils/invoiceCodeFormat';
 
@@ -103,8 +104,9 @@ async function ficheNoExists(ficheNo: string, firmNr: string, periodNr: string):
 
 /**
  * Tanımlı format varsa sıradaki benzersiz kodu üretir (firma+dönem sales).
- * Format yoksa 7 haneli sayısal sıra (0000001…).
+ * Format yoksa 5 haneli sayısal sıra (00001, 00002). Kayıtlı fiş no güncellenmez.
  * Mevcut (posted dahil) numaralar atlanır; yeniden kullanılmaz.
+ * Daha uzun sayısal sıra varsa hane korunur (ör. 0000007 → 0000008).
  */
 export async function allocateNextInvoiceCode(
   trcode: number | string | undefined | null,
@@ -112,20 +114,21 @@ export async function allocateNextInvoiceCode(
   opts?: { firmNr?: string; periodNr?: string }
 ): Promise<string | null> {
   const settings = await getInvoiceCodeFormats(opts?.firmNr);
-  const pattern = resolveInvoiceCodePattern(settings, trcode) || DEFAULT_ENTITY_CODE_PATTERN;
+  const pattern = resolveInvoiceCodePattern(settings, trcode) || DEFAULT_INVOICE_CODE_PATTERN;
   const compiled = compileInvoiceCodePattern(pattern, date);
   if (!compiled) return null;
 
   const firmNr = firmNrOf(opts?.firmNr);
   const periodNr = periodNrOf(opts?.periodNr);
   const existing = await listMatchingFicheNos(compiled.likePrefix, firmNr, periodNr);
-  let seq = nextInvoiceSequenceFromCodes(compiled, existing);
+  const sized = { ...compiled, seqWidth: resolveSequenceWidth(compiled, existing) };
+  let seq = nextInvoiceSequenceFromCodes(sized, existing);
 
   for (let i = 0; i < 80; i += 1) {
-    const candidate = formatInvoiceCode(compiled, seq);
+    const candidate = formatInvoiceCode(sized, seq);
     const taken = await ficheNoExists(candidate, firmNr, periodNr);
     if (!taken) return candidate;
     seq += 1n;
   }
-  return formatInvoiceCode(compiled, seq);
+  return formatInvoiceCode(sized, seq);
 }

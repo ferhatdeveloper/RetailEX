@@ -5,6 +5,8 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { toast } from 'sonner';
 import {
   buildInvoiceCodePattern,
+  DEFAULT_ENTITY_CODE_SEQ_DIGITS,
+  FIRST_INVOICE_SEQ_DIGITS,
   isInvoiceCodePatternDefined,
   previewInvoiceCode,
   type InvoiceCodeFormatsSettings,
@@ -31,6 +33,10 @@ function titleKey(entity: CodeFormatEntity): string {
   if (entity === 'invoice') return 'invoiceCodeFormatSettings';
   if (entity === 'product') return 'productCodeFormatSettings';
   return 'serviceCodeFormatSettings';
+}
+
+function defaultSeqDigits(entity: CodeFormatEntity): number {
+  return entity === 'invoice' ? FIRST_INVOICE_SEQ_DIGITS : DEFAULT_ENTITY_CODE_SEQ_DIGITS;
 }
 
 function emptyHintKey(entity: CodeFormatEntity): string {
@@ -65,7 +71,7 @@ export function CodeFormatFieldButton({
   const [settings, setSettings] = useState<InvoiceCodeFormatsSettings>({});
   const [prefix, setPrefix] = useState('');
   const [includeYear, setIncludeYear] = useState(false);
-  const [seqDigits, setSeqDigits] = useState(7);
+  const [seqDigits, setSeqDigits] = useState(() => defaultSeqDigits(entity));
   const [pattern, setPattern] = useState('');
 
   const typeKey = String(typeCode ?? '').trim();
@@ -77,13 +83,13 @@ export function CodeFormatFieldButton({
     if (m) {
       setPrefix(m[1] || '');
       setIncludeYear(Boolean(m[2]));
-      setSeqDigits(Math.min(12, Math.max(1, parseInt(m[3], 10) || 7)));
+      setSeqDigits(Math.min(12, Math.max(1, parseInt(m[3], 10) || defaultSeqDigits(entity))));
       return;
     }
     if (!trimmed) {
       setPrefix('');
       setIncludeYear(false);
-      setSeqDigits(7);
+      setSeqDigits(defaultSeqDigits(entity));
     }
   };
 
@@ -256,7 +262,7 @@ export function CodeFormatFieldButton({
                     max={12}
                     value={seqDigits}
                     onChange={(e) => {
-                      const v = Math.min(12, Math.max(1, Number(e.target.value) || 7));
+                      const v = Math.min(12, Math.max(1, Number(e.target.value) || defaultSeqDigits(entity)));
                       setSeqDigits(v);
                       syncPatternFromFields(prefix, includeYear, v);
                     }}
@@ -272,7 +278,7 @@ export function CodeFormatFieldButton({
                     value={pattern}
                     onChange={(e) => applyPatternToFields(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    placeholder={`${examplePrefix}-{YYYY}-{SEQ:7}`}
+                    placeholder={`${examplePrefix}-{YYYY}-{SEQ:${defaultSeqDigits(entity)}}`}
                   />
                   <p className="text-[11px] text-slate-500 mt-1">{tm('invoiceCodeFormatPatternHint')}</p>
                 </div>
