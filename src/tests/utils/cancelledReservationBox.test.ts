@@ -1,11 +1,13 @@
 /**
- * Rezervasyon kutusu: kapanmış peşinat girmez, iptal ve kapanmamış peşinat girer.
- * Ciro ve net bu tutardan değişmez. Aylık ve yıllık kutu renkleri yer değiştirir.
+ * Rezervasyon kutusu: kapanmış peşinat girmez.
+ * Bekleyen ve iptal peşinatı girer. Ciro bu tutardan ikinci kez büyümez.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { AppointmentStatus, type BeautyAppointment } from '../../types/beauty';
 import { clinicDashboardKpiTone } from '../../utils/clinicDashboardKpiTones';
+import { computeClinicExpectedRevenue } from '../../utils/clinicDashboardStats';
 import { dailyReportCardTone } from '../../utils/dailyReportScreenCards';
 import { periodSummaryHeadline } from '../../utils/periodSummaryNet';
 import {
@@ -14,6 +16,9 @@ import {
 import {
   cancelledUnclosedReservationBox,
   cancelledUnclosedReservationByPeriod,
+  clinicPanelTahsilat,
+  dailyReservationAvansList,
+  dailyReservationAvansNet,
 } from '../../utils/cancelledReservationBox';
 
 const CLOSED_ID = '11111111-1111-4111-8111-111111111111';
@@ -21,7 +26,7 @@ const CANCELLED_ID = '22222222-2222-4222-8222-222222222222';
 const OPEN_ID = '33333333-3333-4333-8333-333333333333';
 const NO_SHOW_ID = '44444444-4444-4444-8444-444444444444';
 
-describe('iptal edilmiş ve kapanmamış rezervasyon kutusu', () => {
+describe('kapanmamış ve iptal rezervasyon kutusu', () => {
   const appointments = [
     {
       id: CLOSED_ID,
@@ -37,8 +42,8 @@ describe('iptal edilmiş ve kapanmamış rezervasyon kutusu', () => {
     },
     {
       id: OPEN_ID,
-      status: 'confirmed',
-      depositAmount: 7_000,
+      status: 'pre_paid',
+      depositAmount: 25_000,
       appointmentDate: '2026-10-25',
     },
     {
@@ -49,12 +54,42 @@ describe('iptal edilmiş ve kapanmamış rezervasyon kutusu', () => {
     },
   ];
 
-  it('kapanmış 5.000 girmez, iptal 10.000 girer, ikisi varken kutu 10.000 ve adet 1', () => {
+  const avansRows = [
+    {
+      amount: 5_000,
+      status: 'applied',
+      notes: `Rezervasyon Tutarı · Randevu No ${CLOSED_ID}`,
+      appointmentStatus: 'completed',
+      createdAt: '2026-10-25',
+    },
+    {
+      amount: 25_000,
+      status: 'open',
+      notes: `Rezervasyon Tutarı · Randevu No ${OPEN_ID}`,
+      appointmentStatus: 'pre_paid',
+      createdAt: '2026-10-25',
+    },
+    {
+      amount: 10_000,
+      status: 'kept_on_cancel',
+      notes: `Rezervasyon Tutarı · Randevu No ${CANCELLED_ID}`,
+      appointmentStatus: 'cancelled',
+      createdAt: '2026-10-25',
+    },
+  ];
+
+  it('kapanmış 5.000 kutuya girmez, bekleyen 25.000 ve iptal 10.000 girer', () => {
     const closedOnly = cancelledUnclosedReservationBox({
       appointments: [appointments[0]],
     });
     expect(closedOnly.amount).toBe(0);
     expect(closedOnly.count).toBe(0);
+
+    const waitingOnly = cancelledUnclosedReservationBox({
+      appointments: [appointments[2]],
+    });
+    expect(waitingOnly.amount).toBe(25_000);
+    expect(waitingOnly.count).toBe(1);
 
     const cancelledOnly = cancelledUnclosedReservationBox({
       appointments: [appointments[1]],
@@ -62,41 +97,77 @@ describe('iptal edilmiş ve kapanmamış rezervasyon kutusu', () => {
     expect(cancelledOnly.amount).toBe(10_000);
     expect(cancelledOnly.count).toBe(1);
 
-    const both = cancelledUnclosedReservationBox({ appointments });
-    expect(both.amount).toBe(10_000);
-    expect(both.count).toBe(1);
-    expect(both.amount).not.toBe(5_000);
-    expect(both.amount).not.toBe(15_000);
-    expect(both.amount).not.toBe(25_000);
+    const box = cancelledUnclosedReservationBox({ appointments, avansRows });
+    expect(box.amount).toBe(35_000);
+    expect(box.count).toBe(2);
+    expect(box.amount).not.toBe(5_000);
+    expect(box.amount).not.toBe(15_000);
+    expect(box.amount).not.toBe(40_000);
+    expect(box.amount).not.toBe(38_000);
 
-    const day = cancelledUnclosedReservationByPeriod({ appointments }, 'monthly-days');
-    const month = cancelledUnclosedReservationByPeriod({ appointments }, 'yearly-months');
-    expect(day.get('2026-10-25')).toEqual({ amount: 10_000, count: 1 });
-    expect(month.get('2026-10')).toEqual({ amount: 10_000, count: 1 });
-
-    const withAvans = cancelledUnclosedReservationBox({
-      appointments,
-      avansRows: [
-        {
-          amount: 5_000,
-          status: 'applied',
-          notes: `Rezervasyon Tutarı · Randevu No ${CLOSED_ID}`,
-          createdAt: '2026-10-25',
-        },
-        {
-          amount: 10_000,
-          status: 'kept_on_cancel',
-          notes: `Rezervasyon Tutarı · Randevu No ${CANCELLED_ID}`,
-          createdAt: '2026-10-25',
-        },
-      ],
-    });
-    expect(withAvans.amount).toBe(10_000);
-    expect(withAvans.count).toBe(1);
+    const day = cancelledUnclosedReservationByPeriod({ appointments, avansRows }, 'monthly-days');
+    const month = cancelledUnclosedReservationByPeriod({ appointments, avansRows }, 'yearly-months');
+    expect(day.get('2026-10-25')).toEqual({ amount: 35_000, count: 2 });
+    expect(month.get('2026-10')).toEqual({ amount: 35_000, count: 2 });
   });
 
-  it('ciro ve net rezervasyon kutusundan değişmez; iade 15.000 durur', () => {
-    const box = cancelledUnclosedReservationBox({ appointments });
+  it('kapanmış 5.000 günlük listede yoktur; bekleyen 25.000 satırda gerçek tutardır', () => {
+    const visible = dailyReservationAvansList(avansRows);
+    expect(visible.map((row) => row.amount)).toEqual([25_000, 10_000]);
+    expect(visible.some((row) => row.appointmentStatus === 'completed')).toBe(false);
+    expect(dailyReservationAvansNet(avansRows[0])).toBe(0);
+    expect(dailyReservationAvansNet(avansRows[1])).toBe(25_000);
+    expect(dailyReservationAvansNet(avansRows[2])).toBe(10_000);
+  });
+
+  it('bekleyen 25.000 tahsilata girmez; iptal 10.000 beklenen ciroya girmez', () => {
+    const collection = clinicPanelTahsilat({
+      closedSaleCash: 20_000,
+      appointments,
+      avansRows,
+    });
+    expect(collection).toBe(25_000);
+    expect(collection).not.toBe(20_000 + 5_000 + 25_000);
+    expect(collection).not.toBe(20_000 + 5_000 + 25_000 + 10_000);
+    expect(collection).not.toBe(50_000);
+
+    const expected = computeClinicExpectedRevenue([
+      {
+        id: CLOSED_ID,
+        customer_id: 'c-closed',
+        service_id: 'svc',
+        appointment_date: '2026-10-25',
+        appointment_time: '09:00',
+        status: AppointmentStatus.COMPLETED,
+        total_price: 25_000,
+      },
+      {
+        id: OPEN_ID,
+        customer_id: 'c-open',
+        service_id: 'svc',
+        appointment_date: '2026-10-25',
+        appointment_time: '10:00',
+        status: AppointmentStatus.PRE_PAID,
+        total_price: 75_000,
+      },
+      {
+        id: CANCELLED_ID,
+        customer_id: 'c-cancel',
+        service_id: 'svc',
+        appointment_date: '2026-10-25',
+        appointment_time: '11:00',
+        status: AppointmentStatus.CANCELLED,
+        total_price: 10_000,
+      },
+    ] as BeautyAppointment[]);
+    expect(expected.amount).toBe(75_000);
+    expect(expected.count).toBe(1);
+    expect(expected.amount).not.toBe(75_000 + 10_000);
+    expect(expected.amount).not.toBe(75_000 + 25_000);
+  });
+
+  it('ciro ve net rezervasyon kutusundan ikinci kez büyümez; iade 15.000 durur', () => {
+    const box = cancelledUnclosedReservationBox({ appointments, avansRows });
     const base = {
       revenue: 40_000,
       returnsAmount: 15_000,
@@ -114,15 +185,17 @@ describe('iptal edilmiş ve kapanmamış rezervasyon kutusu', () => {
       reservationDeposit: box.amount,
     });
 
-    expect(box.amount).toBe(10_000);
-    expect(box.count).toBe(1);
+    expect(box.amount).toBe(35_000);
+    expect(box.count).toBe(2);
     expect(after.grossRevenue).toBe(40_000);
     expect(after.returnAmount).toBe(15_000);
     expect(after.grossRevenue).toBe(before.grossRevenue);
     expect(after.netRevenue).toBe(before.netRevenue);
     expect(after.netRevenue).toBe(35_000);
-    expect(after.depositInfo).toBe(10_000);
-    expect(after.netRevenue).not.toBe(before.netRevenue + box.amount);
+    expect(after.depositInfo).toBe(35_000);
+    expect(after.grossRevenue).not.toBe(40_000 + 5_000);
+    expect(after.netRevenue).not.toBe(before.netRevenue + 25_000);
+    expect(after.netRevenue).not.toBe(before.grossRevenue + box.amount);
   });
 
   it('aylık ve yıllık rezervasyon turuncu, iade teal; günlük ve panel turuncusu durur', () => {
@@ -148,7 +221,9 @@ describe('iptal edilmiş ve kapanmamış rezervasyon kutusu', () => {
     const scheduler = readFileSync(resolve('src/components/beauty/components/SmartScheduler.tsx'), 'utf8');
     expect(period).toContain('cancelledUnclosedReservationByPeriod');
     expect(daily).toContain('cancelledUnclosedReservationBox');
+    expect(daily).toContain('dailyReservationAvansList');
     expect(clinic).toContain('cancelledUnclosedReservationBox');
+    expect(clinic).toContain('clinicPanelTahsilat');
     expect(scheduler).not.toMatch(/AppointmentStatus\.NO_SHOW,\s*label:\s*tm\('bStatusNoShow'\)/);
   });
 });

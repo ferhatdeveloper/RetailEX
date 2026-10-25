@@ -25,7 +25,7 @@ import { fetchKasaIslemleri } from '../../../services/api/kasa';
 import type { BeautySale } from '../../../types/beauty';
 import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
 import { clinicDashboardTahsilatTotal } from '../../../utils/clinicDashboardKasaGiris';
-import { cancelledUnclosedReservationBox } from '../../../utils/cancelledReservationBox';
+import { cancelledUnclosedReservationBox, clinicPanelTahsilat } from '../../../utils/cancelledReservationBox';
 import { BeautyServiceReportCrmModal } from '../../reports/BeautyServiceReportCrmModal';
 import { useClinicShellV2 } from '../clinicShellV2';
 import { ClinicDashboardV2 } from './ClinicDashboardV2';
@@ -110,7 +110,6 @@ export function ClinicDashboard() {
      * olarak tutar; `stats.reservation` iki kaynağın toplamıdır:
      *   reservation = Σ sales.deposit_total + Σ cari_avans.today
      */
-    const [todayReservations, setTodayReservations] = useState<{ amount: number; count: number }>({ amount: 0, count: 0 });
     const [todayAvansRows, setTodayAvansRows] = useState<Array<{
         id: string;
         amount: number;
@@ -157,9 +156,8 @@ export function ClinicDashboard() {
             // `avansService.recordAdvance` `cari_avans` tablosuna yazar; bu
             // avanslar REZERVASYON KPI'sını besler. Hata durumunda 0 dönerek
             // KPI'yı düşürmez, sadece avans katkısı eksik kalır.
-            beautyService.getCariAvansForDay(todayStr).catch(() => ({ amount: 0, count: 0 })),
             beautyService.listCariAvansRowsForDay(todayStr).catch(() => []),
-        ]).then(([salesRows, kasaRows, cancelledReceipts, avansToday, avansRows]) => {
+        ]).then(([salesRows, kasaRows, cancelledReceipts, avansRows]) => {
             const sales = Array.isArray(salesRows) ? salesRows : [];
             const cancelledSet = new Set(
                 (Array.isArray(cancelledReceipts) ? cancelledReceipts : [])
@@ -177,12 +175,6 @@ export function ClinicDashboard() {
                     })
                 : [];
             setTodaySales(sales);
-            // Bug ekleme (12.10.2026): cari_avans bugünkü toplam / sayı.
-            // Helper idempotent döner; hata durumunda zaten 0 obje döner.
-            setTodayReservations({
-                amount: Math.max(0, Number(avansToday?.amount ?? 0) || 0),
-                count: Math.max(0, Number(avansToday?.count ?? 0) || 0),
-            });
             setTodayAvansRows(Array.isArray(avansRows) ? avansRows : []);
             setTodayExtraCash(extraCustomerCollectionsNotOnSales(
                 kasaRowsFiltered,
@@ -217,9 +209,6 @@ export function ClinicDashboard() {
         }).catch(() => {
             setTodaySales([]);
             setTodayExtraCash(0);
-            // Bug ekleme (12.10.2026): cari_avans sorgusu patlarsa da KPI
-            // 0 ile başlar; deposit + 0 = önceki davranış (geriye dönük uyumlu).
-            setTodayReservations({ amount: 0, count: 0 });
             setTodayAvansRows([]);
             // Bug 12.10.2026 — TAHSİLAT fallback: sorgu patlarsa KPI yine
             // mevcut davranışa (mainSales.reduce) geriler; KASA_GIRIS katkısı
@@ -454,8 +443,7 @@ export function ClinicDashboard() {
         //   REZERVASYON kart'ı (55.000) ise avans bilgilendirmesi olarak kalır.
         // `reservation` ve `reservationFromAvans` aşağıda hesaplanıyor; onları
         // tahsilat.revenue'a ekleyerek toplam TAHSİLAT elde edilir.
-        const reservationFromAvans = Math.max(0, Number(todayReservations?.amount ?? 0) || 0);
-        const revenue = tahsilat.revenue; // aşağıda reservation + reservationFromAvans eklenecek
+        const revenue = tahsilat.revenue;
         /**
          * Rezervasyon KPI toplamı: bugün alınan peşinat / avans fişlerinin
          * `total` toplamı. Ana satış fişleri hariç, deposit fişleri (`is_deposit`
@@ -477,7 +465,7 @@ export function ClinicDashboard() {
             }
             return false;
         });
-        const reservationBox = cancelledUnclosedReservationBox({
+        const reservationInput = {
             appointments: appointments.filter((apt) => beautyAppointmentDateKey(apt) === todayStr),
             avansRows: todayAvansRows,
             depositSales: reservationSales.map((sale) => ({
@@ -487,6 +475,11 @@ export function ClinicDashboard() {
                 sale_group_id: sale.sale_group_id,
                 created_at: sale.created_at,
             })),
+        };
+        const reservationBox = cancelledUnclosedReservationBox(reservationInput);
+        const collection = clinicPanelTahsilat({
+            ...reservationInput,
+            closedSaleCash: revenue,
         });
         const remainingCari = 0;
 
@@ -519,16 +512,9 @@ export function ClinicDashboard() {
             pending: kpis.pending,
             inProg: kpis.inProg,
             cancelled: kpis.cancelled,
-            // 12.10.2026 — Kullanıcı isteği (revize): TAHSİLAT = KASA_GIRIS
-            // + cari_avans. Bugün 30k KASA_GIRIS + 20k cari_avans = 50.000.
-            //   - `tahsilat.revenue` = 0 (revenueFromSales Hariç) +
-            //     30.000 (KASA_GIRIS) + 0 (CH_TAHSILAT REZERVASYON Hariç)
-            //     = 30.000
-            //   - `reservationFromAvans` = 20.000 (bugün açık cari_avans)
-            // REZERVASYON KPI ayrı kart = avans bilgilendirmesi.
-            revenue: revenue + reservationFromAvans,
-            // REZERVASYON kartı: iptal edilmiş ve kapanmamış randevunun peşinatı.
-            // Tahsilat formülü (revenue + reservationFromAvans) aynı kalır.
+            // Tahsilat = kapanmış satışın kasaya giren tutarı.
+            // Açık ve iptal peşinatı bu karta eklenmez; rezervasyon kutusundadır.
+            revenue: collection,
             reservation: reservationBox.amount,
             remainingCari,
             expectedRevenue: kpis.expectedRevenue,
@@ -536,7 +522,7 @@ export function ClinicDashboard() {
             rate: kpis.rate,
             total: kpis.total,
         };
-    }, [appointments, todayStr, todaySales, todayReservations, todayAvansRows, todayCashLines]);
+    }, [appointments, todayStr, todaySales, todayAvansRows, todayCashLines]);
 
     const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 

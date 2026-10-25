@@ -1120,8 +1120,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ),
         meta: { defaultVisible: true },
       },
-      // Rezervasyon Tutarı. Yalnız iptal edilmiş ve kapanmamış randevunun
-      // peşinatı. Kapanmış peşinat ve açık bekleyen peşinat burada yoktur.
+      // Rezervasyon Tutarı. Kapanmamış veya iptal edilmiş randevunun
+      // peşinatı. Kapanmış peşinat burada yoktur.
       // Bilgi tutarıdır; ciroya ve net kalana yazılmaz.
       {
         key: 'reservationDeposit',

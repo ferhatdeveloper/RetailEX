@@ -1,13 +1,20 @@
 /**
  * Rezervasyon kutusu, rezervasyon adedi ve rezervasyon tutarı kolonu.
  *
- * Yalnızca iptal edilmiş ve kapanmamış randevunun peşinatı girer.
- * Kapanmış / tamamlanmış randevunun peşinatı girmez.
- * Açık bekleyen (iptal değil) peşinat girmez.
- * Gelmedi iptal değildir; bu kutuya yazılmaz.
+ * Kutuya girer:
+ * - Kapanmamış randevunun peşinatı (bekliyor, ön ödeme alındı, onaylı, başladı).
+ * - İptal edilmiş randevunun peşinatı. İade edilmez, cari alacak olmaz.
  *
- * Tutar bilgi kutusudur. Ciroya, iadeye, indirime, gidere ve nete yazılmaz.
+ * Kutuya girmez:
+ * - Kapanmış / tamamlanmış randevunun peşinatı. Tutar hizmet tahsilatının
+ *   içindedir; ciroya ve nete ikinci kez yazılmaz.
+ * - Gelmedi. İptal değildir.
+ *
  * Aynı randevunun peşinatı avans ve depozito kanallarında bir kez durur.
+ * Günlük satış detayında kapanmış randevunun avans satırı gizlenir.
+ * Açık ve iptal satırı gerçek peşinat tutarıyla kalır.
+ * Tahsilat kartı kapanmış satışın kasaya giren tutarıdır; açık ve iptal
+ * peşinatı bu karta eklenmez.
  */
 
 import { isCancelledAppointmentStatus, appointmentIdFromAvansNotes } from './forfeitedReservationCash';
@@ -15,16 +22,40 @@ import { isCompletedAppointmentStatus } from './reportDepositFilter';
 
 const EPS = 0.004;
 
+const EXCLUDED_RESERVATION_STATUSES = new Set([
+  'no_show',
+  'noshow',
+  'gelmedi',
+  'refunded',
+  'returned',
+  'iade',
+  'void',
+  'deleted',
+  'silindi',
+]);
+
 export function isClosedCompletedAppointmentStatus(status: unknown): boolean {
   const text = String(status ?? '').trim().toLowerCase();
   if (text === 'closed') return true;
   return isCompletedAppointmentStatus(status);
 }
 
-/** İptal ayrı statüdür. Kapanmış veya gelmedi bu kümeye girmez. */
-export function isCancelledUnclosedAppointmentStatus(status: unknown): boolean {
+/**
+ * Peşinat rezervasyon kutusunda durur mu?
+ * Kapanmamış veya iptal edilmiş randevu girer. Kapanmış ve gelmedi girmez.
+ */
+export function appointmentDepositStaysInReservationBox(status: unknown): boolean {
   if (isClosedCompletedAppointmentStatus(status)) return false;
-  return isCancelledAppointmentStatus(status);
+  const text = String(status ?? '').trim().toLowerCase();
+  if (!text) return false;
+  if (EXCLUDED_RESERVATION_STATUSES.has(text)) return false;
+  if (isCancelledAppointmentStatus(status)) return true;
+  return true;
+}
+
+/** Eski ad. Kutu artık yalnız iptali değil, kapanmamış peşinatı da sayar. */
+export function isCancelledUnclosedAppointmentStatus(status: unknown): boolean {
+  return appointmentDepositStaysInReservationBox(status);
 }
 
 export interface CancelledReservationAppointment {
@@ -67,6 +98,12 @@ export interface CancelledReservationBoxInput {
   appointments?: readonly CancelledReservationAppointment[] | null;
   avansRows?: readonly CancelledReservationAvansRow[] | null;
   depositSales?: readonly CancelledReservationDepositSale[] | null;
+  /**
+   * Rezervasyon özel kodu düşülmüş kasa tahsilatı.
+   * Kapanmış randevunun peşinatı buna bir kez eklenir.
+   * Açık ve iptal peşinatı eklenmez.
+   */
+  closedSaleCash?: number | string | null;
 }
 
 export interface CancelledReservationBox {
@@ -78,6 +115,8 @@ interface ReservationSlot {
   amount: number;
   day: string;
 }
+
+type SlotMode = 'reservation-box' | 'closed-collection';
 
 function cleanId(value: unknown): string {
   return String(value ?? '').trim().toLowerCase();
@@ -93,6 +132,10 @@ function dayKey(value: unknown): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
 }
 
+function normStatus(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase();
+}
+
 function appointmentIdFromDepositNotes(notes: unknown): string {
   const text = String(notes ?? '');
   const rex = text.match(/rex_appt\s*[:=]\s*([0-9a-f-]{8,})/i);
@@ -105,7 +148,28 @@ function appointmentIdFromGroup(groupId: unknown): string {
   return match?.[1] || '';
 }
 
-function collectCancelledUnclosedSlots(input: CancelledReservationBoxInput): ReservationSlot[] {
+function avansRefunded(row: CancelledReservationAvansRow): boolean {
+  if (row.refunded === true) return true;
+  const avansStatus = normStatus(row.status);
+  return avansStatus === 'refunded' || avansStatus === 'returned' || avansStatus === 'iade';
+}
+
+function keepAvans(mode: SlotMode, appointmentStatus: string, avansStatus: string): boolean {
+  if (mode === 'reservation-box') {
+    if (appointmentStatus) return appointmentDepositStaysInReservationBox(appointmentStatus);
+    return avansStatus === 'open' || avansStatus === 'kept_on_cancel';
+  }
+  if (appointmentStatus && appointmentDepositStaysInReservationBox(appointmentStatus)) return false;
+  if (appointmentStatus && isClosedCompletedAppointmentStatus(appointmentStatus)) return true;
+  return !appointmentStatus && avansStatus === 'applied';
+}
+
+function keepAppointmentDeposit(mode: SlotMode, appointmentStatus: string): boolean {
+  if (mode === 'reservation-box') return appointmentDepositStaysInReservationBox(appointmentStatus);
+  return isClosedCompletedAppointmentStatus(appointmentStatus);
+}
+
+function collectSlots(input: CancelledReservationBoxInput, mode: SlotMode): ReservationSlot[] {
   const statusById = new Map<string, string>();
   const dayById = new Map<string, string>();
   const depositById = new Map<string, number>();
@@ -137,19 +201,11 @@ function collectCancelledUnclosedSlots(input: CancelledReservationBoxInput): Res
   };
 
   for (const row of input.avansRows || []) {
-    if (row.refunded === true) continue;
-    const avansStatus = String(row.status || '').trim().toLowerCase();
-    if (avansStatus === 'refunded' || avansStatus === 'returned' || avansStatus === 'iade') continue;
+    if (avansRefunded(row)) continue;
+    const avansStatus = normStatus(row.status);
     const id = cleanId(row.appointmentId) || cleanId(appointmentIdFromAvansNotes(row.notes));
     const status = String(row.appointmentStatus || (id ? statusById.get(id) : '') || '');
-    const keptOnCancel = avansStatus === 'kept_on_cancel';
-    if (status) {
-      if (!isCancelledUnclosedAppointmentStatus(status)) continue;
-    } else if (!keptOnCancel) {
-      continue;
-    } else if (isClosedCompletedAppointmentStatus(status)) {
-      continue;
-    }
+    if (!keepAvans(mode, status, avansStatus)) continue;
     const amount = positiveAmount(row.amount);
     const day = dayKey(row.created_at || row.createdAt);
     if (id) remember(id, amount, day);
@@ -162,14 +218,14 @@ function collectCancelledUnclosedSlots(input: CancelledReservationBoxInput): Res
       || cleanId(appointmentIdFromGroup(sale.saleGroupId || sale.sale_group_id));
     if (!id) continue;
     const status = String(sale.appointmentStatus || statusById.get(id) || '');
-    if (!isCancelledUnclosedAppointmentStatus(status)) continue;
+    if (!keepAvans(mode, status, '')) continue;
     const amount = positiveAmount(sale.amount ?? sale.total);
     const day = dayKey(sale.date || sale.created_at);
     remember(id, amount, day);
   }
 
   for (const [id, amount] of depositById) {
-    if (!isCancelledUnclosedAppointmentStatus(statusById.get(id))) continue;
+    if (!keepAppointmentDeposit(mode, statusById.get(id) || '')) continue;
     remember(id, amount, dayById.get(id) || '');
   }
 
@@ -183,17 +239,68 @@ function collectCancelledUnclosedSlots(input: CancelledReservationBoxInput): Res
   return slots;
 }
 
-/** Dört yüzeyin ortak kutusu. Adet, tutarın ait olduğu randevu kümesidir. */
-export function cancelledUnclosedReservationBox(
-  input: CancelledReservationBoxInput,
-): CancelledReservationBox {
+function sumSlots(slots: readonly ReservationSlot[]): CancelledReservationBox {
   let amount = 0;
   let count = 0;
-  for (const slot of collectCancelledUnclosedSlots(input)) {
+  for (const slot of slots) {
     amount += slot.amount;
     count += 1;
   }
   return { amount, count };
+}
+
+/** Dört yüzeyin ortak kutusu. Adet, tutarın ait olduğu randevu kümesidir. */
+export function cancelledUnclosedReservationBox(
+  input: CancelledReservationBoxInput,
+): CancelledReservationBox {
+  return sumSlots(collectSlots(input, 'reservation-box'));
+}
+
+/**
+ * Kapanmış randevunun peşinatı. Hizmet tahsilatının içindedir.
+ * Aynı randevu bir kez. Açık ve iptal peşinat burada yoktur.
+ */
+export function closedAppointmentDepositInCollection(
+  input: CancelledReservationBoxInput,
+): number {
+  return sumSlots(collectSlots(input, 'closed-collection')).amount;
+}
+
+/**
+ * Klinik paneli tahsilat kartı.
+ * `closedSaleCash` rezervasyon özel kodu düşülmüş kasa girişidir.
+ * Kapanmış peşinat buna bir kez eklenir. Açık ve iptal peşinatı eklenmez.
+ */
+export function clinicPanelTahsilat(input: CancelledReservationBoxInput): number {
+  const cash = Math.max(0, Number(input.closedSaleCash) || 0);
+  return cash + closedAppointmentDepositInCollection(input);
+}
+
+/** Kapanmış randevunun avans satırı günlük listede durmaz. */
+export function isClosedReservationAvansHidden(row: CancelledReservationAvansRow): boolean {
+  if (avansRefunded(row)) return true;
+  const avansStatus = normStatus(row.status);
+  const appointmentStatus = String(row.appointmentStatus ?? '').trim();
+  if (appointmentStatus && isClosedCompletedAppointmentStatus(appointmentStatus)) return true;
+  if (avansStatus === 'applied' && !appointmentDepositStaysInReservationBox(appointmentStatus)) return true;
+  return false;
+}
+
+/** Günlük satış detayı: kapanmış avans düşer, açık ve iptal kalır. */
+export function dailyReservationAvansList<T extends CancelledReservationAvansRow>(
+  rows: readonly T[] | null | undefined,
+): T[] {
+  const kept: T[] = [];
+  for (const row of rows || []) {
+    if (!isClosedReservationAvansHidden(row)) kept.push(row);
+  }
+  return kept;
+}
+
+/** Görünen avans satırının net tutarı. Gizli kapanmış satır 0'dır. */
+export function dailyReservationAvansNet(row: CancelledReservationAvansRow): number {
+  if (isClosedReservationAvansHidden(row)) return 0;
+  return positiveAmount(row.amount);
 }
 
 /**
@@ -205,7 +312,7 @@ export function cancelledUnclosedReservationByPeriod(
   mode: 'monthly-days' | 'yearly-months',
 ): Map<string, CancelledReservationBox> {
   const map = new Map<string, CancelledReservationBox>();
-  for (const slot of collectCancelledUnclosedSlots(input)) {
+  for (const slot of collectSlots(input, 'reservation-box')) {
     if (!slot.day) continue;
     const key = mode === 'monthly-days' ? slot.day : slot.day.slice(0, 7);
     const current = map.get(key) || { amount: 0, count: 0 };

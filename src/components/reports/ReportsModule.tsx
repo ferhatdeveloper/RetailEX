@@ -227,7 +227,7 @@ import {
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
 import { reservationPendingForRange } from '../../utils/reportReservationPending';
-import { cancelledUnclosedReservationBox } from '../../utils/cancelledReservationBox';
+import { cancelledUnclosedReservationBox, dailyReservationAvansList } from '../../utils/cancelledReservationBox';
 import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
@@ -3594,10 +3594,20 @@ export function ReportsModule({
         linkedAppointmentId: linkedAppointmentId || undefined,
       };
     };
-    // Mahsup (`applied`) avans da listede durur. Yeni satış eskisini silmez.
-    // Net katkısı 0'dır: tutar hizmet fişinin içindedir, ikinci kez yazılmaz.
-    // İade edilmeyen iptal peşinatı `isForfeitedDeposit` ile bir kez kalır.
-    const avansRows = dailyAvansList.map(mapAvans);
+    // Kapanmış randevunun avans satırı listede durmaz. Peşinat hizmet
+    // fişinin içindedir. Açık ve iptal satırı gerçek peşinatla kalır.
+    const avansRows = dailyReservationAvansList(
+      dailyAvansList.map((raw) => {
+        const noteStr = String(raw?.notes ?? '');
+        const linkedAppointmentId = appointmentIdFromAvansNotes(noteStr);
+        return {
+          ...raw,
+          appointmentStatus: linkedAppointmentId
+            ? (appointmentStatusById.get(linkedAppointmentId) || '')
+            : '',
+        };
+      }),
+    ).map(mapAvans);
 
     if (businessType !== 'restaurant') {
       return [...dailySales.map(mapErpSale), ...avansRows].sort(
@@ -7551,15 +7561,15 @@ export function ReportsModule({
                             if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) {
                               return '—';
                             }
-                            // 16.10.2026 — Avans sanal satırı (cari_avans):
-                            // Net Tutar = avans tutarı (rezervasyon peşinatı);
-                            // "—" yerine gerçek miktar göster. Footer'da
-                            // hizmet brütünü kirletmemesi için bu satır
-                            // footerFormat'ta zaten Hariç.
+                            // Açık veya iptal avans satırı: net hücre gerçek peşinattır.
+                            // Kapanmış randevunun satırı listeye girmez.
+                            // Dip toplam bu satırı ikinci kez yazmaz.
                             if (row.isAvans) {
-                              // Mahsup veya açık peşinat bilgi satırıdır.
-                              // Tutar hizmet fişinde vardır; net hücresi ve dip toplam ikinci kez yazmaz.
-                              return '—';
+                              return (
+                                <div className="font-medium tabular-nums">
+                                  {formatNumber(Number(row.total) || 0, 2, false)}
+                                </div>
+                              );
                             }
                             // Net = indirim öncesi − indirim. İndirim 0 iken net = indirim öncesi.
                             // İade satırında indirim öncesi eksi ise net de eksi (−10.000).

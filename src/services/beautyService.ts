@@ -7115,9 +7115,8 @@ export const beautyService = {
 
     /**
      * Klinik paneli rezervasyon kutusu için günün avans satırları.
-     * Tutar toplamı `getCariAvansForDay` ile aynı tabloyu okur; kutu
-     * iptal edilmiş ve kapanmamış randevuyu ayrıca süzer.
-     * Tahsilat toplamı bu listeyle değişmez.
+     * Kutu kapanmamış ve iptal peşinatını sayar. Kapanmış peşinat
+     * tahsilatın içindedir. Listenin tamamı tahsilata eklenmez.
      */
     async listCariAvansRowsForDay(ymd: string): Promise<Array<{
         id: string;
