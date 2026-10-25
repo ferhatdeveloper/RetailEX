@@ -92,6 +92,9 @@ export interface Product {
   salePriceUSD?: number;
   salePriceEUR?: number;
   criticalStock?: number;
+  /** Güvenli stok seviyesi. Miktar ve maliyeti değiştirmez. */
+  safeStock?: number;
+  safe_stock?: number;
   shelfLocation?: string;
   warehouseCode?: string;
   priceList1?: number;

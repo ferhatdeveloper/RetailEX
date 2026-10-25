@@ -67,6 +67,7 @@ import {
   SQL_PRODUCT_CARD_UNIT_COST,
 } from '../../utils/productCardUnitCost';
 import { lookupWeightedAvgUnitCost } from '../weightedAverageUnitCost';
+import { classifyCriticalStockLevel } from '../../utils/productStockLevels';
 import { productGrossProfitMarginPct } from '../../utils/productGrossProfitMargin';
 import { mapReturnReportRows, type ReturnReportKind } from '../../utils/returnReportRows';
 import { inferQtyFromRevenue } from '../../utils/lineGrossProfit';
@@ -436,10 +437,12 @@ export interface CriticalStockRow {
   warehouseCode: string;
   stock: number;
   minStock: number;
+  maxStock: number;
+  safeStock: number;
   criticalStock: number;
   unitCost: number;
   stockValue: number;
-  status: 'critical' | 'below_min' | 'ok';
+  status: 'below_min' | 'below_safe' | 'above_max' | 'ok';
 }
 
 export interface WarehouseStockRow {
@@ -2992,56 +2995,114 @@ export const erpReportsAPI = {
   async getCriticalStock(): Promise<CriticalStockRow[]> {
     const avgMaps = await loadStockValuationUnitCostMaps();
 
+    const mapRaw = (raw: {
+      productId: string;
+      productCode: string;
+      productName: string;
+      warehouseCode: string;
+      stock: number;
+      minStock: number;
+      maxStock: number;
+      safeStock: number;
+      criticalStock: number;
+      unitCost: number;
+    }): CriticalStockRow | null => {
+      const status = classifyCriticalStockLevel({
+        stock: raw.stock,
+        minStock: raw.minStock,
+        maxStock: raw.maxStock,
+        safeStock: raw.safeStock,
+        criticalStock: raw.criticalStock,
+      });
+      if (status === 'ok') return null;
+      const shownSafe = raw.safeStock > 0 ? raw.safeStock : raw.criticalStock;
+      return {
+        productId: raw.productId,
+        productCode: raw.productCode,
+        productName: raw.productName,
+        warehouseCode: raw.warehouseCode,
+        stock: raw.stock,
+        minStock: raw.minStock,
+        maxStock: raw.maxStock,
+        safeStock: shownSafe,
+        criticalStock: raw.criticalStock,
+        unitCost: raw.unitCost,
+        stockValue: raw.stock * raw.unitCost,
+        status,
+      };
+    };
+
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
       const fn = padFirm();
-      const products = await postgrest
-        .get<Record<string, unknown>[]>(
+      const baseQuery = {
+        is_active: 'eq.true',
+        order: 'name.asc',
+        limit: 4000,
+      };
+      let products: Record<string, unknown>[] = [];
+      const selectWithSafe =
+        'id,code,name,stock,min_stock,max_stock,safe_stock,critical_stock,cost,purchase_price,warehouse_code,is_active';
+      const selectLegacy =
+        'id,code,name,stock,min_stock,max_stock,critical_stock,cost,purchase_price,warehouse_code,is_active';
+      try {
+        products = await postgrest.get<Record<string, unknown>[]>(
           `/rex_${fn}_products`,
-          {
-            select:
-              'id,code,name,stock,min_stock,critical_stock,cost,purchase_price,warehouse_code,is_active',
-            is_active: 'eq.true',
-            order: 'name.asc',
-            limit: 4000,
-          },
+          { ...baseQuery, select: selectWithSafe },
           { schema: 'public' },
-        )
-        .catch(() => [] as Record<string, unknown>[]);
+        );
+      } catch (error) {
+        const message = String((error as { message?: string })?.message ?? error ?? '').toLowerCase();
+        const missingSafe = message.includes('safe_stock') || message.includes('42703') || message.includes('pgrst204');
+        if (!missingSafe) throw error;
+        products = await postgrest.get<Record<string, unknown>[]>(
+          `/rex_${fn}_products`,
+          { ...baseQuery, select: selectLegacy },
+          { schema: 'public' },
+        );
+      }
       return (products || [])
         .map((p) => {
-          const stock = Number(p.stock ?? 0);
-          const minStock = Number(p.min_stock ?? 0);
-          const criticalStock = Number(p.critical_stock ?? 0);
           const unitCost = resolveStockValuationUnitCost(avgMaps, {
             id: String(p.id ?? ''),
             code: String(p.code ?? ''),
             cost: Number(p.cost ?? 0) || 0,
             purchase_price: Number(p.purchase_price ?? 0) || 0,
           });
-          let status: CriticalStockRow['status'] = 'ok';
-          if (criticalStock > 0 && stock <= criticalStock) status = 'critical';
-          else if (minStock > 0 && stock <= minStock) status = 'below_min';
-          return {
+          return mapRaw({
             productId: String(p.id ?? ''),
             productCode: String(p.code ?? ''),
             productName: String(p.name ?? ''),
             warehouseCode: String(p.warehouse_code ?? '') || '—',
-            stock,
-            minStock,
-            criticalStock,
+            stock: Number(p.stock ?? 0),
+            minStock: Number(p.min_stock ?? 0),
+            maxStock: Number(p.max_stock ?? 0),
+            safeStock: Number(p.safe_stock ?? 0),
+            criticalStock: Number(p.critical_stock ?? 0),
             unitCost,
-            stockValue: stock * unitCost,
-            status,
-          };
+          });
         })
-        .filter((r) => r.status !== 'ok')
+        .filter((r): r is CriticalStockRow => r != null)
         .sort((a, b) => a.stock - b.stock)
         .slice(0, ROW_LIMIT);
     }
 
-    const { rows } = await postgres.query(
-      `
+    const levelFilter = `
+          (COALESCE(p.min_stock, 0) > 0 AND COALESCE(p.stock, 0) <= p.min_stock)
+          OR (COALESCE(p.safe_stock, 0) > 0 AND COALESCE(p.stock, 0) <= p.safe_stock)
+          OR (
+            COALESCE(p.safe_stock, 0) <= 0
+            AND COALESCE(p.critical_stock, 0) > 0
+            AND COALESCE(p.stock, 0) <= p.critical_stock
+          )
+          OR (COALESCE(p.max_stock, 0) > 0 AND COALESCE(p.stock, 0) > p.max_stock)
+    `;
+    const legacyFilter = `
+          (COALESCE(p.critical_stock, 0) > 0 AND COALESCE(p.stock, 0) <= p.critical_stock)
+          OR (COALESCE(p.min_stock, 0) > 0 AND COALESCE(p.stock, 0) <= p.min_stock)
+          OR (COALESCE(p.max_stock, 0) > 0 AND COALESCE(p.stock, 0) > p.max_stock)
+    `;
+    const sqlFor = (filter: string, safeExpr: string) => `
       SELECT
         p.id::text AS product_id,
         COALESCE(p.code, '') AS product_code,
@@ -3049,6 +3110,8 @@ export const erpReportsAPI = {
         COALESCE(NULLIF(TRIM(p.warehouse_code), ''), '—') AS warehouse_code,
         COALESCE(p.stock, 0) AS stock,
         COALESCE(p.min_stock, 0) AS min_stock,
+        COALESCE(p.max_stock, 0) AS max_stock,
+        ${safeExpr} AS safe_stock,
         COALESCE(p.critical_stock, 0) AS critical_stock,
         ${SQL_PRODUCT_CARD_UNIT_COST} AS unit_cost,
         COALESCE(p.cost, 0) AS cost,
@@ -3056,43 +3119,54 @@ export const erpReportsAPI = {
       FROM products p
       WHERE COALESCE(p.is_active, true) = true
         AND (
-          (COALESCE(p.critical_stock, 0) > 0 AND COALESCE(p.stock, 0) <= p.critical_stock)
-          OR (COALESCE(p.min_stock, 0) > 0 AND COALESCE(p.stock, 0) <= p.min_stock)
+          ${filter}
         )
       ORDER BY COALESCE(p.stock, 0) ASC
       LIMIT ${ROW_LIMIT}
-      `,
-      [],
-    );
-    return (rows || []).map((r: any) => {
-      const stock = Number(r.stock ?? 0);
-      const minStock = Number(r.min_stock ?? 0);
-      const criticalStock = Number(r.critical_stock ?? 0);
-      const unitCost = resolveStockValuationUnitCost(
-        avgMaps,
-        {
-          id: String(r.product_id ?? ''),
-          code: String(r.product_code ?? ''),
-          cost: Number(r.cost ?? 0) || 0,
-          purchase_price: Number(r.purchase_price ?? 0) || 0,
-        },
-        Number(r.unit_cost ?? 0),
+    `;
+
+    let rows: any[] = [];
+    try {
+      const result = await postgres.query(
+        sqlFor(levelFilter, 'COALESCE(p.safe_stock, 0)'),
+        [],
       );
-      let status: CriticalStockRow['status'] = 'below_min';
-      if (criticalStock > 0 && stock <= criticalStock) status = 'critical';
-      return {
-        productId: String(r.product_id ?? ''),
-        productCode: String(r.product_code ?? ''),
-        productName: String(r.product_name ?? ''),
-        warehouseCode: String(r.warehouse_code ?? '—'),
-        stock,
-        minStock,
-        criticalStock,
-        unitCost,
-        stockValue: stock * unitCost,
-        status,
-      };
-    });
+      rows = result.rows || [];
+    } catch (error) {
+      const message = String((error as { message?: string })?.message ?? error ?? '').toLowerCase();
+      if (!message.includes('safe_stock') && !message.includes('42703')) throw error;
+      const result = await postgres.query(
+        sqlFor(legacyFilter, '0'),
+        [],
+      );
+      rows = result.rows || [];
+    }
+    return (rows || [])
+      .map((r: any) => {
+        const unitCost = resolveStockValuationUnitCost(
+          avgMaps,
+          {
+            id: String(r.product_id ?? ''),
+            code: String(r.product_code ?? ''),
+            cost: Number(r.cost ?? 0) || 0,
+            purchase_price: Number(r.purchase_price ?? 0) || 0,
+          },
+          Number(r.unit_cost ?? 0),
+        );
+        return mapRaw({
+          productId: String(r.product_id ?? ''),
+          productCode: String(r.product_code ?? ''),
+          productName: String(r.product_name ?? ''),
+          warehouseCode: String(r.warehouse_code ?? '—'),
+          stock: Number(r.stock ?? 0),
+          minStock: Number(r.min_stock ?? 0),
+          maxStock: Number(r.max_stock ?? 0),
+          safeStock: Number(r.safe_stock ?? 0),
+          criticalStock: Number(r.critical_stock ?? 0),
+          unitCost,
+        });
+      })
+      .filter((r): r is CriticalStockRow => r != null);
   },
 
   /**

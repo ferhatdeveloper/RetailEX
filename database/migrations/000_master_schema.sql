@@ -2515,6 +2515,7 @@ BEGIN
       min_stock         DECIMAL(15,2) DEFAULT 0,
       max_stock         DECIMAL(15,2) DEFAULT 0,
       critical_stock    DECIMAL(15,2) DEFAULT 0,
+      safe_stock        DECIMAL(15,2) DEFAULT 0,
       tracking_type     VARCHAR(20) DEFAULT ''none'',
       shelf_location    VARCHAR(50),
       warehouse_code    VARCHAR(50),
@@ -2567,9 +2568,13 @@ BEGIN
       updated_at        TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_products');
-  -- CREATE TABLE IF NOT EXISTS eski/eksik şemayı güncellemez; PLU kolonunu garanti et
+  -- CREATE TABLE IF NOT EXISTS eski/eksik şemayı güncellemez; PLU ve güvenli stok kolonunu garanti et
   EXECUTE format(
     'ALTER TABLE %I ADD COLUMN IF NOT EXISTS plu_code VARCHAR(20)',
+    v_prefix || '_products'
+  );
+  EXECUTE format(
+    'ALTER TABLE %I ADD COLUMN IF NOT EXISTS safe_stock DECIMAL(15,2) DEFAULT 0',
     v_prefix || '_products'
   );
 

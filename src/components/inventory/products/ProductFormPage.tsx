@@ -9,7 +9,7 @@ import {
   Share2, Trash2, Plus, X, Search, Database, LayoutGrid, Save, MoreVertical,
   Barcode as BarcodeIcon, Tag, Calculator, Check, Download,
   Image as ImageIcon, FileText, Globe, Building, Ruler, Weight,
-  Calendar, Layers, ChevronDown, ChevronRight, Printer, Package, Upload, Banknote, Cloud, Link, Settings as SettingsIcon
+  Calendar, Layers, ChevronDown, ChevronRight, Printer, Package, Upload, Cloud, Link, Settings as SettingsIcon
 } from 'lucide-react';
 import { currencyAPI, categoryAPI, brandAPI, productGroupAPI, unitAPI, taxRateAPI, specialCodeAPI, exchangeRateAPI, type Currency, type Category, type Brand, type ProductGroup, type Unit, type TaxRate, type SpecialCode } from '../../../services/api/masterData';
 import { definitionAPI } from '../../../services/definitionAPI';
@@ -34,6 +34,8 @@ import { supabaseProductImageService } from '../../../services/supabaseProductIm
 import { supabaseMenuSyncService, type MenuItem } from '../../../services/supabaseMenuSyncService';
 import { buildUnitSelectOptions } from '../../../utils/unitOptions';
 import { markupPercentFromPrices, salePriceFromMarkupPercent } from '../../../utils/productProfitMargin';
+import { validateProductStockLevels } from '../../../utils/productStockLevels';
+import { ProductBasicPricingPanel } from './ProductBasicPricingPanel';
 
 // BARKOD VE VARYANT KOD ÜRETİCİ UTILITY FONKSIYONLARI
 const generateEAN13 = (baseCode: string, index: number): string => {
@@ -381,6 +383,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     stock: 0,
     minStock: 0,
     maxStock: 0,
+    safeStock: 0,
     criticalStock: 0,
     shelfLocation: '', // Raf/Koridor
     warehouseCode: '',
@@ -788,6 +791,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       stock: product.stock || 0,
       minStock: product.minStock ?? product.min_stock ?? 0,
       maxStock: (product as any).maxStock ?? product.max_stock ?? 0,
+      safeStock: (product as any).safeStock ?? (product as any).safe_stock ?? 0,
       criticalStock: product.criticalStock ?? (product as any).critical_stock ?? 0,
       description_tr: product.description_tr || product.name || '',
       description_en: product.description_en || '',
@@ -1713,6 +1717,16 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       return;
     }
 
+    const stockLevels = validateProductStockLevels({
+      minStock: formData.minStock,
+      maxStock: formData.maxStock,
+      safeStock: formData.safeStock,
+    });
+    if (!stockLevels.ok) {
+      toast.error(stockLevels.message);
+      return;
+    }
+
     // Yeni ürün modunda kullanıcı peek'lenmiş barkodu değiştirmediyse, şablon sayacını
     // burada gerçekten ilerletip yeni bir numara alalım. Böylece kullanıcılar arasında
     // aynı barkodun atanma riski en aza iner (peek sayaç ilerletmez).
@@ -1774,8 +1788,9 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       price: formData.salePrice,
       cost: formData.purchasePrice,
       stock: formData.stock,
-      minStock: formData.minStock ?? 0,
-      maxStock: formData.maxStock ?? 0,
+      minStock: stockLevels.minStock,
+      maxStock: stockLevels.maxStock,
+      safeStock: stockLevels.safeStock,
       criticalStock: formData.criticalStock ?? 0,
       unit: formData.unit,
       taxRate: formData.taxRate,
@@ -2426,148 +2441,35 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
           {/* FİYAT SEKME - DETAYLI */}
           {activeTab === 'fiyat' && (
             <div className="space-y-3">
-              {/* Para Birimi ve Temel Fiyatlar */}
-              <div className="bg-white border border-gray-300">
-                <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
-                  <span className="text-xs text-gray-700">{tm('basicPricing')}</span>
-                </div>
-                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
-                  {/* Row 1: Para Birimi & TAX Tipi */}
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
-                    <label className="text-xs text-gray-700">{tm('currency')}</label>
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
-                    <select
-                      value={formData.currency || 'IQD'}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('currency', e.target.value)}
-                      className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="IQD">IQD - {tm('iraqiDinar')}</option>
-                      <option value="USD">USD - {tm('usDollar')}</option>
-                      <option value="EUR">EUR - {tm('euro')}</option>
-                      <option value="GBP">GBP - {tm('britishPound')}</option>
-                    </select>
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
-                    <label className="text-xs text-gray-700">{tm('taxType')}</label>
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
-                    <select
-                      value={formData.taxType || 'TAX'}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('taxType', e.target.value)}
-                      className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="TAX">TAX</option>
-                      <option value="ÖTV">ÖTV</option>
-                      <option value="TAX+ÖTV">TAX+ÖTV</option>
-                      <option value="Muaf">{tm('exempt')}</option>
-                    </select>
-                  </div>
-
-                  {/* Row 2: Alış Fiyatı (yetkiye bağlı) & TAX % */}
-                  {showPurchasePricing ? (
-                    <>
-                      <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
-                        <label className="text-xs text-gray-700 font-bold">{tm('purchasePrice')}</label>
-                      </div>
-                      <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 relative">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={formData.purchasePrice || 0}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('purchasePrice', Number(e.target.value))}
-                          readOnly={formData.autoCalculateUSD}
-                          className={`w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.autoCalculateUSD ? 'bg-blue-50 cursor-not-allowed text-blue-700' : ''}`}
-                        />
-                        {formData.autoCalculateUSD && (
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-blue-500 font-bold flex items-center gap-1 bg-blue-50/50 px-1 rounded">
-                            <Banknote className="w-2.5 h-2.5" /> {tm('auto')}
-                          </span>
-                        )}
-                      </div>
-                    </>
-                  ) : null}
-                  <div className={`col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center ${!showPurchasePricing ? 'max-lg:col-start-1' : ''}`}>
-                    <label className="text-xs text-gray-700 italic">TAX %</label>
-                  </div>
-                  <div className={`col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 ${!showPurchasePricing ? 'max-lg:col-span-1' : ''}`}>
-                    <input
-                      type="number"
-                      value={formData.taxRate || 0}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('taxRate', Number(e.target.value))}
-                      className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  {/* Row 3: Satış Fiyatı & Tevkifat % */}
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
-                    <label className="text-xs text-gray-700 font-bold">{tm('salePrice')}</label>
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-green-50 px-2 py-1.5 relative">
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formData.salePrice || 0}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('salePrice', Number(e.target.value))}
-                      readOnly={formData.autoCalculateUSD}
-                      className={`w-full px-2 py-1 border border-green-300 text-xs text-right bg-green-50 font-bold focus:outline-none focus:ring-1 focus:ring-green-500 ${formData.autoCalculateUSD ? 'text-blue-700' : ''}`}
-                    />
-                    {formData.autoCalculateUSD && (
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-blue-500 font-bold flex items-center gap-1 bg-blue-50/50 px-1 rounded border border-blue-200">
-                        <Banknote className="w-2.5 h-2.5" /> {tm('auto')}
-                      </span>
-                    )}
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
-                    <label className="text-xs text-gray-700">{tm('withholdingTax')}</label>
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formData.withholdingRate || 0}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('withholdingRate', Number(e.target.value))}
-                      className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  {showPurchasePricing ? (
-                    <>
-                      {/* Row 4: Kâr Marjı */}
-                      <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
-                        <label className="text-xs text-gray-700">{tm('profitMargin')}</label>
-                      </div>
-                      <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
-                        <input
-                          type="number"
-                          step="0.01"
-                          disabled={!(formData.purchasePrice > 0)}
-                          value={profitMarginDraft !== null
-                            ? profitMarginDraft
-                            : markupPercentFromPrices(formData.purchasePrice, formData.salePrice).toFixed(2)}
-                          onFocus={() => {
-                            setProfitMarginDraft(
-                              markupPercentFromPrices(formData.purchasePrice, formData.salePrice).toFixed(2)
-                            );
-                          }}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            setProfitMarginDraft(e.target.value);
-                            const pct = parseFloat(e.target.value);
-                            if (Number.isFinite(pct)) {
-                              handleInputChange('profitMarginPercent', pct);
-                            }
-                          }}
-                          onBlur={() => setProfitMarginDraft(null)}
-                          className="w-full px-2 py-1 border border-gray-300 text-xs text-right bg-white font-medium focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
-                        />
-                      </div>
-                      <div className="col-span-6 max-lg:col-span-1 bg-gray-50 flex items-center px-4">
-                        <span className="text-[10px] text-gray-400 italic">{tm('profitMarginNote')}</span>
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              </div>
+              <ProductBasicPricingPanel
+                tm={tm}
+                showPurchasePricing={showPurchasePricing}
+                currency={formData.currency}
+                purchasePrice={formData.purchasePrice}
+                salePrice={formData.salePrice}
+                autoCalculateUSD={formData.autoCalculateUSD}
+                minStock={formData.minStock}
+                maxStock={formData.maxStock}
+                safeStock={formData.safeStock}
+                profitMarginValue={profitMarginDraft !== null
+                  ? profitMarginDraft
+                  : markupPercentFromPrices(formData.purchasePrice, formData.salePrice).toFixed(2)}
+                profitMarginDisabled={!(formData.purchasePrice > 0)}
+                onChange={handleInputChange}
+                onProfitMarginFocus={() => {
+                  setProfitMarginDraft(
+                    markupPercentFromPrices(formData.purchasePrice, formData.salePrice).toFixed(2)
+                  );
+                }}
+                onProfitMarginChange={(raw) => {
+                  setProfitMarginDraft(raw);
+                  const pct = parseFloat(raw);
+                  if (Number.isFinite(pct)) {
+                    handleInputChange('profitMarginPercent', pct);
+                  }
+                }}
+                onProfitMarginBlur={() => setProfitMarginDraft(null)}
+              />
 
               {/* Dövizli Fiyatlar */}
               <div className="bg-white border border-gray-300">

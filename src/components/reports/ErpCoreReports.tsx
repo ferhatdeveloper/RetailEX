@@ -1737,16 +1737,24 @@ export function CriticalStockReport() {
         header: tm('erpColMinStock'),
         type: 'number',
         align: 'right',
-        size: 90,
+        size: 100,
         cell: (r) => formatNumber(r.minStock, 2, false),
       },
       {
-        key: 'criticalStock',
-        header: tm('erpColCriticalLevel'),
+        key: 'safeStock',
+        header: tm('erpColSafeStock'),
         type: 'number',
         align: 'right',
-        size: 100,
-        cell: (r) => formatNumber(r.criticalStock, 2, false),
+        size: 110,
+        cell: (r) => formatNumber(r.safeStock, 2, false),
+      },
+      {
+        key: 'maxStock',
+        header: tm('erpColMaxStock'),
+        type: 'number',
+        align: 'right',
+        size: 110,
+        cell: (r) => formatNumber(r.maxStock, 2, false),
       },
       {
         key: 'stockValue',
@@ -1762,15 +1770,23 @@ export function CriticalStockReport() {
         key: 'status',
         header: tm('status'),
         size: 120,
-        cell: (r) => (
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-              r.status === 'critical' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
-            }`}
-          >
-            {r.status === 'critical' ? tm('erpStatusCritical') : tm('erpStatusBelowMin')}
-          </span>
-        ),
+        cell: (r) => {
+          const label =
+            r.status === 'below_safe'
+              ? tm('erpStatusBelowSafe')
+              : r.status === 'above_max'
+                ? tm('erpStatusAboveMax')
+                : tm('erpStatusBelowMin');
+          const tone =
+            r.status === 'above_max'
+              ? 'bg-blue-100 text-blue-800'
+              : 'bg-red-100 text-red-700';
+          return (
+            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${tone}`}>
+              {label}
+            </span>
+          );
+        },
       },
     ],
     [tm, currency],
@@ -1785,14 +1801,15 @@ export function CriticalStockReport() {
       onExport={() =>
         exportCsv(
           'kritik_stok',
-          ['Kod', 'Ürün', 'Depo', 'Stok', 'Min', 'Kritik', 'Değer', 'Durum'],
+          ['Kod', 'Ürün', 'Depo', 'Stok', 'Minimum', 'Güvenli', 'Maksimum', 'Değer', 'Durum'],
           rows.map((r) => [
             r.productCode,
             r.productName,
             r.warehouseCode,
             String(r.stock),
             String(r.minStock),
-            String(r.criticalStock),
+            String(r.safeStock),
+            String(r.maxStock),
             String(r.stockValue),
             r.status,
           ]),

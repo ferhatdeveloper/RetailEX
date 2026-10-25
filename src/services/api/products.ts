@@ -32,10 +32,11 @@ export type ProductDocumentMoneyTotals = {
 /** Malzeme listesi: uzun metin kolonları hariç (ağ payload + parse maliyeti) */
 /** Liste select — `purchase_price` yok: eski tenant’larda (örn. aqua_beauty) kolon yok; maliyet `cost`. */
 const PRODUCT_LIST_SELECT =
-  'id,firm_nr,code,barcode,name,name2,description_tr,description_en,description_ar,description_ku,image_url,image_url_cdn,category_id,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,is_scale_product,plu_code,expiry_date,expiry_tracking,shelf_life_days,created_at,updated_at';
+  'id,firm_nr,code,barcode,name,name2,description_tr,description_en,description_ar,description_ku,image_url,image_url_cdn,category_id,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,safe_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,is_scale_product,plu_code,expiry_date,expiry_tracking,shelf_life_days,created_at,updated_at';
 const PRODUCT_LIST_SELECT_SQL = PRODUCT_LIST_SELECT.replace(/,/g, ', ');
 /** Migration 035/047/104 öncesi tenant şemaları */
 const PRODUCT_LIST_SELECT_FALLBACK = PRODUCT_LIST_SELECT
+  .replace(',safe_stock', '')
   .replace(',expiry_date,expiry_tracking,shelf_life_days', '')
   .replace(',plu_code', '')
   .replace(',is_scale_product', '')
@@ -107,6 +108,7 @@ const PRODUCT_DB_FIELD_MAPPING: Record<string, string> = {
   minStock: 'min_stock',
   maxStock: 'max_stock',
   criticalStock: 'critical_stock',
+  safeStock: 'safe_stock',
   category: 'category_code',
   categoryCode: 'category_code',
   categoryId: 'category_id',
@@ -268,6 +270,7 @@ function isPostgrestMissingColumnError(error: unknown, column: string): boolean 
 
 /** Eski tenant şemalarında henüz migration uygulanmamış kolonlar (053, 047, 035) */
 const OPTIONAL_PRODUCT_DB_COLUMNS = [
+  'safe_stock',
   'expiry_date',
   'expiry_tracking',
   'shelf_life_days',
@@ -1562,6 +1565,7 @@ export const productAPI = {
         min_stock: product.minStock ?? product.min_stock ?? 0,
         max_stock: (product as any).maxStock ?? product.max_stock ?? 0,
         critical_stock: product.criticalStock || 0,
+        safe_stock: (product as any).safeStock ?? (product as any).safe_stock ?? 0,
         unit: product.unit || 'Adet',
         unitset_id: uuidOrNull((product as any).unitsetId || (product as any).unitset_id),
         is_active: true,
@@ -1671,6 +1675,7 @@ export const productAPI = {
         minStock: 'min_stock',
         maxStock: 'max_stock',
         criticalStock: 'critical_stock',
+        safeStock: 'safe_stock',
         category: 'category_code',
         categoryCode: 'category_code',
         groupCode: 'group_code',
@@ -1755,9 +1760,6 @@ export const productAPI = {
     try {
       const tableName = `rex_${firmNrPadded()}_products`;
       await assertProductInActiveFirm(tableName, id);
-      const fields: string[] = [];
-      const values: any[] = [];
-      let i = 1;
 
       const fieldValues = new Map<string, any>();
 
@@ -1868,26 +1870,44 @@ export const productAPI = {
         return productAPI.getById(id);
       }
 
-      fieldValues.forEach((value, dbKey) => {
-        fields.push(`${dbKey} = $${i++}`);
-        values.push(value);
-      });
-
       const firmEq = firmNrPadded();
       const firmRaw = String(ERP_SETTINGS.firmNr ?? '').trim();
-      values.push(id);
-      values.push(firmEq);
-      values.push(firmRaw || firmEq);
-      let query = `UPDATE ${tableName} SET ${fields.join(', ')} WHERE id = $${i} AND (
-        LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $${i + 1}
-        OR TRIM(COALESCE(firm_nr, '')) = $${i + 2}
-      ) RETURNING *`;
-      let { rows } = await postgres.query(query, values);
-
-      if (!rows[0]) {
-        const valuesIdOnly = [...values.slice(0, -3), id];
-        query = `UPDATE ${tableName} SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`;
-        ({ rows } = await postgres.query(query, valuesIdOnly));
+      let pending = new Map(fieldValues);
+      let rows: any[] = [];
+      while (true) {
+        const localFields: string[] = [];
+        const localValues: any[] = [];
+        let n = 1;
+        pending.forEach((value, dbKey) => {
+          localFields.push(`${dbKey} = $${n++}`);
+          localValues.push(value);
+        });
+        const idParam = n;
+        try {
+          const withFirm = [...localValues, id, firmEq, firmRaw || firmEq];
+          const queryWithFirm = `UPDATE ${tableName} SET ${localFields.join(', ')} WHERE id = $${idParam} AND (
+            LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $${idParam + 1}
+            OR TRIM(COALESCE(firm_nr, '')) = $${idParam + 2}
+          ) RETURNING *`;
+          ({ rows } = await postgres.query(queryWithFirm, withFirm));
+          if (!rows[0]) {
+            const queryId = `UPDATE ${tableName} SET ${localFields.join(', ')} WHERE id = $${idParam} RETURNING *`;
+            ({ rows } = await postgres.query(queryId, [...localValues, id]));
+          }
+          break;
+        } catch (error) {
+          if (!isUndefinedColumnError(error)) throw error;
+          const missing = extractMissingPgColumn(error);
+          if (
+            !missing ||
+            !pending.has(missing) ||
+            !(OPTIONAL_PRODUCT_DB_COLUMNS as readonly string[]).includes(missing)
+          ) {
+            throw error;
+          }
+          pending.delete(missing);
+          if (pending.size === 0) throw error;
+        }
       }
 
       return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
@@ -2455,6 +2475,8 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     maxStock: parseFloat(dbProduct.max_stock || 0),
     max_stock: parseFloat(dbProduct.max_stock || 0),
     criticalStock: parseFloat(dbProduct.critical_stock ?? dbProduct.criticalStock ?? 0),
+    safeStock: parseFloat(dbProduct.safe_stock ?? dbProduct.safeStock ?? 0) || 0,
+    safe_stock: parseFloat(dbProduct.safe_stock ?? dbProduct.safeStock ?? 0) || 0,
     unit: dbProduct.unit,
     isActive: dbProduct.is_active,
     hasVariants: dbProduct.has_variants,

@@ -62,6 +62,7 @@ BEGIN
       min_stock         DECIMAL(15,2) DEFAULT 0,
       max_stock         DECIMAL(15,2) DEFAULT 0,
       critical_stock    DECIMAL(15,2) DEFAULT 0,
+      safe_stock        DECIMAL(15,2) DEFAULT 0,
       tracking_type     VARCHAR(20) DEFAULT ''none'',
       shelf_location    VARCHAR(50),
       warehouse_code    VARCHAR(50),
@@ -113,6 +114,10 @@ BEGIN
       updated_at        TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_products');
+  EXECUTE format(
+    'ALTER TABLE %I ADD COLUMN IF NOT EXISTS safe_stock DECIMAL(15,2) DEFAULT 0',
+    v_prefix || '_products'
+  );
 
   -- 2. Customers
   EXECUTE format('
