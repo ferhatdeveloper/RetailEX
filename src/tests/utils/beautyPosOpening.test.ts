@@ -10,6 +10,7 @@ import {
     beautyPosOpeningAppointments,
     beautyPosOpeningKey,
     buildBeautyPosOpeningCarts,
+    filterBeautyPosCatalogForReceipt,
     openBeautyPosCart,
 } from '../../utils/beautyPosOpening';
 
@@ -76,12 +77,10 @@ describe('POS açılış sepeti — fatura, saat ve randevu', () => {
 
         const customerDayStaff = `${CUSTOMER}|${DAY}|${STAFF}`;
         expect(carts.map((cart) => cart.key)).not.toContain(customerDayStaff);
-        expect(beautyPosOpeningKey(torpi)).toContain('BEA-20261024-0900');
-        expect(beautyPosOpeningKey(torpi)).toContain('09:00');
-        expect(beautyPosOpeningKey(torpi)).toContain(TORPI_ID);
-        expect(beautyPosOpeningKey(sacBoya)).toContain('BEA-20261024-1200');
-        expect(beautyPosOpeningKey(sacBoya)).toContain('12:00');
-        expect(beautyPosOpeningKey(sacBoya)).toContain(SAC_ID);
+        expect(beautyPosOpeningKey(torpi)).toBe('fiche:BEA-20261024-0900');
+        expect(beautyPosOpeningKey(sacBoya)).toBe('fiche:BEA-20261024-1200');
+        expect(beautyPosOpeningKey(torpi)).not.toContain('09:00');
+        expect(beautyPosOpeningKey(torpi)).not.toContain(TORPI_ID);
         expect(beautyPosOpeningKey(torpi)).not.toBe(beautyPosOpeningKey(sacBoya));
     });
 
@@ -163,5 +162,230 @@ describe('POS açılış sepeti — fatura, saat ve randevu', () => {
         expect(carts[0]?.reservationAmount).toBe(10_000);
         expect(carts[1]?.reservationAmount).toBe(0);
         expect(carts[0]?.key).not.toBe(carts[1]?.key);
+        expect(carts[0]?.key).toBe(`apt:${TORPI_ID}`);
+        expect(carts[1]?.key).toBe(`apt:${SAC_ID}`);
+    });
+
+    it('aynı fişin iki hizmeti sepette kalır, diğer fişin hizmeti gelmez', () => {
+        const saleId = '55555555-5555-4555-8555-555555555555';
+        const boyaId = '33333333-3333-4333-8333-333333333333';
+        const tirnak = appointment({
+            id: TORPI_ID,
+            service_id: 'svc-tirnak',
+            service_name: 'TIRNAK',
+            appointment_time: '09:00',
+            time: '09:00',
+            total_price: 25_000,
+            deposit_amount: 25_000,
+            remainder_sale_id: saleId,
+            remainder_sale_fiche_no: 'BEA-FERHAT-0900',
+        });
+        const boyaSame = appointment({
+            id: boyaId,
+            service_id: 'svc-boya',
+            service_name: 'BOYA',
+            appointment_time: '09:30',
+            time: '09:30',
+            total_price: 50_000,
+            deposit_amount: 0,
+            remainder_sale_id: saleId,
+            remainder_sale_fiche_no: 'BEA-FERHAT-0900',
+        });
+        const other = appointment({
+            ...sacBoya,
+            remainder_sale_id: '66666666-6666-4666-8666-666666666666',
+            remainder_sale_fiche_no: 'BEA-FERHAT-1200',
+        });
+
+        const cart = openBeautyPosCart(tirnak, [tirnak, boyaSame, other], {
+            advances: [{ notes: `Randevu ${SAC_ID}`, amount: 99_000 }],
+        });
+        expect(cart?.lines.map((line) => line.serviceName)).toEqual(['TIRNAK', 'BOYA']);
+        expect(cart?.subtotal).toBe(75_000);
+        expect(cart?.total).toBe(75_000);
+        expect(cart?.reservationAmount).toBe(25_000);
+        expect(cart?.prepaid).toBe(25_000);
+        expect(cart?.remaining).toBe(50_000);
+        expect(cart?.total).not.toBe(100_000);
+        expect(cart?.lines.some((line) => line.serviceName === 'SAC BOYA')).toBe(false);
+        expect(beautyPosOpeningAppointments(tirnak, [tirnak, boyaSame, other]).map((row) => row.id)).toEqual([
+            TORPI_ID,
+            boyaId,
+        ]);
+        const catalog = filterBeautyPosCatalogForReceipt(
+            [
+                { id: 'svc-tirnak', name: 'TIRNAK' },
+                { id: 'svc-boya', name: 'BOYA' },
+                { id: 'svc-sac', name: 'SAC BOYA' },
+            ],
+            cart?.lines ?? [],
+        );
+        expect(catalog.map((item) => item.name)).toEqual(['TIRNAK', 'BOYA']);
+    });
+
+    it('FERHAT 09:00 fişinde yalnız TIRNAK kalır; BOYA başka fişse katalogda durmaz', () => {
+        const ferhat = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+        const boyaId = '44444444-4444-4444-8444-444444444444';
+        const tirnak = appointment({
+            id: TORPI_ID,
+            customer_id: ferhat,
+            client_id: ferhat,
+            customer_name: 'FERHAT',
+            service_id: 'svc-tirnak',
+            service_name: 'TIRNAK',
+            appointment_date: '2026-10-25',
+            date: '2026-10-25',
+            appointment_time: '09:00',
+            time: '09:00',
+            status: AppointmentStatus.SCHEDULED,
+            total_price: 25_000,
+            deposit_amount: 25_000,
+        });
+        const boya = appointment({
+            id: boyaId,
+            customer_id: ferhat,
+            client_id: ferhat,
+            customer_name: 'FERHAT',
+            service_id: 'svc-boya',
+            service_name: 'BOYA',
+            appointment_date: '2026-10-25',
+            date: '2026-10-25',
+            appointment_time: '11:00',
+            time: '11:00',
+            status: AppointmentStatus.SCHEDULED,
+            total_price: 50_000,
+            deposit_amount: 40_000,
+            remainder_sale_fiche_no: 'BEA-BOYA-1100',
+        });
+        const cart = openBeautyPosCart(tirnak, [tirnak, boya], {
+            advances: [{ notes: `Randevu ${boyaId}`, amount: 40_000 }],
+        });
+        expect(cart?.time).toBe('09:00');
+        expect(cart?.lines.map((line) => ({ name: line.serviceName, price: line.unitPrice }))).toEqual([
+            { name: 'TIRNAK', price: 25_000 },
+        ]);
+        expect(cart?.subtotal).toBe(25_000);
+        expect(cart?.total).toBe(25_000);
+        expect(cart?.prepaid).toBe(25_000);
+        expect(cart?.reservationAmount).toBe(25_000);
+        expect(cart?.remaining).toBe(0);
+        expect(cart?.reservationAmount).not.toBe(40_000);
+        expect(cart?.reservationAmount).not.toBe(65_000);
+        const catalog = filterBeautyPosCatalogForReceipt(
+            [
+                { id: 'svc-tirnak', name: 'TIRNAK' },
+                { id: 'svc-boya', name: 'BOYA' },
+            ],
+            cart?.lines ?? [],
+        );
+        expect(catalog.map((item) => item.name)).toEqual(['TIRNAK']);
+        expect(filterBeautyPosCatalogForReceipt(
+            [
+                { id: 'svc-tirnak', name: 'TIRNAK' },
+                { id: 'svc-boya', name: 'BOYA' },
+            ],
+            [],
+        ).map((item) => item.name)).toEqual(['TIRNAK', 'BOYA']);
+    });
+
+    it('fişe bağlı satış kalemleri sepete girer, depozito ve diğer fiş girmez', () => {
+        const tirnak = appointment({
+            id: TORPI_ID,
+            service_id: 'svc-tirnak',
+            service_name: 'TIRNAK',
+            appointment_time: '09:00',
+            time: '09:00',
+            status: AppointmentStatus.SCHEDULED,
+            total_price: 25_000,
+            deposit_amount: 25_000,
+        });
+        const cart = openBeautyPosCart(tirnak, [tirnak, sacBoya], {
+            saleLines: [
+                {
+                    saleId: '77777777-7777-4777-8777-777777777777',
+                    ficheNo: 'BEA-FERHAT',
+                    linkedAppointmentId: TORPI_ID,
+                    name: 'TIRNAK',
+                    itemId: 'svc-tirnak',
+                    unitPrice: 25_000,
+                    qty: 1,
+                },
+                {
+                    saleId: '77777777-7777-4777-8777-777777777777',
+                    ficheNo: 'BEA-FERHAT',
+                    linkedAppointmentId: TORPI_ID,
+                    name: 'BOYA',
+                    itemId: 'svc-boya',
+                    unitPrice: 50_000,
+                    qty: 1,
+                },
+                {
+                    saleId: '77777777-7777-4777-8777-777777777777',
+                    ficheNo: 'BEA-FERHAT',
+                    linkedAppointmentId: TORPI_ID,
+                    isDepositSale: true,
+                    name: 'REZERVASYON',
+                    unitPrice: 25_000,
+                    qty: 1,
+                },
+                {
+                    saleId: '88888888-8888-4888-8888-888888888888',
+                    ficheNo: 'BEA-20261024-1200',
+                    linkedAppointmentId: SAC_ID,
+                    name: 'SAC BOYA',
+                    itemId: 'svc-sac',
+                    unitPrice: 25_000,
+                    qty: 1,
+                },
+            ],
+        });
+        expect(cart?.lines.map((line) => line.serviceName)).toEqual(['TIRNAK', 'BOYA']);
+        expect(cart?.total).toBe(75_000);
+        expect(cart?.prepaid).toBe(25_000);
+        expect(cart?.remaining).toBe(50_000);
+        expect(cart?.lines.some((line) => line.serviceName === 'REZERVASYON')).toBe(false);
+        expect(cart?.lines.some((line) => line.serviceName === 'SAC BOYA')).toBe(false);
+    });
+
+    it('satış kalemi eksik olsa da aynı fişin randevu hizmeti düşmez', () => {
+        const saleId = '55555555-5555-4555-8555-555555555555';
+        const boyaId = '33333333-3333-4333-8333-333333333333';
+        const tirnak = appointment({
+            id: TORPI_ID,
+            service_id: 'svc-tirnak',
+            service_name: 'TIRNAK',
+            appointment_time: '09:00',
+            time: '09:00',
+            total_price: 25_000,
+            deposit_amount: 25_000,
+            remainder_sale_id: saleId,
+            remainder_sale_fiche_no: 'BEA-FERHAT-0900',
+        });
+        const boyaSame = appointment({
+            id: boyaId,
+            service_id: 'svc-boya',
+            service_name: 'BOYA',
+            appointment_time: '09:30',
+            time: '09:30',
+            total_price: 50_000,
+            deposit_amount: 0,
+            remainder_sale_id: saleId,
+            remainder_sale_fiche_no: 'BEA-FERHAT-0900',
+        });
+        const cart = openBeautyPosCart(tirnak, [tirnak, boyaSame], {
+            saleLines: [{
+                saleId,
+                ficheNo: 'BEA-FERHAT-0900',
+                linkedAppointmentId: TORPI_ID,
+                name: 'TIRNAK',
+                itemId: 'svc-tirnak',
+                unitPrice: 25_000,
+                qty: 1,
+            }],
+        });
+        expect(cart?.lines.map((line) => line.serviceName)).toEqual(['TIRNAK', 'BOYA']);
+        expect(cart?.total).toBe(75_000);
+        expect(cart?.prepaid).toBe(25_000);
+        expect(cart?.remaining).toBe(50_000);
     });
 });

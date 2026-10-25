@@ -68,7 +68,13 @@ import { ERP_SETTINGS } from '../../../services/postgres';
 import { toast } from 'sonner';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
-import { beautyPosOpeningAppointments, buildBeautyPosOpeningCarts } from '../../../utils/beautyPosOpening';
+import {
+    beautyPosOpeningAppointments,
+    beautyPosServiceFicheNo,
+    filterBeautyPosCatalogForReceipt,
+    openBeautyPosCart,
+    type BeautyPosOpeningCartLine,
+} from '../../../utils/beautyPosOpening';
 import {
     appointmentFormTotal,
     appointmentRemainingAfterDeposit,
@@ -534,6 +540,8 @@ export function AppointmentPOS({
 
     // ── Cart ─────────────────────────────────────────────────────────────
     const [cart, setCart] = useState<CartLine[]>([]);
+    /** Açılan fişin kalemleri. Katalog bu listeye iner; yeni randevuda filtre yok. */
+    const [openedReceiptLines, setOpenedReceiptLines] = useState<BeautyPosOpeningCartLine[] | null>(null);
     const [discount, setDiscount] = useState(0);
     // Rezervasyon tutarı (müşteriden peşin alınan tutar; toplamdan düşer)
     const [reservationAmount, setReservationAmount] = useState(0);
@@ -1036,15 +1044,19 @@ export function AppointmentPOS({
         setMonthlyModalLine(line);
     }, [cart]);
 
-    const filteredSvcs = useMemo(() => services.filter(s => {
-        const activeOk = s.is_active !== false;
-        const mainOk = svcFilterMain === 'all' || beautyServiceMainKey(s) === svcFilterMain;
-        const leafOk = svcFilterLeaf === 'all' || beautyServiceSubKey(s) === svcFilterLeaf;
-        const q = svcQ.trim().toLowerCase();
-        const name = (s.name ?? '').toLowerCase();
-        const searchOk = !q || name.includes(q);
-        return activeOk && mainOk && leafOk && searchOk;
-    }), [services, svcFilterMain, svcFilterLeaf, svcQ]);
+    const filteredSvcs = useMemo(() => {
+        const base = services.filter(s => {
+            const activeOk = s.is_active !== false;
+            const mainOk = svcFilterMain === 'all' || beautyServiceMainKey(s) === svcFilterMain;
+            const leafOk = svcFilterLeaf === 'all' || beautyServiceSubKey(s) === svcFilterLeaf;
+            const q = svcQ.trim().toLocaleLowerCase('tr');
+            const name = (s.name ?? '').toLocaleLowerCase('tr');
+            const searchOk = !q || name.includes(q);
+            return activeOk && mainOk && leafOk && searchOk;
+        });
+        if (!openedReceiptLines) return base;
+        return filterBeautyPosCatalogForReceipt(base, openedReceiptLines);
+    }, [services, svcFilterMain, svcFilterLeaf, svcQ, openedReceiptLines]);
 
     const serviceMainKeys = useMemo(() => {
         const set = new Set<string>();
@@ -1083,16 +1095,18 @@ export function AppointmentPOS({
     );
 
     const filteredRetailProducts = useMemo(() => {
-        const q = svcQ.trim().toLowerCase();
-        return retailProducts.filter(p => {
+        const q = svcQ.trim().toLocaleLowerCase('tr');
+        const base = retailProducts.filter(p => {
             const catOk = category === 'all' || (p.category || '') === category;
             const searchOk = !q ||
-                (p.name || '').toLowerCase().includes(q) ||
-                (p.barcode || '').toLowerCase().includes(q) ||
-                (p.code || '').toLowerCase().includes(q);
+                (p.name || '').toLocaleLowerCase('tr').includes(q) ||
+                (p.barcode || '').toLocaleLowerCase('tr').includes(q) ||
+                (p.code || '').toLocaleLowerCase('tr').includes(q);
             return catOk && searchOk;
         });
-    }, [retailProducts, category, svcQ]);
+        if (!openedReceiptLines) return base;
+        return filterBeautyPosCatalogForReceipt(base, openedReceiptLines);
+    }, [retailProducts, category, svcQ, openedReceiptLines]);
 
     const mergedCustomers = useMemo(() => {
         const map = new Map<string, BeautyCustomer>();
@@ -1146,12 +1160,14 @@ export function AppointmentPOS({
     useEffect(() => {
         if (!existingAppointment?.id) {
             setHydratedAppointmentId(null);
+            setOpenedReceiptLines(null);
             setVisitStoredDeposits([]);
             setVisitSourceAmount(null);
             return;
         }
         if (hydratedAppointmentId === existingAppointment.id) return;
 
+        setOpenedReceiptLines(null);
         setVisitStoredDeposits([]);
         setVisitSourceAmount(null);
 
@@ -1174,9 +1190,8 @@ export function AppointmentPOS({
             if (cancelled) return;
 
             // POS açılışı müşteri + gün + personel ile birleşmez.
-            // Sepet anahtarı fatura/fiş no + saat + randevu id'dir.
+            // Sepet, satış no / fiş no / fatura no ile açılır.
             const openedRows = beautyPosOpeningAppointments(primary, pool.length > 0 ? pool : [primary]);
-            // İptal / gelmedi randevuların hizmetleri POS'a (sepet / posta) yüklenmez.
             const activeOpened = openedRows.filter(
                 (s) => !(
                     appointmentStatusMatches(s.status, AppointmentStatus.CANCELLED) ||
@@ -1187,49 +1202,69 @@ export function AppointmentPOS({
                 appointmentStatusMatches(primary.status, AppointmentStatus.NO_SHOW)) {
                 if (!cancelled) {
                     toast.error(tm('bAppointmentCancelledCartHint'));
+                    setOpenedReceiptLines(null);
                 }
                 setHydratedAppointmentId(primary.id);
                 return;
             }
-            const anchor = activeOpened[0] ?? primary;
-            const lines: CartLine[] = [];
-            for (const apt of activeOpened) {
-                const sid = String(apt.staff_id ?? apt.specialist_id ?? '').trim() || undefined;
-                const svcId = String(apt.service_id ?? '').trim();
-                const mapped = svcId ? services.find(s => String(s.id) === svcId) : undefined;
-                if (mapped) {
-                    lines.push({
-                        uid: uid(),
-                        type: 'service',
-                        item_id: mapped.id,
-                        name: mapped.name,
-                        // 14.10.2026 — Brüt hizmet fiyatı tercih edilir.
-                        // `apt.total_price` eski kodlarda düşülmüş haliyle
-                        // yazılmış olabilir; bu yüzden hizmet kataloğundaki
-                        // brüt fiyat (`mapped.price`) tercih edilir.
-                        // `apt.total_price` yalnızca katalog eşleşmezse
-                        // fallback olarak kullanılır.
-                        unit_price: Number(mapped.price ?? apt.total_price ?? 0),
-                        qty: 1,
-                        color: mapped.color,
-                        duration_min: Math.max(1, Math.round(Number(apt.duration ?? mapped.duration_min ?? 30))),
-                        staff_id: sid,
-                    });
-                } else if (svcId || (apt.service_name ?? '').trim()) {
-                    const mappedProd = svcId ? products.find((p) => String(p.id) === svcId) : undefined;
-                    lines.push({
-                        uid: uid(),
-                        type: mappedProd ? 'product' : 'service',
-                        item_id: svcId || mappedProd?.id || `apt-${apt.id}`,
-                        name: mappedProd?.name ?? String(apt.service_name ?? '—'),
-                        unit_price: Number(mappedProd?.price ?? apt.total_price ?? 0),
-                        qty: 1,
-                        color: mappedProd ? '#0d9488' : undefined,
-                        duration_min: Math.max(1, Math.round(Number(apt.duration ?? 30))),
-                        staff_id: sid,
-                    });
+            let saleLines: Awaited<ReturnType<typeof beautyService.listOpeningReceiptLines>> = [];
+            try {
+                saleLines = await beautyService.listOpeningReceiptLines({
+                    appointmentIds: activeOpened.map((row) => String(row.id ?? '')),
+                    saleIds: activeOpened.map((row) => String(row.remainder_sale_id ?? '')),
+                    ficheNos: activeOpened.map((row) => beautyPosServiceFicheNo(row)),
+                });
+            } catch (saleErr) {
+                logger.warn('AppointmentPOS', 'hydrate: fiş kalemleri okunamadı', saleErr);
+                saleLines = [];
+            }
+            if (cancelled) return;
+            let advanceRows: Array<{ notes?: string | null; amount?: number | null }> = [];
+            if (customerId) {
+                try {
+                    const advances = await getOpenAdvances(customerId);
+                    advanceRows = advances.map((av) => ({ notes: av.notes, amount: av.amount }));
+                } catch (avansErr) {
+                    logger.warn('AppointmentPOS', 'hydrate: avans kaynağı okunamadı', avansErr);
                 }
             }
+            if (cancelled) return;
+            const opened = openBeautyPosCart(primary, pool.length > 0 ? pool : [primary], {
+                advances: advanceRows,
+                saleLines,
+            });
+            const receiptLines = opened?.lines ?? [];
+            const lines: CartLine[] = receiptLines.map((line) => {
+                const itemId = String(line.itemId ?? '').trim();
+                const nameKey = line.serviceName.trim().toLocaleLowerCase('tr');
+                const mapped = itemId
+                    ? services.find((s) => String(s.id) === itemId)
+                    : undefined;
+                const mappedByName = mapped
+                    ? undefined
+                    : services.find((s) => s.name.trim().toLocaleLowerCase('tr') === nameKey);
+                const svc = mapped ?? mappedByName;
+                const mappedProd = !svc && itemId
+                    ? products.find((p) => String(p.id) === itemId)
+                    : undefined;
+                const prodByName = svc || mappedProd
+                    ? undefined
+                    : products.find((p) => (p.name || '').trim().toLocaleLowerCase('tr') === nameKey);
+                const prod = mappedProd ?? prodByName;
+                const apt = activeOpened.find((row) => String(row.id) === line.appointmentId);
+                const receiptPrice = Number(line.unitPrice) || 0;
+                return {
+                    uid: uid(),
+                    type: prod && !svc ? 'product' as const : 'service' as const,
+                    item_id: svc?.id ?? prod?.id ?? (itemId || `apt-${line.appointmentId}`),
+                    name: line.serviceName || svc?.name || prod?.name || '—',
+                    unit_price: receiptPrice > 0 ? receiptPrice : Number(svc?.price ?? prod?.price ?? 0),
+                    qty: Math.max(1, Number(line.qty) || 1),
+                    color: svc?.color ?? (prod ? '#0d9488' : undefined),
+                    duration_min: Math.max(1, Math.round(Number(apt?.duration ?? svc?.duration_min ?? 30))),
+                    staff_id: line.staffId || undefined,
+                };
+            });
 
             if (cancelled) return;
 
@@ -1246,10 +1281,12 @@ export function AppointmentPOS({
 
             if (lines.length > 0) {
                 setCart(lines);
+                setOpenedReceiptLines(receiptLines);
             } else {
-                const serviceId = String(anchor.service_id ?? '').trim();
+                setOpenedReceiptLines(null);
+                const serviceId = String(primary.service_id ?? '').trim();
                 const mappedService = serviceId ? services.find(s => String(s.id) === serviceId) : undefined;
-                const staffId = String(anchor.staff_id ?? anchor.specialist_id ?? '').trim() || undefined;
+                const staffId = String(primary.staff_id ?? primary.specialist_id ?? '').trim() || undefined;
                 const mappedProduct = serviceId ? products.find((p) => String(p.id) === serviceId) : undefined;
                 if (mappedService) {
                     setCart([{
@@ -1257,64 +1294,50 @@ export function AppointmentPOS({
                         type: 'service',
                         item_id: mappedService.id,
                         name: mappedService.name,
-                        // 14.10.2026 — Brüt fiyat tercih edilir (mapped.price);
-                        // `apt.total_price` eski kodlarda düşülmüş haliyle
-                        // yazılmış olabilir.
-                        unit_price: Number(mappedService.price ?? anchor.total_price ?? 0),
+                        unit_price: Number(primary.total_price ?? mappedService.price ?? 0),
                         qty: 1,
                         color: mappedService.color,
-                        duration_min: Number(anchor.duration ?? mappedService.duration_min ?? 30),
+                        duration_min: Number(primary.duration ?? mappedService.duration_min ?? 30),
                         staff_id: staffId,
                     }]);
-                } else if (mappedProduct || serviceId || (anchor.service_name ?? '').trim()) {
+                } else if (mappedProduct || serviceId || (primary.service_name ?? '').trim()) {
                     setCart([{
                         uid: uid(),
                         type: mappedProduct ? 'product' : 'service',
-                        item_id: serviceId || mappedProduct?.id || `apt-${anchor.id}`,
-                        name: mappedProduct?.name ?? String(anchor.service_name ?? '—'),
-                        unit_price: Number(mappedProduct?.price ?? anchor.total_price ?? 0),
+                        item_id: serviceId || mappedProduct?.id || `apt-${primary.id}`,
+                        name: mappedProduct?.name ?? String(primary.service_name ?? '—'),
+                        unit_price: Number(primary.total_price ?? mappedProduct?.price ?? 0),
                         qty: 1,
                         color: mappedProduct ? '#0d9488' : undefined,
-                        duration_min: Number(anchor.duration ?? 30),
+                        duration_min: Number(primary.duration ?? 30),
                         staff_id: staffId,
                     }]);
                 }
             }
 
-            const anchorTime = String(anchor.appointment_time ?? anchor.time ?? rawTime ?? '').trim();
-            const firstStaff = String(anchor.staff_id ?? anchor.specialist_id ?? '').trim() || undefined;
+            const anchorTime = String(primary.appointment_time ?? primary.time ?? rawTime ?? '').trim();
+            const firstStaff = String(primary.staff_id ?? primary.specialist_id ?? '').trim() || undefined;
             setDefaultSpecialistId(firstStaff ?? '');
             setAptDate(safeDateYmd(
-                String(anchor.date ?? anchor.appointment_date ?? rawDate),
+                String(primary.date ?? primary.appointment_date ?? rawDate),
                 safeDateYmd(prefillDate ?? new Date().toISOString().slice(0, 10)),
             ));
             setAptTime(safeTimeHHmm(anchorTime || prefillTime || '09:00'));
-            setAptDevice(String(anchor.device_id ?? '').trim());
-            setAptNotes(String(anchor.notes ?? ''));
-            setReceiptTreatmentDegree(String(anchor.treatment_degree ?? '').trim());
-            setReceiptTreatmentShots(String(anchor.treatment_shots ?? '').trim());
-            setAptStatus(anchor.status ?? AppointmentStatus.CONFIRMED);
-            const sumDur = activeOpened.reduce(
+            setAptDevice(String(primary.device_id ?? '').trim());
+            setAptNotes(String(primary.notes ?? ''));
+            setReceiptTreatmentDegree(String(primary.treatment_degree ?? '').trim());
+            setReceiptTreatmentShots(String(primary.treatment_shots ?? '').trim());
+            setAptStatus(primary.status ?? AppointmentStatus.CONFIRMED);
+            const sumDur = (receiptLines.length > 0 ? activeOpened : [primary]).reduce(
                 (s, a) => s + Math.max(1, Math.round(Number(a.duration) || 30)),
                 0
             );
-            setAptActualDurationMin(Math.max(1, sumDur || Math.round(Number(anchor.duration) || 30)));
+            setAptActualDurationMin(Math.max(1, sumDur || Math.round(Number(primary.duration) || 30)));
             setHydratedAppointmentId(primary.id);
-            // Rezervasyon bu fişe yazılmış tutardır. Kardeş saatin peşinatı
-            // toplanmaz, kopyalanmaz ve bölünmez. Hizmet fiyatı düşürülmez.
-            let reservationShown = Number((anchor as { deposit_amount?: number }).deposit_amount) || 0;
-            if (customerId) {
-                try {
-                    const advances = await getOpenAdvances(customerId);
-                    const carts = buildBeautyPosOpeningCarts(pool.length > 0 ? pool : [primary], {
-                        advances: advances.map((av) => ({ notes: av.notes, amount: av.amount })),
-                    });
-                    const openedCart = carts.find((cart) => cart.appointmentId === String(anchor.id ?? '').trim());
-                    if (openedCart) reservationShown = openedCart.reservationAmount;
-                } catch (avansErr) {
-                    logger.warn('AppointmentPOS', 'hydrate: avans kaynağı okunamadı', avansErr);
-                }
-            }
+            // Rezervasyon bu fişe yazılmış tutardır. Toplama eklenmez.
+            // Başka fişin peşinatı kopyalanmaz.
+            const reservationShown = opened?.reservationAmount
+                ?? (Number((primary as { deposit_amount?: number }).deposit_amount) || 0);
             if (!cancelled) {
                 setVisitStoredDeposits([reservationShown]);
                 setVisitSourceAmount(null);

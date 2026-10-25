@@ -2994,6 +2994,8 @@ export const beautyService = {
                 a.deposit_provider,
                 a.deposit_sale_id,
                 a.deposit_sale_fiche_no,
+                a.remainder_sale_id,
+                a.remainder_sale_fiche_no,
                 a.sale_group_id,
                 a.remainder_paid_amount,
                 a.created_at,
@@ -7451,6 +7453,165 @@ export const beautyService = {
     parseParentSaleIdFromNotes(notes?: string | null): string | null {
         const m = String(notes ?? '').match(/parent_sale:([0-9a-f-]{36})/i);
         return m ? m[1] : null;
+    },
+
+    /**
+     * POS açılışında fişin kalemleri.
+     * Yalnız verilen randevu, satış no veya fiş no. Günün diğer fişi gelmez.
+     */
+    async listOpeningReceiptLines(input: {
+        appointmentIds?: string[];
+        saleIds?: string[];
+        ficheNos?: string[];
+    }): Promise<Array<{
+        saleId: string;
+        ficheNo: string;
+        linkedAppointmentId: string;
+        isDepositSale: boolean;
+        itemType: string;
+        itemId: string;
+        name: string;
+        unitPrice: number;
+        qty: number;
+    }>> {
+        const appointmentIds = filterUuidIds(input.appointmentIds ?? []);
+        const saleIds = filterUuidIds(input.saleIds ?? []);
+        const ficheNos = [...new Set(
+            (input.ficheNos ?? [])
+                .map((no) => String(no ?? '').trim())
+                .filter((no) => no.length > 0 && !/[,()*]/.test(no)),
+        )];
+        if (!appointmentIds.length && !saleIds.length && !ficheNos.length) return [];
+
+        type SaleHead = {
+            id: string;
+            invoice_number?: string | null;
+            linked_appointment_id?: string | null;
+            is_deposit?: boolean | string | null;
+            notes?: string | null;
+        };
+        type ItemRow = {
+            sale_id: string;
+            item_type?: string | null;
+            item_id?: string | null;
+            name?: string | null;
+            unit_price?: number | string | null;
+            quantity?: number | string | null;
+        };
+        const mapLines = (sales: SaleHead[], items: ItemRow[]) => {
+            const byId = new Map(sales.map((sale) => [String(sale.id), sale]));
+            return items.flatMap((item) => {
+                const sale = byId.get(String(item.sale_id));
+                if (!sale) return [];
+                const linked = String(sale.linked_appointment_id ?? '').trim()
+                    || (beautyService.parseRexAppointmentIdFromNotes(sale.notes) ?? '');
+                const depositFlag = sale.is_deposit === true || String(sale.is_deposit ?? '').toLowerCase() === 'true';
+                return [{
+                    saleId: String(sale.id),
+                    ficheNo: String(sale.invoice_number ?? '').trim(),
+                    linkedAppointmentId: linked,
+                    isDepositSale: depositFlag,
+                    itemType: String(item.item_type ?? ''),
+                    itemId: String(item.item_id ?? '').trim(),
+                    name: String(item.name ?? '').trim(),
+                    unitPrice: Number(item.unit_price) || 0,
+                    qty: Number(item.quantity) || 1,
+                }];
+            });
+        };
+
+        try {
+            if (shouldUseTenantPostgrestApi()) {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const pn = periodPaddedForBeauty();
+                const salesPath = `/rex_${fn}_${pn}_beauty_sales`;
+                const itemsPath = `/rex_${fn}_${pn}_beauty_sale_items`;
+                const heads: SaleHead[] = [];
+                const pull = async (query: Record<string, string>) => {
+                    const part = await postgrest.get<SaleHead[]>(
+                        salesPath,
+                        {
+                            select: 'id,invoice_number,linked_appointment_id,is_deposit,notes',
+                            ...query,
+                            limit: 500,
+                        },
+                        { schema: 'beauty' },
+                    );
+                    if (Array.isArray(part)) heads.push(...part);
+                };
+                if (appointmentIds.length) {
+                    await pull({ linked_appointment_id: `in.(${appointmentIds.join(',')})` });
+                    for (const id of appointmentIds) {
+                        await pull({ notes: `like.*rex_appt:${id}*` });
+                    }
+                }
+                if (saleIds.length) await pull({ id: `in.(${saleIds.join(',')})` });
+                if (ficheNos.length) await pull({ invoice_number: `in.(${ficheNos.join(',')})` });
+                const unique = new Map<string, SaleHead>();
+                for (const head of heads) unique.set(String(head.id), head);
+                const ids = [...unique.keys()];
+                if (!ids.length) return [];
+                const items = await postgrest.get<ItemRow[]>(
+                    itemsPath,
+                    {
+                        select: 'sale_id,item_type,item_id,name,unit_price,quantity',
+                        sale_id: `in.(${ids.join(',')})`,
+                        limit: 800,
+                    },
+                    { schema: 'beauty' },
+                );
+                return mapLines([...unique.values()], Array.isArray(items) ? items : []);
+            }
+
+            const st = postgres.getMovementTableName('beauty_sales', 'beauty');
+            const it = postgres.getMovementTableName('beauty_sale_items', 'beauty');
+            const params: unknown[] = [];
+            const ors: string[] = [];
+            if (appointmentIds.length) {
+                params.push(appointmentIds);
+                ors.push(`s.linked_appointment_id = ANY($${params.length}::uuid[])`);
+                for (const id of appointmentIds) {
+                    params.push(`%rex_appt:${id}%`);
+                    ors.push(`COALESCE(s.notes, '') ILIKE $${params.length}`);
+                }
+            }
+            if (saleIds.length) {
+                params.push(saleIds);
+                ors.push(`s.id = ANY($${params.length}::uuid[])`);
+            }
+            if (ficheNos.length) {
+                params.push(ficheNos);
+                ors.push(`s.invoice_number = ANY($${params.length}::text[])`);
+            }
+            const { rows: sales } = await postgres.query<SaleHead>(
+                `SELECT s.id::text AS id,
+                        s.invoice_number,
+                        s.linked_appointment_id::text AS linked_appointment_id,
+                        s.is_deposit,
+                        s.notes
+                   FROM ${st} s
+                  WHERE ${ors.join(' OR ')}`,
+                params,
+            );
+            if (!sales.length) return [];
+            const ids = sales.map((sale) => String(sale.id));
+            const { rows: items } = await postgres.query<ItemRow>(
+                `SELECT sale_id::text AS sale_id,
+                        item_type,
+                        item_id::text AS item_id,
+                        name,
+                        unit_price,
+                        quantity
+                   FROM ${it}
+                  WHERE sale_id = ANY($1::uuid[])`,
+                [ids],
+            );
+            return mapLines(sales, items);
+        } catch (err) {
+            console.warn('[beautyService] listOpeningReceiptLines:', err);
+            return [];
+        }
     },
 
     /** Randevuya bağlı ürün adları (beauty_sales + sale_items) */
