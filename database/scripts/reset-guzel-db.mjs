@@ -55,7 +55,7 @@ async function listSchemasAndTables(client) {
   const schemas = await client.query(
     `SELECT n.nspname
        FROM pg_namespace n
-      WHERE n.nspname IN ('public','auth','beauty','wms','rest','logic')
+      WHERE n.nspname IN ('public','auth','beauty','wms','rest','logic','logistics','pos')
       ORDER BY n.nspname`,
   );
   const out = {};
