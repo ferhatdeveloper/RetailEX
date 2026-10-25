@@ -47,12 +47,13 @@ import {
   SIGNED_LINE_COST_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SQL_DISPLAY_ITEM_CODE,
-  SQL_FICHE_DEPOSIT_LIST,
+  SQL_PROFIT_FICHE_DEPOSIT_LIST,
+  SQL_PROFIT_FICHE_REMAINDER_LIST,
+  SQL_PROFIT_SERVICE_DEPOSIT_AMOUNT,
   SQL_IS_SERVICE_LINE,
   SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
   SQL_SALES_SIGN,
-  SQL_SERVICE_DEPOSIT_AMOUNT,
   unitCostFromPurchaseLine,
   BEAUTY_APPOINTMENT_BRIDGE_JOIN,
   SQL_BEAUTY_APPT_INCLUDED,
@@ -71,7 +72,8 @@ import { classifyCriticalStockLevel } from '../../utils/productStockLevels';
 import { productGrossProfitMarginPct } from '../../utils/productGrossProfitMargin';
 import { mapReturnReportRows, type ReturnReportKind } from '../../utils/returnReportRows';
 import { inferQtyFromRevenue } from '../../utils/lineGrossProfit';
-import { appointmentDepositRef, foldDepositLinesByInvoice, foldSaleItemsWithDeposits, parseFicheDepositList, type FicheDepositRef } from '../../utils/beautyDepositAllocation';
+import { parseFicheDepositList } from '../../utils/beautyDepositAllocation';
+import { foldProductProfitSaleLines, foldRestProfitInvoice } from '../../utils/productProfitClosedSale';
 import { looksLikeUuid } from '../../utils/pgUuid';
 import {
   applyCashFlowAccountName,
@@ -2384,7 +2386,7 @@ export const erpReportsAPI = {
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_beauty_appointments`,
-            { select: 'id,status,total_price,deposit_amount,service_name,remainder_sale_id,deposit_sale_id,sale_group_id', limit: 8000 },
+            { select: 'id,status,total_price,deposit_amount,remainder_paid_amount,service_name,remainder_sale_id,deposit_sale_id,sale_group_id', limit: 8000 },
             { schema: 'beauty' },
           )
           .catch(() => [] as Record<string, unknown>[]),
@@ -2536,17 +2538,6 @@ export const erpReportsAPI = {
           .map((s) => String(s.id)),
       );
 
-      const depositRefs = (beautyAppointments || [])
-        .map((a) => appointmentDepositRef({
-          id: String(a.id || ''),
-          deposit_amount: Number(a.deposit_amount) || 0,
-          service_name: a.service_name == null ? null : String(a.service_name),
-          remainder_sale_id: a.remainder_sale_id == null ? null : String(a.remainder_sale_id),
-          deposit_sale_id: a.deposit_sale_id == null ? null : String(a.deposit_sale_id),
-          sale_group_id: a.sale_group_id == null ? null : String(a.sale_group_id),
-        }))
-        .filter((row): row is FicheDepositRef => !!row);
-
       type GrossFoldLine = {
         index: number;
         invoiceId: string;
@@ -2605,12 +2596,12 @@ export const erpReportsAPI = {
       for (const [invoiceId, group] of byInvoice) {
         const inv = salesById.get(invoiceId);
         const sgn = inv && isSalesReturnFiche(inv) ? -1 : 1;
-        const folded = foldSaleItemsWithDeposits(group, {
+        const folded = foldRestProfitInvoice(group, {
           id: invoiceId,
           total: sgn * (Number(inv?.net_amount ?? 0) || 0),
           linkedAppointmentId: inv?.linked_appointment_id == null ? null : String(inv.linked_appointment_id),
           saleGroupId: inv?.sale_group_id == null ? null : String(inv.sale_group_id),
-        }, depositRefs);
+        }, beautyAppointments);
         const only = folded.length === 1 ? folded[0] : null;
         const uplift = !!only
           && !isExplicitProductItemType(only.lineType)
@@ -2740,6 +2731,8 @@ export const erpReportsAPI = {
       SELECT
         s.id::text AS invoice_id,
         (${SQL_SALES_SIGN}) * COALESCE(s.net_amount, 0) AS invoice_net,
+        COALESCE(s.sale_group_id::text, '') AS sale_group_id,
+        COALESCE(s.parent_sale_id::text, '') AS parent_sale_id,
         COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
         ${SQL_DISPLAY_ITEM_CODE} AS product_code,
         COALESCE(
@@ -2754,8 +2747,9 @@ export const erpReportsAPI = {
         ${SIGNED_LINE_QTY_EXPR} AS quantity,
         ${SIGNED_FOLD_LINE_REVENUE_EXPR} AS revenue,
         ${SIGNED_LINE_COST_EXPR} AS cost,
-        (${SQL_SALES_SIGN}) * (${SQL_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
-        ${SQL_FICHE_DEPOSIT_LIST} AS fiche_deposits
+        (${SQL_SALES_SIGN}) * (${SQL_PROFIT_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
+        ${SQL_PROFIT_FICHE_DEPOSIT_LIST} AS fiche_deposits,
+        ${SQL_PROFIT_FICHE_REMAINDER_LIST} AS fiche_remainders
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.invoice_id
       ${PRODUCTS_JOIN}
@@ -2775,12 +2769,14 @@ export const erpReportsAPI = {
       [firmNr, start, end],
       { firmNr, periodNr: padPeriod() },
     );
-    const folded = foldDepositLinesByInvoice((rows || []).map((r: any) => {
+    const folded = foldProductProfitSaleLines((rows || []).map((r: any) => {
       const invoiceNet = Number(r.invoice_net) || 0;
       const sign = invoiceNet < 0 ? -1 : 1;
       return {
         invoiceId: String(r.invoice_id || ''),
         invoiceNet,
+        saleGroupId: String(r.sale_group_id || '').trim(),
+        parentSaleId: String(r.parent_sale_id || '').trim(),
         productId: String(r.product_id ?? ''),
         productCode: displayItemCode(r.product_code),
         productName: String(r.product_name ?? ''),
@@ -2791,6 +2787,7 @@ export const erpReportsAPI = {
         cost: Number(r.cost ?? 0),
         depositAmount: sign * Math.abs(Number(r.service_deposit) || 0),
         ficheDeposits: parseFicheDepositList(r.fiche_deposits).map((n) => sign * Math.abs(n)),
+        ficheRemainders: parseFicheDepositList(r.fiche_remainders).map((n) => sign * Math.abs(n)),
       };
     })).filter((line) => lineKind === 'all' || line.lineKind === lineKind);
 
@@ -2843,8 +2840,9 @@ export const erpReportsAPI = {
 
   /**
    * Dashboard KPI özet toplamları — Ürün Brüt Kârı raporuyla **aynı formül**:
-   *   Ciro    = Σ (satış tutarı) − Σ (iade tutarı)  (işaretli)
-   *   Maliyet = Σ (envanter birim alış × satılan miktar)  (işaretli; hizmet formülü ayrı)
+   *   Ciro    = kapalı randevu faturasının tam tutarı − iade
+   *             (peşinat bir kez eklenir, ikinci kez eklenmez; açık ve iptal peşinat yok)
+   *   Maliyet = hizmet satır maliyeti; malzeme envanter birim alış × miktar
    *   Brüt Kâr = Ciro − Maliyet
    *   Marj %   = (Brüt Kâr / Ciro) × 100, iki ondalık; ciro 0 ise 0
    *

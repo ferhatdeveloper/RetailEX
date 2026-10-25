@@ -468,6 +468,78 @@ COALESCE((
 `.trim();
 
 /**
+ * Ürün kârlılığı ve genel bakış: açık veya iptal randevunun peşinatı satışa girmez.
+ * Durumu boş olan kayıt kalır; kar-zarar raporu kendi listesini kullanmaya devam eder.
+ * İptal peşinatı iade değildir.
+ */
+export const SQL_PROFIT_APPT_DEPOSIT_SKIP = `
+LOWER(TRIM(COALESCE(ba.status::text, ''))) IN (
+  'scheduled', 'confirmed', 'pre_paid', 'in_progress', 'pending',
+  'awaiting_service', 'cancelled', 'canceled', 'iptal',
+  'no_show', 'noshow', 'gelmedi',
+  'refunded', 'void', 'deleted', 'silindi'
+)
+`.trim();
+
+/** Kapalı randevunun peşinatı. Açık ve iptal randevu bu tutara yazılmaz. */
+export const SQL_PROFIT_SERVICE_DEPOSIT_AMOUNT = `
+COALESCE((
+  SELECT ba.deposit_amount
+  FROM beauty_appointments ba
+  WHERE si.linked_appointment_id IS NOT NULL
+    AND ba.id::text = si.linked_appointment_id::text
+    AND NOT (${SQL_PROFIT_APPT_DEPOSIT_SKIP})
+  LIMIT 1
+), 0)
+`.trim();
+
+/** Kapalı randevuların fiş peşinatları. Açık ve iptal tutarlar listede yoktur. */
+export const SQL_PROFIT_FICHE_DEPOSIT_LIST = `
+COALESCE((
+  SELECT string_agg(d.deposit_amount::text, ',')
+  FROM (
+    SELECT DISTINCT ba.id, COALESCE(ba.deposit_amount, 0) AS deposit_amount
+    FROM beauty_appointments ba
+    WHERE COALESCE(ba.deposit_amount, 0) <> 0
+      AND NOT (${SQL_PROFIT_APPT_DEPOSIT_SKIP})
+      AND (
+        (s.linked_appointment_id IS NOT NULL AND ba.id::text = s.linked_appointment_id::text)
+        OR (ba.remainder_sale_id IS NOT NULL AND ba.remainder_sale_id::text = s.id::text)
+        OR (ba.deposit_sale_id IS NOT NULL AND ba.deposit_sale_id::text = s.id::text)
+        OR (
+          s.sale_group_id IS NOT NULL
+          AND NULLIF(TRIM(ba.sale_group_id::text), '') IS NOT NULL
+          AND ba.sale_group_id::text = s.sale_group_id::text
+        )
+      )
+  ) d
+), '')
+`.trim();
+
+/** Kapalı randevunun kalanı. Satır bu kalana eşitse peşinat satışa bir kez eklenir. */
+export const SQL_PROFIT_FICHE_REMAINDER_LIST = `
+COALESCE((
+  SELECT string_agg(d.remainder_paid_amount::text, ',')
+  FROM (
+    SELECT DISTINCT ba.id, COALESCE(ba.remainder_paid_amount, 0) AS remainder_paid_amount
+    FROM beauty_appointments ba
+    WHERE COALESCE(ba.remainder_paid_amount, 0) <> 0
+      AND NOT (${SQL_PROFIT_APPT_DEPOSIT_SKIP})
+      AND (
+        (s.linked_appointment_id IS NOT NULL AND ba.id::text = s.linked_appointment_id::text)
+        OR (ba.remainder_sale_id IS NOT NULL AND ba.remainder_sale_id::text = s.id::text)
+        OR (ba.deposit_sale_id IS NOT NULL AND ba.deposit_sale_id::text = s.id::text)
+        OR (
+          s.sale_group_id IS NOT NULL
+          AND NULLIF(TRIM(ba.sale_group_id::text), '') IS NOT NULL
+          AND ba.sale_group_id::text = s.sale_group_id::text
+        )
+      )
+  ) d
+), '')
+`.trim();
+
+/**
  * Depozito satırı BEA fişinde randevu brütüyle değişmesin.
  * Dağıtım, satırın kendi net tutarını görsün.
  */

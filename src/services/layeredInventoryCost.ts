@@ -24,12 +24,12 @@ import {
   SQL_DISPLAY_ITEM_CODE,
   SQL_PL_SALES_OR_RETURN,
   SIGNED_FOLD_LINE_REVENUE_EXPR,
-  SIGNED_LINE_REVENUE_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_COST_EXPR,
-  SQL_FICHE_DEPOSIT_LIST,
+  SQL_PROFIT_FICHE_DEPOSIT_LIST,
+  SQL_PROFIT_FICHE_REMAINDER_LIST,
+  SQL_PROFIT_SERVICE_DEPOSIT_AMOUNT,
   SQL_SALES_SIGN,
-  SQL_SERVICE_DEPOSIT_AMOUNT,
   buildProfitCostCtes,
   PRODUCTS_JOIN,
   SERVICE_COST_JOINS,
@@ -43,7 +43,8 @@ import {
   BEAUTY_APPOINTMENT_BRIDGE_JOIN,
   SQL_BEAUTY_APPT_INCLUDED,
 } from '../utils/lastPurchaseCostSql';
-import { appointmentDepositRef, foldDepositLinesByInvoice, foldSaleItemsWithDeposits, parseFicheDepositList, type FicheDepositRef } from '../utils/beautyDepositAllocation';
+import { parseFicheDepositList } from '../utils/beautyDepositAllocation';
+import { foldProductProfitSaleLines, foldRestProfitInvoice } from '../utils/productProfitClosedSale';
 import { localCalendarDateKey, localTodayDateKey, toSqlDateInputString } from '../utils/localCalendarDate';
 import {
   applyFifoLayers,
@@ -513,6 +514,8 @@ async function loadCostProfitSaleLinesSql(opts: {
     SELECT
       s.id::text AS invoice_id,
       (${SQL_SALES_SIGN}) * COALESCE(s.net_amount, 0) AS invoice_net,
+      COALESCE(s.sale_group_id::text, '') AS sale_group_id,
+      COALESCE(s.parent_sale_id::text, '') AS parent_sale_id,
       COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
       ${SQL_DISPLAY_ITEM_CODE} AS product_code,
       COALESCE(
@@ -527,8 +530,9 @@ async function loadCostProfitSaleLinesSql(opts: {
       ${SIGNED_LINE_QTY_EXPR} AS quantity,
       ${SIGNED_FOLD_LINE_REVENUE_EXPR} AS revenue,
       ${SIGNED_LINE_COST_EXPR} AS fallback_cogs,
-      (${SQL_SALES_SIGN}) * (${SQL_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
-      ${SQL_FICHE_DEPOSIT_LIST} AS fiche_deposits
+      (${SQL_SALES_SIGN}) * (${SQL_PROFIT_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
+      ${SQL_PROFIT_FICHE_DEPOSIT_LIST} AS fiche_deposits,
+      ${SQL_PROFIT_FICHE_REMAINDER_LIST} AS fiche_remainders
     FROM sale_items si
     INNER JOIN sales s ON s.id = si.invoice_id
     ${PRODUCTS_JOIN}
@@ -547,12 +551,15 @@ async function loadCostProfitSaleLinesSql(opts: {
     [opts.firmNr, opts.start, opts.end],
     { firmNr: opts.firmNr, periodNr: opts.periodNr },
   );
-  const folded = foldDepositLinesByInvoice((rows || []).map((r) => {
+  const folded = foldProductProfitSaleLines((rows || []).map((r) => {
     const invoiceNet = Number(r.invoice_net) || 0;
     const sign = invoiceNet < 0 ? -1 : 1;
+    const fallbackCogs = Number(r.fallback_cogs ?? 0) || 0;
     return {
       invoiceId: String(r.invoice_id ?? ''),
       invoiceNet,
+      saleGroupId: String(r.sale_group_id || '').trim(),
+      parentSaleId: String(r.parent_sale_id || '').trim(),
       productId: String(r.product_id ?? ''),
       productCode: displayItemCode(r.product_code),
       productName: String(r.product_name ?? ''),
@@ -560,9 +567,11 @@ async function loadCostProfitSaleLinesSql(opts: {
       lineKind: r.line_kind === 'service' ? 'service' as const : 'product' as const,
       quantity: Number(r.quantity ?? 0) || 0,
       total: Number(r.revenue ?? 0) || 0,
-      fallbackCogs: Number(r.fallback_cogs ?? 0) || 0,
+      cost: fallbackCogs,
+      fallbackCogs,
       depositAmount: sign * Math.abs(Number(r.service_deposit) || 0),
       ficheDeposits: parseFicheDepositList(r.fiche_deposits).map((n) => sign * Math.abs(n)),
+      ficheRemainders: parseFicheDepositList(r.fiche_remainders).map((n) => sign * Math.abs(n)),
     };
   }));
   const grouped = new Map<string, SaleLineRaw>();
@@ -652,7 +661,7 @@ async function loadCostProfitSaleLinesRest(opts: {
       .get<Record<string, unknown>[]>(
         `/rex_${fn}_${pn}_beauty_appointments`,
         {
-          select: 'id,deposit_amount,service_name,remainder_sale_id,deposit_sale_id,sale_group_id',
+          select: 'id,status,deposit_amount,remainder_paid_amount,service_name,remainder_sale_id,deposit_sale_id,sale_group_id',
           limit: '8000',
         },
         { schema: 'beauty' },
@@ -745,16 +754,6 @@ async function loadCostProfitSaleLinesRest(opts: {
     linesNetByInvoice.set(iid, (linesNetByInvoice.get(iid) || 0) + (Number(it.net_amount ?? 0) || 0));
   }
 
-  const depositRefs = (beautyAppointments || [])
-    .map((a) => appointmentDepositRef({
-      id: String(a.id || ''),
-      deposit_amount: Number(a.deposit_amount) || 0,
-      service_name: a.service_name == null ? null : String(a.service_name),
-      remainder_sale_id: a.remainder_sale_id == null ? null : String(a.remainder_sale_id),
-      deposit_sale_id: a.deposit_sale_id == null ? null : String(a.deposit_sale_id),
-      sale_group_id: a.sale_group_id == null ? null : String(a.sale_group_id),
-    }))
-    .filter((row): row is FicheDepositRef => !!row);
   type CostFoldLine = {
     index: number;
     invoiceId: string;
@@ -796,12 +795,12 @@ async function loadCostProfitSaleLinesRest(opts: {
   for (const [invoiceId, group] of costByInvoice) {
     const inv = salesById.get(invoiceId);
     const sgn = inv && isSalesReturnFiche(inv) ? -1 : 1;
-    const folded = foldSaleItemsWithDeposits(group, {
+    const folded = foldRestProfitInvoice(group, {
       id: invoiceId,
       total: sgn * (Number(inv?.net_amount ?? 0) || 0),
       linkedAppointmentId: inv?.linked_appointment_id == null ? null : String(inv.linked_appointment_id),
       saleGroupId: inv?.sale_group_id == null ? null : String(inv.sale_group_id),
-    }, depositRefs);
+    }, beautyAppointments);
     for (const line of folded) revenueByIndex.set(line.index, line.total);
   }
 
@@ -814,9 +813,7 @@ async function loadCostProfitSaleLinesRest(opts: {
     if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
     const inv = salesById.get(String(it.invoice_id));
     if (!inv) continue;
-    // 16.10.2026 — Peşinat (deposit) satışlarını brüt kâr analizinden
-    // hariç tut. Deposit henüz hizmet verilmemiş avanstır; "Kar/Zarar
-    // Raporu"na "DEPOSIT" adıyla ürün satırı olarak yansıyordu.
+    // Peşinat fişi ayrı satır olmaz. Kapalı faturanın peşinatı hizmet tutarına bir kez yazılır.
     if (inv.is_deposit === true || inv.is_deposit === 'true' || inv.is_deposit === 1) continue;
     if (!revenueByIndex.has(lineIndex)) continue;
     const sgn = isSalesReturnFiche(inv) ? -1 : 1;
@@ -984,7 +981,7 @@ function productAllocKey(line: { productId?: string; productCode?: string; lineK
 }
 
 /**
- * Müşteri bazlı brüt kâr: aynı satış/SMM zinciri (getCostProfitAnalysis).
+ * Müşteri bazlı brüt kâr: aynı satış katlaması (kapalı randevu faturasının tam tutarı) ve aynı SMM.
  * Malzeme FIFO dönem SMM'si müşteri miktar/ciro payına orantılı dağıtılır —
  * böylece müşteri toplamları ürün sekmesi / dashboard brüt kârı ile uyumlu kalır.
  */
@@ -1108,6 +1105,10 @@ async function loadCustomerCostProfitSaleLinesSql(opts: {
     `
     WITH ${profitCtes}
     SELECT
+      s.id::text AS invoice_id,
+      (${SQL_SALES_SIGN}) * COALESCE(s.net_amount, 0) AS invoice_net,
+      COALESCE(s.sale_group_id::text, '') AS sale_group_id,
+      COALESCE(s.parent_sale_id::text, '') AS parent_sale_id,
       COALESCE(s.customer_id::text, '') AS customer_id,
       COALESCE(NULLIF(TRIM(c.code), ''), '') AS customer_code,
       COALESCE(
@@ -1124,10 +1125,14 @@ async function loadCustomerCostProfitSaleLinesSql(opts: {
         bsvc.name,
         '—'
       ) AS product_name,
+      COALESCE(si.item_type, '') AS item_type,
       CASE WHEN ${SQL_IS_SERVICE_LINE} THEN 'service' ELSE 'product' END AS line_kind,
-      COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0) AS quantity,
-      COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0) AS revenue,
-      COALESCE(SUM(${SIGNED_LINE_COST_EXPR}), 0) AS fallback_cogs
+      ${SIGNED_LINE_QTY_EXPR} AS quantity,
+      ${SIGNED_FOLD_LINE_REVENUE_EXPR} AS revenue,
+      ${SIGNED_LINE_COST_EXPR} AS fallback_cogs,
+      (${SQL_SALES_SIGN}) * (${SQL_PROFIT_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
+      ${SQL_PROFIT_FICHE_DEPOSIT_LIST} AS fiche_deposits,
+      ${SQL_PROFIT_FICHE_REMAINDER_LIST} AS fiche_remainders
     FROM sale_items si
     INNER JOIN sales s ON s.id = si.invoice_id
     LEFT JOIN customers c ON c.id = s.customer_id
@@ -1143,26 +1148,68 @@ async function loadCustomerCostProfitSaleLinesSql(opts: {
       AND COALESCE(s.is_deposit, false) = false
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) >= $2
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) <= $3
-    GROUP BY 1, 2, 3, 4, 5, 6, 7
-    HAVING ABS(COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0)) > 0.0001
-        OR ABS(COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0)) > 0.009
     `,
     [opts.firmNr, opts.start, opts.end],
     { firmNr: opts.firmNr, periodNr: opts.periodNr },
   );
 
-  const lines: CustomerSaleLineRaw[] = (rows || []).map((r) => ({
-    customerId: String(r.customer_id ?? ''),
-    customerCode: String(r.customer_code ?? ''),
-    customerName: String(r.customer_name ?? UNNAMED_CUSTOMER),
-    productId: String(r.product_id ?? ''),
-    productCode: displayItemCode(r.product_code),
-    productName: String(r.product_name ?? ''),
-    quantity: Number(r.quantity ?? 0) || 0,
-    revenue: Number(r.revenue ?? 0) || 0,
-    fallbackCogs: Number(r.fallback_cogs ?? 0) || 0,
-    lineKind: r.line_kind === 'service' ? ('service' as const) : ('product' as const),
+  const foldedCustomer = foldProductProfitSaleLines((rows || []).map((r) => {
+    const invoiceNet = Number(r.invoice_net) || 0;
+    const sign = invoiceNet < 0 ? -1 : 1;
+    const fallbackCogs = Number(r.fallback_cogs ?? 0) || 0;
+    return {
+      invoiceId: String(r.invoice_id ?? ''),
+      invoiceNet,
+      saleGroupId: String(r.sale_group_id || '').trim(),
+      parentSaleId: String(r.parent_sale_id || '').trim(),
+      customerId: String(r.customer_id ?? ''),
+      customerCode: String(r.customer_code ?? ''),
+      customerName: String(r.customer_name ?? UNNAMED_CUSTOMER),
+      productId: String(r.product_id ?? ''),
+      productCode: displayItemCode(r.product_code),
+      productName: String(r.product_name ?? ''),
+      lineType: String(r.item_type ?? ''),
+      lineKind: r.line_kind === 'service' ? 'service' as const : 'product' as const,
+      quantity: Number(r.quantity ?? 0) || 0,
+      total: Number(r.revenue ?? 0) || 0,
+      cost: fallbackCogs,
+      fallbackCogs,
+      depositAmount: sign * Math.abs(Number(r.service_deposit) || 0),
+      ficheDeposits: parseFicheDepositList(r.fiche_deposits).map((n) => sign * Math.abs(n)),
+      ficheRemainders: parseFicheDepositList(r.fiche_remainders).map((n) => sign * Math.abs(n)),
+    };
   }));
+  const customerGrouped = new Map<string, CustomerSaleLineRaw>();
+  for (const line of foldedCustomer) {
+    const key = [
+      line.customerId,
+      line.customerCode,
+      line.customerName,
+      line.lineKind,
+      line.productId,
+      line.productCode,
+      line.productName,
+    ].join('|');
+    const cur = customerGrouped.get(key) || {
+      customerId: line.customerId,
+      customerCode: line.customerCode,
+      customerName: line.customerName || UNNAMED_CUSTOMER,
+      productId: line.productId,
+      productCode: line.productCode,
+      productName: line.productName,
+      quantity: 0,
+      revenue: 0,
+      fallbackCogs: 0,
+      lineKind: line.lineKind,
+    };
+    cur.quantity += line.quantity;
+    cur.revenue += line.total;
+    cur.fallbackCogs += Number(line.cost ?? line.fallbackCogs) || 0;
+    customerGrouped.set(key, cur);
+  }
+  const lines: CustomerSaleLineRaw[] = Array.from(customerGrouped.values()).filter(
+    (row) => Math.abs(row.quantity) > 0.0001 || Math.abs(row.revenue) > 0.009,
+  );
 
   const { rows: txnRows } = await postgres.query<Record<string, unknown>>(
     `
@@ -1209,14 +1256,14 @@ async function loadCustomerCostProfitSaleLinesRest(opts: {
   const { postgrest } = await import('./api/postgrestClient');
   const fn = opts.firmNr;
   const pn = opts.periodNr;
-  const [sales, items, products, services, beautyServices, consumables, customers] =
+  const [sales, items, products, services, beautyServices, consumables, customers, beautyAppointments] =
     await Promise.all([
       postgrest
         .get<Record<string, unknown>[]>(
           `/rex_${fn}_${pn}_sales`,
           {
             select:
-              'id,date,fiche_type,is_cancelled,is_deposit,status,trcode,created_at,net_amount,customer_id,customer_name',
+              'id,date,fiche_type,is_cancelled,is_deposit,status,trcode,created_at,net_amount,customer_id,customer_name,linked_appointment_id,sale_group_id',
             order: 'date.desc',
             limit: 12000,
           },
@@ -1267,6 +1314,16 @@ async function loadCustomerCostProfitSaleLinesRest(opts: {
           `/rex_${fn}_customers`,
           { select: 'id,code,name', limit: 8000 },
           { schema: 'public' },
+        )
+        .catch(() => [] as Record<string, unknown>[]),
+      postgrest
+        .get<Record<string, unknown>[]>(
+          `/rex_${fn}_${pn}_beauty_appointments`,
+          {
+            select: 'id,status,deposit_amount,remainder_paid_amount,service_name,remainder_sale_id,deposit_sale_id,sale_group_id',
+            limit: 8000,
+          },
+          { schema: 'beauty' },
         )
         .catch(() => [] as Record<string, unknown>[]),
     ]);
@@ -1379,14 +1436,28 @@ async function loadCustomerCostProfitSaleLinesRest(opts: {
     txnByKey.set(ck, set.size);
   }
 
-  const map = new Map<string, CustomerSaleLineRaw>();
+  type CustomerRestLine = {
+    invoiceId: string;
+    productName: string;
+    lineType: string;
+    lineKind: CostProfitLineKind;
+    quantity: number;
+    total: number;
+    cost: number;
+    customerId: string;
+    customerCode: string;
+    customerName: string;
+    productId: string;
+    productCode: string;
+  };
+  const pending: CustomerRestLine[] = [];
   for (const it of items || []) {
     if (!saleOk.has(String(it.invoice_id))) continue;
     const itemType = String(it.item_type || 'Malzeme');
     if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
     const inv = salesById.get(String(it.invoice_id));
     if (!inv) continue;
-    // 16.10.2026 — Müşteri kâr analizinde de peşinat fişleri hariç.
+    // Peşinat fişi ayrı satır olmaz. Kapalı faturanın peşinatı hizmet tutarına bir kez yazılır.
     if (inv.is_deposit === true || inv.is_deposit === 'true' || inv.is_deposit === 1) continue;
     const cust = inv.customer_id ? customerById.get(String(inv.customer_id)) : undefined;
     const customerId = String(inv.customer_id || '').trim();
@@ -1445,25 +1516,58 @@ async function loadCustomerCostProfitSaleLinesRest(opts: {
         serviceUnitCost: serviceUnit,
         isService,
       });
-    const ck = customerAggKey({ customerId, customerCode, customerName });
-    const key = `${ck}|${isService ? 'S' : 'P'}|${pid || code}`;
-    const cur = map.get(key) || {
+    pending.push({
+      invoiceId: String(it.invoice_id),
+      productName: String(it.item_name ?? prod?.name ?? svc?.name ?? beauty?.name ?? ''),
+      lineType: itemType,
+      lineKind,
+      quantity: qty,
+      total: revenue,
+      cost: fallbackCogs,
       customerId,
       customerCode,
       customerName,
       productId: pid,
       productCode: code,
-      productName: String(it.item_name ?? prod?.name ?? svc?.name ?? beauty?.name ?? ''),
-      quantity: 0,
-      revenue: 0,
-      fallbackCogs: 0,
-      lineKind,
-    };
-    cur.quantity += qty;
-    cur.revenue += revenue;
-    cur.fallbackCogs += fallbackCogs;
-    if (!cur.productName && it.item_name) cur.productName = String(it.item_name);
-    map.set(key, cur);
+    });
+  }
+  const byInvoice = new Map<string, CustomerRestLine[]>();
+  for (const line of pending) {
+    const bucket = byInvoice.get(line.invoiceId);
+    if (bucket) bucket.push(line);
+    else byInvoice.set(line.invoiceId, [line]);
+  }
+  const map = new Map<string, CustomerSaleLineRaw>();
+  for (const [invoiceId, group] of byInvoice) {
+    const inv = salesById.get(invoiceId);
+    const sgn = inv && isSalesReturnFiche(inv) ? -1 : 1;
+    const folded = foldRestProfitInvoice(group, {
+      id: invoiceId,
+      total: sgn * (Number(inv?.net_amount ?? 0) || 0),
+      linkedAppointmentId: inv?.linked_appointment_id == null ? null : String(inv.linked_appointment_id),
+      saleGroupId: inv?.sale_group_id == null ? null : String(inv.sale_group_id),
+    }, beautyAppointments);
+    for (const line of folded) {
+      const ck = customerAggKey(line);
+      const key = `${ck}|${line.lineKind === 'service' ? 'S' : 'P'}|${line.productId || line.productCode}`;
+      const cur = map.get(key) || {
+        customerId: line.customerId,
+        customerCode: line.customerCode,
+        customerName: line.customerName,
+        productId: line.productId,
+        productCode: line.productCode,
+        productName: line.productName,
+        quantity: 0,
+        revenue: 0,
+        fallbackCogs: 0,
+        lineKind: line.lineKind === 'service' ? 'service' : 'product',
+      };
+      cur.quantity += Number(line.quantity) || 0;
+      cur.revenue += Number(line.total) || 0;
+      cur.fallbackCogs += Number(line.cost) || 0;
+      if (!cur.productName && line.productName) cur.productName = line.productName;
+      map.set(key, cur);
+    }
   }
 
   return { lines: Array.from(map.values()), txnByKey };
