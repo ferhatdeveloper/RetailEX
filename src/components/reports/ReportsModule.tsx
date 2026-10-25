@@ -26,6 +26,11 @@ import {
   isForfeitedUnrefundedDeposit,
 } from '../../utils/forfeitedReservationCash';
 import {
+  beautyPeriodFicheToSale,
+  mergeUnmirroredPeriodFiches,
+  passesDailySalesDetailList,
+} from '../../utils/dailySalesDetailRows';
+import {
   dailyNetSaleRevenue,
 } from '../../utils/dailyReportKpis';
 import {
@@ -858,28 +863,12 @@ function dailyKindAmountShare(row: DailyUnifiedRow, filter: DailyKindFilter): nu
 }
 
 function applyDailyKindFilter(row: DailyUnifiedRow, filter: DailyKindFilter): DailyUnifiedRow | null {
-  // 17.10.2026 — Kullanıcı isteği (whatsapp, guzel DB): "rezervasyon tutari
-  // burda gorunmemeli listede musteri de yok diyor". Rezervasyon avansı
-  // (cari_avans → `isAvans=true`) Satış Detayları tablosunda **tüm
-  // filtrelerde** hariç tutulur; avans bir hizmet rezervasyonunun peşinatıdır
-  // — hizmet/ürün satış değildir, Ciro'ya katılmaz ve ayrı satır olarak
-  // gösterilmesi çift yazıma yol açır. Önceki sürüm yalnızca
-  // service/product filtresinde hariç tutuyordu; all filtresinde hâlâ
-  // görünüyordu — bu da "Süslenmiş müşteri" placeholder satırının
-  // yukarıdaki 20.000 IQD avansı olarak yansımasına neden oluyordu.
-  //
-  // 19.10.2026 — Rezervasyon sekmesi eklendi: o sekmede avans satırları
-  // SADECE gösterilir. Açık ve mahsup edilmiş avans "Tümü" listesinde
-  // gizlidir. İade edilmemiş iptal peşinatı "Tümü" listesinde ayrı satırdır;
-  // hizmet veya ürün satışı sayılmaz.
-  if (filter === 'reservation') {
-    if (row.isAvans === true) return row;
-    return null;
-  }
-  if (row.isForfeitedDeposit === true) {
-    return filter === 'all' ? row : null;
-  }
-  if (row.isAvans === true) return null;
+  // Tümü: dönemdeki bütün fişler. Yeni fiş eskisini düşürmez.
+  // Açık ve mahsup avans bilgi satırıdır; nete ikinci kez yazılmaz.
+  // İade edilmeyen iptal peşinatı Tümü listesinde kalır.
+  // Hizmet ve Ürün sekmeleri avansı satış sanmaz.
+  if (!passesDailySalesDetailList(row, filter)) return null;
+  if (row.isAvans === true || row.isForfeitedDeposit === true) return row;
   if (filter === 'all') return row;
   // 09.10.2026 — Eski not (korundu): Hizmet/Ürün filtresinde de avans
   // hariç — yukarıdaki erken dönüş zaten bunu da karşılıyor.
@@ -1433,10 +1422,25 @@ export function ReportsModule({
     try {
       const { salesAPI } = await import('../../services/api/sales');
       const [rows] = await Promise.all([
-        salesAPI.getByDateRange(ledgerFrom, ledgerTo),
+        salesAPI.getForDailyReport(ledgerFrom, ledgerTo),
         rememberDepositRefs(ledgerFrom, ledgerTo),
       ]);
-      setReportRangeSales(Array.isArray(rows) ? rows : []);
+      const erpRows = Array.isArray(rows) ? rows : [];
+      let merged = erpRows;
+      try {
+        const beautyRows = await beautyService.getSalesInRange(ledgerFrom, ledgerTo);
+        const extras = (Array.isArray(beautyRows) ? beautyRows : [])
+          .map((row) => beautyPeriodFicheToSale(row))
+          .filter((row): row is Sale => row != null);
+        merged = mergeUnmirroredPeriodFiches(erpRows, extras);
+      } catch (beautyErr) {
+        console.warn('[ReportsModule] Güzellik fişleri günlük listeye eklenemedi:', beautyErr);
+      }
+      const inPeriod = merged.filter((sale) => {
+        const day = localCalendarDateKey(sale.date);
+        return day >= ledgerFrom && day <= ledgerTo;
+      });
+      setReportRangeSales(inPeriod);
     } catch (err) {
       console.error('[ReportsModule] Seçili dönem satışları yüklenemedi:', err);
       setReportRangeSales([]);
@@ -3590,12 +3594,10 @@ export function ReportsModule({
         linkedAppointmentId: linkedAppointmentId || undefined,
       };
     };
-    // Bug-fix: `applied` statüslü avanslar zaten satış fişine uygulanmış —
-    // tabloda çift sayılmaması için hariç tut. Sadece `open` (henüz
-    // uygulanmamış) avanslar ayrı satır olarak gösterilir.
-    const avansRows = dailyAvansList
-      .filter((a) => String((a as any).status || '').trim().toLowerCase() !== 'applied')
-      .map(mapAvans);
+    // Mahsup (`applied`) avans da listede durur. Yeni satış eskisini silmez.
+    // Net katkısı 0'dır: tutar hizmet fişinin içindedir, ikinci kez yazılmaz.
+    // İade edilmeyen iptal peşinatı `isForfeitedDeposit` ile bir kez kalır.
+    const avansRows = dailyAvansList.map(mapAvans);
 
     if (businessType !== 'restaurant') {
       return [...dailySales.map(mapErpSale), ...avansRows].sort(
@@ -3698,15 +3700,6 @@ export function ReportsModule({
   const dailyKindVisibleRows = useMemo(() => {
     const out: DailyUnifiedRow[] = [];
     for (const row of dailyVisibleRows) {
-      // 19.10.2026 — Avans satırları:
-      // - "Tümü" sekmesinde gizli (mükerrer algısı önlenir)
-      // - "Rezervasyon" sekmesinde görünür (ayrı liste)
-      // - "Hizmet" / "Ürün" sekmesinde gizli (applyDailyKindFilter zaten hariç tutuyor)
-      if (
-        (row as { isAvans?: boolean; isForfeitedDeposit?: boolean }).isAvans === true
-        && (row as { isForfeitedDeposit?: boolean }).isForfeitedDeposit !== true
-        && dailyKindFilter === 'all'
-      ) continue;
       const next = applyDailyKindFilter(row, dailyKindFilter);
       if (next) out.push(next);
     }
@@ -3721,8 +3714,9 @@ export function ReportsModule({
   const dailyKindActiveRows = useMemo(() => {
     const out: DailyUnifiedRow[] = [];
     for (const row of dailyActiveRows) {
-      // Açık ve mahsup edilmiş avans listeden gizli kalır.
-      // İade edilmemiş iptal peşinatı nete bir kez yazılmak üzere kalır.
+      // Yazdırma özeti ham `total` toplar. Açık ve mahsup avans bilgi satırıdır;
+      // buraya girerse peşinat ikinci kez yazılır. Ekran listesi onları gösterir.
+      // İade edilmeyen iptal peşinatı nete bir kez yazılmak üzere kalır.
       if (
         (row as { isAvans?: boolean }).isAvans === true
         && (row as { isForfeitedDeposit?: boolean }).isForfeitedDeposit !== true
@@ -7563,11 +7557,9 @@ export function ReportsModule({
                             // hizmet brütünü kirletmemesi için bu satır
                             // footerFormat'ta zaten Hariç.
                             if (row.isAvans) {
-                              return (
-                                <div>
-                                  <div>{formatNumber(Number(row.total) || 0, 2, false)}</div>
-                                </div>
-                              );
+                              // Mahsup veya açık peşinat bilgi satırıdır.
+                              // Tutar hizmet fişinde vardır; net hücresi ve dip toplam ikinci kez yazmaz.
+                              return '—';
                             }
                             // Net = indirim öncesi − indirim. İndirim 0 iken net = indirim öncesi.
                             // İade satırında indirim öncesi eksi ise net de eksi (−10.000).

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { passesDailySalesDetailList } from '../../utils/dailySalesDetailRows';
+import { sumDailySalesDetailCashBalance } from '../../utils/dailySalesDetailCashBalance';
 
 /**
  * 09.10.2026 — Kullanıcı şikayeti (WhatsApp, guzel DB):
@@ -142,13 +144,15 @@ describe('dailyKindAvansFilter — 09.10.2026 + 17.10.2026 Rezervasyon avansı a
   // Avans Ciro Dışı tahsilattır; Satış Detayları tablosunda ayrı satır
   // gösterilmesi çift yazıma yol açar. "Peşinat (Avans)" kartında ayrıca
   // bilgi amaçlı izlenir.
-  it('filter=all → avans Hariç, ürün + hizmet satırları geçer (17.10.2026)', () => {
+  it('filter=all → avans listede kalır, ürün ve hizmet de kalır', () => {
     const avans = makeAvans(20_000);
     const product = makeProductSale(15_000);
     const service = makeServiceSale(25_000);
-    expect(applyDailyKindFilter(avans, 'all')).toBeNull();
-    expect(applyDailyKindFilter(product, 'all')).not.toBeNull();
-    expect(applyDailyKindFilter(service, 'all')).not.toBeNull();
+    expect(passesDailySalesDetailList(avans, 'all')).toBe(true);
+    expect(passesDailySalesDetailList(product, 'all')).toBe(true);
+    expect(passesDailySalesDetailList(service, 'all')).toBe(true);
+    expect(passesDailySalesDetailList(avans, 'product')).toBe(false);
+    expect(passesDailySalesDetailList(avans, 'service')).toBe(false);
   });
 
   it('filter=product → avans Hariç, sadece ürün geçer', () => {
@@ -190,17 +194,13 @@ describe('dailyKindAvansFilter — 09.10.2026 + 17.10.2026 Rezervasyon avansı a
   // 70.000 alt toplam). Düzeltme sonrası alt toplam 50.000 olmalı;
   // avans Ciro dışı tahsilat olarak ayrı "Peşinat (Avans)" kartında
   // izlenir.
-  it('Süslenmiş müşteri avans + admin FERHAT satış → filter=all ile yalnız satış geçer (17.10.2026)', () => {
-    const avansSuslenmisMusteri = makeAvans(20_000); // cari_avans → Süslenmiş müşteri
-    const realSaleFerhat = makeServiceSale(50_000); // admin → FERHAT, 50.000 IQD
-    const filtered = [avansSuslenmisMusteri, realSaleFerhat]
-      .map((row) => applyDailyKindFilter(row, 'all'))
-      .filter((r): r is DailyUnifiedRowLite => r !== null);
-    // Yalnızca gerçek satış (admin → FERHAT, 50.000) geçer.
-    expect(filtered.length).toBe(1);
-    expect(filtered[0].total).toBe(50_000);
-    // Alt toplam: 70.000 (avans dahil) → 50.000 (avans Hariç).
-    const subtotal = filtered.reduce((acc, r) => acc + (Number(r.total) || 0), 0);
-    expect(subtotal).toBe(50_000);
+  it('Süslenmiş müşteri avansı listede kalır, dip toplam yalnız satışı yazar', () => {
+    const avansSuslenmisMusteri = makeAvans(20_000);
+    const realSaleFerhat = makeServiceSale(50_000);
+    const rows = [avansSuslenmisMusteri, realSaleFerhat].filter((row) =>
+      passesDailySalesDetailList(row, 'all'),
+    );
+    expect(rows).toHaveLength(2);
+    expect(sumDailySalesDetailCashBalance(rows)).toBe(50_000);
   });
 });

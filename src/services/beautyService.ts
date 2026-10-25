@@ -5,6 +5,7 @@ import type { Sale, SaleItem } from '../core/types/models';
 // otomatik olarak bu sales fişine bağlamak için kullanılır (kalıcı çözüm).
 import { applyOpenAdvancesToSale } from './avansService';
 import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
+import { widenDailyReportQueryRange } from '../utils/dailySalesDetailRows';
 import { postgres, ERP_SETTINGS } from './postgres';
 import {
     beautyInvoicePrefix,
@@ -6766,6 +6767,49 @@ export const beautyService = {
             LEFT JOIN ${ct} c ON s.customer_id = c.id
             ORDER BY s.created_at DESC LIMIT 100
         `);
+        return rows;
+    },
+
+    /**
+     * Seçilen gün aralığındaki güzellik fişleri. Sabit LIMIT yoktur.
+     * Günlük rapor, ERP aynası olmayan fişleri bu listeden ekler.
+     */
+    async getSalesInRange(fromYmd: string, toYmd: string): Promise<BeautySale[]> {
+        const from = String(fromYmd || '').trim().slice(0, 10);
+        const to = String(toYmd || '').trim().slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return [];
+        const span = widenDailyReportQueryRange(from, to);
+        const st = postgres.getMovementTableName('beauty_sales', 'beauty');
+        const ct = postgres.getCardTableName('customers');
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const pn = periodPaddedForBeauty();
+                const rows = await postgrest.get<BeautySale[]>(
+                    `/rex_${fn}_${pn}_beauty_sales`,
+                    {
+                        select: '*',
+                        and: `(created_at.gte.${span.from}T00:00:00,created_at.lt.${span.to}T00:00:00)`,
+                        order: 'created_at.asc',
+                        limit: 20000,
+                    },
+                    { schema: 'beauty' },
+                );
+                return Array.isArray(rows) ? rows : [];
+            } catch (error) {
+                console.warn('[beautyService] getSalesInRange PostgREST:', error);
+            }
+        }
+        const { rows } = await postgres.query(
+            `SELECT s.*, c.name AS customer_name
+             FROM ${st} s
+             LEFT JOIN ${ct} c ON s.customer_id = c.id
+             WHERE COALESCE(s.created_at, NOW()) >= $1::date
+               AND COALESCE(s.created_at, NOW()) < ($2::date + INTERVAL '1 day')
+             ORDER BY s.created_at ASC NULLS LAST`,
+            [span.from, span.to],
+        );
         return rows;
     },
 

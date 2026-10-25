@@ -28,6 +28,10 @@ import {
   restServiceUnitCost,
   SALES_RETURN_TRCODES,
 } from '../../utils/lastPurchaseCostSql';
+import {
+  assembleDailySalesDetailRows,
+  widenDailyReportQueryRange,
+} from '../../utils/dailySalesDetailRows';
 
 function positiveUnitCost(raw: unknown): number {
   const n = Number(raw);
@@ -152,6 +156,37 @@ async function enrichSalesWithLineItems(sales: Sale[]): Promise<Sale[]> {
   } catch (e) {
     console.warn('[SalesAPI] enrichSalesWithLineItems failed:', e);
     return sales;
+  }
+}
+
+/** Verilen hizmet (trcode 9). Alınan hizmet ve sipariş belgeleri dönmez. */
+async function fetchVerilenHizmetSales(startDate: string, endDate: string): Promise<Sale[]> {
+  try {
+    const pageSize = 5000;
+    const all: Sale[] = [];
+    let page = 1;
+    let totalPages = 1;
+    while (page <= totalPages) {
+      const result = await invoicesAPI.getPaginated({
+        page,
+        startDate,
+        endDate,
+        invoiceCategory: 'Hizmet',
+        pageSize,
+      });
+      const verilen = result.data.filter((inv) => {
+        const tc = Number((inv as { trcode?: number }).trcode ?? inv.invoice_type ?? 0);
+        return tc === 9;
+      });
+      all.push(...verilen.map(mapInvoiceToSale));
+      totalPages = Math.max(1, result.totalPages || 1);
+      if (!result.data.length) break;
+      page += 1;
+    }
+    return enrichSalesWithLineItems(all);
+  } catch (error) {
+    console.error('[SalesAPI] verilen hizmet alınamadı:', error);
+    return [];
   }
 }
 
@@ -739,6 +774,26 @@ export const salesAPI = {
       return enrichSalesWithLineItems(merged);
     } catch (error) {
       console.error('[SalesAPI] getByDateRange failed:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Günlük rapor fişleri. Satış, satış iadesi ve verilen hizmet (trcode 9).
+   * Alınan hizmet (trcode 4) bu listeye girmez.
+   * Sorgu bir gün genişler; ekran yerel takvim gününe göre keser.
+   * Kimlik bir kez durur. Fiş numarası eski satırı ezmez.
+   */
+  async getForDailyReport(startDate: string, endDate: string): Promise<Sale[]> {
+    try {
+      const span = widenDailyReportQueryRange(startDate, endDate);
+      const [base, verilen] = await Promise.all([
+        this.getByDateRange(span.from, span.to),
+        fetchVerilenHizmetSales(span.from, span.to),
+      ]);
+      return assembleDailySalesDetailRows([...base, ...verilen]);
+    } catch (error) {
+      console.error('[SalesAPI] getForDailyReport failed:', error);
       return [];
     }
   },

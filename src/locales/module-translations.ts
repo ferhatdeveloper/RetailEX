@@ -12049,13 +12049,10 @@ export const excelModuleTranslations = {
     ku: 'نۆرە',
   },
   reportsDailyKindHint: {
-    tr: 'Hizmet ve ürün tutarlarını ayırır. Karma fiş seçilen türe göre bölünür. Rezervasyon avansı Satış Detayları tablosunda **tüm filtrelerde Hariç** — avans Ciro Dışı tahsilattır, çift yazıma yol açmaması için ayrı "Peşinat (Avans)" kartında izlenir. Gider çıkış olarak eksi yazılır ve dip toplam kasa bakiyesinden bir kez düşülür.',
-    en: 'Separates service and product amounts. Mixed receipts are split by the selected type. Reservation advances are **excluded from all filters** in the Sales Details table — advances are off-revenue collections and are tracked separately on the Deposit (Advance) card. An expense is a negative outflow and is deducted once from the cash-balance footer.',
-    ar: 'يفصل مبالغ الخدمة والمنتج. تُقسَّم الإيصالات المختلطة حسب النوع المحدد. عربونات الحجز **مستبعدة من جميع الفلاتر** في جدول تفاصيل المبيعات — العرابين خارج الإيرادات ويُتابعان في بطاقة العربون المنفصلة. يظهر المصروف كخروج سالب ويُخصم مرة واحدة من رصيد الصندوق.',
-    // 17.10.2026 — Avans artık TÜM filtrelerde Hariç (eskiden yalnızca
-    // service/product). "Tümü" filtresinde de gizli; çift yazımı önlemek
-    // için kullanıcıya açık mesaj verilir.
-    ku: 'بڕی خزمەتگوزاری و بەرهەم جیا دەکاتەوە. پسوڵەی تێکەڵ بە جۆری هەڵبژێردراو دابەش دەکرێت. نۆرەکان **لە هەموو فلتەرەکان** مەستەثنایە لە خشتەیەکی فرۆشتنەکاندا — لە کارتی سەربەخۆی نۆرە (نۆرەی پێشوەختە) شوێنیان دەگیرێت. خەرجی وەک دەرچوونی نەرێنی دەردەکەوێت و جارێک لە باڵانسی سندووق دەردەکرێت.',
+    tr: 'Hizmet ve ürün tutarlarını ayırır. Karma fiş seçilen türe göre bölünür. Seçilen dönemdeki bütün fişler listede durur; yeni fiş eskisini silmez. Mahsup edilmiş veya kapanmış randevu peşinatı bilgi satırıdır, nete ikinci kez yazılmaz. İade edilmeyen iptal peşinatı bir kez kalır. Gider çıkış olarak eksi yazılır ve dip toplamdan bir kez düşülür.',
+    en: 'Separates service and product amounts. Mixed receipts are split by the selected type. Every fiche in the selected period stays in the list; a new fiche does not remove an older one. A settled or closed-appointment deposit is an information row and is not added to net again. An unrefunded cancelled deposit is counted once. An expense is a negative outflow and is deducted once from the footer.',
+    ar: 'يفصل مبالغ الخدمة والمنتج. تُقسَّم الإيصالات المختلطة حسب النوع المحدد. تبقى كل سندات الفترة المحددة في القائمة؛ لا يحذف سند جديد سنداً أقدم. عربون الموعد المُسوّى أو المغلق سطر معلومات ولا يُضاف إلى الصافي مرة ثانية. العربون الملغى غير المُعاد يُحسب مرة واحدة. يظهر المصروف كخروج سالب ويُخصم مرة واحدة من الإجمالي.',
+    ku: 'بڕی خزمەتگوزاری و بەرهەم جیا دەکاتەوە. پسوڵەی تێکەڵ بە جۆری هەڵبژێردراو دابەش دەکرێت. هەموو پسوڵەکانی ماوەکە لە لیستەکە دەمێننەوە؛ پسوڵەی نوێ کۆنەکە ناسڕێتەوە. پێشینەی چارەسەرکراو یان داخراو هێڵی زانیارییە و جارێکی تر بۆ صافی نانووسرێت. پێشینەی هەڵوەشاوە کە نەگەڕێنراوەتەوە جارێک دەمێنێتەوە. خەرجی وەک دەرچوونی نەرێنی دەردەکەوێت و جارێک لە کۆی خوارەوە دەردەکرێت.',
   },
   transactionCount: { tr: 'İşlem Sayısı', en: 'Transaction Count', ar: 'عدد العمليات', ku: 'ژمارەی کارەکان' },
   totalRevenueLabel: { tr: 'Toplam Ciro', en: 'Total Revenue', ar: 'إجمالي الإيرادات', ku: 'کۆی داهات' },
