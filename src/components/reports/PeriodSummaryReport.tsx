@@ -53,9 +53,10 @@ import { PeriodCashInDetailModal } from './PeriodCashInDetailModal';
 import { PeriodSummaryDayDetailModal } from './PeriodSummaryDayDetailModal';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 import { ReportKpiStrip, type ReportKpiItem } from './shared/ReportKpiStrip';
-import { buildClosedAppointmentDepositMap, buildReservationMap } from '../../utils/reportReservationPending';
-import { buildAvansDepositsMap, buildClosedReservationInfoMap } from '../../utils/avansReservationExclude';
+import { buildReservationMap } from '../../utils/reportReservationPending';
+import { buildAvansDepositsMap } from '../../utils/avansReservationExclude';
 import { forfeitedDepositByPeriod } from '../../utils/forfeitedReservationCash';
+import { cancelledUnclosedReservationByPeriod } from '../../utils/cancelledReservationBox';
 import {
   PERIOD_SUMMARY_HEADLINE_KEYS,
   isPeriodSummaryGridColumnVisible,
@@ -725,14 +726,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     // İlgili firm/dönem kapsamındaki beauty_appointments.status = 'completed'
     // id'leri.
     const completedAppointmentIds = new Set<string>();
-    const closedAppointmentIds = new Set<string>();
     for (const apt of (appointments as Array<{ id?: string; status?: string }>) || []) {
       const st = String(apt?.status ?? '').toLowerCase();
       if (!apt.id) continue;
       if (st === 'completed') completedAppointmentIds.add(String(apt.id));
-      if (st === 'completed' || st === 'cancelled' || st === 'canceled') {
-        closedAppointmentIds.add(String(apt.id));
-      }
     }
 
     const saleBucketKey = mode === 'monthly-days'
@@ -763,13 +760,6 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       completedAppointmentIds,
       mode,
     );
-    const closedAppointmentDeposits = buildClosedAppointmentDepositMap(appointments, mode);
-    const closedAvansInfoMap = buildClosedReservationInfoMap(
-      avansRows,
-      closedAppointmentIds,
-      mode,
-      closedAppointmentDeposits.appointmentIds,
-    );
 
     const expenseMap =
       mode === 'monthly-days'
@@ -792,7 +782,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       status?: string;
       deposit_amount?: number | string | null;
       appointment_date?: string;
+      date?: string;
     }>) || [];
+    const cancelledReservationMap = cancelledUnclosedReservationByPeriod(
+      {
+        appointments: appointmentRows,
+        avansRows,
+      },
+      mode,
+    );
     const forfeitedByPeriod = forfeitedDepositByPeriod(
       avansRows.map((row) => ({
         amount: row.amount,
@@ -849,10 +847,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // Peşinat ve rezervasyon avansı bilgi kolonudur: ciroya eklenmez, netten düşülmez.
       // Rezervasyon brüt/kalan da fatura kesilene kadar yalnız bilgi kolonudur.
       const reservation = reservationMap.get(periodKey) || { gross: 0, pending: 0, deposit: 0, count: 0 };
-      const closedDeposit = closedAppointmentDeposits.map.get(periodKey) || { deposit: 0, count: 0 };
-      const closedAvans = closedAvansInfoMap.get(periodKey) || { count: 0, amount: 0 };
-      const reservationDepositInfo = reservation.deposit + closedDeposit.deposit + closedAvans.amount;
-      const reservationCountInfo = reservation.count + closedDeposit.count + closedAvans.count;
+      const cancelledReservation = cancelledReservationMap.get(periodKey) || { amount: 0, count: 0 };
+      const reservationDepositInfo = cancelledReservation.amount;
+      const reservationCountInfo = cancelledReservation.count;
       // 14.10.2026 19:18 — reservationCount = rezervasyon adedi (miktar);
       // brütten ayrı kolon olarak gösterilir. depositCount'tan
       // bağımsız olmalı (depositCount = Ciro'ya yansımamış peşinat adedi).
@@ -1123,9 +1120,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ),
         meta: { defaultVisible: true },
       },
-      // Rezervasyon Tutarı (peşinat). Açık ve kapanmış rezervasyonun
-      // alınan tutarı burada bilgi olarak durur. Kapanmış tutar ciroya
-      // ve net kalana ikinci kez yazılmaz.
+      // Rezervasyon Tutarı. Yalnız iptal edilmiş ve kapanmamış randevunun
+      // peşinatı. Kapanmış peşinat ve açık bekleyen peşinat burada yoktur.
+      // Bilgi tutarıdır; ciroya ve net kalana yazılmaz.
       {
         key: 'reservationDeposit',
         header: `${tm('dailyDepositCollected') || 'Rezervasyon Tutarı'} (${currency})`,

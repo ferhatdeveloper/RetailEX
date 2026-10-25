@@ -480,10 +480,12 @@ export function AppointmentPOS({
             ...(canCancelAppointment
                 ? [{ value: AppointmentStatus.CANCELLED, label: tm('bAppointmentCancelled') } as const]
                 : []),
-            { value: AppointmentStatus.NO_SHOW, label: tm('bStatusNoShow') },
+            ...(appointmentStatusMatches(existingAppointment?.status, AppointmentStatus.NO_SHOW)
+                ? [{ value: AppointmentStatus.NO_SHOW, label: tm('bStatusNoShow'), disabled: true } as const]
+                : []),
         ];
         return [...STATUS_OPTS, ...extra];
-    }, [existingAppointment?.id, tm, canCancelAppointment]);
+    }, [existingAppointment?.id, existingAppointment?.status, tm, canCancelAppointment]);
 
     const posServiceCategoryLabels = useMemo((): Record<string, string> => {
         const base: Record<string, string> = {
@@ -3661,7 +3663,7 @@ export function AppointmentPOS({
                                 }}
                             >
                                 {appointmentStatusSelectOptions.map(o => (
-                                    <option key={o.value} value={o.value}>{o.label}</option>
+                                    <option key={o.value} value={o.value} disabled={'disabled' in o && o.disabled === true}>{o.label}</option>
                                 ))}
                             </select>
                         </div>

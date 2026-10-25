@@ -7070,6 +7070,54 @@ export const beautyService = {
     },
 
     /**
+     * Klinik paneli rezervasyon kutusu için günün avans satırları.
+     * Tutar toplamı `getCariAvansForDay` ile aynı tabloyu okur; kutu
+     * iptal edilmiş ve kapanmamış randevuyu ayrıca süzer.
+     * Tahsilat toplamı bu listeyle değişmez.
+     */
+    async listCariAvansRowsForDay(ymd: string): Promise<Array<{
+        id: string;
+        amount: number;
+        status: string;
+        notes: string | null;
+        created_at: string;
+        applied_sale_id: string | null;
+    }>> {
+        try {
+            const { startIso, endIso } = localYmdToDayRangeTstz(ymd);
+            const firm = String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
+            const period = String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
+            const table = `rex_${firm}_${period}_cari_avans`;
+            const { rows } = await postgres.query(
+                `SELECT id, amount, status, notes, created_at, applied_sale_id
+                   FROM ${table}
+                  WHERE created_at >= $1 AND created_at < $2`,
+                [startIso, endIso],
+            );
+            return (Array.isArray(rows) ? rows : []).map((row) => {
+                const record = row as {
+                    id?: unknown;
+                    amount?: unknown;
+                    status?: unknown;
+                    notes?: unknown;
+                    created_at?: unknown;
+                    applied_sale_id?: unknown;
+                };
+                return {
+                    id: String(record.id ?? ''),
+                    amount: Math.abs(Number(record.amount) || 0),
+                    status: String(record.status ?? ''),
+                    notes: record.notes == null ? null : String(record.notes),
+                    created_at: String(record.created_at ?? ''),
+                    applied_sale_id: record.applied_sale_id == null ? null : String(record.applied_sale_id),
+                };
+            });
+        } catch {
+            return [];
+        }
+    },
+
+    /**
      * Excel / yedek: yerel gün aralığında güzellik satışları + kalemler + müşteri kodu.
      * `payment_status` filtresi yok (paid / pending / cancelled hepsi listelenir; Excel’de süzebilirsiniz).
      */

@@ -222,6 +222,7 @@ import {
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
 import { reservationPendingForRange } from '../../utils/reportReservationPending';
+import { cancelledUnclosedReservationBox } from '../../utils/cancelledReservationBox';
 import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
@@ -3132,7 +3133,6 @@ export function ReportsModule({
     () => filterForRevenue(dailySales).filter((s) => !isDepositSale(s)),
     [dailySales],
   );
-  const dailyDepositCount = dailyDepositSales.length;
   const dailyDepositTotal = dailyDepositSales.reduce(
     (sum, s) => sum + (Number(s.total) || 0),
     0,
@@ -3148,7 +3148,6 @@ export function ReportsModule({
       0,
     );
   }, [dailyAvansList]);
-  const dailyAvansInfoCount = dailyAvansList.length;
   const dailyRevenueQuantity = useMemo(() => {
     if (businessType === 'restaurant' && dailySalesActive.length === 0) {
       return sumDailyReportLineQuantity(
@@ -7067,6 +7066,11 @@ export function ReportsModule({
     : ['grp-general', 'grp-design', 'grp-sales'];
 
   const dailyReportReturnCard = dailyReportReturnCardSummary(dailySalesDetailGridRows);
+  const cancelledReservationBox = cancelledUnclosedReservationBox({
+    appointments: dailyAppointments,
+    avansRows: dailyAvansList,
+    depositSales: dailyDepositSales,
+  });
   const dailyReportKpiByKey: Record<DailyReportScreenCardKey, DailyReportKpiCardModel> = {
     'total-revenue': {
       key: 'total-revenue',
@@ -7077,11 +7081,9 @@ export function ReportsModule({
     'reservation-amount': {
       key: 'reservation-amount',
       label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['reservation-amount']),
-      value: formatNumber(dailyDepositTotal + dailyAvansInfoTotal, 2, false),
-      hint: `${tm('dailyDepositCountShort') || 'Adet'}: ${dailyDepositCount + dailyAvansInfoCount}${
-        dailyAvansInfoCount > 0
-          ? ` · rezervasyon (avans ${dailyAvansInfoCount})`
-          : (dailyDepositCount > 0 ? ' · rezervasyon' : '')
+      value: formatNumber(cancelledReservationBox.amount, 2, false),
+      hint: `${tm('dailyDepositCountShort') || 'Adet'}: ${cancelledReservationBox.count}${
+        cancelledReservationBox.count > 0 ? ' · rezervasyon' : ''
       }`,
       testId: 'daily-deposit-card',
     },
@@ -7317,7 +7319,7 @@ export function ReportsModule({
 
                 <DailyReportKpiGrid cards={dailyReportKpiCards} />
 
-                {reservationAggregate.count > 0 ? (
+                {cancelledReservationBox.count > 0 ? (
                   <p
                     className="px-1 text-xs leading-relaxed text-slate-600"
                     data-testid="daily-reservation-summary"
@@ -7326,9 +7328,9 @@ export function ReportsModule({
                       {tm('reservationGrossLabel') || 'Rezervasyon Brüt'}: {formatNumber(reservationAggregate.gross, 2, false)}
                     </span>
                     {' · '}
-                    {tm('reservationCountLabel') || 'Rezervasyon Miktarı'}: {reservationAggregate.count} {tm('dailyDepositCountShort') || 'adet'}
+                    {tm('reservationCountLabel') || 'Rezervasyon Miktarı'}: {cancelledReservationBox.count} {tm('dailyDepositCountShort') || 'adet'}
                     {' · '}
-                    {tm('dailyDepositCollected') || 'Rezervasyon Tutarı'}: {formatNumber(reservationAggregate.deposit, 2, false)}
+                    {tm('dailyDepositCollected') || 'Rezervasyon Tutarı'}: {formatNumber(cancelledReservationBox.amount, 2, false)}
                     {' · '}
                     {tm('reservationPendingLabel') || 'Kalan'}: {formatNumber(reservationAggregate.pending, 2, false)}
                   </p>

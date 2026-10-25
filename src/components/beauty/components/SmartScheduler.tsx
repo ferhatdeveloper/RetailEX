@@ -2992,7 +2992,6 @@ export function SmartScheduler() {
                                         { status: AppointmentStatus.PRE_PAID,    label: tm('bStatusPrePaid') || 'Ön Ödeme Alındı', color: '#7c3aed', bg: '#ede9fe' },
                                         { status: AppointmentStatus.IN_PROGRESS, label: tm('bStatusStarted'),   color: '#d97706', bg: '#fef3c7' },
                                         { status: AppointmentStatus.CANCELLED,   label: tm('bStatusCancel'),    color: '#dc2626', bg: '#fee2e2' },
-                                        { status: AppointmentStatus.NO_SHOW,     label: tm('bStatusNoShow'),    color: '#9ca3af', bg: '#f3f4f6' },
                                     ] as { status: AppointmentStatus; label: string; color: string; bg: string }[]).map(opt => {
                                         const isCurrent = appointmentStatusMatches(selectedApt.status, opt.status);
                                         return (

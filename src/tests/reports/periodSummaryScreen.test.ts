@@ -2,7 +2,8 @@
  * Aylık Gün Özeti / Yıllık Ay Özeti görünürlüğü.
  * Rezervasyon Brüt ve Rezervasyon Kalan kolon tanımında yoktur.
  * Rezervasyon Tutarı ve Rezervasyon Miktarı durur.
- * Beş kutu klinik dolu tonunu kullanır. Rezervasyon kutusu tealdir.
+ * Beş kutu klinik dolu tonunu kullanır. Rezervasyon kutusu turuncudur.
+ * İade kutusu tealdir.
  * Rezervasyon tutarı nete eklenmez. Tutar formülü bu dosyada değişmez.
  */
 import { readFileSync } from 'node:fs';
@@ -17,6 +18,7 @@ import { periodSummaryHeadline } from '../../utils/periodSummaryNet';
 import {
   PERIOD_SUMMARY_HEADLINE_KEYS,
   PERIOD_SUMMARY_RESERVATION_FILL,
+  PERIOD_SUMMARY_RETURN_FILL,
   isPeriodSummaryGridColumnVisible,
   periodSummaryHeadlineTone,
   periodSummaryReservationHint,
@@ -55,7 +57,7 @@ describe('Aylık ve yıllık özet görünümü', () => {
     expect(src).toContain('data-testid="period-summary-toolbar"');
   });
 
-  it('beş kutuyu klinik dolu tonuyla boyar; rezervasyon tealdir', () => {
+  it('beş kutuyu klinik dolu tonuyla boyar; rezervasyon turuncu, iade tealdir', () => {
     expect(PERIOD_SUMMARY_HEADLINE_KEYS).toEqual([
       'revenue',
       'reservation',
@@ -77,19 +79,20 @@ describe('Aylık ve yıllık özet görünümü', () => {
     expect(revenue.label).toBe('#ffffff');
 
     expect(reservation.background).toBe(PERIOD_SUMMARY_RESERVATION_FILL);
-    expect(reservation.background).toBe('#0d9488');
+    expect(reservation.background).toBe('#f59e0b');
+    expect(reservation.background).toBe(clinicDashboardKpiTone('reservation').background);
+    expect(reservation.background).toBe(dailyReportCardTone('reservation-amount').background);
     expect(reservation.value).toBe('#ffffff');
     expect(reservation.label).toBe('#ffffff');
     expect(reservation.hint).toBe('#ffffff');
     expect(reservation.background).not.toBe(revenue.background);
-    expect(reservation.background).not.toBe(clinicDashboardKpiTone('reservation').background);
-    expect(reservation.background).not.toBe('#f59e0b');
+    expect(reservation.background).not.toBe('#0d9488');
     expect(reservation.background).not.toBe('#f04438');
     expect(reservation.background).not.toBe('#12b76a');
 
-    expect(returns.background).toBe(clinicDashboardKpiTone('reservation').background);
-    expect(returns.background).toBe(dailyReportCardTone('reservation-amount').background);
-    expect(returns.background).toBe('#f59e0b');
+    expect(returns.background).toBe(PERIOD_SUMMARY_RETURN_FILL);
+    expect(returns.background).toBe('#0d9488');
+    expect(returns.background).not.toBe(reservation.background);
     expect(returns.value).toBe('#ffffff');
 
     expect(expenses.background).toBe('#f04438');
@@ -153,11 +156,11 @@ describe('Aylık ve yıllık özet görünümü', () => {
 
     expect(reservation.textContent).toContain('15.000 IQD');
     expect(reservation.textContent).toContain('2 rezervasyon miktarı');
-    expect(reservation.style.backgroundColor).toBe(cssColor('#0d9488'));
+    expect(reservation.style.backgroundColor).toBe(cssColor('#f59e0b'));
     expect(reservation.className).not.toContain('bg-white');
 
     expect(returns.textContent).toContain('0 IQD');
-    expect(returns.style.backgroundColor).toBe(cssColor(clinicDashboardKpiTone('reservation').background));
+    expect(returns.style.backgroundColor).toBe(cssColor('#0d9488'));
     expect(returns.className).not.toContain('bg-white');
 
     expect(expenses.textContent).toContain('50.000 IQD');
@@ -260,7 +263,7 @@ describe('Aylık ve yıllık özet görünümü', () => {
     const net = screen.getByTestId('period-summary-kpi-net');
     expect(reservation.textContent).toContain('15.000 IQD');
     expect(reservation.textContent).toContain('2 rezervasyon miktarı');
-    expect(reservation.style.backgroundColor).toBe(cssColor('#0d9488'));
+    expect(reservation.style.backgroundColor).toBe(cssColor('#f59e0b'));
     expect(net.textContent).toContain('35.000 IQD');
     expect(net.style.backgroundColor).toBe(cssColor('#12b76a'));
     expect(strip.textContent).not.toContain('50.000');

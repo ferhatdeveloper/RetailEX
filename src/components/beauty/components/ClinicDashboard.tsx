@@ -25,6 +25,7 @@ import { fetchKasaIslemleri } from '../../../services/api/kasa';
 import type { BeautySale } from '../../../types/beauty';
 import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
 import { clinicDashboardTahsilatTotal } from '../../../utils/clinicDashboardKasaGiris';
+import { cancelledUnclosedReservationBox } from '../../../utils/cancelledReservationBox';
 import { BeautyServiceReportCrmModal } from '../../reports/BeautyServiceReportCrmModal';
 import { useClinicShellV2 } from '../clinicShellV2';
 import { ClinicDashboardV2 } from './ClinicDashboardV2';
@@ -110,6 +111,14 @@ export function ClinicDashboard() {
      *   reservation = Σ sales.deposit_total + Σ cari_avans.today
      */
     const [todayReservations, setTodayReservations] = useState<{ amount: number; count: number }>({ amount: 0, count: 0 });
+    const [todayAvansRows, setTodayAvansRows] = useState<Array<{
+        id: string;
+        amount: number;
+        status: string;
+        notes: string | null;
+        created_at: string;
+        applied_sale_id: string | null;
+    }>>([]);
 
     const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = useMemo(() => ({
         scheduled:   { label: tm('bAppointmentScheduled'), color: '#6366f1', bg: '#eef2ff' },
@@ -149,7 +158,8 @@ export function ClinicDashboard() {
             // avanslar REZERVASYON KPI'sını besler. Hata durumunda 0 dönerek
             // KPI'yı düşürmez, sadece avans katkısı eksik kalır.
             beautyService.getCariAvansForDay(todayStr).catch(() => ({ amount: 0, count: 0 })),
-        ]).then(([salesRows, kasaRows, cancelledReceipts, avansToday]) => {
+            beautyService.listCariAvansRowsForDay(todayStr).catch(() => []),
+        ]).then(([salesRows, kasaRows, cancelledReceipts, avansToday, avansRows]) => {
             const sales = Array.isArray(salesRows) ? salesRows : [];
             const cancelledSet = new Set(
                 (Array.isArray(cancelledReceipts) ? cancelledReceipts : [])
@@ -173,6 +183,7 @@ export function ClinicDashboard() {
                 amount: Math.max(0, Number(avansToday?.amount ?? 0) || 0),
                 count: Math.max(0, Number(avansToday?.count ?? 0) || 0),
             });
+            setTodayAvansRows(Array.isArray(avansRows) ? avansRows : []);
             setTodayExtraCash(extraCustomerCollectionsNotOnSales(
                 kasaRowsFiltered,
                 sales.map((s) => ({
@@ -209,6 +220,7 @@ export function ClinicDashboard() {
             // Bug ekleme (12.10.2026): cari_avans sorgusu patlarsa da KPI
             // 0 ile başlar; deposit + 0 = önceki davranış (geriye dönük uyumlu).
             setTodayReservations({ amount: 0, count: 0 });
+            setTodayAvansRows([]);
             // Bug 12.10.2026 — TAHSİLAT fallback: sorgu patlarsa KPI yine
             // mevcut davranışa (mainSales.reduce) geriler; KASA_GIRIS katkısı
             // eksik kalır ama dashboard boş ekranda kalmaz.
@@ -465,9 +477,17 @@ export function ClinicDashboard() {
             }
             return false;
         });
-        const reservation = reservationSales.reduce(
-            (s, sale) => s + Math.max(0, Number(sale.total) || 0), 0
-        );
+        const reservationBox = cancelledUnclosedReservationBox({
+            appointments: appointments.filter((apt) => beautyAppointmentDateKey(apt) === todayStr),
+            avansRows: todayAvansRows,
+            depositSales: reservationSales.map((sale) => ({
+                total: sale.total,
+                notes: sale.notes,
+                linked_appointment_id: sale.linked_appointment_id,
+                sale_group_id: sale.sale_group_id,
+                created_at: sale.created_at,
+            })),
+        });
         const remainingCari = 0;
 
         /**
@@ -507,15 +527,16 @@ export function ClinicDashboard() {
             //   - `reservationFromAvans` = 20.000 (bugün açık cari_avans)
             // REZERVASYON KPI ayrı kart = avans bilgilendirmesi.
             revenue: revenue + reservationFromAvans,
-            // REZERVASYON kart'ı: yalnızca avans bilgilendirmesi
-            reservation: reservation + reservationFromAvans,
+            // REZERVASYON kartı: iptal edilmiş ve kapanmamış randevunun peşinatı.
+            // Tahsilat formülü (revenue + reservationFromAvans) aynı kalır.
+            reservation: reservationBox.amount,
             remainingCari,
             expectedRevenue: kpis.expectedRevenue,
             remaining: kpis.remaining,
             rate: kpis.rate,
             total: kpis.total,
         };
-    }, [appointments, todayStr, todaySales, todayReservations, todayCashLines]);
+    }, [appointments, todayStr, todaySales, todayReservations, todayAvansRows, todayCashLines]);
 
     const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 

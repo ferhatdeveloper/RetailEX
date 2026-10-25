@@ -848,7 +848,9 @@ export function AppointmentModule() {
                       <option value="confirmed">Onaylandı</option>
                       <option value="completed">Tamamlandı</option>
                       <option value="cancelled">İptal</option>
-                      <option value="noshow">Gelmedi</option>
+                      {selectedAppointment?.status === 'noshow' ? (
+                        <option value="noshow" disabled>Gelmedi</option>
+                      ) : null}
                     </select>
                   </div>
                 </div>

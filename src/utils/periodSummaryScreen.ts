@@ -7,8 +7,9 @@
  * Rezervasyon Tutarı ve Rezervasyon Miktarı tabloda kalır.
  *
  * Üst kutular klinik panel dolu tonudur. Yazı beyazdır.
- * Ciro mavi, iade turuncu, masraf kırmızı, net kalan yeşil.
- * Rezervasyon Tutarı kutusu tealdir; bilgi tutarıdır, nete eklenmez.
+ * Ciro mavi, masraf kırmızı, net kalan yeşil.
+ * Rezervasyon tutarı turuncudur. İade, rezervasyonun önceki teal zeminini alır.
+ * Rezervasyon tutarı bilgi kutusudur; nete eklenmez.
  */
 
 import {
@@ -38,8 +39,11 @@ export const PERIOD_SUMMARY_HEADLINE_KEYS = [
   'net',
 ] as const;
 
-/** Rezervasyon Tutarı kutusu. İade turuncusundan, ciro mavisinden ayrı teal. */
-export const PERIOD_SUMMARY_RESERVATION_FILL = '#0d9488';
+/** Rezervasyon tutarı kutusu. Günlük rapor rezervasyon turuncusu. */
+export const PERIOD_SUMMARY_RESERVATION_FILL = '#f59e0b';
+
+/** İade kutusu. Rezervasyon kutusunun önceki teal zemini. */
+export const PERIOD_SUMMARY_RETURN_FILL = '#0d9488';
 
 export type PeriodSummaryHeadlineKey = (typeof PERIOD_SUMMARY_HEADLINE_KEYS)[number];
 
@@ -65,15 +69,14 @@ function periodSummarySolidTone(background: string): ClinicDashboardKpiTone {
 
 /**
  * Beş üst kutu. Klinik KPI dolu zemini:
- * ciro = tamamlanan mavi, rezervasyon tutarı = teal,
- * iade = rezervasyon turuncusu, masraf = iptal kırmızısı,
- * net kalan = tahsilat yeşili.
+ * ciro = tamamlanan mavi, rezervasyon tutarı = turuncu,
+ * iade = teal, masraf = iptal kırmızısı, net kalan = tahsilat yeşili.
  * Rezervasyon tutarı bilgi kutusudur; net formülüne girmez.
  */
 export function periodSummaryHeadlineTone(key: PeriodSummaryHeadlineKey): ClinicDashboardKpiTone {
   if (key === 'revenue') return clinicDashboardKpiTone('completed');
   if (key === 'reservation') return periodSummarySolidTone(PERIOD_SUMMARY_RESERVATION_FILL);
-  if (key === 'returns') return clinicDashboardKpiTone('reservation');
+  if (key === 'returns') return periodSummarySolidTone(PERIOD_SUMMARY_RETURN_FILL);
   if (key === 'expenses') return clinicDashboardKpiTone('cancelled');
   return clinicDashboardKpiTone('collection');
 }
