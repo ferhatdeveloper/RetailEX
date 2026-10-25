@@ -3,9 +3,10 @@
  *
  * Günlük Rapor üst kartları.
  *
- * Sıra: Toplam Ciro, Rezervasyon Tutarı, Toplam İndirim, Toplam Gider, Net (Nakit).
+ * Sıra: Toplam Ciro, Rezervasyon Tutarı, İade, Toplam İndirim, Toplam Gider, Net (Nakit).
  * Ciro alt yazısı satış miktarıdır; 140.000 tutarına eklenmez.
  * Net (Nakit) = 138.500 − 5.000 = 133.500. İndirim 1.500 tekrar eklenmez.
+ * İade kutusu bilgi tutarıdır. 15.000 iade net 35.000'dan tekrar düşülmez.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -18,16 +19,20 @@ import { sumDailySalesDetailCashBalance } from '../../utils/dailySalesDetailCash
 import {
   DAILY_REPORT_DISCOUNT_TONE,
   DAILY_REPORT_REMOVED_CARD_KEYS,
+  DAILY_REPORT_RETURN_COUNT_LABEL_KEY,
   DAILY_REPORT_REVENUE_QTY_LABEL_KEY,
   DAILY_REPORT_SCREEN_CARD_KEYS,
   DAILY_REPORT_SCREEN_CARD_LABEL_KEY,
   DAILY_REPORT_SOLID_CARD_FILL,
   dailyReportCardTone,
+  dailyReportReturnCardSummary,
+  dailyReportReturnCountHint,
   dailyReportRevenueQuantityHint,
   dailyReportScreenShowsCard,
   sumDailyReportLineQuantity,
   visibleDailyReportScreenCardKeys,
 } from '../../utils/dailyReportScreenCards';
+import { dailyReportScreenNetCash } from '../../utils/dailySalesDetailCashBalance';
 
 function cssColor(hex: string): string {
   const body = hex.replace('#', '');
@@ -40,6 +45,7 @@ function cssColor(hex: string): string {
 const SCREEN_ORDER = [
   'total-revenue',
   'reservation-amount',
+  'return-amount',
   'total-discount',
   'total-expense',
   'net-cash',
@@ -77,10 +83,11 @@ describe('günlük rapor ekran kartları', () => {
     }
   });
 
-  it('kart sırası tam olarak beş karttır', () => {
+  it('kart sırası tam olarak altı karttır', () => {
     expect(visibleDailyReportScreenCardKeys()).toEqual([...SCREEN_ORDER]);
     expect(DAILY_REPORT_SCREEN_CARD_KEYS).toEqual([...SCREEN_ORDER]);
-    expect(DAILY_REPORT_SCREEN_CARD_KEYS).toHaveLength(5);
+    expect(DAILY_REPORT_SCREEN_CARD_KEYS).toHaveLength(6);
+    expect(DAILY_REPORT_SCREEN_CARD_KEYS).not.toContain('sales-return');
   });
 
   it('Türkçe etiketler ve ciro alt bilgisi miktardır; net nakit 133.500, indirim eklenmez', () => {
@@ -90,6 +97,7 @@ describe('günlük rapor ekran kartları', () => {
     expect(labels).toEqual([
       'Toplam Ciro',
       'Rezervasyon Tutarı',
+      'İade',
       'Toplam İndirim',
       'Toplam Gider',
       'Net (Nakit)',
@@ -108,6 +116,7 @@ describe('günlük rapor ekran kartları', () => {
     const values: Record<(typeof SCREEN_ORDER)[number], string> = {
       'total-revenue': '140.000',
       'reservation-amount': '10.000',
+      'return-amount': '0',
       'total-discount': '1.500',
       'total-expense': '5.000',
       'net-cash': '133.500',
@@ -140,7 +149,7 @@ describe('günlük rapor ekran kartları', () => {
     expect(screen.queryByTestId('daily-report-card-sales-return')).toBeNull();
 
     const src = readFileSync(resolve('src/components/reports/ReportsModule.tsx'), 'utf8');
-    const kpiStart = src.indexOf('const dailyReportKpiByKey');
+    const kpiStart = src.indexOf('const dailyReportReturnCard');
     const kpiEnd = src.indexOf('const dailyReportKpiCards');
     const kpi = src.slice(kpiStart, kpiEnd);
     const viewStart = src.indexOf("{selectedTab === 'daily'");
@@ -155,7 +164,11 @@ describe('günlük rapor ekran kartları', () => {
     expect(kpi).toContain('dailyReportRevenueQuantityHint');
     expect(kpi).not.toContain('dailyTotal + dailyRevenueQuantity');
     expect(kpi).toContain('formatNumber(dailyDiscount, 2, false)');
+    expect(kpi).toContain('formatNumber(dailyReportReturnCard.amount, 2, false)');
+    expect(kpi).toContain('dailyReportReturnCountHint');
     expect(kpi).toContain('formatNumber(dailyNetNakitAlways, 2, false)');
+    expect(kpi).not.toContain('dailyNetNakitAlways - dailyReportReturnCard');
+    expect(kpi).not.toContain('dailyNetNakitAlways - dailyReturn');
     expect(src).toContain('dailyReportScreenNetCash');
     expect(src).toContain('countLedgerInflows: true');
     expect(src).toContain('sumDailySalesDetailCashBalance');
@@ -172,11 +185,12 @@ describe('günlük rapor ekran kartları', () => {
     }
   });
 
-  it('kart sırası aynı kalır; ciro mavi, gider kırmızı, net yeşil, indirim lavanta paletindedir', () => {
+  it('kart sırası aynı kalır; ciro mavi, iade gül kurusu, gider kırmızı, net yeşil, indirim lavanta paletindedir', () => {
     expect(visibleDailyReportScreenCardKeys()).toEqual([...SCREEN_ORDER]);
 
     const revenue = dailyReportCardTone('total-revenue');
     const reservation = dailyReportCardTone('reservation-amount');
+    const returned = dailyReportCardTone('return-amount');
     const discount = dailyReportCardTone('total-discount');
     const expense = dailyReportCardTone('total-expense');
     const net = dailyReportCardTone('net-cash');
@@ -192,6 +206,17 @@ describe('günlük rapor ekran kartları', () => {
     expect(reservation.value).toBe('#ffffff');
     expect(reservation.label).toBe('#ffffff');
     expect(reservation.hint).toBe('#ffffff');
+
+    expect(returned.background).toBe(DAILY_REPORT_SOLID_CARD_FILL['return-amount']);
+    expect(returned.background).toBe('#e11d48');
+    expect(returned.value).toBe('#ffffff');
+    expect(returned.label).toBe('#ffffff');
+    expect(returned.hint).toBe('#ffffff');
+    expect(returned.background).not.toBe('#f04438');
+    expect(returned.background).not.toBe(expense.background);
+    expect(returned.background).not.toBe(reservation.background);
+    expect(returned.background).not.toBe(revenue.background);
+    expect(returned.background).not.toBe(net.background);
 
     expect(expense.background).toBe('#f04438');
     expect(expense.value).toBe('#ffffff');
@@ -211,13 +236,15 @@ describe('günlük rapor ekran kartları', () => {
     expect(discount.background).not.toBe(expense.background);
     expect(discount.background).not.toBe(net.background);
     expect(discount.background).not.toBe(reservation.background);
+    expect(discount.background).not.toBe(returned.background);
 
-    const fills = [revenue, reservation, discount, expense, net].map((tone) => tone.background);
-    expect(new Set(fills).size).toBe(5);
+    const fills = [revenue, reservation, returned, discount, expense, net].map((tone) => tone.background);
+    expect(new Set(fills).size).toBe(6);
 
     const values: Record<(typeof SCREEN_ORDER)[number], string> = {
       'total-revenue': '140.000',
       'reservation-amount': '10.000',
+      'return-amount': '0',
       'total-discount': '1.500',
       'total-expense': '5.000',
       'net-cash': '133.500',
@@ -236,6 +263,7 @@ describe('günlük rapor ekran kartları', () => {
     const painted = [
       ['total-revenue', '#2563eb', '#ffffff'],
       ['reservation-amount', '#f59e0b', '#ffffff'],
+      ['return-amount', '#e11d48', '#ffffff'],
       ['total-discount', '#ede7f7', '#3b1d7b'],
       ['total-expense', '#f04438', '#ffffff'],
       ['net-cash', '#12b76a', '#ffffff'],
@@ -315,5 +343,98 @@ describe('günlük rapor ekran kartları', () => {
     expect(cash).not.toBe(140_000 - 5_000);
     expect(sumDailySalesDetailCashBalance(sales)).toBe(138_500);
     expect(sumDailySalesDetailCashBalance([...sales, reservation])).toBe(138_500);
+  });
+
+  it('iade kutusu 15.000 gösterir; net 35.000 kalır, iade ve rezervasyon ikinci kez yazılmaz', () => {
+    expect(dailyReportReturnCountHint(translate(DAILY_REPORT_RETURN_COUNT_LABEL_KEY, 'tr'), 1)).toBe('1 iade adedi');
+
+    const service = {
+      receiptNumber: 'BEA-2026-00001',
+      beforeDiscount: 25_000,
+      total: 25_000,
+      discount: 0,
+      status: 'completed',
+    };
+    const product = {
+      receiptNumber: 'BEA-2026-00002',
+      beforeDiscount: 15_000,
+      total: 15_000,
+      discount: 0,
+      status: 'completed',
+    };
+    const refund = {
+      receiptNumber: '00005',
+      beforeDiscount: -15_000,
+      total: -15_000,
+      discount: 0,
+      status: 'return',
+    };
+    const forfeited = {
+      receiptNumber: 'AVANS-A',
+      beforeDiscount: 10_000,
+      total: 10_000,
+      discount: 0,
+      isDeposit: true,
+      isForfeitedDeposit: true,
+      status: 'cancelled',
+    };
+    const openAvans = {
+      receiptNumber: 'AVANS-B',
+      beforeDiscount: 5_000,
+      total: 5_000,
+      discount: 0,
+      isAvans: true,
+      status: 'completed',
+    };
+    const rows = [service, product, refund, forfeited, openAvans];
+    const card = dailyReportReturnCardSummary(rows);
+    expect(card).toEqual({ amount: 15_000, count: 1 });
+    expect(dailyReportReturnCardSummary([
+      { total: -5_000, isExpense: true, status: 'outflow' },
+      refund,
+    ])).toEqual({ amount: 15_000, count: 1 });
+
+    const net = dailyReportScreenNetCash(rows);
+    expect(net).toBe(35_000);
+    expect(dailyReportScreenNetCash([service, product, refund, forfeited])).toBe(35_000);
+    expect(net).not.toBe(35_000 + openAvans.total);
+    expect(net).not.toBe(35_000 - card.amount);
+    expect(net - card.amount).toBe(20_000);
+
+    const gridSrc = readFileSync(resolve('src/components/reports/DailyReportKpiGrid.tsx'), 'utf8');
+    expect(gridSrc).toContain('xl:grid-cols-6');
+
+    render(
+      createElement(DailyReportKpiGrid, {
+        cards: [
+          { key: 'total-revenue', label: 'Toplam Ciro', value: '25.000', hint: 'Satış miktarı: 1' },
+          { key: 'reservation-amount', label: 'Rezervasyon Tutarı', value: '15.000', hint: 'Adet: 2' },
+          {
+            key: 'return-amount',
+            label: 'İade',
+            value: '15.000',
+            hint: dailyReportReturnCountHint('iade adedi', card.count),
+          },
+          { key: 'total-discount', label: 'Toplam İndirim', value: '0' },
+          { key: 'total-expense', label: 'Toplam Gider', value: '0', hint: 'Gider Sayısı: 0' },
+          { key: 'net-cash', label: 'Net (Nakit)', value: '35.000' },
+        ],
+      }),
+    );
+
+    const grid = screen.getByTestId('daily-report-kpi-grid');
+    const order = [...grid.querySelectorAll('[data-daily-card-key]')].map((node) =>
+      node.getAttribute('data-daily-card-key'),
+    );
+    expect(order).toEqual([...SCREEN_ORDER]);
+    const returnCard = screen.getByTestId('daily-report-card-return-amount');
+    expect(returnCard.textContent).toContain('15.000');
+    expect(returnCard.textContent).toContain('1 iade adedi');
+    expect(returnCard.style.backgroundColor).toBe(cssColor('#e11d48'));
+    const netCard = screen.getByTestId('daily-report-card-net-cash');
+    expect(netCard.textContent).toContain('35.000');
+    expect(netCard.style.backgroundColor).toBe(cssColor('#12b76a'));
+    expect(screen.getByTestId('daily-report-card-total-expense').style.backgroundColor).toBe(cssColor('#f04438'));
+    expect(grid.textContent).not.toContain('20.000');
   });
 });

@@ -6,8 +6,9 @@
  * Gizli kolonlar: Rezervasyon Brüt, Rezervasyon Kalan.
  * Rezervasyon Tutarı ve Rezervasyon Miktarı tabloda kalır.
  *
- * Üst kutular klinik panel dolu tonudur. Yeni renk yoktur.
- * Ciro mavi, iade turuncu, masraf kırmızı, net kalan yeşil. Yazı beyazdır.
+ * Üst kutular klinik panel dolu tonudur. Yazı beyazdır.
+ * Ciro mavi, iade turuncu, masraf kırmızı, net kalan yeşil.
+ * Rezervasyon Tutarı kutusu tealdir; bilgi tutarıdır, nete eklenmez.
  */
 
 import {
@@ -31,10 +32,14 @@ export function isPeriodSummaryGridColumnVisible(key: string): boolean {
 
 export const PERIOD_SUMMARY_HEADLINE_KEYS = [
   'revenue',
+  'reservation',
   'returns',
   'expenses',
   'net',
 ] as const;
+
+/** Rezervasyon Tutarı kutusu. İade turuncusundan, ciro mavisinden ayrı teal. */
+export const PERIOD_SUMMARY_RESERVATION_FILL = '#0d9488';
 
 export type PeriodSummaryHeadlineKey = (typeof PERIOD_SUMMARY_HEADLINE_KEYS)[number];
 
@@ -44,14 +49,37 @@ export function isPeriodSummaryHeadlineKey(key: string): key is PeriodSummaryHea
   return HEADLINE_KEY_SET.has(key);
 }
 
+const WHITE = '#ffffff';
+
+/** Klinik KPI dolu kart deseni: zemin ve kenar aynı, yazı beyaz. */
+function periodSummarySolidTone(background: string): ClinicDashboardKpiTone {
+  return {
+    background,
+    border: background,
+    label: WHITE,
+    value: WHITE,
+    hint: WHITE,
+    icon: WHITE,
+  };
+}
+
 /**
- * Dört üst kutu. Klinik KPI dolu zemini:
- * ciro = tamamlanan mavi, iade = rezervasyon turuncusu,
- * masraf = iptal kırmızısı, net kalan = tahsilat yeşili.
+ * Beş üst kutu. Klinik KPI dolu zemini:
+ * ciro = tamamlanan mavi, rezervasyon tutarı = teal,
+ * iade = rezervasyon turuncusu, masraf = iptal kırmızısı,
+ * net kalan = tahsilat yeşili.
+ * Rezervasyon tutarı bilgi kutusudur; net formülüne girmez.
  */
 export function periodSummaryHeadlineTone(key: PeriodSummaryHeadlineKey): ClinicDashboardKpiTone {
   if (key === 'revenue') return clinicDashboardKpiTone('completed');
+  if (key === 'reservation') return periodSummarySolidTone(PERIOD_SUMMARY_RESERVATION_FILL);
   if (key === 'returns') return clinicDashboardKpiTone('reservation');
   if (key === 'expenses') return clinicDashboardKpiTone('cancelled');
   return clinicDashboardKpiTone('collection');
+}
+
+/** Rezervasyon kutusunun alt satırı. Adet bilgi olarak durur, tutara eklenmez. */
+export function periodSummaryReservationHint(countLabel: string, count: number): string {
+  const label = String(countLabel || '').trim().toLocaleLowerCase('tr-TR');
+  return label ? `${count} ${label}` : String(count);
 }

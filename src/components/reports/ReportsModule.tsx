@@ -29,8 +29,11 @@ import {
   dailyNetSaleRevenue,
 } from '../../utils/dailyReportKpis';
 import {
+  DAILY_REPORT_RETURN_COUNT_LABEL_KEY,
   DAILY_REPORT_REVENUE_QTY_LABEL_KEY,
   DAILY_REPORT_SCREEN_CARD_LABEL_KEY,
+  dailyReportReturnCardSummary,
+  dailyReportReturnCountHint,
   dailyReportRevenueQuantityHint,
   sumDailyReportLineQuantity,
   visibleDailyReportScreenCardKeys,
@@ -7063,6 +7066,7 @@ export function ReportsModule({
     ? ['grp-beauty-reports', 'grp-general', 'grp-sales']
     : ['grp-general', 'grp-design', 'grp-sales'];
 
+  const dailyReportReturnCard = dailyReportReturnCardSummary(dailySalesDetailGridRows);
   const dailyReportKpiByKey: Record<DailyReportScreenCardKey, DailyReportKpiCardModel> = {
     'total-revenue': {
       key: 'total-revenue',
@@ -7080,6 +7084,15 @@ export function ReportsModule({
           : (dailyDepositCount > 0 ? ' · rezervasyon' : '')
       }`,
       testId: 'daily-deposit-card',
+    },
+    'return-amount': {
+      key: 'return-amount',
+      label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['return-amount']),
+      value: formatNumber(dailyReportReturnCard.amount, 2, false),
+      hint: dailyReportReturnCountHint(
+        tm(DAILY_REPORT_RETURN_COUNT_LABEL_KEY) || 'iade adedi',
+        dailyReportReturnCard.count,
+      ),
     },
     'total-discount': {
       key: 'total-discount',

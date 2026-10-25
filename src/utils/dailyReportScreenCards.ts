@@ -1,14 +1,16 @@
 /**
  * Günlük Rapor ekranında görünen KPI kartları.
  * Tutar formülleri burada yok; sıra, hangi kutunun çizileceği,
- * ciro altındaki miktar bilgisi ve beş kartın zemini burada.
+ * ciro altındaki miktar bilgisi ve kart zeminleri burada.
  *
- * Ekranda tam beş kart vardır, başka KPI kartı yoktur:
- * Toplam Ciro, Rezervasyon Tutarı, Toplam İndirim, Toplam Gider, Net (Nakit).
+ * Ekranda tam altı kart vardır:
+ * Toplam Ciro, Rezervasyon Tutarı, İade, Toplam İndirim, Toplam Gider, Net (Nakit).
  *
  * Zeminler klinik menü paletine bağlı değildir.
- * Ciro dolu mavi, rezervasyon dolu turuncu, gider dolu kırmızı, net nakit dolu yeşil;
- * yazı beyazdır. İndirim kartı açık lavanta zeminde kalır.
+ * Ciro dolu mavi, rezervasyon dolu turuncu, iade dolu gül kurusu,
+ * gider dolu kırmızı, net nakit dolu yeşil; yazı beyazdır.
+ * İndirim kartı açık lavanta zeminde kalır.
+ * İade kutusu bilgi tutarıdır. Net (Nakit) bu tutarı tekrar düşmez.
  *
  * Kaldırılanlar (menü parametresi açık olsa da bu ekranda yok):
  * Toplam Satış, Nakit, Satış iade, Net (Brüt), kart, veresiye,
@@ -20,12 +22,15 @@
 
 import { formatNumber } from './formatNumber';
 import { detailedSalesLineMoney, type DetailedSalesReturnInput } from './detailedSalesLineSign';
+import { isDailySalesDetailReturn, type DailySalesDetailKindInput } from './dailySalesDetailKind';
+import { dailySalesDetailNetAmount } from './dailySalesDetailNet';
 import { isDepositSale, isRemovedSaleStatusLite } from './reportDepositFilter';
 import type { Sale } from '../core/types';
 
 export const DAILY_REPORT_SCREEN_CARD_KEYS = [
   'total-revenue',
   'reservation-amount',
+  'return-amount',
   'total-discount',
   'total-expense',
   'net-cash',
@@ -37,10 +42,14 @@ export type DailyReportScreenCardKey = (typeof DAILY_REPORT_SCREEN_CARD_KEYS)[nu
 export const DAILY_REPORT_SCREEN_CARD_LABEL_KEY: Record<DailyReportScreenCardKey, string> = {
   'total-revenue': 'totalRevenueLabel',
   'reservation-amount': 'dailyDepositCollected',
+  'return-amount': 'rptPeriodColReturns',
   'total-discount': 'reportsTotalDiscount',
   'total-expense': 'totalExpense',
   'net-cash': 'dailyNetAfterExpenseNakit',
 };
+
+/** İade kutusunun alt satırı. Adet bilgi olarak durur, netten tekrar düşülmez. */
+export const DAILY_REPORT_RETURN_COUNT_LABEL_KEY = 'rptPeriodColReturnsCount';
 
 /** Ciro kartının alt satırı. Miktar bilgi olarak durur, tutara yazılmaz. */
 export const DAILY_REPORT_REVENUE_QTY_LABEL_KEY = 'reportsDailyRevenueQtyLabel';
@@ -84,13 +93,14 @@ export interface DailyReportCardTone {
 const SOLID_INK = '#ffffff';
 
 /**
- * Dolu kart zeminleri. Mavi, kırmızı ve turuncu ikinci görseldeki kartlarla aynıdır.
- * Yeşil aynı doygunluk bandındadır; neon limon veya turkuaz değildir.
- * Klinik menü paleti bu dört rengi değiştirmez.
+ * Dolu kart zeminleri. Ciro mavisi, rezervasyon turuncusu, gider kırmızısı ve net yeşili durur.
+ * İade kutusu gül kurusudur; gider kırmızısı ile aynı değildir.
+ * Klinik menü paleti bu renkleri değiştirmez.
  */
 export const DAILY_REPORT_SOLID_CARD_FILL = {
   'total-revenue': '#2563eb',
   'reservation-amount': '#f59e0b',
+  'return-amount': '#e11d48',
   'total-expense': '#f04438',
   'net-cash': '#12b76a',
 } as const;
@@ -121,7 +131,7 @@ function solidCardTone(background: string): DailyReportCardTone {
   };
 }
 
-/** Beş kartın zemini. Dört kart dolu renktir; indirim lavanta paletindedir. */
+/** Altı kartın zemini. İade gül kurusudur; indirim lavanta paletinde kalır. */
 export function dailyReportCardTone(key: DailyReportScreenCardKey): DailyReportCardTone {
   if (key === 'total-discount') return DAILY_REPORT_DISCOUNT_TONE;
   return solidCardTone(DAILY_REPORT_SOLID_CARD_FILL[key]);
@@ -131,7 +141,7 @@ export function dailyReportScreenShowsCard(key: string): boolean {
   return SCREEN_KEY_SET.has(key);
 }
 
-/** Görünen kartlar, sabit beşli sıra. Menü parametresi bu sırayı kısaltmaz. */
+/** Görünen kartlar, sabit altılı sıra. Menü parametresi bu sırayı kısaltmaz. */
 export function visibleDailyReportScreenCardKeys(): DailyReportScreenCardKey[] {
   return [...DAILY_REPORT_SCREEN_CARD_KEYS];
 }
@@ -178,4 +188,36 @@ export function dailyReportRevenueQuantityHint(quantityLabel: string, quantity: 
   const label = String(quantityLabel || '').trim();
   const shown = formatNumber(quantity, 3, false);
   return label ? `${label}: ${shown}` : shown;
+}
+
+export interface DailyReportReturnCardSummary {
+  /** İade tutarının artı büyüklüğü. Kutuda görünür; nete tekrar yazılmaz. */
+  amount: number;
+  /** İade fişi adedi. */
+  count: number;
+}
+
+/**
+ * İade kutusunun tutarı ve adedi.
+ * Avans, depozito, vazgeçilmiş peşinat ve gider iade değildir.
+ * Tutar, satır netinin mutlak değeridir. Net (Nakit) bu fonksiyondan düşülmez.
+ */
+export function dailyReportReturnCardSummary(
+  rows: readonly DailySalesDetailKindInput[],
+): DailyReportReturnCardSummary {
+  let amount = 0;
+  let count = 0;
+  for (const row of rows) {
+    if (!isDailySalesDetailReturn(row)) continue;
+    count += 1;
+    amount += Math.abs(dailySalesDetailNetAmount(row));
+  }
+  const rounded = Math.round(amount * 100) / 100;
+  return { amount: Object.is(rounded, -0) ? 0 : rounded, count };
+}
+
+/** İade kutusunun alt yazısı. Yalnızca adedi söyler. */
+export function dailyReportReturnCountHint(countLabel: string, count: number): string {
+  const label = String(countLabel || '').trim();
+  return label ? `${count} ${label}` : String(count);
 }

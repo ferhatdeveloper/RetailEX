@@ -2,7 +2,8 @@
  * Aylık Gün Özeti / Yıllık Ay Özeti görünürlüğü.
  * Rezervasyon Brüt ve Rezervasyon Kalan kolon tanımında yoktur.
  * Rezervasyon Tutarı ve Rezervasyon Miktarı durur.
- * Dört kutu klinik dolu tonunu kullanır. Tutar formülü bu dosyada yoktur.
+ * Beş kutu klinik dolu tonunu kullanır. Rezervasyon kutusu tealdir.
+ * Rezervasyon tutarı nete eklenmez. Tutar formülü bu dosyada değişmez.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -12,9 +13,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { PeriodSummaryHeadlineCard } from '../../components/reports/PeriodSummaryReport';
 import { clinicDashboardKpiTone } from '../../utils/clinicDashboardKpiTones';
 import { dailyReportCardTone } from '../../utils/dailyReportScreenCards';
+import { periodSummaryHeadline } from '../../utils/periodSummaryNet';
 import {
+  PERIOD_SUMMARY_HEADLINE_KEYS,
+  PERIOD_SUMMARY_RESERVATION_FILL,
   isPeriodSummaryGridColumnVisible,
   periodSummaryHeadlineTone,
+  periodSummaryReservationHint,
 } from '../../utils/periodSummaryScreen';
 
 function cssColor(hex: string): string {
@@ -50,8 +55,17 @@ describe('Aylık ve yıllık özet görünümü', () => {
     expect(src).toContain('data-testid="period-summary-toolbar"');
   });
 
-  it('dört kutuyu klinik dolu tonuyla boyar', () => {
+  it('beş kutuyu klinik dolu tonuyla boyar; rezervasyon tealdir', () => {
+    expect(PERIOD_SUMMARY_HEADLINE_KEYS).toEqual([
+      'revenue',
+      'reservation',
+      'returns',
+      'expenses',
+      'net',
+    ]);
+
     const revenue = periodSummaryHeadlineTone('revenue');
+    const reservation = periodSummaryHeadlineTone('reservation');
     const returns = periodSummaryHeadlineTone('returns');
     const expenses = periodSummaryHeadlineTone('expenses');
     const net = periodSummaryHeadlineTone('net');
@@ -61,6 +75,17 @@ describe('Aylık ve yıllık özet görünümü', () => {
     expect(revenue.background).toBe(dailyReportCardTone('total-revenue').background);
     expect(revenue.value).toBe('#ffffff');
     expect(revenue.label).toBe('#ffffff');
+
+    expect(reservation.background).toBe(PERIOD_SUMMARY_RESERVATION_FILL);
+    expect(reservation.background).toBe('#0d9488');
+    expect(reservation.value).toBe('#ffffff');
+    expect(reservation.label).toBe('#ffffff');
+    expect(reservation.hint).toBe('#ffffff');
+    expect(reservation.background).not.toBe(revenue.background);
+    expect(reservation.background).not.toBe(clinicDashboardKpiTone('reservation').background);
+    expect(reservation.background).not.toBe('#f59e0b');
+    expect(reservation.background).not.toBe('#f04438');
+    expect(reservation.background).not.toBe('#12b76a');
 
     expect(returns.background).toBe(clinicDashboardKpiTone('reservation').background);
     expect(returns.background).toBe(dailyReportCardTone('reservation-amount').background);
@@ -90,6 +115,12 @@ describe('Aylık ve yıllık özet görünümü', () => {
           hint: '6 satış adedi',
         }),
         createElement(PeriodSummaryHeadlineCard, {
+          toneKey: 'reservation',
+          label: 'Rezervasyon Tutarı',
+          value: '15.000 IQD',
+          hint: '2 rezervasyon miktarı',
+        }),
+        createElement(PeriodSummaryHeadlineCard, {
           toneKey: 'returns',
           label: 'İade',
           value: '0 IQD',
@@ -110,6 +141,7 @@ describe('Aylık ve yıllık özet görünümü', () => {
     );
 
     const revenue = screen.getByTestId('period-summary-kpi-revenue');
+    const reservation = screen.getByTestId('period-summary-kpi-reservation');
     const returns = screen.getByTestId('period-summary-kpi-returns');
     const expenses = screen.getByTestId('period-summary-kpi-expenses');
     const net = screen.getByTestId('period-summary-kpi-net');
@@ -118,6 +150,11 @@ describe('Aylık ve yıllık özet görünümü', () => {
     expect(revenue.textContent).toContain('6 satış adedi');
     expect(revenue.style.backgroundColor).toBe(cssColor('#2563eb'));
     expect(revenue.className).not.toContain('bg-white');
+
+    expect(reservation.textContent).toContain('15.000 IQD');
+    expect(reservation.textContent).toContain('2 rezervasyon miktarı');
+    expect(reservation.style.backgroundColor).toBe(cssColor('#0d9488'));
+    expect(reservation.className).not.toContain('bg-white');
 
     expect(returns.textContent).toContain('0 IQD');
     expect(returns.style.backgroundColor).toBe(cssColor(clinicDashboardKpiTone('reservation').background));
@@ -130,9 +167,103 @@ describe('Aylık ve yıllık özet görünümü', () => {
     expect(net.textContent).toContain('170.000 IQD');
     expect(net.style.backgroundColor).toBe(cssColor('#12b76a'));
 
-    for (const card of [revenue, returns, expenses, net]) {
+    for (const card of [revenue, reservation, returns, expenses, net]) {
       const value = card.querySelectorAll('p')[1] as HTMLElement;
       expect(value.style.color).toBe(cssColor('#ffffff'));
     }
+  });
+
+  it('rezervasyon kutusu 15.000 gösterir; net 35.000 kalır ve rezervasyon eklenmez', () => {
+    expect(periodSummaryReservationHint('Rezervasyon Miktarı', 2)).toBe('2 rezervasyon miktarı');
+
+    const shown = periodSummaryHeadline({
+      revenue: 40_000,
+      returnsAmount: 15_000,
+      returnDeduction: 15_000,
+      expenses: 0,
+      expenseEnabled: true,
+      reservationDeposit: 15_000,
+      forfeitedDeposit: 10_000,
+    });
+    const withoutReservation = periodSummaryHeadline({
+      revenue: 40_000,
+      returnsAmount: 15_000,
+      returnDeduction: 15_000,
+      expenses: 0,
+      expenseEnabled: true,
+      reservationDeposit: 0,
+      forfeitedDeposit: 10_000,
+    });
+
+    expect(shown.grossRevenue).toBe(40_000);
+    expect(shown.returnAmount).toBe(15_000);
+    expect(shown.depositInfo).toBe(15_000);
+    expect(shown.netRevenue).toBe(35_000);
+    expect(withoutReservation.netRevenue).toBe(35_000);
+    expect(shown.netRevenue).toBe(withoutReservation.netRevenue);
+    expect(shown.netRevenue).not.toBe(shown.grossRevenue + shown.depositInfo);
+    expect(shown.netRevenue).not.toBe(shown.grossRevenue - shown.returnAmount + shown.depositInfo);
+
+    const src = readFileSync(resolve('src/components/reports/PeriodSummaryReport.tsx'), 'utf8');
+    const reservationAt = src.indexOf("key: 'reservation'");
+    const returnsAt = src.indexOf("key: 'returns'");
+    expect(reservationAt).toBeGreaterThan(0);
+    expect(reservationAt).toBeLessThan(returnsAt);
+    expect(src).toContain('money(totals.reservationDeposit)');
+    expect(src).toContain('periodSummaryReservationHint');
+    expect(src).toContain('lg:grid-cols-5');
+    expect(src).not.toContain('totals.netRemaining + totals.reservationDeposit');
+    expect(src).not.toContain('totals.revenue + totals.reservationDeposit');
+
+    render(
+      createElement(
+        'div',
+        { 'data-testid': 'period-summary-headline' },
+        createElement(PeriodSummaryHeadlineCard, {
+          toneKey: 'revenue',
+          label: 'Toplam Ciro',
+          value: '40.000 IQD',
+          hint: '2 satış adedi',
+        }),
+        createElement(PeriodSummaryHeadlineCard, {
+          toneKey: 'reservation',
+          label: 'Rezervasyon Tutarı',
+          value: '15.000 IQD',
+          hint: periodSummaryReservationHint('Rezervasyon Miktarı', 2),
+        }),
+        createElement(PeriodSummaryHeadlineCard, {
+          toneKey: 'returns',
+          label: 'İade',
+          value: '15.000 IQD',
+          hint: '1 iade adedi',
+        }),
+        createElement(PeriodSummaryHeadlineCard, {
+          toneKey: 'expenses',
+          label: 'Toplam Masraf',
+          value: '0 IQD',
+          hint: 'Masraf detayı',
+        }),
+        createElement(PeriodSummaryHeadlineCard, {
+          toneKey: 'net',
+          label: 'Net Kalan',
+          value: '35.000 IQD',
+        }),
+      ),
+    );
+
+    const strip = screen.getByTestId('period-summary-headline');
+    const order = [...strip.querySelectorAll('[data-period-kpi]')].map(
+      (node) => node.getAttribute('data-period-kpi'),
+    );
+    expect(order).toEqual(['revenue', 'reservation', 'returns', 'expenses', 'net']);
+    const reservation = screen.getByTestId('period-summary-kpi-reservation');
+    const net = screen.getByTestId('period-summary-kpi-net');
+    expect(reservation.textContent).toContain('15.000 IQD');
+    expect(reservation.textContent).toContain('2 rezervasyon miktarı');
+    expect(reservation.style.backgroundColor).toBe(cssColor('#0d9488'));
+    expect(net.textContent).toContain('35.000 IQD');
+    expect(net.style.backgroundColor).toBe(cssColor('#12b76a'));
+    expect(strip.textContent).not.toContain('50.000');
+    expect(strip.textContent).not.toContain('55.000');
   });
 });

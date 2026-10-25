@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Banknote, Eye, Loader2, RefreshCw, RotateCcw, TrendingDown, Wallet, type LucideIcon } from 'lucide-react';
+import { Banknote, Calendar, Eye, Loader2, RefreshCw, RotateCcw, TrendingDown, Wallet, type LucideIcon } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatNumber } from '../../utils/formatNumber';
 import { expenseAPI, type Expense } from '../../services/api/expenses';
@@ -57,9 +57,11 @@ import { buildClosedAppointmentDepositMap, buildReservationMap } from '../../uti
 import { buildAvansDepositsMap, buildClosedReservationInfoMap } from '../../utils/avansReservationExclude';
 import { forfeitedDepositByPeriod } from '../../utils/forfeitedReservationCash';
 import {
+  PERIOD_SUMMARY_HEADLINE_KEYS,
   isPeriodSummaryGridColumnVisible,
   isPeriodSummaryHeadlineKey,
   periodSummaryHeadlineTone,
+  periodSummaryReservationHint,
   type PeriodSummaryHeadlineKey,
 } from '../../utils/periodSummaryScreen';
 
@@ -67,6 +69,7 @@ export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
 
 const PERIOD_HEADLINE_ICONS: Record<PeriodSummaryHeadlineKey, LucideIcon> = {
   revenue: Banknote,
+  reservation: Calendar,
   returns: RotateCcw,
   expenses: TrendingDown,
   net: Wallet,
@@ -1393,6 +1396,16 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     }
 
     items.push({
+      key: 'reservation',
+      label: tm('dailyDepositCollected') || 'Rezervasyon Tutarı',
+      value: money(totals.reservationDeposit),
+      hint: periodSummaryReservationHint(
+        tm('reservationCountLabel') || 'Rezervasyon Miktarı',
+        totals.reservationCount,
+      ),
+    });
+
+    items.push({
       key: 'returns',
       label: tm('rptPeriodColReturns') || 'İade',
       value: money(totals.returnsAmount),
@@ -1572,7 +1585,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     profitDistribution,
   ]);
 
-  const headlineItems = kpiItems.filter((item) => isPeriodSummaryHeadlineKey(String(item.key ?? '')));
+  const headlineRank = new Map<string, number>(
+    PERIOD_SUMMARY_HEADLINE_KEYS.map((key, index) => [key, index]),
+  );
+  const headlineItems = kpiItems
+    .filter((item) => isPeriodSummaryHeadlineKey(String(item.key ?? '')))
+    .sort(
+      (a, b) =>
+        (headlineRank.get(String(a.key ?? '')) ?? 0) - (headlineRank.get(String(b.key ?? '')) ?? 0),
+    );
   const extraItems = kpiItems.filter((item) => !isPeriodSummaryHeadlineKey(String(item.key ?? '')));
   const extraColumns = Math.min(Math.max(extraItems.length, 2), 6) as 2 | 3 | 4 | 5 | 6;
 
@@ -1632,7 +1653,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
 
       {headlineItems.length > 0 ? (
         <div
-          className="grid grid-cols-2 items-stretch gap-3 lg:grid-cols-4"
+          className="grid grid-cols-2 items-stretch gap-3 lg:grid-cols-5"
           data-testid="period-summary-headline"
         >
           {headlineItems.map((item) => (
