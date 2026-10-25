@@ -2172,12 +2172,12 @@ export function SmartScheduler() {
                                 onResourceColumnDrop={(ids, colId) => {
                                     void applyBeautyResourceDrop(ids, 'staff', colId);
                                 }}
-                                onNewAppointment={(t, d) => {
+                                onNewAppointment={(t, d, staffId) => {
                                     if (d) {
                                         const [y, mo, day] = d.split('-').map(Number);
                                         setCurrentDate(new Date(y, mo - 1, day));
                                     }
-                                    openNewApt(t, d);
+                                    openNewApt(t, d, staffId !== undefined ? { staffId } : undefined);
                                 }}
                                 productLabelsByAppointmentId={aptProductLabels}
                                 lastTreatmentByCustomerId={lastCustomerTreatments}

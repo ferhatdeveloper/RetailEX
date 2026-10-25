@@ -19,7 +19,8 @@ interface StaffTimelineViewProps {
     currentDate: Date;
     onAppointmentClick: (apt: BeautyAppointment) => void;
     timeSlots?: string[];
-    onNewAppointment?: (time?: string, date?: string) => void;
+    /** Üçüncü argüman: sütun personel id'si; atanmamış sütun için `__unassigned__` */
+    onNewAppointment?: (time?: string, date?: string, staffId?: string) => void;
     appointmentsOverride?: BeautyAppointment[];
     /** Saat ızgarası yerine sıra numarasına göre liste (kayıt / saat sırası) */
     queueMode?: boolean;
@@ -309,6 +310,7 @@ export function StaffTimelineView({
                                     lastTreatmentByCustomerId={lastTreatmentByCustomerId}
                                     onAppointmentClick={onAppointmentClick}
                                     onAddClick={() => {
+                                        const staffColumnId = isUnassigned ? UNASSIGNED_ID : String(col.id);
                                         const res = isUnassigned
                                             ? ({ kind: 'staff' as const, id: null })
                                             : ({ kind: 'staff' as const, id: String(col.id) });
@@ -316,7 +318,7 @@ export function StaffTimelineView({
                                             resource: res,
                                             snapMinutes: queueSnapMinutes,
                                         });
-                                        onNewAppointment?.(t, dateStr);
+                                        onNewAppointment?.(t, dateStr, staffColumnId);
                                     }}
                                 />
                             ) : (() => {
@@ -412,7 +414,13 @@ export function StaffTimelineView({
                                                         }}
                                                     >
                                                         <div
-                                                            onClick={() => onNewAppointment?.(time, dateStr)}
+                                                            onClick={() =>
+                                                                onNewAppointment?.(
+                                                                    time,
+                                                                    dateStr,
+                                                                    isUnassigned ? UNASSIGNED_ID : String(col.id),
+                                                                )
+                                                            }
                                                             style={{
                                                                 height: 36,
                                                                 width: '100%',
