@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, Loader2, RefreshCw } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Banknote, Eye, Loader2, RefreshCw, RotateCcw, TrendingDown, Wallet, type LucideIcon } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatNumber } from '../../utils/formatNumber';
 import { expenseAPI, type Expense } from '../../services/api/expenses';
@@ -55,8 +55,72 @@ import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDat
 import { ReportKpiStrip, type ReportKpiItem } from './shared/ReportKpiStrip';
 import { buildClosedAppointmentDepositMap, buildReservationMap } from '../../utils/reportReservationPending';
 import { buildAvansDepositsMap, buildClosedReservationInfoMap } from '../../utils/avansReservationExclude';
+import {
+  isPeriodSummaryGridColumnVisible,
+  isPeriodSummaryHeadlineKey,
+  periodSummaryHeadlineTone,
+  type PeriodSummaryHeadlineKey,
+} from '../../utils/periodSummaryScreen';
 
 export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
+
+const PERIOD_HEADLINE_ICONS: Record<PeriodSummaryHeadlineKey, LucideIcon> = {
+  revenue: Banknote,
+  returns: RotateCcw,
+  expenses: TrendingDown,
+  net: Wallet,
+};
+
+/** Üst özet kutusu. Zemin klinik KPI dolu tonu, yazı beyaz. Tutar burada hesaplanmaz. */
+export function PeriodSummaryHeadlineCard({
+  toneKey,
+  label,
+  value,
+  hint,
+}: {
+  toneKey: PeriodSummaryHeadlineKey;
+  label: ReactNode;
+  value: ReactNode;
+  hint?: ReactNode;
+}) {
+  const tone = periodSummaryHeadlineTone(toneKey);
+  const Icon = PERIOD_HEADLINE_ICONS[toneKey];
+  return (
+    <div
+      data-testid={`period-summary-kpi-${toneKey}`}
+      data-period-kpi={toneKey}
+      className="flex h-full min-h-[8.5rem] flex-col rounded-xl border px-4 py-3.5"
+      style={{
+        backgroundColor: tone.background,
+        borderColor: tone.border,
+        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06)',
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p
+          className="text-[11px] font-bold uppercase leading-5 tracking-[0.1em]"
+          style={{ color: tone.label }}
+        >
+          {label}
+        </p>
+        <Icon className="h-4 w-4 shrink-0" style={{ color: tone.icon }} aria-hidden />
+      </div>
+      <p
+        className="mt-3 text-2xl font-extrabold tabular-nums leading-none tracking-tight"
+        style={{ color: tone.value }}
+      >
+        {value}
+      </p>
+      {hint != null && hint !== false ? (
+        <div className="mt-auto min-h-[1.5rem] pt-2 text-xs font-semibold leading-snug" style={{ color: tone.hint }}>
+          {hint}
+        </div>
+      ) : (
+        <div className="mt-auto min-h-[1.5rem] pt-2" />
+      )}
+    </div>
+  );
+}
 
 interface PeriodSummaryRow {
   key: string;
@@ -1007,40 +1071,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             '—'
           ),
       },
-      // 18.10.2026 — depositAmount ve depositCount kolonları KALDIRILDI.
-      // reservationDeposit ve reservationCount ile mükerrer (aynı bilgi).
-      // Kullanıcı şikayeti: "mükerrer kolonlar var". Artık sadece
-      // reservationGross, reservationDeposit, reservationCount, reservationPending
-      // kolonları kullanılıyor.
-      // 14.10.2026 — Rezervasyon brüt hizmet tutarı (henüz faturası
-      // kesilmemiş randevuların toplam hizmet fiyatı). "Net Kalan"a
-      // dahil edilir: günü geldiğinde faturası kesilecek tutar.
-      {
-        key: 'reservationGross',
-        header: `${tm('reservationGrossLabel') || 'Rezervasyon Brüt'} (${currency})`,
-        type: 'number',
-        align: 'right',
-        footerSum: true,
-        footerFormat: (n) => (
-          <span className={n > 0 ? 'text-violet-700' : 'text-violet-900/60'}>
-            {n > 0 ? money(n) : `${money(0)} (yok)`}
-          </span>
-        ),
-        // 14.10.2026 19:18 — Brüt hücresinde yalnızca hizmet brütü
-        // gösterilir (örn. 50.000). Rezervasyon adedi (miktar) ayrı
-        // "Rezervasyon Miktarı" kolonunda görünür; burada miktar
-        // gösterilmez. Brüt = hizmet brütü = her zaman tek tek brüt.
-        cell: (row) =>
-          row.reservationGross > 0 ? (
-            <span className="text-violet-700 font-medium">{money(row.reservationGross)}</span>
-          ) : (
-            '—'
-          ),
-        meta: { defaultVisible: true },
-      },
-      // 14.10.2026 19:18 — Rezervasyon Miktarı (adet) — Rezervasyon
-      // Brüt hücresinin yanında. Brütün altında kaç adet rezervasyon
-      // olduğunu gösterir (örn. 1). Ciro'ya yansımaz; sadece bilgi.
+      // Rezervasyon Brüt ve Rezervasyon Kalan ızgarada listelenmez.
+      // Rezervasyon Miktarı ve Rezervasyon Tutarı bilgi kolonu olarak kalır.
+      // Peşinat ciroya eklenmez; bu gizleme tutar formülünü değiştirmez.
+      // Rezervasyon Miktarı (adet). Ciro'ya yansımaz; sadece bilgi.
       {
         key: 'reservationCount',
         header: `${tm('reservationCountLabel') || 'Rezervasyon Miktarı'}`,
@@ -1081,29 +1115,6 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
               title={`${tm('dailyDepositCollected') || 'Rezervasyon Tutarı'} (${currency})`}
             >
               {money(row.reservationDeposit)}
-            </span>
-          ) : (
-            '—'
-          ),
-        meta: { defaultVisible: true },
-      },
-      // 14.10.2026 — Rezervasyon kalan (brüt − peşinat). Fatura
-      // kesilecek tutar. Net Kalan formülüne eklenir.
-      {
-        key: 'reservationPending',
-        header: `${tm('reservationPendingLabel') || 'Rezervasyon Kalan'} (${currency})`,
-        type: 'number',
-        align: 'right',
-        footerSum: true,
-        footerFormat: (n) => (
-          <span className={n > 0 ? 'text-violet-700' : 'text-violet-900/60'}>
-            {n > 0 ? money(n) : `${money(0)} (yok)`}
-          </span>
-        ),
-        cell: (row) =>
-          row.reservationPending > 0 ? (
-            <span className="text-violet-700 font-medium">
-              {money(row.reservationPending)}
             </span>
           ) : (
             '—'
@@ -1273,6 +1284,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
 
     const filtered = base.filter((col) => {
       const key = col.key;
+      if (!isPeriodSummaryGridColumnVisible(String(key))) return false;
       if (key === 'revenue') return showPeriodCardRevenue;
       if (key === 'cash' || key === 'card' || key === 'veresiye') return showPeriodCardPaymentSplit;
       if (key === 'expenses') return showPeriodCardExpenses;
@@ -1371,7 +1383,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         hint: (
           <button
             type="button"
-            className="font-semibold text-rose-700 hover:underline dark:text-rose-400"
+            className="font-semibold underline-offset-2 hover:underline"
+            style={{ color: 'inherit' }}
             onClick={() =>
               setExpenseDetail({ title: tm('rptPeriodExpenseDetailTitle'), periodKey: null })
             }
@@ -1533,66 +1546,83 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     profitDistribution,
   ]);
 
-  const kpiColumns = Math.min(Math.max(kpiItems.length, 2), 6) as 2 | 3 | 4 | 5 | 6;
+  const headlineItems = kpiItems.filter((item) => isPeriodSummaryHeadlineKey(String(item.key ?? '')));
+  const extraItems = kpiItems.filter((item) => !isPeriodSummaryHeadlineKey(String(item.key ?? '')));
+  const extraColumns = Math.min(Math.max(extraItems.length, 2), 6) as 2 | 3 | 4 | 5 | 6;
 
   return (
     <div className="space-y-3">
-      <div className="rounded-lg border bg-white px-3 py-2">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-            <button
-              type="button"
-              onClick={refreshAll}
-              title={tm('rptPeriodRefresh') || 'Yenile'}
-              aria-label={tm('rptPeriodRefresh') || 'Yenile'}
-              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-              disabled={isAnyFetching}
-            >
-              <RefreshCw className={`h-3 w-3 ${isAnyFetching ? 'animate-spin' : ''}`} aria-hidden />
-              {tm('rptPeriodRefresh') || 'Yenile'}
-            </button>
-          </div>
-          <label className="flex flex-col gap-0.5 min-w-[9rem]">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-              {mode === 'monthly-days' ? tm('rptPeriodSelectMonth') : tm('rptPeriodSelectYear')}
-            </span>
-            {mode === 'monthly-days' ? (
-              <input
-                type="month"
-                min="1990-01"
-                max="2100-12"
-                value={selectedMonth}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v) setSelectedMonth(v);
-                }}
-                className="h-8 px-2 text-sm rounded border outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-              />
-            ) : (
-              <input
-                type="number"
-                min={1990}
-                max={2100}
-                value={selectedYear}
-                onChange={(e) => {
-                  const y = parseInt(e.target.value, 10);
-                  if (Number.isFinite(y)) setSelectedYear(y);
-                }}
-                className="h-8 w-28 px-2 text-sm rounded border outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-              />
-            )}
-          </label>
+      <div
+        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2"
+        data-testid="period-summary-toolbar"
+      >
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+          <button
+            type="button"
+            onClick={refreshAll}
+            title={tm('rptPeriodRefresh') || 'Yenile'}
+            aria-label={tm('rptPeriodRefresh') || 'Yenile'}
+            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            disabled={isAnyFetching}
+          >
+            <RefreshCw className={`h-3 w-3 ${isAnyFetching ? 'animate-spin' : ''}`} aria-hidden />
+            {tm('rptPeriodRefresh') || 'Yenile'}
+          </button>
         </div>
+        <label className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            {mode === 'monthly-days' ? tm('rptPeriodSelectMonth') : tm('rptPeriodSelectYear')}
+          </span>
+          {mode === 'monthly-days' ? (
+            <input
+              type="month"
+              min="1990-01"
+              max="2100-12"
+              value={selectedMonth}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) setSelectedMonth(v);
+              }}
+              className="h-8 px-2 text-sm rounded border bg-white outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+              aria-label={tm('rptPeriodSelectMonth')}
+            />
+          ) : (
+            <input
+              type="number"
+              min={1990}
+              max={2100}
+              value={selectedYear}
+              onChange={(e) => {
+                const y = parseInt(e.target.value, 10);
+                if (Number.isFinite(y)) setSelectedYear(y);
+              }}
+              className="h-8 w-28 px-2 text-sm rounded border bg-white outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+              aria-label={tm('rptPeriodSelectYear')}
+            />
+          )}
+        </label>
       </div>
 
-      {/* 2026-10-12 kullanıcı talebi: "Ortak paylaşımı göster" checkbox'ı
-          ve uyarı satırı tamamen kaldırıldı. Sadece 3 ana KPI
-          (Ciro, Masraf, Net Kalan) görünsün. showPartnerCols = false ile
-          ortak kolonları / KPI kartları da gizli. */}
+      {headlineItems.length > 0 ? (
+        <div
+          className="grid grid-cols-2 items-stretch gap-3 lg:grid-cols-4"
+          data-testid="period-summary-headline"
+        >
+          {headlineItems.map((item) => (
+            <PeriodSummaryHeadlineCard
+              key={String(item.key)}
+              toneKey={item.key as PeriodSummaryHeadlineKey}
+              label={item.label}
+              value={item.value}
+              hint={item.hint}
+            />
+          ))}
+        </div>
+      ) : null}
 
-      {kpiItems.length > 0 ? (
-        <ReportKpiStrip columns={kpiColumns} items={kpiItems} itemClassName="shadow-none" />
+      {extraItems.length > 0 ? (
+        <ReportKpiStrip columns={extraColumns} items={extraItems} itemClassName="shadow-none" />
       ) : null}
 
       <div className="relative rounded-lg border bg-white p-2">
