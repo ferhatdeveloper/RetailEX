@@ -16,7 +16,7 @@ import { AppointmentStatus } from '../types/beauty';
 import type { BeautyAppointment } from '../types/beauty';
 import { isAppointmentDepositCartLine } from './appointmentFormReservation';
 import { beautyAptVisibleOnSchedule } from './beautyAppointmentVisibility';
-import { groupBeautyBoardAppointmentLines } from './beautyQueueOrder';
+import { groupBeautyBoardAppointmentLines, mergeQueueGroupForCardDisplay } from './beautyQueueOrder';
 
 /**
  * Pano sayımı takvim kartıyla aynı ziyareti kullanır.
@@ -66,6 +66,44 @@ function visitIsPending(lines: BeautyAppointment[]): boolean {
             line?.status as (typeof EXPECTED_REVENUE_STATUSES)[number],
         ),
     );
+}
+
+/**
+ * Liste durumu ziyaretin bütününe bakar.
+ * Tamamlanan satır varsa satır Tamamlandı kalır; peşinat kardeşi bekleyen yapmaz.
+ * Yalnız ön ödeme satırları varsa Ön Ödeme Alındı.
+ */
+function visitListStatus(lines: BeautyAppointment[]): AppointmentStatus {
+    if (visitHasCompleted(lines)) return AppointmentStatus.COMPLETED;
+    if (lines.some((line) => line?.status === AppointmentStatus.IN_PROGRESS)) {
+        return AppointmentStatus.IN_PROGRESS;
+    }
+    const active = lines.filter(
+        (line) =>
+            line?.status !== AppointmentStatus.CANCELLED &&
+            line?.status !== AppointmentStatus.NO_SHOW,
+    );
+    if (active.length > 0 && active.every((line) => line.status === AppointmentStatus.PRE_PAID)) {
+        return AppointmentStatus.PRE_PAID;
+    }
+    if (active.some((line) => line.status === AppointmentStatus.CONFIRMED)) {
+        return AppointmentStatus.CONFIRMED;
+    }
+    if (active.some((line) => line.status === AppointmentStatus.SCHEDULED)) {
+        return AppointmentStatus.SCHEDULED;
+    }
+    return (active[0]?.status ?? lines[0]?.status ?? AppointmentStatus.SCHEDULED) as AppointmentStatus;
+}
+
+function serviceLinesForVisit(lines: BeautyAppointment[]): BeautyAppointment[] {
+    const services = lines.filter(
+        (line) =>
+            !isAppointmentDepositCartLine({
+                name: line?.service_name,
+                itemId: line?.service_id,
+            }),
+    );
+    return services.length > 0 ? services : lines;
 }
 
 /** Hizmet tutarları bir kez. Peşinat alanı ve peşinat satırı ciroya eklenmez. */
@@ -155,7 +193,7 @@ export function computeClinicDayKpis(input: ClinicDayKpiInputs): ClinicDayKpis {
     const safe = Array.isArray(appointments) ? appointments : [];
     const todayAll = safe.filter((a) => dateKeyOf(a) === todayStr);
     const todayApts = todayAll.filter(beautyAptVisibleOnSchedule);
-    // Liste hizmet satırı olarak kalır. Sayı ve ciro ziyaret (randevu) bazındadır.
+    // Sayı ve ciro, listedeki fiş satırıyla aynı ziyaret kimliğini kullanır.
     const visits = clinicVisitLines(todayApts);
     const completed = visits.filter((lines) => visitHasCompleted(lines));
     // 09.10.2026 — Bug "planli olan var bekleyende gozukmuyor":
@@ -195,4 +233,21 @@ export function sortClinicTodayAppointments(rows: BeautyAppointment[]): BeautyAp
     return [...(Array.isArray(rows) ? rows : [])].sort((a, b) =>
         (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? ''),
     );
+}
+
+/**
+ * «Bugünün Randevuları» fiş satırları.
+ * Aynı ziyaretin hizmetleri tek satırda birleşir (`HIGH LIGHT · HAND JELISH`).
+ * Farklı fiş ve farklı saat ayrı kalır. Tutar hizmet satırlarının toplamıdır;
+ * peşinat ikinci kez eklenmez. Kaynak diziyi değiştirmez.
+ */
+export function listClinicTodayAppointments(rows: BeautyAppointment[]): BeautyAppointment[] {
+    const groups = clinicVisitLines(Array.isArray(rows) ? rows : []);
+    const listed = groups.map((lines) => {
+        const card = { ...mergeQueueGroupForCardDisplay(serviceLinesForVisit(lines)) };
+        card.status = visitListStatus(lines);
+        card.total_price = visitServiceAmount(lines);
+        return card;
+    });
+    return sortClinicTodayAppointments(listed);
 }

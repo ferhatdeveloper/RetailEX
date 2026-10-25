@@ -12,7 +12,7 @@ import type { BeautyAppointment } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
-import { computeClinicDayKpis, sortClinicTodayAppointments } from '../../../utils/clinicDashboardStats';
+import { computeClinicDayKpis, listClinicTodayAppointments } from '../../../utils/clinicDashboardStats';
 import {
     clinicCallBoardBounds,
     filterClinicCallBoardRows,
@@ -491,7 +491,7 @@ export function ClinicDashboard() {
          * hesaplandı; burada yeniden hesaplamıyoruz.
          */
 
-        const sorted = sortClinicTodayAppointments(kpis.todayApts);
+        const sorted = listClinicTodayAppointments(kpis.todayApts);
 
         return {
             todayApts: sorted,

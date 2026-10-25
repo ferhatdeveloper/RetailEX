@@ -15,7 +15,7 @@ import {
     selectClinicCallBoardRows,
     type ClinicCallTab,
 } from '../../../utils/clinicCallBoard';
-import { computeClinicDayKpis, sortClinicTodayAppointments } from '../../../utils/clinicDashboardStats';
+import { computeClinicDayKpis, listClinicTodayAppointments } from '../../../utils/clinicDashboardStats';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useBeautyStore } from '../store/useBeautyStore';
 
@@ -121,7 +121,7 @@ export function ClinicV2ActivityPair({
         [appointments, todayStr],
     );
     const todayApts = useMemo(
-        () => sortClinicTodayAppointments(todayKpis.todayApts),
+        () => listClinicTodayAppointments(todayKpis.todayApts),
         [todayKpis.todayApts],
     );
 

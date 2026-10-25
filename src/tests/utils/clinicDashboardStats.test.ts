@@ -20,6 +20,7 @@ import {
     EXPECTED_REVENUE_STATUSES,
     computeClinicDayKpis,
     computeClinicExpectedRevenue,
+    listClinicTodayAppointments,
 } from '../../utils/clinicDashboardStats';
 
 const TODAY = '2026-10-03';
@@ -376,5 +377,165 @@ describe('computeClinicDayKpis (Bug 21)', () => {
         expect(k.remaining).toBe(0);
         expect(k.expectedRevenue).toBe(0);
         expect(k.todayApts).toHaveLength(2);
+    });
+
+    it('beş hizmet satırı üç fiş satırına iner; 18:00 ayrı kalır; peşinat tutara eklenmez', () => {
+        const apts = [
+            makeApt(AppointmentStatus.COMPLETED, 50_000, {
+                id: 'dunya-hl',
+                customer_id: 'cust-dunya',
+                customer_name: 'DUNYA',
+                service_name: 'HIGH LIGHT',
+                appointment_time: '09:00',
+                time: '09:00',
+                duration: 120,
+                sale_group_id: 'fis-dunya',
+                deposit_amount: 25_000,
+            }),
+            makeApt(AppointmentStatus.PRE_PAID, 25_000, {
+                id: 'dunya-hj',
+                customer_id: 'cust-dunya',
+                customer_name: 'DUNYA',
+                service_name: 'HAND JELISH',
+                appointment_time: '10:00',
+                time: '10:00',
+                duration: 60,
+                sale_group_id: 'fis-dunya',
+                deposit_amount: 25_000,
+            }),
+            makeApt(AppointmentStatus.COMPLETED, 25_000, {
+                id: 'rza-hj',
+                customer_id: 'cust-rza',
+                customer_name: 'RZA',
+                service_name: 'HAND JELISH',
+                appointment_time: '11:00',
+                time: '11:00',
+                duration: 120,
+                sale_group_id: 'fis-rza-noon',
+                deposit_amount: 20_000,
+            }),
+            makeApt(AppointmentStatus.PRE_PAID, 50_000, {
+                id: 'rza-hl',
+                customer_id: 'cust-rza',
+                customer_name: 'RZA',
+                service_name: 'HIGH LIGHT',
+                appointment_time: '12:00',
+                time: '12:00',
+                duration: 60,
+                sale_group_id: 'fis-rza-noon',
+                deposit_amount: 50_000,
+            }),
+            makeApt(AppointmentStatus.COMPLETED, 25_000, {
+                id: 'rza-eve',
+                customer_id: 'cust-rza',
+                customer_name: 'RZA',
+                service_name: 'HAND JELISH',
+                appointment_time: '18:00',
+                time: '18:00',
+                duration: 60,
+                sale_group_id: 'fis-rza-eve',
+                deposit_amount: 25_000,
+            }),
+        ];
+
+        const rows = listClinicTodayAppointments(apts);
+        expect(rows).toHaveLength(3);
+        expect(rows.map((row) => row.appointment_time)).toEqual(['09:00', '11:00', '18:00']);
+        expect(rows.map((row) => row.customer_name)).toEqual(['DUNYA', 'RZA', 'RZA']);
+        expect(rows.map((row) => row.service_name)).toEqual([
+            'HIGH LIGHT · HAND JELISH',
+            'HAND JELISH · HIGH LIGHT',
+            'HAND JELISH',
+        ]);
+        expect(rows.map((row) => row.status)).toEqual([
+            AppointmentStatus.COMPLETED,
+            AppointmentStatus.COMPLETED,
+            AppointmentStatus.COMPLETED,
+        ]);
+        expect(rows.map((row) => row.total_price)).toEqual([75_000, 75_000, 25_000]);
+        expect(rows[0]?.total_price).not.toBe(75_000 + 25_000);
+        expect(rows[1]?.total_price).not.toBe(75_000 + 50_000);
+        expect(rows[1]?.total_price).not.toBe(75_000 + 20_000 + 50_000);
+        expect(rows[2]?.total_price).not.toBe(25_000 + 25_000);
+        expect(rows[2]?.service_name).toBe('HAND JELISH');
+
+        const k = computeClinicDayKpis({ appointments: apts, todayStr: TODAY, dateKeyOf });
+        expect(k.total).toBe(rows.length);
+        expect(k.total).toBe(3);
+        expect(k.completed).toBe(3);
+        expect(k.pending).toBe(0);
+        expect(k.remaining).toBe(0);
+        expect(k.expectedRevenue).toBe(0);
+        expect(k.todayApts).toHaveLength(5);
+    });
+
+    it('yalnız ön ödemeli fiş tek satırdır; beklenen ciro hizmet toplamıdır, peşinat eklenmez', () => {
+        const apts = [
+            makeApt(AppointmentStatus.PRE_PAID, 40_000, {
+                id: 'pre-1',
+                customer_id: 'cust-pre',
+                customer_name: 'DUNYA',
+                service_name: 'HIGH LIGHT',
+                appointment_time: '14:00',
+                time: '14:00',
+                duration: 60,
+                sale_group_id: 'fis-pre',
+                deposit_amount: 15_000,
+            }),
+            makeApt(AppointmentStatus.PRE_PAID, 10_000, {
+                id: 'pre-2',
+                customer_id: 'cust-pre',
+                customer_name: 'DUNYA',
+                service_name: 'HAND JELISH',
+                appointment_time: '15:00',
+                time: '15:00',
+                duration: 60,
+                sale_group_id: 'fis-pre',
+                deposit_amount: 15_000,
+            }),
+        ];
+        const rows = listClinicTodayAppointments(apts);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]?.status).toBe(AppointmentStatus.PRE_PAID);
+        expect(rows[0]?.service_name).toBe('HIGH LIGHT · HAND JELISH');
+        expect(rows[0]?.total_price).toBe(50_000);
+        const k = computeClinicDayKpis({ appointments: apts, todayStr: TODAY, dateKeyOf });
+        expect(k.total).toBe(1);
+        expect(k.pending).toBe(1);
+        expect(k.remaining).toBe(1);
+        expect(k.completed).toBe(0);
+        expect(k.expectedRevenue).toBe(50_000);
+        expect(k.expectedRevenue).not.toBe(50_000 + 15_000);
+        expect(k.expectedRevenue).not.toBe(50_000 + 15_000 + 15_000);
+    });
+
+    it('bitişik saatte farklı fiş listede birleşmez', () => {
+        const customer = 'cust-rza';
+        const rows = listClinicTodayAppointments([
+            makeApt(AppointmentStatus.SCHEDULED, 25_000, {
+                id: 'near-a',
+                customer_id: customer,
+                customer_name: 'RZA',
+                service_name: 'HAND JELISH',
+                appointment_time: '11:00',
+                time: '11:00',
+                duration: 60,
+                sale_group_id: 'fis-a',
+            }),
+            makeApt(AppointmentStatus.SCHEDULED, 50_000, {
+                id: 'near-b',
+                customer_id: customer,
+                customer_name: 'RZA',
+                service_name: 'HIGH LIGHT',
+                appointment_time: '12:00',
+                time: '12:00',
+                duration: 60,
+                sale_group_id: 'fis-b',
+            }),
+        ]);
+        expect(rows).toHaveLength(2);
+        expect(rows.map((row) => row.appointment_time)).toEqual(['11:00', '12:00']);
+        expect(rows.map((row) => row.total_price)).toEqual([25_000, 50_000]);
+        expect(rows.map((row) => row.service_name)).toEqual(['HAND JELISH', 'HIGH LIGHT']);
     });
 });
