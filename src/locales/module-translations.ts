@@ -12239,7 +12239,7 @@ export const excelModuleTranslations = {
   },
   cashStatusColDescription: { tr: 'Açıklama', en: 'Description', ar: 'البيان', ku: 'ڕوونکردنەوە' },
   cashStatusColMethod: { tr: 'Yöntem', en: 'Method', ar: 'الطريقة', ku: 'ڕێگا' },
-  cashStatusColRegister: { tr: 'Kasa', en: 'Register', ar: 'الصندوق', ku: 'خزانە' },
+  cashStatusColRegister: { tr: 'Kasa Adı', en: 'Register name', ar: 'اسم الصندوق', ku: 'ناوی سندوق' },
   cashStatusColAmount: { tr: 'Tutar', en: 'Amount', ar: 'المبلغ', ku: 'بڕ' },
   cashStatusFlowIn: { tr: 'Gelir', en: 'Income', ar: 'دخل', ku: 'داهات' },
   cashStatusFlowOut: { tr: 'Gider', en: 'Expense', ar: 'مصروف', ku: 'خەرجی' },

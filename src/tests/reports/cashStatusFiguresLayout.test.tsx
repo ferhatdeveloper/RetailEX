@@ -13,7 +13,7 @@ import { resolve } from 'node:path';
 import { createElement } from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CashStatusFigures, gridHeightForRows, type CashStatusMovementLabels } from '../../components/reports/CashStatusFigures';
+import { CashStatusFigures, type CashStatusMovementLabels } from '../../components/reports/CashStatusFigures';
 import { clinicDashboardKpiTone } from '../../utils/clinicDashboardKpiTones';
 import {
   DAILY_REPORT_SOLID_CARD_FILL,
@@ -231,7 +231,7 @@ describe('Kasa Durumu yerleşimi', () => {
       party: 'Kategori / Müşteri',
       description: 'Açıklama',
       method: 'Yöntem',
-      register: 'Kasa',
+      register: 'Kasa Adı',
       amount: 'Tutar',
       flowIn: 'Gelir',
       flowOut: 'Gider',
@@ -312,7 +312,13 @@ describe('Kasa Durumu yerleşimi', () => {
     expect(movements.textContent).toContain('Kategori / Müşteri');
     expect(movements.textContent).toContain('Açıklama');
     expect(movements.textContent).toContain('Yöntem');
+    expect(movements.textContent).toContain('Kasa Adı');
     expect(movements.textContent).toContain('Tutar');
+    expect(movements.textContent).toContain('MERKEZ KASA');
+    expect(movements.textContent).toContain('QICARD');
+    const text = movements.textContent || '';
+    expect(text.indexOf('Yöntem')).toBeLessThan(text.indexOf('Kasa Adı'));
+    expect(text.indexOf('Kasa Adı')).toBeLessThan(text.indexOf('Tutar'));
     expect(movements.textContent).toContain('Gelir');
     expect(movements.textContent).toContain('Gider');
     expect(movements.textContent).toContain('Honda Türker');
@@ -344,7 +350,7 @@ describe('Kasa Durumu yerleşimi', () => {
       party: 'Kategori / Müşteri',
       description: 'Açıklama',
       method: 'Yöntem',
-      register: 'Kasa',
+      register: 'Kasa Adı',
       amount: 'Tutar',
       flowIn: 'Gelir',
       flowOut: 'Gider',
@@ -393,37 +399,117 @@ describe('Kasa Durumu yerleşimi', () => {
             registerId: 'merkez',
             registerName: 'MERKEZ KASA',
           },
+          {
+            id: 'blank',
+            date: '2026-10-13',
+            flow: 'gelir',
+            amount: 100,
+            method: 'nakit',
+            party: 'Boş kasa',
+            description: 'Kartsız fiş',
+            categoryCode: 'cashIn',
+            typeCode: 'KASA_GIRIS',
+            ficheNo: 'BOS',
+            registerId: 'kasa-kimlik-uydurma',
+            registerName: '',
+          },
         ],
       }),
     );
 
     const movements = screen.getByTestId('cash-status-movements');
-    // Kolon başlığı görünür.
-    expect(movements.textContent).toContain('Kasa');
-    // Satırda kasa adı yazılır.
+    expect(movements.textContent).toContain('Kasa Adı');
     expect(movements.textContent).toContain('MERKEZ KASA');
+    expect(movements.textContent).not.toContain('kasa-kimlik-uydurma');
   });
 
-  it('kasalar tablosunun yüksekliği satır sayısına göre sıkı hesaplanır (boşluk yok)', () => {
-    // Ölçülen chrome: toolbar 39 + başlık 23 + tfoot 29 + sayfalama 59 = 150px.
-    // Satır 22px. 2 satır → 150 + 44 = 194px.
-    // Eski formül 332px veriyordu (içinde ~130px boşluk).
-    expect(gridHeightForRows(2, 420)).toBe(194);
-    // 1 satır → 150 + 22 = 172, minimum 180px'e yükseltilir.
-    expect(gridHeightForRows(1, 420)).toBe(180);
-    // 0 satır → minimum 180px.
-    expect(gridHeightForRows(0, 420)).toBe(180);
-    // Çok satır → üst sınır uygulanır.
-    expect(gridHeightForRows(100, 420)).toBe(420);
-    expect(gridHeightForRows(100, 560)).toBe(560);
-    // 14 satır → 150 + 308 = 458 (üst sınır 560 değil).
-    expect(gridHeightForRows(14, 560)).toBe(458);
-    // 5 satır → 150 + 110 = 260.
-    expect(gridHeightForRows(5, 560)).toBe(260);
-
+  it('kasalar tablosu 2 satır için 50 satırlık boş yükseklik bırakmaz', () => {
     const source = readFileSync(resolve('src/components/reports/CashStatusFigures.tsx'), 'utf8');
-    // Eski, boşluk bırakan formül artık kullanılmıyor.
+    expect(source).toContain('data-cash-grid-fit="rows"');
+    expect(source).toContain('height: auto !important');
+    expect(source).toContain('min-height: 0 !important');
+    expect(source).toContain('flex: none !important');
+    expect(source).not.toContain('gridHeightForRows');
     expect(source).not.toContain('260 + registerLines.length');
     expect(source).not.toContain('height={480}');
+    expect(source).not.toContain('height={420}');
+    expect(source).not.toContain('min-h-[280px]');
+
+    render(
+      createElement(CashStatusFigures, {
+        totalIn: 329_000,
+        totalOut: 73_500,
+        balance: 255_500,
+        currency: 'IQD',
+        labels: LABELS,
+        movementLabels: {
+          title: 'Kasa Hareketleri',
+          empty: 'Seçili aralıkta kasa hareketi yok.',
+          total: 'Hareketler toplamı',
+          date: 'Tarih',
+          flow: 'Tip',
+          party: 'Kategori / Müşteri',
+          description: 'Açıklama',
+          method: 'Yöntem',
+          register: 'Kasa Adı',
+          amount: 'Tutar',
+          flowIn: 'Gelir',
+          flowOut: 'Gider',
+          methodCash: 'Nakit',
+          methodCard: 'Kredi kartı',
+          methodTransfer: 'Havale',
+          categories: {
+            sale: 'Satış',
+            deposit: 'Peşinat',
+            collection: 'Tahsilat',
+            openingDebit: 'Açılış borç',
+            openingCredit: 'Açılış alacak',
+            expense: 'Gider',
+            payment: 'Cari ödeme',
+            virman: 'Virman',
+            bankIn: 'Bankadan çekilen',
+            bankOut: 'Bankaya yatırılan',
+            cashIn: 'Kasa giriş',
+            cashOut: 'Kasa çıkış',
+            other: 'Kasa hareketi',
+          },
+        },
+        registerLines: [
+          { id: 'merkez', code: 'KASA.001', name: 'MERKEZ KASA', label: 'KASA.001 — MERKEZ KASA', amount: 240_500 },
+          { id: 'qicard', code: '00002', name: 'QICARD', label: '00002 — QICARD', amount: 15_000 },
+        ],
+        movementRows: [
+          {
+            id: 'in',
+            date: '2026-10-24',
+            flow: 'gelir',
+            amount: 40_000,
+            method: 'nakit',
+            party: 'Satış',
+            description: 'Satış faturası',
+            categoryCode: 'sale',
+            typeCode: 'KASA_GIRIS',
+            ficheNo: 'FIS-40',
+            registerId: 'merkez',
+            registerName: 'MERKEZ KASA',
+          },
+        ],
+      }),
+    );
+
+    const registers = screen.getByTestId('cash-status-registers');
+    const movements = screen.getByTestId('cash-status-movements');
+    expect(registers.contains(movements)).toBe(true);
+    expect(movements.className).toContain('mt-4');
+    const fitted = registers.querySelectorAll('[data-cash-grid-fit="rows"]');
+    expect(fitted.length).toBe(2);
+    fitted.forEach((node) => {
+      const shell = node.firstElementChild as HTMLElement | null;
+      expect(shell?.style.height).toBe('auto');
+      expect(shell?.getAttribute('style') || '').not.toMatch(/height:\s*\d+px/);
+    });
+    expect(screen.getByTestId('cash-status-card-in').textContent).toContain('329.000');
+    expect(screen.getByTestId('cash-status-card-out').textContent).toContain('73.500');
+    expect(screen.getByTestId('cash-status-card-balance').textContent).toContain('255.500');
   });
 });

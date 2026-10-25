@@ -24,23 +24,27 @@ import {
 import { ReportColumnTable } from './shared/ReportDataGrid';
 
 /**
- * Izgara yüksekliği satır sayısına göre sıkı hesaplanır.
- *
- * DevExDataGrid yüksekliği TÜM grid'e uygulanır (toolbar + kolon başlığı +
- * gövde + dip toplam + sayfalama). Satırdan az yükseklik verilirse tablo
- * kırpılır; fazla yükseklik verilirse altta boşluk kalır (eski
- * `260 + n*36` formülü 2 satırlık tabloda ~230px boşluk bırakıyordu).
- *
- * Ölçülen sabit bileşenler: araç çubuğu 39px, kolon başlığı 23px,
- * dip toplam satırı 29px, sayfalama 59px → 150px.
- * Satır yüksekliği compact modda 22px.
+ * Kasa Durumu ızgarası satır kadar yer kaplar.
+ * Ortak rapor ızgarasının en az yükseklik tabanı ve esneyen gövdesi
+ * 2 kasa satırında 50 satırlık boş sayfa bırakır.
+ * Bu kurallar yalnız bu ekranın ızgaralarında o tabanı ve esnemeyi kapatır.
+ * Sayfalama durur; gövde boş satır için uzamaz.
  */
-export function gridHeightForRows(rowCount: number, maxHeight: number): number {
-  const rows = Math.max(1, Math.floor(rowCount));
-  const chrome = 150;
-  const rowHeight = 22;
-  return Math.min(maxHeight, Math.max(180, chrome + rows * rowHeight));
+const CASH_STATUS_GRID_FIT_CSS = `
+[data-cash-grid-fit="rows"] > div {
+  height: auto !important;
+  min-height: 0 !important;
 }
+[data-cash-grid-fit="rows"] [data-datagrid-root] {
+  height: auto !important;
+  min-height: 0 !important;
+}
+[data-cash-grid-fit="rows"] [data-datagrid-root] > .overflow-auto {
+  flex: none !important;
+  overflow: visible !important;
+  min-height: 0 !important;
+}
+`;
 
 /** Üç kutu, Günlük Rapor dolu kart anahtarlarına bağlıdır. */
 type CashStatusSolidToneKey = Extract<
@@ -170,9 +174,10 @@ export function CashStatusFigures({
           {labels.registersEmpty}
         </div>
       ) : (
+        <div data-cash-grid-fit="rows">
         <ReportColumnTable
           data={registerLines}
-          height={gridHeightForRows(registerLines.length, 420)}
+          height="auto"
           storageNamespace="cash-status-register-distribution"
           footerLabel={labels.registersTotal}
           onRowClick={onRegisterRowClick ? (row) => onRegisterRowClick(row.id) : undefined}
@@ -197,29 +202,31 @@ export function CashStatusFigures({
             },
           ]}
         />
+        </div>
       )}
       {movementRows && movementLabels ? (
-        <div className="mt-6" data-testid="cash-status-movements">
+        <div className="mt-4" data-testid="cash-status-movements">
           <h3 className="text-lg mb-4">{movementLabels.title}</h3>
           {movementRows.length === 0 ? (
             <div className="p-4 text-center text-sm text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
               {movementLabels.empty}
             </div>
           ) : (
+            <div data-cash-grid-fit="rows">
             <ReportColumnTable
               data={movementRows.map((row) => ({
                 ...row,
                 flowLabel: row.flow === 'gelir' ? movementLabels.flowIn : movementLabels.flowOut,
                 partyLabel: row.party || movementLabels.categories[row.categoryCode] || row.typeCode,
                 descriptionLabel: row.description || movementLabels.categories[row.categoryCode] || '—',
-                registerLabel: row.registerName || row.registerId || '—',
+                registerLabel: String(row.registerName || '').trim(),
                 methodLabel: row.method === 'kart'
                   ? movementLabels.methodCard
                   : row.method === 'havale'
                     ? movementLabels.methodTransfer
                     : movementLabels.methodCash,
               }))}
-              height={gridHeightForRows(movementRows.length, 560)}
+              height="auto"
               storageNamespace="cash-status-movements"
               footerLabel={movementLabels.total}
               columns={[
@@ -265,7 +272,7 @@ export function CashStatusFigures({
                   header: movementLabels.register,
                   size: 180,
                   cell: (row) => (
-                    <span className="text-slate-600">{row.registerLabel || '—'}</span>
+                    <span className="text-slate-700">{row.registerLabel}</span>
                   ),
                 },
                 {
@@ -286,6 +293,7 @@ export function CashStatusFigures({
                 },
               ]}
             />
+            </div>
           )}
         </div>
       ) : null}
@@ -294,6 +302,7 @@ export function CashStatusFigures({
 
   return (
     <div className="space-y-4">
+      <style>{CASH_STATUS_GRID_FIT_CSS}</style>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="cash-status-kpi-row">
         <CashKpiCard
           testId="cash-status-card-in"

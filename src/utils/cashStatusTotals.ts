@@ -1836,7 +1836,10 @@ export interface CashStatusMovementRow {
   typeCode: string;
   ficheNo: string;
   registerId: string;
-  /** Kasa adı (Kasa Durumu hareket tablosunda gösterilir). Boşsa registerId yazılır. */
+  /**
+   * Kasa kartının adı. Ad yoksa kodu.
+   * İkisi de yoksa boştur; fiş metninden veya kimlikten ad uydurulmaz.
+   */
   registerName: string;
 }
 
@@ -1859,8 +1862,31 @@ export interface CashStatusMovementInput {
   discount?: number;
   expense?: number;
   countedExpenseKeys?: Iterable<string> | null;
-  /** Kasa kartı adı. Virman satırında kategori olarak durur. */
+  /**
+   * Kasa kartı adı (`cash_registers.name`), anahtar fişin `register_id` değeri.
+   * Virman satırında kategori olarak da durur.
+   */
   registerNames?: Readonly<Record<string, string>>;
+  /** Kasa kartı kodu. Ad boşsa hareket kolonunda bu yazılır. */
+  registerCodes?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Hareket satırındaki kasa yazısı.
+ * Kaynak kasa kartıdır: ad, yoksa kod. Kartta ikisi de yoksa boş.
+ * Kimlik, fiş açıklaması ve uydurma etiket yazılmaz.
+ */
+export function cashMovementRegisterLabel(args: {
+  registerId?: string | null;
+  name?: string | null;
+  code?: string | null;
+}): string {
+  const id = String(args.registerId || '').trim();
+  const name = String(args.name || '').trim();
+  if (name && name !== id) return name;
+  const code = String(args.code || '').trim();
+  if (code && code !== id) return code;
+  return '';
 }
 
 function movementFicheKey(line: CashStatusRegisterLine): string {
@@ -1969,16 +1995,20 @@ function movementGroupKey(
 function registerCaption(
   line: CashStatusRegisterLine,
   names: Readonly<Record<string, string>> | undefined,
+  codes: Readonly<Record<string, string>> | undefined,
 ): string {
-  const written = String(line.kasa_adi || line.register_name || '').trim();
-  if (written) return written;
   const id = String(line.kasa_id || '').trim();
-  return String((id && names?.[id]) || '').trim();
+  return cashMovementRegisterLabel({
+    registerId: id,
+    name: id ? names?.[id] : '',
+    code: id ? codes?.[id] : '',
+  });
 }
 
 function toMovementRow(
   line: CashStatusRegisterLine,
   names: Readonly<Record<string, string>> | undefined,
+  codes: Readonly<Record<string, string>> | undefined,
   groupKey: string,
 ): CashStatusMovementRow | null {
   const signed = round2(voucherSignedAmount(line));
@@ -1987,7 +2017,7 @@ function toMovementRow(
   const virman = isCashVirmanType(tip);
   const kind = drawerKind(line);
   const registerId = String(line.kasa_id || '').trim();
-  const registerName = registerCaption(line, names);
+  const registerName = registerCaption(line, names, codes);
   const ficheNo = String(line.islem_no || line.fiche_no || '').trim();
   const flow: CashStatusMovementFlow = signed > 0 ? 'gelir' : 'gider';
   return {
@@ -2002,7 +2032,7 @@ function toMovementRow(
     typeCode: tip,
     ficheNo,
     registerId,
-    registerName: registerName || registerId,
+    registerName,
   };
 }
 
@@ -2030,6 +2060,7 @@ export function cashStatusMovementRows(input: CashStatusMovementInput): CashStat
   const collectionsInSales = input.customerCollectionsInSalesCash === true;
   const lines = withCashVirmanLines(input.lines || []) as CashStatusRegisterLine[];
   const names = input.registerNames;
+  const codes = input.registerCodes;
 
   const virman: CashStatusRegisterLine[] = [];
   const grouped = new Map<string, { line: CashStatusRegisterLine; score: number; abs: number }>();
@@ -2059,11 +2090,11 @@ export function cashStatusMovementRows(input: CashStatusMovementInput): CashStat
 
   const rows: CashStatusMovementRow[] = [];
   for (const [key, picked] of grouped) {
-    const row = toMovementRow(picked.line, names, key);
+    const row = toMovementRow(picked.line, names, codes, key);
     if (row) rows.push(row);
   }
   virman.forEach((line, index) => {
-    const row = toMovementRow(line, names, `virman:${index}`);
+    const row = toMovementRow(line, names, codes, `virman:${index}`);
     if (row) rows.push(row);
   });
 

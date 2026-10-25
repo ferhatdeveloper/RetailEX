@@ -4610,10 +4610,14 @@ export function ReportsModule({
       balanceFromRegisters: cashStatusActive ? cashStatusQuery.balanceFromRegisters : undefined,
     });
     const registerNames: Record<string, string> = {};
+    const registerCodes: Record<string, string> = {};
     for (const kasa of cashRegisterCards) {
       const id = String(kasa.id || '').trim();
       if (!id) continue;
-      registerNames[id] = String(kasa.kasa_adi || kasa.kasa_kodu || id).trim();
+      const name = String(kasa.kasa_adi || '').trim();
+      const code = String(kasa.kasa_kodu || '').trim();
+      if (name && name !== id) registerNames[id] = name;
+      if (code && code !== id) registerCodes[id] = code;
     }
     const movements = cashStatusMovementRows({
       salesCash: folded.todayCash,
@@ -4626,6 +4630,7 @@ export function ReportsModule({
       saleReceiptKeys,
       customerCollectionsInSalesCash: true,
       registerNames,
+      registerCodes,
     });
     const voucherAmount = (code: string, fallback: number) => {
       if (code === 'NAKIT') return voucher.todayCash;

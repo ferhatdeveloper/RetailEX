@@ -25,6 +25,7 @@ import {
   cashRegisterNetGrandTotal,
   cashStatusBlockTotals,
   cashStatusDistributionListRows,
+  cashMovementRegisterLabel,
   cashStatusMovementRows,
   cashStatusThreeBoxes,
   cashStatusWithVouchers,
@@ -2475,5 +2476,133 @@ describe('Kasa Durumu hareket listesi', () => {
       .reduce((sum, row) => sum + row.amount, 0);
     expect(giderSum).toBe(-15_000);
     expect(giderSum).not.toBe(-30_000);
+  });
+
+  it('hareket satırında kasa adı register kaydından gelir; boş ad uydurulmaz; kutu tutarları değişmez', () => {
+    expect(cashMovementRegisterLabel({
+      registerId: 'merkez',
+      name: 'MERKEZ KASA',
+      code: 'KASA.001',
+    })).toBe('MERKEZ KASA');
+    expect(cashMovementRegisterLabel({
+      registerId: 'qicard',
+      name: '',
+      code: 'QICARD',
+    })).toBe('QICARD');
+    expect(cashMovementRegisterLabel({
+      registerId: 'bos-kimlik',
+      name: '',
+      code: '',
+    })).toBe('');
+    expect(cashMovementRegisterLabel({
+      registerId: 'bos-kimlik',
+      name: 'bos-kimlik',
+      code: 'bos-kimlik',
+    })).toBe('');
+
+    const lines = [
+      {
+        kasa_id: 'merkez',
+        islem_tipi: 'KASA_GIRIS',
+        tutar: 40_000,
+        islem_tarihi: '2026-10-24',
+        payment_method: 'cash',
+        islem_no: 'FIS-40',
+        kasa_adi: 'Uydurma Merkez',
+        islem_aciklamasi: 'Satış faturası — FIS-40',
+      },
+      {
+        kasa_id: 'qicard',
+        islem_tipi: 'KASA_GIRIS',
+        tutar: 15_000,
+        islem_tarihi: '2026-10-24',
+        payment_method: 'card',
+        islem_no: 'QI-1',
+        kasa_adi: 'Hayali Kart',
+      },
+      {
+        kasa_id: 'bos-kimlik',
+        islem_tipi: 'KASA_CIKIS',
+        tutar: 500,
+        islem_tarihi: '2026-10-24',
+        payment_method: 'cash',
+        islem_no: 'BOS-1',
+        kasa_adi: 'Hayali Kasa',
+      },
+      {
+        id: 'pesinat',
+        kasa_id: 'merkez',
+        islem_tipi: 'CH_TAHSILAT',
+        tutar: 10_000,
+        ozel_kod: 'REZERVASYON',
+        islem_tarihi: '2026-10-24',
+        payment_method: 'cash',
+        islem_no: 'PESINAT',
+      },
+      {
+        kasa_id: 'merkez',
+        islem_tipi: 'KASA_CIKIS',
+        tutar: 5_000,
+        islem_tarihi: '2026-10-24',
+        payment_method: 'cash',
+        islem_no: 'GDR-1',
+      },
+      {
+        kasa_id: 'merkez',
+        target_register_id: 'qicard',
+        islem_tipi: 'VIRMAN',
+        tutar: 20_000,
+        sign: -1,
+        islem_no: 'VRM-1',
+        islem_tarihi: '2026-10-20',
+        payment_method: 'cash',
+      },
+    ];
+    const shared = {
+      salesCash: 329_000,
+      expense: 73_500,
+      countedExpenseKeys: ['GDR-1', 'BOS-1'],
+      lines,
+      dateFrom: '2026-01-01',
+      dateTo: '2026-10-25',
+      customerCollectionsInSalesCash: true,
+      registerTotal: 255_500,
+      balanceFromRegisters: true,
+    };
+    const boxes = cashStatusThreeBoxes(shared);
+    const rows = cashStatusMovementRows({
+      ...shared,
+      registerNames: { merkez: 'MERKEZ KASA', qicard: '', 'bos-kimlik': '' },
+      registerCodes: { merkez: 'KASA.001', qicard: 'QICARD', 'bos-kimlik': '' },
+    });
+    const rowsWithoutCards = cashStatusMovementRows(shared);
+
+    expect(rows.find((row) => row.ficheNo === 'FIS-40')?.registerName).toBe('MERKEZ KASA');
+    expect(rows.find((row) => row.ficheNo === 'QI-1')?.registerName).toBe('QICARD');
+    expect(rows.find((row) => row.ficheNo === 'BOS-1')?.registerName).toBe('');
+    expect(rows.some((row) => row.registerName === 'Uydurma Merkez' || row.registerName === 'Hayali Kasa' || row.registerName === 'Hayali Kart')).toBe(false);
+    expect(rows.some((row) => row.registerName === 'bos-kimlik')).toBe(false);
+    expect(rowsWithoutCards.every((row) => row.registerName === '')).toBe(true);
+    expect(rows.map((row) => row.amount)).toEqual(rowsWithoutCards.map((row) => row.amount));
+
+    const deposit = rows.filter((row) => row.ficheNo === 'PESINAT');
+    expect(deposit).toHaveLength(1);
+    expect(deposit[0]?.amount).toBe(10_000);
+    const expense = rows.filter((row) => row.ficheNo === 'GDR-1');
+    expect(expense).toHaveLength(1);
+    expect(expense[0]?.amount).toBe(-5_000);
+    const legs = rows.filter((row) => row.categoryCode === 'virman');
+    expect(legs).toHaveLength(2);
+    expect(legs.map((row) => row.amount).sort((a, b) => a - b)).toEqual([-20_000, 20_000]);
+    expect(legs.find((row) => row.amount > 0)?.registerName).toBe('QICARD');
+    expect(legs.find((row) => row.amount < 0)?.registerName).toBe('MERKEZ KASA');
+
+    expect(boxes.totalIn).toBe(329_000);
+    expect(boxes.totalOut).toBe(73_500);
+    expect(boxes.balance).toBe(255_500);
+    expect(cashStatusThreeBoxes({
+      ...shared,
+      lines: lines.filter((line) => line.islem_tipi !== 'VIRMAN'),
+    })).toEqual(boxes);
   });
 });
