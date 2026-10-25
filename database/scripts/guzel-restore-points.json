@@ -8,6 +8,28 @@
   "description": "guzel DB geri dönüşüm noktaları. 'restore --label <etiket>' ile seçilen checkpoint'e döndürür. Yeni nokta: 'node guzel-restore-point.mjs create --label <etiket> --note <açıklama>'.",
   "points": [
     {
+      "label": "fresh-no-demo-2026-10-25-1410",
+      "note": "25.10.2026 14:10: master + 221 migration, demo/operasyonel veri YOK. admin/admin. NIHAT testi sonrası sıfırlama.",
+      "file": "database/backups/guzel-fresh-no-demo-2026-10-25-1410-2026-10-25T11-10-21.sql",
+      "size_bytes": 813477,
+      "tables": 233,
+      "inserts": 671,
+      "created_at": "2026-10-25T11:11:27.505Z",
+      "created_by": "guzel-restore-point.mjs create",
+      "is_default": true
+    },
+    {
+      "label": "before-reset-2026-10-25-1403",
+      "note": "Sıfırlama öncesi yedek (NIHAT randevu testi sonrası; demo verisiz recreate)",
+      "file": "database/backups/guzel-before-reset-2026-10-25-1403-2026-10-25T11-03-28.sql",
+      "size_bytes": 883616,
+      "tables": 233,
+      "inserts": 734,
+      "created_at": "2026-10-25T11:04:32.211Z",
+      "created_by": "guzel-restore-point.mjs create",
+      "is_default": false
+    },
+    {
       "label": "fresh-no-demo-2026-10-25-1249",
       "note": "25.10.2026 öğlen: master + 221 migration, demo/operasyonel veri YOK. admin/admin.",
       "file": "database/backups/guzel-fresh-no-demo-2026-10-25-1249-2026-10-25T09-55-11.sql",
@@ -16,7 +38,7 @@
       "inserts": 670,
       "created_at": "2026-10-25T09:56:15.236Z",
       "created_by": "guzel-restore-point.mjs create",
-      "is_default": true
+      "is_default": false
     },
     {
       "label": "before-reset-2026-10-25-1248",
