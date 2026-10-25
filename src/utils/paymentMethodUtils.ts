@@ -265,6 +265,15 @@ export function paymentMethodImpliesSupplierDebt(pm: string | undefined | null):
   return true;
 }
 
+/**
+ * Nakit, kart veya havale. Ekstrede borç = alacak olduğundan cariye
+ * tek taraflı alacak yazılmaz. Veresiye ve boş yöntem bu kümeye girmez.
+ */
+export function paymentMethodIsCashSettled(pm: unknown): boolean {
+  const bucket = normalizePaymentMethodBucket(pm);
+  return bucket === 'cash' || bucket === 'card' || bucket === 'transfer';
+}
+
 /** Ledger SQL: satış satırı cari borç yaratır mı */
 export function sqlPaymentMethodImpliesCustomerDebtExpr(alias = ''): string {
   const col = alias ? `${alias}.payment_method` : 'payment_method';
@@ -274,6 +283,23 @@ export function sqlPaymentMethodImpliesCustomerDebtExpr(alias = ''): string {
       'açık cari', 'acik cari', 'acik_cari', 'açık_cari'
     )
     OR LOWER(TRIM(COALESCE(${col}, ''))) LIKE '%veresiye%'
+  )`;
+}
+
+/**
+ * Ledger SQL: nakit / kart / havale. `paymentMethodIsCashSettled` ile aynı küme.
+ * İade satırında katkı 0 olur; açık cari iade bu ifadeye düşmez.
+ */
+export function sqlPaymentMethodIsCashSettledExpr(alias = ''): string {
+  const col = alias ? `${alias}.payment_method` : 'payment_method';
+  const pm = `LOWER(TRIM(COALESCE(${col}, '')))`;
+  return `(
+    ${pm} IN (
+      'cash', 'nakit',
+      'card', 'kart', 'gateway', 'kredikarti', 'kredi kartı', 'kredi karti',
+      'havale', 'eft', 'haval', 'transfer'
+    )
+    OR ${pm} LIKE '%kredi%kart%'
   )`;
 }
 

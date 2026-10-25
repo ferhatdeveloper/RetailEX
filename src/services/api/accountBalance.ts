@@ -1,14 +1,17 @@
 /**
  * Cari bakiye — sales + cash_lines (customer_id veya ünvan eşleşmesi).
- * Müşteri: yalnızca veresiye/açık hesap satışları + iade/devir + CH_*.
- * Tedarikçi: peşin alış hariç alış/iade + CH_*.
+ * Müşteri: yalnızca veresiye/açık hesap satışları + açık iade/devir + CH_*.
+ * Nakit, kart ve havale iade borç = alacak olduğundan cariye 0 yazılır.
+ * Tedarikçi: peşin alış ve peşin alış iadesi hariç + CH_*.
  */
 import { ERP_SETTINGS } from '../postgres';
 import {
   paymentMethodImpliesCustomerDebt,
   paymentMethodImpliesSupplierDebt,
+  paymentMethodIsCashSettled,
   sqlPaymentMethodImpliesCustomerDebtExpr,
   sqlPaymentMethodImpliesSupplierDebtExpr,
+  sqlPaymentMethodIsCashSettledExpr,
 } from '../../utils/paymentMethodUtils';
 
 export function normalizeFirmTableNr(firmNr?: string | number | null): string {
@@ -56,6 +59,8 @@ export function firmSuppliersTable(firmNr?: string | number | null): string {
 
 const customerDebtPmSql = sqlPaymentMethodImpliesCustomerDebtExpr();
 const customerDebtPmSqlS = sqlPaymentMethodImpliesCustomerDebtExpr('s');
+const customerSettledPmSql = sqlPaymentMethodIsCashSettledExpr();
+const customerSettledPmSqlS = sqlPaymentMethodIsCashSettledExpr('s');
 const supplierDebtPmSql = sqlPaymentMethodImpliesSupplierDebtExpr();
 const supplierDebtPmSqlSl = sqlPaymentMethodImpliesSupplierDebtExpr('sl');
 
@@ -108,7 +113,11 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
       SELECT id, SUM(line_contrib) AS calculated_balance, COUNT(*)::int AS txn_count
       FROM (
         SELECT customer_id AS id,
-          CASE WHEN fiche_type = 'return_invoice' THEN -net_amount ELSE net_amount END AS line_contrib
+          CASE
+            WHEN fiche_type = 'return_invoice' AND ${customerSettledPmSql} THEN 0
+            WHEN fiche_type = 'return_invoice' THEN -net_amount
+            ELSE net_amount
+          END AS line_contrib
         FROM sales
         WHERE customer_id IS NOT NULL AND COALESCE(is_cancelled, false) = false
           AND (
@@ -117,7 +126,11 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
           )
         UNION ALL
         SELECT c.id,
-          CASE WHEN s.fiche_type = 'return_invoice' THEN -s.net_amount ELSE s.net_amount END
+          CASE
+            WHEN s.fiche_type = 'return_invoice' AND ${customerSettledPmSqlS} THEN 0
+            WHEN s.fiche_type = 'return_invoice' THEN -s.net_amount
+            ELSE s.net_amount
+          END
         FROM sales s
         INNER JOIN ${custTable} c ON ${sqlFirmScopedCardMatch('c', firmNrBind)}
           AND TRIM(LOWER(COALESCE(s.customer_name, ''))) = TRIM(LOWER(c.name))
@@ -157,6 +170,7 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
         SELECT customer_id AS id,
           CASE
             WHEN fiche_type = 'purchase_invoice' THEN net_amount
+            WHEN fiche_type = 'return_invoice' AND NOT (${supplierDebtPmSql}) THEN 0
             WHEN fiche_type = 'return_invoice' THEN -net_amount
             WHEN fiche_type = 'opening_balance' THEN net_amount
             ELSE 0
@@ -173,6 +187,7 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
         SELECT s.id,
           CASE
             WHEN sl.fiche_type = 'purchase_invoice' THEN sl.net_amount
+            WHEN sl.fiche_type = 'return_invoice' AND NOT (${supplierDebtPmSqlSl}) THEN 0
             WHEN sl.fiche_type = 'return_invoice' THEN -sl.net_amount
             WHEN sl.fiche_type = 'opening_balance' THEN sl.net_amount
             ELSE 0
@@ -320,17 +335,27 @@ export function accountLedgerNameMatch(
   return a.length > 0 && b.length > 0 && a === b;
 }
 
+/** Nakit/kart/havale iade: ekstre borç = alacak, cari katkısı 0. Açık iade sayılır. */
+function isSettledCashReturn(s: LedgerSaleRow): boolean {
+  if (s.is_cancelled === true || String(s.fiche_type || '').toLowerCase() === 'cancelled') return false;
+  if (String(s.fiche_type || '').toLowerCase() !== 'return_invoice') return false;
+  return paymentMethodIsCashSettled(s.payment_method);
+}
+
 function saleCountsTowardCustomerDebt(s: LedgerSaleRow): boolean {
   const ft = String(s.fiche_type || '').toLowerCase();
-  if (ft === 'return_invoice' || ft === 'opening_balance') return true;
+  if (ft === 'opening_balance') return true;
+  if (ft === 'return_invoice') return !paymentMethodIsCashSettled(s.payment_method);
   return paymentMethodImpliesCustomerDebt(s.payment_method);
 }
 
 function saleCountsTowardSupplierDebt(s: LedgerSaleRow): boolean {
   const ft = String(s.fiche_type || '').toLowerCase();
-  if (ft === 'return_invoice' || ft === 'opening_balance') return true;
-  if (ft !== 'purchase_invoice') return false;
-  return paymentMethodImpliesSupplierDebt(s.payment_method);
+  if (ft === 'opening_balance') return true;
+  if (ft === 'return_invoice' || ft === 'purchase_invoice') {
+    return paymentMethodImpliesSupplierDebt(s.payment_method);
+  }
+  return false;
 }
 
 function sumCustomerSalesLedger(
@@ -344,10 +369,12 @@ function sumCustomerSalesLedger(
   let sum = 0;
   for (const s of sales) {
     if (s.is_cancelled === true || String(s.fiche_type || '').toLowerCase() === 'cancelled') continue;
-    if (!saleCountsTowardCustomerDebt(s)) continue;
+    const settledReturn = isSettledCashReturn(s);
+    if (!settledReturn && !saleCountsTowardCustomerDebt(s)) continue;
     const amt = parseFloat(String(s.net_amount ?? 0)) || 0;
     if (!amt) continue;
-    const contrib = s.fiche_type === 'return_invoice' ? -amt : amt;
+    // Nakit iade hareket sayılır (kart bakiyesine düşülmez) ama tutarı 0'dır.
+    const contrib = settledReturn ? 0 : (s.fiche_type === 'return_invoice' ? -amt : amt);
     const cid = s.customer_id ? String(s.customer_id) : '';
     const matchesId = cid && cid === idStr;
     // SQL CTE / ekstre ile aynı: başka (pasif/çift) karta yazılmış aynı ünvan satışları da say

@@ -34,6 +34,18 @@ export function cariListBalanceForDisplay(
   return invoiceHeaderBalanceForDisplay(ledgerBalance, reservationDeposit);
 }
 
+/**
+ * Ekstre başlığındaki cari bakiye. Liste kolonu ile aynı net:
+ * peşinat alacağa yazılmaz, veresiye borç büyütülmez.
+ */
+export function ekstreHeaderBalanceForDisplay(
+  cardType: CariListCardType,
+  ledgerBalance: number | null | undefined,
+  reservationDeposit: number | null | undefined,
+): number {
+  return cariListBalanceForDisplay(cardType, ledgerBalance, reservationDeposit);
+}
+
 export function sumCariListDisplayBalances(
   rows: Array<{
     cardType?: CariListCardType;

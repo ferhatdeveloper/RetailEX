@@ -24,6 +24,7 @@ import {
   type EkstreRow,
 } from '../../../utils/cariAccountStatement';
 import { formatExtractDate } from '../../../utils/materialExtractPrint';
+import { ekstreHeaderBalanceForDisplay } from '../../../utils/cariListBalance';
 import { CariEkstrePrintModal } from './CariEkstrePrintModal';
 
 export interface CariAccountStatementPanelProps {
@@ -508,22 +509,23 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
   const netHdr = fmtEkstreSignedNet();
   const lastRowHdr = fmtEkstreAmount(Math.abs(lastRowBalance));
 
-  /** Cari bakiye chip'i her zaman DB'deki `account.balance`'ten alınır —
-   * cari kartındaki tutar tek doğruluk kaynağıdır. Σ borç − Σ alacak
-   * (ledger toplamı) ile bu değer eşit olmalı; ayrıştığında (örn.
-   * ledger henüz yazılmamış satırlar) cari.balance chip'i doğruyu
-   * gösterir. Tedarikçi MUS-018/TED-006 skandalı: 50k limit yüzünden
-   * kesilen CH_ODEME satırı nedeniyle Σ ile DB cache farklı
-   * görünebilir — bu yüzden Σ chip'i de görünür kılındı. */
-  const currentBalanceHdr = fmtEkstreAmount(Math.abs(account.balance || 0));
-  const currentBalanceDir = getCariBalanceDirection(account.cardType, account.balance || 0, tm);
+  /** Başlık, cari liste kolonu ile aynı neti gösterir. Peşinat alacağa yazılmaz. */
+  const reservationOnStatement = ekstresiRows.reduce(
+    (sum, row) => sum + (Number(row.reservationDeposit) || 0),
+    0,
+  );
+  const headerBalance = ekstreHeaderBalanceForDisplay(
+    account.cardType,
+    account.balance,
+    reservationOnStatement,
+  );
+  const currentBalanceHdr = fmtEkstreAmount(Math.abs(headerBalance));
+  const currentBalanceDir = getCariBalanceDirection(account.cardType, headerBalance, tm);
 
   /** Ledger toplamı (Σ borç − Σ alacak) — ekstre satırlarından
    * hesaplanır. DB cache ile karşılaştırılır; fark varsa uyarı. */
   const ledgerNetHdr = fmtEkstreSignedNet();
-  const cacheVsLedgerDiff = Math.abs(
-    Math.abs(account.balance || 0) - Math.abs(netBalance),
-  );
+  const cacheVsLedgerDiff = Math.abs(Math.abs(headerBalance) - Math.abs(netBalance));
   const cacheMatchesLedger = cacheVsLedgerDiff < 0.5;
 
   return (
