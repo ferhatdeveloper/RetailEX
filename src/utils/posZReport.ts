@@ -434,6 +434,122 @@ export function composeDayEndZStatement(input: {
   };
 }
 
+export interface DayEndZDateRange {
+  from: string;
+  to: string;
+  /** Kullanıcı en az bir sınır yazdı. */
+  custom: boolean;
+}
+
+/**
+ * Boş aralık mevcut dönemi bırakır.
+ * Tek taraf boşsa o taraf dönemden gelir.
+ * Başlangıç bitişten büyükse yer değiştirir.
+ */
+export function resolveDayEndZDateRange(
+  overrideFrom: string,
+  overrideTo: string,
+  periodFrom: string,
+  periodTo: string,
+): DayEndZDateRange {
+  const fromRaw = String(overrideFrom || '').trim();
+  const toRaw = String(overrideTo || '').trim();
+  if (!fromRaw && !toRaw) {
+    return { from: periodFrom, to: periodTo, custom: false };
+  }
+  let from = fromRaw || periodFrom;
+  let to = toRaw || periodTo;
+  if (from > to) {
+    const swap = from;
+    from = to;
+    to = swap;
+  }
+  return { from, to, custom: true };
+}
+
+export interface DayEndZRangeExpense {
+  date: string;
+  amount: number;
+}
+
+function datedInRange(raw: string | null | undefined, dateFrom: string, dateTo: string): boolean {
+  const key = localCalendarDateKey(raw || '');
+  if (!key) return true;
+  return key >= dateFrom && key <= dateTo;
+}
+
+/** Aralık dışındaki gider toplama girmez. Tarihsiz satır dönem yüklemesinde kalır. */
+export function sumExpensesInRange(
+  expenses: readonly DayEndZRangeExpense[] | null | undefined,
+  dateFrom: string,
+  dateTo: string,
+): number {
+  let sum = 0;
+  for (const row of expenses || []) {
+    if (!datedInRange(row.date, dateFrom, dateTo)) continue;
+    sum += Math.abs(Number(row.amount) || 0);
+  }
+  return round2(sum);
+}
+
+/** Aralık dışındaki randevu, avans ve peşinat fişi rezervasyon kutusuna girmez. */
+export function clipReservationToDayEndRange(
+  input: CancelledReservationBoxInput | null | undefined,
+  dateFrom: string,
+  dateTo: string,
+): CancelledReservationBoxInput {
+  const src = input || {};
+  return {
+    ...src,
+    appointments: (src.appointments || []).filter((row) =>
+      datedInRange(row.appointment_date || row.appointmentDate || row.date, dateFrom, dateTo),
+    ),
+    avansRows: (src.avansRows || []).filter((row) =>
+      datedInRange(row.created_at || row.createdAt, dateFrom, dateTo),
+    ),
+    depositSales: (src.depositSales || []).filter((row) =>
+      datedInRange(row.date || row.created_at, dateFrom, dateTo),
+    ),
+  };
+}
+
+export interface DayEndZRangeStatement extends DayEndZStatement {
+  cashierStats: CashierDayStats[];
+}
+
+/**
+ * Seçilen aralığın fişleri.
+ * Aralık dışı fiş brüt, iade ve kasiyer toplamına girmez.
+ * Net satış = brüt − indirim − iade − gider. Net nakit = net satış + rezervasyon.
+ */
+export function composeDayEndZStatementForRange(input: {
+  sales: Sale[];
+  expenses?: readonly DayEndZRangeExpense[] | null;
+  dateFrom: string;
+  dateTo: string;
+  dateLabel?: string;
+  reservation?: CancelledReservationBoxInput | null;
+}): DayEndZRangeStatement {
+  const base = buildPosZReportForRange(
+    input.sales,
+    input.dateFrom,
+    input.dateTo,
+    input.dateLabel || '',
+  );
+  const statement = composeDayEndZStatement({
+    transactionCount: base.totalSales,
+    grossSales: base.amountBeforeDiscount,
+    discount: base.totalDiscount,
+    salesReturn: base.refundAmount,
+    expense: sumExpensesInRange(input.expenses, input.dateFrom, input.dateTo),
+    reservation: clipReservationToDayEndRange(input.reservation, input.dateFrom, input.dateTo),
+  });
+  return {
+    ...statement,
+    cashierStats: base.cashierStats,
+  };
+}
+
 /** Pasta dilimi. Brüt, net nakit ve işlem sayısı bu kümede yoktur. */
 export const DAY_END_Z_PIE_SLICE_ORDER = [
   'netSales',

@@ -124,7 +124,7 @@ import {
   type ReportDatePreset,
   type ReportDateRangeValue,
 } from '../../utils/reportDatePresets';
-import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
+import { ReportDateRangePresets, ReportYmdDatePicker } from '../shared/ReportDateRangePresets';
 import { buildErpServiceBreakdownGroups, type ErpServiceBreakdownLine } from '../../utils/serviceBreakdownReport';
   import {
   addAnalysisSplitAmount,
@@ -141,7 +141,16 @@ import {
   type PurchasePromotionReportLine,
 } from '../../utils/purchasePromotionReport';
 import { accumulateComparisonProducts } from '../../utils/periodComparisonProducts';
-import { applyExtraCashCollections, buildPosZReportForRange, composeDayEndZStatement, isReturnSale } from '../../utils/posZReport';
+import {
+  applyExtraCashCollections,
+  buildPosZReportForRange,
+  clipReservationToDayEndRange,
+  composeDayEndZStatement,
+  composeDayEndZStatementForRange,
+  isReturnSale,
+  resolveDayEndZDateRange,
+  sumExpensesInRange,
+} from '../../utils/posZReport';
 import { detailedSalesLineMoney } from '../../utils/detailedSalesLineSign';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
 import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections, saleCollectedSplit, dailyPaymentKind, beautySalePocketCollected } from '../../utils/saleCollectedAmounts';
@@ -1283,6 +1292,13 @@ export function ReportsModule({
   );
   const [selectedDateFrom, setSelectedDateFrom] = useState(localTodayDateKey);
   const [selectedDateTo, setSelectedDateTo] = useState(localTodayDateKey);
+  /** Z raporu tarihi. Boşsa seçili rapor dönemi kalır. */
+  const [zReportDateFrom, setZReportDateFrom] = useState('');
+  const [zReportDateTo, setZReportDateTo] = useState('');
+  const zReportRange = useMemo(
+    () => resolveDayEndZDateRange(zReportDateFrom, zReportDateTo, selectedDateFrom, selectedDateTo),
+    [zReportDateFrom, zReportDateTo, selectedDateFrom, selectedDateTo],
+  );
   const [dailyReportDatePreset, setDailyReportDatePreset] = useState<ReportDatePreset>('today');
   const [dailyReportMonthOffset, setDailyReportMonthOffset] = useState(0);
   const dailyReportDateRange = useMemo<ReportDateRangeValue>(
@@ -1304,8 +1320,20 @@ export function ReportsModule({
   const [cashStatusDate, setCashStatusDate] = useState<CashStatusDateValue>(() => emptyCashStatusDate());
   const cashStatusQuery = resolveCashStatusQuery(cashStatusDate);
   const cashStatusActive = selectedTab === 'cash-status';
-  const ledgerFrom = cashStatusActive ? cashStatusQuery.from : selectedDateFrom;
-  const ledgerTo = cashStatusActive ? cashStatusQuery.to : selectedDateTo;
+  const zReportActive = selectedTab === 'z-report';
+  const ledgerFrom = cashStatusActive
+    ? cashStatusQuery.from
+    : zReportActive
+      ? zReportRange.from
+      : selectedDateFrom;
+  const ledgerTo = cashStatusActive
+    ? cashStatusQuery.to
+    : zReportActive
+      ? zReportRange.to
+      : selectedDateTo;
+  /** Avans ve randevu. Z sekmesinde filtrenin aralığı, diğer sekmelerde mevcut dönem. */
+  const movementFrom = zReportActive ? zReportRange.from : selectedDateFrom;
+  const movementTo = zReportActive ? zReportRange.to : selectedDateTo;
   const reportDateInputMin = '1990-01-01';
   const reportDateInputMax = '2100-12-31';
   /** Günlük/Z raporu: seçili tarih aralığı — bellekteki son N satış değil, DB sorgusu */
@@ -2179,8 +2207,8 @@ export function ReportsModule({
       return Promise.resolve();
     }
     setLoadingOrders(true);
-    const fromDate = selectedDateFrom + 'T00:00:00Z';
-    const toDate = selectedDateTo + 'T23:59:59Z';
+    const fromDate = movementFrom + 'T00:00:00Z';
+    const toDate = movementTo + 'T23:59:59Z';
     return RestaurantService.getOrderHistory({
       fromDate,
       toDate,
@@ -2197,7 +2225,7 @@ export function ReportsModule({
       .finally(() => {
         setLoadingOrders(false);
       });
-  }, [businessType, selectedDateFrom, selectedDateTo, selectedFirm]);
+  }, [businessType, movementFrom, movementTo, selectedFirm]);
 
   const loadAnalysisRangeSales = useCallback(async () => {
     try {
@@ -3091,9 +3119,9 @@ export function ReportsModule({
       const d = o.closed_at ?? o.closedAt ?? o.date;
       if (!d) return false;
       const k = localCalendarDateKey(d);
-      return k >= selectedDateFrom && k <= selectedDateTo;
+      return k >= movementFrom && k <= movementTo;
     });
-  }, [businessType, restOrders, selectedDateFrom, selectedDateTo]);
+  }, [businessType, restOrders, movementFrom, movementTo]);
 
   let dailyTotal: number;
   let dailyCash: number;
@@ -3308,8 +3336,8 @@ export function ReportsModule({
   // kuralı). Burada sadece effect gövdesi bırakıldı.
   React.useEffect(() => {
     // Rapor tarih filtresi değiştiğinde cari_avans'ı çek
-    const fromIso = dailyReportDateRange?.from;
-    const toIso = dailyReportDateRange?.to;
+    const fromIso = movementFrom;
+    const toIso = movementTo;
     if (!fromIso || !toIso) return;
     let cancelled = false;
     (async () => {
@@ -3359,7 +3387,7 @@ export function ReportsModule({
     return () => {
       cancelled = true;
     };
-  }, [dailyReportDateRange?.from, dailyReportDateRange?.to]);
+  }, [movementFrom, movementTo]);
 
   // 16.10.2026 — Bu aralıkta `cari_avans.status='applied'` avanslara bağlı
   // `cash_line_id` Set'i. `extraCustomerCollectionsNotOnSales`'a geçilir;
@@ -3367,8 +3395,8 @@ export function ReportsModule({
   // zaten eklendi, burada mükerrer sayılmasın (DUBLE senaryosu: 10k avans
   // uygulandı → Nakit 60k yerine 50k olmalı).
   React.useEffect(() => {
-    const fromIso = dailyReportDateRange?.from;
-    const toIso = dailyReportDateRange?.to;
+    const fromIso = movementFrom;
+    const toIso = movementTo;
     if (!fromIso || !toIso) return;
     let cancelled = false;
     (async () => {
@@ -3401,7 +3429,7 @@ export function ReportsModule({
     return () => {
       cancelled = true;
     };
-  }, [dailyReportDateRange?.from, dailyReportDateRange?.to]);
+  }, [movementFrom, movementTo]);
 
   // 16.10.2026 — Bu aralıkta `status='applied'` avansları çek
   // (`sale.id` → appliedAvans) map. saleCollectedSplit zincirinde
@@ -3409,8 +3437,8 @@ export function ReportsModule({
   // engeller. DUBLE senaryosu: 50.000 fatura + 10.000 avans + 40.000
   // nakit → veresiye 0, kalan 0.
   React.useEffect(() => {
-    const fromIso = dailyReportDateRange?.from;
-    const toIso = dailyReportDateRange?.to;
+    const fromIso = movementFrom;
+    const toIso = movementTo;
     if (!fromIso || !toIso) return;
     let cancelled = false;
     (async () => {
@@ -3447,7 +3475,7 @@ export function ReportsModule({
     return () => {
       cancelled = true;
     };
-  }, [dailyReportDateRange?.from, dailyReportDateRange?.to]);
+  }, [movementFrom, movementTo]);
 
   // 14.10.2026 — Rezervasyon (henüz faturası kesilmemiş randevu)
   // brüt/kalan. Günlük Rapor, POS Z Raporu, Beauty Raporu'nda Net
@@ -3455,8 +3483,8 @@ export function ReportsModule({
   // merkezi (PostgREST + direct PG) olduğu için tek query yeterli.
   const [dailyAppointments, setDailyAppointments] = useState<any[]>([]);
   React.useEffect(() => {
-    const fromIso = dailyReportDateRange?.from;
-    const toIso = dailyReportDateRange?.to;
+    const fromIso = movementFrom;
+    const toIso = movementTo;
     if (!fromIso || !toIso) return;
     let cancelled = false;
     (async () => {
@@ -3473,7 +3501,7 @@ export function ReportsModule({
     return () => {
       cancelled = true;
     };
-  }, [dailyReportDateRange?.from, dailyReportDateRange?.to]);
+  }, [movementFrom, movementTo]);
 
   const dailyUnifiedRows = useMemo((): DailyUnifiedRow[] => {
     const mapErpSale = (s: Sale): DailyUnifiedRow => {
@@ -4321,15 +4349,20 @@ export function ReportsModule({
 
   // Z Report — ERP satış + satış iade (trcode 3); restoranda adisyon yedek
   const generateZReport = () => {
-    const inReportPeriod = (k: string) => k >= selectedDateFrom && k <= selectedDateTo;
-    const dateLabel = formatReportsDateRangeTr(selectedDateFrom, selectedDateTo);
+    const zFrom = zReportRange.from;
+    const zTo = zReportRange.to;
+    const inReportPeriod = (k: string) => k >= zFrom && k <= zTo;
+    const dateLabel = formatReportsDateRangeTr(zFrom, zTo);
     const allDaySales = reportRangeSales.filter((s) => inReportPeriod(localCalendarDateKey(s.date)));
     const canceledSalesRows = allDaySales.filter((s) => isRemovedSaleStatus(s.status) && !isReturnSale(s));
-    const reservation = {
+    const zExpenses = dailyExpenseRowsForReport.map((row) => ({ date: row.date, amount: row.amount }));
+    const reservationSource = {
       appointments: dailyAppointments,
       avansRows: dailyAvansList,
       depositSales: dailyDepositSales,
     };
+    const reservation = clipReservationToDayEndRange(reservationSource, zFrom, zTo);
+    const zExpense = sumExpensesInRange(zExpenses, zFrom, zTo);
     const statementOf = (
       transactionCount: number,
       grossSales: number,
@@ -4340,25 +4373,27 @@ export function ReportsModule({
       grossSales,
       discount,
       salesReturn,
-      expense: totalExpensesForReport,
+      expense: zExpense,
       reservation,
     });
 
     const buildFromErpSales = () => {
-      const extraCash = extraCustomerCollectionsNotOnSales(kasaLinesForSelectedDate, reportRangeSales);
+      const extraCash = extraCustomerCollectionsNotOnSales(kasaLinesForSelectedDate, allDaySales);
       const base = applyExtraCashCollections(
-        buildPosZReportForRange(reportRangeSales, selectedDateFrom, selectedDateTo, dateLabel),
+        buildPosZReportForRange(reportRangeSales, zFrom, zTo, dateLabel),
         extraCash,
       );
-      const statement = statementOf(
-        base.totalSales,
-        base.amountBeforeDiscount,
-        base.totalDiscount,
-        base.refundAmount,
-      );
+      const statement = composeDayEndZStatementForRange({
+        sales: reportRangeSales,
+        expenses: zExpenses,
+        dateFrom: zFrom,
+        dateTo: zTo,
+        dateLabel,
+        reservation: reservationSource,
+      });
       return {
-        dateFrom: selectedDateFrom,
-        dateTo: selectedDateTo,
+        dateFrom: zFrom,
+        dateTo: zTo,
         dateLabel,
         totalSales: statement.transactionCount,
         returnCount: allDaySales.filter((s) => isReturnSale(s)).length,
@@ -4378,7 +4413,7 @@ export function ReportsModule({
         canceledAmount: canceledSalesRows.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0),
         firstSale: base.firstSale,
         lastSale: base.lastSale,
-        cashierStats: base.cashierStats,
+        cashierStats: statement.cashierStats,
       };
     };
 
@@ -4417,8 +4452,8 @@ export function ReportsModule({
       );
       const statement = statementOf(ro.length, amountBeforeDiscount, totalDiscount, 0);
       return {
-        dateFrom: selectedDateFrom,
-        dateTo: selectedDateTo,
+        dateFrom: zFrom,
+        dateTo: zTo,
         dateLabel,
         totalSales: statement.transactionCount,
         returnCount: 0,
@@ -7886,18 +7921,50 @@ export function ReportsModule({
             {selectedTab === 'z-report' && (
               <div className="space-y-4">
                 <div className="bg-white rounded-lg border">
-                  <div className="p-6 border-b flex items-center justify-between">
+                  <div className="p-6 border-b flex items-center justify-between gap-3">
                     <div>
                       <h3 className="text-xl">{tm('reportsZReportDayEndTitle')}</h3>
                       <p className="text-sm text-gray-600 mt-1">{zReport.dateLabel}</p>
                     </div>
-                    <button
-                      onClick={printZReport}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      <Download className="w-5 h-5" />
-                      {t.print}
-                    </button>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div
+                        data-testid="z-report-date-filter"
+                        className="flex items-center gap-2"
+                      >
+                        <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                          <span>{tm('bCallBoardRangeFrom')}</span>
+                          <ReportYmdDatePicker
+                            value={zReportDateFrom || selectedDateFrom}
+                            onChange={setZReportDateFrom}
+                            allowClear
+                            min={reportDateInputMin}
+                            max={reportDateInputMax}
+                            className="min-w-[9.5rem]"
+                            placeholder={tm('reportsFilterBarStartDate')}
+                          />
+                        </label>
+                        <span className="text-gray-400" aria-hidden>–</span>
+                        <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                          <span>{tm('bCallBoardRangeTo')}</span>
+                          <ReportYmdDatePicker
+                            value={zReportDateTo || selectedDateTo}
+                            onChange={setZReportDateTo}
+                            allowClear
+                            min={reportDateInputMin}
+                            max={reportDateInputMax}
+                            className="min-w-[9.5rem]"
+                            placeholder={tm('reportsFilterBarEndDate')}
+                          />
+                        </label>
+                      </div>
+                      <button
+                        onClick={printZReport}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        <Download className="w-5 h-5" />
+                        {t.print}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="p-6 space-y-6">
