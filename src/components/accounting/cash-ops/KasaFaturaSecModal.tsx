@@ -11,7 +11,7 @@ import { invoicesAPI } from '../../../services/api/invoices';
 import type { Invoice } from '../../../core/types/models';
 import { formatCurrency } from '../../../utils/currency';
 import type { KasaInvoiceIslemTipi } from '../../../services/api/kasa';
-import { invoiceCategoryForKasaIslem } from '../../../services/api/kasa';
+import { invoiceCategoryForKasaIslem, invoiceTypeForKasaIslem } from '../../../services/api/kasa';
 
 interface KasaFaturaSecModalProps {
   islemTipi: KasaInvoiceIslemTipi;
@@ -22,12 +22,17 @@ interface KasaFaturaSecModalProps {
 export function KasaFaturaSecModal({ islemTipi, onSelect, onClose }: KasaFaturaSecModalProps) {
   const { tm } = useLanguage();
   const category = invoiceCategoryForKasaIslem(islemTipi);
+  const invoiceType = invoiceTypeForKasaIslem(islemTipi);
   const title =
     islemTipi === 'ALIS_FATURASI'
       ? tm('cashPurchaseInvoice')
       : islemTipi === 'HIZMET_FATURASI'
         ? tm('cashServiceInvoice')
-        : tm('cashSalesInvoice');
+        : islemTipi === 'SATIS_IADE_FATURASI'
+          ? tm('salesReturnInvoice')
+          : islemTipi === 'ALIS_IADE_FATURASI'
+            ? tm('purchaseReturnInvoice')
+            : tm('cashSalesInvoice');
 
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -43,6 +48,7 @@ export function KasaFaturaSecModal({ islemTipi, onSelect, onClose }: KasaFaturaS
           pageSize: 80,
           search: search.trim() || undefined,
           invoiceCategory: category,
+          invoiceType,
         });
         if (!cancelled) setRows(Array.isArray(page.data) ? page.data : []);
       } catch (err) {
@@ -57,7 +63,7 @@ export function KasaFaturaSecModal({ islemTipi, onSelect, onClose }: KasaFaturaS
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [category, search]);
+  }, [category, invoiceType, search]);
 
   const formatDate = (raw?: string) => {
     const d = String(raw || '').slice(0, 10);

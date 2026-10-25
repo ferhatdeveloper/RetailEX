@@ -14,6 +14,7 @@ import {
   updateKasaIslemi,
   fetchKasalar,
   cashLineExistsForFicheNo,
+  postedCashAmountForFicheNo,
   isKasaInvoiceIslemTipi,
   postedCashTypeForInvoiceIslem,
   invoiceCashDescriptionPrefix,
@@ -33,6 +34,7 @@ import { formatNumber, parseNumber } from '../../../utils/formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency } from '../../../utils/currency';
 import { getCariBalanceDirection } from '../../../utils/cariAccountStatement';
 import { resolveCashLineActorWrite } from '../../../utils/cashLineActor';
+import { boundReturnCashAmount, invoiceRecordToCashInput } from '../../../utils/invoiceCashRegisterPosting';
 
 interface KasaIslemModalProps {
   kasa: Kasa;
@@ -222,8 +224,11 @@ export function KasaIslemModal({
   const [ortakAdina, setOrtakAdina] = useState(false);
   const [ortaklar, setOrtaklar] = useState<PartyPartner[]>([]);
   const isInvoiceCash = isKasaInvoiceIslemTipi(islemTipi);
+  const isReturnInvoice = islemTipi === 'SATIS_IADE_FATURASI' || islemTipi === 'ALIS_IADE_FATURASI';
   const [showInvoicePicker, setShowInvoicePicker] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [returnCashCap, setReturnCashCap] = useState(0);
+  const [returnCashBlock, setReturnCashBlock] = useState<'none' | 'already' | 'open'>('none');
 
   useEffect(() => {
     if (selectedFirma && (islemTipi === 'CH_TAHSILAT' || islemTipi === 'CH_ODEME' || islemTipi === 'VERILEN_SERBEST_MESLEK' || islemTipi === 'ALINAN_SERBEST_MESLEK' || islemTipi === 'MUSTAHSIL_MAKBUZU')) {
@@ -381,7 +386,20 @@ export function KasaIslemModal({
       return;
     }
 
-    if (!formData.tutar || formData.tutar <= 0) {
+    if (isReturnInvoice && !isEdit) {
+      if (!selectedInvoice?.invoice_no) {
+        toast.error(tm('pleaseSelectInvoice'));
+        return;
+      }
+      if (returnCashBlock === 'already') {
+        toast.error(tm('cashInvoiceAlreadyPosted'));
+        return;
+      }
+      if (returnCashBlock === 'open' || !(returnCashCap > 0)) {
+        toast.error(tm('cashReturnOpenAccountNoCash'));
+        return;
+      }
+    } else if (!formData.tutar || formData.tutar <= 0) {
       toast.error(t['pleaseEnterAmount']);
       return;
     }
@@ -414,7 +432,7 @@ export function KasaIslemModal({
         throw new Error(t['missingKasaId']);
       }
       // CH_ODEME_PARTNER: party_id ekle (veya kaldır)
-      const submitTutar = Math.abs(parseNumber(displayAmount) || Number(formData.tutar) || 0);
+      let submitTutar = Math.abs(parseNumber(displayAmount) || Number(formData.tutar) || 0);
       const invoiceFiche = String(selectedInvoice?.invoice_no || formData.islem_no || '').trim();
       let postedTip = islemTipi as string;
       if (isInvoiceCash && !isEdit) {
@@ -422,6 +440,17 @@ export function KasaIslemModal({
           throw new Error(tm('cashInvoiceAlreadyPosted'));
         }
         postedTip = postedCashTypeForInvoiceIslem(islemTipi as KasaInvoiceIslemTipi);
+        if (isReturnInvoice) {
+          const posted = await postedCashAmountForFicheNo(invoiceFiche);
+          const bound = boundReturnCashAmount(invoiceRecordToCashInput(selectedInvoice || {}, posted));
+          if (bound.blocked === 'already' || posted > 0.004) {
+            throw new Error(tm('cashInvoiceAlreadyPosted'));
+          }
+          if (!(bound.amount > 0)) {
+            throw new Error(tm('cashReturnOpenAccountNoCash'));
+          }
+          submitTutar = bound.amount;
+        }
       }
       const actor = resolveCashLineActorWrite({
         cashier: formData.cashier,
@@ -512,17 +541,43 @@ export function KasaIslemModal({
     return codeMatch || nameMatch;
   });
 
-  const applySelectedInvoice = (inv: Invoice) => {
-    const amt = Math.abs(Number(inv.total_amount || 0));
+  const applySelectedInvoice = async (inv: Invoice) => {
     const prefix = invoiceCashDescriptionPrefix(islemTipi as KasaInvoiceIslemTipi);
     const partnerId = String(inv.customer_id || inv.supplier_id || '').trim();
     const partnerName = String(inv.customer_name || inv.supplier_name || '').trim();
+    const fiche = String(inv.invoice_no || '').trim();
+    let amt = Math.abs(Number(inv.total_amount || 0));
+    if (isReturnInvoice) {
+      const posted = await postedCashAmountForFicheNo(fiche);
+      const exists = posted > 0.004 || await cashLineExistsForFicheNo(fiche);
+      const bound = boundReturnCashAmount(
+        invoiceRecordToCashInput(inv, exists ? Math.max(posted, amt) : 0),
+      );
+      if (exists || bound.blocked === 'already') {
+        setReturnCashBlock('already');
+        setReturnCashCap(0);
+        toast.error(tm('cashInvoiceAlreadyPosted'));
+        setShowInvoicePicker(false);
+        return;
+      }
+      if (bound.blocked === 'open' || !(bound.amount > 0)) {
+        setReturnCashBlock('open');
+        setReturnCashCap(0);
+        toast.error(tm('cashReturnOpenAccountNoCash'));
+        setShowInvoicePicker(false);
+        return;
+      }
+      amt = bound.amount;
+      setReturnCashBlock('none');
+      setReturnCashCap(amt);
+    }
     setSelectedInvoice(inv);
     setFormData((prev) => ({
       ...prev,
       tutar: amt,
       dovizli_tutar: amt,
-      islem_no: String(inv.invoice_no || '').trim(),
+      islem_no: fiche,
+      kasa_id: prev.kasa_id || kasa.id,
       cari_hesap_id: partnerId || undefined,
       cari_hesap_unvani: partnerName || undefined,
       cari_hesap_kodu: undefined,
@@ -553,6 +608,8 @@ export function KasaIslemModal({
       'SATIS_FATURASI': tm('cashSalesInvoice'),
       'ALIS_FATURASI': tm('cashPurchaseInvoice'),
       'HIZMET_FATURASI': tm('cashServiceInvoice'),
+      'SATIS_IADE_FATURASI': tm('salesReturnInvoice'),
+      'ALIS_IADE_FATURASI': tm('purchaseReturnInvoice'),
     };
     return titles[islemTipi] || t['cashOperation'];
   };
@@ -1000,13 +1057,21 @@ export function KasaIslemModal({
                 type="text"
                 inputMode="decimal"
                 value={displayAmount}
-                onChange={handleAmountChange}
-                onBlur={handleAmountBlur}
-                onFocus={handleAmountFocus}
-                className="w-full px-4 py-3 bg-blue-50 dark:bg-blue-900/10 border-2 border-blue-200 dark:border-blue-800 text-xl font-bold text-blue-700 dark:text-blue-300 outline-none rounded focus:border-blue-500"
+                onChange={isReturnInvoice ? undefined : handleAmountChange}
+                onBlur={isReturnInvoice ? undefined : handleAmountBlur}
+                onFocus={isReturnInvoice ? undefined : handleAmountFocus}
+                readOnly={isReturnInvoice}
+                className={`w-full px-4 py-3 border-2 text-xl font-bold outline-none rounded ${
+                  isReturnInvoice
+                    ? 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200'
+                    : 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 focus:border-blue-500'
+                }`}
                 placeholder="0,00"
-                autoFocus
+                autoFocus={!isReturnInvoice}
               />
+              {isReturnInvoice ? (
+                <p className="text-[11px] text-slate-500">{tm('cashReturnAmountLocked')}</p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['currency']}</label>
@@ -1030,8 +1095,11 @@ export function KasaIslemModal({
               <input
                 type="text"
                 value={formData.islem_no || ''}
+                readOnly={isReturnInvoice}
                 onChange={(e) => setFormData({ ...formData, islem_no: e.target.value.toUpperCase() })}
-                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500 font-mono ${
+                  isReturnInvoice ? 'bg-gray-50 dark:bg-gray-800 text-gray-600' : 'bg-white dark:bg-gray-800'
+                }`}
                 placeholder={t['placeholderDocumentNo']}
               />
             </div>

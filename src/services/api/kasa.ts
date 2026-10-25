@@ -499,7 +499,13 @@ export interface KasaIslemi {
 }
 
 /** Kasa → mevcut faturaya tahsilat/ödeme (fatura motoru ayrı; yalnızca kasa satırı). */
-export const KASA_INVOICE_ISLEM_TIPLERI = ['SATIS_FATURASI', 'ALIS_FATURASI', 'HIZMET_FATURASI'] as const;
+export const KASA_INVOICE_ISLEM_TIPLERI = [
+  'SATIS_FATURASI',
+  'ALIS_FATURASI',
+  'HIZMET_FATURASI',
+  'SATIS_IADE_FATURASI',
+  'ALIS_IADE_FATURASI',
+] as const;
 export type KasaInvoiceIslemTipi = (typeof KASA_INVOICE_ISLEM_TIPLERI)[number];
 
 export type KasaIslemTipi =
@@ -525,20 +531,39 @@ export function isKasaInvoiceIslemTipi(tip: string | null | undefined): tip is K
   return (KASA_INVOICE_ISLEM_TIPLERI as readonly string[]).includes(t);
 }
 
-export function invoiceCategoryForKasaIslem(tip: KasaInvoiceIslemTipi): 'Satis' | 'Alis' | 'Hizmet' {
+export function invoiceCategoryForKasaIslem(tip: KasaInvoiceIslemTipi): 'Satis' | 'Alis' | 'Hizmet' | 'Iade' {
+  if (tip === 'SATIS_IADE_FATURASI' || tip === 'ALIS_IADE_FATURASI') return 'Iade';
   if (tip === 'ALIS_FATURASI') return 'Alis';
   if (tip === 'HIZMET_FATURASI') return 'Hizmet';
   return 'Satis';
 }
 
-/** Satış/hizmet tahsilatı CH_TAHSILAT (+); alış ödemesi CH_ODEME (−) — ekstre ile aynı tipler. */
-export function postedCashTypeForInvoiceIslem(tip: KasaInvoiceIslemTipi): 'CH_TAHSILAT' | 'CH_ODEME' {
-  return tip === 'ALIS_FATURASI' ? 'CH_ODEME' : 'CH_TAHSILAT';
+/** Satış iade listesi trcode 3, alış iade listesi trcode 6. Diğerlerinde kategori yeter. */
+export function invoiceTypeForKasaIslem(tip: KasaInvoiceIslemTipi): number | undefined {
+  if (tip === 'SATIS_IADE_FATURASI') return 3;
+  if (tip === 'ALIS_IADE_FATURASI') return 6;
+  return undefined;
+}
+
+/**
+ * Satış/hizmet tahsilatı CH_TAHSILAT (+); alış ödemesi CH_ODEME (−).
+ * Satış iadesi kendi tipi ve işaret −1; alış iadesi kendi tipi ve işaret +1.
+ * İade cari kartını ikinci kez oynatmaz.
+ */
+export function postedCashTypeForInvoiceIslem(
+  tip: KasaInvoiceIslemTipi,
+): 'CH_TAHSILAT' | 'CH_ODEME' | 'SATIS_IADE_FATURASI' | 'ALIS_IADE_FATURASI' {
+  if (tip === 'ALIS_FATURASI') return 'CH_ODEME';
+  if (tip === 'SATIS_IADE_FATURASI') return 'SATIS_IADE_FATURASI';
+  if (tip === 'ALIS_IADE_FATURASI') return 'ALIS_IADE_FATURASI';
+  return 'CH_TAHSILAT';
 }
 
 export function invoiceCashDescriptionPrefix(tip: KasaInvoiceIslemTipi): string {
   if (tip === 'ALIS_FATURASI') return 'Alış faturası';
   if (tip === 'HIZMET_FATURASI') return 'Hizmet faturası';
+  if (tip === 'SATIS_IADE_FATURASI') return 'Satış iade';
+  if (tip === 'ALIS_IADE_FATURASI') return 'Alış iade';
   return 'Satış faturası';
 }
 
@@ -1161,6 +1186,48 @@ export async function cashLineExistsForFicheNo(ficheNo: string): Promise<boolean
   }
 }
 
+/** Aynı fiş ve `fiş-%` satırlarının mutlak tutarı. Kalan iade bunu aşmaz. */
+export async function postedCashAmountForFicheNo(ficheNo: string): Promise<number> {
+  const trimmed = String(ficheNo || '').trim();
+  if (!trimmed) return 0;
+  const sumRows = (rows: Array<{ amount?: unknown; fiche_no?: unknown }> | null | undefined): number => {
+    let total = 0;
+    for (const row of rows || []) {
+      const no = String(row?.fiche_no || '').trim();
+      if (no !== trimmed && !no.startsWith(`${trimmed}-`)) continue;
+      total += Math.abs(Number(row?.amount) || 0);
+    }
+    return Math.round((total + Number.EPSILON) * 100) / 100;
+  };
+  try {
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      const path = `/rex_${padKasaFirmNr()}_${padKasaPeriodNr()}_cash_lines`;
+      const exact = await postgrest.get<Array<{ amount?: unknown; fiche_no?: unknown }>>(
+        path,
+        { select: 'amount,fiche_no', fiche_no: `eq.${trimmed}`, limit: 20 },
+        { schema: 'public' },
+      );
+      const prefixed = await postgrest.get<Array<{ amount?: unknown; fiche_no?: unknown }>>(
+        path,
+        { select: 'amount,fiche_no', fiche_no: `like.${trimmed}-*`, limit: 20 },
+        { schema: 'public' },
+      );
+      return sumRows([...(exact || []), ...(prefixed || [])]);
+    }
+    const { rows } = await postgres.query<{ total: string | number }>(
+      `SELECT COALESCE(SUM(ABS(amount)), 0) AS total
+         FROM cash_lines
+        WHERE fiche_no::text = $1::text OR fiche_no::text LIKE $2::text`,
+      [trimmed, `${trimmed}-%`],
+    );
+    return Math.round((Number(rows?.[0]?.total) || 0) * 100) / 100;
+  } catch (err) {
+    console.warn('[Kasa] postedCashAmountForFicheNo:', err);
+    return 0;
+  }
+}
+
 /** PostgREST: kasa hareketi + bakiyeler (atomik DEĞİL; `rest_api` için) */
 async function createKasaIslemiViaPostgrest(
   islem: KasaIslemi,
@@ -1618,6 +1685,7 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     switch (islem.islem_tipi) {
       case 'CH_TAHSILAT':
       case 'KASA_GIRIS':
+      case 'ALIS_IADE_FATURASI':
       case 'BANKADAN_CEKILEN':
       case 'ALINAN_SERBEST_MESLEK':
       case 'ACILIS_BORC':
@@ -1629,6 +1697,7 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
         break;
       case 'CH_ODEME':
       case 'KASA_CIKIS':
+      case 'SATIS_IADE_FATURASI':
       case 'BANKA_YATIRILAN':
       case 'VIRMAN':
       case 'GIDER_PUSULASI':
@@ -2743,6 +2812,7 @@ export function computeKasaIslemiSign(islemTipi: string): number {
   switch (tip) {
     case 'CH_TAHSILAT':
     case 'KASA_GIRIS':
+    case 'ALIS_IADE_FATURASI':
     case 'BANKADAN_CEKILEN':
     case 'ALINAN_SERBEST_MESLEK':
     case 'ACILIS_BORC':
@@ -2753,6 +2823,7 @@ export function computeKasaIslemiSign(islemTipi: string): number {
       return 1;
     case 'CH_ODEME':
     case 'KASA_CIKIS':
+    case 'SATIS_IADE_FATURASI':
     case 'BANKA_YATIRILAN':
     case 'VIRMAN':
     case 'GIDER_PUSULASI':

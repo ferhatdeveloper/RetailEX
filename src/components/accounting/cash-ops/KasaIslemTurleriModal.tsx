@@ -6,7 +6,7 @@
  * @created 2025-01-02
  */
 
-import { X, TrendingUp, TrendingDown, Plus, Minus, Wallet, ArrowRightLeft, Receipt, FileText, ShoppingBag } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Plus, Minus, Wallet, ArrowRightLeft, Receipt, FileText, ShoppingBag, RotateCcw } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import type { Kasa, KasaIslemTipi } from '../../../services/api/kasa';
@@ -70,6 +70,26 @@ export function KasaIslemTurleriModal({ kasa, onClose, onSelect }: KasaIslemTurl
       borderColor: 'border-amber-200',
       textColor: 'text-amber-800',
       hoverBg: 'hover:bg-amber-100',
+    },
+    {
+      type: 'SATIS_IADE_FATURASI',
+      label: tm('salesReturnInvoice'),
+      description: tm('cashSalesReturnInvoiceDesc'),
+      icon: RotateCcw,
+      bgColor: 'bg-rose-50',
+      borderColor: 'border-rose-200',
+      textColor: 'text-rose-800',
+      hoverBg: 'hover:bg-rose-100',
+    },
+    {
+      type: 'ALIS_IADE_FATURASI',
+      label: tm('purchaseReturnInvoice'),
+      description: tm('cashPurchaseReturnInvoiceDesc'),
+      icon: RotateCcw,
+      bgColor: 'bg-teal-50',
+      borderColor: 'border-teal-200',
+      textColor: 'text-teal-800',
+      hoverBg: 'hover:bg-teal-100',
     },
     {
       type: 'HIZMET_FATURASI',

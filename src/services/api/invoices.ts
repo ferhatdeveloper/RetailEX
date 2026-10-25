@@ -43,6 +43,12 @@ import {
   shouldApplyChTahsilatCustomerBalanceAfterCashInsert,
 } from '../../utils/invoiceCashPosting';
 import {
+  isDepositLikePaymentMethod,
+  invoiceReturnStoredBalanceDelta,
+  planInvoiceCashPosting,
+  type InvoiceCashInput,
+} from '../../utils/invoiceCashRegisterPosting';
+import {
   formatInsufficientStockMessage,
   isBlockNegativeStockSaleEnabledAsync,
   isStockExemptFromSaleGuard,
@@ -963,6 +969,28 @@ async function markInvoiceStockReverted(
   }
 }
 
+function invoiceCashInputFromInvoice(inv: Invoice): InvoiceCashInput {
+  const headerFields = (inv as { header_fields?: unknown }).header_fields;
+  const header = headerFields && typeof headerFields === 'object' && !Array.isArray(headerFields)
+    ? headerFields as Record<string, unknown>
+    : {};
+  const payments = Array.isArray(header.payments) ? header.payments as InvoiceCashInput['payments'] : [];
+  return {
+    category: inv.invoice_category,
+    trcode: Number((inv as { trcode?: number }).trcode ?? inv.invoice_type ?? 0),
+    name: String((inv as { invoice_type_name?: string; fiche_type?: string }).invoice_type_name
+      || (inv as { fiche_type?: string }).fiche_type
+      || ''),
+    paymentMethod: (inv as { payment_method?: string }).payment_method,
+    payments,
+    netAmount: Number(inv.total_amount || 0),
+    discount: Number((inv as { discount?: number }).discount || 0),
+    cashRegisterId: (inv as { cash_register_id?: string }).cash_register_id,
+    headerCashRegisterId: header.cash_register_id as string | null,
+    isDeposit: header.is_deposit === true,
+  };
+}
+
 /** `mult=1` oluşturma etkisi; `mult=-1` geri alma (fatura güncellemede eski kayıt) */
 async function applyInvoiceBalanceSideEffectsSql(
   inv: Invoice,
@@ -979,6 +1007,26 @@ async function applyInvoiceBalanceSideEffectsSql(
   const trcode = resolveTrcodeFromInvoice(inv);
   const ficheType = deriveFicheTypeFromTrcode(trcode);
   const target = resolveInvoiceBalanceLedgerTarget(inv, salePm);
+  const returnDelta = invoiceReturnStoredBalanceDelta(invoiceCashInputFromInvoice(inv));
+  if (returnDelta) {
+    const customerDelta = returnDelta.customer * mult;
+    const supplierDelta = returnDelta.supplier * mult;
+    if (customerDelta) {
+      await postgres
+        .query(
+          `UPDATE customers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
+          [customerDelta, accountId, firmNr],
+          queryOpts
+        )
+        .catch(() => {});
+    }
+    if (supplierDelta) {
+      await postgres
+        .query(`UPDATE suppliers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid`, [supplierDelta, accountId], queryOpts)
+        .catch(() => {});
+    }
+    return;
+  }
 
   if (target === 'customer' && inv.invoice_category !== 'Iade') {
     await postgres
@@ -1023,6 +1071,12 @@ async function revertInvoiceBalanceUpdatesRestApi(inv: Invoice, firmNr: string):
   const ficheType = deriveFicheTypeFromTrcode(trcode);
   const salePm = (inv as any).payment_method as string | undefined;
   const target = resolveInvoiceBalanceLedgerTarget(inv, salePm);
+  const returnDelta = invoiceReturnStoredBalanceDelta(invoiceCashInputFromInvoice(inv));
+  if (returnDelta) {
+    if (returnDelta.customer) await customerAPI.addBalance(String(accountId), -returnDelta.customer);
+    if (returnDelta.supplier) await adjustSupplierBalanceDeltaPostgrest(String(accountId), -returnDelta.supplier, firmNr);
+    return;
+  }
 
   if (target === 'customer' && inv.invoice_category !== 'Iade') {
     await customerAPI.addBalance(accountId, -amt);
@@ -1203,6 +1257,7 @@ async function writeAccountMovementsForInvoice(inv: Invoice, firmNr: string): Pr
       // Çoklu ödeme: yalnızca nakit/kart peşin kısmı
       for (const row of paymentsRaw as Array<{ method?: string; amount?: number }>) {
         const rm = String(row?.method || '').toLowerCase().trim();
+        if (isReturn && isDepositLikePaymentMethod(rm)) continue;
         if (paymentMethodImpliesCashInKasa(rm)) {
           cashAmount += Math.abs(Number(row?.amount || 0));
         }
@@ -1211,12 +1266,15 @@ async function writeAccountMovementsForInvoice(inv: Invoice, firmNr: string): Pr
       // Tek-ödeme modu: tam tutar peşin
       cashAmount = totalAmount;
     }
+    if (isReturn && cashAmount > totalAmount) cashAmount = totalAmount;
     if (cashAmount > 0 && Number.isFinite(cashAmount)) {
       // Ödeme yönü: cashLines simetrisi
       // Satış: sign=+1 (müşteri alacağı azalır / müşteri ödedi)
       // Alış: sign=-1 (tedarikçiye para çıktı)
       // İade: tam tersi
-      const finalCashSign = isReturn ? -cashSign : cashSign;
+      // cashSign iade yönünü zaten taşır. İkinci kez ters çevirmek nakit iadeyi
+      // alacak bırakır (satış iade +1/+1, alış iade −1/−1).
+      const finalCashSign = cashSign;
       try {
         await postgres.query(
           `INSERT INTO ${accountMovementsTable}
@@ -1254,6 +1312,61 @@ async function writeAccountMovementsForInvoice(inv: Invoice, firmNr: string): Pr
 }
 
 async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Promise<void> {
+  const returnPlan = planInvoiceCashPosting(invoiceCashInputFromInvoice(inv));
+  if (returnPlan.kind === 'sale_return' || returnPlan.kind === 'purchase_return') {
+    if (
+      String(inv.status || '').toLowerCase() === 'cancelled'
+      || !returnPlan.lines.length
+    ) {
+      return;
+    }
+    const periodNr = normalizePeriodNrForRow(
+      (inv as any).donem_id ?? (inv as any).period_nr ?? ERP_SETTINGS.periodNr,
+    );
+    const ficheNo = String(inv.invoice_no || '').trim() || `INV-${String(inv.id || '').slice(0, 8)}`;
+    const tarih =
+      (typeof inv.created_at === 'string' && inv.created_at) ||
+      (typeof inv.invoice_date === 'string' && inv.invoice_date) ||
+      new Date().toISOString();
+    const accountId = inv.customer_id && isValidUuid(inv.customer_id)
+      ? inv.customer_id
+      : (inv.supplier_id && isValidUuid(inv.supplier_id) ? inv.supplier_id : null);
+    const purchaseReturn = returnPlan.kind === 'purchase_return';
+    const cashCustomerId = purchaseReturn ? null : accountId;
+    const cashPartyId = purchaseReturn ? accountId : null;
+    const isRest = DB_SETTINGS.connectionProvider === 'rest_api'
+      && !(IS_TAURI && DB_SETTINGS.activeMode === 'hybrid');
+    for (let i = 0; i < returnPlan.lines.length; i++) {
+      const line = returnPlan.lines[i];
+      const subFicheNo = returnPlan.lines.length > 1 ? `${ficheNo}-${i + 1}` : ficheNo;
+      const aciklama = `${line.descriptionPrefix} — ${inv.invoice_no || ''}`.trim();
+      try {
+        if (isRest) {
+          await writeCashRegisterLineRest(
+            inv, firmNr, periodNr, [line.registerId], line.amount, subFicheNo, tarih, aciklama,
+            cashCustomerId, cashPartyId, line.sign, line.transactionType, line.paymentMethod, true,
+          );
+        } else {
+          await writeCashRegisterLineSql(
+            firmNr, periodNr, [line.registerId], line.amount, subFicheNo, tarih, aciklama,
+            cashCustomerId, cashPartyId, null, line.sign, line.transactionType, line.paymentMethod,
+            { cashier: (inv as { cashier?: unknown }).cashier, createdByUserId: (inv as { created_by_user_id?: unknown }).created_by_user_id },
+            true,
+          );
+        }
+      } catch (e: any) {
+        console.error('[InvoicesAPI] İade kasa satırı yazılamadı:', {
+          error: e?.message || String(e),
+          invoice_no: inv.invoice_no,
+          register_id: line.registerId,
+          sign: line.sign,
+          amount: line.amount,
+        });
+      }
+    }
+    return;
+  }
+
   // Satış / alış / hizmet (alınan+verilen) peşin → cash_lines; veresiye atlanır.
   const catRaw = String(inv.invoice_category || '').trim();
   const cat = catRaw.toLocaleLowerCase('tr-TR');
@@ -1331,11 +1444,12 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
   const configuredCashRegisterId = isValidUuid((ERP_SETTINGS as any).selected_cash_registers?.[0])
     ? String((ERP_SETTINGS as any).selected_cash_registers[0])
     : null;
-  const defaultCandidates = [
-    rootCashRegisterId,
-    headerCashRegisterId,
-    configuredCashRegisterId,
-  ].filter(Boolean) as string[];
+  const explicitRegisterIds = [rootCashRegisterId, headerCashRegisterId].filter(Boolean) as string[];
+  // Ekranda seçilen kasa varsa başka kasaya ve sabit MERKEZ kasaya düşülmez.
+  const strictDefaultRegister = explicitRegisterIds.length > 0;
+  const defaultCandidates = (strictDefaultRegister
+    ? explicitRegisterIds
+    : [configuredCashRegisterId].filter(Boolean)) as string[];
 
   /**
    * Skandal (2026-09-01, 2. dalga): `rest_api` modunda `postgres.query`
@@ -1379,9 +1493,12 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
         const rowRegisterId = isValidUuid(row.cash_register_id)
           ? String(row.cash_register_id)
           : null;
+        const rowStrict = Boolean(rowRegisterId) || strictDefaultRegister;
         if (rowRegisterId) rowCandidates.push(rowRegisterId);
-        for (const c of defaultCandidates) {
-          if (!rowCandidates.includes(c)) rowCandidates.push(c);
+        else {
+          for (const c of defaultCandidates) {
+            if (!rowCandidates.includes(c)) rowCandidates.push(c);
+          }
         }
         const prepaidCount = paymentsRaw.filter((p: { method?: string }) =>
           isPrepaidInvoicePaymentRow(String(p?.method || '')),
@@ -1393,13 +1510,14 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
           if (isRest) {
             await writeCashRegisterLineRest(
               inv, firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
-              cashCustomerId, cashPartyId, 1, 'CH_TAHSILAT', subRowMethod,
+              cashCustomerId, cashPartyId, 1, 'CH_TAHSILAT', subRowMethod, rowStrict,
             );
           } else {
             await writeCashRegisterLineSql(
               firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
               cashCustomerId, cashPartyId, null, 1, 'CH_TAHSILAT', subRowMethod,
               { cashier: (inv as { cashier?: unknown }).cashier, createdByUserId: (inv as { created_by_user_id?: unknown }).created_by_user_id },
+              rowStrict,
             );
           }
         } catch (e: any) {
@@ -1435,14 +1553,17 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
         }
       }
       if (!Number.isFinite(rowAmount) || rowAmount <= 0) continue;
-      // Satır kendi kasasını taşır; yoksa defaultCandidates fallback
+      // Satır kendi kasasını taşır. Seçim varsa başka kasaya düşülmez.
       const rowCandidates: string[] = [];
       const rowRegisterId = isValidUuid(row.cash_register_id)
         ? String(row.cash_register_id)
         : null;
+      const rowStrict = Boolean(rowRegisterId) || strictDefaultRegister;
       if (rowRegisterId) rowCandidates.push(rowRegisterId);
-      for (const c of defaultCandidates) {
-        if (!rowCandidates.includes(c)) rowCandidates.push(c);
+      else {
+        for (const c of defaultCandidates) {
+          if (!rowCandidates.includes(c)) rowCandidates.push(c);
+        }
       }
       const subFicheNo = paymentsRaw.length > 1
         ? `${ficheNo}-${i + 1}`
@@ -1454,13 +1575,14 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
         if (isRest) {
           await writeCashRegisterLineRest(
             inv, firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
-            cashCustomerId, cashPartyId, sign, transactionType, rowMethod,
+            cashCustomerId, cashPartyId, sign, transactionType, rowMethod, rowStrict,
           );
         } else {
           await writeCashRegisterLineSql(
             firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
             cashCustomerId, cashPartyId, null, sign, transactionType, rowMethod,
             { cashier: (inv as { cashier?: unknown }).cashier, createdByUserId: (inv as { created_by_user_id?: unknown }).created_by_user_id },
+            rowStrict,
           );
         }
         wroteAnyCashLine = true;
@@ -1495,6 +1617,7 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
         inv, firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama,
         cashCustomerId, cashPartyId, sign, transactionType,
         String((inv as any).payment_method || ''),
+        strictDefaultRegister,
       );
     } else {
       await writeCashRegisterLineSql(
@@ -1502,6 +1625,7 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
         cashCustomerId, cashPartyId, null, sign, transactionType,
         String((inv as any).payment_method || ''),
         { cashier: (inv as { cashier?: unknown }).cashier, createdByUserId: (inv as { created_by_user_id?: unknown }).created_by_user_id },
+        strictDefaultRegister,
       );
     }
   } catch (e: any) {
@@ -1565,6 +1689,7 @@ async function writeCashRegisterLineSql(
   transactionType = 'KASA_GIRIS',
   paymentMethod?: string | null,
   actorHint?: { cashier?: unknown; createdByUserId?: unknown },
+  strictRegister = false,
 ): Promise<void> {
   const firmPad = String(firmNr).padStart(3, '0');
   const cashRegistersTable = `rex_${firmPad}_cash_registers`;
@@ -1581,7 +1706,11 @@ async function writeCashRegisterLineSql(
       break;
     }
   }
-  if (!targetRegisterId) {
+  if (!targetRegisterId && strictRegister) {
+    const trusted = candidates.find((cand) => isValidUuid(cand));
+    if (trusted) targetRegisterId = trusted;
+  }
+  if (!targetRegisterId && !strictRegister) {
     const fallback = await postgres.query<{ id: string }>(
       `SELECT id FROM ${cashRegistersTable}
         WHERE firm_nr = $1::text AND is_active = true
@@ -1628,6 +1757,7 @@ async function writeCashRegisterLineSql(
      )
      ON CONFLICT (fiche_no) DO UPDATE
        SET amount = EXCLUDED.amount,
+           sign = EXCLUDED.sign,
            date = EXCLUDED.date,
            definition = EXCLUDED.definition,
            register_id = EXCLUDED.register_id,
@@ -1682,6 +1812,7 @@ async function writeCashRegisterLineRest(
   sign = 1,
   transactionType = 'KASA_GIRIS',
   paymentMethod?: string | null,
+  strictRegister = false,
 ): Promise<void> {
   const { postgrest } = await import('./postgrestClient');
   const firmPad = String(firmNr).padStart(3, '0');
@@ -1705,7 +1836,7 @@ async function writeCashRegisterLineRest(
       }
     } catch (_e) { /* sonraki adaya geç */ }
   }
-  if (!targetRegisterId) {
+  if (!targetRegisterId && !strictRegister) {
     // Fallback: aktif kasalardan ilki (PostgREST filter + order)
     try {
       const firmEq = `eq.${String(firmNr).padStart(3, '0')}`;
@@ -1790,9 +1921,11 @@ async function writeCashRegisterLineRest(
         `${cashLinesTable}?id=eq.${existing.id}`,
         {
           amount,
+          sign: Number(sign) >= 0 ? 1 : -1,
           date: tarih,
           definition: aciklama,
           register_id: targetRegisterId,
+          transaction_type: transactionType,
           customer_id: customerId,
           party_id: partyId,
         },
@@ -1831,9 +1964,11 @@ async function writeCashRegisterLineRest(
         `${cashLinesTable}?fiche_no=eq.${ficheNo}`,
         {
           amount,
+          sign: Number(sign) >= 0 ? 1 : -1,
           date: tarih,
           definition: aciklama,
           register_id: targetRegisterId,
+          transaction_type: transactionType,
           customer_id: customerId,
           party_id: partyId,
         },
@@ -2228,6 +2363,12 @@ async function applyInvoiceBalanceUpdatesRestApi(
   if (!accountId || !isValidUuid(accountId)) return;
   const amount = invoiceLedgerBalanceAmount(invoice);
   const target = resolveInvoiceBalanceLedgerTarget(invoice, salePm);
+  const returnDelta = invoiceReturnStoredBalanceDelta(invoiceCashInputFromInvoice(invoice));
+  if (returnDelta) {
+    if (returnDelta.customer) await customerAPI.addBalance(accountId, returnDelta.customer);
+    if (returnDelta.supplier) await adjustSupplierBalanceDeltaPostgrest(accountId, returnDelta.supplier, firmNr);
+    return;
+  }
 
   if (target === 'customer' && invoice.invoice_category !== 'Iade') {
     await customerAPI.addBalance(accountId, amount);
@@ -2920,8 +3061,23 @@ export const invoicesAPI = {
       if (accountId && isValidUuid(accountId)) {
         const amount = invoiceLedgerBalanceAmount(invoice);
         const target = resolveInvoiceBalanceLedgerTarget(invoice, salePm);
-
-        if (target === 'customer' && invoice.invoice_category !== 'Iade') {
+        const returnDelta = invoiceReturnStoredBalanceDelta(invoiceCashInputFromInvoice(invoice));
+        if (returnDelta) {
+          if (returnDelta.customer) {
+            await postgres.query(
+              `UPDATE customers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
+              [returnDelta.customer, accountId, firmNr],
+              queryOptions
+            ).catch(() => { });
+          }
+          if (returnDelta.supplier) {
+            await postgres.query(
+              `UPDATE suppliers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid`,
+              [returnDelta.supplier, accountId],
+              queryOptions
+            ).catch(() => { });
+          }
+        } else if (target === 'customer' && invoice.invoice_category !== 'Iade') {
           // Veresiye satış / verilen hizmet: müşteri borcu artar
           await postgres.query(
             `UPDATE customers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,

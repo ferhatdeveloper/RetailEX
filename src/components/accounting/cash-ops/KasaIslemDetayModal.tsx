@@ -100,6 +100,8 @@ export function KasaIslemDetayModal({
       SATIS_FATURASI: tm('cashSalesInvoice'),
       ALIS_FATURASI: tm('cashPurchaseInvoice'),
       HIZMET_FATURASI: tm('cashServiceInvoice'),
+      SATIS_IADE_FATURASI: tm('salesReturnInvoice'),
+      ALIS_IADE_FATURASI: tm('purchaseReturnInvoice'),
       ACILIS: tm('openingDebit'),
       KAPANIS: tm('openingCredit'),
       ACILIS_BORC: tm('openingDebit'),

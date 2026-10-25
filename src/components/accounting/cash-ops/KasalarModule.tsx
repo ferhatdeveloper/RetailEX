@@ -356,8 +356,8 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
 
   const filteredTransactions = kasaIslemleri.filter(m => {
     const matchesTab = activeTab === 'all' ||
-      (activeTab === 'in' && (m.islem_tipi === 'CH_TAHSILAT' || m.islem_tipi === 'KASA_GIRIS' || m.islem_tipi === 'ACILIS' || m.islem_tipi === 'SATIS_FATURASI' || m.islem_tipi === 'HIZMET_FATURASI')) ||
-      (activeTab === 'out' && (m.islem_tipi === 'CH_ODEME' || m.islem_tipi === 'KASA_CIKIS' || m.islem_tipi === 'KAPANIS' || m.islem_tipi === 'ALIS_FATURASI'));
+      (activeTab === 'in' && (m.islem_tipi === 'CH_TAHSILAT' || m.islem_tipi === 'KASA_GIRIS' || m.islem_tipi === 'ACILIS' || m.islem_tipi === 'SATIS_FATURASI' || m.islem_tipi === 'HIZMET_FATURASI' || m.islem_tipi === 'ALIS_IADE_FATURASI')) ||
+      (activeTab === 'out' && (m.islem_tipi === 'CH_ODEME' || m.islem_tipi === 'KASA_CIKIS' || m.islem_tipi === 'KAPANIS' || m.islem_tipi === 'ALIS_FATURASI' || m.islem_tipi === 'SATIS_IADE_FATURASI'));
 
     const matchesSearch = !searchQuery ||
       (m.islem_no || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -931,7 +931,8 @@ function KasaIslemleriTable({
             tip === 'ACILIS' ||
             tip === 'ACILIS_BORC' ||
             tip === 'SATIS_FATURASI' ||
-            tip === 'HIZMET_FATURASI';
+            tip === 'HIZMET_FATURASI' ||
+            tip === 'ALIS_IADE_FATURASI';
           return (
             <span
               className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${
@@ -1051,7 +1052,7 @@ function KasaIslemleriTable({
       cell: info => {
         const tutar = info.getValue() || 0;
         const tip = info.row.original.islem_tipi;
-        const isGiris = tip === 'CH_TAHSILAT' || tip === 'KASA_GIRIS' || tip === 'ACILIS' || tip === 'SATIS_FATURASI' || tip === 'HIZMET_FATURASI';
+        const isGiris = tip === 'CH_TAHSILAT' || tip === 'KASA_GIRIS' || tip === 'ACILIS' || tip === 'SATIS_FATURASI' || tip === 'HIZMET_FATURASI' || tip === 'ALIS_IADE_FATURASI';
         return (
           <span className={`font-semibold ${isGiris ? 'text-green-600' : 'text-red-600'}`}>
             {formatCurrency(tutar)} {isGiris ? '(B)' : '(A)'}

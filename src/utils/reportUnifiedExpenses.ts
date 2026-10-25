@@ -10,6 +10,7 @@ import type { Expense } from '../services/api/expenses';
 import type { KasaIslemi } from '../services/api/kasa';
 import { readCashLineActor } from './cashLineActor';
 import { isCashMovementLabel } from './loginCashierName';
+import { isPurchaseReturnCashVoucher, isSalesReturnCashVoucher } from './invoiceCashRegisterPosting';
 import { localCalendarDateKey, toSqlDateInputString } from './localCalendarDate';
 
 export function normalizeGiderAciklama(value: unknown): string {
@@ -233,6 +234,12 @@ export function mergeExpensesWithCashOuts(
   for (const cl of Array.isArray(cashLines) ? cashLines : []) {
     const type = String(cl.islem_tipi || '').trim().toUpperCase();
     if (!allowedTypes.has(type)) continue;
+    if (
+      isSalesReturnCashVoucher(type, cl.islem_aciklamasi)
+      || isPurchaseReturnCashVoucher(type, cl.islem_aciklamasi)
+    ) {
+      continue;
+    }
     // Ferhat datası 72M geri-çevrimi (2026-10-04): MAAS_ODEME,
     // ORTAK_SERMAYE_ODEME, CH_ODEME, AVANS_ODEME, ORTAK_DAGITIM_KAR
     // Gider kolonuna dahil edildiği için bu 5 tip için `cash_line_id`

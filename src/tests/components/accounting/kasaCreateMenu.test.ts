@@ -16,6 +16,8 @@ const VISIBLE = [
   'CH_ODEME',
   'SATIS_FATURASI',
   'ALIS_FATURASI',
+  'SATIS_IADE_FATURASI',
+  'ALIS_IADE_FATURASI',
   'HIZMET_FATURASI',
   'KASA_GIRIS',
   'KASA_CIKIS',
@@ -53,5 +55,10 @@ describe('Kasa İşlem Oluştur menüsü', () => {
     expect(computeKasaIslemiSign('ALINAN_SERBEST_MESLEK')).toBe(1);
     expect(computeKasaIslemiSign('VERILEN_SERBEST_MESLEK')).toBe(-1);
     expect(computeKasaIslemiSign('MUSTAHSIL_MAKBUZU')).toBe(-1);
+  });
+
+  it('satış iadesi kasadan çıkar, alış iadesi kasaya girer', () => {
+    expect(computeKasaIslemiSign('SATIS_IADE_FATURASI')).toBe(-1);
+    expect(computeKasaIslemiSign('ALIS_IADE_FATURASI')).toBe(1);
   });
 });

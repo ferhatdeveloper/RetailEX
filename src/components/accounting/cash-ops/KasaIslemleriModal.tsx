@@ -121,7 +121,8 @@ export function KasaIslemleriModal({ kasa, islemler, loading, onClose, onIslemCl
             tip === 'ACILIS' ||
             tip === 'ACILIS_BORC' ||
             tip === 'SATIS_FATURASI' ||
-            tip === 'HIZMET_FATURASI';
+            tip === 'HIZMET_FATURASI' ||
+            tip === 'ALIS_IADE_FATURASI';
           return (
             <span
               className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${

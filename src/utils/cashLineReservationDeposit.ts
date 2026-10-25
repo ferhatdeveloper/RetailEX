@@ -134,6 +134,8 @@ export function resolveCashLineTypeLabelShort(
         if (defNorm.includes('verilen')) return tm('cashGivenServiceInvoice');
         return tm('cashServiceInvoice');
     }
+    if (defNorm.includes('satış iade') || defNorm.includes('satis iade')) return tm('salesReturnInvoice');
+    if (defNorm.includes('alış iade') || defNorm.includes('alis iade')) return tm('purchaseReturnInvoice');
     if (defNorm.includes('satış fatur') || defNorm.includes('satis fatur')) return tm('cashSalesInvoice');
     if (defNorm.includes('alış fatur') || defNorm.includes('alis fatur')) return tm('cashPurchaseInvoice');
     const labels: Record<string, string> = {
@@ -145,6 +147,8 @@ export function resolveCashLineTypeLabelShort(
         SATIS_FATURASI: tm('cashSalesInvoice'),
         ALIS_FATURASI: tm('cashPurchaseInvoice'),
         HIZMET_FATURASI: tm('cashServiceInvoice'),
+        SATIS_IADE_FATURASI: tm('salesReturnInvoice'),
+        ALIS_IADE_FATURASI: tm('purchaseReturnInvoice'),
         ACILIS: tm('openingDebit'),
         KAPANIS: tm('openingCredit'),
         ACILIS_BORC: tm('openingDebit'),

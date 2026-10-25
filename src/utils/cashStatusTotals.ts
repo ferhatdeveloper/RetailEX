@@ -38,6 +38,7 @@ import {
 import { isReturnSale } from './posZReport';
 import { dbPaymentMethodToFormCode, type PaymentFormCode } from './paymentMethodUtils';
 import { isDepositSale } from './reportDepositFilter';
+import { isPurchaseReturnCashVoucher, isSalesReturnCashVoucher } from './invoiceCashRegisterPosting';
 import { PERIOD_SUMMARY_CASH_OUT_TYPES } from './reportUnifiedExpenses';
 import { istanbulCalendarDateKey } from './localCalendarDate';
 import { receivableAfterDiscount, saleCollectedSplit, type SalePaymentRow } from './saleCollectedAmounts';
@@ -758,6 +759,17 @@ export function mergeRegisterSeeds(groups: CashRegisterSeed[][]): CashRegisterSe
 type DrawerKind = 'cash' | 'card' | 'transfer' | 'open' | 'skip';
 
 /** Kasa kartı satırının nakit / kart ayrımı. Boş yöntem nakittir; kart ayrıca yazılır. */
+function cashVoucherText(line: CashStatusRegisterLine): string {
+  return `${line.islem_aciklamasi || ''} ${line.aciklama || ''}`;
+}
+
+/** Satış iadesi ve alış iadesi işletme gideri değildir. Virman bu kümeye girmez. */
+function isOperatingCashExpense(line: CashStatusRegisterLine, tip: string): boolean {
+  const text = cashVoucherText(line);
+  if (isSalesReturnCashVoucher(tip, text) || isPurchaseReturnCashVoucher(tip, text)) return false;
+  return PERIOD_SUMMARY_CASH_OUT_TYPES.has(tip);
+}
+
 function drawerKind(line: CashStatusRegisterLine): DrawerKind {
   const raw = String(line.payment_method ?? '').trim().toLowerCase();
   if (raw === 'gateway' || raw.includes('sanal')) return 'card';
@@ -1026,7 +1038,7 @@ export function cashStatusWithVouchers(input: CashStatusVoucherInput): CashStatu
       addKind(kind, signed);
       continue;
     }
-    if (PERIOD_SUMMARY_CASH_OUT_TYPES.has(tip)) {
+    if (isOperatingCashExpense(line, tip)) {
       // Sıfır gider toplamı satırı "sayılmış" saymaz. Anahtar dolu olsa da
       // tutar 0 ise fiş henüz nakitten düşmemiştir; bir kez düşülür.
       const coveredByTotal = expenseProvided && expenseParam > 0.004 && (
@@ -1169,7 +1181,7 @@ export function cashStatusThreeBoxes(input: CashStatusThreeBoxInput): CashStatus
     if (isReservationCashLine(line)) continue;
     if (skipSaleCollectionAlreadyInCash(line, tip, saleReceiptKeys, collectionsInSales)) continue;
     if (isCashVirmanType(tip)) continue;
-    if (PERIOD_SUMMARY_CASH_OUT_TYPES.has(tip)) {
+    if (isOperatingCashExpense(line, tip)) {
       const coveredByTotal = expenseProvided && expenseParam > 0.004 && (
         !expenseKeysProvided || expenseKeyHit(line, countedExpenseKeys)
       );
@@ -1555,7 +1567,7 @@ export function cashRegisterStatusFromLedger(args: {
         if (!matchesListedRefund(line, refunds)) {
           const tip = tipUpper || 'DIGER';
           const abs = round2(-signed);
-          if (kind === 'cash' && PERIOD_SUMMARY_CASH_OUT_TYPES.has(tip)) {
+          if (kind === 'cash' && isOperatingCashExpense(line, tip)) {
             expense = round2(expense + abs);
           } else {
             otherOut.set(tip, round2((otherOut.get(tip) || 0) + abs));
@@ -1953,13 +1965,16 @@ function movementCategory(
   virman: boolean,
 ): CashStatusMovementCategory {
   if (virman) return 'virman';
+  const voucherText = cashVoucherText(line);
+  if (isSalesReturnCashVoucher(tip, voucherText)) return 'cashOut';
+  if (isPurchaseReturnCashVoucher(tip, voucherText)) return 'cashIn';
   if (isReservationCashLine(line)) return 'deposit';
   if (tip === 'ACILIS_BORC' || tip === 'ACILIS') return 'openingDebit';
   if (tip === 'ACILIS_ALACAK') return 'openingCredit';
   if (tip === 'CH_ODEME' || tip === 'ALIS_FATURASI') return 'payment';
   if (tip === 'BANKADAN_CEKILEN') return 'bankIn';
   if (tip === 'BANKA_YATIRILAN') return 'bankOut';
-  if (PERIOD_SUMMARY_CASH_OUT_TYPES.has(tip)) return 'expense';
+  if (isOperatingCashExpense(line, tip)) return 'expense';
   if (tip === 'CH_TAHSILAT') return 'collection';
   if (SALE_INVOICE_COLLECTION_TYPES.has(tip) || looksLikeAutoSaleCashIn(line, tip)) return 'sale';
   if (tip === 'KASA_GIRIS') return 'cashIn';

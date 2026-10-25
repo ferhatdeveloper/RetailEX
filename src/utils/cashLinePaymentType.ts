@@ -174,7 +174,12 @@ export function resolvePaymentType(
           ).trim()
         : '';
     const upper = txn.toUpperCase();
-    if (upper === 'KASA_GIRIS' || upper === 'KASA_CIKIS') {
+    if (
+      upper === 'KASA_GIRIS'
+      || upper === 'KASA_CIKIS'
+      || upper === 'SATIS_IADE_FATURASI'
+      || upper === 'ALIS_IADE_FATURASI'
+    ) {
       // Kasa giriş/çıkış = fiziksel nakit kasadan para alıp/verme
       return {
         code: 'cash',
