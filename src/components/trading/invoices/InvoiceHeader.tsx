@@ -347,54 +347,56 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         (resolvedPaymentCode === 'ACIK_CARI' ? tm('paymentOpenAccount') : paymentMethod);
 
     /**
-     * Collapsed — 2 satır × 4 kolon (hizalı, okunaklı):
+     * Daraltılmış şerit — tam genişlik, 2 satır × 4 eşit kolon, aynı gap:
      * 1: Fatura No | Cari kod | Ödeme | Açıklama
      * 2: Tarih | Cari unvan | Belge No | Bakiye
+     * Etiket genişliği kolonla orantılı ve küçülebilir; değer kutusuyla çakışmaz.
      */
+    const COMPACT_GAP = '0.75rem';
     const compactStackStyle: React.CSSProperties = {
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.35rem',
-        width: 'min(100%, 72rem)',
+        gap: COMPACT_GAP,
+        width: '100%',
         maxWidth: '100%',
+        minWidth: 0,
         boxSizing: 'border-box',
         position: 'relative',
         zIndex: 1,
-        overflow: 'visible',
     };
     const compactRow4Style: React.CSSProperties = {
         display: 'grid',
-        /* Fatura/Tarih biraz dar; Ödeme/Unvan/Açıklama/Bakiye daha geniş */
-        gridTemplateColumns: 'minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 1.15fr) minmax(0, 1.25fr)',
-        gap: '0.45rem',
+        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+        gap: COMPACT_GAP,
         width: '100%',
+        minWidth: 0,
         alignItems: 'stretch',
         boxSizing: 'border-box',
-        overflow: 'visible',
         position: 'relative',
     };
     const compactCellStyle: React.CSSProperties = {
         minWidth: 0,
+        maxWidth: '100%',
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
         overflow: 'visible',
     };
-    const compactCellClass = 'min-w-0';
-    /** Tek yükseklik + birleşik etiket+input+(...) — kısa etiket; input görünür kalsın */
+    const compactCellClass = 'min-w-0 max-w-full';
+    /** Tek yükseklik + birleşik etiket+input+(...) — etiket küçülür, değer kutusu görünür kalır */
     const fieldInputClass =
-        'min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
-    const inputGroupClass = 'flex items-stretch w-full min-w-0 h-8';
-    /** 4 kolonda kısa etiket okunur kalsın */
-    const COMPACT_LABEL_WIDTH = '6.25rem';
+        'min-w-0 w-0 max-w-full h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
+    const inputGroupClass = 'flex items-stretch w-full min-w-0 max-w-full h-8';
+    /** Geniş ekranda eşit etiket; dar kolonda yüzdesi ve flex-shrink ile taşmaz */
     const inputGroupLabelStyle: React.CSSProperties = {
-        width: COMPACT_LABEL_WIDTH,
-        minWidth: COMPACT_LABEL_WIDTH,
-        maxWidth: COMPACT_LABEL_WIDTH,
+        flex: '0 1 auto',
+        width: 'min(7rem, 36%)',
+        maxWidth: 'min(7rem, 36%)',
+        minWidth: 0,
         boxSizing: 'border-box',
     };
     const inputGroupLabelClass =
-        'shrink-0 inline-flex items-center justify-start px-2 h-8 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l bg-slate-50 dark:bg-gray-700/80 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:text-gray-300 truncate overflow-hidden';
+        'block min-w-0 truncate px-2 h-8 leading-8 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l bg-slate-50 dark:bg-gray-700/80 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:text-gray-300';
     const inputGroupFieldClass = `${fieldInputClass} flex-1 rounded-none border-r-0`;
     const inputGroupFieldStartClass = `${fieldInputClass} flex-1 rounded-l rounded-r-none border-r-0`;
     const inputGroupBtnClass =
@@ -592,7 +594,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     );
 
     return (
-        <div className="bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600 px-3 py-2 mb-3">
+        <div className="w-full min-w-0 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600 px-3 py-2 mb-3">
             {/* Form Header - Collapse/Expand */}
             <button
                 onClick={() => setIsFormExpanded(!isFormExpanded)}
@@ -1071,7 +1073,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     </div>
                 </div>
             ) : (
-                <div ref={cariSuggestRef}>
+                <div ref={cariSuggestRef} className="w-full min-w-0">
                     {/*
                       1: Fatura No | Cari kod | Ödeme | Açıklama
                       2: Tarih | Cari unvan | Belge No | Bakiye
@@ -1088,7 +1090,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         value={invoiceNo}
                                         readOnly={!invoiceNoEditable}
                                         onChange={(e) => setInvoiceNo?.(e.target.value)}
-                                        className={`min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none font-mono tabular-nums truncate ${
+                                        className={`min-w-0 w-0 max-w-full h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none font-mono tabular-nums truncate ${
                                             invoiceNoEditable
                                                 ? 'flex-1 rounded-none border-r-0 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500'
                                                 : 'flex-1 rounded-none border-r-0 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
@@ -1100,7 +1102,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                             entity="invoice"
                                             typeCode={invoiceType.code}
                                             onApply={(code) => setInvoiceNo?.(code)}
-                                            className="!rounded-l-none !rounded-r !w-8 !h-8 !min-h-0 !p-0 inline-flex items-center justify-center border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                                            className="!rounded-l-none !rounded-r !w-8 !h-8 !min-h-0 !min-w-8 !p-0 !shrink-0 inline-flex items-center justify-center border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
                                         />
                                     ) : (
                                         <span style={inputGroupTrailSpacerStyle} aria-hidden />
