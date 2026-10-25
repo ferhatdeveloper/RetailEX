@@ -102,56 +102,109 @@ function appointmentHasServiceInvoice(apt: BeautyAppointment): boolean {
     return false;
 }
 
-/**
- * İkinci fatura kesilmemiş ardışık aynı müşteri: tek POS sepeti varsay.
- * (sale_group_id yazılmamış eski kayıtlar — örn. HIGH LIGHT + HAND JELISH)
- */
-function mergeConsecutivePendingSingleInvoiceVisits(
-    appointments: BeautyAppointment[],
-): BeautyAppointment[] {
-    if (appointments.length <= 1) return appointments;
-    const sorted = sortBeautyAppointmentsQueue(appointments);
-    const result: BeautyAppointment[] = [];
-    for (const apt of sorted) {
-        const start = parseHhmmToMin(apt.appointment_time ?? apt.time);
-        if (start === null) {
-            result.push(apt);
-            continue;
-        }
-        const prev = result[result.length - 1];
-        if (!prev) {
-            result.push(apt);
-            continue;
-        }
-        const prevStart = parseHhmmToMin(prev.appointment_time ?? prev.time);
-        const prevDuration = Math.max(1, Number(prev.duration) || 30);
-        if (prevStart === null) {
-            result.push(apt);
-            continue;
-        }
-        const prevEnd = prevStart + prevDuration;
-        const sameCustomer = customerQueueGroupKey(prev) === customerQueueGroupKey(apt);
-        const isContiguous = start <= prevEnd;
-        const bothPending = !appointmentHasServiceInvoice(prev) && !appointmentHasServiceInvoice(apt);
-        if (!sameCustomer || !isContiguous || !bothPending) {
-            result.push(apt);
-            continue;
-        }
-        result[result.length - 1] = mergeQueueGroupForCardDisplay([prev, apt]);
+function appointmentSpanEnd(lines: BeautyAppointment[]): number | null {
+    let end: number | null = null;
+    for (const line of lines) {
+        const start = parseHhmmToMin(line.appointment_time ?? line.time);
+        if (start === null) continue;
+        const lineEnd = start + Math.max(1, Number(line.duration) || 30);
+        if (end === null || lineEnd > end) end = lineEnd;
     }
-    return result;
+    return end;
 }
 
 /**
- * Takvim kartı birleştirme (fatura bazlı).
- * - Aynı `sale_group_id` → tek kart (Kalem ayrı fatura açık olsa bile).
- * - Hizmet faturası yok + ardışık aynı müşteri → tek kart (ikinci fatura açılmadı).
- * - `mergeConsecutiveSameCustomer`: ek ardışık birleşim (sep kapalıyken).
+ * Ardışık aynı müşteri satırlarını özgün satır gruplarında tutar.
+ * `requireOpenInvoice` açıkken hizmet faturası olan satır yeni gruba girmez.
+ * Farklı `sale_group_id` bu fonksiyona gelmez; kimlik grupları ayrı kalır.
  */
-export function mergeBeautyAppointmentsForBoardDisplay(
+function chainContiguousAppointmentLines(
+    appointments: BeautyAppointment[],
+    requireOpenInvoice: boolean,
+): BeautyAppointment[][] {
+    if (appointments.length === 0) return [];
+    const sorted = sortBeautyAppointmentsQueue(appointments);
+    const groups: BeautyAppointment[][] = [];
+    for (const apt of sorted) {
+        const start = parseHhmmToMin(apt.appointment_time ?? apt.time);
+        const prev = groups[groups.length - 1];
+        if (!prev || start === null) {
+            groups.push([apt]);
+            continue;
+        }
+        const anchor = sortBeautyAppointmentsQueue(prev)[0];
+        const prevStart = parseHhmmToMin(anchor.appointment_time ?? anchor.time);
+        const prevEnd = appointmentSpanEnd(prev);
+        if (prevStart === null || prevEnd === null) {
+            groups.push([apt]);
+            continue;
+        }
+        const sameCustomer = customerQueueGroupKey(anchor) === customerQueueGroupKey(apt);
+        const isContiguous = start <= prevEnd;
+        const invoiceOk =
+            !requireOpenInvoice ||
+            (!appointmentHasServiceInvoice(anchor) && !appointmentHasServiceInvoice(apt));
+        if (!sameCustomer || !isContiguous || !invoiceOk) {
+            groups.push([apt]);
+            continue;
+        }
+        prev.push(apt);
+    }
+    return groups;
+}
+
+function chainContiguousAppointmentGroups(
+    groups: BeautyAppointment[][],
+    requireOpenInvoice: boolean,
+): BeautyAppointment[][] {
+    const sorted = [...groups].sort((a, b) =>
+        compareBeautyQueueOrder(
+            sortBeautyAppointmentsQueue(a)[0],
+            sortBeautyAppointmentsQueue(b)[0],
+        ),
+    );
+    const out: BeautyAppointment[][] = [];
+    for (const group of sorted) {
+        const lines = sortBeautyAppointmentsQueue(group);
+        const anchor = lines[0];
+        const start = parseHhmmToMin(anchor.appointment_time ?? anchor.time);
+        const prev = out[out.length - 1];
+        if (!prev || start === null) {
+            out.push([...lines]);
+            continue;
+        }
+        const prevAnchor = sortBeautyAppointmentsQueue(prev)[0];
+        const prevStart = parseHhmmToMin(prevAnchor.appointment_time ?? prevAnchor.time);
+        const prevEnd = appointmentSpanEnd(prev);
+        if (prevStart === null || prevEnd === null) {
+            out.push([...lines]);
+            continue;
+        }
+        const sameCustomer = customerQueueGroupKey(prevAnchor) === customerQueueGroupKey(anchor);
+        const isContiguous = start <= prevEnd;
+        const invoiceOk =
+            !requireOpenInvoice ||
+            (!appointmentHasServiceInvoice(prevAnchor) && !appointmentHasServiceInvoice(anchor));
+        if (!sameCustomer || !isContiguous || !invoiceOk) {
+            out.push([...lines]);
+            continue;
+        }
+        prev.push(...lines);
+    }
+    return out;
+}
+
+/**
+ * Takvim kartıyla aynı ziyaret grupları. Her grup bir randevudur.
+ * - Aynı `sale_group_id` tek gruptur (hizmet satırları ayrı randevu değildir).
+ * - Kimlik yoksa ve hizmet faturası yoksa ardışık aynı müşteri tek gruptur.
+ * - `mergeConsecutiveSameCustomer`: faturalı ardışık satırlar da birleşir.
+ * - Aynı müşterinin aynı gündeki ayrı saati, kimlik farklıysa ayrı kalır.
+ */
+export function groupBeautyBoardAppointmentLines(
     appointments: BeautyAppointment[],
     opts?: { mergeConsecutiveSameCustomer?: boolean },
-): BeautyAppointment[] {
+): BeautyAppointment[][] {
     if (!appointments.length) return [];
     const bySaleGroup = new Map<string, BeautyAppointment[]>();
     const ungrouped: BeautyAppointment[] = [];
@@ -166,13 +219,27 @@ export function mergeBeautyAppointmentsForBoardDisplay(
         bySaleGroup.set(key, bucket);
     }
 
-    const fromGroups = [...bySaleGroup.values()].map((group) => mergeQueueGroupForCardDisplay(group));
-    const pendingMerged = mergeConsecutivePendingSingleInvoiceVisits(ungrouped);
-    const fromUngrouped = opts?.mergeConsecutiveSameCustomer
-        ? mergeConsecutiveCustomerAppointments(pendingMerged)
-        : pendingMerged;
+    const fromGroups = [...bySaleGroup.values()].map((group) => sortBeautyAppointmentsQueue(group));
+    let fromUngrouped = chainContiguousAppointmentLines(ungrouped, true);
+    if (opts?.mergeConsecutiveSameCustomer) {
+        fromUngrouped = chainContiguousAppointmentGroups(fromUngrouped, false);
+    }
+    return [...fromGroups, ...fromUngrouped];
+}
 
-    return sortBeautyAppointmentsQueue([...fromGroups, ...fromUngrouped]);
+/**
+ * Takvim kartı birleştirme (fatura bazlı).
+ * - Aynı `sale_group_id` → tek kart (Kalem ayrı fatura açık olsa bile).
+ * - Hizmet faturası yok + ardışık aynı müşteri → tek kart (ikinci fatura açılmadı).
+ * - `mergeConsecutiveSameCustomer`: ek ardışık birleşim (sep kapalıyken).
+ */
+export function mergeBeautyAppointmentsForBoardDisplay(
+    appointments: BeautyAppointment[],
+    opts?: { mergeConsecutiveSameCustomer?: boolean },
+): BeautyAppointment[] {
+    return sortBeautyAppointmentsQueue(
+        groupBeautyBoardAppointmentLines(appointments, opts).map((group) => mergeQueueGroupForCardDisplay(group)),
+    );
 }
 
 /** Ardışık aynı müşteri kartlarını birleştir (sale_group yokken). */

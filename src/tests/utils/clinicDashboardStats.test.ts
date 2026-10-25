@@ -29,9 +29,11 @@ function makeApt(
     total_price: number,
     overrides: Partial<BeautyAppointment> = {},
 ): BeautyAppointment {
+    const id = String(overrides.id ?? `apt-${Math.random().toString(36).slice(2, 10)}`);
     return {
-        id: `apt-${Math.random().toString(36).slice(2, 10)}`,
-        customer_id: 'cust-1',
+        id,
+        // Aynı saatteki ayrı randevular aynı müşteri diye birleşmesin.
+        customer_id: `cust-${id}`,
         service_id: 'svc-1',
         staff_id: 'staff-1',
         appointment_date: TODAY,
@@ -227,5 +229,152 @@ describe('computeClinicDayKpis (Bug 21)', () => {
         expect(k.total).toBe(0);
         expect(k.expectedRevenue).toBe(0);
         expect(k.remaining).toBe(0);
+    });
+
+    it('iki hizmetli randevu bir kez sayılır; aynı müşterinin ayrı saatteki ikinci randevusu ayrı kalır; peşinat eklenmez', () => {
+        const customer = 'cust-rza';
+        const apts = [
+            makeApt(AppointmentStatus.PRE_PAID, 50_000, {
+                id: 'rza-hl',
+                customer_id: customer,
+                customer_name: 'RZA',
+                service_name: 'HIGH LIGHT',
+                appointment_time: '11:00',
+                time: '11:00',
+                duration: 60,
+                sale_group_id: 'visit-rza-1',
+                deposit_amount: 20_000,
+            }),
+            makeApt(AppointmentStatus.PRE_PAID, 25_000, {
+                id: 'rza-hj',
+                customer_id: customer,
+                customer_name: 'RZA',
+                service_name: 'HAND JELISH',
+                appointment_time: '12:00',
+                time: '12:00',
+                duration: 60,
+                sale_group_id: 'visit-rza-1',
+                deposit_amount: 20_000,
+            }),
+            makeApt(AppointmentStatus.SCHEDULED, 30_000, {
+                id: 'rza-later',
+                customer_id: customer,
+                customer_name: 'RZA',
+                service_name: 'HAND JELISH',
+                appointment_time: '18:00',
+                time: '18:00',
+                duration: 60,
+                sale_group_id: 'visit-rza-2',
+                deposit_amount: 10_000,
+            }),
+        ];
+        const k = computeClinicDayKpis({ appointments: apts, todayStr: TODAY, dateKeyOf });
+        const revenue = computeClinicExpectedRevenue(apts);
+        const serviceTotal = 50_000 + 25_000 + 30_000;
+        expect(k.total).toBe(2);
+        expect(k.pending).toBe(2);
+        expect(k.remaining).toBe(2);
+        expect(k.completed).toBe(0);
+        expect(k.expectedRevenue).toBe(serviceTotal);
+        expect(revenue).toEqual({ amount: serviceTotal, count: 2 });
+        expect(k.expectedRevenue).not.toBe(serviceTotal + 20_000);
+        expect(k.expectedRevenue).not.toBe(serviceTotal + 20_000 + 20_000 + 10_000);
+        expect(k.todayApts).toHaveLength(3);
+    });
+
+    it('farklı randevu kimliği bitişik saatte de ayrı kalır', () => {
+        const customer = 'cust-rza';
+        const apts = [
+            makeApt(AppointmentStatus.SCHEDULED, 25_000, {
+                id: 'a',
+                customer_id: customer,
+                appointment_time: '11:00',
+                time: '11:00',
+                sale_group_id: 'visit-a',
+            }),
+            makeApt(AppointmentStatus.SCHEDULED, 50_000, {
+                id: 'b',
+                customer_id: customer,
+                appointment_time: '12:00',
+                time: '12:00',
+                sale_group_id: 'visit-b',
+            }),
+        ];
+        const k = computeClinicDayKpis({ appointments: apts, todayStr: TODAY, dateKeyOf });
+        expect(k.total).toBe(2);
+        expect(k.pending).toBe(2);
+        expect(k.expectedRevenue).toBe(75_000);
+    });
+
+    it('kimliksiz ardışık iki hizmet tek randevudur; aynı gün 18:00 ayrı kalır', () => {
+        const customer = 'cust-dunya';
+        const apts = [
+            makeApt(AppointmentStatus.PRE_PAID, 50_000, {
+                id: 'd1',
+                customer_id: customer,
+                customer_name: 'DUNYA',
+                service_name: 'HIGH LIGHT',
+                appointment_time: '09:00',
+                time: '09:00',
+                duration: 60,
+                deposit_amount: 25_000,
+            }),
+            makeApt(AppointmentStatus.PRE_PAID, 25_000, {
+                id: 'd2',
+                customer_id: customer,
+                customer_name: 'DUNYA',
+                service_name: 'HAND JELISH',
+                appointment_time: '10:00',
+                time: '10:00',
+                duration: 60,
+                deposit_amount: 25_000,
+            }),
+            makeApt(AppointmentStatus.SCHEDULED, 40_000, {
+                id: 'd3',
+                customer_id: customer,
+                customer_name: 'DUNYA',
+                service_name: 'HAND JELISH',
+                appointment_time: '18:00',
+                time: '18:00',
+                duration: 60,
+            }),
+        ];
+        const k = computeClinicDayKpis({ appointments: apts, todayStr: TODAY, dateKeyOf });
+        expect(k.total).toBe(2);
+        expect(k.pending).toBe(2);
+        expect(k.expectedRevenue).toBe(50_000 + 25_000 + 40_000);
+        expect(k.todayApts).toHaveLength(3);
+    });
+
+    it('tamamlanan ziyaretin peşinatlı hizmet satırı bekleyene ve beklenen ciroya girmez', () => {
+        const customer = 'cust-rza';
+        const apts = [
+            makeApt(AppointmentStatus.COMPLETED, 25_000, {
+                id: 'c1',
+                customer_id: customer,
+                service_name: 'HAND JELISH',
+                appointment_time: '11:00',
+                time: '11:00',
+                duration: 60,
+                sale_group_id: 'visit-done',
+            }),
+            makeApt(AppointmentStatus.PRE_PAID, 50_000, {
+                id: 'c2',
+                customer_id: customer,
+                service_name: 'HIGH LIGHT',
+                appointment_time: '12:00',
+                time: '12:00',
+                duration: 60,
+                sale_group_id: 'visit-done',
+                deposit_amount: 20_000,
+            }),
+        ];
+        const k = computeClinicDayKpis({ appointments: apts, todayStr: TODAY, dateKeyOf });
+        expect(k.total).toBe(1);
+        expect(k.completed).toBe(1);
+        expect(k.pending).toBe(0);
+        expect(k.remaining).toBe(0);
+        expect(k.expectedRevenue).toBe(0);
+        expect(k.todayApts).toHaveLength(2);
     });
 });

@@ -14,7 +14,16 @@
  */
 import { AppointmentStatus } from '../types/beauty';
 import type { BeautyAppointment } from '../types/beauty';
+import { isAppointmentDepositCartLine } from './appointmentFormReservation';
 import { beautyAptVisibleOnSchedule } from './beautyAppointmentVisibility';
+import { groupBeautyBoardAppointmentLines } from './beautyQueueOrder';
+
+/**
+ * Pano sayımı takvim kartıyla aynı ziyareti kullanır.
+ * Personel sütununda ardışık hizmet satırları tek randevudur.
+ * Farklı `sale_group_id` aynı müşteri ve bitişik saat olsa da ayrı kalır.
+ */
+const CLINIC_VISIT_GROUP = { mergeConsecutiveSameCustomer: true } as const;
 
 /**
  * Bug 21: BEKLENEN CİRO'ya dahil edilecek durumlar.
@@ -42,12 +51,49 @@ export interface ClinicExpectedRevenue {
     count: number;
 }
 
+function clinicVisitLines(rows: BeautyAppointment[]): BeautyAppointment[][] {
+    return groupBeautyBoardAppointmentLines(rows, CLINIC_VISIT_GROUP);
+}
+
+function visitHasCompleted(lines: BeautyAppointment[]): boolean {
+    return lines.some((line) => line?.status === AppointmentStatus.COMPLETED);
+}
+
+function visitIsPending(lines: BeautyAppointment[]): boolean {
+    if (visitHasCompleted(lines)) return false;
+    return lines.some((line) =>
+        EXPECTED_REVENUE_STATUSES.includes(
+            line?.status as (typeof EXPECTED_REVENUE_STATUSES)[number],
+        ),
+    );
+}
+
+/** Hizmet tutarları bir kez. Peşinat alanı ve peşinat satırı ciroya eklenmez. */
+function visitServiceAmount(lines: BeautyAppointment[]): number {
+    let amount = 0;
+    for (const line of lines) {
+        if (
+            isAppointmentDepositCartLine({
+                name: line?.service_name,
+                itemId: line?.service_id,
+            })
+        ) {
+            continue;
+        }
+        const price = Number(line?.total_price ?? 0);
+        if (!Number.isFinite(price) || price <= 0) continue;
+        amount += price;
+    }
+    return amount;
+}
+
 /**
  * Bug 21: ClinicDashboard "BEKLENEN CİRO" KPI hesabı.
  *
- * `todayAppointments` listesinden `EXPECTED_REVENUE_STATUSES` durumlarını
- * filtreleyip `total_price` toplamını döner. Tamamlanan ve iptal edilen
- * randevular Hariç tutulur.
+ * Ziyaret (randevu kimliği) başına bir kez sayılır. Aynı randevunun
+ * hizmet satırları ikinci randevu olmaz. Tutar, hizmet `total_price`
+ * toplamıdır; `deposit_amount` gelire ikinci kez eklenmez.
+ * Tamamlanan ziyaret bekleyene karışmaz.
  *
  * **Bağımlılık:** `beauty_sales` sorgusuna **değil**, doğrudan `appointments`
  * listesine bakar. Bug 19 sonrası peşinatlı modda cari satış fişi
@@ -64,18 +110,10 @@ export function computeClinicExpectedRevenue(
     const pool = Array.isArray(todayAppointments) ? todayAppointments : [];
     let amount = 0;
     let count = 0;
-    for (const a of pool) {
-        const st = a?.status;
-        if (
-            st !== AppointmentStatus.SCHEDULED &&
-            st !== AppointmentStatus.CONFIRMED &&
-            st !== AppointmentStatus.PRE_PAID &&
-            st !== AppointmentStatus.IN_PROGRESS
-        ) {
-            continue;
-        }
-        const price = Number(a?.total_price ?? 0);
-        if (!Number.isFinite(price) || price <= 0) continue;
+    for (const lines of clinicVisitLines(pool)) {
+        if (!visitIsPending(lines)) continue;
+        const price = visitServiceAmount(lines);
+        if (price <= 0) continue;
         amount += price;
         count += 1;
     }
@@ -117,29 +155,28 @@ export function computeClinicDayKpis(input: ClinicDayKpiInputs): ClinicDayKpis {
     const safe = Array.isArray(appointments) ? appointments : [];
     const todayAll = safe.filter((a) => dateKeyOf(a) === todayStr);
     const todayApts = todayAll.filter(beautyAptVisibleOnSchedule);
-    const completed = todayApts.filter(
-        (a) => a.status === AppointmentStatus.COMPLETED,
-    );
+    // Liste hizmet satırı olarak kalır. Sayı ve ciro ziyaret (randevu) bazındadır.
+    const visits = clinicVisitLines(todayApts);
+    const completed = visits.filter((lines) => visitHasCompleted(lines));
     // 09.10.2026 — Bug "planli olan var bekleyende gozukmuyor":
     // BEKLEYEN KPI'ı yalnız SCHEDULED+CONFIRMED durumlarını sayıyordu;
     // PRE_PAID (peşinat alınmış) ve IN_PROGRESS (hizmet devam ediyor) durumları
     // da operatörün "henüz tamamlanmamış" olarak izlemesi gereken planlı
     // randevulardır. EXPECTED_REVENUE_STATUSES ile aynı 4 durum kullanılır.
-    const pending = todayApts.filter((a) =>
-        EXPECTED_REVENUE_STATUSES.includes(
-            a.status as (typeof EXPECTED_REVENUE_STATUSES)[number],
-        ),
+    // Tamamlanan satırı olan ziyaret bekleyene yazılmaz; kardeş hizmet satırı
+    // ikinci randevu sayılmaz.
+    const pending = visits.filter((lines) => visitIsPending(lines));
+    const inProg = visits.filter(
+        (lines) =>
+            !visitHasCompleted(lines) &&
+            lines.some((line) => line.status === AppointmentStatus.IN_PROGRESS),
     );
-    const inProg = todayApts.filter(
-        (a) => a.status === AppointmentStatus.IN_PROGRESS,
-    );
-    const cancelled = todayAll.filter(
-        (a) => a.status === AppointmentStatus.CANCELLED,
+    const cancelled = clinicVisitLines(
+        todayAll.filter((a) => a.status === AppointmentStatus.CANCELLED),
     );
     const expected = computeClinicExpectedRevenue(todayApts);
-    const rate = todayApts.length
-        ? Math.round((completed.length / todayApts.length) * 100)
-        : 0;
+    const total = visits.length;
+    const rate = total ? Math.round((completed.length / total) * 100) : 0;
     return {
         todayApts,
         completed: completed.length,
@@ -148,7 +185,7 @@ export function computeClinicDayKpis(input: ClinicDayKpiInputs): ClinicDayKpis {
         cancelled: cancelled.length,
         expectedRevenue: expected.amount,
         remaining: expected.count,
-        total: todayApts.length,
+        total,
         rate,
     };
 }
