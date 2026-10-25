@@ -16,11 +16,10 @@ import { formatNumber } from '../../utils/formatNumber';
 import { dailySalesDetailNetAmount } from '../../utils/dailySalesDetailNet';
 import {
   buildDailySalesDetailExpenseRows,
-  dailyReportScreenNetCash,
   dailySalesDetailBeforeDiscountContribution,
   dailySalesDetailDiscountContribution,
-  sumDailySalesDetailCashBalance,
 } from '../../utils/dailySalesDetailCashBalance';
+import { reportDisplayNet } from '../../utils/periodSummaryNet';
 import {
   appointmentIdFromAvansNotes,
   isForfeitedUnrefundedDeposit,
@@ -3942,17 +3941,26 @@ export function ReportsModule({
   }, [dailyKindFilter, dailyShowOnlyRemoved, dailyKindGridRows, dailyExpenseRowsForReport, tm, userNameById]);
 
   /**
-   * Net (Nakit) = dip toplam. Satış neti − gider, gider bir kez.
-   * Hizmete mahsup edilmiş peşinat ikinci kez eklenmez.
-   * İade edilmemiş iptal peşinatı bir kez eklenir. İndirim açık cari değildir.
-   * 25.000 hizmet + 10.000 vazgeçilmiş peşinat = 35.000.
+   * Net (Nakit) = ciro + rezervasyon kutusu − gider.
+   * Günlük ciro iadeyi bir kez düşmüş hâldedir; iade kartı tekrar düşülmez.
+   * Rezervasyon kutusu açık ve iptal peşinatıdır, bir kez eklenir.
+   * Kapanan peşinat kutudan çıkar, hizmet tutarı cirodadır, ikinci kez yok.
+   * İndirim ciro netindedir. Gider bir kez düşer. Virman gider değildir.
+   * 25.000 ciro + 25.000 açık peşinat = 50.000.
    */
   const dailyNetNakitAlways = useMemo(
-    () => dailyReportScreenNetCash(
-      dailySalesDetailGridRows,
-      (row) => isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true,
-    ),
-    [dailySalesDetailGridRows],
+    () => reportDisplayNet({
+      revenue: dailyTotal,
+      reservationAmount: cancelledUnclosedReservationBox({
+        appointments: dailyAppointments,
+        avansRows: dailyAvansList,
+        depositSales: dailyDepositSales,
+      }).amount,
+      returnDeduction: 0,
+      expenses: totalExpensesForReport,
+      expenseEnabled: true,
+    }),
+    [dailyTotal, dailyAppointments, dailyAvansList, dailyDepositSales, totalExpensesForReport],
   );
 
   const dailyExpenseGridRows = useMemo(() => {
@@ -7523,26 +7531,10 @@ export function ReportsModule({
                           align: 'right',
                           size: 140,
                           footerSum: true,
-                          // Deposit satırlarda net tutar "—" gösterilir ve footer'a
-                          // katılmaz (ciro zaten randevu tamamlanınca ana hizmete
-                          // yansıyacak). Pozitif satışta net = brüt − indirim.
-                          // İade eksi kalır; Math.max(0, …) iadeyi 0 yapıp
-                          // 110.000 + 20.000 = 130.000 bırakıyordu.
-                          footerFormat: (_n, rows) => {
-                            const total = sumDailySalesDetailCashBalance(
-                              rows as Array<{
-                                erpSale?: Sale;
-                                isDeposit?: boolean;
-                                isAvans?: boolean;
-                                isExpense?: boolean;
-                                beforeDiscount?: number;
-                                total?: number;
-                                discount?: number;
-                              }>,
-                              (r) => isDepositSale(r.erpSale as Partial<Sale> | undefined),
-                            );
-                            return formatLedgerAmount(total, reportCurrency);
-                          },
+                          // Dip net, kartla aynı formüldür: ciro + rezervasyon − gider.
+                          // Yalnız hizmet satırının tutarı yetmez; açık peşinat bir kez girer.
+                          // Kapanan peşinat satırı listede durmaz, tutarı cirodadır.
+                          footerFormat: () => formatLedgerAmount(dailyNetNakitAlways, reportCurrency),
                           cell: (row) => {
                             if (row.isExpense) {
                               return (
@@ -7563,7 +7555,7 @@ export function ReportsModule({
                             }
                             // Açık veya iptal avans satırı: net hücre gerçek peşinattır.
                             // Kapanmış randevunun satırı listeye girmez.
-                            // Dip toplam bu satırı ikinci kez yazmaz.
+                            // Dip toplam bu tutarı rezervasyon kutusu üzerinden bir kez yazar.
                             if (row.isAvans) {
                               return (
                                 <div className="font-medium tabular-nums">

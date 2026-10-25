@@ -539,7 +539,7 @@ describe('satış detayları kasa bakiyesi', () => {
   it('ekran gider satırını ızgaraya bağlar ve Net (Brüt) kartını çizmez', () => {
     const src = readFileSync(resolve('src/components/reports/ReportsModule.tsx'), 'utf8');
     expect(src).toContain('buildDailySalesDetailExpenseRows');
-    expect(src).toContain('sumDailySalesDetailCashBalance');
+    expect(src).toContain('reportDisplayNet');
     expect(src).toContain('createdAt: row.createdAt');
     expect(src).toContain('enteredById: row.enteredById');
     expect(src).toContain('enteredById: enteredBy.id');

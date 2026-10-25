@@ -407,7 +407,9 @@ function summarizeWindow(
     returnDeduction: split.returnAmount,
     expenses: 0,
     expenseEnabled: false,
-    reservationDeposit: depositAmount,
+    // Bu şeridin net satışı ciro − iade kalır. Rezervasyon kutusu
+    // günlük, aylık ve yıllık rapor netine yazılır; burada ayrı durur.
+    reservationDeposit: 0,
   });
   const cogs = cogsOf(folded, products);
   const profitRow = grossProfitAfterCogs(headline.netRevenue, cogs);

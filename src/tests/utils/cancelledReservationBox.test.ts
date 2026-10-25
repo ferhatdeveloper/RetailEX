@@ -166,36 +166,28 @@ describe('kapanmamış ve iptal rezervasyon kutusu', () => {
     expect(expected.amount).not.toBe(75_000 + 25_000);
   });
 
-  it('ciro ve net rezervasyon kutusundan ikinci kez büyümez; iade 15.000 durur', () => {
+  it('rezervasyon kutusu nete bir kez girer; kapanmış 5.000 ve iptal ikinci kez yok', () => {
     const box = cancelledUnclosedReservationBox({ appointments, avansRows });
-    const base = {
+    const after = periodSummaryHeadline({
       revenue: 40_000,
       returnsAmount: 15_000,
       returnDeduction: 15_000,
       expenses: 0,
       expenseEnabled: true,
-      forfeitedDeposit: 10_000,
-    };
-    const before = periodSummaryHeadline({
-      ...base,
-      reservationDeposit: 15_000,
-    });
-    const after = periodSummaryHeadline({
-      ...base,
       reservationDeposit: box.amount,
+      forfeitedDeposit: 10_000,
     });
 
     expect(box.amount).toBe(35_000);
     expect(box.count).toBe(2);
     expect(after.grossRevenue).toBe(40_000);
     expect(after.returnAmount).toBe(15_000);
-    expect(after.grossRevenue).toBe(before.grossRevenue);
-    expect(after.netRevenue).toBe(before.netRevenue);
-    expect(after.netRevenue).toBe(35_000);
     expect(after.depositInfo).toBe(35_000);
+    expect(after.netRevenue).toBe(60_000);
     expect(after.grossRevenue).not.toBe(40_000 + 5_000);
-    expect(after.netRevenue).not.toBe(before.netRevenue + 25_000);
-    expect(after.netRevenue).not.toBe(before.grossRevenue + box.amount);
+    expect(after.netRevenue).not.toBe(70_000);
+    expect(after.netRevenue).not.toBe(65_000);
+    expect(after.netRevenue).not.toBe(40_000 + 35_000);
   });
 
   it('aylık ve yıllık rezervasyon turuncu, iade teal; günlük ve panel turuncusu durur', () => {

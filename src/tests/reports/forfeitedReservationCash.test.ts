@@ -1,8 +1,8 @@
 /**
  * İptal edilip iade edilmeyen peşinat.
  *
- * Hizmet 25.000. Rezervasyon bilgi 15.000 (10.000 vazgeçilmiş + 5.000 mahsup).
- * Net 35.000. Mahsup edilen 5.000 ikinci kez yazılmaz.
+ * Hizmet 25.000. İptal peşinatı 10.000 rezervasyon kutusundadır. Net 35.000.
+ * Mahsup edilen 5.000 kutuda yoktur; cirodadır, ikinci kez yazılmaz.
  * İptal peşinatı satış adedi ve hizmet cirosu değildir.
  */
 import { describe, expect, it } from 'vitest';
@@ -242,15 +242,15 @@ describe('iptal edilip iade edilmeyen peşinat', () => {
       returnDeduction: 0,
       expenses: 0,
       expenseEnabled: true,
-      reservationDeposit: 15_000,
+      reservationDeposit: 10_000,
       forfeitedDeposit: month.get('2026-10-25') || 0,
     });
     expect(head.grossRevenue).toBe(25_000);
-    expect(head.depositInfo).toBe(15_000);
+    expect(head.depositInfo).toBe(10_000);
     expect(head.netRevenue).toBe(35_000);
     expect(head.netRevenue).not.toBe(25_000);
-    expect(head.netRevenue).not.toBe(40_000);
-    expect(head.grossRevenue + head.depositInfo).not.toBe(head.netRevenue);
+    expect(head.netRevenue).not.toBe(45_000);
+    expect(head.grossRevenue + head.depositInfo).toBe(head.netRevenue);
 
     expect(periodSummaryNetRemaining({
       revenue: 25_000,
@@ -258,7 +258,7 @@ describe('iptal edilip iade edilmeyen peşinat', () => {
       expenses: 2_000,
       expenseEnabled: true,
       ciroDisiTahsilat: 10_000,
-      reservationDeposit: 15_000,
+      reservationDeposit: 10_000,
     })).toBe(33_000);
   });
 
@@ -336,7 +336,7 @@ describe('iptal edilip iade edilmeyen peşinat', () => {
       expenses: expenses.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
       expenseEnabled: true,
       ciroDisiTahsilat: 10_000,
-      reservationDeposit: 15_000,
+      reservationDeposit: 10_000,
     })).toBe(35_000);
   });
 });

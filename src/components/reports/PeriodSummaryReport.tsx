@@ -843,9 +843,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // ancak "Net Kalan = Ciro − Gider" doğru olur. CH_TAHSILAT ayrı
       // "Kasa Para Girişi" kolonunda izlenir, Ciro'ya katılmaz.
       //
-      // Net kalan = brüt ciro − iade − masraf.
-      // Peşinat ve rezervasyon avansı bilgi kolonudur: ciroya eklenmez, netten düşülmez.
-      // Rezervasyon brüt/kalan da fatura kesilene kadar yalnız bilgi kolonudur.
+      // Net kalan = brüt ciro + rezervasyon kutusu − iade − masraf.
+      // Rezervasyon kutusu açık ve iptal peşinatıdır. Kapanmış peşinat
+      // cirodadır, kutuda kalmaz, nete ikinci kez yazılmaz.
+      // Rezervasyon brüt/kalan fatura kesilene kadar bilgi kolonudur.
       const reservation = reservationMap.get(periodKey) || { gross: 0, pending: 0, deposit: 0, count: 0 };
       const cancelledReservation = cancelledReservationMap.get(periodKey) || { amount: 0, count: 0 };
       const reservationDepositInfo = cancelledReservation.amount;
@@ -867,9 +868,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         });
       }
       const ciroTotal = sale.revenue;
-      // Rezervasyon tutarı bilgi kolonudur; tamamı nete eklenmez.
-      // Yalnız iade edilmemiş iptal peşinatı net kalana bir kez girer.
-      // Hizmete mahsup edilmiş peşinat cirodadır, ikinci kez yazılmaz.
+      // Rezervasyon kutusu nete bir kez girer.
+      // İptal peşinatı kutunun içindedir; kutu doluysa ikinci kez yazılmaz.
+      // Hizmete mahsup edilmiş peşinat cirodadır, kutuda yoktur.
       const headline = periodSummaryHeadline({
         revenue: ciroTotal,
         returnsAmount: sale.returnsAmount,

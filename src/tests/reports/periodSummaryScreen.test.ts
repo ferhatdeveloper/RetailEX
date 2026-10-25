@@ -4,7 +4,7 @@
  * Rezervasyon Tutarı ve Rezervasyon Miktarı durur.
  * Beş kutu klinik dolu tonunu kullanır. Rezervasyon kutusu turuncudur.
  * İade kutusu tealdir.
- * Rezervasyon tutarı nete eklenmez. Tutar formülü bu dosyada değişmez.
+ * Rezervasyon kutusu nete bir kez eklenir. Kapanmış peşinat kutuda yoktur.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -176,7 +176,7 @@ describe('Aylık ve yıllık özet görünümü', () => {
     }
   });
 
-  it('rezervasyon kutusu 15.000 gösterir; net 35.000 kalır ve rezervasyon eklenmez', () => {
+  it('rezervasyon kutusu 15.000 nete bir kez eklenir; iade 15.000 bir kez düşer', () => {
     expect(periodSummaryReservationHint('Rezervasyon Miktarı', 2)).toBe('2 rezervasyon miktarı');
 
     const shown = periodSummaryHeadline({
@@ -201,11 +201,12 @@ describe('Aylık ve yıllık özet görünümü', () => {
     expect(shown.grossRevenue).toBe(40_000);
     expect(shown.returnAmount).toBe(15_000);
     expect(shown.depositInfo).toBe(15_000);
-    expect(shown.netRevenue).toBe(35_000);
-    expect(withoutReservation.netRevenue).toBe(35_000);
-    expect(shown.netRevenue).toBe(withoutReservation.netRevenue);
+    expect(shown.netRevenue).toBe(40_000);
+    expect(withoutReservation.netRevenue).toBe(25_000);
+    expect(shown.netRevenue).not.toBe(withoutReservation.netRevenue);
     expect(shown.netRevenue).not.toBe(shown.grossRevenue + shown.depositInfo);
-    expect(shown.netRevenue).not.toBe(shown.grossRevenue - shown.returnAmount + shown.depositInfo);
+    expect(shown.netRevenue).toBe(shown.grossRevenue - shown.returnAmount + shown.depositInfo);
+    expect(shown.netRevenue).not.toBe(50_000);
 
     const src = readFileSync(resolve('src/components/reports/PeriodSummaryReport.tsx'), 'utf8');
     const reservationAt = src.indexOf("key: 'reservation'");
@@ -249,7 +250,7 @@ describe('Aylık ve yıllık özet görünümü', () => {
         createElement(PeriodSummaryHeadlineCard, {
           toneKey: 'net',
           label: 'Net Kalan',
-          value: '35.000 IQD',
+          value: '40.000 IQD',
         }),
       ),
     );
@@ -264,7 +265,7 @@ describe('Aylık ve yıllık özet görünümü', () => {
     expect(reservation.textContent).toContain('15.000 IQD');
     expect(reservation.textContent).toContain('2 rezervasyon miktarı');
     expect(reservation.style.backgroundColor).toBe(cssColor('#f59e0b'));
-    expect(net.textContent).toContain('35.000 IQD');
+    expect(net.textContent).toContain('40.000 IQD');
     expect(net.style.backgroundColor).toBe(cssColor('#12b76a'));
     expect(strip.textContent).not.toContain('50.000');
     expect(strip.textContent).not.toContain('55.000');

@@ -10,13 +10,17 @@
  * Ciro dolu mavi, rezervasyon dolu turuncu, iade dolu gül kurusu,
  * gider dolu kırmızı, net nakit dolu yeşil; yazı beyazdır.
  * İndirim kartı açık lavanta zeminde kalır.
- * İade kutusu bilgi tutarıdır. Net (Nakit) bu tutarı tekrar düşmez.
+ * İade kutusu bilgi tutarıdır. Günlük ciro iadeyi bir kez düşmüştür;
+ * Net (Nakit) bu tutarı tekrar düşmez.
+ * Net (Nakit) = ciro + rezervasyon tutarı − gider.
  *
  * Kaldırılanlar (menü parametresi açık olsa da bu ekranda yok):
  * Toplam Satış, Nakit, Satış iade, Net (Brüt), kart, veresiye,
  * belge/tahsil/veresiye şeridi, kasa giriş, kasa çıkış, nakit gider.
  *
- * İndirim açık cari değildir. Rezervasyon ve peşinat ciro değildir.
+ * İndirim açık cari değildir; ciro netindedir, nete tekrar girmez.
+ * Rezervasyon ve peşinat ciro değildir. Açık ve iptal peşinatı
+ * rezervasyon kutusundan nete bir kez eklenir.
  * Ciro altındaki miktar bilgi satırıdır; tutara eklenmez.
  */
 

@@ -38,7 +38,7 @@ describe('Aylık Gün Özeti — ürün iadesi netten bir kez düşülür', () =
     date: '2026-10-18T12:00:00',
   });
 
-  it('brüt ciro 130.000, iade 10.000, masraf 0, peşinat 20.000 → iade 10.000, net 120.000', () => {
+  it('brüt ciro 130.000, iade 10.000, peşinat 20.000 → net 140.000, iade bir kez', () => {
     const map = aggregatePeriodSalesAndReturns([service, boya], [boyaReturn], dayKey);
     const total = sumPeriodSaleBuckets(map);
     const saleDay = map.get('2026-10-05');
@@ -64,10 +64,11 @@ describe('Aylık Gün Özeti — ürün iadesi netten bir kez düşülür', () =
       ciroDisiTahsilat: 0,
       reservationDeposit: 20_000,
     });
-    expect(net).toBe(120_000);
+    expect(net).toBe(140_000);
+    expect(net).not.toBe(120_000);
     expect(net).not.toBe(100_000);
     expect(net).not.toBe(110_000);
-    expect(net).not.toBe(140_000);
+    expect(net).not.toBe(160_000);
   });
 
   it('veritabanında artı yazılmış iade bir kez düşülür, ciro 140.000 olmaz', () => {
@@ -88,7 +89,7 @@ describe('Aylık Gün Özeti — ürün iadesi netten bir kez düşülür', () =
       expenses: 0,
       expenseEnabled: true,
       reservationDeposit: 20_000,
-    })).toBe(120_000);
+    })).toBe(140_000);
   });
 
   it('aynı iade fişi ikinci kez düşülmez', () => {
@@ -126,17 +127,26 @@ describe('Aylık Gün Özeti — ürün iadesi netten bir kez düşülür', () =
       ciroDisiTahsilat: 0,
       reservationDeposit: total.depositAmount,
     });
-    expect(net).toBe(120_000);
+    expect(net).toBe(140_000);
+    expect(net).not.toBe(100_000);
+    expect(net).not.toBe(120_000);
   });
 
-  it('masraf da bir kez düşülür: 130.000 − 10.000 − 5.000 = 115.000', () => {
+  it('masraf da bir kez düşülür: 130.000 + 20.000 − 10.000 − 5.000 = 135.000', () => {
     expect(periodSummaryNetRemaining({
       revenue: 130_000,
       returnDeduction: 10_000,
       expenses: 5_000,
       expenseEnabled: true,
       reservationDeposit: 20_000,
-    })).toBe(115_000);
+    })).toBe(135_000);
+    expect(periodSummaryNetRemaining({
+      revenue: 130_000,
+      returnDeduction: 10_000,
+      expenses: 5_000,
+      expenseEnabled: true,
+      reservationDeposit: 20_000,
+    })).not.toBe(115_000);
   });
 
   it('satış listesindeki refunded fiş ciro dışıdır ve netten ikinci kez inmez', () => {
@@ -160,7 +170,7 @@ describe('Aylık Gün Özeti — ürün iadesi netten bir kez düşülür', () =
     })).toBe(0);
   });
 
-  it('aylık ve yıllık başlık iadeyi gösterir: brüt 130.000, iade 10.000, net 120.000, peşinat ciro dışı', () => {
+  it('aylık ve yıllık başlık: brüt 130.000, iade 10.000, peşinat 20.000, net 140.000', () => {
     const deposit = sale({
       id: 'pesinat',
       total: 20_000,
@@ -181,11 +191,11 @@ describe('Aylık Gün Özeti — ürün iadesi netten bir kez düşülür', () =
 
     expect(head.grossRevenue).toBe(130_000);
     expect(head.returnAmount).toBe(10_000);
-    expect(head.netRevenue).toBe(120_000);
+    expect(head.netRevenue).toBe(140_000);
     expect(head.depositInfo).toBe(20_000);
     expect(head.netRevenue).not.toBe(130_000);
-    expect(head.netRevenue).not.toBe(110_000);
-    expect(head.netRevenue).not.toBe(140_000);
+    expect(head.netRevenue).not.toBe(120_000);
+    expect(head.netRevenue).not.toBe(160_000);
     expect(head.netRevenue).not.toBe(100_000);
     expect(head.grossRevenue + head.depositInfo).not.toBe(head.netRevenue);
   });
