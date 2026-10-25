@@ -17,8 +17,14 @@ import { dailySalesDetailNetAmount } from '../../utils/dailySalesDetailNet';
 import {
   buildDailySalesDetailExpenseRows,
   dailyReportScreenNetCash,
+  dailySalesDetailBeforeDiscountContribution,
+  dailySalesDetailDiscountContribution,
   sumDailySalesDetailCashBalance,
 } from '../../utils/dailySalesDetailCashBalance';
+import {
+  appointmentIdFromAvansNotes,
+  isForfeitedUnrefundedDeposit,
+} from '../../utils/forfeitedReservationCash';
 import {
   dailyNetSaleRevenue,
 } from '../../utils/dailyReportKpis';
@@ -811,6 +817,11 @@ type DailyUnifiedRow = {
   isDeposit?: boolean;
   /** AVANS → FATURA (Basit Model): cari avanslardan gelen sanal satır */
   isAvans?: boolean;
+  /**
+   * İptal edilmiş, iade edilmemiş peşinat.
+   * Hizmet satışı değildir. Net nakde bir kez yazılır.
+   */
+  isForfeitedDeposit?: boolean;
   /** Gider pusulası / kasa çıkışı. Net eksi; indirim ve ciro değildir. */
   isExpense?: boolean;
   erpSale?: Sale;
@@ -854,11 +865,15 @@ function applyDailyKindFilter(row: DailyUnifiedRow, filter: DailyKindFilter): Da
   // yukarıdaki 20.000 IQD avansı olarak yansımasına neden oluyordu.
   //
   // 19.10.2026 — Rezervasyon sekmesi eklendi: o sekmede avans satırları
-  // SADECE gösterilir. Bu nedenle 'reservation' filtresi ilk sırada kontrol
-  // edilir; 'all' | 'service' | 'product' altında avans her zaman gizlidir.
+  // SADECE gösterilir. Açık ve mahsup edilmiş avans "Tümü" listesinde
+  // gizlidir. İade edilmemiş iptal peşinatı "Tümü" listesinde ayrı satırdır;
+  // hizmet veya ürün satışı sayılmaz.
   if (filter === 'reservation') {
     if (row.isAvans === true) return row;
     return null;
+  }
+  if (row.isForfeitedDeposit === true) {
+    return filter === 'all' ? row : null;
   }
   if (row.isAvans === true) return null;
   if (filter === 'all') return row;
@@ -3276,7 +3291,7 @@ export function ReportsModule({
         // rezervasyon avansı Ciro'ya yansımış olsa bile kart kullanıcıya
         // bilgi verir (kullanıcı talebi 16.10.2026).
         const { rows } = await postgres.query<any>(
-          `SELECT id, customer_id, amount, payment_method, status, reference_no, created_at, cash_line_id, applied_sale_id
+          `SELECT id, customer_id, amount, payment_method, status, reference_no, created_at, cash_line_id, applied_sale_id, notes
              FROM ${tbl}
             WHERE created_at >= $1::date
               AND created_at < ($2::date + INTERVAL '1 day')
@@ -3507,6 +3522,11 @@ export function ReportsModule({
       const name = String(c?.name || '').trim();
       if (id && name) localCustomerMap.set(id, name);
     }
+    const appointmentStatusById = new Map<string, string>();
+    for (const appointment of dailyAppointments as Array<{ id?: string; status?: string }>) {
+      const id = String(appointment?.id || '').trim();
+      if (id) appointmentStatusById.set(id, String(appointment?.status || ''));
+    }
     const mapAvans = (a: any): DailyUnifiedRow => {
       const amount = Number(a.amount || 0);
       const ref = a.reference_no || `AVANS-${String(a.id).slice(0, 8)}`;
@@ -3516,22 +3536,34 @@ export function ReportsModule({
         : '—';
       // notes: "Rezervasyon Tutarı · Randevu No <uuid>" → uuid çıkar
       const noteStr = String(a.notes ?? '');
-      const apptMatch = noteStr.match(/Randevu No\s+([0-9a-f-]{8,})/i);
-      const linkedAppointmentId = apptMatch ? apptMatch[1] : null;
+      const linkedAppointmentId = appointmentIdFromAvansNotes(noteStr);
+      const avansStatus = String(a.status || '').trim().toLowerCase();
+      const appliedSaleId = String(a.applied_sale_id || '').trim();
+      const appointmentStatus = linkedAppointmentId
+        ? (appointmentStatusById.get(linkedAppointmentId) || '')
+        : '';
+      const forfeited = isForfeitedUnrefundedDeposit({
+        amount,
+        status: avansStatus,
+        notes: noteStr,
+        appliedSaleId,
+        appointmentStatus,
+      });
       return {
         key: `avans-${a.id}`,
         source: 'avans' as const,
         receiptNumber: ref,
         date: a.created_at,
         customerName,
-        beforeDiscount: amount,
+        beforeDiscount: forfeited ? 0 : amount,
         total: amount,
         discount: 0,
         paymentMethod: String(a.payment_method ?? 'cash'),
-        status: 'avans_open',
+        status: forfeited ? 'kept_on_cancel' : 'avans_open',
         collected: amount,
         remaining: 0,
         isAvans: true,
+        isForfeitedDeposit: forfeited,
         erpSale: {
           id: a.id,
           receiptNumber: ref,
@@ -3544,13 +3576,13 @@ export function ReportsModule({
           isAvans: true,
           notes: a.notes ?? undefined,
         } as unknown as Sale,
-        kind: 'product' as const,
+        kind: 'unknown' as const,
         serviceTotal: 0,
-        productTotal: amount,
+        productTotal: forfeited ? 0 : amount,
         serviceDiscount: 0,
         productDiscount: 0,
         serviceBefore: 0,
-        productBefore: amount,
+        productBefore: forfeited ? 0 : amount,
         // Rezervasyon bağlantısı (kısa vadede salt bilgi; ileride
         // randevu tamamlandığında avans otomatik uygulama akışı için)
         linkedAppointmentId: linkedAppointmentId || undefined,
@@ -3633,6 +3665,7 @@ export function ReportsModule({
     analysisServiceKeys,
     dailyAvansList,
     reportCustomers,
+    dailyAppointments,
   ]);
 
   const dailySalesForAi = useMemo((): Sale[] => {
@@ -3667,7 +3700,11 @@ export function ReportsModule({
       // - "Tümü" sekmesinde gizli (mükerrer algısı önlenir)
       // - "Rezervasyon" sekmesinde görünür (ayrı liste)
       // - "Hizmet" / "Ürün" sekmesinde gizli (applyDailyKindFilter zaten hariç tutuyor)
-      if ((row as { isAvans?: boolean }).isAvans === true && dailyKindFilter === 'all') continue;
+      if (
+        (row as { isAvans?: boolean; isForfeitedDeposit?: boolean }).isAvans === true
+        && (row as { isForfeitedDeposit?: boolean }).isForfeitedDeposit !== true
+        && dailyKindFilter === 'all'
+      ) continue;
       const next = applyDailyKindFilter(row, dailyKindFilter);
       if (next) out.push(next);
     }
@@ -3682,8 +3719,12 @@ export function ReportsModule({
   const dailyKindActiveRows = useMemo(() => {
     const out: DailyUnifiedRow[] = [];
     for (const row of dailyActiveRows) {
-      // 19.10.2026 — Avans satırları Satış Detayları listesinden gizlendi
-      if ((row as { isAvans?: boolean }).isAvans === true) continue;
+      // Açık ve mahsup edilmiş avans listeden gizli kalır.
+      // İade edilmemiş iptal peşinatı nete bir kez yazılmak üzere kalır.
+      if (
+        (row as { isAvans?: boolean }).isAvans === true
+        && (row as { isForfeitedDeposit?: boolean }).isForfeitedDeposit !== true
+      ) continue;
       const next = applyDailyKindFilter(row, dailyKindFilter);
       if (next) out.push(next);
     }
@@ -3699,6 +3740,7 @@ export function ReportsModule({
       reservation: tm('reportsDailyKindReservation') || 'Rezervasyon',
       return: tm('reportsDailyKindReturn') || 'İade',
       expense: tm('reportsDailyKindExpense') || 'Gider',
+      cancelled: tm('reportsDetStatusCancelled') || 'İptal',
     };
     return dailyKindVisibleRows.map((row) => {
       const hour = formatSaleWallClockTime(dailyRowWallClockSource(row));
@@ -3748,7 +3790,7 @@ export function ReportsModule({
         paymentLabelText = tm('paymentLabelReservationDeposit') || 'Rezervasyon Tutarı';
       }
       // AVANS → FATURA (Basit Model): cari avansı ayrı rozet
-      if (row.isAvans) {
+      if (row.isAvans && row.isForfeitedDeposit !== true) {
         paymentLabelText = tm('paymentLabelAvans') || 'Rezervasyon Tutarı';
       }
       return {
@@ -3764,13 +3806,15 @@ export function ReportsModule({
         // "İade" olur. Tutar alanları burada değişmez.
         kindLabel: dailySalesDetailKindLabel(row, kindLabels),
         paymentLabel: paymentLabelText,
-        statusLabel: isReturn
-          ? 'Satış İade'
-          : isCancelled
-            ? tm('reportsDetStatusCancelled')
-            : isRefunded
-              ? tm('reportsDetStatusRefunded')
-              : tm('reportsDetStatusCompleted'),
+        statusLabel: row.isForfeitedDeposit
+          ? (tm('reportsDetStatusCancelled') || 'İptal')
+          : isReturn
+            ? 'Satış İade'
+            : isCancelled
+              ? tm('reportsDetStatusCancelled')
+              : isRefunded
+                ? tm('reportsDetStatusRefunded')
+                : tm('reportsDetStatusCompleted'),
       };
     });
   }, [dailyKindVisibleRows, tm, reservationRemainingBySale]);
@@ -3893,8 +3937,9 @@ export function ReportsModule({
 
   /**
    * Net (Nakit) = dip toplam. Satış neti − gider, gider bir kez.
-   * Peşinat ve avans ikinci kez eklenmez. İndirim açık cari değildir.
-   * 50.000 hizmet − 10.000 gider = 40.000.
+   * Hizmete mahsup edilmiş peşinat ikinci kez eklenmez.
+   * İade edilmemiş iptal peşinatı bir kez eklenir. İndirim açık cari değildir.
+   * 25.000 hizmet + 10.000 vazgeçilmiş peşinat = 35.000.
    */
   const dailyNetNakitAlways = useMemo(
     () => dailyReportScreenNetCash(
@@ -7352,6 +7397,13 @@ export function ReportsModule({
                                 </span>
                               );
                             }
+                            if (row.isForfeitedDeposit) {
+                              return (
+                                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-900">
+                                  {row.kindLabel}
+                                </span>
+                              );
+                            }
                             if (row.isAvans) {
                               return (
                                 <span className="px-2 py-0.5 rounded text-xs font-semibold bg-cyan-100 text-cyan-800">
@@ -7397,13 +7449,8 @@ export function ReportsModule({
                           // Avans tutarı zaten "Net" kolonunda ve cari bakiyede
                           // ayrı izlenir; burada brüt hizmet cirosu = hizmet brüt.
                           footerFormat: (_n, rows) => {
-                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; isAvans?: boolean; isExpense?: boolean; beforeDiscount?: number; total?: number; discount?: number }>).reduce(
-                              (acc, r) => {
-                                if (isDepositSale(r.erpSale as Partial<Sale> | undefined) || r.isDeposit === true) return acc;
-                                if ((r as { isAvans?: boolean }).isAvans === true) return acc;
-                                if (r.isExpense === true) return acc;
-                                return acc + (Number(r.beforeDiscount ?? ((Number(r.total) || 0) + (Number(r.discount) || 0))) || 0);
-                              },
+                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; isAvans?: boolean; isExpense?: boolean; isForfeitedDeposit?: boolean; beforeDiscount?: number; total?: number; discount?: number }>).reduce(
+                              (acc, r) => acc + dailySalesDetailBeforeDiscountContribution(r),
                               0,
                             );
                             return formatLedgerAmount(total, reportCurrency);
@@ -7436,12 +7483,8 @@ export function ReportsModule({
                           // Deposit satırlarda 0 gösteriliyor; aynı şekilde footer
                           // toplamı da deposit'i katmamalı.
                           footerFormat: (_n, rows) => {
-                            const total = (rows as Array<{ erpSale?: Sale; isDeposit?: boolean; isExpense?: boolean; discount?: number }>).reduce(
-                              (acc, r) => {
-                                if (isDepositSale(r.erpSale as Partial<Sale> | undefined) || r.isDeposit === true) return acc;
-                                if (r.isExpense === true) return acc;
-                                return acc + (Number(r.discount) || 0);
-                              },
+                            const total = (rows as Array<{ isDeposit?: boolean; isAvans?: boolean; isExpense?: boolean; isForfeitedDeposit?: boolean; discount?: number }>).reduce(
+                              (acc, r) => acc + dailySalesDetailDiscountContribution(r),
                               0,
                             );
                             return formatLedgerAmount(total, reportCurrency);
@@ -7486,6 +7529,13 @@ export function ReportsModule({
                               return (
                                 <div className="font-medium text-rose-700 tabular-nums">
                                   {formatNumber(dailySalesDetailNetAmount(row), 2, false)}
+                                </div>
+                              );
+                            }
+                            if (row.isForfeitedDeposit) {
+                              return (
+                                <div className="font-medium tabular-nums">
+                                  {formatNumber(Number(row.total) || 0, 2, false)}
                                 </div>
                               );
                             }

@@ -55,6 +55,7 @@ import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDat
 import { ReportKpiStrip, type ReportKpiItem } from './shared/ReportKpiStrip';
 import { buildClosedAppointmentDepositMap, buildReservationMap } from '../../utils/reportReservationPending';
 import { buildAvansDepositsMap, buildClosedReservationInfoMap } from '../../utils/avansReservationExclude';
+import { forfeitedDepositByPeriod } from '../../utils/forfeitedReservationCash';
 import {
   isPeriodSummaryGridColumnVisible,
   isPeriodSummaryHeadlineKey,
@@ -512,9 +513,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           created_at: string;
           notes: string | null;
           status: string | null;
+          applied_sale_id: string | null;
         }>(
-          `SELECT amount, created_at, notes, status FROM ${table}
-            WHERE status IN ('open', 'applied')
+          `SELECT amount, created_at, notes, status, applied_sale_id FROM ${table}
+            WHERE status IN ('open', 'applied', 'kept_on_cancel')
               AND created_at >= $1
               AND created_at <  $2`,
           [`${periodRange!.start}T00:00:00`, `${periodRange!.end}T23:59:59`],
@@ -751,6 +753,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       created_at: string;
       notes?: string | null;
       status?: string | null;
+      applied_sale_id?: string | null;
     }>;
     const avansDepositsMap = buildAvansDepositsMap(
       avansRows,
@@ -781,6 +784,28 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     // hizmet verilmemiş randevuların brüt hizmet tutarı ve kalan
     // ödenecek miktarı toplanır; Net Kalan'a eklenir.
     const reservationMap = buildReservationMap(appointments, mode);
+    const appointmentRows = (appointments as Array<{
+      id?: string;
+      status?: string;
+      deposit_amount?: number | string | null;
+      appointment_date?: string;
+    }>) || [];
+    const forfeitedByPeriod = forfeitedDepositByPeriod(
+      avansRows.map((row) => ({
+        amount: row.amount,
+        status: row.status,
+        notes: row.notes,
+        appliedSaleId: row.applied_sale_id,
+        createdAt: row.created_at,
+      })),
+      appointmentRows.map((appointment) => ({
+        id: appointment.id,
+        status: appointment.status,
+        depositAmount: appointment.deposit_amount,
+        appointmentDate: appointment.appointment_date,
+      })),
+      mode,
+    );
 
     const periodKeys =
       mode === 'monthly-days'
@@ -842,9 +867,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         });
       }
       const ciroTotal = sale.revenue;
-      // Peşinat ve rezervasyon avansı bilgi kolonudur.
-      // Brüt ciroya eklenmez, netten düşülmez.
-      // Net kalan = brüt ciro − iade − masraf.
+      // Rezervasyon tutarı bilgi kolonudur; tamamı nete eklenmez.
+      // Yalnız iade edilmemiş iptal peşinatı net kalana bir kez girer.
+      // Hizmete mahsup edilmiş peşinat cirodadır, ikinci kez yazılmaz.
       const headline = periodSummaryHeadline({
         revenue: ciroTotal,
         returnsAmount: sale.returnsAmount,
@@ -852,6 +877,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         expenses: exp,
         expenseEnabled: showPeriodCardExpenses,
         reservationDeposit: reservationDepositInfo,
+        forfeitedDeposit: forfeitedByPeriod.get(periodKey) || 0,
       });
       const netRemaining = headline.netRevenue;
       // 14.10.2026 — DEBUG kaldırıldı

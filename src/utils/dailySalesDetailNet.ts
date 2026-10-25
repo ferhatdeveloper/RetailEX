@@ -17,6 +17,8 @@ export interface DailySalesDetailNetInput {
   beforeDiscount?: number | null;
   total?: number | null;
   discount?: number | null;
+  /** İptal edilmiş, iade edilmemiş peşinat. Net nakde bir kez girer. */
+  isForfeitedDeposit?: boolean;
 }
 
 const EPS = 1e-9;
@@ -44,12 +46,16 @@ export function dailySalesDetailNetAmount(row: DailySalesDetailNetInput): number
   return Math.max(0, gross - discount);
 }
 
-/** Dip toplam. Depozito satırları ve `skip` true dönenler katılmaz. */
+/**
+ * Dip toplam. Depozito satırları ve `skip` true dönenler katılmaz.
+ * Vazgeçilmiş iptal peşinatı depozito olsa da bir kez girer.
+ */
 export function sumDailySalesDetailNet<T extends DailySalesDetailNetInput & { isDeposit?: boolean }>(
   rows: readonly T[],
   skip?: (row: T) => boolean,
 ): number {
   return rows.reduce((acc, row) => {
+    if (row.isForfeitedDeposit === true) return acc + dailySalesDetailNetAmount(row);
     if (row.isDeposit === true) return acc;
     if (skip?.(row)) return acc;
     return acc + dailySalesDetailNetAmount(row);

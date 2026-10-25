@@ -63,6 +63,8 @@ export interface DailySalesDetailCashRow extends DailySalesDetailNetInput {
   isDeposit?: boolean;
   isAvans?: boolean;
   isExpense?: boolean;
+  /** İptal, iade yok, tamamlanmış tahsilata bağlı değil. Net nakde bir kez girer. */
+  isForfeitedDeposit?: boolean;
 }
 
 const EPS = 0.004;
@@ -154,8 +156,32 @@ export function buildDailySalesDetailExpenseRows(
 }
 
 /**
+ * İndirim öncesi katkısı. Hizmet cirosudur.
+ * Peşinat, vazgeçilmiş iptal peşinatı ve gider bu kolona girmez.
+ */
+export function dailySalesDetailBeforeDiscountContribution<T extends DailySalesDetailCashRow>(row: T): number {
+  if (row.isExpense === true || row.isDeposit === true || row.isAvans === true || row.isForfeitedDeposit === true) {
+    return 0;
+  }
+  if (row.beforeDiscount != null && Number.isFinite(Number(row.beforeDiscount))) {
+    return Number(row.beforeDiscount) || 0;
+  }
+  return (Number(row.total) || 0) + (Number(row.discount) || 0);
+}
+
+/** İndirim katkısı. Peşinat ve gider indirim değildir. İndirim açık cari değildir. */
+export function dailySalesDetailDiscountContribution<T extends DailySalesDetailCashRow>(row: T): number {
+  if (row.isExpense === true || row.isDeposit === true || row.isAvans === true || row.isForfeitedDeposit === true) {
+    return 0;
+  }
+  return Number(row.discount) || 0;
+}
+
+/**
  * Dip toplam kasa bakiyesi.
- * Depozito ve avans atlanır. Gider satırının eksi neti bir kez girer.
+ * Hizmete mahsup edilmiş peşinat ve açık avans atlanır.
+ * İade edilmemiş iptal peşinatı bir kez girer.
+ * Gider satırının eksi neti bir kez girer.
  * İndirim kolonu bu toplama eklenmez; net zaten indirim sonrası tutardır.
  */
 export function sumDailySalesDetailCashBalance<T extends DailySalesDetailCashRow>(
@@ -163,6 +189,7 @@ export function sumDailySalesDetailCashBalance<T extends DailySalesDetailCashRow
   skip?: (row: T) => boolean,
 ): number {
   return sumDailySalesDetailNet(rows, (row) => {
+    if (row.isForfeitedDeposit === true) return false;
     if (row.isDeposit === true || row.isAvans === true) return true;
     return skip?.(row) ?? false;
   });
@@ -171,9 +198,12 @@ export function sumDailySalesDetailCashBalance<T extends DailySalesDetailCashRow
 /**
  * Günlük Rapor Net (Nakit). Dip toplamla aynı sayıdır.
  * Satış neti durur. Gider eksi satır olarak bir kez düşülür.
- * Peşinat ve avans ikinci kez eklenmez. İndirim açık cari değildir.
+ * Hizmete mahsup edilmiş peşinat ikinci kez eklenmez.
+ * İade edilmemiş iptal peşinatı bir kez eklenir.
+ * İndirim açık cari değildir.
  *
- * 50.000 hizmet − 10.000 gider = 40.000. 10.000 rezervasyon eklenmez.
+ * 25.000 hizmet + 10.000 vazgeçilmiş peşinat = 35.000.
+ * 5.000 mahsup peşinat 25.000'in içindedir.
  */
 export function dailyReportScreenNetCash<T extends DailySalesDetailCashRow>(
   rows: readonly T[],

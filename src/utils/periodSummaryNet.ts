@@ -6,9 +6,10 @@
  * net kalan brüt cirodan iadeyi düşmez.
  *
  * Muhasebe: satış geliri brüt kalır. İade ayrı tenzildir, bir kez düşülür.
- * Net kalan = brüt ciro − iade − masraf.
- * Peşinat kazanç değildir: ciroya eklenmez, netten düşülmez.
- * Satış adedi iade fişiyle artmaz ve iade için ikinci kez azalmaz.
+ * Net kalan = brüt ciro − iade − masraf + iade edilmemiş iptal peşinatı.
+ * Hizmete mahsup edilmiş peşinat ciroya eklenmez ve nete ikinci kez girmez.
+ * Vazgeçilmiş iptal peşinatı ciro değildir; net kalana bir kez eklenir.
+ * Satış adedi iade fişiyle ve iptal peşinatıyla artmaz.
  */
 import type { Sale } from '../core/types';
 import { isReturnSale } from './posZReport';
@@ -103,8 +104,10 @@ export function mergeGrossSalesWithCustomerReturns(
 }
 
 /**
- * Net kalan = brüt ciro − iade − masraf (+ ciroya yazılmamış avans).
+ * Net kalan = brüt ciro − iade − masraf + vazgeçilmiş iptal peşinatı.
+ * `ciroDisiTahsilat` yalnız iade edilmemiş iptal peşinatıdır.
  * `reservationDeposit` bilgi kolonudur; sonuca eklenmez ve düşülmez.
+ * Mahsup edilmiş peşinat bu kanaldan da girmez.
  */
 export function periodSummaryNetRemaining(input: {
   revenue: number;
@@ -126,16 +129,17 @@ export type PeriodSummaryHeadline = {
   grossRevenue: number;
   /** Görünen iade. Artı büyüklük. */
   returnAmount: number;
-  /** Brüt − iade − masraf. Peşinat eklenmez ve düşülmez. */
+  /** Brüt − iade − masraf + vazgeçilmiş iptal peşinatı. */
   netRevenue: number;
-  /** Rezervasyon avansı. Yalnızca bilgi. */
+  /** Rezervasyon avansı. Yalnızca bilgi. Netin tamamına eklenmez. */
   depositInfo: number;
 };
 
 /**
  * Aylık / yıllık başlık.
  * İade kartta görünür ve netten bir kez düşülür.
- * Peşinat `depositInfo` olarak kalır; brüte ve nete yazılmaz.
+ * Rezervasyon tutarı `depositInfo` olarak kalır.
+ * Yalnız `forfeitedDeposit` (iade edilmemiş iptal peşinatı) nete bir kez girer.
  */
 export function periodSummaryHeadline(input: {
   revenue: number;
@@ -144,16 +148,19 @@ export function periodSummaryHeadline(input: {
   expenses: number;
   expenseEnabled: boolean;
   reservationDeposit?: number;
+  /** İptal edilmiş, iade edilmemiş, mahsup edilmemiş peşinat. */
+  forfeitedDeposit?: number;
 }): PeriodSummaryHeadline {
   const grossRevenue = Number(input.revenue) || 0;
   const returnAmount = Math.abs(Number(input.returnsAmount) || 0);
   const depositInfo = Math.abs(Number(input.reservationDeposit) || 0);
+  const forfeitedDeposit = Math.abs(Number(input.forfeitedDeposit) || 0);
   const netRevenue = periodSummaryNetRemaining({
     revenue: grossRevenue,
     returnDeduction: input.returnDeduction,
     expenses: input.expenses,
     expenseEnabled: input.expenseEnabled,
-    ciroDisiTahsilat: 0,
+    ciroDisiTahsilat: forfeitedDeposit,
     reservationDeposit: depositInfo,
   });
   return { grossRevenue, returnAmount, netRevenue, depositInfo };
