@@ -68,6 +68,7 @@ import {
 } from '../../utils/productCardUnitCost';
 import { lookupWeightedAvgUnitCost } from '../weightedAverageUnitCost';
 import { productGrossProfitMarginPct } from '../../utils/productGrossProfitMargin';
+import { mapReturnReportRows, type ReturnReportKind } from '../../utils/returnReportRows';
 import { inferQtyFromRevenue } from '../../utils/lineGrossProfit';
 import { appointmentDepositRef, foldDepositLinesByInvoice, foldSaleItemsWithDeposits, parseFicheDepositList, type FicheDepositRef } from '../../utils/beautyDepositAllocation';
 import { looksLikeUuid } from '../../utils/pgUuid';
@@ -227,9 +228,14 @@ export interface SalesReturnRow {
   date: string;
   accountName: string;
   paymentMethod: string;
+  /** Belge net tutarı. İşaret ve büyüklük kaynak fişteki gibi kalır. */
   netAmount: number;
   cashier: string;
   notes: string;
+  /** trcode ve fiche_type. Cari adından türetilmez. */
+  returnKind: ReturnReportKind;
+  trcode: number;
+  ficheType: string;
 }
 
 export interface ProductGrossProfitRow {
@@ -2251,36 +2257,19 @@ export const erpReportsAPI = {
         .get<Record<string, unknown>[]>(
           `/rex_${fn}_${pn}_sales`,
           {
-            select: 'id,fiche_no,date,customer_name,payment_method,net_amount,cashier,notes,fiche_type,trcode,is_cancelled,status',
+            select:
+              'id,fiche_no,date,customer_name,payment_method,net_amount,cashier,notes,fiche_type,trcode,is_cancelled,status,is_deposit',
             order: 'date.desc',
             limit: ROW_LIMIT,
           },
           { schema: 'public' },
         )
         .catch(() => [] as Record<string, unknown>[]);
-      return (sales || [])
-        .filter((s) => {
-          if (s.is_cancelled === true || s.is_cancelled === 'true') return false;
-          const st = String(s.status || 'approved').toLowerCase();
-          if (st === 'cancelled' || st === 'canceled') return false;
-          const ft = String(s.fiche_type || '').toLowerCase();
-          const tr = Number(s.trcode ?? 0);
-          if (ft !== 'return_invoice' && tr !== 2 && tr !== 3) return false;
-          const d = String(s.date || '').slice(0, 10);
-          return d >= start && d <= end;
-        })
-        .map((s) => ({
-          id: String(s.id ?? ''),
-          ficheNo: String(s.fiche_no ?? ''),
-          date: String(s.date || '').slice(0, 10),
-          accountName: String(s.customer_name ?? ''),
-          paymentMethod: String(s.payment_method ?? ''),
-          // İade tutarı işaretli bırakılır (negatif); UI Math.abs gösterebilir.
-          netAmount: Number(s.net_amount ?? 0),
-          cashier: String(s.cashier ?? ''),
-          notes: String(s.notes ?? ''),
-        }))
-        .slice(0, ROW_LIMIT);
+      const inRange = (sales || []).filter((s) => {
+        const d = String(s.date || '').slice(0, 10);
+        return d >= start && d <= end;
+      });
+      return mapReturnReportRows(inRange).slice(0, ROW_LIMIT);
     }
 
     const { rows } = await postgres.query(
@@ -2293,13 +2282,17 @@ export const erpReportsAPI = {
         COALESCE(s.payment_method, '') AS payment_method,
         COALESCE(s.net_amount, 0) AS net_amount,
         COALESCE(s.cashier, '') AS cashier,
-        COALESCE(s.notes, '') AS notes
+        COALESCE(s.notes, '') AS notes,
+        COALESCE(s.trcode, 0) AS trcode,
+        LOWER(TRIM(COALESCE(s.fiche_type, ''))) AS fiche_type,
+        COALESCE(s.is_deposit, false) AS is_deposit
       FROM sales s
       WHERE COALESCE(s.is_cancelled, false) = false
         AND ${SQL_COUNTABLE_SALE_STATUS}
+        AND COALESCE(s.is_deposit, false) = false
         AND (
-          LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
-          OR s.trcode IN (2, 3)
+          LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('return_invoice', 'i')
+          OR s.trcode IN (${SALES_RETURN_TRCODES.join(', ')}, ${PURCHASE_RETURN_TRCODE})
         )
         AND ${sqlUtcDate('s.date')} >= $1::date
         AND ${sqlUtcDate('s.date')} <= $2::date
@@ -2308,17 +2301,7 @@ export const erpReportsAPI = {
       `,
       [start, end],
     );
-    return (rows || []).map((r: any) => ({
-      id: String(r.id ?? ''),
-      ficheNo: String(r.fiche_no ?? ''),
-      date: String(r.date ?? '').slice(0, 10),
-      accountName: String(r.account_name ?? ''),
-      paymentMethod: String(r.payment_method ?? ''),
-      // İade tutarı işaretli bırakılır (negatif); UI Math.abs gösterebilir.
-      netAmount: Number(r.net_amount ?? 0),
-      cashier: String(r.cashier ?? ''),
-      notes: String(r.notes ?? ''),
-    }));
+    return mapReturnReportRows(rows || []);
   },
 
   async getProductGrossProfit(opts: {

@@ -49,6 +49,7 @@ import {
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { buildReportGridColumns, REPORT_GRID_DEFAULTS, ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
+import { returnReportInvoiceTypeText } from '../../utils/returnReportRows';
 
 type CardFilter = 'all' | 'customer' | 'supplier';
 type ExtractCardFilter = 'customer' | 'supplier' | 'employee';
@@ -1142,14 +1143,34 @@ export function SalesReturnsReport() {
   const total = useMemo(() => rows.reduce((s, r) => s + r.netAmount, 0), [rows]);
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
+  const invoiceTypeLabels = useMemo(
+    () => ({
+      purchaseReturn: tm('purchaseReturnInvoice'),
+      salesReturn: tm('salesReturnInvoice'),
+    }),
+    [tm],
+  );
+  const gridRows = useMemo(
+    () =>
+      rows.map((r) => ({
+        ...r,
+        invoiceTypeName: returnReportInvoiceTypeText(r.returnKind, invoiceTypeLabels),
+      })),
+    [rows, invoiceTypeLabels],
+  );
 
-  const tableColumns = useMemo<ReportColumnTableCol<SalesReturnRow>[]>(
+  const tableColumns = useMemo<ReportColumnTableCol<(typeof gridRows)[number]>[]>(
     () => [
       {
         key: 'ficheNo',
         header: tm('erpColFiche'),
         size: 130,
         cell: (r) => <span className="font-mono text-xs">{r.ficheNo}</span>,
+      },
+      {
+        key: 'invoiceTypeName',
+        header: tm('invoiceType'),
+        size: 200,
       },
       { key: 'date', header: tm('erpColDate'), type: 'date', size: 110 },
       {
@@ -1194,9 +1215,18 @@ export function SalesReturnsReport() {
       onRefresh={() => void load()}
       onExport={() =>
         exportCsv(
-          'satis_iadeleri',
-          ['Fiş', 'Tarih', 'Cari', 'Ödeme', 'Tutar', 'Kasiyer', 'Not'],
-          rows.map((r) => [r.ficheNo, r.date, r.accountName, r.paymentMethod, String(r.netAmount), r.cashier, r.notes]),
+          'iade_raporu',
+          ['Fiş', tm('invoiceType'), 'Tarih', 'Cari', 'Ödeme', 'Tutar', 'Kasiyer', 'Not'],
+          gridRows.map((r) => [
+            r.ficheNo,
+            r.invoiceTypeName,
+            r.date,
+            r.accountName,
+            r.paymentMethod,
+            String(r.netAmount),
+            r.cashier,
+            r.notes,
+          ]),
         )
       }
       filters={
@@ -1216,7 +1246,7 @@ export function SalesReturnsReport() {
         {rows.length === 0 && !loading ? (
           <div className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</div>
         ) : (
-          <ReportColumnTable data={rows} columns={tableColumns} height={520} footerLabel={tm('reportsTotalsRow')} />
+          <ReportColumnTable data={gridRows} columns={tableColumns} height={520} footerLabel={tm('reportsTotalsRow')} />
         )}
       </div>
     </ReportShell>

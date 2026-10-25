@@ -14853,7 +14853,7 @@ export const excelModuleTranslations = {
   erpColPeriod: { tr: 'Dönem', en: 'Period', ar: 'الفترة', ku: 'ماوە' },
   erpColSupplier: { tr: 'Tedarikçi', en: 'Supplier', ar: 'المورد', ku: 'دابینکەر' },
 
-  erpSalesReturnsTitle: { tr: 'Satış İadeleri', en: 'Sales returns', ar: 'مرتجعات المبيعات', ku: 'گەڕاندنەوەی فرۆشتن' },
+  erpSalesReturnsTitle: { tr: 'İade Raporu', en: 'Return report', ar: 'تقرير المرتجعات', ku: 'ڕاپۆرتی گەڕاندنەوە' },
   erpSalesReturnsSubtitle: {
     tr: 'İade faturaları — tarih aralığına göre',
     en: 'Return invoices by date range',
