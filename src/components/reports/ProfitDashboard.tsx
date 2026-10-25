@@ -77,7 +77,7 @@ export function ProfitDashboard() {
     setLoading(true);
     try {
       const { start, end } = periodOrMonthRange(period);
-      // Ürün Brüt Kârı raporuyla aynı formül: Ciro = Σ satış − Σ iade; Maliyet = Σ (WAC × miktar)
+      // Kar-Zarar ile aynı kapalı fatura satışı: peşinat bir kez, SMM aynı.
       const totals = await erpReportsAPI.getProductGrossProfitTotals({
         startDate: start,
         endDate: end,

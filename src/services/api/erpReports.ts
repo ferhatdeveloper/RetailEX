@@ -42,14 +42,14 @@ import {
   PRODUCTS_JOIN,
   SERVICE_COST_JOINS,
   resolveLineProductId,
-  scaleLineRevenueToInvoiceNet,
+  resolveBeautyLineNet,
   SIGNED_FOLD_LINE_REVENUE_EXPR,
   SIGNED_LINE_COST_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SQL_DISPLAY_ITEM_CODE,
-  SQL_PROFIT_FICHE_DEPOSIT_LIST,
-  SQL_PROFIT_FICHE_REMAINDER_LIST,
-  SQL_PROFIT_SERVICE_DEPOSIT_AMOUNT,
+  SQL_FICHE_DEPOSIT_LIST,
+  SQL_FICHE_REMAINDER_LIST,
+  SQL_SERVICE_DEPOSIT_AMOUNT,
   SQL_IS_SERVICE_LINE,
   SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
@@ -2490,7 +2490,7 @@ export const erpReportsAPI = {
         apptStatusById.set(id, String(a.status || '').toLowerCase().trim());
         apptTotalPriceById.set(id, Number(a.total_price ?? 0) || 0);
       }
-      const beautyApptByFiche = new Map<string, { totalPrice: number; status: string }>();
+      const beautyApptByFiche = new Map<string, { totalPrice: number; status: string; appointmentId: string }>();
       for (const bs of beautySales || []) {
         const ficheNo = String(bs.invoice_number || '').trim();
         const apptId = String(bs.linked_appointment_id || '').trim();
@@ -2498,6 +2498,7 @@ export const erpReportsAPI = {
         beautyApptByFiche.set(ficheNo, {
           totalPrice: apptTotalPriceById.get(apptId) ?? 0,
           status: apptStatusById.get(apptId) ?? '',
+          appointmentId: apptId,
         });
       }
       const BEA_EXCLUDED_STATUSES = new Set([
@@ -2538,6 +2539,22 @@ export const erpReportsAPI = {
           .map((s) => String(s.id)),
       );
 
+      const nonDepositCountByInvoice = new Map<string, number>();
+      for (const it of items || []) {
+        const invoiceId = String(it.invoice_id || '');
+        if (!saleOk.has(invoiceId)) continue;
+        const rawItemType = String(it.item_type ?? '').trim();
+        if (rawItemType === 'Promosyon' || rawItemType === 'İndirim') continue;
+        const name = String(it.item_name ?? '');
+        const code = String(it.item_code ?? '');
+        const depositLine = rawItemType.toLocaleLowerCase('tr-TR') === 'deposit'
+          || name.toLocaleLowerCase('tr-TR').startsWith('depozito')
+          || name.toLocaleLowerCase('tr-TR').startsWith('deposit')
+          || code.toLocaleLowerCase('tr-TR') === 'deposit';
+        if (depositLine) continue;
+        nonDepositCountByInvoice.set(invoiceId, (nonDepositCountByInvoice.get(invoiceId) || 0) + 1);
+      }
+
       type GrossFoldLine = {
         index: number;
         invoiceId: string;
@@ -2545,10 +2562,7 @@ export const erpReportsAPI = {
         lineType: string;
         quantity: number;
         total: number;
-        rawRevenue: number;
-        isBeautyFiche: boolean;
-        apptTotal: number;
-        sgn: number;
+        invoiceClosed: boolean;
       };
       const prepared: GrossFoldLine[] = [];
       (items || []).forEach((it, index) => {
@@ -2559,31 +2573,30 @@ export const erpReportsAPI = {
         const inv = salesById.get(String(it.invoice_id));
         if (!inv) return;
         const ficheNo = String(inv.fiche_no || '').trim();
-        const appt = ficheNo.startsWith('BEA-') ? beautyApptByFiche.get(ficheNo) : undefined;
+        const appt = beautyApptByFiche.get(ficheNo);
         const beaServiceBlocked = ficheNo.startsWith('BEA-')
           && (!appt || BEA_EXCLUDED_STATUSES.has(appt.status));
         if (beaServiceBlocked && !isExplicitProductItemType(rawItemType)) return;
         const sgn = isSalesReturnFiche(inv) ? -1 : 1;
         const rawLineNet = Number(it.net_amount ?? 0) || 0;
-        const isBeautyFiche = ficheNo.startsWith('BEA-');
-        const rawRevenue = (isBeautyFiche && isExplicitProductItemType(rawItemType))
-          ? sgn * rawLineNet
-          : sgn * scaleLineRevenueToInvoiceNet(
-            rawLineNet,
-            linesNetByInvoice.get(String(it.invoice_id)) || 0,
-            Number(inv.net_amount ?? 0) || 0,
-          );
+        const invoiceId = String(it.invoice_id);
+        const lineNet = sgn * resolveBeautyLineNet({
+          ficheNo,
+          itemType: rawItemType || itemType,
+          lineNet: rawLineNet,
+          appointmentTotal: appt?.totalPrice ?? 0,
+          nonDepositLineCount: nonDepositCountByInvoice.get(invoiceId) || 1,
+          linesNetSum: linesNetByInvoice.get(invoiceId) || 0,
+          invoiceNet: Number(inv.net_amount ?? 0) || 0,
+        });
         prepared.push({
           index,
-          invoiceId: String(it.invoice_id),
+          invoiceId,
           productName: String(it.item_name ?? ''),
           lineType: rawItemType || itemType,
           quantity: Number(it.quantity ?? 0) || 0,
-          total: rawRevenue,
-          rawRevenue,
-          isBeautyFiche,
-          apptTotal: isBeautyFiche ? (beautyApptByFiche.get(ficheNo)?.totalPrice ?? 0) : 0,
-          sgn,
+          total: lineNet,
+          invoiceClosed: true,
         });
       });
       const byInvoice = new Map<string, GrossFoldLine[]>();
@@ -2596,21 +2609,19 @@ export const erpReportsAPI = {
       for (const [invoiceId, group] of byInvoice) {
         const inv = salesById.get(invoiceId);
         const sgn = inv && isSalesReturnFiche(inv) ? -1 : 1;
+        const ficheNo = String(inv?.fiche_no || '').trim();
+        const bridgedId = beautyApptByFiche.get(ficheNo)?.appointmentId || null;
+        const linked = inv?.linked_appointment_id == null || String(inv.linked_appointment_id).trim() === ''
+          ? bridgedId
+          : String(inv.linked_appointment_id);
         const folded = foldRestProfitInvoice(group, {
           id: invoiceId,
           total: sgn * (Number(inv?.net_amount ?? 0) || 0),
-          linkedAppointmentId: inv?.linked_appointment_id == null ? null : String(inv.linked_appointment_id),
+          linkedAppointmentId: linked,
           saleGroupId: inv?.sale_group_id == null ? null : String(inv.sale_group_id),
         }, beautyAppointments);
-        const only = folded.length === 1 ? folded[0] : null;
-        const uplift = !!only
-          && !isExplicitProductItemType(only.lineType)
-          && only.isBeautyFiche
-          && only.apptTotal > 0
-          && Math.abs(Math.abs(only.total) - Math.abs(only.rawRevenue)) < 1
-          && Math.abs(only.rawRevenue) + 1 < only.apptTotal;
         for (const line of folded) {
-          revenueByIndex.set(line.index, uplift ? line.sgn * line.apptTotal : line.total);
+          if (typeof line.index === 'number') revenueByIndex.set(line.index, line.total);
         }
       }
 
@@ -2747,9 +2758,10 @@ export const erpReportsAPI = {
         ${SIGNED_LINE_QTY_EXPR} AS quantity,
         ${SIGNED_FOLD_LINE_REVENUE_EXPR} AS revenue,
         ${SIGNED_LINE_COST_EXPR} AS cost,
-        (${SQL_SALES_SIGN}) * (${SQL_PROFIT_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
-        ${SQL_PROFIT_FICHE_DEPOSIT_LIST} AS fiche_deposits,
-        ${SQL_PROFIT_FICHE_REMAINDER_LIST} AS fiche_remainders
+        (${SQL_SALES_SIGN}) * (${SQL_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
+        ${SQL_FICHE_DEPOSIT_LIST} AS fiche_deposits,
+        ${SQL_FICHE_REMAINDER_LIST} AS fiche_remainders,
+        COALESCE(ba_total.appt_status, '') AS appointment_status
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.invoice_id
       ${PRODUCTS_JOIN}
@@ -2788,6 +2800,8 @@ export const erpReportsAPI = {
         depositAmount: sign * Math.abs(Number(r.service_deposit) || 0),
         ficheDeposits: parseFicheDepositList(r.fiche_deposits).map((n) => sign * Math.abs(n)),
         ficheRemainders: parseFicheDepositList(r.fiche_remainders).map((n) => sign * Math.abs(n)),
+        appointmentStatus: String(r.appointment_status || ''),
+        invoiceClosed: true,
       };
     })).filter((line) => lineKind === 'all' || line.lineKind === lineKind);
 
@@ -2839,15 +2853,12 @@ export const erpReportsAPI = {
   },
 
   /**
-   * Dashboard KPI özet toplamları — Ürün Brüt Kârı raporuyla **aynı formül**:
-   *   Ciro    = kapalı randevu faturasının tam tutarı − iade
+   * Karlılık Analizi genel bakış — Kar-Zarar ile aynı satış katlaması.
+   *   Ciro    = kapalı faturanın tam tutarı − iade
    *             (peşinat bir kez eklenir, ikinci kez eklenmez; açık ve iptal peşinat yok)
-   *   Maliyet = hizmet satır maliyeti; malzeme envanter birim alış × miktar
+   *   Maliyet = satır SMM (formül değişmez)
    *   Brüt Kâr = Ciro − Maliyet
    *   Marj %   = (Brüt Kâr / Ciro) × 100, iki ondalık; ciro 0 ise 0
-   *
-   * Ürün Brüt Kârı raporundaki `getProductGrossProfit` envanter birim alışını uygular;
-   * bu yardımcı onun satırlarını toplayıp özet döner — tek formül, tek SQL zinciri.
    */
   async getProductGrossProfitTotals(opts: {
     startDate: string;

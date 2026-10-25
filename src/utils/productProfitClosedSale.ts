@@ -9,18 +9,24 @@
  * Maliyet bu fonksiyonda yeniden hesaplanmaz.
  */
 import { isDepositProductLine } from './beautyDepositAllocation';
+import { productGrossProfitMarginPct } from './productGrossProfitMargin';
 import {
   foldProfitLossLines,
   type ProfitLossDepositLine,
 } from './profitLossDeposit';
 
-const OPEN_OR_CANCELLED_APPOINTMENT = new Set([
+/** Hizmet henüz kapanmamış. Kapalı faturada peşinat yine satışta kalır. */
+const OPEN_APPOINTMENT = new Set([
   'scheduled',
   'confirmed',
   'pre_paid',
   'in_progress',
   'pending',
   'awaiting_service',
+]);
+
+/** İptal, no-show, silinmiş. Peşinat satışa girmez; iade de sayılmaz. */
+const CANCELLED_APPOINTMENT = new Set([
   'cancelled',
   'canceled',
   'iptal',
@@ -36,6 +42,11 @@ const OPEN_OR_CANCELLED_APPOINTMENT = new Set([
 export interface ProductProfitSaleLine extends ProfitLossDepositLine {
   /** Randevu durumu. Boşsa peşinat kar-zarar katlamasına bırakılır. */
   appointmentStatus?: string | null;
+  /**
+   * Fatura kapandı / tamamlandı.
+   * Randevu alanı hâlâ açık görünebilir; peşinat bu faturanın satışından düşülmez.
+   */
+  invoiceClosed?: boolean | null;
 }
 
 export interface ProfitAppointmentMoney {
@@ -49,20 +60,38 @@ export interface ProfitAppointmentMoney {
   sale_group_id?: string | null;
 }
 
+function appointmentWord(status: unknown): string {
+  return String(status ?? '').trim().toLocaleLowerCase('tr-TR');
+}
+
 /**
  * Peşinat satış cirosuna girer mi?
  * Kapalı / tamamlanmış randevu girer. Durum yazılmamışsa girer.
- * Açık ve iptal randevu girmez.
+ * Açık ve iptal randevu, kapalı fatura değilse girmez.
  */
 export function profitDepositEntersSales(status: unknown): boolean {
-  const text = String(status ?? '').trim().toLocaleLowerCase('tr-TR');
+  const text = appointmentWord(status);
   if (!text) return true;
-  return !OPEN_OR_CANCELLED_APPOINTMENT.has(text);
+  if (CANCELLED_APPOINTMENT.has(text)) return false;
+  if (OPEN_APPOINTMENT.has(text)) return false;
+  return true;
 }
 
 function stripOpenDeposit<T extends ProductProfitSaleLine>(line: T): T | null {
-  if (profitDepositEntersSales(line.appointmentStatus)) return line;
+  const text = appointmentWord(line.appointmentStatus);
+  if (CANCELLED_APPOINTMENT.has(text)) {
+    if (isDepositProductLine(line)) return null;
+    return {
+      ...line,
+      depositAmount: 0,
+      ficheDeposits: [],
+      ficheRemainders: [],
+    };
+  }
+  if (!text || !OPEN_APPOINTMENT.has(text)) return line;
   if (isDepositProductLine(line)) return null;
+  // Kapalı fatura: peşinat payı satıştan düşülmez.
+  if (line.invoiceClosed) return line;
   return {
     ...line,
     depositAmount: 0,
@@ -105,8 +134,10 @@ function appointmentMatchesSale(
 }
 
 /**
- * REST satırlarına kapalı randevu peşinatını ve kalanını yazar, sonra katar.
- * Açık ve iptal randevunun peşinatı havuza girmez.
+ * REST satırlarına randevu peşinatını ve kalanını yazar, sonra katar.
+ * İptal peşinatı havuza girmez.
+ * Kapalı faturada randevu alanı henüz açık görünse de peşinat bir kez yazılır.
+ * Açık fatura peşinatı yazılmaz.
  */
 export function foldRestProfitInvoice<T extends ProductProfitSaleLine>(
   items: T[],
@@ -122,7 +153,13 @@ export function foldRestProfitInvoice<T extends ProductProfitSaleLine>(
   const invoiceNet = Number(sale.total) || 0;
   const sign = invoiceNet < 0 ? -1 : 1;
   const matched = (appointments || []).filter((appt) => appointmentMatchesSale(appt, sale));
-  const closed = matched.filter((appt) => profitDepositEntersSales(appt.status));
+  const invoiceClosed = (items || []).some((item) => item.invoiceClosed === true);
+  const closed = matched.filter((appt) => {
+    const text = appointmentWord(appt.status);
+    if (CANCELLED_APPOINTMENT.has(text)) return false;
+    if (profitDepositEntersSales(appt.status)) return true;
+    return invoiceClosed;
+  });
   const used = new Set<string>();
   const withOwn = (items || []).map((item) => {
     if (isDepositProductLine(item)) return item;
@@ -157,4 +194,58 @@ export function foldRestProfitInvoice<T extends ProductProfitSaleLine>(
     ficheRemainders,
   }));
   return foldProductProfitSaleLines(tagged);
+}
+
+export interface ProfitDashboardTotals {
+  /** Net satış. Kapalı fatura tutarı, peşinat bir kez. */
+  revenue: number;
+  /** SMM. Bu fonksiyon maliyeti yeniden hesaplamaz. */
+  cost: number;
+  /** Net satış − SMM. */
+  profit: number;
+  /** Kâr / net satış, iki ondalık. */
+  margin: number;
+  productCount: number;
+  topProduct: string | null;
+  byName: Map<string, { revenue: number; cost: number; profit: number }>;
+}
+
+/**
+ * Karlılık Analizi genel bakış toplamı.
+ * Satırları kar-zarar katlamasından geçirir; ikinci bir satış formülü yoktur.
+ */
+export function summarizeProfitDashboard(lines: ProductProfitSaleLine[]): ProfitDashboardTotals {
+  const folded = foldProductProfitSaleLines(lines);
+  const byName = new Map<string, { revenue: number; cost: number; profit: number }>();
+  for (const line of folded) {
+    const name = String(line.productName || '').trim();
+    if (!name) continue;
+    const cur = byName.get(name) || { revenue: 0, cost: 0, profit: 0 };
+    cur.revenue += Number(line.total) || 0;
+    cur.cost += Number(line.cost) || 0;
+    cur.profit = cur.revenue - cur.cost;
+    byName.set(name, cur);
+  }
+  let revenue = 0;
+  let cost = 0;
+  let topProduct: string | null = null;
+  let topProfit = -Infinity;
+  for (const [name, row] of byName) {
+    revenue += row.revenue;
+    cost += row.cost;
+    if (row.profit > topProfit) {
+      topProfit = row.profit;
+      topProduct = name;
+    }
+  }
+  const profit = revenue - cost;
+  return {
+    revenue,
+    cost,
+    profit,
+    margin: productGrossProfitMarginPct(revenue, profit),
+    productCount: byName.size,
+    topProduct,
+    byName,
+  };
 }

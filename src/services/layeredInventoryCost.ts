@@ -26,9 +26,9 @@ import {
   SIGNED_FOLD_LINE_REVENUE_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_COST_EXPR,
-  SQL_PROFIT_FICHE_DEPOSIT_LIST,
-  SQL_PROFIT_FICHE_REMAINDER_LIST,
-  SQL_PROFIT_SERVICE_DEPOSIT_AMOUNT,
+  SQL_FICHE_DEPOSIT_LIST,
+  SQL_FICHE_REMAINDER_LIST,
+  SQL_SERVICE_DEPOSIT_AMOUNT,
   SQL_SALES_SIGN,
   buildProfitCostCtes,
   PRODUCTS_JOIN,
@@ -530,9 +530,10 @@ async function loadCostProfitSaleLinesSql(opts: {
       ${SIGNED_LINE_QTY_EXPR} AS quantity,
       ${SIGNED_FOLD_LINE_REVENUE_EXPR} AS revenue,
       ${SIGNED_LINE_COST_EXPR} AS fallback_cogs,
-      (${SQL_SALES_SIGN}) * (${SQL_PROFIT_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
-      ${SQL_PROFIT_FICHE_DEPOSIT_LIST} AS fiche_deposits,
-      ${SQL_PROFIT_FICHE_REMAINDER_LIST} AS fiche_remainders
+      (${SQL_SALES_SIGN}) * (${SQL_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
+      ${SQL_FICHE_DEPOSIT_LIST} AS fiche_deposits,
+      ${SQL_FICHE_REMAINDER_LIST} AS fiche_remainders,
+      COALESCE(ba_total.appt_status, '') AS appointment_status
     FROM sale_items si
     INNER JOIN sales s ON s.id = si.invoice_id
     ${PRODUCTS_JOIN}
@@ -572,6 +573,8 @@ async function loadCostProfitSaleLinesSql(opts: {
       depositAmount: sign * Math.abs(Number(r.service_deposit) || 0),
       ficheDeposits: parseFicheDepositList(r.fiche_deposits).map((n) => sign * Math.abs(n)),
       ficheRemainders: parseFicheDepositList(r.fiche_remainders).map((n) => sign * Math.abs(n)),
+      appointmentStatus: String(r.appointment_status || ''),
+      invoiceClosed: true,
     };
   }));
   const grouped = new Map<string, SaleLineRaw>();
@@ -761,6 +764,7 @@ async function loadCostProfitSaleLinesRest(opts: {
     lineType: string;
     quantity: number;
     total: number;
+    invoiceClosed: boolean;
   };
   const prepared: CostFoldLine[] = [];
   (items || []).forEach((it, index) => {
@@ -783,6 +787,7 @@ async function loadCostProfitSaleLinesRest(opts: {
         linesNetByInvoice.get(String(it.invoice_id)) || 0,
         Number(inv.net_amount ?? 0) || 0,
       ),
+      invoiceClosed: true,
     });
   });
   const costByInvoice = new Map<string, CostFoldLine[]>();
@@ -1130,9 +1135,10 @@ async function loadCustomerCostProfitSaleLinesSql(opts: {
       ${SIGNED_LINE_QTY_EXPR} AS quantity,
       ${SIGNED_FOLD_LINE_REVENUE_EXPR} AS revenue,
       ${SIGNED_LINE_COST_EXPR} AS fallback_cogs,
-      (${SQL_SALES_SIGN}) * (${SQL_PROFIT_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
-      ${SQL_PROFIT_FICHE_DEPOSIT_LIST} AS fiche_deposits,
-      ${SQL_PROFIT_FICHE_REMAINDER_LIST} AS fiche_remainders
+      (${SQL_SALES_SIGN}) * (${SQL_SERVICE_DEPOSIT_AMOUNT}) AS service_deposit,
+      ${SQL_FICHE_DEPOSIT_LIST} AS fiche_deposits,
+      ${SQL_FICHE_REMAINDER_LIST} AS fiche_remainders,
+      COALESCE(ba_total.appt_status, '') AS appointment_status
     FROM sale_items si
     INNER JOIN sales s ON s.id = si.invoice_id
     LEFT JOIN customers c ON c.id = s.customer_id
@@ -1177,6 +1183,8 @@ async function loadCustomerCostProfitSaleLinesSql(opts: {
       depositAmount: sign * Math.abs(Number(r.service_deposit) || 0),
       ficheDeposits: parseFicheDepositList(r.fiche_deposits).map((n) => sign * Math.abs(n)),
       ficheRemainders: parseFicheDepositList(r.fiche_remainders).map((n) => sign * Math.abs(n)),
+      appointmentStatus: String(r.appointment_status || ''),
+      invoiceClosed: true,
     };
   }));
   const customerGrouped = new Map<string, CustomerSaleLineRaw>();
@@ -1449,6 +1457,7 @@ async function loadCustomerCostProfitSaleLinesRest(opts: {
     customerName: string;
     productId: string;
     productCode: string;
+    invoiceClosed: boolean;
   };
   const pending: CustomerRestLine[] = [];
   for (const it of items || []) {
@@ -1529,6 +1538,7 @@ async function loadCustomerCostProfitSaleLinesRest(opts: {
       customerName,
       productId: pid,
       productCode: code,
+      invoiceClosed: true,
     });
   }
   const byInvoice = new Map<string, CustomerRestLine[]>();
