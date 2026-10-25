@@ -334,6 +334,27 @@ function isRowCancelledLike(row: Record<string, unknown>): boolean {
   return CANCELLED_SALE_STATUSES.has(st) || CANCELLED_SALE_STATUSES.has(ps);
 }
 
+/**
+ * Rezervasyon / peşinat tahsilatı müşteri alacağı değildir.
+ * `special_code` REZERVASYON veya AVANS, ya da açıklamadaki
+ * "Rezervasyon tahsilatı" satırı bilgi amaçlıdır: borç ve alacak eşit,
+ * bakiye değişmez. Kasa satırının kendisi burada değiştirilmez.
+ */
+function isCustomerReservationCollection(
+  row: Record<string, unknown>,
+  ficheType: string,
+  cancelled: boolean,
+  isSupplierAccount: boolean,
+): boolean {
+  if (cancelled || isSupplierAccount) return false;
+  if (ficheType !== 'CH_TAHSILAT') return false;
+  const absAmt = Math.abs(parseFloat(String(row.total_amount ?? 0)));
+  if (!(absAmt > 0)) return false;
+  const code = String(row.special_code ?? '').trim().toUpperCase();
+  if (code === 'REZERVASYON' || code === 'AVANS') return true;
+  return /rezervasyon\s*tahsilat/i.test(String(row.notes ?? ''));
+}
+
 export function buildEkstreRows(
   data: Array<Record<string, unknown>>,
   cardType: ExtCardType,
@@ -406,11 +427,12 @@ export function buildEkstreRows(
     // kirletmemeli (avans bakiyeden bağımsız); UI tarafında
     // `expandReservationDepositRows` çift satıra böler (borç=amt +
     // alacak=amt, bakiye=0). Burada delta=0 kabul edilir.
-    const isCashReservationDepositForBalance = !cancelled &&
-      !isSupplierAccount &&
-      ficheType === 'CH_TAHSILAT' &&
-      String(row.special_code ?? '').trim().toUpperCase() === 'REZERVASYON' &&
-      absAmt > 0;
+    const isReservationCollection = isCustomerReservationCollection(
+      row,
+      ficheType,
+      cancelled,
+      isSupplierAccount,
+    );
     let delta = 0;
     let borcAmount = 0;
     let alacakAmount = 0;
@@ -423,7 +445,7 @@ export function buildEkstreRows(
         delta = 0;
         borcAmount = 0;
         alacakAmount = 0;
-      } else if (isCashReservationDepositForBalance) {
+      } else if (isReservationCollection) {
         // Rezervasyon avansı (cash_lines + CH_TAHSILAT + REZERVASYON): cari
         // bakiyeyi etkilemez (delta=0); ama ekstrede tek satır olarak
         // KULLANICI BEKLENTİSİ: hem borç hem alacak sütununda tutar görünür
@@ -506,22 +528,16 @@ export function buildEkstreRows(
     // 'REZERVASYON' da rezervasyon avansı sayılır; bu bayrak ile birlikte
     // `expandReservationDepositRows` helper'ı avans satırını çift satıra
     // böler (borç=amt + alacak=amt, bakiye=0).
-    const cashSpecial = String(row.special_code ?? '').trim().toUpperCase();
-    const isCashReservationDeposit = !cancelled &&
-      !isSupplierAccount &&
-      ficheType === 'CH_TAHSILAT' &&
-      cashSpecial === 'REZERVASYON' &&
-      absAmt > 0;
-    const isReservationDeposit = !cancelled &&
+    const isReservationDeposit = isReservationCollection || (
+      !cancelled &&
       !isSupplierAccount &&
       (row.is_deposit === true ||
-        /parent_sale:|sale_group:/.test(String(row.notes ?? '')) ||
-        isCashReservationDeposit) &&
+        /parent_sale:|sale_group:/.test(String(row.notes ?? ''))) &&
       absAmt > 0 &&
       (ftLower === 'sales_invoice' ||
         ftLower === 'service' ||
-        ftLower === 'hizmet' ||
-        isCashReservationDeposit);
+        ftLower === 'hizmet')
+    );
     return {
       ...row,
       /** sales / cash_lines tablosundaki PK. Açılış/devir fişlerini hard-delete için gerekli. */

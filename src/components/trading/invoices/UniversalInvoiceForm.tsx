@@ -63,6 +63,11 @@ import { useResponsive } from '../../../hooks/useResponsive';
 import { priceChangeVouchersAPI } from '../../../services/api/priceChangeVouchers';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { customerAPI } from '../../../services/api/customers';
+import {
+  invoiceDescriptionForDisplay,
+  invoiceNotesToPersist,
+} from '../../../utils/receiptNotes';
+import { invoiceHeaderBalanceForDisplay } from '../../../utils/invoiceHeaderBalance';
 import { invoicesAPI } from '../../../services/api/index';
 import { serviceAPI, Service } from '../../../services/serviceAPI';
 import { postgres, getAppDefaultCurrency, DB_SETTINGS } from '../../../services/postgres';
@@ -808,7 +813,15 @@ export function UniversalInvoiceForm({
   const [isCurrencyTransaction, setIsCurrencyTransaction] = useState(false); // Dövizli İşlem Checkbox
   const [unitSets, setUnitSets] = useState<any[]>([]); // Birim setleri
   const [masterUnits, setMasterUnits] = useState<UnitMasterRow[]>([]); // Kart birimleri (units)
-  const [description, setDescription] = useState(() => String((editData as any)?.notes || '')); // Açıklama
+  const storedInvoiceNotesRef = useRef(String((editData as any)?.notes || ''));
+  const descriptionTouchedRef = useRef(false);
+  const [description, setDescription] = useState(() =>
+    invoiceDescriptionForDisplay(String((editData as any)?.notes || '')),
+  );
+  const setDescriptionFromUser = (value: string) => {
+    descriptionTouchedRef.current = true;
+    setDescription(value);
+  };
   const [documentTrackingNo, setDocumentTrackingNo] = useState(''); // Doküman İzleme Numarası
   const [paymentType, setPaymentType] = useState('İşlem Yapılmayacak'); // Ödeme Tipi
   const [deliveryCode, setDeliveryCode] = useState(''); // Teslimat Kodu (header_fields)
@@ -978,7 +991,7 @@ export function UniversalInvoiceForm({
   const populateFromVoiceData = (data: any) => {
     if (data.supplier_name) setSupplierTitle(data.supplier_name);
     if (data.customer_name) setCustomerTitle(data.customer_name);
-    if (data.notes) setDescription(data.notes);
+    if (data.notes) setDescriptionFromUser(invoiceDescriptionForDisplay(String(data.notes)));
 
     if (data.items && Array.isArray(data.items) && data.items.length > 0) {
       const newItems = data.items.map((item: any, index: number) => {
@@ -3124,8 +3137,9 @@ export function UniversalInvoiceForm({
       /* Yeni taslak: sayım/alış ön doldurma notları → Açıklama (kayıtta notes olarak gider) */
       if (!(editData as any).id) {
         const draftNotes = (editData as any).notes;
-        if (draftNotes != null && String(draftNotes).trim() !== '') {
-          setDescription((prev) => (prev.trim() ? prev : String(draftNotes)));
+        if (draftNotes != null && String(draftNotes).trim() !== '' && !descriptionTouchedRef.current) {
+          storedInvoiceNotesRef.current = String(draftNotes);
+          setDescription(invoiceDescriptionForDisplay(String(draftNotes)));
         }
         const draftCashier = (editData as any).cashier;
         if (draftCashier != null && String(draftCashier).trim() !== '') {
@@ -3134,8 +3148,9 @@ export function UniversalInvoiceForm({
       } else {
         // Edit: DB'deki notes → state'e hidrasyon; kullanıcı elle değiştirmediyse uygula
         const editNotes = (editData as any).notes;
-        if (editNotes != null && String(editNotes).trim() !== '') {
-          setDescription((prev) => (prev.trim() ? prev : String(editNotes)));
+        if (editNotes != null && String(editNotes).trim() !== '' && !descriptionTouchedRef.current) {
+          storedInvoiceNotesRef.current = String(editNotes);
+          setDescription(invoiceDescriptionForDisplay(String(editNotes)));
         }
         if ((editData as any).cashier) {
           setCashierName(String((editData as any).cashier).trim());
@@ -3445,13 +3460,31 @@ export function UniversalInvoiceForm({
       clearMeta();
       return;
     }
+    const showCustomerBalance = (ledger: number, phone: string | null, id: string) => {
+      void (async () => {
+        let reservation = 0;
+        if (id) {
+          try {
+            reservation = await customerAPI.getReservationDepositTotal(id);
+          } catch (e) {
+            console.warn('[UniversalInvoiceForm] Rezervasyon peşinat okunamadı:', e);
+          }
+        }
+        if (cancelled) return;
+        applyMeta(invoiceHeaderBalanceForDisplay(ledger, reservation), phone);
+      })();
+    };
+
     const cust = customers.find((c) => String(c.id) === String(customerId));
     if (cust) {
-      applyMeta(
+      showCustomerBalance(
         Number(cust.balance ?? 0),
         String((cust as any).phone || (cust as any).phone2 || '').trim() || null,
+        String(cust.id || customerId || ''),
       );
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
     if (!customerId) return;
     void (async () => {
@@ -3460,9 +3493,10 @@ export function UniversalInvoiceForm({
         if (cancelled) return;
         const row = data.find((c) => String(c.id) === String(customerId));
         if (row) {
-          applyMeta(
+          showCustomerBalance(
             Number(row.balance ?? 0),
             String((row as any).phone || (row as any).phone2 || '').trim() || null,
+            String(row.id || customerId || ''),
           );
         }
       } catch (e) {
@@ -4288,7 +4322,11 @@ export function UniversalInvoiceForm({
           // ilk kayıttan itibaren "tamamlandı" görmek istiyor — ara statü yok.
           return 'completed';
         })(),
-        notes: description,
+        notes: invoiceNotesToPersist(
+          storedInvoiceNotesRef.current,
+          description,
+          descriptionTouchedRef.current,
+        ),
         document_no: documentNo.trim() || resolvedInvoiceNo,
         header_fields: {
           ...buildInvoiceHeaderFieldsFromForm({
@@ -4763,7 +4801,7 @@ export function UniversalInvoiceForm({
                   selectedCariPhone={selectedCariPhone}
                   selectedCariCurrency={currency || 'IQD'}
                   description={description}
-                  setDescription={setDescription}
+                  setDescription={setDescriptionFromUser}
                   // Migration 190 — Back-dated audit
                   insertionAt={
                     isEditMode

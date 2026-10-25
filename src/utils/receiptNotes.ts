@@ -82,3 +82,62 @@ export function receiptNotesForDisplay(raw: string | undefined | null): string {
 
   return scrubTechnicalIds(s);
 }
+
+const INVOICE_CHANNEL_OR_FILLER =
+  /^(?:GüzellikPOS|MarketPOS|RestoranPOS|RestPOS|Güzellik satışı|checkout_tek_tahsilat)$/i;
+
+/** Kanal öneki, UUID etiketi, peşinat bağlantısı — fatura açıklamasında iş notu değildir. */
+function segmentIsMachineNote(part: string): boolean {
+  const t = part.trim();
+  if (!t) return true;
+  if (INVOICE_CHANNEL_OR_FILLER.test(t)) return true;
+  if (/^(?:beauty_sale_id|rex_appt|res_appt|rest_order_id)[:\s]+[0-9a-fA-F-]{8}-/i.test(t)) return true;
+  if (/^(?:parent_sale|sale_group):/i.test(t)) return true;
+  if (/^deposit:1$/i.test(t)) return true;
+  if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i.test(t)) return true;
+  return false;
+}
+
+/**
+ * Fatura açıklama kutusu. `GüzellikPOS|beauty_sale_id:…|rex_appt:…` teknik
+ * dizisi ve kanal öneki gizlenir; yalnız iş notu kalır. Not yoksa kutu boştur.
+ * Ekstre etiketi (`GüzellikPOS`) bu fonksiyondan gelmez.
+ */
+export function invoiceDescriptionForDisplay(raw: string | undefined | null): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  const hasMachine =
+    /beauty_sale_id|rex_appt|res_appt|rest_order_id|parent_sale:|sale_group:|deposit:1|checkout_tek_tahsilat/i.test(s)
+    || /^(?:GüzellikPOS|MarketPOS|RestoranPOS|RestPOS)\|/i.test(s);
+  if (!hasMachine) return s;
+  const cleaned = receiptNotesForDisplay(s);
+  const human = cleaned
+    .split(/\s+—\s+/)
+    .map((p) => p.trim())
+    .filter((p) => p && !INVOICE_CHANNEL_OR_FILLER.test(p));
+  return human.join(' — ');
+}
+
+/**
+ * Açıklama kutusu değişmediyse saklanan not aynen döner (teknik etiket silinmez,
+ * kasa / randevu bağlantısı yeniden yazılmaz). Kullanıcı iş notu yazdıysa
+ * makine parçaları yerinde kalır, kutuda yalnız not görünür.
+ */
+export function invoiceNotesToPersist(
+  storedRaw: string | undefined | null,
+  displayText: string | undefined | null,
+  touched: boolean,
+): string {
+  const stored = String(storedRaw ?? '');
+  if (!touched) return stored;
+  const human = String(displayText ?? '').trim();
+  if (human === invoiceDescriptionForDisplay(stored)) return stored;
+  if (!stored.trim()) return human;
+  const tech = stored
+    .split('|')
+    .map((p) => p.trim())
+    .filter((p) => segmentIsMachineNote(p));
+  if (tech.length === 0) return human;
+  if (!human) return tech.join('|');
+  return `${human}|${tech.join('|')}`;
+}

@@ -21,6 +21,7 @@ import {
   normalizeBirthDate,
   sortByFileIdAsc,
 } from '../../utils/customerFileIdSort';
+import { sumReservationDepositAmounts } from '../../utils/invoiceHeaderBalance';
 
 export const customerAPI = {
   /**
@@ -676,6 +677,49 @@ export const customerAPI = {
     } catch (error) {
       console.error('[CustomerAPI] addBalance failed:', error);
       return false;
+    }
+  },
+
+  /**
+   * Seçili müşterinin rezervasyon peşinat toplamı. Yalnız okuma;
+   * kasa satırı ve cari defter güncellenmez. Fatura başlığı bu tutarı
+   * eksi bakiye olarak göstermemek için okunur.
+   */
+  async getReservationDepositTotal(customerId: string): Promise<number> {
+    const id = String(customerId || '').trim();
+    if (!id) return 0;
+    try {
+      const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+      const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<Array<Record<string, unknown>>>(
+          `/rex_${firmNr}_${pn}_cash_lines`,
+          {
+            select: 'amount,special_code,transaction_type',
+            or: `(customer_id.eq.${id},party_id.eq.${id})`,
+            transaction_type: 'eq.CH_TAHSILAT',
+            special_code: 'in.(REZERVASYON,AVANS)',
+            limit: '5000',
+          },
+          { schema: 'public' },
+        );
+        return sumReservationDepositAmounts(Array.isArray(rows) ? rows : []);
+      }
+      const { rows } = await postgres.query<{ total?: number | string }>(
+        `SELECT COALESCE(SUM(ABS(COALESCE(amount, 0))), 0) AS total
+           FROM cash_lines
+          WHERE (customer_id::text = $1::text OR party_id::text = $1::text)
+            AND UPPER(TRIM(COALESCE(transaction_type, ''))) = 'CH_TAHSILAT'
+            AND UPPER(TRIM(COALESCE(special_code, ''))) IN ('REZERVASYON', 'AVANS')`,
+        [id],
+        { firmNr, periodNr: ERP_SETTINGS.periodNr },
+      );
+      const total = Number(rows?.[0]?.total ?? 0);
+      return Number.isFinite(total) ? total : 0;
+    } catch (error) {
+      console.warn('[CustomerAPI] rezervasyon peşinat toplamı okunamadı:', error);
+      return 0;
     }
   },
 };
