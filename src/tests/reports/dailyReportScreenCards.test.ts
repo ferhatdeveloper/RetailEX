@@ -156,7 +156,8 @@ describe('günlük rapor ekran kartları', () => {
     expect(kpi).not.toContain('dailyTotal + dailyRevenueQuantity');
     expect(kpi).toContain('formatNumber(dailyDiscount, 2, false)');
     expect(kpi).toContain('formatNumber(dailyNetNakitAlways, 2, false)');
-    expect(src).toContain('dailyCollected - totalExpensesForReport');
+    expect(src).toContain('dailyReportScreenNetCash');
+    expect(src).toContain('countLedgerInflows: true');
     expect(src).toContain('sumDailySalesDetailCashBalance');
     expect(src).toContain('buildDailySalesDetailExpenseRows');
     expect(kpi).not.toContain("'total-sales'");

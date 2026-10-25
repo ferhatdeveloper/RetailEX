@@ -1554,6 +1554,142 @@ describe('Kasa Durumu — 138.500 nakit, 15.000 gider, kapanış 85.000', () => 
   });
 });
 
+describe('Kasa Durumu — tek rezervasyon tahsilatı', () => {
+  const line = {
+    id: 'avans-1',
+    kasa_id: 'k1',
+    islem_tipi: 'CH_TAHSILAT',
+    tutar: 20_000,
+    ozel_kod: 'REZERVASYON',
+    is_reservation_deposit: true,
+    islem_tarihi: '2026-10-25',
+    payment_method: 'cash',
+    islem_no: 'AVANS-fb429b84',
+    islem_aciklamasi: 'Rezervasyon tahsilatı - AVANS-fb429b84',
+    cari_hesap_unvani: 'DUNYA',
+  };
+  const registers = [{ id: 'k1', code: 'KASA.001', name: 'MERKEZ KASA' }];
+
+  it('giren 20.000, çıkan 0, bakiye 20.000; peşinat ve 50.000 hizmet ikinci kez yok', () => {
+    const rows = cashRegisterStatusFromLedger({
+      registers,
+      lines: [line],
+      dateFrom: '2026-01-01',
+      dateTo: '2026-10-25',
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const registerTotal = sumCashRegisterDistribution(cashRegisterDistributionLines(rows));
+    expect(registerTotal).toBe(20_000);
+    expect(rows.find((row) => row.id === 'k1')?.closingCash).toBe(20_000);
+
+    const movements = cashStatusMovementRows({
+      lines: [line],
+      dateFrom: '2026-01-01',
+      dateTo: '2026-10-25',
+      salesCash: 50_000,
+      reservation: 20_000,
+      expense: 10_000,
+      discount: 0,
+      registerNames: { k1: 'MERKEZ KASA' },
+    });
+    expect(movements).toHaveLength(1);
+    expect(movements[0].amount).toBe(20_000);
+    expect(movements[0].registerName).toBe('MERKEZ KASA');
+
+    const doubled = cashStatusThreeBoxes({
+      salesCash: 40_000,
+      reservation: 20_000,
+      discount: 0,
+      expense: 10_000,
+      lines: [line],
+      dateFrom: '2026-01-01',
+      dateTo: '2026-10-25',
+      saleReceiptKeys: ['BEA-2026-00001'],
+      customerCollectionsInSalesCash: true,
+      registerTotal,
+      balanceFromRegisters: true,
+      countLedgerInflows: true,
+    });
+    expect(doubled.totalIn).toBe(20_000);
+    expect(doubled.totalIn).not.toBe(40_000);
+    expect(doubled.totalOut).toBe(0);
+    expect(doubled.balance).toBe(20_000);
+
+    const serviceNotInDrawer = cashStatusThreeBoxes({
+      salesCash: 50_000,
+      reservation: 10_000,
+      discount: 0,
+      expense: 10_000,
+      lines: [line],
+      dateFrom: '2026-01-01',
+      dateTo: '2026-10-25',
+      saleReceiptKeys: ['BEA-2026-00001'],
+      registerTotal,
+      balanceFromRegisters: true,
+      countLedgerInflows: true,
+    });
+    expect(serviceNotInDrawer.totalIn).toBe(20_000);
+    expect(serviceNotInDrawer.totalIn).not.toBe(50_000);
+    expect(serviceNotInDrawer.totalIn).not.toBe(70_000);
+    expect(serviceNotInDrawer.totalOut).toBe(0);
+    expect(serviceNotInDrawer.balance).toBe(20_000);
+  });
+
+  it('açılış alacak çıkandır; virman giren ve çıkanı değiştirmez', () => {
+    const entry = {
+      kasa_id: 'k1',
+      islem_tipi: 'KASA_GIRIS',
+      tutar: 20_000,
+      islem_tarihi: '2026-10-25',
+      payment_method: 'cash',
+      islem_no: 'GIRIS-20',
+    };
+    const opened = cashStatusThreeBoxes({
+      salesCash: 50_000,
+      lines: [
+        entry,
+        {
+          kasa_id: 'k1',
+          islem_tipi: 'ACILIS_ALACAK',
+          tutar: 5_000,
+          islem_tarihi: '2026-10-20',
+          payment_method: 'cash',
+          islem_no: 'ACILIS-ALACAK',
+        },
+      ],
+      dateFrom: '2026-01-01',
+      dateTo: '2026-10-25',
+      countLedgerInflows: true,
+    });
+    expect(opened.totalIn).toBe(20_000);
+    expect(opened.totalOut).toBe(5_000);
+    expect(opened.balance).toBe(15_000);
+
+    const moved = cashStatusThreeBoxes({
+      salesCash: 20_000,
+      lines: [
+        entry,
+        {
+          kasa_id: 'k1',
+          target_register_id: 'k2',
+          islem_tipi: 'VIRMAN',
+          tutar: 7_000,
+          sign: -1,
+          islem_no: 'VRM-1',
+          islem_tarihi: '2026-10-25',
+          payment_method: 'cash',
+        },
+      ],
+      dateFrom: '2026-01-01',
+      dateTo: '2026-10-25',
+      countLedgerInflows: true,
+    });
+    expect(moved.totalIn).toBe(20_000);
+    expect(moved.totalOut).toBe(0);
+    expect(moved.balance).toBe(20_000);
+  });
+});
+
 describe('Kasa Durumu üç kutu — giren, çıkan, bakiye', () => {
   const today = '2026-10-24';
   const registers = [

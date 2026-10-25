@@ -1099,6 +1099,12 @@ export interface CashStatusThreeBoxInput {
   balanceFromRegisters?: boolean;
   /** Seçili aralığın son günü bugün veya sonrası. `balanceFromRegisters` yokken okunur. */
   rangeEndsToday?: boolean;
+  /**
+   * true: giren ve çıkan yalnız kasa fişleridir.
+   * Satış nakdi, kasada satırı yoksa girene yazılmaz.
+   * Peşinat satırı bir kez girer. Gider parametresi çıkış fişi değilse çıkan olmaz.
+   */
+  countLedgerInflows?: boolean;
 }
 
 export interface CashStatusThreeBoxResult {
@@ -1174,13 +1180,27 @@ export function cashStatusThreeBoxes(input: CashStatusThreeBoxInput): CashStatus
     else extraOut = round2(extraOut + Math.abs(signed));
   }
 
-  const totalIn = round2(salesCash + extraIn);
-  const totalOut = round2((expenseProvided ? expenseParam : 0) + expenseFromLines + extraOut);
-  const formulaBalance = round2(priorBalance + totalIn - totalOut);
+  let totalIn = round2(salesCash + extraIn);
+  let totalOut = round2((expenseProvided ? expenseParam : 0) + expenseFromLines + extraOut);
+  let prior = round2(priorBalance);
+  if (input.countLedgerInflows) {
+    // Kasaya yazılmamış hizmet girene eklenmez. Peşinat satırı bir kez sayılır.
+    // Gider parametresi kasa çıkışı değilse çıkan uydurulmaz.
+    const ledger = ledgerCashPeriodFlow({
+      lines: input.lines,
+      dateFrom: input.dateFrom,
+      dateTo: input.dateTo,
+      saleReceiptKeys: input.saleReceiptKeys,
+    });
+    totalIn = ledger.totalIn;
+    totalOut = ledger.totalOut;
+    prior = ledger.priorBalance;
+  }
+  const formulaBalance = round2(prior + totalIn - totalOut);
   return {
     totalIn,
     totalOut,
-    priorBalance: round2(priorBalance),
+    priorBalance: prior,
     balance: cashStatusDisplayedBalance({
       formulaBalance,
       registerTotal: input.registerTotal,
@@ -2106,4 +2126,52 @@ export function cashStatusMovementRows(input: CashStatusMovementInput): CashStat
     return a.registerId.localeCompare(b.registerId, 'tr');
   });
   return rows;
+}
+
+/**
+ * Seçili aralıkta kasaya gerçekten giren ve çıkan nakit.
+ * Hareket listesiyle aynı fişler. Satış tutarı satır açmaz.
+ * Peşinat bir kez girer. Aynı satış fişi ikinci kez girmez.
+ * Virman şirket bakiyesini değiştirmez. Açılış alacak çıkandır.
+ * İndirim ve açık cari yazılmaz. Kasa satırı olmayan gider çıkan olmaz.
+ */
+export function ledgerCashPeriodFlow(input: {
+  lines?: readonly CashStatusRegisterLine[];
+  dateFrom?: string;
+  dateTo?: string;
+  saleReceiptKeys?: Iterable<string>;
+}): { totalIn: number; totalOut: number; priorBalance: number } {
+  const dateFrom = String(input.dateFrom || '').slice(0, 10);
+  const dateTo = String(input.dateTo || '').slice(0, 10);
+  const lines = (input.lines || []) as CashStatusRegisterLine[];
+  let priorBalance = 0;
+  for (const line of lines) {
+    const day = ledgerDay(line.islem_tarihi);
+    if (day && dateTo && day > dateTo) continue;
+    if (!(day && dateFrom && day < dateFrom)) continue;
+    const tip = String(line.islem_tipi || '').trim().toUpperCase();
+    if (isCashVirmanType(tip)) continue;
+    if (drawerKind(line) !== 'cash') continue;
+    const signed = voucherSignedAmount(line);
+    if (Math.abs(signed) > 0.004) priorBalance = round2(priorBalance + signed);
+  }
+  const movements = cashStatusMovementRows({
+    lines,
+    dateFrom,
+    dateTo,
+    saleReceiptKeys: input.saleReceiptKeys,
+    customerCollectionsInSalesCash: true,
+  });
+  let totalIn = 0;
+  let totalOut = 0;
+  for (const row of movements) {
+    if (row.categoryCode === 'virman') continue;
+    if (row.amount > 0.004) totalIn = round2(totalIn + row.amount);
+    else if (row.amount < -0.004) totalOut = round2(totalOut + Math.abs(row.amount));
+  }
+  return {
+    totalIn,
+    totalOut,
+    priorBalance: round2(priorBalance),
+  };
 }

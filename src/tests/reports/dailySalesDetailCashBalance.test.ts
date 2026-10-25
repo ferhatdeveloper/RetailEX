@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildDailySalesDetailExpenseRows,
   dailyExpenseSourceHour,
+  dailyReportScreenNetCash,
   dailySalesDetailExpenseNet,
   sumDailySalesDetailCashBalance,
 } from '../../utils/dailySalesDetailCashBalance';
@@ -59,6 +60,41 @@ const kindLabels = {
   return: 'İade',
   expense: 'Gider',
 };
+
+describe('günlük rapor net nakit — 50.000 hizmet, 10.000 gider', () => {
+  it('ciro 50.000 kalır, gider bir kez düşer, net nakit 40.000; peşinat ikinci kez yok', () => {
+    const service = {
+      receiptNumber: 'BEA-2026-00001',
+      beforeDiscount: 50_000,
+      total: 50_000,
+      discount: 0,
+    };
+    const avans = {
+      receiptNumber: 'AVANS-fb429b84',
+      beforeDiscount: 10_000,
+      total: 10_000,
+      discount: 0,
+      isAvans: true as const,
+    };
+    const rent = {
+      receiptNumber: 'KL-MVN00AQ-G3CJUB',
+      beforeDiscount: 0,
+      total: -10_000,
+      discount: 0,
+      isExpense: true,
+    };
+    const revenue = service.total;
+    const expense = 10_000;
+    const net = dailyReportScreenNetCash([service, avans, rent]);
+    expect(revenue).toBe(50_000);
+    expect(expense).toBe(10_000);
+    expect(net).toBe(40_000);
+    expect(net).toBe(revenue - expense);
+    expect(net).not.toBe(50_000);
+    expect(net).not.toBe(60_000);
+    expect(dailyReportScreenNetCash([service, avans])).toBe(50_000);
+  });
+});
 
 describe('satış detayları kasa bakiyesi', () => {
   const expenseRows = buildDailySalesDetailExpenseRows(sales, [officeRent], 'Gider');

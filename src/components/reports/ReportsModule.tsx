@@ -16,10 +16,10 @@ import { formatNumber } from '../../utils/formatNumber';
 import { dailySalesDetailNetAmount } from '../../utils/dailySalesDetailNet';
 import {
   buildDailySalesDetailExpenseRows,
+  dailyReportScreenNetCash,
   sumDailySalesDetailCashBalance,
 } from '../../utils/dailySalesDetailCashBalance';
 import {
-  dailyNetCollected,
   dailyNetSaleRevenue,
 } from '../../utils/dailyReportKpis';
 import {
@@ -3823,33 +3823,6 @@ export function ReportsModule({
     () => dailyExpenseRowsForReport.reduce((sum, row) => sum + (row.isCash ? row.amount : 0), 0),
     [dailyExpenseRowsForReport],
   );
-  /**
-   * Net (Nakit) = tahsil edilen − gider. İndirim tahsilatın içindedir,
-   * karta ve tablo toplamına geri eklenmez. Peşinat kazanç değildir.
-   * Net (Brüt) kartı bu ekranda yok. Gider tabloya eksi satır olarak bir kez girer.
-   */
-  const dailyCashOutBookedReceipts = new Set(
-    dailyExpenseRowsForReport
-      .map((row) => String(row.ficheNo || '').trim().toLowerCase())
-      .filter(Boolean),
-  );
-  // Tahsil edilen = kasada kalan para. Nakit iade bir kez düşülür.
-  // Aynı fiş gider çıkışına yazıldıysa burada tekrar düşülmez; gider
-  // kartı onu zaten net nakitten indirir. Peşinat hizmetin içindeyse
-  // reservationTopUp 0 kalır. Eski 130.000 iadeyi atlıyordu.
-  const dailyCollected = dailyNetCollected({
-    sales: dailySalesForCash,
-    appliedAvansBySaleId: dailyAppliedAvans,
-    extraCollections,
-    reservationCash: reservationTopUp.cash,
-    reservationCard: reservationTopUp.card,
-    expenseReceiptKeys: dailyCashOutBookedReceipts,
-  });
-  const dailyNetNakitAlways = useMemo(
-    () => dailyCollected - totalExpensesForReport,
-    [dailyCollected, totalExpensesForReport],
-  );
-
   const dailySalesDetailGridRows = useMemo(() => {
     if (dailyKindFilter !== 'all' || dailyShowOnlyRemoved) return dailyKindGridRows;
     const expenseRows = buildDailySalesDetailExpenseRows(
@@ -3917,6 +3890,19 @@ export function ReportsModule({
     });
     return [...dailyKindGridRows, ...mapped];
   }, [dailyKindFilter, dailyShowOnlyRemoved, dailyKindGridRows, dailyExpenseRowsForReport, tm, userNameById]);
+
+  /**
+   * Net (Nakit) = dip toplam. Satış neti − gider, gider bir kez.
+   * Peşinat ve avans ikinci kez eklenmez. İndirim açık cari değildir.
+   * 50.000 hizmet − 10.000 gider = 40.000.
+   */
+  const dailyNetNakitAlways = useMemo(
+    () => dailyReportScreenNetCash(
+      dailySalesDetailGridRows,
+      (row) => isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true,
+    ),
+    [dailySalesDetailGridRows],
+  );
 
   const dailyExpenseGridRows = useMemo(() => {
     return dailyExpenseRowsForReport.map((row) => {
@@ -4600,6 +4586,7 @@ export function ReportsModule({
     const flow = cashStatusThreeBoxes({
       salesCash: folded.todayCash,
       reservation: reservationDeposit,
+      discount: 0,
       expense: cashExpensesForReport,
       countedExpenseKeys,
       lines: voucherLines,
@@ -4608,6 +4595,8 @@ export function ReportsModule({
       saleReceiptKeys,
       customerCollectionsInSalesCash: true,
       balanceFromRegisters: cashStatusActive ? cashStatusQuery.balanceFromRegisters : undefined,
+      // Giren ve çıkan kasa fişidir. Kasada olmayan hizmet ve gider yazılmaz.
+      countLedgerInflows: true,
     });
     const registerNames: Record<string, string> = {};
     const registerCodes: Record<string, string> = {};

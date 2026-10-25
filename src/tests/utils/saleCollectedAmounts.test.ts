@@ -117,6 +117,35 @@ describe('saleCollectedSplit — belge vs tahsilat', () => {
     expect(s.credit).toBe(40000);
   });
 
+  it('50.000 nakit satırı varken 10.000 avans ikinci kez eklenmez', () => {
+    const full = saleCollectedSplit(
+      {
+        total: 50_000,
+        paymentMethod: 'nakit',
+        payments: [{ method: 'NAKIT', amount: 50_000 }],
+        discount: 0,
+      },
+      10_000,
+    );
+    expect(full.cash).toBe(50_000);
+    expect(full.collected).toBe(50_000);
+    expect(full.remaining).toBe(0);
+    expect(full.credit).toBe(0);
+
+    const gap = saleCollectedSplit(
+      {
+        total: 50_000,
+        paymentMethod: 'nakit',
+        payments: [{ method: 'NAKIT', amount: 40_000 }],
+        discount: 0,
+      },
+      10_000,
+    );
+    expect(gap.cash).toBe(50_000);
+    expect(gap.collected).toBe(50_000);
+    expect(gap.remaining).toBe(0);
+  });
+
   it('veresiye etiket + tam nakit ödeme + iskonto: kasa şişmez', () => {
     // 50.000 brüt, nakit 40.000, iskonto 10.000 → ödeme tamam, kasa 40.000
     const s = saleCollectedSplit({

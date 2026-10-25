@@ -168,6 +168,20 @@ export function sumDailySalesDetailCashBalance<T extends DailySalesDetailCashRow
   });
 }
 
+/**
+ * Günlük Rapor Net (Nakit). Dip toplamla aynı sayıdır.
+ * Satış neti durur. Gider eksi satır olarak bir kez düşülür.
+ * Peşinat ve avans ikinci kez eklenmez. İndirim açık cari değildir.
+ *
+ * 50.000 hizmet − 10.000 gider = 40.000. 10.000 rezervasyon eklenmez.
+ */
+export function dailyReportScreenNetCash<T extends DailySalesDetailCashRow>(
+  rows: readonly T[],
+  skip?: (row: T) => boolean,
+): number {
+  return sumDailySalesDetailCashBalance(rows, skip);
+}
+
 /** Tek gider satırının neti. Çıkış eksi kalır; indirim eklenmez. */
 export function dailySalesDetailExpenseNet(row: DailySalesDetailExpenseGridRow): number {
   return dailySalesDetailNetAmount(row);

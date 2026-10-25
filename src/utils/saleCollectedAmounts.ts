@@ -110,11 +110,14 @@ export function splitPaymentRows(
       else if (bucket === 'pesinatli') cash += amt;
       else credit += amt;
     }
-    // 16.10.2026 — Rezervasyon peşinatı ile ödenen kısım tahsil edilen
-    // olarak sayılmalı; avans zaten daha önce CH_TAHSILAT olarak
-    // kasaya girmiştir. Aksi halde kalan yanlışlıkla veresiye gibi
-    // görünür (DUBLE BEA-2026-MVAZ674A senaryosu, 16.10.2026).
-    cash += Math.abs(Number(appliedAvans) || 0);
+    // Rezervasyon peşinatı, belgede henüz nakit satırı yoksa tahsilata eklenir.
+    // Örnek: 50.000 fatura, 40.000 nakit, 10.000 avans → nakit 50.000.
+    // Nakit satırı belgeyi zaten karşılıyorsa avans ikinci kez eklenmez
+    // (50.000 nakit + 10.000 avans → 60.000 olmaz). İskonto bu odaya yazılmaz.
+    const avansAbs = Math.abs(Number(appliedAvans) || 0);
+    const collectedBeforeAvans = cash + card + transfer;
+    const avansRoom = Math.max(0, Math.abs(document) - discountAbs - collectedBeforeAvans);
+    cash += Math.min(avansAbs, avansRoom);
     let collected = cash + card + transfer;
     let remaining = credit;
     let cashOut = cash;
