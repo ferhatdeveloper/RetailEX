@@ -11434,6 +11434,36 @@ export const excelModuleTranslations = {
     ar: 'تقرير Z لنهاية اليوم',
     ku: 'ڕاپۆرتی Zی کۆتایی ڕۆژ',
   },
+  reportsZTxnCount: {
+    tr: 'Toplam işlem sayısı',
+    en: 'Transaction count',
+    ar: 'عدد العمليات',
+    ku: 'ژمارەی مامەڵە',
+  },
+  reportsZGrossSales: {
+    tr: 'Brüt satış',
+    en: 'Gross sales',
+    ar: 'المبيعات الإجمالية',
+    ku: 'فرۆشتنی گشتی',
+  },
+  reportsZSalesReturnAmount: {
+    tr: 'Satış iade tutarı',
+    en: 'Sales return amount',
+    ar: 'مبلغ مرتجع المبيعات',
+    ku: 'بڕی گەڕاندنەوەی فرۆشتن',
+  },
+  reportsZNetSalesAmount: {
+    tr: 'Net satış tutarı',
+    en: 'Net sales amount',
+    ar: 'مبلغ صافي المبيعات',
+    ku: 'بڕی فرۆشتنی خاوێن',
+  },
+  reportsZNetCashAmount: {
+    tr: 'Net nakit tutarı',
+    en: 'Net cash amount',
+    ar: 'مبلغ صافي النقد',
+    ku: 'بڕی نەقدی خاوێن',
+  },
   /** Z raporu 80mm yazdırma fişi etiketleri */
   reportsZPrintDocTitle: { tr: 'Z Raporu', en: 'Z Report', ar: 'تقرير Z', ku: 'ڕاپۆرتی Z' },
   reportsZPrintHeader: { tr: 'Z RAPORU', en: 'Z REPORT', ar: 'تقرير Z', ku: 'ڕاپۆرتی Z' },

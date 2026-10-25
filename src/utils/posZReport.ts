@@ -1,4 +1,8 @@
 import type { Sale } from '../core/types';
+import {
+  cancelledUnclosedReservationBox,
+  type CancelledReservationBoxInput,
+} from './cancelledReservationBox';
 import { formatNumber } from './formatNumber';
 import { localCalendarDateKey } from './localCalendarDate';
 import { saleCollectedSplit } from './saleCollectedAmounts';
@@ -331,7 +335,9 @@ export interface DayEndZTotals {
 }
 
 /**
- * Gün sonu Z özeti.
+ * Eski bilgi kolonu. Z ekranı bunu kullanmaz.
+ * Ekran satırları `composeDayEndZStatement` ve günlük rapor kutusudur.
+ *
  * Rezervasyon peşinatı kazanılmamış avanstır: kasa durumundaki rezervasyon
  * nakdiyle aynı tutar bilgi kolonunda durur. Net ciro ve gider sonrası net
  * bu tutarı ikinci kez almaz. Nakit, çağıranın verdiği kasa tutarıdır
@@ -371,6 +377,59 @@ export function composeDayEndZTotals(input: {
     reservationGross: gross,
     reservationPending: pending,
     reservationCount: count,
+  };
+}
+
+export interface DayEndZStatement {
+  transactionCount: number;
+  grossSales: number;
+  discount: number;
+  salesReturn: number;
+  expense: number;
+  /** Brüt − indirim − iade − gider. Her tenzil bir kez. */
+  netSales: number;
+  /** Açık veya iptal peşinat. Kapanmış randevu 0. */
+  reservationAmount: number;
+  /** Net satış + rezervasyon. İade ve gider ikinci kez düşülmez. */
+  netCash: number;
+}
+
+/**
+ * Gün sonu Z ekranı.
+ * Net satış = brüt satış − indirim − satış iadesi − gider.
+ * İndirim açık cari değildir; yalnız bu tenzildir.
+ * Net nakit = net satış + rezervasyon tutarı.
+ * Rezervasyon, günlük raporun `cancelledUnclosedReservationBox` kutusu.
+ * Kimlik fiş / randevu kimliğidir. Müşteri adı küme anahtarı değildir.
+ * Kapanmış peşinat hizmet satışının içindedir; satırda 0 kalır ve net nakde eklenmez.
+ * İptal peşinatı iade değildir.
+ */
+export function composeDayEndZStatement(input: {
+  transactionCount?: number;
+  grossSales: number;
+  discount?: number;
+  salesReturn?: number;
+  expense?: number;
+  reservation?: CancelledReservationBoxInput | null;
+}): DayEndZStatement {
+  const grossSales = round2(Number(input.grossSales) || 0);
+  const discount = round2(Math.abs(Number(input.discount) || 0));
+  const salesReturn = round2(Math.abs(Number(input.salesReturn) || 0));
+  const expense = round2(Math.abs(Number(input.expense) || 0));
+  const netSales = round2(grossSales - discount - salesReturn - expense);
+  const reservationAmount = round2(
+    cancelledUnclosedReservationBox(input.reservation || {}).amount,
+  );
+  const netCash = round2(netSales + reservationAmount);
+  return {
+    transactionCount: Math.max(0, Math.trunc(Number(input.transactionCount) || 0)),
+    grossSales,
+    discount,
+    salesReturn,
+    expense,
+    netSales,
+    reservationAmount,
+    netCash,
   };
 }
 

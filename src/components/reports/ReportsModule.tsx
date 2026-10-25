@@ -138,7 +138,7 @@ import {
   type PurchasePromotionReportLine,
 } from '../../utils/purchasePromotionReport';
 import { accumulateComparisonProducts } from '../../utils/periodComparisonProducts';
-import { applyExtraCashCollections, buildPosZReportForRange, composeDayEndZTotals, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
+import { applyExtraCashCollections, buildPosZReportForRange, composeDayEndZStatement, isReturnSale } from '../../utils/posZReport';
 import { detailedSalesLineMoney } from '../../utils/detailedSalesLineSign';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
 import { extraCustomerCollectionsNotOnSales, extraReservationCustomerCollections, saleCollectedSplit, dailyPaymentKind, beautySalePocketCollected } from '../../utils/saleCollectedAmounts';
@@ -4302,11 +4302,8 @@ export function ReportsModule({
     }
   }, [closeDailyRowReceiptModal, confirmReportAction, dailyRowReceiptModal, loadRestOrdersForSelectedDate, tm]);
 
-  // 14.10.2026 17:03 — Rezervasyon Tutarı (Ciro dışı tahsilat) Net
-  // Kalan'a eklenir. Brüt/kalan bilgi kolonu olarak gösterilir.
-  // Tüm raporlarda (Günlük, Z Raporu, Aylık) paylaşılan tek hesaplama.
   // Ad: `reservationAggregate` (production build minify çakışmasını
-  // önlemek için açık isim).
+  // önlemek için açık isim). Günlük özet satırı brüt / kalan gösterir.
   const reservationAggregate = useMemo(
     () => reservationPendingForRange(
       dailyAppointments,
@@ -4322,11 +4319,24 @@ export function ReportsModule({
     const dateLabel = formatReportsDateRangeTr(selectedDateFrom, selectedDateTo);
     const allDaySales = reportRangeSales.filter((s) => inReportPeriod(localCalendarDateKey(s.date)));
     const canceledSalesRows = allDaySales.filter((s) => isRemovedSaleStatus(s.status) && !isReturnSale(s));
-
-    const resvForZReport = reservationAggregate;
-    // Kasa durumundaki rezervasyon nakdi. Açık randevu 0 olsa da
-    // aynı gün alınan peşinat burada durur. Net ciroya eklenmez.
-    const reservationCash = Number(getPaymentDistribution().reservationDeposit) || 0;
+    const reservation = {
+      appointments: dailyAppointments,
+      avansRows: dailyAvansList,
+      depositSales: dailyDepositSales,
+    };
+    const statementOf = (
+      transactionCount: number,
+      grossSales: number,
+      discount: number,
+      salesReturn: number,
+    ) => composeDayEndZStatement({
+      transactionCount,
+      grossSales,
+      discount,
+      salesReturn,
+      expense: totalExpensesForReport,
+      reservation,
+    });
 
     const buildFromErpSales = () => {
       const extraCash = extraCustomerCollectionsNotOnSales(kasaLinesForSelectedDate, reportRangeSales);
@@ -4334,42 +4344,30 @@ export function ReportsModule({
         buildPosZReportForRange(reportRangeSales, selectedDateFrom, selectedDateTo, dateLabel),
         extraCash,
       );
-      const netSales = base.totalAmount - base.refundAmount;
-      const cashAmount = base.cashAmount + reservationTopUp.cash;
-      const dayEnd = composeDayEndZTotals({
-        netSales,
-        totalExpenses: totalExpensesForReport,
-        subtractExpenses: showDailyCardTotalExpense,
-        cashAmount,
-        reservation: {
-          reservationCash,
-          openGross: resvForZReport.gross,
-          openPending: resvForZReport.pending,
-          openDeposit: resvForZReport.deposit,
-          openCount: resvForZReport.count,
-        },
-      });
+      const statement = statementOf(
+        base.totalSales,
+        base.amountBeforeDiscount,
+        base.totalDiscount,
+        base.refundAmount,
+      );
       return {
         dateFrom: selectedDateFrom,
         dateTo: selectedDateTo,
         dateLabel,
-        totalSales: base.totalSales,
+        totalSales: statement.transactionCount,
         returnCount: allDaySales.filter((s) => isReturnSale(s)).length,
-        amountBeforeDiscount: base.amountBeforeDiscount,
+        amountBeforeDiscount: statement.grossSales,
         totalAmount: base.totalAmount,
-        netSales: dayEnd.netSales,
-        totalExpenses: totalExpensesForReport,
-        netAfterExpenses: dayEnd.netAfterExpenses,
-        reservationGross: dayEnd.reservationGross,
-        reservationPending: dayEnd.reservationPending,
-        reservationCount: dayEnd.reservationCount,
-        reservationDeposit: dayEnd.reservationDeposit,
-        cashAmount: dayEnd.cashAmount,
+        netSales: statement.netSales,
+        netCash: statement.netCash,
+        totalExpenses: statement.expense,
+        reservationDeposit: statement.reservationAmount,
+        cashAmount: base.cashAmount + reservationTopUp.cash,
         cardAmount: base.cardAmount + reservationTopUp.card,
         creditAmount: dailyRemaining,
         otherAmount: base.otherAmount,
-        totalDiscount: base.totalDiscount,
-        refundAmount: base.refundAmount,
+        totalDiscount: statement.discount,
+        refundAmount: statement.salesReturn,
         canceledSales: canceledSalesRows.length,
         canceledAmount: canceledSalesRows.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0),
         firstSale: base.firstSale,
@@ -4411,43 +4409,28 @@ export function ReportsModule({
           new Date(a.closed_at || a.closedAt || a.opened_at).getTime() -
           new Date(b.closed_at || b.closedAt || b.opened_at).getTime()
       );
-      const dayEnd = composeDayEndZTotals({
-        netSales: totalAmount,
-        totalExpenses: totalExpensesForReport,
-        subtractExpenses: showDailyCardTotalExpense,
-        cashAmount,
-        reservation: {
-          reservationCash,
-          openGross: resvForZReport.gross,
-          openPending: resvForZReport.pending,
-          openDeposit: resvForZReport.deposit,
-          openCount: resvForZReport.count,
-        },
-      });
+      const statement = statementOf(ro.length, amountBeforeDiscount, totalDiscount, 0);
       return {
         dateFrom: selectedDateFrom,
         dateTo: selectedDateTo,
         dateLabel,
-        totalSales: ro.length,
+        totalSales: statement.transactionCount,
         returnCount: 0,
-        amountBeforeDiscount,
+        amountBeforeDiscount: statement.grossSales,
         totalAmount,
-        netSales: dayEnd.netSales,
-        totalExpenses: totalExpensesForReport,
-        netAfterExpenses: dayEnd.netAfterExpenses,
-        reservationGross: dayEnd.reservationGross,
-        reservationPending: dayEnd.reservationPending,
-        reservationCount: dayEnd.reservationCount,
-        reservationDeposit: dayEnd.reservationDeposit,
-        cashAmount: dayEnd.cashAmount,
+        netSales: statement.netSales,
+        netCash: statement.netCash,
+        totalExpenses: statement.expense,
+        reservationDeposit: statement.reservationAmount,
+        cashAmount,
         cardAmount,
         creditAmount,
         otherAmount: 0,
-        totalDiscount,
+        totalDiscount: statement.discount,
         firstSale: ro.length > 0 ? String(ro[0].order_no || ro[0].id || '-') : '-',
         lastSale: ro.length > 0 ? String(ro[ro.length - 1].order_no || ro[ro.length - 1].id || '-') : '-',
         canceledSales: canceledSalesRows.length,
-        refundAmount: 0,
+        refundAmount: statement.salesReturn,
         canceledAmount: 0,
         cashierStats: [],
       };
@@ -6185,11 +6168,7 @@ export function ReportsModule({
           .header { margin-bottom: 3mm; }
           .small { font-size: 9px; color: #444; }
           .section-title { text-align: center; font-weight: 700; margin: 1mm 0 2mm; }
-          .muted { color: #555; }
-          .badge { display: inline-block; border: 1px solid #0891b2; color: #0e7490; font-size: 9px; padding: 0 1.2mm; margin-left: 1mm; text-transform: uppercase; }
-          .info { background: #ecfeff; }
-          .formula { border: 1px dashed #222; padding: 2mm; border-radius: 2mm; margin-top: 2mm; }
-          .formula .row { margin: 0.8mm 0; }
+          .deduct { color: #b91c1c; }
           .final { border-top: 1px solid #000; padding-top: 1.2mm; margin-top: 1.2mm; font-size: 13px; font-weight: 700; }
         </style>
       </head>
@@ -6212,84 +6191,64 @@ export function ReportsModule({
         
         <div class="divider"></div>
         
-        <div class="section-title">${escHtml(tm('reportsSalesSummarySection'))}</div>
-        
         <div class="row">
-          <span class="label">${escHtml(tm('reportsTotalTransactions'))}:</span>
+          <span class="label">${escHtml(tm('reportsZTxnCount'))}</span>
           <span class="value">${zReport.totalSales}</span>
         </div>
         <div class="row">
-          <span class="label">${escHtml(tm('reportsZPrintGrossSales'))}:</span>
+          <span class="label">${escHtml(tm('reportsZGrossSales'))}</span>
           <span class="value">${formatNumber(zReport.amountBeforeDiscount, 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">${escHtml(tm('reportsZPrintDiscountMinus'))}:</span>
+          <span class="label">${escHtml(tm('reportsTotalDiscount'))}</span>
           <span>${formatNumber(zReport.totalDiscount, 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">${escHtml(tm('reportsSalesReturnMinus'))}:</span>
-          <span>${formatNumber(zReport.refundAmount, 2, false)} (${escHtml(tm('reportsZPrintPcsCount').replace('{n}', String(zReport.returnCount ?? 0)))})</span>
+          <span class="label">${escHtml(tm('reportsZSalesReturnAmount'))}</span>
+          <span class="deduct">${formatNumber(zReport.refundAmount, 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">${escHtml(tm('reportsZPrintCancelCount'))}:</span>
-          <span>${zReport.canceledSales}</span>
+          <span class="label">${escHtml(tm('totalExpense'))}</span>
+          <span class="deduct">${formatNumber(zReport.totalExpenses, 2, false)}</span>
+        </div>
+        <div class="row final">
+          <span class="label">${escHtml(tm('reportsZNetSalesAmount'))}</span>
+          <span>${formatNumber(zReport.netSales, 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">${escHtml(tm('reportsZPrintTotalExpenseMinus'))}:</span>
-          <span>${formatNumber(zReport.totalExpenses, 2, false)}</span>
-        </div>
-        <div class="row">
-          <span class="label">${escHtml(tm('reportsZPrintNetTurnover'))}:</span>
-          <span>${formatNumber(zReport.netSales ?? (zReport.totalAmount - zReport.refundAmount), 2, false)}</span>
-        </div>
-        <div class="row info">
-          <span class="label">${escHtml(tm('dailyDepositCollected'))} <span class="badge">${escHtml(tm('cashStatusInfoBadge'))}</span></span>
+          <span class="label">${escHtml(tm('dailyDepositCollected'))}</span>
           <span>${formatNumber(zReport.reservationDeposit ?? 0, 2, false)}</span>
         </div>
-        <div class="row small">
-          <span class="label">${escHtml(tm('reservationGrossLabel'))}</span>
-          <span>${formatNumber(zReport.reservationGross ?? 0, 2, false)}</span>
-        </div>
-        <div class="row small">
-          <span class="label">${escHtml(tm('reservationPendingLabel'))}</span>
-          <span>${formatNumber(zReport.reservationPending ?? 0, 2, false)}</span>
-        </div>
-        <div class="center small muted">${escHtml(tm('cashStatusReservationInfo'))}</div>
-        <div class="row">
-          <span class="label">${escHtml(tm('reportsZPrintFirstReceiptNo'))}:</span>
-          <span>${zReport.firstSale}</span>
-        </div>
-        <div class="row">
-          <span class="label">${escHtml(tm('reportsZPrintLastReceiptNo'))}:</span>
-          <span>${zReport.lastSale}</span>
+        <div class="row final">
+          <span class="label">${escHtml(tm('reportsZNetCashAmount'))}</span>
+          <span>${formatNumber(zReport.netCash, 2, false)}</span>
         </div>
         
+        <div class="divider"></div>
+        <div class="row">
+          <span class="label">${escHtml(tm('reportsZPrintFirstReceiptNo'))}</span>
+          <span>${escHtml(String(zReport.firstSale ?? ''))}</span>
+        </div>
+        <div class="row">
+          <span class="label">${escHtml(tm('reportsZPrintLastReceiptNo'))}</span>
+          <span>${escHtml(String(zReport.lastSale ?? ''))}</span>
+        </div>
         <div class="divider"></div>
         ${restaurantProductBlock}
         <div class="section-title">${escHtml(tm('reportsPaymentSummarySection'))}</div>
         
         <div class="row">
-          <span class="label">${escHtml(tm('reportsPaymentPieCash'))}:</span>
+          <span class="label">${escHtml(tm('reportsPaymentPieCash'))}</span>
           <span class="value">${formatNumber(zReport.cashAmount, 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">${escHtml(tm('cardLabel'))}:</span>
+          <span class="label">${escHtml(tm('cardLabel'))}</span>
           <span>${formatNumber(zReport.cardAmount, 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">${escHtml(tm('veresiyeVerilen'))}:</span>
+          <span class="label">${escHtml(tm('veresiyeVerilen'))}</span>
           <span>${formatNumber(zReport.creditAmount ?? 0, 2, false)}</span>
         </div>
-        
-        <div class="divider"></div>
-
-        <div class="section-title">${escHtml(tm('reportsZPrintAccountSummary'))}</div>
-        <div class="formula">
-          <div class="row"><span class="label">${escHtml(tm('reportsZPrintCashCardCollected'))}</span><span>${formatNumber(posZCollectedAmount(zReport), 2, false)}</span></div>
-          <div class="row"><span class="label">${escHtml(tm('reportsZPrintTotalExpense'))}</span><span>- ${formatNumber(zReport.totalExpenses, 2, false)}</span></div>
-          <div class="row final"><span>${escHtml(tm('reportsZPrintNetAfterExpensesUpper'))}</span><span>${formatNumber(zReport.netAfterExpenses, 2, false)}</span></div>
-        </div>
-        <div class="center small muted" style="margin-top:1mm">${escHtml(tm('reportsZPrintNetFootnote'))}</div>
         
         <div class="divider"></div>
         
@@ -7959,99 +7918,71 @@ export function ReportsModule({
                   </div>
 
                   <div className="p-6 space-y-6">
-                    {/* Sales Summary */}
-                    <div>
-                      <h4 className={`text-sm mb-2 ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>
-                        {tm('reportsSalesSummarySection')}
-                      </h4>
-                      <div className={`rounded-lg border divide-y ${darkMode ? 'border-slate-600 divide-slate-700 bg-slate-900/40' : 'border-slate-200 divide-slate-100 bg-white'}`}>
-                        {([
-                          {
-                            key: 'tx',
-                            label: tm('reportsTotalTransactions'),
-                            value: String(zReport.totalSales),
-                            valueClassName: darkMode ? 'text-blue-400' : 'text-blue-600',
-                          },
-                          {
-                            key: 'gross',
-                            label: tm('reportsBeforeDiscountGross'),
-                            value: formatNumber(zReport.amountBeforeDiscount, 2, false),
-                          },
-                          {
-                            key: 'discount',
-                            label: tm('reportsTotalDiscount'),
-                            value: formatNumber(zReport.totalDiscount, 2, false),
-                            valueClassName: darkMode ? 'text-orange-400' : 'text-orange-600',
-                          },
-                          {
-                            key: 'refund',
-                            label: tm('reportsSalesReturnMinus'),
-                            value: formatNumber(zReport.refundAmount, 2, false),
-                            valueClassName: darkMode ? 'text-red-400' : 'text-red-600',
-                            hint: tm('reportsPaymentTxnShort').replace('{n}', String(zReport.returnCount ?? 0)),
-                          },
-                          {
-                            key: 'net',
-                            label: tm('reportsNetTurnover'),
-                            value: formatNumber(
-                              zReport.netSales ?? zReport.totalAmount - zReport.refundAmount,
-                              2,
-                              false,
-                            ),
-                            valueClassName: darkMode ? 'text-emerald-400' : 'text-emerald-700',
-                            emphasize: true,
-                          },
-                          {
-                            key: 'expense',
-                            label: tm('totalExpense'),
-                            value: formatNumber(zReport.totalExpenses, 2, false),
-                            valueClassName: darkMode ? 'text-rose-400' : 'text-rose-600',
-                          },
-                          {
-                            key: 'netAfter',
-                            label: tm('reportsNetAfterExpenses'),
-                            value: formatNumber(zReport.netAfterExpenses, 2, false),
-                            valueClassName: darkMode ? 'text-indigo-400' : 'text-indigo-700',
-                            emphasize: true,
-                          },
-                        ] as Array<{
-                          key: string;
-                          label: string;
-                          value: string;
-                          valueClassName?: string;
-                          hint?: string;
-                          emphasize?: boolean;
-                        }>).map((row) => (
-                          <div key={row.key} className="flex items-center justify-between gap-4 px-4 py-2.5">
-                            <div className="min-w-0">
-                              <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{row.label}</span>
-                              {row.hint ? (
-                                <p className={`text-xs mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{row.hint}</p>
-                              ) : null}
-                            </div>
-                            <span className={`text-base font-semibold tabular-nums shrink-0 ${row.emphasize ? 'text-lg' : ''} ${row.valueClassName || (darkMode ? 'text-slate-100' : 'text-slate-900')}`}>
-                              {row.value}
-                            </span>
-                          </div>
-                        ))}
-                        <div className={`flex items-start justify-between gap-4 px-4 py-2.5 border-dashed ${darkMode ? 'bg-cyan-950/30' : 'bg-cyan-50/70'}`}>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className={`text-sm ${darkMode ? 'text-cyan-200' : 'text-cyan-900'}`}>{tm('dailyDepositCollected')}</span>
-                              <span className="text-[10px] uppercase tracking-wide text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
-                                {tm('cashStatusInfoBadge')}
-                              </span>
-                            </div>
-                            <p className={`text-xs mt-1 ${darkMode ? 'text-cyan-300/80' : 'text-cyan-800/80'}`}>
-                              {`${tm('reservationGrossLabel')}: ${formatNumber(zReport.reservationGross ?? 0, 2, false)}${(zReport.reservationCount ?? 0) > 0 ? ` · ${zReport.reservationCount} ${tm('dailyDepositCountShort')}` : ''} · ${tm('reservationPendingLabel')}: ${formatNumber(zReport.reservationPending ?? 0, 2, false)}`}
-                            </p>
-                            <p className={`text-[11px] mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{tm('cashStatusReservationInfo')}</p>
-                          </div>
-                          <span className={`text-base font-semibold tabular-nums shrink-0 ${darkMode ? 'text-cyan-300' : 'text-cyan-800'}`}>
-                            {formatNumber(zReport.reservationDeposit ?? 0, 2, false)}
+                    <div
+                      data-testid="z-report-statement"
+                      className={`rounded-lg border divide-y ${darkMode ? 'border-slate-600 divide-slate-700 bg-slate-900/40' : 'border-slate-200 divide-slate-100 bg-white'}`}
+                    >
+                      {([
+                        {
+                          key: 'txn',
+                          label: tm('reportsZTxnCount'),
+                          value: String(zReport.totalSales),
+                        },
+                        {
+                          key: 'gross',
+                          label: tm('reportsZGrossSales'),
+                          value: formatNumber(zReport.amountBeforeDiscount, 2, false),
+                        },
+                        {
+                          key: 'discount',
+                          label: tm('reportsTotalDiscount'),
+                          value: formatNumber(zReport.totalDiscount, 2, false),
+                        },
+                        {
+                          key: 'return',
+                          label: tm('reportsZSalesReturnAmount'),
+                          value: formatNumber(zReport.refundAmount, 2, false),
+                          valueClassName: darkMode ? 'text-red-400' : 'text-red-600',
+                        },
+                        {
+                          key: 'expense',
+                          label: tm('totalExpense'),
+                          value: formatNumber(zReport.totalExpenses, 2, false),
+                          valueClassName: darkMode ? 'text-red-400' : 'text-red-600',
+                        },
+                        {
+                          key: 'net-sales',
+                          label: tm('reportsZNetSalesAmount'),
+                          value: formatNumber(zReport.netSales, 2, false),
+                          valueClassName: darkMode ? 'text-emerald-300' : 'text-emerald-800',
+                          emphasize: true,
+                        },
+                        {
+                          key: 'reservation',
+                          label: tm('dailyDepositCollected'),
+                          value: formatNumber(zReport.reservationDeposit ?? 0, 2, false),
+                        },
+                        {
+                          key: 'net-cash',
+                          label: tm('reportsZNetCashAmount'),
+                          value: formatNumber(zReport.netCash, 2, false),
+                          valueClassName: darkMode ? 'text-emerald-200' : 'text-emerald-900',
+                          emphasize: true,
+                        },
+                      ] as Array<{
+                        key: string;
+                        label: string;
+                        value: string;
+                        valueClassName?: string;
+                        emphasize?: boolean;
+                      }>).map((row) => (
+                        <div key={row.key} className="flex items-center justify-between gap-4 px-4 py-2.5">
+                          <span className={`text-sm ${row.emphasize ? 'font-semibold' : ''} ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{row.label}</span>
+                          <span className={`font-semibold tabular-nums shrink-0 text-right ${row.emphasize ? 'text-lg' : 'text-base'} ${row.valueClassName || (darkMode ? 'text-slate-100' : 'text-slate-900')}`}>
+                            {row.value}
                           </span>
                         </div>
-                      </div>
+                      ))}
                     </div>
 
                     {/* Payment Summary */}
