@@ -81,6 +81,12 @@ export function KasaIslemModal({
     .trim()
     .toUpperCase();
 
+  const isVirman = islemTipi === 'VIRMAN';
+  // Seçici yok: kaynak kasa para birimi (yoksa defter, o da yoksa IQD). Kur çevrimi yok.
+  const virmanCurrency = (
+    String(kasa.id_doviz_kodu || ledgerCurrency || 'IQD').trim().toUpperCase() || 'IQD'
+  );
+
   const renderCariBalance = (cari: Pick<CariHesap, 'cardType' | 'ledgerBalance' | 'bakiye'>) => {
     const raw = cari.ledgerBalance ?? cari.bakiye ?? 0;
     const { side, sideLabel, hint } = getCariBalanceDirection(cari.cardType, raw, tm);
@@ -118,7 +124,9 @@ export function KasaIslemModal({
         kasa_id: editingIslem.kasa_id || kasa.id,
         islem_tipi: editingIslem.islem_tipi || islemTipi,
         islem_tarihi: (editingIslem.islem_tarihi || new Date().toISOString()).slice(0, 10),
-        doviz_kodu: editingIslem.doviz_kodu || kasa.id_doviz_kodu || ledgerCurrency,
+        doviz_kodu: islemTipi === 'VIRMAN'
+          ? (String(kasa.id_doviz_kodu || ledgerCurrency || 'IQD').trim().toUpperCase() || 'IQD')
+          : (editingIslem.doviz_kodu || kasa.id_doviz_kodu || ledgerCurrency),
         tutar: Number(editingIslem.tutar || 0),
       };
     }
@@ -130,7 +138,9 @@ export function KasaIslemModal({
       islem_saati: new Date().toTimeString().slice(0, 5),
       duzenlenme_tarihi: new Date().toISOString().split('T')[0],
       islem_tipi: islemTipi,
-      doviz_kodu: kasa.id_doviz_kodu || ledgerCurrency,
+      doviz_kodu: islemTipi === 'VIRMAN'
+        ? (String(kasa.id_doviz_kodu || ledgerCurrency || 'IQD').trim().toUpperCase() || 'IQD')
+        : (kasa.id_doviz_kodu || ledgerCurrency),
       tutar: 0,
       dovizli_tutar: 0,
       tax_rate: 0,
@@ -388,6 +398,8 @@ export function KasaIslemModal({
         ...(formData as KasaIslemi),
         tutar: submitTutar,
         dovizli_tutar: submitTutar,
+        // Virman: seçilen döviz yok. Aynı tutar, kaynak kasa birimi, kur 1 (servis). Hedefe ayrı kur yazılmaz.
+        ...(islemTipi === 'VIRMAN' ? { doviz_kodu: virmanCurrency, dovizli_tutar: submitTutar } : {}),
         islem_tipi: postedTip,
         islem_no: invoiceFiche || formData.islem_no,
         party_id: islemTipi === 'CH_ODEME' && ortakAdina ? formData.party_id : undefined,
@@ -529,7 +541,68 @@ export function KasaIslemModal({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto max-h-[80vh]">
+          {/* Virman: tarih, fiş no ve özel kod aynı üst satır */}
+          {isVirman && (
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['dateLabel']}</label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={formData.islem_tarihi}
+                    min={periodBegDate || undefined}
+                    max={periodEndDate || undefined}
+                    onChange={(e) => setFormData({ ...formData, islem_tarihi: e.target.value })}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                  />
+                  <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+                {(periodBegDate || periodEndDate) ? (
+                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 leading-snug">
+                    {tm('cashModalDateRangeHint')
+                      .replace('{beg}', periodBegDate || '—')
+                      .replace('{end}', periodEndDate || '—')}
+                  </p>
+                ) : null}
+                {isOperationDateBackDated ? (
+                  <label className="mt-2 flex items-start gap-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 p-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={backDatedConfirmed}
+                      onChange={(e) => setBackDatedConfirmed(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 accent-amber-600"
+                    />
+                    <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-200 leading-snug">
+                      {tm('cashModalBackDatedConfirm')}
+                    </span>
+                  </label>
+                ) : null}
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['documentNo']}</label>
+                <input
+                  type="text"
+                  value={formData.islem_no || ''}
+                  onChange={(e) => setFormData({ ...formData, islem_no: e.target.value.toUpperCase() })}
+                  className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                  placeholder={t['placeholderDocumentNo']}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['specialCode']}</label>
+                <input
+                  type="text"
+                  value={formData.ozel_kod || ''}
+                  onChange={(e) => setFormData({ ...formData, ozel_kod: e.target.value.toUpperCase() })}
+                  className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                  placeholder={t['placeholderSpecialCode']}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Main Info */}
+          {!isVirman && (
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['cashRegister']}</label>
@@ -613,6 +686,7 @@ export function KasaIslemModal({
               ) : null}
             </div>
           </div>
+          )}
 
           {isInvoiceCash && (
             <div className="space-y-1.5">
@@ -775,24 +849,30 @@ export function KasaIslemModal({
             </div>
           )}
 
-          {/* Virman: Target Register Selection */}
-          {islemTipi === 'VIRMAN' && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['targetKasa']}</label>
-              <select
-                value={formData.target_register_id || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, target_register_id: e.target.value }))}
-                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-              >
-                <option value="">
-                  {typeof t['select'] === 'string' ? `${t['select']}...` : 'Seçin...'}
-                </option>
-                {digerKasalar.map(k => (
-                  <option key={k.id} value={k.id}>
-                    {k.kasa_kodu} - {k.kasa_adi} ({formatMoneyWithCode(k.bakiye || 0, k.id_doviz_kodu || ledgerCurrency)})
+          {/* Virman: kaynak ve hedef kasa karşılıklı, eşit kolon */}
+          {isVirman && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['cashRegister']}</label>
+                <input readOnly value={`${kasa.kasa_kodu} - ${kasa.kasa_adi}`} className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm text-gray-500" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['targetKasa']}</label>
+                <select
+                  value={formData.target_register_id || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, target_register_id: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                >
+                  <option value="">
+                    {typeof t['select'] === 'string' ? `${t['select']}...` : 'Seçin...'}
                   </option>
-                ))}
-              </select>
+                  {digerKasalar.map(k => (
+                    <option key={k.id} value={k.id}>
+                      {k.kasa_kodu} - {k.kasa_adi} ({formatMoneyWithCode(k.bakiye || 0, k.id_doviz_kodu || ledgerCurrency)})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
 
@@ -857,7 +937,23 @@ export function KasaIslemModal({
             </div>
           )}
 
-          {/* Amounts */}
+          {/* Amounts — virmanda döviz seçici yok; birim etiket olarak kalır */}
+          {isVirman ? (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['operationAmount']} ({virmanCurrency})</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={displayAmount}
+                onChange={handleAmountChange}
+                onBlur={handleAmountBlur}
+                onFocus={handleAmountFocus}
+                className="w-full px-4 py-3 bg-blue-50 dark:bg-blue-900/10 border-2 border-blue-200 dark:border-blue-800 text-xl font-bold text-blue-700 dark:text-blue-300 outline-none rounded focus:border-blue-500"
+                placeholder="0,00"
+                autoFocus
+              />
+            </div>
+          ) : (
           <div className="grid grid-cols-2 gap-4 pt-2">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['operationAmount']} ({formData.doviz_kodu})</label>
@@ -886,7 +982,9 @@ export function KasaIslemModal({
               </select>
             </div>
           </div>
+          )}
 
+          {!isVirman && (
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['documentNo']}</label>
@@ -909,6 +1007,7 @@ export function KasaIslemModal({
               />
             </div>
           </div>
+          )}
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['description']}</label>
