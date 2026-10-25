@@ -839,7 +839,7 @@ type DailyUnifiedRow = {
    */
   isForfeitedDeposit?: boolean;
   /**
-   * Kapanmış peşinat. Satır durur. Net 0'dır.
+   * Kapanmış peşinat. Satış detayında görünmez.
    * Tutar hizmet cirosundadır, rezervasyon kutusuna ikinci kez girmez.
    */
   settledDeposit?: boolean;
@@ -3640,9 +3640,9 @@ export function ReportsModule({
         linkedAppointmentId: linkedAppointmentId || undefined,
       };
     };
-    // Kapanmış peşinat da listede durur. Yeni fiş eskisini silmez.
-    // Net katkısı 0'dır: tutar hizmet cirosundadır, ikinci kez yazılmaz.
-    // Açık ve iptal satırı kendi peşinat tutarıyla kalır.
+    // Kapanmış randevunun avans satırı listede yoktur. Peşinat hizmet cirosundadır.
+    // Yeni fiş eskisini silmez. Açık ve iptal satırı kendi peşinat tutarıyla kalır.
+    // Gizleme müşteri adına göre değildir.
     const avansRows = dailyReservationAvansList(
       dailyAvansList.map((raw) => {
         const noteStr = String(raw?.notes ?? '');
@@ -7603,7 +7603,7 @@ export function ReportsModule({
                               return '—';
                             }
                             // Açık veya iptal avans satırı: net hücre bu fişin peşinatıdır.
-                            // Kapanmış peşinat satırı durur; net 0. Tutar hizmet cirosundadır.
+                            // Kapanmış peşinat satırı listeye girmez. Tutar hizmet cirosundadır.
                             // Dip toplam bu tutarı rezervasyon kutusu üzerinden bir kez yazar.
                             if (row.isAvans && row.settledDeposit) {
                               return '—';

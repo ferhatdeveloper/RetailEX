@@ -7,8 +7,9 @@
  * İptal, fatura no / satış fişi / avans fişi kimliğine bağlıdır.
  * Aynı müşterinin diğer fişi iptal olmaz, gizlenmez, birleşmez.
  * İptal peşinatı yalnız o faturanın tutarıdır. Başka faturanın peşinatı eklenmez.
- * Kapanmış peşinat cirodadır; rezervasyon kutusuna ve ciroya ikinci kez girmez.
- * Açık peşinat rezervasyon kutusunda kalır.
+ * Kapanmış randevunun peşinat satırı listede görünmez. Tutar cirodadır;
+ * rezervasyon kutusuna ve nete ikinci kez girmez.
+ * Açık peşinat ve iptal peşinatı listede kalır. İptal tutarı kutuya bir kez girer.
  *
  * Net = ciro + rezervasyon − iade − gider. İade ve gider bir kez.
  * İndirim ciro netindedir, açık cari değildir.
@@ -143,15 +144,30 @@ function reservationOf(fiche: DailyScreenFiche): number {
 }
 
 /**
+ * Kapanmış randevunun peşinat satırı. Hizmet cirosu olan fiş durur.
+ * İptal ve açık peşinat durur. Müşteri adı bu karara girmez.
+ */
+export function closedAppointmentDepositHiddenFromList(fiche: DailyScreenFiche): boolean {
+  if (fiche.ownCancelled === true || fiche.openDeposit === true) return false;
+  if (fiche.closed !== true) return false;
+  if (!(absMoney(fiche.depositAmount) > 0)) return false;
+  if (money(fiche.revenue) !== 0) return false;
+  if (absMoney(fiche.returnAmount) > 0) return false;
+  if (absMoney(fiche.expenseAmount) > 0) return false;
+  return true;
+}
+
+/**
  * Tam kümenin kartları ve dip toplamı.
  * Dip toplam son N satır değil, listedeki bütün fişlerdir.
- * Kapanmış peşinat ciroya ikinci kez eklenmez.
+ * Kapanmış peşinat satırı listede yoktur ve ciroya ikinci kez eklenmez.
  */
 export function summarizeDailyScreenFiches(
   fiches: readonly DailyScreenFiche[],
   cancelTargetIds?: readonly string[] | null,
 ): DailyScreenTotals {
-  const rows = bindInvoiceCancellations(fiches, cancelTargetIds);
+  const bound = bindInvoiceCancellations(fiches, cancelTargetIds);
+  const rows = bound.filter((row) => !closedAppointmentDepositHiddenFromList(row));
   let revenue = 0;
   let reservation = 0;
   let returns = 0;

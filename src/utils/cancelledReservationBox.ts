@@ -11,9 +11,11 @@
  * - Gelmedi. İptal değildir.
  *
  * Aynı randevunun peşinatı avans ve depozito kanallarında bir kez durur.
- * Günlük satış detayında kapanmış randevunun avans satırı durur.
- * Net katkısı 0'dır; peşinat hizmet cirosundadır, ikinci kez yazılmaz.
- * Açık ve iptal satırı gerçek peşinat tutarıyla kalır.
+ * Günlük satış detayında kapanmış randevunun avans satırı görünmez.
+ * Peşinat hizmet cirosundadır; rezervasyon kutusuna ve nete ikinci kez girmez.
+ * Açık peşinat ve iptal fişinin avans satırı listede kalır.
+ * İptal peşinatı iade değildir; yalnız o fişin tutarı kutuya bir kez girer.
+ * Gizleme müşteri adına göre değildir. Başka fiş düşmez.
  * Tahsilat kartı kapanmış satışın kasaya giren tutarıdır; açık ve iptal
  * peşinatı bu karta eklenmez.
  */
@@ -278,8 +280,9 @@ export function clinicPanelTahsilat(input: CancelledReservationBoxInput): number
 }
 
 /**
- * Kapanmış peşinatın net katkısı 0'dır. Tutar hizmet cirosundadır.
- * Satır listeden düşmez. İade edilmiş peşinat da nete girmez.
+ * Kapanmış randevuya bağlı avans. Satış detayında görünmez.
+ * Tutar hizmet cirosundadır; nete ve rezervasyon kutusuna ikinci kez girmez.
+ * İade edilmiş peşinat da nete girmez. İptal ve açık peşinat burada yoktur.
  */
 export function isClosedReservationAvansHidden(row: CancelledReservationAvansRow): boolean {
   if (avansRefunded(row)) return true;
@@ -291,8 +294,9 @@ export function isClosedReservationAvansHidden(row: CancelledReservationAvansRow
 }
 
 /**
- * Günlük satış detayı. Seçilen gündeki avans fişleri durur.
- * Yeni hizmet veya yeni iptal, eski fişi düşürmez.
+ * Günlük satış detayı. Seçilen gündeki açık ve iptal avans fişleri durur.
+ * Kapanmış randevunun avans satırı listede yoktur; peşinat hizmet cirosundadır.
+ * Yeni hizmet veya yeni iptal, eski fişi düşürmez. Müşteri adı süzgeç değildir.
  * İade edilmiş peşinat listede yoktur; para kasadan çıkmıştır.
  */
 export function dailyReservationAvansList<T extends CancelledReservationAvansRow>(
@@ -301,6 +305,7 @@ export function dailyReservationAvansList<T extends CancelledReservationAvansRow
   const kept: T[] = [];
   for (const row of rows || []) {
     if (avansRefunded(row)) continue;
+    if (isClosedReservationAvansHidden(row)) continue;
     kept.push(row);
   }
   return kept;

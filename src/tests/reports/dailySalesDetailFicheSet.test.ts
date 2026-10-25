@@ -5,7 +5,7 @@
  * 6 fiş 6 satırdır. 7. eklenince ilk 6 durur.
  * Dip toplam son 4'ün değil, bütün satırların toplamıdır.
  * Net = ciro + rezervasyon − iade − gider.
- * Kapanan peşinat ciroya ikinci kez eklenmez.
+ * Kapanan peşinat satırı listede yoktur ve ciroya ikinci kez eklenmez.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -140,7 +140,7 @@ describe('günlük rapor fiş kümesi', () => {
     expect(withReturn.net).not.toBe(100_000 + 10_000 - 10_000 - 10_000 - 30_000);
   });
 
-  it('kapanan peşinat ciroya ikinci kez eklenmez; açık peşinat kutuda kalır', () => {
+  it('kapanan peşinat satırı listede yoktur ve ciroya ikinci kez eklenmez; açık peşinat kutuda kalır', () => {
     const closed = fiche({
       id: 'avans-kapali',
       receiptNumber: 'AVANS-KAPALI',
@@ -149,7 +149,8 @@ describe('günlük rapor fiş kümesi', () => {
       closed: true,
     });
     const screen = summarizeDailyScreenFiches([...firstSix, closed], ['avans-iptal']);
-    expect(screen.rows.map((row) => row.id)).toContain('avans-kapali');
+    expect(screen.rows.map((row) => row.id)).not.toContain('avans-kapali');
+    expect(screen.rows).toHaveLength(6);
     expect(screen.rows.map((row) => row.id)).toContain('bea-1');
     expect(screen.revenue).toBe(100_000);
     expect(screen.revenue).not.toBe(105_000);
