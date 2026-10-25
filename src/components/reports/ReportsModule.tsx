@@ -10,7 +10,7 @@ import {
   UNLISTED_FINANCIAL_REPORT_KEYS,
 } from '../../utils/reportMenuPeriodSummary';
 import { ReportChatAI } from './ReportChatAI';
-import { DayEndZPieChart } from './DayEndZPieChart';
+import { DayEndZStatementPanel } from './DayEndZStatementPanel';
 import './DayEndZReportLayout.css';
 import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
@@ -222,6 +222,7 @@ import {
   SurveyCommentsReport,
 } from '../beauty/components/SurveyExtraReports';
 import { OverdueUncalledFollowUpReport } from '../beauty/components/OverdueUncalledFollowUpReport';
+import { AppointmentReport } from '../beauty/components/AppointmentReport';
 import {
   getRuntimeReportMenuParams,
   isReportMenuParamEnabled,
@@ -1047,7 +1048,7 @@ type ReportTab =
   // Ödeme & İşlem
   'payment-distribution' | 'discount-report' | 'cash-status' | 'commission' |
   // Güzellik özel
-  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-staff-treatment-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report' | 'beauty-overdue-uncalled-report' | 'beauty-deposit-prepayment-report';
+  'beauty-service-report' | 'beauty-appointment-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-staff-treatment-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report' | 'beauty-overdue-uncalled-report' | 'beauty-deposit-prepayment-report';
 
 /** Sol menüde gösterilmez: ekranı yok, gizlenen rapor veya yalnızca “yakında” placeholder idi. */
 const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
@@ -1088,6 +1089,7 @@ const RESTAURANT_ONLY_REPORT_KEYS = new Set<string>([
 ]);
 
 const BEAUTY_ONLY_REPORT_KEYS = new Set<string>([
+  'beauty-appointment-report',
   'beauty-cancelled-report',
   'beauty-appointment-product-report',
   'beauty-commission-report',
@@ -1105,6 +1107,7 @@ const BEAUTY_ONLY_REPORT_KEYS = new Set<string>([
 function beautyReportMenuItems(tm: (key: string) => string, reportMenuParams: ReportMenuParams) {
   return [
     { key: 'beauty-service-report', label: tm('beautyServiceBreakdownReport'), icon: <DeploymentUnitOutlined /> },
+    { key: 'beauty-appointment-report', label: tm('beautyAppointmentReport'), icon: <Calendar className="w-4 h-4" /> },
     { key: 'beauty-cancelled-report', label: tm('beautyCancelledOnlyReport'), icon: <AlertTriangle /> },
     { key: 'beauty-appointment-product-report', label: tm('beautyAppointmentProductSalesReport'), icon: <ShoppingCart className="w-4 h-4" /> },
     { key: 'beauty-commission-report', label: tm('bShellNavCommissionReport'), icon: <SafetyCertificateOutlined /> },
@@ -7028,6 +7031,7 @@ export function ReportsModule({
   const allMenuItems = getMenuItems();
   const menuItems = filterReportMenuBySearch(allMenuItems, reportMenuSearch);
   const isBeautyServiceReportTab = selectedTab === 'beauty-service-report';
+  const isBeautyAppointmentReportTab = selectedTab === 'beauty-appointment-report';
   const isErpServiceBreakdown = businessType !== 'beauty' && isBeautyServiceReportTab;
   const isBeautyCancelledReportTab = selectedTab === 'beauty-cancelled-report';
   const isBeautyAppointmentProductReportTab = selectedTab === 'beauty-appointment-product-report';
@@ -7897,103 +7901,28 @@ export function ReportsModule({
                   </div>
 
                   <div className="p-6 space-y-6">
-                    <div
-                      data-testid="z-report-statement"
-                      className={darkMode ? 'z-day-split z-day-dark' : 'z-day-split'}
-                    >
-                      <div className="z-day-lines-wrap">
-                        <div className="z-day-lines">
-                          {([
-                            {
-                              key: 'txn',
-                              label: tm('reportsZTxnCount'),
-                              value: String(zReport.totalSales),
-                              color: darkMode ? '#f8fafc' : '#0f172a',
-                            },
-                            {
-                              key: 'gross',
-                              label: tm('reportsZGrossSales'),
-                              value: formatNumber(zReport.amountBeforeDiscount, 2, false),
-                              color: darkMode ? '#f8fafc' : '#0f172a',
-                            },
-                            {
-                              key: 'discount',
-                              label: tm('reportsTotalDiscount'),
-                              value: formatNumber(zReport.totalDiscount, 2, false),
-                              color: darkMode ? '#f8fafc' : '#0f172a',
-                            },
-                            {
-                              key: 'return',
-                              label: tm('reportsZSalesReturnAmount'),
-                              value: formatNumber(zReport.refundAmount, 2, false),
-                              color: darkMode ? '#f87171' : '#dc2626',
-                            },
-                            {
-                              key: 'expense',
-                              label: tm('totalExpense'),
-                              value: formatNumber(zReport.totalExpenses, 2, false),
-                              color: darkMode ? '#f87171' : '#dc2626',
-                            },
-                            {
-                              key: 'net-sales',
-                              label: tm('reportsZNetSalesAmount'),
-                              value: formatNumber(zReport.netSales, 2, false),
-                              color: darkMode ? '#6ee7b7' : '#166534',
-                              emphasize: true,
-                            },
-                            {
-                              key: 'reservation',
-                              label: tm('dailyDepositCollected'),
-                              value: formatNumber(zReport.reservationDeposit ?? 0, 2, false),
-                              color: darkMode ? '#f8fafc' : '#0f172a',
-                            },
-                            {
-                              key: 'net-cash',
-                              label: tm('reportsZNetCashAmount'),
-                              value: formatNumber(zReport.netCash, 2, false),
-                              color: darkMode ? '#a7f3d0' : '#064e3b',
-                              emphasize: true,
-                            },
-                          ] as Array<{
-                            key: string;
-                            label: string;
-                            value: string;
-                            color: string;
-                            emphasize?: boolean;
-                          }>).map((row) => (
-                            <React.Fragment key={row.key}>
-                              <div className={row.emphasize ? 'z-day-label is-strong' : 'z-day-label'}>{row.label}</div>
-                              <div
-                                className={row.emphasize ? 'z-day-value is-strong' : 'z-day-value'}
-                                style={{ color: row.color }}
-                              >
-                                {row.value}
-                              </div>
-                            </React.Fragment>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="z-day-chart-wrap">
-                        <DayEndZPieChart
-                          netSales={zReport.netSales}
-                          reservationAmount={zReport.reservationDeposit ?? 0}
-                          salesReturn={zReport.refundAmount}
-                          expense={zReport.totalExpenses}
-                          discount={zReport.totalDiscount}
-                          netCash={zReport.netCash}
-                          title={tm('reportsZPieTitle')}
-                          netCashLabel={tm('reportsZNetCashAmount')}
-                          darkMode={darkMode}
-                          labels={{
-                            netSales: tm('reportsZNetSalesAmount'),
-                            reservation: tm('dailyDepositCollected'),
-                            salesReturn: tm('reportsZSalesReturnAmount'),
-                            expense: tm('totalExpense'),
-                            discount: tm('reportsTotalDiscount'),
-                          }}
-                        />
-                      </div>
-                    </div>
+                    <DayEndZStatementPanel
+                      darkMode={darkMode}
+                      transactionCount={zReport.totalSales}
+                      grossSales={zReport.amountBeforeDiscount}
+                      discount={zReport.totalDiscount}
+                      salesReturn={zReport.refundAmount}
+                      expense={zReport.totalExpenses}
+                      netSales={zReport.netSales}
+                      reservationAmount={zReport.reservationDeposit ?? 0}
+                      netCash={zReport.netCash}
+                      title={tm('reportsZPieTitle')}
+                      labels={{
+                        transactionCount: tm('reportsZTxnCount'),
+                        grossSales: tm('reportsZGrossSales'),
+                        discount: tm('reportsTotalDiscount'),
+                        salesReturn: tm('reportsZSalesReturnAmount'),
+                        expense: tm('totalExpense'),
+                        netSales: tm('reportsZNetSalesAmount'),
+                        reservation: tm('dailyDepositCollected'),
+                        netCash: tm('reportsZNetCashAmount'),
+                      }}
+                    />
 
                     <div className="space-y-2">
                         {(zReport.cashierStats?.length ?? 0) > 0 && (
@@ -10623,6 +10552,10 @@ export function ReportsModule({
 
             {isBeautyDepositPrePaymentReportTab && (
               <DepositPrePaymentReport />
+            )}
+
+            {isBeautyAppointmentReportTab && (
+              <AppointmentReport />
             )}
 
             {isBeautyOverdueUncalledReportTab && (

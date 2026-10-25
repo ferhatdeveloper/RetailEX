@@ -4,6 +4,7 @@ import {
   type CancelledReservationBoxInput,
 } from './cancelledReservationBox';
 import { formatNumber } from './formatNumber';
+import { integerSharePercents } from './sharePercent';
 import { localCalendarDateKey } from './localCalendarDate';
 import { saleCollectedSplit } from './saleCollectedAmounts';
 import { isDepositSale } from './reportDepositFilter';
@@ -449,6 +450,8 @@ export interface DayEndZPieSlice {
   amount: number;
   /** Sıfır ve negatif tutar pastada yer kaplamaz. Açıklamada 0 kalabilir. */
   inChart: boolean;
+  /** Dilim tutarı / grafikteki dilimlerin toplamı. Grafik dışı dilimde 0. */
+  sharePercent: number;
 }
 
 /** Net satış yeşil, rezervasyon turuncu, iade kırmızı, gider bordo, indirim mor. */
@@ -476,10 +479,15 @@ export function buildDayEndZPieSlices(
     expense: round2(Number(statement.expense) || 0),
     discount: round2(Number(statement.discount) || 0),
   };
-  return DAY_END_Z_PIE_SLICE_ORDER.map((key) => {
+  const drafts = DAY_END_Z_PIE_SLICE_ORDER.map((key) => {
     const amount = amountOf[key];
     return { key, amount, inChart: amount > 0.004 };
   });
+  const percents = integerSharePercents(drafts.map((slice) => (slice.inChart ? slice.amount : 0)));
+  return drafts.map((slice, index) => ({
+    ...slice,
+    sharePercent: slice.inChart ? percents[index] : 0,
+  }));
 }
 
 function escHtml(value: string): string {
