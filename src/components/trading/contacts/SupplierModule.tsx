@@ -55,6 +55,7 @@ import {
   type SupplierListColumnId,
 } from './supplierListColumns';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
+import { cariListBalanceForDisplay } from '../../../utils/cariListBalance';
 
 type CariListFilter = 'all' | 'customer' | 'supplier' | 'duplicates' | 'employee' | 'partner';
 
@@ -73,6 +74,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Rezervasyon peşinatı — liste bakiyesinden düşülür, deftere yazılmaz. */
+  const [reservationById, setReservationById] = useState<Record<string, number>>({});
   /** Hover'da lazy yüklenen ledger Σ cache (supplier ID → ledger net toplamı).
    * Tedarikçi listesi için DB cache ile ledger farkını tooltip'te göstermek
    * için kullanılır; her supplier için ayrı sorgu olduğundan hover ile
@@ -251,8 +254,12 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
     try {
       const { repairCariLedgerConsistency } = await import('../../../services/api/accountLedgerRepair');
       await repairCariLedgerConsistency().catch(() => { /* sessiz */ });
-      const all = await supplierAPI.getAll();
+      const [all, deposits] = await Promise.all([
+        supplierAPI.getAll(),
+        supplierAPI.listReservationDepositTotals(),
+      ]);
       setSuppliers(all);
+      setReservationById(deposits);
       setSelectedAccount((prev) => {
         if (!prev) return prev;
         return all.find((s) => s.id === prev.id) ?? prev;
@@ -828,27 +835,35 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
     }
     if (isColumnVisible('balance')) {
       cols.push(
-        columnHelper.accessor('balance', {
+        columnHelper.accessor(
+          (row) => cariListBalanceForDisplay(row.cardType, row.balance, reservationById[row.id] ?? 0),
+          {
+          id: 'balance',
           header: tm('crmBalance'),
           cell: info => {
-            const val = info.getValue() || 0;
+            const val = Number(info.getValue()) || 0;
             const sup = info.row.original;
+            const ledgerVal = Number(sup.balance) || 0;
+            const reservation = reservationById[sup.id] ?? 0;
             const rep = reportingCurrency !== mainCurrency ? toReporting(Math.abs(val)) : null;
             const { side, sideLabel, hint } = getCariBalanceDirection(info.row.original.cardType, val, tm);
-            const colorClass = side === 'B' ? 'text-red-600' : 'text-orange-600';
+            const colorClass = side === 'B' ? 'text-red-600' : side === 'A' ? 'text-orange-600' : 'text-gray-500';
             const badgeClass = side === 'B' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
             const ledgerEntry = ledgerCache[sup.id];
             let tooltipExtra = '';
+            if (reservation > 0.005 && Math.abs(val - ledgerVal) > 0.5) {
+              tooltipExtra += `\nRezervasyon peşinatı ${formatNumber(reservation, mainDec, mainShowDec)} ${mainCurrency} alacak bakiyesine yazılmadı`;
+            }
             if (ledgerEntry === undefined) {
-              tooltipExtra = `\n⏳ Σ ledger yükleniyor (hover'da)...`;
+              tooltipExtra += `\n⏳ Σ ledger yükleniyor (hover'da)...`;
             } else if (ledgerEntry === null) {
-              tooltipExtra = `\n⚠ Σ ledger hesaplanamadı (sorgu hata verdi)`;
+              tooltipExtra += `\n⚠ Σ ledger hesaplanamadı (sorgu hata verdi)`;
             } else {
-              const diff = Math.abs(Math.abs(val) - Math.abs(ledgerEntry));
+              const diff = Math.abs(Math.abs(ledgerVal) - Math.abs(ledgerEntry));
               if (diff < 0.5) {
-                tooltipExtra = `\n✓ Σ ledger = ${formatNumber(Math.abs(ledgerEntry), mainDec, mainShowDec)} ${mainCurrency} (DB cache ile eşleşiyor)`;
+                tooltipExtra += `\n✓ Σ ledger = ${formatNumber(Math.abs(ledgerEntry), mainDec, mainShowDec)} ${mainCurrency} (DB cache ile eşleşiyor)`;
               } else {
-                tooltipExtra = `\nΣ ledger = ${formatNumber(Math.abs(ledgerEntry), mainDec, mainShowDec)} ${mainCurrency}\n⚠ fark = ${formatNumber(diff, mainDec, mainShowDec)} ${mainCurrency} (DB cache ≠ ledger — orphan CH_ODEME veya limit kesilmesi olabilir)`;
+                tooltipExtra += `\nΣ ledger = ${formatNumber(Math.abs(ledgerEntry), mainDec, mainShowDec)} ${mainCurrency}\n⚠ fark = ${formatNumber(diff, mainDec, mainShowDec)} ${mainCurrency} (DB cache ≠ ledger — orphan CH_ODEME veya limit kesilmesi olabilir)`;
               }
             }
             return (
@@ -875,7 +890,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               </div>
             );
           },
-          meta: { align: 'right' }
+          meta: { align: 'right' },
         })
       );
     }
@@ -944,6 +959,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
     repDec,
     repShowDec,
     toReporting,
+    reservationById,
   ]);
 
   const columnVisibilityControl = (
@@ -1252,7 +1268,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               footerSumColumns={[
                 {
                   columnId: 'balance',
-                  getValue: (r: Supplier) => Number(r.balance) || 0,
+                  getValue: (r: Supplier) =>
+                    cariListBalanceForDisplay(r.cardType, r.balance, reservationById[r.id] ?? 0),
                   format: (sum: number) => (
                     <span className="tabular-nums font-bold">
                       {formatNumber(sum, 2)} {mainCurrency}
