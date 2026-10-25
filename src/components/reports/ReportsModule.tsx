@@ -25,10 +25,12 @@ import {
   isForfeitedUnrefundedDeposit,
 } from '../../utils/forfeitedReservationCash';
 import {
+  assembleDailySalesDetailRows,
   beautyPeriodFicheToSale,
   mergeUnmirroredPeriodFiches,
   passesDailySalesDetailList,
 } from '../../utils/dailySalesDetailRows';
+import { ficheIsCancelTarget } from '../../utils/dailySalesDetailFicheSet';
 import {
   dailyNetSaleRevenue,
 } from '../../utils/dailyReportKpis';
@@ -226,7 +228,12 @@ import {
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
 import { reservationPendingForRange } from '../../utils/reportReservationPending';
-import { cancelledUnclosedReservationBox, dailyReservationAvansList } from '../../utils/cancelledReservationBox';
+import {
+  cancelledUnclosedReservationBox,
+  dailyReservationAvansList,
+  dailyReservationAvansNet,
+  isClosedReservationAvansHidden,
+} from '../../utils/cancelledReservationBox';
 import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
@@ -830,6 +837,11 @@ type DailyUnifiedRow = {
    * Hizmet satışı değildir. Net nakde bir kez yazılır.
    */
   isForfeitedDeposit?: boolean;
+  /**
+   * Kapanmış peşinat. Satır durur. Net 0'dır.
+   * Tutar hizmet cirosundadır, rezervasyon kutusuna ikinci kez girmez.
+   */
+  settledDeposit?: boolean;
   /** Gider pusulası / kasa çıkışı. Net eksi; indirim ve ciro değildir. */
   isExpense?: boolean;
   erpSale?: Sale;
@@ -849,6 +861,14 @@ type DailyUnifiedRow = {
    */
   linkedAppointmentId?: string;
 };
+
+/** Izgara satırı. Kimlik bir kez. Müşteri adı eski fişi ezmez. Dilim yok. */
+function listDailyDetailGridRows<T extends { key?: string; id?: string | null }>(rows: readonly T[]): T[] {
+  return assembleDailySalesDetailRows(rows.map((row) => ({
+    ...row,
+    id: String(row.id || row.key || '').trim(),
+  })));
+}
 
 type DailyKindFilter = 'all' | 'service' | 'product' | 'reservation';
 
@@ -1439,7 +1459,7 @@ export function ReportsModule({
         const day = localCalendarDateKey(sale.date);
         return day >= ledgerFrom && day <= ledgerTo;
       });
-      setReportRangeSales(inPeriod);
+      setReportRangeSales(assembleDailySalesDetailRows(inPeriod));
     } catch (err) {
       console.error('[ReportsModule] Seçili dönem satışları yüklenemedi:', err);
       setReportRangeSales([]);
@@ -3547,13 +3567,38 @@ export function ReportsModule({
       const appointmentStatus = linkedAppointmentId
         ? (appointmentStatusById.get(linkedAppointmentId) || '')
         : '';
+      const ownCancel = avansStatus === 'kept_on_cancel'
+        || (appointmentStatus !== '' && isForfeitedUnrefundedDeposit({
+          amount,
+          status: avansStatus,
+          notes: noteStr,
+          appliedSaleId,
+          appointmentStatus,
+        }));
+      const cancelTargets = ownCancel ? [String(a.id || ''), ref] : [];
       const forfeited = isForfeitedUnrefundedDeposit({
         amount,
         status: avansStatus,
         notes: noteStr,
         appliedSaleId,
         appointmentStatus,
-      });
+      }) && ficheIsCancelTarget(
+        { id: String(a.id || ''), receiptNumber: ref, customerName },
+        cancelTargets,
+      );
+      const settledDeposit = !forfeited && isClosedReservationAvansHidden({
+        amount,
+        status: avansStatus,
+        notes: noteStr,
+        appliedSaleId,
+        appointmentStatus,
+      }) && dailyReservationAvansNet({
+        amount,
+        status: avansStatus,
+        notes: noteStr,
+        appliedSaleId,
+        appointmentStatus,
+      }) === 0;
       return {
         key: `avans-${a.id}`,
         source: 'avans' as const,
@@ -3569,6 +3614,7 @@ export function ReportsModule({
         remaining: 0,
         isAvans: true,
         isForfeitedDeposit: forfeited,
+        settledDeposit,
         erpSale: {
           id: a.id,
           receiptNumber: ref,
@@ -3593,8 +3639,9 @@ export function ReportsModule({
         linkedAppointmentId: linkedAppointmentId || undefined,
       };
     };
-    // Kapanmış randevunun avans satırı listede durmaz. Peşinat hizmet
-    // fişinin içindedir. Açık ve iptal satırı gerçek peşinatla kalır.
+    // Kapanmış peşinat da listede durur. Yeni fiş eskisini silmez.
+    // Net katkısı 0'dır: tutar hizmet cirosundadır, ikinci kez yazılmaz.
+    // Açık ve iptal satırı kendi peşinat tutarıyla kalır.
     const avansRows = dailyReservationAvansList(
       dailyAvansList.map((raw) => {
         const noteStr = String(raw?.notes ?? '');
@@ -3893,7 +3940,7 @@ export function ReportsModule({
       tm('reportsDailyKindExpense') || 'Gider',
       userNameById,
     );
-    if (expenseRows.length === 0) return dailyKindGridRows;
+    if (expenseRows.length === 0) return listDailyDetailGridRows(dailyKindGridRows);
     const mapped = expenseRows.map((row) => {
       const bucket = normalizePaymentMethodBucket(row.paymentMethod);
       const paymentLabel = row.isCash || bucket === 'cash'
@@ -3937,7 +3984,7 @@ export function ReportsModule({
         statusLabel: tm('out') || 'Çıkış',
       };
     });
-    return [...dailyKindGridRows, ...mapped];
+    return listDailyDetailGridRows([...dailyKindGridRows, ...mapped]);
   }, [dailyKindFilter, dailyShowOnlyRemoved, dailyKindGridRows, dailyExpenseRowsForReport, tm, userNameById]);
 
   /**
@@ -7531,9 +7578,10 @@ export function ReportsModule({
                           align: 'right',
                           size: 140,
                           footerSum: true,
-                          // Dip net, kartla aynı formüldür: ciro + rezervasyon − gider.
-                          // Yalnız hizmet satırının tutarı yetmez; açık peşinat bir kez girer.
-                          // Kapanan peşinat satırı listede durmaz, tutarı cirodadır.
+                          // Dip net, kartla aynı formüldür: ciro + rezervasyon − iade − gider.
+                          // Günlük ciro iadeyi bir kez düşmüş hâldedir.
+                          // Açık ve iptal peşinat bir kez girer.
+                          // Kapanan peşinat satırı durur, tutarı cirodadır, ikinci kez yazılmaz.
                           footerFormat: () => formatLedgerAmount(dailyNetNakitAlways, reportCurrency),
                           cell: (row) => {
                             if (row.isExpense) {
@@ -7553,9 +7601,12 @@ export function ReportsModule({
                             if (isDepositSale(row.erpSale as Partial<Sale> | undefined) || row.isDeposit === true) {
                               return '—';
                             }
-                            // Açık veya iptal avans satırı: net hücre gerçek peşinattır.
-                            // Kapanmış randevunun satırı listeye girmez.
+                            // Açık veya iptal avans satırı: net hücre bu fişin peşinatıdır.
+                            // Kapanmış peşinat satırı durur; net 0. Tutar hizmet cirosundadır.
                             // Dip toplam bu tutarı rezervasyon kutusu üzerinden bir kez yazar.
+                            if (row.isAvans && row.settledDeposit) {
+                              return '—';
+                            }
                             if (row.isAvans) {
                               return (
                                 <div className="font-medium tabular-nums">

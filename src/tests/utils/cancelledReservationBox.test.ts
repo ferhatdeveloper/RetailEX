@@ -111,10 +111,10 @@ describe('kapanmamış ve iptal rezervasyon kutusu', () => {
     expect(month.get('2026-10')).toEqual({ amount: 35_000, count: 2 });
   });
 
-  it('kapanmış 5.000 günlük listede yoktur; bekleyen 25.000 satırda gerçek tutardır', () => {
+  it('kapanmış 5.000 listede durur ve nete girmez; bekleyen 25.000 gerçek tutardır', () => {
     const visible = dailyReservationAvansList(avansRows);
-    expect(visible.map((row) => row.amount)).toEqual([25_000, 10_000]);
-    expect(visible.some((row) => row.appointmentStatus === 'completed')).toBe(false);
+    expect(visible.map((row) => row.amount)).toEqual([5_000, 25_000, 10_000]);
+    expect(visible.some((row) => row.appointmentStatus === 'completed')).toBe(true);
     expect(dailyReservationAvansNet(avansRows[0])).toBe(0);
     expect(dailyReservationAvansNet(avansRows[1])).toBe(25_000);
     expect(dailyReservationAvansNet(avansRows[2])).toBe(10_000);

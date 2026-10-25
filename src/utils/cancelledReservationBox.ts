@@ -11,7 +11,8 @@
  * - Gelmedi. İptal değildir.
  *
  * Aynı randevunun peşinatı avans ve depozito kanallarında bir kez durur.
- * Günlük satış detayında kapanmış randevunun avans satırı gizlenir.
+ * Günlük satış detayında kapanmış randevunun avans satırı durur.
+ * Net katkısı 0'dır; peşinat hizmet cirosundadır, ikinci kez yazılmaz.
  * Açık ve iptal satırı gerçek peşinat tutarıyla kalır.
  * Tahsilat kartı kapanmış satışın kasaya giren tutarıdır; açık ve iptal
  * peşinatı bu karta eklenmez.
@@ -276,7 +277,10 @@ export function clinicPanelTahsilat(input: CancelledReservationBoxInput): number
   return cash + closedAppointmentDepositInCollection(input);
 }
 
-/** Kapanmış randevunun avans satırı günlük listede durmaz. */
+/**
+ * Kapanmış peşinatın net katkısı 0'dır. Tutar hizmet cirosundadır.
+ * Satır listeden düşmez. İade edilmiş peşinat da nete girmez.
+ */
 export function isClosedReservationAvansHidden(row: CancelledReservationAvansRow): boolean {
   if (avansRefunded(row)) return true;
   const avansStatus = normStatus(row.status);
@@ -286,20 +290,25 @@ export function isClosedReservationAvansHidden(row: CancelledReservationAvansRow
   return false;
 }
 
-/** Günlük satış detayı: kapanmış avans düşer, açık ve iptal kalır. */
+/**
+ * Günlük satış detayı. Seçilen gündeki avans fişleri durur.
+ * Yeni hizmet veya yeni iptal, eski fişi düşürmez.
+ * İade edilmiş peşinat listede yoktur; para kasadan çıkmıştır.
+ */
 export function dailyReservationAvansList<T extends CancelledReservationAvansRow>(
   rows: readonly T[] | null | undefined,
 ): T[] {
   const kept: T[] = [];
   for (const row of rows || []) {
-    if (!isClosedReservationAvansHidden(row)) kept.push(row);
+    if (avansRefunded(row)) continue;
+    kept.push(row);
   }
   return kept;
 }
 
-/** Görünen avans satırının net tutarı. Gizli kapanmış satır 0'dır. */
+/** Açık ve iptal peşinatının neti. Kapanmış ve iade edilmiş satır 0'dır. */
 export function dailyReservationAvansNet(row: CancelledReservationAvansRow): number {
-  if (isClosedReservationAvansHidden(row)) return 0;
+  if (avansRefunded(row) || isClosedReservationAvansHidden(row)) return 0;
   return positiveAmount(row.amount);
 }
 
