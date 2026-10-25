@@ -687,7 +687,7 @@ export function ManagementModule({
         const o = d as {
           screen: ExtendedScreen;
           countPurchaseDraft?: { editData: Record<string, unknown>; skipProductStockUpdate?: boolean };
-          posSalesReturn?: { editData: Record<string, unknown>; openForm?: boolean };
+          posSalesReturn?: { editData?: Record<string, unknown>; openForm?: boolean; openFicheNo?: string };
           invoiceSearch?: string;
         };
         screenId = o.screen;
@@ -704,10 +704,11 @@ export function ManagementModule({
         } else {
           setCountPurchaseDraftPrefill(null);
         }
-        if (o.posSalesReturn?.editData) {
+        if (o.posSalesReturn?.editData || String(o.posSalesReturn?.openFicheNo || '').trim()) {
           setPosSalesReturnPrefill({
-            editData: o.posSalesReturn.editData,
+            editData: o.posSalesReturn.editData || {},
             openForm: o.posSalesReturn.openForm !== false,
+            openFicheNo: String(o.posSalesReturn.openFicheNo || '').trim() || undefined,
           });
         } else {
           setPosSalesReturnPrefill(null);
@@ -1589,6 +1590,8 @@ export function ManagementModule({
               defaultInvoiceTypeFilter="6"
               title={t.purchaseReturnTitle}
               description={t.purchaseReturnDesc}
+              posSalesReturnPrefill={posSalesReturnPrefill}
+              onPosSalesReturnPrefillConsumed={clearPosSalesReturnPrefill}
             />
           );
         case 'serviceinvoice':

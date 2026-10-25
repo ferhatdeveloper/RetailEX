@@ -335,6 +335,28 @@ function isRowCancelledLike(row: Record<string, unknown>): boolean {
 }
 
 /**
+ * Nakit veya kart iadenin ekstre payı.
+ * Tamamı peşinse borç ve alacak belge tutarıdır, açık pay 0 kalır.
+ * Kısmi peşinde yalnız peşin pay iki tarafa yazılır; açık pay cariyi oynatır.
+ * Peşin yoksa null — açık cari iade tek tarafta kalır.
+ */
+export function cashReturnStatementSides(
+  amount: number,
+  collected: number,
+  remaining: number,
+): { cash: number; open: number } | null {
+  const absAmt = Math.abs(Number(amount) || 0);
+  const collectedAbs = Math.abs(Number(collected) || 0);
+  const remainingAbs = Math.abs(Number(remaining) || 0);
+  if (!(absAmt > 0) || !(collectedAbs > 0.004)) return null;
+  if (remainingAbs <= 0.009) return { cash: absAmt, open: 0 };
+  const cash = Math.min(absAmt, collectedAbs);
+  if (!(cash > 0.004)) return null;
+  const open = Math.max(0, Math.round((absAmt - cash) * 100) / 100);
+  return { cash, open };
+}
+
+/**
  * Rezervasyon / peşinat tahsilatı müşteri alacağı değildir.
  * `special_code` REZERVASYON veya AVANS, ya da açıklamadaki
  * "Rezervasyon tahsilatı" satırı bilgi amaçlıdır: borç ve alacak eşit,
@@ -498,6 +520,32 @@ export function buildEkstreRows(
         delta = 0;
         borcAmount = absAmt;
         alacakAmount = absAmt;
+      } else if (ftLower === 'return_invoice' && absAmt > 0) {
+        // Nakit / kart iade: kasa ters hareket eder, cari satır iki taraflıdır.
+        // Satış iadesinde kasa çıkar, alış iadesinde kasa girer; net cari bu
+        // satır yüzünden alacaklı veya borçlu kalmaz. Açık pay varsa yalnız o
+        // pay bakiyeyi değiştirir. Peşinat bu dala düşmez.
+        const sides = cashReturnStatementSides(absAmt, saleSplit.collected, saleSplit.remaining);
+        if (sides) {
+          delta = -sides.open;
+          if (isSupplierAccount) {
+            borcAmount = sides.cash + sides.open;
+            alacakAmount = sides.cash;
+          } else {
+            borcAmount = sides.cash;
+            alacakAmount = sides.cash + sides.open;
+          }
+        } else if (isSupplierAccount) {
+          delta = isReturn ? -absAmt : absAmt;
+          if (isReturn) borcAmount = absAmt;
+          else alacakAmount = absAmt;
+        } else {
+          const remaining = Math.max(0, Math.abs(saleSplit.remaining));
+          const effective = remaining > 1e-9 ? remaining : absAmt;
+          delta = isReturn ? -effective : effective;
+          if (isReturn) alacakAmount = effective;
+          else borcAmount = effective;
+        }
       } else if (isSupplierAccount) {
         // Tedarikçi alışı alacak artırır (A, bizim borcumuz), iade alacak azaltır.
         // Müşterinin TERS yönü — cari simetrisi gereği.

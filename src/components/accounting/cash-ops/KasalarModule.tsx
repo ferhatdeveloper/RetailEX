@@ -56,6 +56,10 @@ import {
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { KasaIslemModal } from './KasaIslemModal';
+import {
+  buildCashReturnInvoiceLaunch,
+  isCashReturnMenuType,
+} from '../../../utils/cashReturnInvoiceLaunch';
 import { KasaIslemDetayModal } from './KasaIslemDetayModal';
 import { KasaIslemTurleriModal } from './KasaIslemTurleriModal';
 import { KasaIslemleriModal } from './KasaIslemleriModal';
@@ -274,9 +278,33 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
     setContextMenu({ x: e.clientX, y: e.clientY, type: 'kasa', data: kasa });
   };
 
+  const openReturnInvoiceDocument = (type: 'SATIS_IADE_FATURASI' | 'ALIS_IADE_FATURASI', ficheNo?: string) => {
+    if (!selectedKasa) {
+      toast.error(tm('selectSafeFirst'));
+      return;
+    }
+    const detail = buildCashReturnInvoiceLaunch({
+      type,
+      registerId: selectedKasa.id,
+      registerCode: selectedKasa.kasa_kodu,
+      registerName: selectedKasa.kasa_adi,
+      ficheNo,
+    });
+    window.dispatchEvent(new CustomEvent('switchToManagement'));
+    window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
+    }, 150);
+  };
+
   const handleIslemClick = (type: KasaIslemTipi) => {
     if (!selectedKasa) {
       toast.error(tm('selectSafeFirst'));
+      return;
+    }
+    if (isCashReturnMenuType(type)) {
+      setEditingIslem(null);
+      openReturnInvoiceDocument(type);
       return;
     }
     setEditingIslem(null);
@@ -292,6 +320,10 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
 
   const handleEditIslem = (islem: KasaIslemi | null) => {
     if (!islem || !islem.id || !selectedKasa) return;
+    if (isCashReturnMenuType(islem.islem_tipi)) {
+      openReturnInvoiceDocument(islem.islem_tipi, islem.islem_no);
+      return;
+    }
     setEditingIslem(islem);
     setIslemModalType(islem.islem_tipi as any);
     setShowIslemModal(true);
@@ -696,6 +728,11 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
           onClose={() => setShowIslemTurleriModal(false)}
           onSelect={(type) => {
             setShowIslemTurleriModal(false);
+            if (isCashReturnMenuType(type)) {
+              setEditingIslem(null);
+              openReturnInvoiceDocument(type);
+              return;
+            }
             setIslemModalType(type);
             setShowIslemModal(true);
           }}

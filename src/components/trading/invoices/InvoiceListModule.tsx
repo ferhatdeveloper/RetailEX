@@ -61,6 +61,8 @@ export type CountPurchaseDraftPrefill = {
 export type PosSalesReturnPrefill = {
   editData: Record<string, unknown>;
   openForm?: boolean;
+  /** Kasa satırından mevcut iade belgesi. Yeni fiş üretilmez. */
+  openFicheNo?: string;
 };
 
 export type { ListInvoice } from './invoiceListColumns';
@@ -712,28 +714,84 @@ export function InvoiceListModule({
     }
   }, [defaultCategory, countPurchaseDraftPrefill, onCountPurchaseDraftPrefillConsumed]);
 
-  /** POS → Satış İade: kasiyer bilgisiyle formu otomatik aç */
+  /** POS veya kasa → satış / alış iade belgesi. Sade kasa fişi değil. */
   useEffect(() => {
-    if (defaultInvoiceTypeFilter !== '3') return;
+    const code = defaultInvoiceTypeFilter === '6' ? 6 : defaultInvoiceTypeFilter === '3' ? 3 : 0;
+    if (!code) return;
     const ext = posSalesReturnPrefill;
-    if (!ext?.editData || ext.openForm === false) return;
+    if (!ext || ext.openForm === false) return;
+    if (!ext.editData && !String(ext.openFicheNo || '').trim()) return;
+    const hintedRaw = Number(ext.editData?.trcode ?? ext.editData?.invoice_type ?? 0);
+    const hinted = hintedRaw || code;
+    if (hinted !== code) return;
 
-    const returnType = INVOICE_TYPES.find((t) => t.code === 3);
+    const returnType = INVOICE_TYPES.find((t) => t.code === code);
     if (!returnType) return;
 
-    setShowInvoiceTypeModal(false);
-    setEditInvoiceData(ext.editData as unknown as Invoice);
-    setNewFormCounter((c) => c + 1);
-    setSelectedInvoiceType(returnType);
-    setPurchaseCreateSaveOptions(null);
+    let cancelled = false;
+    const fiche = String(ext.openFicheNo || '').trim();
 
-    const clearPrefillTimer = window.setTimeout(() => {
-      onPosSalesReturnPrefillConsumed?.();
-    }, 0);
-    return () => {
-      window.clearTimeout(clearPrefillTimer);
+    const openDraft = () => {
+      setShowInvoiceTypeModal(false);
+      setEditInvoiceData((ext.editData || null) as unknown as Invoice);
+      setNewFormCounter((c) => c + 1);
+      setSelectedInvoiceType(returnType);
+      setPurchaseCreateSaveOptions(null);
     };
-  }, [defaultInvoiceTypeFilter, posSalesReturnPrefill, onPosSalesReturnPrefillConsumed]);
+
+    const finish = () => {
+      if (!cancelled) onPosSalesReturnPrefillConsumed?.();
+    };
+
+    if (!fiche) {
+      openDraft();
+      finish();
+    } else {
+      void (async () => {
+        try {
+          const { invoicesAPI } = await import('../../../services/api/invoices');
+          const result = await invoicesAPI.getPaginated({
+            page: 1,
+            pageSize: 50,
+            search: fiche,
+            invoiceType: code,
+            invoiceCategory: 'Iade',
+            firmNr: firmNrKey || undefined,
+            periodNr: periodNrKey || undefined,
+          });
+          if (cancelled) return;
+          const rows = Array.isArray(result?.data) ? result.data : [];
+          const hit = rows.find((inv) => {
+            const no = String(inv?.invoice_no || (inv as { fiche_no?: string }).fiche_no || inv?.document_no || '').trim();
+            return no === fiche;
+          });
+          if (!hit?.id) {
+            console.warn('[InvoiceListModule] iade belgesi bulunamadı:', fiche);
+            return;
+          }
+          const full = await invoicesAPI.getById(String(hit.id));
+          if (cancelled) return;
+          const raw = full ?? hit;
+          setShowInvoiceTypeModal(false);
+          setEditInvoiceData({
+            ...raw,
+            items: Array.isArray(raw.items) ? raw.items.map((it) => ({ ...it })) : [],
+          } as Invoice);
+          setNewFormCounter((c) => c + 1);
+          setSelectedInvoiceType(returnType);
+          setPurchaseCreateSaveOptions(null);
+        } catch (error) {
+          if (!cancelled) console.warn('[InvoiceListModule] iade belgesi açılamadı:', error);
+        } finally {
+          finish();
+        }
+      })();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [defaultInvoiceTypeFilter, posSalesReturnPrefill, onPosSalesReturnPrefillConsumed, firmNrKey, periodNrKey]);
 
   const loadInvoicesRequestIdRef = useRef(0);
 
