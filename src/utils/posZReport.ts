@@ -433,6 +433,55 @@ export function composeDayEndZStatement(input: {
   };
 }
 
+/** Pasta dilimi. Brüt, net nakit ve işlem sayısı bu kümede yoktur. */
+export const DAY_END_Z_PIE_SLICE_ORDER = [
+  'netSales',
+  'reservation',
+  'salesReturn',
+  'expense',
+  'discount',
+] as const;
+
+export type DayEndZPieSliceKey = (typeof DAY_END_Z_PIE_SLICE_ORDER)[number];
+
+export interface DayEndZPieSlice {
+  key: DayEndZPieSliceKey;
+  amount: number;
+  /** Sıfır ve negatif tutar pastada yer kaplamaz. Açıklamada 0 kalabilir. */
+  inChart: boolean;
+}
+
+/** Net satış yeşil, rezervasyon turuncu, iade kırmızı, gider bordo, indirim mor. */
+export const DAY_END_Z_PIE_COLORS: Record<DayEndZPieSliceKey, string> = {
+  netSales: '#15803d',
+  reservation: '#ea580c',
+  salesReturn: '#dc2626',
+  expense: '#9f1239',
+  discount: '#7c3aed',
+};
+
+/**
+ * Günün birbirine eklenmeyen parçaları.
+ * Dilimler toplanıp brüt, net satış veya net nakit edilmez.
+ * Net satış zaten indirim, iade ve gider düşülmüş tutardır.
+ * İndirim yalnız sıfırdan büyükse dilim olur. İşlem sayısı dilim değildir.
+ */
+export function buildDayEndZPieSlices(
+  statement: Pick<DayEndZStatement, 'netSales' | 'reservationAmount' | 'salesReturn' | 'expense' | 'discount'>,
+): DayEndZPieSlice[] {
+  const amountOf: Record<DayEndZPieSliceKey, number> = {
+    netSales: round2(Number(statement.netSales) || 0),
+    reservation: round2(Number(statement.reservationAmount) || 0),
+    salesReturn: round2(Number(statement.salesReturn) || 0),
+    expense: round2(Number(statement.expense) || 0),
+    discount: round2(Number(statement.discount) || 0),
+  };
+  return DAY_END_Z_PIE_SLICE_ORDER.map((key) => {
+    const amount = amountOf[key];
+    return { key, amount, inChart: amount > 0.004 };
+  });
+}
+
 function escHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')

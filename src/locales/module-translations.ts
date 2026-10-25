@@ -11473,6 +11473,12 @@ export const excelModuleTranslations = {
     ar: 'مبلغ صافي النقد',
     ku: 'بڕی نەقدی خاوێن',
   },
+  reportsZPieTitle: {
+    tr: 'Günün parçaları',
+    en: 'Parts of the day',
+    ar: 'أجزاء اليوم',
+    ku: 'پارچەکانی ڕۆژ',
+  },
   /** Z raporu 80mm yazdırma fişi etiketleri */
   reportsZPrintDocTitle: { tr: 'Z Raporu', en: 'Z Report', ar: 'تقرير Z', ku: 'ڕاپۆرتی Z' },
   reportsZPrintHeader: { tr: 'Z RAPORU', en: 'Z REPORT', ar: 'تقرير Z', ku: 'ڕاپۆرتی Z' },

@@ -1,0 +1,250 @@
+/* Gün sonu Z. Liste içeriği kadar genişler; tutar en uzun etiketin sağında hizalanır. */
+
+.z-day-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+}
+
+.z-day-lines-wrap {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 2.5rem;
+  overflow-x: auto;
+}
+
+.z-day-chart-wrap {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding-left: 2.5rem;
+  border-left: 1px solid #e2e8f0;
+}
+
+.z-day-lines {
+  display: grid;
+  grid-template-columns: max-content minmax(6.75rem, max-content);
+  width: max-content;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.z-day-label,
+.z-day-value {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.z-day-label {
+  padding-left: 1rem;
+  padding-right: 1.5rem;
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: #334155;
+}
+
+.z-day-value {
+  justify-content: flex-end;
+  padding-right: 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #0f172a;
+}
+
+.z-day-label.is-strong {
+  font-weight: 600;
+}
+
+.z-day-value.is-strong {
+  font-size: 1.125rem;
+}
+
+.z-day-lines > :nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.z-day-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 320px;
+  min-width: 0;
+}
+
+.z-day-figure-title {
+  margin: 0 0 0.5rem;
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #334155;
+}
+
+.z-day-chart-box {
+  position: relative;
+  width: 100%;
+  max-width: 260px;
+  height: 240px;
+  margin: 0 auto;
+}
+
+.z-day-chart-box svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.z-day-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+}
+
+.z-day-center-copy {
+  max-width: 7.25rem;
+  padding: 0 0.5rem;
+}
+
+.z-day-center-label {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.25;
+  color: #64748b;
+}
+
+.z-day-center-value {
+  margin: 2px 0 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #064e3b;
+}
+
+.z-day-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  width: 100%;
+  max-width: 280px;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.z-day-legend-row {
+  display: grid;
+  grid-template-columns: 0.625rem minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.z-day-swatch {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 999px;
+}
+
+.z-day-legend-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #64748b;
+}
+
+.z-day-legend-amount {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #0f172a;
+}
+
+.z-day-dark .z-day-lines {
+  border-color: #475569;
+  background: rgb(15 23 42 / 0.4);
+}
+
+.z-day-dark .z-day-label,
+.z-day-dark .z-day-value {
+  border-bottom-color: #334155;
+}
+
+.z-day-dark .z-day-label {
+  color: #e2e8f0;
+}
+
+.z-day-dark .z-day-value,
+.z-day-dark .z-day-legend-amount {
+  color: #f8fafc;
+}
+
+.z-day-dark .z-day-chart-wrap {
+  border-left-color: #334155;
+}
+
+.z-day-dark .z-day-figure-title {
+  color: #e2e8f0;
+}
+
+.z-day-dark .z-day-center-label,
+.z-day-dark .z-day-legend-name {
+  color: #94a3b8;
+}
+
+.z-day-dark .z-day-center-value {
+  color: #a7f3d0;
+}
+
+@media (max-width: 959px) {
+  .z-day-split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+  }
+
+  .z-day-lines-wrap,
+  .z-day-chart-wrap {
+    justify-content: center;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .z-day-chart-wrap {
+    border-left: 0;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 2rem;
+  }
+
+  .z-day-dark .z-day-chart-wrap {
+    border-top-color: #334155;
+  }
+
+  .z-day-lines {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .z-day-label {
+    padding-right: 1rem;
+  }
+}

@@ -10,6 +10,8 @@ import {
   UNLISTED_FINANCIAL_REPORT_KEYS,
 } from '../../utils/reportMenuPeriodSummary';
 import { ReportChatAI } from './ReportChatAI';
+import { DayEndZPieChart } from './DayEndZPieChart';
+import './DayEndZReportLayout.css';
 import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
 import { formatNumber } from '../../utils/formatNumber';
@@ -7897,69 +7899,100 @@ export function ReportsModule({
                   <div className="p-6 space-y-6">
                     <div
                       data-testid="z-report-statement"
-                      className={`rounded-lg border divide-y ${darkMode ? 'border-slate-600 divide-slate-700 bg-slate-900/40' : 'border-slate-200 divide-slate-100 bg-white'}`}
+                      className={darkMode ? 'z-day-split z-day-dark' : 'z-day-split'}
                     >
-                      {([
-                        {
-                          key: 'txn',
-                          label: tm('reportsZTxnCount'),
-                          value: String(zReport.totalSales),
-                        },
-                        {
-                          key: 'gross',
-                          label: tm('reportsZGrossSales'),
-                          value: formatNumber(zReport.amountBeforeDiscount, 2, false),
-                        },
-                        {
-                          key: 'discount',
-                          label: tm('reportsTotalDiscount'),
-                          value: formatNumber(zReport.totalDiscount, 2, false),
-                        },
-                        {
-                          key: 'return',
-                          label: tm('reportsZSalesReturnAmount'),
-                          value: formatNumber(zReport.refundAmount, 2, false),
-                          valueClassName: darkMode ? 'text-red-400' : 'text-red-600',
-                        },
-                        {
-                          key: 'expense',
-                          label: tm('totalExpense'),
-                          value: formatNumber(zReport.totalExpenses, 2, false),
-                          valueClassName: darkMode ? 'text-red-400' : 'text-red-600',
-                        },
-                        {
-                          key: 'net-sales',
-                          label: tm('reportsZNetSalesAmount'),
-                          value: formatNumber(zReport.netSales, 2, false),
-                          valueClassName: darkMode ? 'text-emerald-300' : 'text-emerald-800',
-                          emphasize: true,
-                        },
-                        {
-                          key: 'reservation',
-                          label: tm('dailyDepositCollected'),
-                          value: formatNumber(zReport.reservationDeposit ?? 0, 2, false),
-                        },
-                        {
-                          key: 'net-cash',
-                          label: tm('reportsZNetCashAmount'),
-                          value: formatNumber(zReport.netCash, 2, false),
-                          valueClassName: darkMode ? 'text-emerald-200' : 'text-emerald-900',
-                          emphasize: true,
-                        },
-                      ] as Array<{
-                        key: string;
-                        label: string;
-                        value: string;
-                        valueClassName?: string;
-                        emphasize?: boolean;
-                      }>).map((row) => (
-                        <div key={row.key} className="flex items-center justify-between gap-4 px-4 py-2.5">
-                          <span className={`text-sm ${row.emphasize ? 'font-semibold' : ''} ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{row.label}</span>
-                          <span className={`font-semibold tabular-nums shrink-0 text-right ${row.emphasize ? 'text-lg' : 'text-base'} ${row.valueClassName || (darkMode ? 'text-slate-100' : 'text-slate-900')}`}>
-                            {row.value}
-                          </span>
+                      <div className="z-day-lines-wrap">
+                        <div className="z-day-lines">
+                          {([
+                            {
+                              key: 'txn',
+                              label: tm('reportsZTxnCount'),
+                              value: String(zReport.totalSales),
+                              color: darkMode ? '#f8fafc' : '#0f172a',
+                            },
+                            {
+                              key: 'gross',
+                              label: tm('reportsZGrossSales'),
+                              value: formatNumber(zReport.amountBeforeDiscount, 2, false),
+                              color: darkMode ? '#f8fafc' : '#0f172a',
+                            },
+                            {
+                              key: 'discount',
+                              label: tm('reportsTotalDiscount'),
+                              value: formatNumber(zReport.totalDiscount, 2, false),
+                              color: darkMode ? '#f8fafc' : '#0f172a',
+                            },
+                            {
+                              key: 'return',
+                              label: tm('reportsZSalesReturnAmount'),
+                              value: formatNumber(zReport.refundAmount, 2, false),
+                              color: darkMode ? '#f87171' : '#dc2626',
+                            },
+                            {
+                              key: 'expense',
+                              label: tm('totalExpense'),
+                              value: formatNumber(zReport.totalExpenses, 2, false),
+                              color: darkMode ? '#f87171' : '#dc2626',
+                            },
+                            {
+                              key: 'net-sales',
+                              label: tm('reportsZNetSalesAmount'),
+                              value: formatNumber(zReport.netSales, 2, false),
+                              color: darkMode ? '#6ee7b7' : '#166534',
+                              emphasize: true,
+                            },
+                            {
+                              key: 'reservation',
+                              label: tm('dailyDepositCollected'),
+                              value: formatNumber(zReport.reservationDeposit ?? 0, 2, false),
+                              color: darkMode ? '#f8fafc' : '#0f172a',
+                            },
+                            {
+                              key: 'net-cash',
+                              label: tm('reportsZNetCashAmount'),
+                              value: formatNumber(zReport.netCash, 2, false),
+                              color: darkMode ? '#a7f3d0' : '#064e3b',
+                              emphasize: true,
+                            },
+                          ] as Array<{
+                            key: string;
+                            label: string;
+                            value: string;
+                            color: string;
+                            emphasize?: boolean;
+                          }>).map((row) => (
+                            <React.Fragment key={row.key}>
+                              <div className={row.emphasize ? 'z-day-label is-strong' : 'z-day-label'}>{row.label}</div>
+                              <div
+                                className={row.emphasize ? 'z-day-value is-strong' : 'z-day-value'}
+                                style={{ color: row.color }}
+                              >
+                                {row.value}
+                              </div>
+                            </React.Fragment>
+                          ))}
                         </div>
-                      ))}
+                      </div>
+                      <div className="z-day-chart-wrap">
+                        <DayEndZPieChart
+                          netSales={zReport.netSales}
+                          reservationAmount={zReport.reservationDeposit ?? 0}
+                          salesReturn={zReport.refundAmount}
+                          expense={zReport.totalExpenses}
+                          discount={zReport.totalDiscount}
+                          netCash={zReport.netCash}
+                          title={tm('reportsZPieTitle')}
+                          netCashLabel={tm('reportsZNetCashAmount')}
+                          darkMode={darkMode}
+                          labels={{
+                            netSales: tm('reportsZNetSalesAmount'),
+                            reservation: tm('dailyDepositCollected'),
+                            salesReturn: tm('reportsZSalesReturnAmount'),
+                            expense: tm('totalExpense'),
+                            discount: tm('reportsTotalDiscount'),
+                          }}
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-2">
