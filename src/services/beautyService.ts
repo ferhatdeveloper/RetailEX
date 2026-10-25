@@ -3393,6 +3393,9 @@ export const beautyService = {
                     deposit_provider: appointment.deposit_provider ?? null,
                     deposit_sale_id: pgUuidOrNull(appointment.deposit_sale_id),
                     deposit_sale_fiche_no: appointment.deposit_sale_fiche_no ?? null,
+                    sale_group_id: appointment.sale_group_id
+                        ? String(appointment.sale_group_id).trim() || null
+                        : null,
                     remainder_paid_amount: Number(appointment.remainder_paid_amount ?? 0),
                 },
                 { schema: 'beauty', prefer: 'return=minimal' }
@@ -3406,8 +3409,9 @@ export const beautyService = {
                 status, type, notes, total_price, commission_amount, is_package_session, package_purchase_id,
                 branch_id, room_id, tele_meeting_url, booking_channel, corporate_account_id,
                 session_series_id, treatment_degree, treatment_shots, clinical_data,
-                deposit_amount, deposit_date, deposit_provider, deposit_sale_id, deposit_sale_fiche_no, remainder_paid_amount
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
+                deposit_amount, deposit_date, deposit_provider, deposit_sale_id, deposit_sale_fiche_no,
+                sale_group_id, remainder_paid_amount
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
         `, [
             id,
             pgUuidOrNull(appointment.customer_id ?? appointment.client_id),
@@ -3443,6 +3447,7 @@ export const beautyService = {
             appointment.deposit_provider ?? null,
             pgUuidOrNull(appointment.deposit_sale_id),
             appointment.deposit_sale_fiche_no ?? null,
+            appointment.sale_group_id ? String(appointment.sale_group_id).trim() || null : null,
             Number(appointment.remainder_paid_amount ?? 0),
         ]);
         return id;
@@ -3526,6 +3531,9 @@ export const beautyService = {
                 deposit_provider: data.deposit_provider !== undefined ? data.deposit_provider ?? null : undefined,
                 deposit_sale_id: data.deposit_sale_id !== undefined ? pgUuidOrNull(data.deposit_sale_id) : undefined,
                 deposit_sale_fiche_no: data.deposit_sale_fiche_no !== undefined ? data.deposit_sale_fiche_no ?? null : undefined,
+                sale_group_id: data.sale_group_id !== undefined
+                    ? (data.sale_group_id ? String(data.sale_group_id).trim() || null : null)
+                    : undefined,
                 remainder_paid_amount: data.remainder_paid_amount !== undefined ? Number(data.remainder_paid_amount ?? 0) : undefined,
                 updated_at: new Date().toISOString(),
             });
@@ -3575,7 +3583,8 @@ export const beautyService = {
                  treatment_degree=$20, treatment_shots=$21, clinical_data=$22::jsonb,
                  deposit_amount=$23, deposit_date=$24, deposit_provider=$25,
                  deposit_sale_id=$26, deposit_sale_fiche_no=$27,
-                 remainder_paid_amount=$28, remainder_payment_date=$29,
+                 sale_group_id=$28,
+                 remainder_paid_amount=$29, remainder_payment_date=$30,
                  updated_at=NOW()
              WHERE id=$1`,
             [id,
@@ -3605,6 +3614,7 @@ export const beautyService = {
              merged.deposit_provider ?? null,
              pgUuidOrNull(merged.deposit_sale_id),
              merged.deposit_sale_fiche_no ?? null,
+             merged.sale_group_id ? String(merged.sale_group_id).trim() || null : null,
              Number(merged.remainder_paid_amount ?? 0),
              pgTimestamptzOrNull(merged.remainder_payment_date)]
         );

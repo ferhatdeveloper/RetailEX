@@ -45,6 +45,7 @@ import {
     customerQueueGroupKey,
     findBeautyAppointmentsSameQueueGroup,
     groupBeautyQueueByCustomer,
+    mergeBeautyAppointmentsForBoardDisplay,
     suggestQueuePrefillTime,
 } from '../../../utils/beautyQueueOrder';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
@@ -104,62 +105,6 @@ function formatMinutesToHhmm(total: number): string {
     return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
-function mergeConsecutiveCustomerAppointments(appointments: BeautyAppointment[]): BeautyAppointment[] {
-    if (appointments.length <= 1) return appointments;
-    const sorted = [...appointments].sort((a, b) => {
-        const sa = parseHhmmToMinutes(a.appointment_time ?? a.time) ?? 0;
-        const sb = parseHhmmToMinutes(b.appointment_time ?? b.time) ?? 0;
-        if (sa !== sb) return sa - sb;
-        return String(a.id).localeCompare(String(b.id));
-    });
-
-    const result: BeautyAppointment[] = [];
-    for (const apt of sorted) {
-        const start = parseHhmmToMinutes(apt.appointment_time ?? apt.time);
-        if (start === null) {
-            result.push(apt);
-            continue;
-        }
-        const prev = result[result.length - 1];
-        if (!prev) {
-            result.push(apt);
-            continue;
-        }
-        const prevStart = parseHhmmToMinutes(prev.appointment_time ?? prev.time);
-        const prevDuration = Math.max(1, Number(prev.duration) || 30);
-        if (prevStart === null) {
-            result.push(apt);
-            continue;
-        }
-        const prevEnd = prevStart + prevDuration;
-        const sameCustomer = customerQueueGroupKey(prev) === customerQueueGroupKey(apt);
-        const isContiguous = start <= prevEnd;
-        if (!sameCustomer || !isContiguous) {
-            result.push(apt);
-            continue;
-        }
-
-        const mergedStart = Math.min(prevStart, start);
-        const mergedEnd = Math.max(prevEnd, start + Math.max(1, Number(apt.duration) || 30));
-        const services = [
-            ...(prev.service_name ?? '').split('·').map(s => s.trim()).filter(Boolean),
-            ...(apt.service_name ?? '').split('·').map(s => s.trim()).filter(Boolean),
-        ];
-        const uniqueServices = [...new Set(services)];
-        const merged: BeautyAppointment = {
-            ...prev,
-            appointment_time: formatMinutesToHhmm(mergedStart),
-            time: formatMinutesToHhmm(mergedStart),
-            duration: Math.max(1, mergedEnd - mergedStart),
-            total_price: Number(prev.total_price ?? 0) + Number(apt.total_price ?? 0),
-            service_name: uniqueServices.join(' · '),
-        };
-        result[result.length - 1] = merged;
-    }
-
-    return result;
-}
-
 function readBeautyToolbarPrefs(): { slot: number; queue: boolean; sep: boolean } | null {
     if (typeof window === 'undefined' || !IS_BROWSER) return null;
     try {
@@ -176,7 +121,8 @@ function readBeautyToolbarPrefs(): { slot: number; queue: boolean; sep: boolean 
         return {
             slot,
             queue: parseBool(queueRaw, true),
-            sep: parseBool(sepRaw, true),
+            // Varsayılan kapalı: tek POS sepeti / tek fatura → tek kart.
+            sep: parseBool(sepRaw, false),
         };
     } catch {
         return null;
@@ -268,7 +214,7 @@ export function SmartScheduler() {
     const [beautyQueueMode, setBeautyQueueMode] = useState(() => readBeautyToolbarPrefs()?.queue ?? true);
     /** POS: her sepet kalemi ayrı güzellik satışı / ERP fişi */
     const [beautySeparateLineInvoices, setBeautySeparateLineInvoices] = useState(
-        () => readBeautyToolbarPrefs()?.sep ?? true,
+        () => readBeautyToolbarPrefs()?.sep ?? false,
     );
     /** Hizmet & tarih: yalnızca o günde randevusu veya hatırlatması olan hizmet satırları */
     const [serviceBoardOnlyBooked, setServiceBoardOnlyBooked] = useState(() => {
@@ -2200,9 +2146,13 @@ export function SmartScheduler() {
                                             ? !a.device_id
                                             : String(a.device_id ?? '') === String(device.id))
                                     );
-                                    const devTimelineApts = beautyQueueMode || beautySeparateLineInvoices
+                                    // sale_group_id aynıysa her zaman tek kart (ikinci fatura yoksa bölünmez).
+                                    // Kalem ayrı kapalıysa ek olarak ardışık aynı müşteri birleşir.
+                                    const devTimelineApts = beautyQueueMode
                                         ? devApts
-                                        : mergeConsecutiveCustomerAppointments(devApts);
+                                        : mergeBeautyAppointmentsForBoardDisplay(devApts, {
+                                            mergeConsecutiveSameCustomer: !beautySeparateLineInvoices,
+                                        });
                                     const devQueueRows = beautyQueueMode
                                         ? groupBeautyQueueByCustomer(devApts).length
                                         : devTimelineApts.length;

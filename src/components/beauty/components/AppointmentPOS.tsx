@@ -2166,7 +2166,7 @@ export function AppointmentPOS({
         const dateSafe = safeDateYmd(aptDate);
         const baseStart = hhmmToMin(safeTimeHHmm(aptTime)) ?? 9 * 60;
         const perStaffOffset = new Map<string, number>();
-        const planned: ReturnType<typeof buildAptPayload>[] = [];
+        const planned: Array<ReturnType<typeof buildAptPayload> & { sale_group_id?: string }> = [];
         const ancillaryProductNames =
             appointmentBookLines.length > 0 ? productLines.map((l) => l.name) : [];
         const productTag = buildAppointmentProductNotesTag(ancillaryProductNames);
@@ -2176,6 +2176,12 @@ export function AppointmentPOS({
             );
             return parts.length ? parts.join(' | ') : undefined;
         };
+        // Tek POS sepeti / tek fatura ziyareti: tüm hizmet satırları aynı sale_group_id.
+        // Takvim ve POS yeniden açılışta HIGH LIGHT + HAND JELISH tek kart/sepet olur.
+        const visitSaleGroupId =
+            typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : `grp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
         for (let idx = 0; idx < appointmentBookLines.length; idx++) {
             const line = appointmentBookLines[idx];
@@ -2204,6 +2210,7 @@ export function AppointmentPOS({
                 is_package_session: false,
                 treatment_degree: receiptTreatmentDegree.trim() || null,
                 treatment_shots: receiptTreatmentShots.trim() || null,
+                sale_group_id: visitSaleGroupId,
             });
         }
         return planned;
@@ -2497,11 +2504,15 @@ export function AppointmentPOS({
         }
 
         const depositDate = new Date().toISOString();
+        // Ziyaret grubu: peşinat fişi id'si varsa onu kullan; yoksa ilk randevu id.
+        // Tüm hizmet satırları aynı sale_group_id alır → tahta/POS tek fatura gibi birleşir.
+        const visitSaleGroupId = String(fiche?.id ?? appointmentIds[0] ?? '').trim();
         await Promise.all(
             appointmentIds.map((id, idx) => updateAppointment(id, {
                 deposit_amount: plan.depositByAppointment[idx] ?? 0,
                 deposit_date: depositDate,
                 deposit_provider: 'pos',
+                ...(visitSaleGroupId ? { sale_group_id: visitSaleGroupId } : {}),
                 ...(idx === 0 && fiche?.invoiceNumber
                     ? {
                         deposit_sale_id: fiche.id,

@@ -60,11 +60,153 @@ export function groupBeautyQueueByCustomer(apts: BeautyAppointment[]): BeautyApp
 /** Takvim kartında göstermek: hizmet adlarını ve tutarı birleştir (ilk kayıt kimliği korunur). */
 export function mergeQueueGroupForCardDisplay(group: BeautyAppointment[]): BeautyAppointment {
     if (group.length <= 1) return group[0];
-    const base: BeautyAppointment = { ...group[0] };
-    const services = [...new Set(group.map(g => (g.service_name ?? '').trim()).filter(Boolean))];
+    const sorted = sortBeautyAppointmentsQueue(group);
+    const base: BeautyAppointment = { ...sorted[0] };
+    const services = [...new Set(sorted.map(g => (g.service_name ?? '').trim()).filter(Boolean))];
     base.service_name = services.join(' · ');
-    base.total_price = group.reduce((s, g) => s + Number(g.total_price ?? 0), 0);
+    base.total_price = sorted.reduce((s, g) => s + Number(g.total_price ?? 0), 0);
+    // Peşinat ilk satırda durur; toplamada ikiye katlanmasın.
+    base.deposit_amount = Math.max(0, ...sorted.map((g) => Number(g.deposit_amount) || 0));
+    const groupId = sorted.map((g) => String(g.sale_group_id ?? '').trim()).find((id) => id.length > 0);
+    if (groupId) base.sale_group_id = groupId;
+
+    const starts = sorted
+        .map((g) => parseHhmmToMin(g.appointment_time ?? g.time))
+        .filter((n): n is number => n != null);
+    const ends = sorted
+        .map((g) => {
+            const start = parseHhmmToMin(g.appointment_time ?? g.time);
+            if (start == null) return null;
+            return start + Math.max(1, Number(g.duration) || 30);
+        })
+        .filter((n): n is number => n != null);
+    if (starts.length > 0 && ends.length > 0) {
+        const mergedStart = Math.min(...starts);
+        const mergedEnd = Math.max(...ends);
+        const hhmm = formatMinToHhmm(mergedStart);
+        base.appointment_time = hhmm;
+        base.time = hhmm;
+        base.duration = Math.max(1, mergedEnd - mergedStart);
+    }
     return base;
+}
+
+/** Aynı POS / fatura ziyareti anahtarı (`sale_group_id`). */
+export function beautyAppointmentSaleGroupKey(apt: BeautyAppointment): string {
+    return String(apt.sale_group_id ?? '').trim();
+}
+
+function appointmentHasServiceInvoice(apt: BeautyAppointment): boolean {
+    if (String(apt.remainder_sale_id ?? '').trim()) return true;
+    if (String(apt.remainder_sale_fiche_no ?? '').trim()) return true;
+    return false;
+}
+
+/**
+ * İkinci fatura kesilmemiş ardışık aynı müşteri: tek POS sepeti varsay.
+ * (sale_group_id yazılmamış eski kayıtlar — örn. HIGH LIGHT + HAND JELISH)
+ */
+function mergeConsecutivePendingSingleInvoiceVisits(
+    appointments: BeautyAppointment[],
+): BeautyAppointment[] {
+    if (appointments.length <= 1) return appointments;
+    const sorted = sortBeautyAppointmentsQueue(appointments);
+    const result: BeautyAppointment[] = [];
+    for (const apt of sorted) {
+        const start = parseHhmmToMin(apt.appointment_time ?? apt.time);
+        if (start === null) {
+            result.push(apt);
+            continue;
+        }
+        const prev = result[result.length - 1];
+        if (!prev) {
+            result.push(apt);
+            continue;
+        }
+        const prevStart = parseHhmmToMin(prev.appointment_time ?? prev.time);
+        const prevDuration = Math.max(1, Number(prev.duration) || 30);
+        if (prevStart === null) {
+            result.push(apt);
+            continue;
+        }
+        const prevEnd = prevStart + prevDuration;
+        const sameCustomer = customerQueueGroupKey(prev) === customerQueueGroupKey(apt);
+        const isContiguous = start <= prevEnd;
+        const bothPending = !appointmentHasServiceInvoice(prev) && !appointmentHasServiceInvoice(apt);
+        if (!sameCustomer || !isContiguous || !bothPending) {
+            result.push(apt);
+            continue;
+        }
+        result[result.length - 1] = mergeQueueGroupForCardDisplay([prev, apt]);
+    }
+    return result;
+}
+
+/**
+ * Takvim kartı birleştirme (fatura bazlı).
+ * - Aynı `sale_group_id` → tek kart (Kalem ayrı fatura açık olsa bile).
+ * - Hizmet faturası yok + ardışık aynı müşteri → tek kart (ikinci fatura açılmadı).
+ * - `mergeConsecutiveSameCustomer`: ek ardışık birleşim (sep kapalıyken).
+ */
+export function mergeBeautyAppointmentsForBoardDisplay(
+    appointments: BeautyAppointment[],
+    opts?: { mergeConsecutiveSameCustomer?: boolean },
+): BeautyAppointment[] {
+    if (!appointments.length) return [];
+    const bySaleGroup = new Map<string, BeautyAppointment[]>();
+    const ungrouped: BeautyAppointment[] = [];
+    for (const apt of appointments) {
+        const key = beautyAppointmentSaleGroupKey(apt);
+        if (!key) {
+            ungrouped.push(apt);
+            continue;
+        }
+        const bucket = bySaleGroup.get(key) ?? [];
+        bucket.push(apt);
+        bySaleGroup.set(key, bucket);
+    }
+
+    const fromGroups = [...bySaleGroup.values()].map((group) => mergeQueueGroupForCardDisplay(group));
+    const pendingMerged = mergeConsecutivePendingSingleInvoiceVisits(ungrouped);
+    const fromUngrouped = opts?.mergeConsecutiveSameCustomer
+        ? mergeConsecutiveCustomerAppointments(pendingMerged)
+        : pendingMerged;
+
+    return sortBeautyAppointmentsQueue([...fromGroups, ...fromUngrouped]);
+}
+
+/** Ardışık aynı müşteri kartlarını birleştir (sale_group yokken). */
+export function mergeConsecutiveCustomerAppointments(appointments: BeautyAppointment[]): BeautyAppointment[] {
+    if (appointments.length <= 1) return appointments;
+    const sorted = sortBeautyAppointmentsQueue(appointments);
+    const result: BeautyAppointment[] = [];
+    for (const apt of sorted) {
+        const start = parseHhmmToMin(apt.appointment_time ?? apt.time);
+        if (start === null) {
+            result.push(apt);
+            continue;
+        }
+        const prev = result[result.length - 1];
+        if (!prev) {
+            result.push(apt);
+            continue;
+        }
+        const prevStart = parseHhmmToMin(prev.appointment_time ?? prev.time);
+        const prevDuration = Math.max(1, Number(prev.duration) || 30);
+        if (prevStart === null) {
+            result.push(apt);
+            continue;
+        }
+        const prevEnd = prevStart + prevDuration;
+        const sameCustomer = customerQueueGroupKey(prev) === customerQueueGroupKey(apt);
+        const isContiguous = start <= prevEnd;
+        if (!sameCustomer || !isContiguous) {
+            result.push(apt);
+            continue;
+        }
+        result[result.length - 1] = mergeQueueGroupForCardDisplay([prev, apt]);
+    }
+    return result;
 }
 
 /**

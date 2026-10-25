@@ -166,6 +166,65 @@ describe('POS açılış sepeti — fatura, saat ve randevu', () => {
         expect(carts[1]?.key).toBe(`apt:${SAC_ID}`);
     });
 
+    it('sale_group_id aynıysa fiş no boş olsa da iki hizmet tek sepette kalır', () => {
+        const group = 'grp-visit-nihat';
+        const high = appointment({
+            id: TORPI_ID,
+            service_name: 'HIGH LIGHT',
+            appointment_time: '09:00',
+            time: '09:00',
+            total_price: 50_000,
+            deposit_amount: 25_000,
+            sale_group_id: group,
+            remainder_sale_fiche_no: '',
+        });
+        const hand = appointment({
+            id: SAC_ID,
+            service_name: 'HAND JELISH',
+            appointment_time: '10:00',
+            time: '10:00',
+            total_price: 25_000,
+            deposit_amount: 0,
+            sale_group_id: group,
+            remainder_sale_fiche_no: '',
+        });
+        const cart = openBeautyPosCart(high, [high, hand]);
+        expect(cart?.lines.map((line) => line.serviceName)).toEqual(['HIGH LIGHT', 'HAND JELISH']);
+        expect(cart?.subtotal).toBe(75_000);
+        expect(cart?.reservationAmount).toBe(25_000);
+        expect(cart?.remaining).toBe(50_000);
+        expect(beautyPosOpeningAppointments(high, [high, hand]).map((row) => row.id)).toEqual([
+            TORPI_ID,
+            SAC_ID,
+        ]);
+        expect(beautyPosOpeningKey(high)).toBe(`group:${group}`);
+    });
+
+    it('fişsiz ardışık iki hizmet (ikinci fatura yok) tek sepette birleşir', () => {
+        const high = appointment({
+            id: TORPI_ID,
+            service_name: 'HIGH LIGHT',
+            appointment_time: '09:00',
+            time: '09:00',
+            total_price: 50_000,
+            deposit_amount: 25_000,
+            remainder_sale_fiche_no: '',
+        });
+        const hand = appointment({
+            id: SAC_ID,
+            service_name: 'HAND JELISH',
+            appointment_time: '10:00',
+            time: '10:00',
+            total_price: 25_000,
+            deposit_amount: 0,
+            remainder_sale_fiche_no: '',
+        });
+        const cart = openBeautyPosCart(high, [high, hand]);
+        expect(cart?.lines.map((line) => line.serviceName)).toEqual(['HIGH LIGHT', 'HAND JELISH']);
+        expect(cart?.subtotal).toBe(75_000);
+        expect(cart?.remaining).toBe(50_000);
+    });
+
     it('aynı fişin iki hizmeti sepette kalır, diğer fişin hizmeti gelmez', () => {
         const saleId = '55555555-5555-4555-8555-555555555555';
         const boyaId = '33333333-3333-4333-8333-333333333333';

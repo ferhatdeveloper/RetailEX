@@ -2,9 +2,9 @@
  * Güzellik POS açılış sepeti.
  *
  * Aynı müşteri, aynı gün ve aynı personel sepet birleştirmez.
- * Fiş, satış no veya fatura no ile açılır. Bu kimliği paylaşan satırlar
- * sepette kalır. Kimliği boş olan kayıt yalnız kendi randevusudur;
- * günün diğer randevusu gelmez.
+ * Fiş, satış no, fatura no veya `sale_group_id` (tek POS ziyareti) ile açılır.
+ * Bu kimliği paylaşan satırlar sepette kalır. Kimliği boş olan kayıt yalnız
+ * kendi randevusudur; günün diğer randevusu gelmez.
  * Peşinat fiş no sepet anahtarı değildir. Peşinat ciro değildir;
  * toplama ikinci kez eklenmez. Kalan = bu fişin toplamı − bu fişin ön ödemesi.
  */
@@ -14,6 +14,7 @@ import {
     type BeautyAppointment,
 } from '../types/beauty';
 import { beautyAppointmentDateKey } from './dateLocal';
+import { customerQueueGroupKey } from './beautyQueueOrder';
 import {
     appointmentFormTotal,
     appointmentRemainingAfterDeposit,
@@ -116,16 +117,22 @@ function saleIdOf(apt: BeautyAppointment): string {
     return String(apt.remainder_sale_id ?? '').trim();
 }
 
+function saleGroupIdOf(apt: BeautyAppointment): string {
+    return String(apt.sale_group_id ?? '').trim();
+}
+
 /**
  * Tek kayıt için fiş kimliği.
- * Satış no, yoksa hizmet fiş no, o da yoksa randevu id.
- * Saat, müşteri, gün ve personel anahtar değildir.
+ * Satış no, yoksa hizmet fiş no, yoksa ziyaret grubu (`sale_group_id`),
+ * o da yoksa randevu id. Saat / müşteri / personel anahtar değildir.
  */
 export function beautyPosOpeningKey(apt: BeautyAppointment): string {
     const saleId = saleIdOf(apt);
     if (saleId) return `sale:${saleId}`;
     const fiche = beautyPosServiceFicheNo(apt);
     if (fiche) return `fiche:${fiche}`;
+    const saleGroup = saleGroupIdOf(apt);
+    if (saleGroup) return `group:${saleGroup}`;
     return `apt:${String(apt.id ?? '').trim()}`;
 }
 
@@ -175,8 +182,8 @@ export function beautyPosAdvanceByAppointment(
 }
 
 /**
- * Aynı satış no veya aynı hizmet fiş no bir fiştir.
- * İkisi de boşsa randevular birleşmez.
+ * Aynı satış no, hizmet fiş no veya `sale_group_id` bir fiş / ziyarettir.
+ * Hepsi boşsa randevular birleşmez (ayrı POS sepeti).
  */
 export function groupBeautyPosReceiptAppointments(rows: BeautyAppointment[]): BeautyAppointment[][] {
     const list = (rows || []).filter((apt) => String(apt?.id ?? '').trim());
@@ -197,9 +204,11 @@ export function groupBeautyPosReceiptAppointments(rows: BeautyAppointment[]): Be
     };
     const bySale = new Map<string, number>();
     const byFiche = new Map<string, number>();
+    const bySaleGroup = new Map<string, number>();
     list.forEach((apt, index) => {
         const saleId = saleIdOf(apt);
         const fiche = beautyPosServiceFicheNo(apt);
+        const saleGroup = saleGroupIdOf(apt);
         if (saleId) {
             const prev = bySale.get(saleId);
             if (prev == null) bySale.set(saleId, index);
@@ -210,7 +219,36 @@ export function groupBeautyPosReceiptAppointments(rows: BeautyAppointment[]): Be
             if (prev == null) byFiche.set(fiche, index);
             else union(prev, index);
         }
+        if (saleGroup) {
+            const prev = bySaleGroup.get(saleGroup);
+            if (prev == null) bySaleGroup.set(saleGroup, index);
+            else union(prev, index);
+        }
     });
+    // Hizmet faturası / sale_group yoksa: ardışık aynı müşteri = tek POS sepeti
+    // (HIGH LIGHT + HAND JELISH, ikinci fatura açılmamış eski kayıtlar).
+    const orderByTime = list
+        .map((apt, index) => ({ apt, index }))
+        .sort((a, b) => {
+            const byTime = timeMinutes(beautyPosOpeningTime(a.apt)) - timeMinutes(beautyPosOpeningTime(b.apt));
+            if (byTime !== 0) return byTime;
+            return String(a.apt.id).localeCompare(String(b.apt.id));
+        });
+    for (let i = 1; i < orderByTime.length; i += 1) {
+        const prev = orderByTime[i - 1];
+        const cur = orderByTime[i];
+        if (saleIdOf(prev.apt) || saleIdOf(cur.apt)) continue;
+        if (beautyPosServiceFicheNo(prev.apt) || beautyPosServiceFicheNo(cur.apt)) continue;
+        if (saleGroupIdOf(prev.apt) || saleGroupIdOf(cur.apt)) continue;
+        if (beautyAppointmentDateKey(prev.apt) !== beautyAppointmentDateKey(cur.apt)) continue;
+        if (customerQueueGroupKey(prev.apt) !== customerQueueGroupKey(cur.apt)) continue;
+        const prevStart = timeMinutes(beautyPosOpeningTime(prev.apt));
+        const curStart = timeMinutes(beautyPosOpeningTime(cur.apt));
+        if (prevStart >= 24 * 60 || curStart >= 24 * 60) continue;
+        const prevEnd = prevStart + Math.max(1, Number(prev.apt.duration) || 30);
+        if (curStart > prevEnd) continue;
+        union(prev.index, cur.index);
+    }
     const buckets = new Map<number, BeautyAppointment[]>();
     list.forEach((apt, index) => {
         const root = find(index);
@@ -232,6 +270,8 @@ function groupKey(group: BeautyAppointment[]): string {
     if (saleId) return `sale:${saleId}`;
     const fiche = group.map(beautyPosServiceFicheNo).find((no) => no.length > 0) ?? '';
     if (fiche) return `fiche:${fiche}`;
+    const saleGroup = group.map(saleGroupIdOf).find((id) => id.length > 0) ?? '';
+    if (saleGroup) return `group:${saleGroup}`;
     return `apt:${String(group[0]?.id ?? '').trim()}`;
 }
 
