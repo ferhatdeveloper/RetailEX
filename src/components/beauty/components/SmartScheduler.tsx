@@ -42,12 +42,12 @@ import {
 } from '../../../utils/dateLocal';
 import {
     compareBeautyQueueOrder,
-    customerQueueGroupKey,
     findBeautyAppointmentsSameQueueGroup,
     groupBeautyQueueByCustomer,
     mergeBeautyAppointmentsForBoardDisplay,
     suggestQueuePrefillTime,
 } from '../../../utils/beautyQueueOrder';
+import { beautyCancelTargets } from '../../../utils/beautyAppointmentCancel';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { appointmentDepositCardAmounts } from '../../../utils/depositPrePaymentAllocation';
 import '../ClinicStyles.css';
@@ -766,11 +766,10 @@ export function SmartScheduler() {
             const dayPool = dayYmd
                 ? appointments.filter(a => beautyAppointmentDateKey(a) === dayYmd)
                 : appointments;
-            const siblings = findBeautyAppointmentsSameQueueGroup(
+            const targets = beautyCancelTargets(
                 apt,
                 dayPool.length > 0 ? dayPool : [apt],
             );
-            const targets = siblings.length > 0 ? siblings : [apt];
             for (const sib of targets) {
                 if (!sib?.id) continue;
                 await updateAppointmentStatus(sib.id, AppointmentStatus.CANCELLED);

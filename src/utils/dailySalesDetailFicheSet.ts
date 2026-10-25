@@ -13,13 +13,17 @@
  * Net = ciro + rezervasyon − iade − gider. İade ve gider bir kez.
  * İndirim ciro netindedir, açık cari değildir.
  */
+import { customerKeyIsCancelTarget } from './beautyAppointmentCancel';
 import { assembleDailySalesDetailRows } from './dailySalesDetailRows';
 import { reportDisplayNet } from './periodSummaryNet';
 
 export interface DailyFicheIdentity {
   id?: string | null;
   receiptNumber?: string | null;
+  saleGroupId?: string | null;
   customerName?: string | null;
+  customerId?: string | null;
+  customerCode?: string | null;
 }
 
 export interface DailyScreenFiche extends DailyFicheIdentity {
@@ -71,12 +75,18 @@ export function ficheIsCancelTarget(
   fiche: DailyFicheIdentity,
   cancelTargetIds: readonly string[] | null | undefined,
 ): boolean {
-  const targets = new Set((cancelTargetIds || []).map(normId).filter(Boolean));
+  const targets = new Set(
+    (cancelTargetIds || [])
+      .map(normId)
+      .filter((id) => id && !customerKeyIsCancelTarget(id, fiche)),
+  );
   if (targets.size === 0) return false;
   const id = normId(fiche.id);
   const receipt = normId(fiche.receiptNumber);
+  const group = normId(fiche.saleGroupId);
   if (id && targets.has(id)) return true;
   if (receipt && targets.has(receipt)) return true;
+  if (group && targets.has(group)) return true;
   return false;
 }
 

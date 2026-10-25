@@ -31,6 +31,7 @@ import {
   passesDailySalesDetailList,
 } from '../../utils/dailySalesDetailRows';
 import { ficheIsCancelTarget } from '../../utils/dailySalesDetailFicheSet';
+import { reportFicheShowsCancel } from '../../utils/beautyAppointmentCancel';
 import {
   dailyNetSaleRevenue,
 } from '../../utils/dailyReportKpis';
@@ -3858,12 +3859,12 @@ export function ReportsModule({
         // "İade" olur. Tutar alanları burada değişmez.
         kindLabel: dailySalesDetailKindLabel(row, kindLabels),
         paymentLabel: paymentLabelText,
-        statusLabel: row.isForfeitedDeposit
+        statusLabel: row.isForfeitedDeposit && reportFicheShowsCancel(row)
           ? (tm('reportsDetStatusCancelled') || 'İptal')
           : isReturn
             ? 'Satış İade'
-            : isCancelled
-              ? tm('reportsDetStatusCancelled')
+            : isCancelled && reportFicheShowsCancel(row)
+              ? (tm('reportsDetStatusCancelled') || 'İptal')
               : isRefunded
                 ? tm('reportsDetStatusRefunded')
                 : tm('reportsDetStatusCompleted'),

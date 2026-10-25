@@ -75,6 +75,7 @@ import {
     openBeautyPosCart,
     type BeautyPosOpeningCartLine,
 } from '../../../utils/beautyPosOpening';
+import { beautyCancelTargets } from '../../../utils/beautyAppointmentCancel';
 import {
     appointmentFormTotal,
     appointmentRemainingAfterDeposit,
@@ -2328,11 +2329,10 @@ export function AppointmentPOS({
             } catch {
                 pool = [];
             }
-            const siblings = beautyPosOpeningAppointments(
+            const targets = beautyCancelTargets(
                 existingAppointment,
                 pool.length > 0 ? pool : [existingAppointment],
             );
-            const targets = siblings.length > 0 ? siblings : [existingAppointment];
             // Toplam iptal edilen peşinat tutarını bilgilendirme için biriktir.
             let totalDepositRefunded = 0;
             let anyReservationCancelled = false;

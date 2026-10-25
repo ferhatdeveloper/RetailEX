@@ -6,6 +6,12 @@ import type { Sale, SaleItem } from '../core/types/models';
 import { applyOpenAdvancesToSale } from './avansService';
 import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
 import { widenDailyReportQueryRange } from '../utils/dailySalesDetailRows';
+import {
+    BEAUTY_CANCEL_APPOINTMENT_WHERE_SQL,
+    BEAUTY_CANCEL_SALES_WHERE_SQL,
+    beautyCancelSqlArgsFromRow,
+    type BeautyCancelSqlArgs,
+} from '../utils/beautyAppointmentCancel';
 import { postgres, ERP_SETTINGS } from './postgres';
 import {
     beautyInvoicePrefix,
@@ -1533,6 +1539,131 @@ async function runBeautySaleErpAndLoyalty(
             console.warn('[beautyService] Müşteri alışveriş / puan güncellenemedi:', e);
         }
     }
+}
+
+/** İptal kimliği: randevu, satış grubu, fiş. Cari id okunmaz. */
+async function readBeautyCancelScope(appointmentId: string): Promise<BeautyCancelSqlArgs> {
+    const aid = String(appointmentId ?? '').trim();
+    const fallback = beautyCancelSqlArgsFromRow({ id: aid });
+    if (!aid) return fallback;
+    try {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const rows = await postgrest.get<Array<Record<string, unknown>>>(
+                `/rex_${fn}_${pn}_beauty_appointments`,
+                {
+                    select: 'id,sale_group_id,remainder_sale_id,remainder_sale_fiche_no,deposit_sale_id',
+                    id: `eq.${aid}`,
+                    limit: 1,
+                },
+                { schema: 'beauty' },
+            );
+            const row = Array.isArray(rows) ? rows[0] : undefined;
+            if (!row) return fallback;
+            return beautyCancelSqlArgsFromRow({
+                id: aid,
+                sale_group_id: row.sale_group_id == null ? null : String(row.sale_group_id),
+                remainder_sale_id: row.remainder_sale_id == null ? null : String(row.remainder_sale_id),
+                remainder_sale_fiche_no: row.remainder_sale_fiche_no == null ? null : String(row.remainder_sale_fiche_no),
+                deposit_sale_id: row.deposit_sale_id == null ? null : String(row.deposit_sale_id),
+            });
+        }
+        const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const { rows } = await postgres.query<{
+            sale_group_id: string | null;
+            remainder_sale_id: string | null;
+            remainder_sale_fiche_no: string | null;
+            deposit_sale_id: string | null;
+        }>(
+            `SELECT sale_group_id,
+                    remainder_sale_id::text AS remainder_sale_id,
+                    remainder_sale_fiche_no,
+                    deposit_sale_id::text AS deposit_sale_id
+               FROM ${table}
+              WHERE id::text = $1::text
+              LIMIT 1`,
+            [aid],
+        );
+        const row = rows?.[0];
+        if (!row) return fallback;
+        return beautyCancelSqlArgsFromRow({ id: aid, ...row });
+    } catch (e) {
+        console.warn('[beautyService] iptal kimliği okunamadı:', e);
+        return fallback;
+    }
+}
+
+/**
+ * Aynı faturanın randevu satırlarını iptal eder.
+ * Süzgeç randevu id, satış grubu, satış id veya fiş no.
+ * Cari id ile UPDATE yazılmaz.
+ */
+async function markBeautyAppointmentsCancelledByIdentity(appointmentId: string): Promise<string[]> {
+    const aid = String(appointmentId ?? '').trim();
+    if (!aid) return [];
+    const scope = await readBeautyCancelScope(aid);
+    const ids = new Set<string>(scope.appointmentIds.length ? scope.appointmentIds : [aid]);
+    try {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const path = `/rex_${fn}_${pn}_beauty_appointments`;
+            const pull = async (filter: Record<string, string>) => {
+                const part = await postgrest.get<Array<{ id?: string }>>(
+                    path,
+                    { select: 'id', ...filter, limit: 50 },
+                    { schema: 'beauty' },
+                );
+                for (const row of Array.isArray(part) ? part : []) {
+                    const id = String(row?.id ?? '').trim();
+                    if (id) ids.add(id);
+                }
+            };
+            for (const group of scope.saleGroupIds) await pull({ sale_group_id: `eq.${group}` });
+            for (const saleId of scope.saleIds) {
+                await pull({ remainder_sale_id: `eq.${saleId}` });
+            }
+            for (const fiche of scope.ficheNos) await pull({ remainder_sale_fiche_no: `eq.${fiche}` });
+            const now = new Date().toISOString();
+            for (const id of ids) {
+                await postgrest.patch(
+                    `${path}?id=eq.${encodeURIComponent(id)}`,
+                    { status: 'cancelled', updated_at: now },
+                    { schema: 'beauty', prefer: 'return=minimal' },
+                );
+            }
+            return [...ids];
+        }
+        const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const { rows } = await postgres.query<{ id: string }>(
+            `UPDATE ${table}
+                SET status = 'cancelled', updated_at = NOW()
+              WHERE ${BEAUTY_CANCEL_APPOINTMENT_WHERE_SQL}
+              RETURNING id::text AS id`,
+            [scope.appointmentIds, scope.saleGroupIds, scope.saleIds, scope.ficheNos],
+        );
+        for (const row of rows || []) {
+            const id = String(row?.id ?? '').trim();
+            if (id) ids.add(id);
+        }
+    } catch (e) {
+        console.warn('[beautyService] fiş kimliğiyle iptal yazılamadı:', e);
+        try {
+            if (!shouldUseTenantPostgrestApi()) {
+                const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
+                await postgres.query(
+                    `UPDATE ${table} SET status = 'cancelled', updated_at = NOW() WHERE id::text = $1::text`,
+                    [aid],
+                );
+            }
+        } catch (inner) {
+            console.warn('[beautyService] randevu iptali yazılamadı:', inner);
+        }
+    }
+    return [...ids];
 }
 
 export const beautyService = {
@@ -3544,7 +3675,10 @@ export const beautyService = {
                 { schema: 'beauty', prefer: 'return=minimal' }
             );
             if (statusStr === 'cancelled') {
-                await beautyService.voidPaidBeautySalesLinkedToAppointment(id);
+                const cancelIds = await markBeautyAppointmentsCancelledByIdentity(id);
+                for (const cancelId of cancelIds.length ? cancelIds : [id]) {
+                    await beautyService.voidPaidBeautySalesLinkedToAppointment(cancelId);
+                }
             }
             return;
         }
@@ -3620,7 +3754,10 @@ export const beautyService = {
              pgTimestamptzOrNull(merged.remainder_payment_date)]
         );
         if (statusStr === 'cancelled') {
-            await beautyService.voidPaidBeautySalesLinkedToAppointment(id);
+            const cancelIds = await markBeautyAppointmentsCancelledByIdentity(id);
+            for (const cancelId of cancelIds.length ? cancelIds : [id]) {
+                await beautyService.voidPaidBeautySalesLinkedToAppointment(cancelId);
+            }
         }
         // 212: REZARVASYON HİZMETİ satırı — completed geçişi idempotent.
         if (statusStr === 'completed' && current.status !== 'completed') {
@@ -3808,45 +3945,57 @@ export const beautyService = {
     async voidPaidBeautySalesLinkedToAppointment(appointmentId: string): Promise<void> {
         const aid = String(appointmentId ?? '').trim();
         if (!aid) return;
+        const scope = await readBeautyCancelScope(aid);
         if (shouldUseTenantPostgrestApi()) {
             const { postgrest } = await import('./api/postgrestClient');
             const fn = erpFirmNrForRow();
             const pn = erpPeriodNrForRow();
-            const rows = await postgrest.get<{ id: string }[]>(
-                `/rex_${fn}_${pn}_beauty_sales`,
-                {
-                    select: 'id',
-                    payment_status: 'eq.paid',
-                    notes: `like.*rex_appt:${aid}*`,
-                    limit: 500,
-                },
-                { schema: 'beauty' }
-            );
-            for (const row of rows) {
-                if (!row?.id) continue;
+            const salesPath = `/rex_${fn}_${pn}_beauty_sales`;
+            const byId = new Map<string, { id: string }>();
+            const pull = async (filter: Record<string, string>) => {
+                const part = await postgrest.get<{ id: string }[]>(
+                    salesPath,
+                    { select: 'id', payment_status: 'eq.paid', ...filter, limit: 200 },
+                    { schema: 'beauty' },
+                );
+                for (const row of Array.isArray(part) ? part : []) {
+                    if (row?.id) byId.set(String(row.id), row);
+                }
+            };
+            await pull({ notes: `like.*rex_appt:${aid}*` });
+            await pull({ linked_appointment_id: `eq.${aid}` });
+            for (const group of scope.saleGroupIds) await pull({ sale_group_id: `eq.${group}` });
+            for (const fiche of scope.ficheNos) await pull({ invoice_number: `eq.${fiche}` });
+            for (const saleId of scope.saleIds) await pull({ id: `eq.${saleId}` });
+            for (const row of byId.values()) {
                 await postgrest.patch(
-                    `/rex_${fn}_${pn}_beauty_sales?id=eq.${encodeURIComponent(String(row.id))}`,
+                    `${salesPath}?id=eq.${encodeURIComponent(String(row.id))}`,
                     { payment_status: 'cancelled' },
                     { schema: 'beauty', prefer: 'return=minimal' }
                 );
             }
-            // Plan N — bağlı ERP `sales` fişlerini de ciro dışı işaretle (dashboard).
+            // Bağlı ERP satış fişi. Cari id ile seçilmez.
             try {
-                const erpRows = await postgrest.get<{ id: string }[]>(
-                    `/rex_${fn}_${pn}_sales`,
-                    {
-                        select: 'id',
-                        notes: `like.*rex_appt:${aid}*`,
-                        is_cancelled: 'eq.false',
-                        limit: 50,
-                    },
-                    { schema: 'public' },
-                );
-                for (const er of Array.isArray(erpRows) ? erpRows : []) {
-                    if (!er?.id) continue;
+                const erpPath = `/rex_${fn}_${pn}_sales`;
+                const erpById = new Map<string, { id: string }>();
+                const pullErp = async (filter: Record<string, string>) => {
+                    const part = await postgrest.get<{ id: string }[]>(
+                        erpPath,
+                        { select: 'id', is_cancelled: 'eq.false', ...filter, limit: 50 },
+                        { schema: 'public' },
+                    );
+                    for (const row of Array.isArray(part) ? part : []) {
+                        if (row?.id) erpById.set(String(row.id), row);
+                    }
+                };
+                await pullErp({ notes: `like.*rex_appt:${aid}*` });
+                await pullErp({ linked_appointment_id: `eq.${aid}` });
+                for (const fiche of scope.ficheNos) await pullErp({ fiche_no: `eq.${fiche}` });
+                for (const saleId of scope.saleIds) await pullErp({ id: `eq.${saleId}` });
+                for (const er of erpById.values()) {
                     try {
                         await postgrest.patch(
-                            `/rex_${fn}_${pn}_sales?id=eq.${encodeURIComponent(String(er.id))}`,
+                            `${erpPath}?id=eq.${encodeURIComponent(String(er.id))}`,
                             { is_cancelled: true },
                             { schema: 'public', prefer: 'return=minimal' },
                         );
@@ -3860,24 +4009,48 @@ export const beautyService = {
             return;
         }
         const table = postgres.getMovementTableName('beauty_sales', 'beauty');
-        const needle = `%rex_appt:${aid}%`;
-        await postgres.query(
-            `UPDATE ${table}
-             SET payment_status = 'cancelled'
-             WHERE COALESCE(notes, '') LIKE $1
-               AND COALESCE(payment_status, 'paid') = 'paid'`,
-            [needle]
-        );
-        // Plan N — bağlı ERP `sales` fişlerini de ciro dışı işaretle (dashboard).
+        const salesParams = [
+            scope.appointmentIds,
+            scope.notePatterns,
+            scope.saleGroupIds,
+            scope.ficheNos,
+            scope.saleIds,
+        ];
+        try {
+            await postgres.query(
+                `UPDATE ${table}
+                    SET payment_status = 'cancelled'
+                  WHERE COALESCE(payment_status, 'paid') = 'paid'
+                    AND (${BEAUTY_CANCEL_SALES_WHERE_SQL})`,
+                salesParams,
+            );
+        } catch (e) {
+            console.warn('[beautyService] voidPaidBeautySales: fiş kimliği, nota düşülüyor:', e);
+            const needle = `%rex_appt:${aid}%`;
+            await postgres.query(
+                `UPDATE ${table}
+                    SET payment_status = 'cancelled'
+                  WHERE COALESCE(notes, '') LIKE $1
+                    AND COALESCE(payment_status, 'paid') = 'paid'`,
+                [needle],
+            );
+        }
+        // Bağlı ERP satış fişi. Cari id ile seçilmez. Kasa fişi silinmez.
         try {
             const erpSalesTable = postgres.getMovementTableName('sales');
+            const firmNr = String(ERP_SETTINGS.firmNr ?? '001').trim();
             await postgres.query(
                 `UPDATE ${erpSalesTable}
                    SET is_cancelled = true
                  WHERE firm_nr = $1::text
                    AND COALESCE(is_cancelled, false) = false
-                   AND COALESCE(notes, '') LIKE $2`,
-                [String(ERP_SETTINGS.firmNr ?? '001').trim(), needle],
+                   AND (
+                     linked_appointment_id::text = ANY($2::text[])
+                     OR (cardinality($3::text[]) > 0 AND COALESCE(notes, '') LIKE ANY($3::text[]))
+                     OR (cardinality($4::text[]) > 0 AND fiche_no = ANY($4::text[]))
+                     OR (cardinality($5::text[]) > 0 AND id::text = ANY($5::text[]))
+                   )`,
+                [firmNr, scope.appointmentIds, scope.notePatterns, scope.ficheNos, scope.saleIds],
             );
         } catch (e) {
             console.warn('[beautyService] voidPaidBeautySales: SQL ERP sales update:', e);
@@ -4333,6 +4506,16 @@ export const beautyService = {
         };
         if (!aid) return result;
 
+        // İptal kimliği: randevu, satış grubu, fiş. Cari id süzgeç değildir.
+        const cancelScope = await readBeautyCancelScope(aid);
+        const cancelSalesParams = [
+            cancelScope.appointmentIds.length ? cancelScope.appointmentIds : [aid],
+            cancelScope.notePatterns,
+            cancelScope.saleGroupIds,
+            cancelScope.ficheNos,
+            cancelScope.saleIds,
+        ];
+
         // Önce appointment'ı oku — deposit tutarı + cari id (cari reversal için).
         let depositAmount = 0;
         let customerIdForReversal: string | null = null;
@@ -4369,15 +4552,33 @@ export const beautyService = {
             };
             let linked: SalesRow[] = [];
             try {
-                linked = await postgrest.get<SalesRow[]>(
-                    salesPath,
-                    {
-                        select: 'id,is_deposit,parent_sale_id,paid_amount,total,customer_id,notes,payment_status',
-                        linked_appointment_id: `eq.${aid}`,
-                        limit: 50,
-                    },
-                    { schema: 'beauty' },
-                ) ?? [];
+                const byId = new Map<string, SalesRow>();
+                const pullLinked = async (filter: Record<string, string>) => {
+                    const part = await postgrest.get<SalesRow[]>(
+                        salesPath,
+                        {
+                            select: 'id,is_deposit,parent_sale_id,paid_amount,total,customer_id,notes,payment_status',
+                            ...filter,
+                            limit: 50,
+                        },
+                        { schema: 'beauty' },
+                    );
+                    for (const row of Array.isArray(part) ? part : []) {
+                        if (row?.id) byId.set(String(row.id), row);
+                    }
+                };
+                await pullLinked({ linked_appointment_id: `eq.${aid}` });
+                await pullLinked({ notes: `like.*rex_appt:${aid}*` });
+                for (const group of cancelScope.saleGroupIds) {
+                    await pullLinked({ sale_group_id: `eq.${group}` });
+                }
+                for (const fiche of cancelScope.ficheNos) {
+                    await pullLinked({ invoice_number: `eq.${fiche}` });
+                }
+                for (const saleId of cancelScope.saleIds) {
+                    await pullLinked({ id: `eq.${saleId}` });
+                }
+                linked = [...byId.values()];
             } catch (e) {
                 console.warn('[beautyService] cancelAppointmentWithRevert: linked fetch:', e);
             }
@@ -4447,16 +4648,27 @@ export const beautyService = {
             // (`erpReports.ts`) `is_cancelled = false` filtresi ile bu fişleri gizler;
             // peşinat avans müşteri bakiyesinde ayrı görünür.
             try {
-                    const erpSalesRows = await postgrest.get<{ id: string }[]>(
-                        `/rex_${fn}_${pn}_sales`,
-                        {
-                            select: 'id',
-                            notes: `like.*rex_appt:${aid}*`,
-                            is_cancelled: 'eq.false',
-                            limit: 50,
-                        },
-                        { schema: 'public' },
-                    );
+                    const erpById = new Map<string, { id: string }>();
+                    const pullErp = async (filter: Record<string, string>) => {
+                        const part = await postgrest.get<{ id: string }[]>(
+                            `/rex_${fn}_${pn}_sales`,
+                            {
+                                select: 'id',
+                                is_cancelled: 'eq.false',
+                                ...filter,
+                                limit: 50,
+                            },
+                            { schema: 'public' },
+                        );
+                        for (const row of Array.isArray(part) ? part : []) {
+                            if (row?.id) erpById.set(String(row.id), row);
+                        }
+                    };
+                    await pullErp({ notes: `like.*rex_appt:${aid}*` });
+                    await pullErp({ linked_appointment_id: `eq.${aid}` });
+                    for (const fiche of cancelScope.ficheNos) await pullErp({ fiche_no: `eq.${fiche}` });
+                    for (const saleId of cancelScope.saleIds) await pullErp({ id: `eq.${saleId}` });
+                    const erpSalesRows = [...erpById.values()];
                     for (const er of Array.isArray(erpSalesRows) ? erpSalesRows : []) {
                         if (!er?.id) continue;
                         try {
@@ -4473,20 +4685,39 @@ export const beautyService = {
                     console.warn('[beautyService] cancelAppointmentWithRevert: ERP sales fetch:', e);
                 }
 
-            // 3) Appointment deposit_* alanlarını NULL'la
+            // 3) Aynı faturanın randevu satırlarında peşinat alanını sıfırla.
+            //    Başka fatura ve başka cari satırı seçilmez. Kasa fişi silinmez.
             try {
-                await postgrest.patch(
-                    `${aptPath}?id=eq.${encodeURIComponent(aid)}`,
-                    {
-                        deposit_amount: 0,
-                        deposit_sale_id: null,
-                        deposit_sale_fiche_no: null,
-                        deposit_date: null,
-                        deposit_provider: null,
-                        updated_at: new Date().toISOString(),
-                    },
-                    { schema: 'beauty', prefer: 'return=minimal' },
-                );
+                const aptIds = new Set<string>([aid]);
+                const pullApt = async (filter: Record<string, string>) => {
+                    const part = await postgrest.get<Array<{ id?: string }>>(
+                        aptPath,
+                        { select: 'id', ...filter, limit: 50 },
+                        { schema: 'beauty' },
+                    );
+                    for (const row of Array.isArray(part) ? part : []) {
+                        const id = String(row?.id ?? '').trim();
+                        if (id) aptIds.add(id);
+                    }
+                };
+                for (const group of cancelScope.saleGroupIds) await pullApt({ sale_group_id: `eq.${group}` });
+                for (const saleId of cancelScope.saleIds) await pullApt({ remainder_sale_id: `eq.${saleId}` });
+                for (const fiche of cancelScope.ficheNos) await pullApt({ remainder_sale_fiche_no: `eq.${fiche}` });
+                const depositClear = {
+                    deposit_amount: 0,
+                    deposit_sale_id: null,
+                    deposit_sale_fiche_no: null,
+                    deposit_date: null,
+                    deposit_provider: null,
+                    updated_at: new Date().toISOString(),
+                };
+                for (const id of aptIds) {
+                    await postgrest.patch(
+                        `${aptPath}?id=eq.${encodeURIComponent(id)}`,
+                        depositClear,
+                        { schema: 'beauty', prefer: 'return=minimal' },
+                    );
+                }
                 result.appointmentReverted = true;
             } catch (e) {
                 console.warn('[beautyService] cancelAppointmentWithRevert: apt patch:', e);
@@ -4559,9 +4790,9 @@ export const beautyService = {
                 }>(
                     `SELECT customer_id, total, paid_amount
                        FROM ${salesTable}
-                      WHERE linked_appointment_id::text = $1::text
+                      WHERE (${BEAUTY_CANCEL_SALES_WHERE_SQL})
                         AND LOWER(TRIM(COALESCE(payment_status, 'paid'))) NOT IN ('cancelled', 'canceled', 'void')`,
-                    [aid],
+                    cancelSalesParams,
                 );
                 preCancelSnapshot = Array.isArray(rows) ? rows : [];
             } catch (e) {
@@ -4587,9 +4818,9 @@ export const beautyService = {
                                      ELSE '[' || 'İPTAL' || '] ' || COALESCE(notes, '')
                                    END,
                            updated_at = NOW()
-                     WHERE linked_appointment_id::text = $1::text
+                     WHERE (${BEAUTY_CANCEL_SALES_WHERE_SQL})
                        AND LOWER(TRIM(COALESCE(payment_status, 'paid'))) NOT IN ('cancelled', 'canceled', 'void')`,
-                    [aid],
+                    cancelSalesParams,
                 );
                 // Sadece teşhis için; tag sayımı yerine en az 1 iptal fişi yazıldıysa
                 // true işaretle. Detaylı sayım PostgREST'te olduğu gibi
@@ -4610,8 +4841,19 @@ export const beautyService = {
                        SET is_cancelled = true
                      WHERE firm_nr = $1::text
                        AND COALESCE(is_cancelled, false) = false
-                       AND COALESCE(notes, '') LIKE $2`,
-                    [String(ERP_SETTINGS.firmNr ?? '001').trim(), `%rex_appt:${aid}%`],
+                       AND (
+                         linked_appointment_id::text = ANY($2::text[])
+                         OR (cardinality($3::text[]) > 0 AND COALESCE(notes, '') LIKE ANY($3::text[]))
+                         OR (cardinality($4::text[]) > 0 AND fiche_no = ANY($4::text[]))
+                         OR (cardinality($5::text[]) > 0 AND id::text = ANY($5::text[]))
+                       )`,
+                    [
+                        String(ERP_SETTINGS.firmNr ?? '001').trim(),
+                        cancelScope.appointmentIds.length ? cancelScope.appointmentIds : [aid],
+                        cancelScope.notePatterns,
+                        cancelScope.ficheNos,
+                        cancelScope.saleIds,
+                    ],
                 );
             } catch (e) {
                 console.warn('[beautyService] cancelAppointmentWithRevert: SQL ERP sales update:', e);
@@ -4627,8 +4869,13 @@ export const beautyService = {
                            deposit_date = NULL,
                            deposit_provider = NULL,
                            updated_at = NOW()
-                     WHERE id = $1::text::uuid`,
-                    [aid],
+                     WHERE ${BEAUTY_CANCEL_APPOINTMENT_WHERE_SQL}`,
+                    [
+                        cancelScope.appointmentIds.length ? cancelScope.appointmentIds : [aid],
+                        cancelScope.saleGroupIds,
+                        cancelScope.saleIds,
+                        cancelScope.ficheNos,
+                    ],
                 );
                 result.appointmentReverted = true;
             } catch (e) {
@@ -4686,12 +4933,28 @@ export const beautyService = {
             const saleStore = useSaleStore.getState();
             const current = Array.isArray(saleStore.sales) ? saleStore.sales : [];
             const cancelTag = '[İPTAL]';
-            const apptNeedle = `rex_appt:${aid}`;
+            const apptNeedles = (cancelScope.notePatterns.length
+                ? cancelScope.notePatterns
+                : [`%rex_appt:${aid}%`]
+            ).map((pattern) => pattern.replace(/%/g, ''));
+            const saleIdSet = new Set(cancelScope.saleIds.map((value) => value.toLowerCase()));
+            const groupSet = new Set(cancelScope.saleGroupIds.map((value) => value.toLowerCase()));
+            const ficheSet = new Set(cancelScope.ficheNos.map((value) => value.toLocaleLowerCase('tr')));
             const touchedIds: string[] = [];
             for (const s of current) {
                 if (!s) continue;
                 const notes = String((s as any).notes ?? '');
-                if (!notes.includes(apptNeedle)) continue;
+                const saleId = String((s as any).id ?? '').trim().toLowerCase();
+                const groupId = String((s as any).saleGroupId ?? (s as any).sale_group_id ?? '').trim().toLowerCase();
+                const ficheNo = String(
+                    (s as any).receiptNumber ?? (s as any).invoiceNumber ?? (s as any).invoice_number ?? (s as any).ficheNo ?? '',
+                ).trim().toLocaleLowerCase('tr');
+                const selected =
+                    apptNeedles.some((needle) => needle && notes.includes(needle))
+                    || (saleId !== '' && saleIdSet.has(saleId))
+                    || (groupId !== '' && groupSet.has(groupId))
+                    || (ficheNo !== '' && ficheSet.has(ficheNo));
+                if (!selected) continue;
                 const ps = String((s as any).paymentStatus || '').toLowerCase();
                 const st = String((s as any).status || '').toLowerCase();
                 if (ps === 'cancelled' || st === 'cancelled') continue;
@@ -5150,19 +5413,29 @@ export const beautyService = {
                 }
             }
             if (status === 'cancelled') {
-                await beautyService.voidPaidBeautySalesLinkedToAppointment(id);
+                const cancelIds = await markBeautyAppointmentsCancelledByIdentity(id);
+                for (const cancelId of cancelIds.length ? cancelIds : [id]) {
+                    await beautyService.voidPaidBeautySalesLinkedToAppointment(cancelId);
+                }
                 // İptal randevuya bağlı satış kalemlerinin komisyonunu da sıfırla; aksi halde
                 // history_rows raporu iptal edilen randevunun komisyonunu gösterebilir.
                 try {
                     const itemsT = postgres.getMovementTableName('beauty_sale_items', 'beauty');
                     const salesT = postgres.getMovementTableName('beauty_sales', 'beauty');
+                    const commissionScope = await readBeautyCancelScope(id);
                     await postgres.query(
                         `UPDATE ${itemsT} si
                            SET commission_amount = 0
                           FROM ${salesT} s
                          WHERE si.sale_id = s.id
-                           AND COALESCE(s.notes, '') LIKE $1`,
-                        [`%rex_appt:${id}%`]
+                           AND (${BEAUTY_CANCEL_SALES_WHERE_SQL})`,
+                        [
+                            commissionScope.appointmentIds.length ? commissionScope.appointmentIds : [id],
+                            commissionScope.notePatterns,
+                            commissionScope.saleGroupIds,
+                            commissionScope.ficheNos,
+                            commissionScope.saleIds,
+                        ],
                     );
                 } catch (e) {
                     console.warn('[updateAppointmentStatus] commission zero-out failed:', e);
