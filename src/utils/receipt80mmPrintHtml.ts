@@ -471,21 +471,10 @@ ${showLineStaff ? `<div style="font-size:9px;font-weight:700;margin-top:2px;colo
       })
       .join('');
 
-    const beautyPayRows = payments
-      .map((payment) => {
-        const left = paymentLabel(payment.method, T);
-        const payCode = (payment.currency || baseCurrency).trim().toUpperCase();
-        const right = fmtPayment(payment.amount ?? 0, payCode);
-        return `<tr><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;text-align:${ta}">${left}${payCode !== baseCurrency ? ` (${escapeHtml(payCode)})` : ''}</td><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;text-align:end;font-variant-numeric:tabular-nums">${escapeHtml(right)}</td></tr>`;
-      })
-      .join('');
-
     const beautyPaymentsTable =
       payments.length > 0
         ? `<table role="presentation" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;font-weight:700;margin:0 0 10px">
-<thead><tr><th colspan="2" style="padding:6px 2px;border-top:2px solid #000;border-bottom:2px solid #000;text-align:${ta};font-weight:900">${escapeHtml(T.paymentDetails)}</th></tr></thead>
 <tbody>
-${beautyPayRows}
 <tr><td style="padding:6px 2px;border-top:2px solid #000;font-weight:800;text-align:${ta}">${escapeHtml(TEXT[locale].paid)}</td><td style="padding:6px 2px;border-top:2px solid #000;font-weight:900;text-align:end">${escapeHtml(fmtMoney(paymentData.totalPaid || 0))}</td></tr>
 <tr><td style="padding:5px 2px;font-weight:800;text-align:${ta}">${escapeHtml(TEXT[locale].remaining)}</td><td style="padding:5px 2px;font-weight:800;text-align:end">${escapeHtml(fmtMoney(receiptUnpaidBalance(Number(sale.total) || 0, Number(paymentData.totalPaid) || 0)))}</td></tr>
 ${

@@ -857,30 +857,7 @@ export function Receipt80mm({
                   <col style={{ width: '55%' }} />
                   <col style={{ width: '45%' }} />
                 </colgroup>
-                <thead>
-                  <tr className="border-y-2 border-gray-900">
-                    <th colSpan={2} className={`py-1.5 font-black ${isRTL ? 'text-right' : 'text-left'}`}>
-                      {t.receipt.paymentDetails}
-                    </th>
-                  </tr>
-                </thead>
                 <tbody>
-                  {(paymentData.payments ?? []).map((payment: any, index: number) => (
-                    <tr key={index} className="border-b border-gray-300">
-                      <td className={`py-1.5 ${isRTL ? 'text-right' : 'text-left'}`}>
-                        {payment.method === 'cash' ? t.cash :
-                          payment.method === 'card' ? t.card :
-                            t.qrScanCode}
-                        {payment.currency !== baseCurrency && ` (${payment.currency})`}
-                      </td>
-                      <td className={`py-1.5 tabular-nums ${isRTL ? 'text-left' : 'text-right'}`}>
-                        {payment.currency === baseCurrency || !payment.currency
-                          ? fmtMoney(payment.amount)
-                          : formatMoneyWithCode(payment.amount, payment.currency)
-                        }
-                      </td>
-                    </tr>
-                  ))}
                   <tr className="border-t-2 border-gray-900">
                     <td className={`py-1.5 font-extrabold ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.paid}</td>
                     <td className={`py-1.5 font-black tabular-nums ${isRTL ? 'text-left' : 'text-right'}`}>

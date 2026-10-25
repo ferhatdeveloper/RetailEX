@@ -88,5 +88,9 @@ describe('randevu fişi yazdırma HTML', () => {
     expect(html.includes('30.000')).toBe(true);
     expect(html.includes('RANDEVU — Kısmi ödeme')).toBe(true);
     expect(html.includes('Ödeme alınmadı')).toBe(false);
+    expect(html.includes('ÖDEME DETAYLARI')).toBe(false);
+    expect(html.includes('Nakit')).toBe(false);
+    expect(html.includes('TORPI')).toBe(true);
+    expect(html.includes('VELI')).toBe(true);
   });
 });

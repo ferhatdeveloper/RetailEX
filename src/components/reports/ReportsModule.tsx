@@ -6223,33 +6223,7 @@ export function ReportsModule({
           <span class="label">${escHtml(tm('reportsZNetCashAmount'))}</span>
           <span>${formatNumber(zReport.netCash, 2, false)}</span>
         </div>
-        
-        <div class="divider"></div>
-        <div class="row">
-          <span class="label">${escHtml(tm('reportsZPrintFirstReceiptNo'))}</span>
-          <span>${escHtml(String(zReport.firstSale ?? ''))}</span>
-        </div>
-        <div class="row">
-          <span class="label">${escHtml(tm('reportsZPrintLastReceiptNo'))}</span>
-          <span>${escHtml(String(zReport.lastSale ?? ''))}</span>
-        </div>
-        <div class="divider"></div>
         ${restaurantProductBlock}
-        <div class="section-title">${escHtml(tm('reportsPaymentSummarySection'))}</div>
-        
-        <div class="row">
-          <span class="label">${escHtml(tm('reportsPaymentPieCash'))}</span>
-          <span class="value">${formatNumber(zReport.cashAmount, 2, false)}</span>
-        </div>
-        <div class="row">
-          <span class="label">${escHtml(tm('cardLabel'))}</span>
-          <span>${formatNumber(zReport.cardAmount, 2, false)}</span>
-        </div>
-        <div class="row">
-          <span class="label">${escHtml(tm('veresiyeVerilen'))}</span>
-          <span>${formatNumber(zReport.creditAmount ?? 0, 2, false)}</span>
-        </div>
-        
         <div class="divider"></div>
         
         <div class="center" style="margin-top: 5mm; font-size: 10px;">
@@ -7985,24 +7959,7 @@ export function ReportsModule({
                       ))}
                     </div>
 
-                    {/* Payment Summary */}
-                    <div>
-                      <h4 className={`text-sm mb-2 ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>{tm('reportsPaymentSummarySection')}</h4>
-                      <div className={`rounded-lg border divide-y ${darkMode ? 'border-slate-600 divide-slate-700' : 'border-slate-200 divide-slate-100'}`}>
-                        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                          <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{tm('reportsCashPayments')}</span>
-                          <span className="text-base font-semibold tabular-nums shrink-0">{formatNumber(zReport.cashAmount, 2, false)}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                          <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{tm('reportsCardPayments')}</span>
-                          <span className="text-base font-semibold tabular-nums shrink-0">{formatNumber(zReport.cardAmount, 2, false)}</span>
-                        </div>
-                        <div className={`flex items-center justify-between gap-4 px-4 py-2.5 ${darkMode ? 'bg-amber-950/20' : 'bg-amber-50'}`}>
-                          <span className={`text-sm ${darkMode ? 'text-amber-200' : 'text-amber-900'}`}>{tm('veresiyeVerilen')}</span>
-                          <span className="text-base font-semibold tabular-nums shrink-0 text-amber-700">{formatNumber(zReport.creditAmount ?? 0, 2, false)}</span>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
+                    <div className="space-y-2">
                         {(zReport.cashierStats?.length ?? 0) > 0 && (
                           <div className="mt-4">
                             <h4 className="text-sm text-gray-600 mb-3">Kasiyer / personel cirosu</h4>
@@ -8066,7 +8023,6 @@ export function ReportsModule({
                             />
                           </div>
                         )}
-                      </div>
                     </div>
 
                     {/* Receipt Range */}
