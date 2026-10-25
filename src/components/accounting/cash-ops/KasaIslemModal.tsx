@@ -25,7 +25,9 @@ import {
 import { KasaFaturaSecModal } from './KasaFaturaSecModal';
 import { fetchBankalar, type Banka } from '../../../services/api/banka';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
+import { supplierAPI } from '../../../services/api/suppliers';
 import { partnerAPI } from '../../../services/api/partiesPartners';
+import { cashPaymentListBalanceForDisplay } from '../../../utils/cashPaymentListBalance';
 import type { Invoice, PartyPartner } from '../../../core/types/models';
 import { formatNumber, parseNumber } from '../../../utils/formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency } from '../../../utils/currency';
@@ -205,6 +207,8 @@ export function KasaIslemModal({
   };
 
   const [cariHesaplar, setCariHesaplar] = useState<CariHesap[]>([]);
+  /** Peşinat + tamamlanan hizmet tahsilatı. Deftere yazılmaz; yalnız gösterim ofseti. */
+  const [paymentOffsetById, setPaymentOffsetById] = useState<Record<string, number>>({});
   const [bankalar, setBankalar] = useState<Banka[]>([]);
   const [digerKasalar, setDigerKasalar] = useState<Kasa[]>([]);
   const [allKasalar, setAllKasalar] = useState<Kasa[]>([]);
@@ -250,7 +254,11 @@ export function KasaIslemModal({
 
   const loadCariHesaplar = async () => {
     try {
-      const data = await fetchCurrentAccounts(selectedFirma?.id || '');
+      const [data, offsets] = await Promise.all([
+        fetchCurrentAccounts(selectedFirma?.id || ''),
+        supplierAPI.listCashPaymentBalanceOffsets(),
+      ]);
+      setPaymentOffsetById(offsets);
       setCariHesaplar(data.map((acc: any) => ({
         id: acc.id,
         kod: acc.kod,
@@ -263,6 +271,31 @@ export function KasaIslemModal({
       console.error('[KasaIslemModal] Cari hesaplar yüklenemedi:', error);
     }
   };
+
+  const displayBalanceOf = (cari: Pick<CariHesap, 'id' | 'cardType' | 'ledgerBalance' | 'bakiye'>) =>
+    cashPaymentListBalanceForDisplay(
+      cari.cardType,
+      cari.ledgerBalance ?? cari.bakiye ?? 0,
+      paymentOffsetById[cari.id] ?? 0,
+    );
+
+  const initialCariId = initialCari?.id;
+  const initialCariLedger = initialCari?.ledgerBalance ?? initialCari?.bakiye;
+  const initialCariType = initialCari?.cardType;
+  useEffect(() => {
+    const id = formData.cari_hesap_id;
+    if (!id) return;
+    const fromList = cariHesaplar.find((c) => c.id === id);
+    const cardType = fromList?.cardType ?? (initialCariId === id ? initialCariType : undefined);
+    const ledger = fromList
+      ? (fromList.ledgerBalance ?? fromList.bakiye ?? 0)
+      : (initialCariId === id ? (initialCariLedger ?? 0) : null);
+    if (ledger == null) return;
+    setSelectedCariBakiye(
+      cashPaymentListBalanceForDisplay(cardType, ledger, paymentOffsetById[id] ?? 0),
+    );
+    if (fromList?.cardType) setSelectedCariCardType(fromList.cardType);
+  }, [formData.cari_hesap_id, cariHesaplar, paymentOffsetById, initialCariId, initialCariLedger, initialCariType]);
 
   const loadBankalar = async () => {
     try {
@@ -457,17 +490,19 @@ export function KasaIslemModal({
   };
 
   const handleCariSelect = (cari: CariHesap) => {
-    const bal = cari.ledgerBalance ?? cari.bakiye ?? 0;
+    const display = displayBalanceOf(cari);
     setFormData({
       ...formData,
       cari_hesap_id: cari.id,
       cari_hesap_kodu: cari.kod,
       cari_hesap_unvani: cari.unvan,
     });
-    setSelectedCariBakiye(bal);
+    setSelectedCariBakiye(display);
     setSelectedCariCardType(cari.cardType);
     setShowCariDropdown(false);
     setCariSearch(cari.unvan || cari.kod);
+    // Tutar, düzeltilmiş bakiyeden türetilmez. Peşinat ve tamamlanan tahsilat
+    // 10.000 / 20.000 olarak ödeme alanına yazılmaz.
   };
 
   const filteredCariHesaplar = cariHesaplar.filter(c => {
@@ -769,7 +804,11 @@ export function KasaIslemModal({
                           {cari.unvan || <span className="text-red-400 font-normal">{tm('accTitleNotSet')}</span>}
                         </div>
                       </div>
-                      {renderCariBalance(cari)}
+                      {renderCariBalance({
+                        cardType: cari.cardType,
+                        ledgerBalance: displayBalanceOf(cari),
+                        bakiye: displayBalanceOf(cari),
+                      })}
                     </button>
                   ))}
                   {filteredCariHesaplar.length === 0 && <div className="p-4 text-center text-gray-400 text-sm">{tm('accCariNotFound')}</div>}

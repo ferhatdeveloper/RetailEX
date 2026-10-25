@@ -26,7 +26,9 @@ import {
   paymentMethodImpliesCustomerDebt,
   paymentMethodImpliesSupplierDebt,
 } from '../../utils/paymentMethodUtils';
+import { sumCashPaymentBalanceOffsets } from '../../utils/cashPaymentListBalance';
 import { sumReservationDepositsByAccount } from '../../utils/reservationDepositByAccount';
+
 export type { Supplier };
 
 export type CariListFilter = 'all' | 'customer' | 'supplier';
@@ -319,6 +321,55 @@ export const supplierAPI = {
       return sumReservationDepositsByAccount(rows || []);
     } catch (error) {
       console.warn('[SupplierAPI] rezervasyon peşinat toplamı okunamadı:', error);
+      return {};
+    }
+  },
+
+  /**
+   * Cari Hesap Ödeme listesi — yalnız okunur ofset.
+   * Peşinat ile tamamlanan hizmet tahsilatı. Kasa satırı ve defter yazılmaz.
+   */
+  async listCashPaymentBalanceOffsets(): Promise<Record<string, number>> {
+    try {
+      const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+      const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<Array<Record<string, unknown>>>(
+          `/rex_${firmNr}_${pn}_cash_lines`,
+          {
+            select: 'customer_id,party_id,amount,transaction_type,special_code,definition,fiche_no',
+            transaction_type: 'ilike.CH_TAHSILAT',
+            or: '(special_code.ilike.REZERVASYON,special_code.ilike.AVANS,definition.ilike.*rezervasyon*tahsilat*,definition.ilike.*randevu*kalan*,fiche_no.ilike.BEAUTY-REMAINDER-*)',
+            limit: '50000',
+          },
+          { schema: 'public' },
+        );
+        return sumCashPaymentBalanceOffsets(Array.isArray(rows) ? rows : []);
+      }
+      const { rows } = await postgres.query<Record<string, unknown>>(
+        `SELECT customer_id::text AS customer_id,
+                party_id::text AS party_id,
+                amount,
+                transaction_type,
+                special_code,
+                definition,
+                fiche_no
+           FROM cash_lines
+          WHERE UPPER(TRIM(COALESCE(transaction_type, ''))) = 'CH_TAHSILAT'
+            AND (
+              UPPER(TRIM(COALESCE(special_code, ''))) IN ('REZERVASYON', 'AVANS')
+              OR COALESCE(definition, '') ILIKE '%rezervasyon%tahsilat%'
+              OR COALESCE(definition, '') ILIKE '%randevu kalan%'
+              OR COALESCE(fiche_no, '') ILIKE 'BEAUTY-REMAINDER-%'
+            )
+            AND (customer_id IS NOT NULL OR party_id IS NOT NULL)`,
+        [],
+        { firmNr, periodNr: ERP_SETTINGS.periodNr },
+      );
+      return sumCashPaymentBalanceOffsets(rows || []);
+    } catch (error) {
+      console.warn('[SupplierAPI] ödeme listesi bakiye ofseti okunamadı:', error);
       return {};
     }
   },
