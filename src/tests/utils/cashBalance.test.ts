@@ -93,3 +93,70 @@ describe('computeCashBalanceForRegister — tek kasa için filtreli toplam', () 
     expect(computeCashBalanceForRegister(null, lines)).toBe(0);
   });
 });
+
+describe('kasa kartı — açılış, giriş, virman, gider', () => {
+  it('açılış 0 + giriş 10.000 + çıkış 0 = bakiye 10.000', () => {
+    const lines: KasaIslemi[] = [
+      mk({
+        kasa_id: 'kasa-001',
+        islem_tipi: 'CH_TAHSILAT',
+        tutar: 10_000,
+        sign: 1,
+        ozel_kod: 'REZERVASYON',
+        is_reservation_deposit: true,
+        islem_aciklamasi: 'Rezervasyon tahsilatı',
+      }),
+    ];
+    expect(computeCashBalance(lines)).toBe(10_000);
+    expect(computeCashBalanceForRegister('kasa-001', lines)).toBe(10_000);
+    expect(computeCashBalance(lines)).not.toBe(20_000);
+  });
+
+  it('ACILIS_ALACAK bakiyeyi düşürür, ACILIS_BORC artırır', () => {
+    const lines: KasaIslemi[] = [
+      mk({ islem_tipi: 'ACILIS_ALACAK', tutar: 38_500, sign: -1 }),
+      mk({ islem_tipi: 'ACILIS_BORC', tutar: 10_000, sign: 1 }),
+      mk({ islem_tipi: 'CH_TAHSILAT', tutar: 10_000, sign: 1 }),
+    ];
+    expect(computeCashBalance(lines)).toBe(-18_500);
+  });
+
+  it('virman şirket nakdini değiştirmez: kaynak −, hedef +', () => {
+    const lines: KasaIslemi[] = [
+      mk({
+        kasa_id: 'kasa-001',
+        target_register_id: 'zain',
+        islem_tipi: 'VIRMAN',
+        tutar: 40_000,
+        sign: -1,
+        islem_no: 'VRM-40',
+      }),
+      mk({
+        kasa_id: 'zain',
+        target_register_id: 'kasa-001',
+        islem_tipi: 'VIRMAN',
+        tutar: 40_000,
+        sign: 1,
+        islem_no: 'VRM-40-VRM',
+      }),
+    ];
+    expect(computeCashBalance(lines)).toBe(0);
+    expect(computeCashBalanceForRegister('kasa-001', lines)).toBe(-40_000);
+    expect(computeCashBalanceForRegister('zain', lines)).toBe(40_000);
+  });
+
+  it('gider bir kez düşer', () => {
+    const lines: KasaIslemi[] = [
+      mk({ islem_tipi: 'CH_TAHSILAT', tutar: 10_000, sign: 1 }),
+      mk({
+        id: 'kira-1',
+        islem_tipi: 'GIDER_PUSULASI',
+        tutar: 50_000,
+        sign: -1,
+        islem_aciklamasi: 'KIRA',
+      }),
+    ];
+    expect(computeCashBalance(lines)).toBe(-40_000);
+    expect(computeCashBalance(lines)).not.toBe(-90_000);
+  });
+});
