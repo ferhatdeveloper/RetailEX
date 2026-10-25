@@ -48,6 +48,7 @@ import {
 } from '../../utils/dailyReportScreenCards';
 import { DailyReportKpiGrid, type DailyReportKpiCardModel } from './DailyReportKpiGrid';
 import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
+import { dailyAvansPaymentLabel } from '../../utils/dailySalesDetailPaymentLabel';
 import {
   dailySalesDetailInvoiceDateLabel,
   dailySalesDetailInvoiceDateRaw,
@@ -7610,16 +7611,18 @@ export function ReportsModule({
                               // kalan (veresiye) sanılıyor; Sale.discount'ı aktar.
                               discount: Number(erpForKind?.discount ?? row.discount ?? 0) || 0,
                             });
-                            // Rezervasyon avansı (deposit) — 6337'deki beforeDiscount
+                            // Rezervasyon avansı (deposit) — beforeDiscount
                             // hücresinde "—" döndüren satırlar burada da
                             // "Rezervasyon Tutarı" rozeti göstermeli.
+                            // Avans rozeti yalnızca etikettir. Parantez içi tutar
+                            // yazılmaz; tutar Net kolonunda kalır.
                             const depositRow =
                               isDepositSale(erpForKind as Partial<Sale> | undefined) ||
                               (row as { isDeposit?: boolean }).isDeposit === true;
                             const displayLabel = depositRow
                               ? (tm('paymentLabelReservationDeposit') || 'Rezervasyon Tutarı')
                               : row.isAvans
-                                ? `${tm('paymentLabelAvans') || 'Rezervasyon Tutarı'} (${formatNumber(Number(row.total) || 0, 0, false)} ${reportCurrency})`
+                                ? dailyAvansPaymentLabel(tm('paymentLabelAvans'))
                                 : row.paymentLabel;
                             const cls = kindInfo.kind === 'mixed'
                               ? 'bg-orange-100 text-orange-800'
