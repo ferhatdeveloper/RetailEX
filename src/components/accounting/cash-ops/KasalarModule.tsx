@@ -54,6 +54,10 @@ import {
   type CashBreakdown
 } from '../../../services/api/kasa';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import {
+  cashTransactionAmountFooterColumn,
+  cashTransactionAmountIsInflow,
+} from '../../../utils/cashTransactionAmountFooter';
 import { createColumnHelper } from '@tanstack/react-table';
 import { KasaIslemModal } from './KasaIslemModal';
 import {
@@ -672,6 +676,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             <KasaIslemleriTable
               islemler={filteredTransactions}
               loading={loading}
+              currencyCode={selectedKasa.id_doviz_kodu || ledgerCurrency}
               onRowClick={(islem) => {
                 setSelectedId(islem.id || null);
                 setSelectedIslem(islem);
@@ -927,6 +932,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
 interface KasaIslemleriTableProps {
   islemler: KasaIslemi[];
   loading: boolean;
+  currencyCode?: string;
   onRowClick?: (islem: KasaIslemi) => void;
   onRowDoubleClick?: (islem: KasaIslemi) => void;
   onRowContextMenu?: (e: React.MouseEvent, islem: KasaIslemi) => void;
@@ -962,6 +968,7 @@ function localizeKasaIslemAciklamaPrefix(prefix: string, tm: (key: string) => st
 function KasaIslemleriTable({
   islemler,
   loading,
+  currencyCode,
   onRowClick,
   onRowDoubleClick,
   onRowContextMenu,
@@ -1139,9 +1146,8 @@ function KasaIslemleriTable({
     columnHelper.accessor('tutar', {
       header: tm('amount'),
       cell: info => {
-        const tutar = info.getValue() || 0;
-        const tip = info.row.original.islem_tipi;
-        const isGiris = tip === 'CH_TAHSILAT' || tip === 'KASA_GIRIS' || tip === 'ACILIS' || tip === 'SATIS_FATURASI' || tip === 'HIZMET_FATURASI' || tip === 'ALIS_IADE_FATURASI';
+        const tutar = Math.abs(Number(info.getValue()) || 0);
+        const isGiris = cashTransactionAmountIsInflow(info.row.original);
         return (
           <span className={`font-semibold ${isGiris ? 'text-green-600' : 'text-red-600'}`}>
             {formatCurrency(tutar)} {isGiris ? '(B)' : '(A)'}
@@ -1181,6 +1187,8 @@ function KasaIslemleriTable({
       enablePagination
       pageSize={20}
       storageNamespace="kasaIslemleriList"
+      footerCurrency={currencyCode}
+      footerSumColumns={[cashTransactionAmountFooterColumn<KasaIslemi>()]}
       onRowClick={(row) => {
         onRowClick?.(row as KasaIslemi);
         onSelectionChange?.((row as KasaIslemi).id || null);
