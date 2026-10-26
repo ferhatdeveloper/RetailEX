@@ -79,15 +79,24 @@ function padPeriod(raw?: string | number | null): string {
   return String(raw || ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0');
 }
 
+function blankProductCode(code: string): boolean {
+  return !code || code === '—' || code === '-' || code === '–';
+}
+
+function productNameKey(name: unknown): string {
+  return String(name ?? '').trim().toLocaleLowerCase('tr-TR');
+}
+
 /**
  * Envanter listesindeki birim alış (ağırlıklı ortalama → katman ortalaması → kart).
  * Karlılık ve kar-zarar ürün satırı bu birimi kullanır.
+ * Id veya kod birim verirse o kullanılır. Vermezse ad tek karta gidiyorsa o kartın birimi alınır.
  */
 export async function makeInventoryPurchaseUnitLookup(opts?: {
   firmNr?: string | number | null;
   periodNr?: string | number | null;
   valuation?: LayeredInventoryValuation | null;
-}): Promise<(ref: { id?: string | null; code?: string | null }) => number> {
+}): Promise<(ref: { id?: string | null; code?: string | null; name?: string | null }) => number> {
   const firmNr = padFirm(opts?.firmNr);
   const periodNr = padPeriod(opts?.periodNr);
   const [avgMaps, products, valuation] = await Promise.all([
@@ -102,24 +111,59 @@ export async function makeInventoryPurchaseUnitLookup(opts?: {
   ]);
   const cardById = new Map<string, number>();
   const cardByCode = new Map<string, number>();
+  const nameHits = new Map<string, Array<{ id: string; code: string }>>();
   for (const product of products || []) {
     const unit = productCardUnitCost(product);
     const id = String(product.id || '').trim();
     const code = String(product.code || '').trim();
     if (id) cardById.set(id, unit);
     if (code) cardByCode.set(code, unit);
+    const names = [product.name, product.name2, product.name_tr, product.name_en, product.name_ar, product.name_ku];
+    for (const rawName of names) {
+      const key = productNameKey(rawName);
+      if (!key) continue;
+      const list = nameHits.get(key) || [];
+      list.push({ id, code });
+      nameHits.set(key, list);
+    }
   }
-  return (ref) => {
-    const id = String(ref.id || '').trim();
-    const code = String(ref.code || '').trim();
-    const card = (id && cardById.get(id)) || (code && cardByCode.get(code)) || 0;
-    const weighted = lookupWeightedAvgUnitCost(avgMaps, { id, code });
-    const layered = layeredAvgForProduct(valuation, { id, code });
+  const unitFor = (id: string, code: string): number => {
+    const usableCode = blankProductCode(code) ? '' : code;
+    const card = (id && cardById.get(id)) || (usableCode && cardByCode.get(usableCode)) || 0;
+    const weighted = lookupWeightedAvgUnitCost(avgMaps, { id, code: usableCode });
+    const layered = layeredAvgForProduct(valuation, { id, code: usableCode });
     return inventoryListUnitPurchaseCost({
       weightedAvg: weighted,
       layeredAvg: layered,
       cardUnit: card,
     });
+  };
+  const unitForName = (name: string): number => {
+    const hits = nameHits.get(productNameKey(name)) || [];
+    const seen = new Set<string>();
+    const uniqueHits: Array<{ id: string; code: string }> = [];
+    for (const hit of hits) {
+      const key = hit.id || (hit.code ? `code:${hit.code}` : '');
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      uniqueHits.push(hit);
+    }
+    if (uniqueHits.length !== 1) return 0;
+    return unitFor(uniqueHits[0].id, uniqueHits[0].code);
+  };
+  return (ref) => {
+    const id = String(ref.id || '').trim();
+    const code = String(ref.code || '').trim();
+    const usableCode = blankProductCode(code) ? '' : code;
+    if (id || usableCode) {
+      const direct = unitFor(id, usableCode);
+      if (direct > 0) return direct;
+    }
+    const name = String(ref.name || '').trim();
+    if (!name) return id || usableCode ? unitFor(id, usableCode) : 0;
+    const named = unitForName(name);
+    if (named > 0) return named;
+    return id || usableCode ? unitFor(id, usableCode) : 0;
   };
 }
 

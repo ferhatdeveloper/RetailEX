@@ -258,10 +258,11 @@ export interface ProductGrossProfitRow {
 }
 
 /**
- * Malzeme satırlarında maliyet = envanter birim alış × işaretli miktar.
+ * Malzeme satırlarında maliyet = ağırlıklı ortalama birim alış × işaretli miktar.
  * Birim, envanter listesiyle aynıdır (ağırlıklı ortalama → katman → kart alış).
+ * Satış iadesinde miktar eksi olduğu için maliyet de eksi yazılır.
  * Satış gelirinin yüzdesi maliyet sayılmaz. Hizmet satırı olduğu gibi kalır.
- * Birim bulunamazsa satırın önceki maliyeti korunur.
+ * Birim bulunamazsa satırın önceki maliyeti korunur; 0 uydurulmaz.
  */
 async function applyWeightedAvgCostToGrossProfit(
   rows: ProductGrossProfitRow[],
@@ -272,24 +273,18 @@ async function applyWeightedAvgCostToGrossProfit(
   if (!rows.some((r) => r.lineKind !== 'service')) return rows;
   try {
     const { makeInventoryPurchaseUnitLookup } = await import('../layeredInventoryCost');
-    const { productCogsFromUnitPurchase } = await import('../../utils/productSaleCogs');
+    const { applyProductGrossProfitWeightedCosts } = await import('../../utils/productGrossProfitCost');
     const unitOf = await makeInventoryPurchaseUnitLookup({
       firmNr: firmNr ?? ERP_SETTINGS.firmNr,
       periodNr: ERP_SETTINGS.periodNr,
     });
-    return rows.map((r) => {
-      if (r.lineKind === 'service') return r;
-      const unit = unitOf({ id: r.productId, code: r.productCode });
-      if (!(unit > 0)) return r;
-      const cost = productCogsFromUnitPurchase(r.quantity, unit);
-      const grossProfit = r.revenue - cost;
-      return {
-        ...r,
-        cost,
-        grossProfit,
-        marginPct: productGrossProfitMarginPct(r.revenue, grossProfit),
-      };
-    });
+    return applyProductGrossProfitWeightedCosts(rows, (ref) =>
+      unitOf({
+        id: ref.productId,
+        code: ref.productCode,
+        name: ref.productName,
+      }),
+    );
   } catch (e) {
     console.warn('[erpReports] inventory purchase cost overlay failed:', e);
     return rows;
