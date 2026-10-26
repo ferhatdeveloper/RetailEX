@@ -154,6 +154,7 @@ export const DEFAULT_MENU_ITEM_ORDERS: Readonly<Record<string, number>> = {
   couriers: 75,
   invoices: 46,
   logaudit: 127,
+  'locale-files': 128,
   products: 21,
   purchase: 70,
   regional: 7,

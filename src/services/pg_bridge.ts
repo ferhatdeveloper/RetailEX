@@ -32,6 +32,7 @@ import {
 } from '../../eticaret/core/server/tenantDbResolve';
 import { registerQrMenuBridgeRoutes } from './qrMenuBridge';
 import { registerClinicSocialRoutes } from './messaging/clinicSocialBridgeRoutes';
+import { findLocaleRepoRoot, registerLocaleJsonRoutes } from './localeJsonBridge';
 
 const app = new Hono();
 
@@ -202,6 +203,7 @@ function getPool(connStr: string): Pool {
 }
 
 registerClinicSocialRoutes(app, getPool);
+registerLocaleJsonRoutes(app, findLocaleRepoRoot());
 
 const poolsLogged = new Set<string>();
 

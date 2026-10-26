@@ -229,6 +229,9 @@ const mods: Record<string, { n: Entry }> = {
   'users.roles': { n: M('Kullanıcı ve Yetki', 'Users & access', 'المستخدمون والصلاحيات') },
   'reports.advanced': { n: M('Gelişmiş Raporlama', 'Advanced reporting', 'التقارير المتقدمة') },
   'settings.system': { n: M('Sistem Yapılandırması', 'System configuration', 'إعدادات النظام') },
+  'locale-files': {
+    n: M('Dil dosyaları', 'Language files', 'ملفات اللغة', 'فایلەکانی زمان'),
+  },
   crm: { n: M('Müşteri İlişkileri (CRM)', 'CRM', 'إدارة علاقات العملاء') },
   'mesaj-bildirim': { n: M('Mesaj Bildirim', 'Message Notification', 'إشعار الرسائل') },
   beauty: { n: M('Klinik ERP (Güzellik)', 'Clinic ERP (beauty)', 'نظام العيادة (الجمال)') },
@@ -296,6 +299,12 @@ const descs: Record<string, Entry> = {
   'users.roles': M('Kullanıcı tanımları ve RBAC yetkilendirme', 'Users & RBAC', 'المستخدمون والصلاحيات'),
   'reports.advanced': M('Dashboard ve dinamik rapor tasarlayıcı', 'Advanced analytics', 'التقارير الديناميكية'),
   'settings.system': M('Şirket ayarları ve cihaz tanımları', 'Company & device settings', 'إعدادات الشركة'),
+  'locale-files': M(
+    'JSON dil dosyalarını düzenleme. Yalnızca dil klasörü yazılır.',
+    'Edit JSON language files. Only the language folder is written.',
+    'تحرير ملفات اللغة JSON. يُكتب مجلد اللغة فقط.',
+    'دەستکاریی فایلەکانی زمانی JSON. تەنها بوخچەی زمان دەنووسرێت.',
+  ),
   crm: M('Aday müşteri ve satış fırsatı takibi', 'Leads & opportunities', 'العملاء المحتملون'),
   'mesaj-bildirim': M(
     'Müşterilere WhatsApp ile tekli, çoklu, toplu ve grup bazlı bildirim',

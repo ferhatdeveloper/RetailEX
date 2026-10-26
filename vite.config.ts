@@ -223,6 +223,10 @@ export default defineConfig({
         target: `http://localhost:${process.env.BRIDGE_PORT || '3001'}`,
         changeOrigin: true,
       },
+      '/api/locale-files': {
+        target: `http://localhost:${process.env.BRIDGE_PORT || '3001'}`,
+        changeOrigin: true,
+      },
       /** whatshapp Next (varsayılan :3000) — tarayıcıda CORS / mixed content olmadan köprü */
       '/__wa_bridge': {
         target: 'http://127.0.0.1:3000',

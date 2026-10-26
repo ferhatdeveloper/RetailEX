@@ -17,6 +17,7 @@ mod db;
 mod backup_service;
 mod bank_ops;
 mod license;
+mod locale_json;
 mod caller_id_serial;
 mod rongta_scale;
 mod platform;
@@ -2350,7 +2351,10 @@ fn main() {
         caller_id_serial::caller_serial_stop,
         rongta_scale::rongta_scale_test,
         rongta_scale::rongta_scale_send_plu,
-        rongta_scale::rongta_scale_fetch_sales
+        rongta_scale::rongta_scale_fetch_sales,
+        locale_json::list_locale_json_files,
+        locale_json::read_locale_json,
+        locale_json::write_locale_json
     ])
     .build(tauri::generate_context!())
     .expect("error while building tauri application")

@@ -10,7 +10,7 @@ import {
     Globe, Receipt, Building, TrendingUpDown, Gift, Percent, Send,
     PackageSearch, PackagePlus, Beef, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
     Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
-    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout, HardDrive, RefreshCw, Monitor, Printer
+    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout, HardDrive, RefreshCw, Monitor, Printer, Languages
 } from 'lucide-react';
 import { Translations } from '../locales/translations';
 
@@ -340,6 +340,7 @@ export const getStaticMenuSections = (t: Translations) => [
             { label: t.menu.printOptions, screen: 'print-options', icon: Printer },
             { label: t.menu.roleAndAuthorization, screen: 'roleauth', icon: Shield },
             { label: t.menu.menuManagement, screen: 'menumanagement', icon: Menu },
+            { label: t.menu.localeFiles, screen: 'locale-files', icon: Languages },
             { label: t.menu.definitionsParameters, screen: 'generalsettings', icon: Settings },
             { label: t.menu.virtualPbxCallerId, screen: 'virtual-pbx-caller-id', icon: Phone },
             { label: t.menu.pendingPosDevices, screen: 'pendingposdevices', icon: Monitor },
@@ -488,6 +489,7 @@ export const staticMenuSections = getStaticMenuSections({
         userManagement: 'Kullanıcı Yönetimi',
         roleAndAuthorization: 'Rol & Yetkilendirme',
         menuManagement: 'Menü Yönetimi',
+        localeFiles: 'Dil dosyaları',
         definitionsParameters: 'Parametre',
         backupRestore: 'Yedekleme/Geri Yükleme',
         postgresBackup: 'Yedekleme',

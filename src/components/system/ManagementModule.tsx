@@ -110,6 +110,7 @@ const CentralDataBroadcastPanel = lazyWithChunkRecovery(() => import('../modules
 const EnterpriseCentralDataManagement = lazyWithChunkRecovery(() => import('../modules/EnterpriseCentralDataManagement').then(m => ({ default: m.EnterpriseCentralDataManagement })));
 const ModuleManagement = lazyWithChunkRecovery(() => import('./ModuleManagement').then(m => ({ default: m.ModuleManagement })));
 const SystemManagementModule = lazyWithChunkRecovery(() => import('./SystemManagementModule').then(m => ({ default: m.SystemManagementModule })));
+const LocaleFilesModule = lazyWithChunkRecovery(() => import('./LocaleFilesModule').then(m => ({ default: m.LocaleFilesModule })));
 const RestaurantCallerIdSettings = lazyWithChunkRecovery(() => import('../restaurant/components/RestaurantCallerIdSettings').then(m => ({ default: m.RestaurantCallerIdSettings })));
 const MenuManagementPanel = lazyWithChunkRecovery(() =>
   import('./MenuManagementPanel').then((m) => {
@@ -249,7 +250,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'waybill-sales' | 'waybill-purchase' | 'waybill-transfer' | 'waybill-fire' |
   'roleauth' | 'roles' | 'role_management' | 'authorization' |
   'financereports' | 'generalsettings' | 'definitions' | 'parameter-settings' | 'parameters' | 'parametre' | 'backuprestore' | 'systemhealth' | 'pendingposdevices' | 'smsmanage' | 'emailcamp' | 'logaudit' | 'databroadcast' |
-  'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'scale-management' | 'db-migrations' | 'hybrid-sync' | 'store-management' | 'security-modules' | 'demo-data' |
+  'modulemanagement' | 'menumanagement' | 'locale-files' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'scale-management' | 'db-migrations' | 'hybrid-sync' | 'store-management' | 'security-modules' | 'demo-data' |
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
   'universal-report-hub' | 'customer-extract' | 'cari-debtors' | 'cari-creditors' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'cari-devir' | 'cari-devir-excel' | 'stockcounting' | 'stockcounting-mobile' |
@@ -1772,6 +1773,12 @@ export function ManagementModule({
           return <ModuleManagement />;
         case 'menumanagement':
           return <MenuManagementPanel />;
+        case 'locale-files':
+          return (
+            <div className="h-full min-h-0 overflow-hidden flex flex-col">
+              <LocaleFilesModule />
+            </div>
+          );
         case 'onlineorders':
         case 'productsync':
           return <ProductManagement products={products} setProducts={setProducts} />;

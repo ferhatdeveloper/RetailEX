@@ -92,6 +92,8 @@ export interface MenuTranslations {
   /** Raf etiketi / OCR ile akıllı malzeme girişi */
   smartMaterialAdd: string;
   menuManagement: string;
+  /** Sistem Yönetimi: JSON dil dosyaları */
+  localeFiles: string;
   minMaxStock: string;
   inventoryCountOps: string;
   mobileCount: string;
@@ -2024,6 +2026,7 @@ export const translations: any = {
       materialsIntake: 'Malzemeler (kamera & onay)',
       smartMaterialAdd: 'Akıllı malzeme ekleme',
       menuManagement: 'Menü Yönetimi',
+      localeFiles: 'Dil dosyaları',
       supabaseDataTransfer: 'Supabase Veri Aktarımı',
       virtualPbxCallerId: 'Sanal santral (Caller ID)',
       printOptions: 'Yazdırma Seçenekleri',
@@ -3938,6 +3941,7 @@ export const translations: any = {
       sellRate: 'Sell Rate',
       updateRates: 'Update Rates',
       menuManagement: 'Menu Management',
+      localeFiles: 'Language files',
       supabaseDataTransfer: 'Supabase Data Transfer',
       virtualPbxCallerId: 'Virtual PBX (Caller ID)',
       printOptions: 'Print Options',
@@ -5669,6 +5673,7 @@ export const translations: any = {
       sellRate: 'سعر البيع',
       updateRates: 'تحديث الأسعار',
       menuManagement: 'إدارة القوائم',
+      localeFiles: 'ملفات اللغة',
       supabaseDataTransfer: 'نقل بيانات Supabase',
       virtualPbxCallerId: 'المقسم الافتراضي (معرف المتصل)',
       printOptions: 'خيارات الطباعة',
@@ -7393,6 +7398,7 @@ export const translations: any = {
       sellRate: 'نرخی فرۆشتن',
       updateRates: 'نوێکردنەوەی نرخەکان',
       menuManagement: 'بەڕێوەبردنی مێنۆ',
+      localeFiles: 'فایلەکانی زمان',
       supabaseDataTransfer: 'گواستنەوەی داتای Supabase',
       virtualPbxCallerId: 'سنۆری مەزنی (پەیوەندی ناسنامەی پەیوەندیکەر)',
       printOptions: 'هەڵبژاردەکانی چاپ',
