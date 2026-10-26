@@ -21,6 +21,7 @@ import {
   BarChart3,
   Bookmark,
   BookmarkPlus,
+  Download,
   ExternalLink,
   LineChart as LineChartIcon,
   Loader2,
@@ -61,6 +62,7 @@ import {
 import { IS_TAURI } from '../../utils/env';
 import { OpenRouterApiSettingsModal } from '../integrations/OpenRouterApiSettingsModal';
 import { formatNumber } from '../../utils/formatNumber';
+import { exportGroupDashboardToExcel } from '../../utils/groupDashboardExcelExport';
 
 const CHART_COLORS = [
   '#4f46e5',
@@ -196,6 +198,20 @@ export function DevExGroupPivotChartModal({
     : 'bg-white border-gray-300 text-gray-900';
 
   const refreshSaved = () => setSaved(listDevExPivotDashboards(scope));
+
+  const handleExportExcel = () => {
+    exportGroupDashboardToExcel(
+      {
+        groupColumnLabel: groupLabel,
+        countLabel: tm('gridPivotRowCount') || 'Kayıt adedi',
+        metrics,
+        rows,
+        chartKind,
+        selectedMetricIds: selectedSeries.map((s) => s.id),
+      },
+      'grup_dashboard',
+    );
+  };
 
   const handleSave = () => {
     const snap = saveDevExPivotDashboard({
@@ -561,6 +577,16 @@ export function DevExGroupPivotChartModal({
           onChange={(e) => setDashTitle(e.target.value)}
           placeholder={tm('gridPivotDashTitlePh') || 'Dashboard adı'}
         />
+        <button
+          type="button"
+          onClick={handleExportExcel}
+          disabled={rows.length === 0}
+          className="inline-flex items-center gap-1 rounded-md border border-emerald-600 bg-emerald-50 px-3 py-1.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-600"
+          title={tm('exportExcel') || 'Excel'}
+        >
+          <Download className="w-3.5 h-3.5" />
+          {tm('exportExcel') || 'Excel'}
+        </button>
         <button
           type="button"
           onClick={handleSave}

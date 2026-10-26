@@ -39,7 +39,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ColumnVisibilityMenu } from './ColumnVisibilityMenu';
 import { DevExGroupPivotChartModal } from './DevExGroupPivotChartModal';
-import { exportDataGridToExcel, printDataGridHtml } from '../../utils/gridExcelExport';
+import { exportDataGridToExcel, printDataGridHtml, type GridExportOptions } from '../../utils/gridExcelExport';
 import {
   isDatagridRefreshing,
   requestDatagridRefresh,
@@ -3079,6 +3079,26 @@ export function DevExDataGrid<T>({
     return map;
   }, [mergedFooterSumColumns, detailRowsForFooter]);
 
+  const gridExcelColumns = table
+    .getVisibleLeafColumns()
+    .filter((col) => col.id !== 'select' && col.id !== 'actions')
+    .map((col) => (col.columnDef.id ? col.columnDef : { ...col.columnDef, id: col.id }));
+  const gridExcelRows = table
+    .getFilteredRowModel()
+    .rows
+    .map((row) => row.original)
+    .filter((row) => resolveDevExGridRowKind(row, getRowKind) === 'detail');
+  const gridExcelOptions: GridExportOptions<T> = {
+    footerSumColumns: mergedFooterSumColumns.map((def) => ({
+      columnId: def.columnId,
+      getValue: def.getValue,
+    })),
+    footerLabel:
+      typeof resolvedFooterLabel === 'string' && resolvedFooterLabel.trim()
+        ? resolvedFooterLabel
+        : 'Toplam',
+  };
+
   const resolveRowVisualClass = useCallback(
     (row: T, idx: number, isSelected: boolean) => {
       const kind = resolveDevExGridRowKind(row, getRowKind);
@@ -3274,9 +3294,10 @@ export function DevExDataGrid<T>({
               type="button"
               onClick={() =>
                 exportDataGridToExcel(
-                  table.getFilteredRowModel().rows.map((r) => r.original),
-                  columns,
+                  gridExcelRows,
+                  gridExcelColumns,
                   excelFileName,
+                  gridExcelOptions,
                 )
               }
               className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100"
@@ -3296,9 +3317,10 @@ export function DevExDataGrid<T>({
                   return;
                 }
                 void printDataGridHtml(
-                  table.getFilteredRowModel().rows.map((r) => r.original),
-                  columns,
+                  gridExcelRows,
+                  gridExcelColumns,
                   printTitle || excelFileName || tm('print') || 'Rapor',
+                  gridExcelOptions,
                 );
               }}
               className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-blue-800 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-40"
