@@ -4,8 +4,10 @@
  * Tutar, hareket dökümü ile aynı kaynaktır: indirim sonrası net, bir kez.
  * Satış birim fiyatı liste fiyatı olarak kalır; brüt nete bölünmez.
  * Satış iadesi stoğa girer, alış iadesi stoktan çıkar.
- * Aynı fiş numarası ve tarih iki satırı düşürmez.
- * Kalan bakiye yönlü miktardan yürür; dip toplam satırların toplamıdır.
+ * Aynı satır kimliğinin kopyası düşer.
+ * Ürün kimliği olmayan veya yalnızca ad eşlemesiyle gelen satır stok fişi değildir.
+ * Kalan, önceki kalan artı bu satırın işaretli miktarıdır.
+ * Dip toplam son kümülatif bakiyedir; satır bakiyelerinin toplamı değildir.
  */
 import { computeNetAmount } from './stockMovementNet';
 import { resolveExtractSourceMeta } from './materialExtractLabels';
@@ -24,6 +26,11 @@ export interface MaterialExtractSourceLine {
     trcode?: number | string | null;
     product_id?: string | null;
     product_code?: string | null;
+    source_type?: string | null;
+    /** Ad eşlemesi seçili ürün kimliğini yapıştırmışsa stok satırı sayılmaz. */
+    matchedByName?: boolean;
+    /** false → stok fişine bağlı değil. */
+    stockLinked?: boolean;
     document_no?: string | null;
     movement_date?: string | null;
 }
@@ -164,6 +171,9 @@ export function sourceFromMovementRow(raw: any, index = 0): MaterialExtractSourc
     });
     const productId = String(raw?.product_id || '').trim();
     const productCode = String(raw?.product_code || '').trim();
+    const sourceType = String(raw?.source_type || raw?.source_kind || mov.source_type || mov.source_kind || '');
+    const matchedByName = raw?.matched_by_name === true || raw?.matchedByName === true;
+    const unbound = matchedByName || raw?.stock_linked === false || raw?.stockLinked === false;
     return {
         id: String(raw?.id ?? `row-${index}`),
         quantity: raw?.quantity,
@@ -174,16 +184,75 @@ export function sourceFromMovementRow(raw: any, index = 0): MaterialExtractSourc
         movement_type: movType,
         fiche_type: classified.fiche_type || ficheRaw,
         trcode,
-        product_id: productId || productCode || `row-${index}`,
+        product_id: productId,
         product_code: productCode,
+        source_type: sourceType,
+        matchedByName,
+        stockLinked: unbound ? false : undefined,
         document_no: String(mov.document_no || raw?.document_no || ''),
         movement_date: String(mov.movement_date || raw?.movement_date || raw?.created_at || ''),
     };
 }
 
+function isSlipSource(sourceType: string | null | undefined): boolean {
+    const source = String(sourceType || '').trim().toLocaleLowerCase('tr-TR');
+    return source === 'slip' || source === 'warehouse' || source === 'ambar';
+}
+
 /**
- * Her kaynak satır bir ekstre satırıdır. Kimlik çakışırsa sonek eklenir, satır düşmez.
- * Kalan, ürün bazında giriş eksi çıkış olarak yürür.
+ * Kart stoğu ve sağ tık hareketleri ürün kimliği (id / kod / barkod) veya ambar fişi ister.
+ * Adı tutan ama kimliği olmayan satır, ya da kimliği sonradan yapıştırılmış ad eşlemesi, dışarıda kalır.
+ */
+export function isBoundStockExtractLine(line: MaterialExtractSourceLine): boolean {
+    if (line.matchedByName) return false;
+    if (line.stockLinked === false) return false;
+    if (isSlipSource(line.source_type)) return true;
+    const productId = String(line.product_id || '').trim();
+    const productCode = String(line.product_code || '').trim();
+    return Boolean(productId || productCode);
+}
+
+/**
+ * Stok kümesi: kimliksiz ve ad eşlemesi satırları düşer.
+ * Aynı satır kimliği ikinci kez gelirse kopyadır, tutulmaz.
+ */
+export function prepareMaterialExtractLines(lines: MaterialExtractSourceLine[]): MaterialExtractSourceLine[] {
+    const seen = new Set<string>();
+    const kept: MaterialExtractSourceLine[] = [];
+    for (const line of lines) {
+        if (!isBoundStockExtractLine(line)) continue;
+        const id = String(line.id || '').trim();
+        if (id) {
+            if (seen.has(id)) continue;
+            seen.add(id);
+        }
+        kept.push(line);
+    }
+    return kept;
+}
+
+export function prepareMaterialExtractMovements<T>(
+    rows: T[],
+): Array<{ row: T; line: MaterialExtractSourceLine }> {
+    const prepared = rows.map((row, index) => ({
+        row,
+        line: sourceFromMovementRow(row, index),
+    }));
+    const kept = new Set(prepareMaterialExtractLines(prepared.map((item) => item.line)));
+    return prepared.filter((item) => kept.has(item.line));
+}
+
+/** Dip toplam: giriş miktar eksi çıkış miktar. Ara bakiyelerin toplamı değil. */
+export function extractRunningFooter(
+    rows: Array<{ inQty?: number | null; outQty?: number | null }>,
+): number {
+    return rows.reduce((acc, row) => acc + (Number(row.inQty) || 0) - (Number(row.outQty) || 0), 0);
+}
+
+/**
+ * Hazırlanmış kaynak satırlarını ekstre satırına çevirir.
+ * Kalan, ürün bazında önceki kalan artı işaretli miktardır.
+ * Çıkış miktarı kendi kolonunda artı kalır; bakiye bir kez eksi yürür.
  */
 export function projectMaterialExtractLines(
     lines: MaterialExtractSourceLine[],
@@ -233,6 +302,6 @@ export function sumMaterialExtract(rows: ProjectedExtractLine[]): MaterialExtrac
         },
         { inQty: 0, inAmt: 0, outQty: 0, outAmt: 0, closingBalance: 0 },
     );
-    totals.closingBalance = rows.length > 0 ? rows[rows.length - 1].runningBalance : 0;
+    totals.closingBalance = totals.inQty - totals.outQty;
     return totals;
 }

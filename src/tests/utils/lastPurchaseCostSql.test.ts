@@ -142,13 +142,18 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
     expect(displayItemCode(null, '', '—', uuid)).toBe('—');
   });
 
-  it('SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN orphan product_id + ad/kod yedeklerini içerir', async () => {
-    const { SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN } = await import('../../utils/lastPurchaseCostSql');
+  it('SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN ürün kimliğiyle bağlar, ad eşlemesi yapmaz', async () => {
+    const { SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN, SQL_SALE_ITEM_STOCK_PRODUCT } = await import(
+      '../../utils/lastPurchaseCostSql'
+    );
     expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).toContain('LEFT JOIN LATERAL');
     expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).toContain('si.product_id');
     expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).toContain('si.item_code');
-    expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).toContain('si.item_name');
+    expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).toContain('px.barcode');
+    expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).not.toContain('si.item_name');
+    expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).not.toContain('px.name');
     expect(SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN).toContain('LIMIT 1');
+    expect(SQL_SALE_ITEM_STOCK_PRODUCT).toBe('p.id IS NOT NULL');
   });
 
   it('restServiceUnitCost zinciri: 0 satır → purchase_price → beauty cost_price → reçete', () => {

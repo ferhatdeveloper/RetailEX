@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+    extractRunningFooter,
     isWithinInclusiveDayRange,
+    prepareMaterialExtractLines,
     projectMaterialExtractLines,
     sourceFromMovementRow,
     sumMaterialExtract,
@@ -9,7 +11,8 @@ import {
 
 /**
  * SABUN 0000001, 25.10.2026–26.10.2026.
- * Doğruluk kaynağı hareket dökümü dip toplamı: giriş 12 / 80.000, çıkış 11 / 99.000.
+ * Kart ve sağ tık stok hareketleri: giriş 11 / 65.000, çıkış 11 / 99.000, net 0.
+ * 00005 yalnızca ad eşlemesi; stok fişi değil.
  */
 function sabunLines(): MaterialExtractSourceLine[] {
     const product = { product_id: 'sabun', product_code: '0000001' };
@@ -44,13 +47,13 @@ function sabunLines(): MaterialExtractSourceLine[] {
         },
         {
             ...product,
-            id: 'iade-cift',
+            id: 'iade-00002',
             quantity: 1,
             unit_price: 15_000,
             gross_amount: 15_000,
             discount_amount: 0,
             net_amount: 15_000,
-            movement_type: 'out',
+            movement_type: 'in',
             fiche_type: 'return_invoice',
             trcode: 3,
             document_no: '00002',
@@ -58,13 +61,13 @@ function sabunLines(): MaterialExtractSourceLine[] {
         },
         {
             ...product,
-            id: 'iade-cift',
+            id: 'iade-00002',
             quantity: 1,
             unit_price: 15_000,
             gross_amount: 15_000,
             discount_amount: 0,
             net_amount: 15_000,
-            movement_type: 'in',
+            movement_type: 'out',
             fiche_type: 'return_invoice',
             trcode: 3,
             document_no: '00002',
@@ -96,7 +99,7 @@ function sabunLines(): MaterialExtractSourceLine[] {
             fiche_type: 'sales_invoice',
             trcode: 8,
             document_no: 'BEA-2026-00009',
-            movement_date: '2026-10-26T11:38:00',
+            movement_date: '2026-10-26T11:08:00',
         },
         {
             ...product,
@@ -104,8 +107,8 @@ function sabunLines(): MaterialExtractSourceLine[] {
             quantity: 1,
             unit_price: 15_000,
             gross_amount: 15_000,
-            discount_amount: 10_000,
-            net_amount: 5_000,
+            discount_amount: 0,
+            net_amount: 15_000,
             movement_type: 'out',
             fiche_type: 'sales_invoice',
             trcode: 8,
@@ -132,27 +135,44 @@ function sabunLines(): MaterialExtractSourceLine[] {
             quantity: 1,
             unit_price: 15_000,
             gross_amount: 15_000,
-            discount_amount: 0,
-            net_amount: 15_000,
+            discount_amount: 10_000,
+            net_amount: 5_000,
             movement_type: 'out',
             fiche_type: 'sales_invoice',
             trcode: 8,
             document_no: 'BEA-2026-00014',
-            movement_date: '2026-10-26T12:00:00',
+            movement_date: '2026-10-26T12:09:00',
+        },
+        {
+            id: 'iade-00005',
+            quantity: 1,
+            unit_price: 15_000,
+            gross_amount: 15_000,
+            discount_amount: 0,
+            net_amount: 15_000,
+            movement_type: 'in',
+            fiche_type: 'return_invoice',
+            trcode: 3,
+            document_no: '00005',
+            movement_date: '2026-10-26T12:14:00',
+            product_id: 'sabun',
+            product_code: '0000001',
+            matchedByName: true,
         },
     ];
 }
 
 describe('malzeme ekstresi SABUN dip toplamı', () => {
-    const rows = projectMaterialExtractLines(sabunLines());
+    const rows = projectMaterialExtractLines(prepareMaterialExtractLines(sabunLines()));
     const totals = sumMaterialExtract(rows);
 
-    it('giriş 12 / 80000, çıkış 11 / 99000', () => {
-        expect(rows).toHaveLength(9);
-        expect(totals.inQty).toBe(12);
-        expect(totals.inAmt).toBe(80_000);
+    it('giriş 11 / 65000, çıkış 11 / 99000, net 0', () => {
+        expect(rows).toHaveLength(8);
+        expect(totals.inQty).toBe(11);
+        expect(totals.inAmt).toBe(65_000);
         expect(totals.outQty).toBe(11);
         expect(totals.outAmt).toBe(99_000);
+        expect(rows.map((row) => row.id)).not.toContain('iade-00005');
     });
 
     it('satış satırı brüt 15000 indirim 1000 ise çıkış tutar 14000, birim fiyat 15000 kalır', () => {
@@ -168,16 +188,17 @@ describe('malzeme ekstresi SABUN dip toplamı', () => {
         });
     });
 
-    it('satış iadesi giriş 1 / 15000, çıkış tutarına yazılmaz; ikinci iade düşmez', () => {
-        const returns = rows.filter((row) => row.id === 'iade-cift' || row.id.startsWith('iade-cift~'));
-        expect(returns).toHaveLength(2);
-        for (const row of returns) {
-            expect(row.side).toBe('in');
-            expect(row.inQty).toBe(1);
-            expect(row.inAmt).toBe(15_000);
-            expect(row.outQty).toBe(0);
-            expect(row.outAmt).toBe(0);
-        }
+    it('satış iadesi 00002 giriş 1 / 15000; aynı fişin kopyası ve ad eşlemesi 00005 düşer', () => {
+        const returns = rows.filter((row) => row.id === 'iade-00002' || row.id.startsWith('iade-00002'));
+        expect(returns).toHaveLength(1);
+        expect(returns[0]).toMatchObject({
+            side: 'in',
+            inQty: 1,
+            inAmt: 15_000,
+            outQty: 0,
+            outAmt: 0,
+        });
+        expect(rows.some((row) => row.id === 'iade-00005')).toBe(false);
     });
 
     it('alış iadesi çıkış 5 / 25000', () => {
@@ -191,10 +212,54 @@ describe('malzeme ekstresi SABUN dip toplamı', () => {
         });
     });
 
-    it('kalan bakiye net miktardır, sıfıra zorlanmaz', () => {
-        expect(totals.closingBalance).toBe(1);
-        expect(rows[rows.length - 1].runningBalance).toBe(1);
-        expect(totals.inQty - totals.outQty).toBe(1);
+    it('kalan çıkışta azalır, satış iadesinde artar; dip toplam son bakiyedir', () => {
+        expect(rows.map((row) => row.runningBalance)).toEqual([10, 8, 9, 4, 3, 2, 1, 0]);
+        expect(rows.map((row) => row.outQty)).toEqual([0, 2, 0, 5, 1, 1, 1, 1]);
+        expect(totals.closingBalance).toBe(0);
+        expect(rows[rows.length - 1].runningBalance).toBe(0);
+        expect(extractRunningFooter(rows)).toBe(0);
+        const balanceSum = rows.reduce((acc, row) => acc + row.runningBalance, 0);
+        expect(balanceSum).not.toBe(totals.closingBalance);
+        expect(totals.inQty - totals.outQty).toBe(totals.closingBalance);
+    });
+
+    it('satış netleri 5000, 10000, 15000, 14000 ve 30000 bir kez', () => {
+        expect(rows.find((row) => row.id === 'satis-00014')?.outAmt).toBe(5_000);
+        expect(rows.find((row) => row.id === 'satis-00013')?.outAmt).toBe(10_000);
+        expect(rows.find((row) => row.id === 'satis-00012')?.outAmt).toBe(15_000);
+        expect(rows.find((row) => row.id === 'satis-00009')?.outAmt).toBe(14_000);
+        expect(rows.find((row) => row.id === 'satis-00002')?.outAmt).toBe(30_000);
+    });
+});
+
+describe('ad eşlemesi stok kümesine girmez', () => {
+    it('kimliği yapıştırılmış 00005 ve kimliksiz satır düşer', () => {
+        const kept = prepareMaterialExtractLines([
+            sourceFromMovementRow({
+                id: 'iade-00005',
+                quantity: 1,
+                unit_price: 15_000,
+                extract_net_amount: 15_000,
+                movement_type: 'in',
+                fiche_type: 'return_invoice',
+                trcode: 3,
+                document_no: '00005',
+                product_id: 'sabun',
+                product_code: '0000001',
+                matched_by_name: true,
+            }),
+            sourceFromMovementRow({
+                id: 'kimliksiz',
+                quantity: 1,
+                unit_price: 15_000,
+                extract_net_amount: 15_000,
+                movement_type: 'in',
+                fiche_type: 'return_invoice',
+                trcode: 3,
+                document_no: '00099',
+            }),
+        ]);
+        expect(kept).toEqual([]);
     });
 });
 

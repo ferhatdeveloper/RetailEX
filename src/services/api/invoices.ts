@@ -4193,7 +4193,7 @@ export const invoicesAPI = {
 
   async getProductHistory(
     productId: string,
-    hint?: { code?: string; barcode?: string; name?: string }
+    hint?: { code?: string; barcode?: string }
   ): Promise<any[]> {
     try {
       const pid = String(productId || '').trim();
@@ -4279,12 +4279,6 @@ export const invoicesAPI = {
         } else if (isValidUuid(pid)) {
           const rowsByProductId = await fetchSaleItems({ product_id: `eq.${pid}` });
           if (Array.isArray(rowsByProductId)) mergedBuckets.push(...rowsByProductId);
-        }
-
-        const hintName = String(hint?.name || '').trim().replace(/[*%,()]/g, '');
-        if (hintName) {
-          const byName = await fetchSaleItems({ item_name: `ilike.${hintName}` });
-          if (Array.isArray(byName)) mergedBuckets.push(...byName);
         }
 
         const seenKeys = new Set<string>();
@@ -4421,7 +4415,6 @@ export const invoicesAPI = {
 
       const hintCode = String(hint?.code || '').trim();
       const hintBarcode = String(hint?.barcode || '').trim();
-      const hintName = String(hint?.name || '').trim();
       const { rows } = await postgres.query(
         `SELECT 
             it.id, it.quantity, it.unit_price, it.total_amount, it.net_amount,
@@ -4468,20 +4461,9 @@ export const invoicesAPI = {
                    )
                  )
                )
-            OR (
-                 NULLIF(TRIM($4::text), '') IS NOT NULL
-                 AND (
-                   lower(trim(it.item_name)) = lower(trim($4::text))
-                   OR it.product_id IN (
-                     SELECT id FROM products
-                     WHERE NULLIF(TRIM(name), '') IS NOT NULL
-                       AND lower(trim(name)) = lower(trim($4::text))
-                   )
-                 )
-               )
            )
          ORDER BY s.date DESC`,
-        [pid, hintCode, hintBarcode, hintName]
+        [pid, hintCode, hintBarcode]
       );
 
       return rows.map(r => {

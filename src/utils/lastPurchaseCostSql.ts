@@ -123,8 +123,8 @@ COALESCE(
 `.trim();
 
 /**
- * sale_items → products: orphan product_id / boş item_code (iade satırları) için
- * kod, barkod, UUID item_code ve son çare ad eşlemesi.
+ * sale_items → products: ürün kimliği product_id, UUID item_code, kod veya barkod.
+ * Ad eşlemesi stok kimliği değildir; aynı addaki fiş satırı karta yazılmaz.
  * Alias her zaman `p` — SQL_PRODUCT_CARD_REPORT_FIELDS ile uyumlu.
  */
 export const SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN = `
@@ -145,10 +145,6 @@ LEFT JOIN LATERAL (
             OR COALESCE(NULLIF(TRIM(px.barcode), ''), '') = TRIM(si.item_code)
           )
         )
-     OR (
-          NULLIF(TRIM(si.item_name), '') IS NOT NULL
-          AND lower(trim(px.name)) = lower(trim(si.item_name))
-        )
   ORDER BY
     CASE WHEN si.product_id IS NOT NULL AND px.id = si.product_id THEN 0 ELSE 1 END,
     CASE
@@ -167,6 +163,12 @@ LEFT JOIN LATERAL (
   LIMIT 1
 ) p ON true
 `.trim();
+
+/**
+ * Stok yüzeyi (kart, hareket, ekstre, hareket dökümü) malzeme satırını
+ * yalnızca çözülmüş ürün kaydına bağlar. Hizmet satırı bu koşulun dışındadır.
+ */
+export const SQL_SALE_ITEM_STOCK_PRODUCT = `p.id IS NOT NULL`;
 
 /** firmNrParam: örn. `$1` — alış CTE ve satış filtresinde aynı indeks kullanılmalı */
 export function buildLastPurchaseCte(firmNrParam = '$1'): string {

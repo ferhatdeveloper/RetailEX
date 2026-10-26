@@ -20,6 +20,7 @@ import {
     isUuidText,
     SQL_NON_UUID_ITEM_CODE,
     SQL_SALE_ITEM_PRODUCTS_LATERAL_JOIN,
+    SQL_SALE_ITEM_STOCK_PRODUCT,
 } from '../utils/lastPurchaseCostSql';
 import { resolveLineGrossProfit } from '../utils/lineGrossProfit';
 import {
@@ -622,6 +623,10 @@ class StockMovementAPI {
                          'service', 'hizmet', 'beauty', 'beauty_sale', 'pos', 'retail'
                        )
                        AND ${sqlSaleNotCancelled('sl')}
+                       AND (
+                         ${SQL_SALE_ITEM_STOCK_PRODUCT}
+                         OR LOWER(TRIM(COALESCE(si.item_type, ''))) IN ('hizmet', 'service', 'package', 'paket')
+                       )
                      ORDER BY sl.date DESC NULLS LAST, sl.created_at DESC NULLS LAST
                      LIMIT ${LINE_CAP}`
                 );
@@ -1055,7 +1060,7 @@ class StockMovementAPI {
      */
     async getProductMovements(
         productId: string,
-        hint?: { code?: string; barcode?: string; name?: string }
+        hint?: { code?: string; barcode?: string }
     ): Promise<any[]> {
         const computeGrossProfit = (row: {
             gross_profit?: number;
@@ -1286,7 +1291,6 @@ class StockMovementAPI {
                 const hist = await invoicesAPI.getProductHistory(histPid, {
                     code: resolvedCode || (!UUID_RE.test(pid) ? pid : undefined),
                     barcode: resolvedBarcode || undefined,
-                    name: String(hint?.name || '').trim() || undefined,
                 });
                 for (const h of hist) {
                     const ficheType = String(h.ficheType || h.fiche_type || '');
@@ -1481,25 +1485,8 @@ class StockMovementAPI {
                            )
                          )
                        )
-                    OR (
-                         NULLIF(TRIM($4::text), '') IS NOT NULL
-                         AND (
-                           lower(trim(si.item_name)) = lower(trim($4::text))
-                           OR si.product_id IN (
-                             SELECT id FROM products
-                             WHERE NULLIF(TRIM(name), '') IS NOT NULL
-                               AND lower(trim(name)) = lower(trim($4::text))
-                           )
-                           OR si.item_code IN (
-                             SELECT code FROM products
-                             WHERE NULLIF(TRIM(code), '') IS NOT NULL
-                               AND NULLIF(TRIM(name), '') IS NOT NULL
-                               AND lower(trim(name)) = lower(trim($4::text))
-                           )
-                         )
-                       )
                    )`,
-                [productId, hintCode, hintBarcode, String(hint?.name || '').trim()]
+                [productId, hintCode, hintBarcode]
             );
             invoiceRows = rows;
         } catch (err) {
@@ -1684,6 +1671,7 @@ class StockMovementAPI {
                    AND ${sqlSaleNotCancelled('sl')}
                    AND LOWER(TRIM(COALESCE(si.item_type, 'Malzeme'))) NOT IN ('hizmet', 'service', 'package', 'paket')
                    AND LOWER(TRIM(COALESCE(p.material_type, ''))) IS DISTINCT FROM 'service'
+                   AND ${SQL_SALE_ITEM_STOCK_PRODUCT}
                    ${invWarehouseSql}
                  ORDER BY sl.date ASC NULLS LAST, sl.created_at ASC NULLS LAST, si.id ASC
                  LIMIT $3`,
@@ -2105,6 +2093,10 @@ class StockMovementAPI {
                      'service', 'hizmet', 'beauty', 'beauty_sale', 'pos', 'retail'
                    )
                    AND ${sqlSaleNotCancelled('sl')}
+                   AND (
+                     ${SQL_SALE_ITEM_STOCK_PRODUCT}
+                     OR LOWER(TRIM(COALESCE(si.item_type, ''))) IN ('hizmet', 'service', 'package', 'paket')
+                   )
                    ${serviceExcludeSql}`,
                 [start, end],
                 fp,

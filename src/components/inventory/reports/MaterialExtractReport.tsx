@@ -24,8 +24,8 @@ import {
 import { displayItemCode } from '../../../utils/lastPurchaseCostSql';
 import {
     isWithinInclusiveDayRange,
+    prepareMaterialExtractMovements,
     projectMaterialExtractLines,
-    sourceFromMovementRow,
     type ProjectedExtractLine,
 } from '../../../utils/materialExtractLines';
 import { formatReportDateCell } from '../../../utils/dateLocale';
@@ -350,7 +350,6 @@ export function MaterialExtractReport() {
                 const movements = await stockMovementAPI.getProductMovements(selectedProduct.id, {
                     code: selectedProduct.code,
                     barcode: selectedProduct.barcode,
-                    name: selectedProduct.name,
                 });
                 const filtered = movements.filter((m: any) =>
                     isWithinInclusiveDayRange(
@@ -364,13 +363,14 @@ export function MaterialExtractReport() {
                     const db = new Date(b.movement?.movement_date || b.movement_date || b.created_at).getTime();
                     return da - db;
                 });
+                const kept = prepareMaterialExtractMovements(filtered);
                 const projected = projectMaterialExtractLines(
-                    filtered.map((m: any, idx: number) => sourceFromMovementRow(m, idx)),
+                    kept.map((item) => item.line),
                     { balanceKey: () => 'secili' },
                 );
                 const card = productCardReportFields(selectedProduct);
-                const mapped: ExtractRow[] = filtered.map((m: any, idx: number) =>
-                    mapMovementToExtractRow(m, idx, projected[idx], {
+                const mapped: ExtractRow[] = kept.map((item, idx: number) =>
+                    mapMovementToExtractRow(item.row, idx, projected[idx], {
                         id: selectedProduct.id,
                         code: displayItemCode(selectedProduct.code, selectedProduct.barcode),
                         name: selectedProduct.name || '',
@@ -387,10 +387,10 @@ export function MaterialExtractReport() {
                     limit: ALL_MATERIALS_ROW_LIMIT,
                     firmNr: selectedFirm?.firm_nr,
                 });
-                const projected = projectMaterialExtractLines(
-                    result.rows.map((m: any, idx: number) => sourceFromMovementRow(m, idx)),
-                );
-                const mapped: ExtractRow[] = result.rows.map((m: any, idx: number) => {
+                const kept = prepareMaterialExtractMovements(result.rows);
+                const projected = projectMaterialExtractLines(kept.map((item) => item.line));
+                const mapped: ExtractRow[] = kept.map((item, idx: number) => {
+                    const m = item.row;
                     const card = productCardReportFields(m);
                     return mapMovementToExtractRow(m, idx, projected[idx], {
                         id: String(m.product_id || '').trim(),
@@ -1095,6 +1095,13 @@ export function MaterialExtractReport() {
                                 getValue: (r) => Number(r.outAmt) || 0,
                                 format: (sum) => (
                                     <span className="text-red-700">{formatLedgerAmount(sum, currency)}</span>
+                                ),
+                            },
+                            {
+                                columnId: 'running_balance',
+                                getValue: (r) => (Number(r.inQty) || 0) - (Number(r.outQty) || 0),
+                                format: (sum) => (
+                                    <span className="font-bold">{formatNumber(sum, 2)}</span>
                                 ),
                             },
                         ]}
