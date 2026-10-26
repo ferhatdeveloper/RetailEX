@@ -4193,7 +4193,7 @@ export const invoicesAPI = {
 
   async getProductHistory(
     productId: string,
-    hint?: { code?: string; barcode?: string }
+    hint?: { code?: string; barcode?: string; name?: string }
   ): Promise<any[]> {
     try {
       const pid = String(productId || '').trim();
@@ -4213,7 +4213,7 @@ export const invoicesAPI = {
 
         // Not: dönem sale_items şemasında sale_id yok; yalnızca invoice_id (PostgREST bilinmeyen kolon → 400).
         const itemSelect =
-          'id,quantity,unit_price,total_amount,net_amount,invoice_id,item_code,product_id,unit_cost,total_cost,gross_profit';
+          'id,quantity,unit_price,total_amount,net_amount,discount_amount,invoice_id,item_code,product_id,item_name,unit_cost,total_cost,gross_profit';
 
         const fetchSaleItems = async (extra: Record<string, string>) =>
           postgrest
@@ -4279,6 +4279,12 @@ export const invoicesAPI = {
         } else if (isValidUuid(pid)) {
           const rowsByProductId = await fetchSaleItems({ product_id: `eq.${pid}` });
           if (Array.isArray(rowsByProductId)) mergedBuckets.push(...rowsByProductId);
+        }
+
+        const hintName = String(hint?.name || '').trim().replace(/[*%,()]/g, '');
+        if (hintName) {
+          const byName = await fetchSaleItems({ item_name: `ilike.${hintName}` });
+          if (Array.isArray(byName)) mergedBuckets.push(...byName);
         }
 
         const seenKeys = new Set<string>();
@@ -4400,6 +4406,9 @@ export const invoicesAPI = {
               unitCost,
               grossProfit: resolvedGp ?? 0,
               total: total || net || unitPrice * qty,
+              netAmount: net > 0 ? net : 0,
+              discountAmount: Math.max(0, parseFloat(String(it.discount_amount ?? 0)) || 0),
+              lineId: String(it.id || ''),
               type,
               ficheType,
               trcode,
@@ -4412,9 +4421,11 @@ export const invoicesAPI = {
 
       const hintCode = String(hint?.code || '').trim();
       const hintBarcode = String(hint?.barcode || '').trim();
+      const hintName = String(hint?.name || '').trim();
       const { rows } = await postgres.query(
         `SELECT 
-            it.quantity, it.unit_price, it.total_amount, it.net_amount,
+            it.id, it.quantity, it.unit_price, it.total_amount, it.net_amount,
+            COALESCE(it.discount_amount, 0) as discount_amount,
             COALESCE(it.unit_cost, 0) as unit_cost,
             COALESCE(it.gross_profit, 0) as gross_profit,
             s.fiche_no, s.date, s.fiche_type, s.trcode,
@@ -4457,9 +4468,20 @@ export const invoicesAPI = {
                    )
                  )
                )
+            OR (
+                 NULLIF(TRIM($4::text), '') IS NOT NULL
+                 AND (
+                   lower(trim(it.item_name)) = lower(trim($4::text))
+                   OR it.product_id IN (
+                     SELECT id FROM products
+                     WHERE NULLIF(TRIM(name), '') IS NOT NULL
+                       AND lower(trim(name)) = lower(trim($4::text))
+                   )
+                 )
+               )
            )
          ORDER BY s.date DESC`,
-        [pid, hintCode, hintBarcode]
+        [pid, hintCode, hintBarcode, hintName]
       );
 
       return rows.map(r => {
@@ -4492,6 +4514,9 @@ export const invoicesAPI = {
           unitCost,
           grossProfit: resolvedGp ?? 0,
           total: total || net || unitPrice * qty,
+          netAmount: net > 0 ? net : 0,
+          discountAmount: Math.max(0, parseFloat(String(r.discount_amount ?? 0)) || 0),
+          lineId: String(r.id || ''),
           type,
           ficheType,
           trcode,

@@ -1055,7 +1055,7 @@ class StockMovementAPI {
      */
     async getProductMovements(
         productId: string,
-        hint?: { code?: string; barcode?: string }
+        hint?: { code?: string; barcode?: string; name?: string }
     ): Promise<any[]> {
         const computeGrossProfit = (row: {
             gross_profit?: number;
@@ -1286,6 +1286,7 @@ class StockMovementAPI {
                 const hist = await invoicesAPI.getProductHistory(histPid, {
                     code: resolvedCode || (!UUID_RE.test(pid) ? pid : undefined),
                     barcode: resolvedBarcode || undefined,
+                    name: String(hint?.name || '').trim() || undefined,
                 });
                 for (const h of hist) {
                     const ficheType = String(h.ficheType || h.fiche_type || '');
@@ -1312,8 +1313,12 @@ class StockMovementAPI {
                     let unitPrice = Number(h.unitPrice) || 0;
                     const total = Number(h.total) || 0;
                     if (!unitPrice && qty) unitPrice = total / Math.abs(qty);
+                    const lineKey = String(h.lineId || '').trim();
+                    const netAmount = Number(h.netAmount) || 0;
                     combinedRaw.push({
-                        id: `inv-${String(h.documentNo)}-${String(h.date)}`,
+                        id: lineKey
+                            ? `inv-line-${lineKey}`
+                            : `inv-${String(h.documentNo || '')}-${String(h.date || '')}-${combinedRaw.length}`,
                         movement_id: h.documentNo,
                         product_id: histPid,
                         quantity: h.quantity,
@@ -1321,6 +1326,9 @@ class StockMovementAPI {
                         unit_cost: Number(h.unitCost) || 0,
                         cost_price: Number(h.unitCost) || 0,
                         total_amount: total,
+                        extract_gross_amount: Math.abs(qty) * unitPrice,
+                        extract_discount_amount: Number(h.discountAmount) || 0,
+                        extract_net_amount: netAmount > 0 ? netAmount : undefined,
                         created_at: h.date,
                         document_no: h.documentNo,
                         movement_type: movementType,
@@ -1408,6 +1416,13 @@ class StockMovementAPI {
                       END
                     ) as unit_price,
                     COALESCE(si.total_amount, si.net_amount, 0) as total_amount,
+                    COALESCE(si.quantity, 0) * COALESCE(si.unit_price, 0) AS extract_gross_amount,
+                    COALESCE(si.discount_amount, 0) AS extract_discount_amount,
+                    COALESCE(
+                      NULLIF(si.net_amount, 0),
+                      COALESCE(si.quantity, 0) * COALESCE(si.unit_price, 0)
+                        - COALESCE(si.discount_amount, 0)
+                    ) AS extract_net_amount,
                     sl.date as created_at,
                     sl.fiche_no as document_no,
                     CASE
@@ -1466,8 +1481,25 @@ class StockMovementAPI {
                            )
                          )
                        )
+                    OR (
+                         NULLIF(TRIM($4::text), '') IS NOT NULL
+                         AND (
+                           lower(trim(si.item_name)) = lower(trim($4::text))
+                           OR si.product_id IN (
+                             SELECT id FROM products
+                             WHERE NULLIF(TRIM(name), '') IS NOT NULL
+                               AND lower(trim(name)) = lower(trim($4::text))
+                           )
+                           OR si.item_code IN (
+                             SELECT code FROM products
+                             WHERE NULLIF(TRIM(code), '') IS NOT NULL
+                               AND NULLIF(TRIM(name), '') IS NOT NULL
+                               AND lower(trim(name)) = lower(trim($4::text))
+                           )
+                         )
+                       )
                    )`,
-                [productId, hintCode, hintBarcode]
+                [productId, hintCode, hintBarcode, String(hint?.name || '').trim()]
             );
             invoiceRows = rows;
         } catch (err) {
@@ -1610,6 +1642,13 @@ class StockMovementAPI {
                         ELSE 0
                       END
                     ) AS unit_price,
+                    COALESCE(si.quantity, 0) * COALESCE(si.unit_price, 0) AS extract_gross_amount,
+                    COALESCE(si.discount_amount, 0) AS extract_discount_amount,
+                    COALESCE(
+                      NULLIF(si.net_amount, 0),
+                      COALESCE(si.quantity, 0) * COALESCE(si.unit_price, 0)
+                        - COALESCE(si.discount_amount, 0)
+                    ) AS extract_net_amount,
                     COALESCE(si.unit_cost, 0) AS cost_price,
                     COALESCE(NULLIF(TRIM(si.unit), ''), p.unit, 'Adet') AS unit_name,
                     COALESCE(NULLIF(TRIM(sl.customer_name), ''), sl.notes, '') AS notes,

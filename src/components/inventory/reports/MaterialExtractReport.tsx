@@ -22,6 +22,12 @@ import {
     resolveExtractSourceMeta,
 } from '../../../utils/materialExtractLabels';
 import { displayItemCode } from '../../../utils/lastPurchaseCostSql';
+import {
+    isWithinInclusiveDayRange,
+    projectMaterialExtractLines,
+    sourceFromMovementRow,
+    type ProjectedExtractLine,
+} from '../../../utils/materialExtractLines';
 import { formatReportDateCell } from '../../../utils/dateLocale';
 import { receiptNotesForDisplay } from '../../../utils/receiptNotes';
 import {
@@ -246,7 +252,7 @@ export function MaterialExtractReport() {
     const mapMovementToExtractRow = (
         m: any,
         idx: number,
-        balance: number,
+        projected: ProjectedExtractLine,
         productMeta?: {
             id?: string;
             code?: string;
@@ -263,9 +269,9 @@ export function MaterialExtractReport() {
             category?: string;
         },
     ): ExtractRow => {
-        const qty = Number(m.quantity) || 0;
-        const unitPrice = Number(m.unit_price) || 0;
-        const movType = m.movement?.movement_type || m.movement_type || '';
+        const movType = projected.side === 'none'
+            ? (m.movement?.movement_type || m.movement_type || '')
+            : projected.side;
         const classified = resolveExtractSourceMeta({
             movement_type: movType,
             trcode: Number(m.movement?.trcode || m.trcode || 0),
@@ -297,7 +303,7 @@ export function MaterialExtractReport() {
             fromSelected.specialCode1 ||
             '';
         return {
-            id: `${m.id || idx}`,
+            id: projected.id || `${m.id || idx}`,
             date: m.movement?.movement_date || m.movement_date || m.created_at,
             trcode: Number(m.movement?.trcode || m.trcode || 0),
             movement_type: movType,
@@ -307,10 +313,10 @@ export function MaterialExtractReport() {
             description: receiptNotesForDisplay(
                 m.notes || m.description || m.customer_name || m.supplier || '',
             ),
-            quantity: qty,
-            unit_price: unitPrice,
-            amount: qty * unitPrice,
-            running_balance: balance,
+            quantity: projected.quantity,
+            unit_price: projected.unitPrice,
+            amount: projected.amount,
+            running_balance: projected.runningBalance,
             warehouse_name: m.movement?.warehouses?.name || m.warehouse_name || '',
             product_id: productMeta?.id || String(m.product_id || '').trim() || undefined,
             product_code: code === '—' ? '' : code,
@@ -344,32 +350,33 @@ export function MaterialExtractReport() {
                 const movements = await stockMovementAPI.getProductMovements(selectedProduct.id, {
                     code: selectedProduct.code,
                     barcode: selectedProduct.barcode,
+                    name: selectedProduct.name,
                 });
-                const start = new Date(startDate).getTime();
-                const end = new Date(endDate).getTime() + 86_400_000;
-                const filtered = movements.filter((m: any) => {
-                    const date = new Date(m.movement?.movement_date || m.movement_date || m.created_at).getTime();
-                    return date >= start && date <= end;
-                });
+                const filtered = movements.filter((m: any) =>
+                    isWithinInclusiveDayRange(
+                        m.movement?.movement_date || m.movement_date || m.created_at,
+                        startDate,
+                        endDate,
+                    ),
+                );
                 filtered.sort((a: any, b: any) => {
                     const da = new Date(a.movement?.movement_date || a.movement_date || a.created_at).getTime();
                     const db = new Date(b.movement?.movement_date || b.movement_date || b.created_at).getTime();
                     return da - db;
                 });
-                let balance = 0;
-                const mapped: ExtractRow[] = filtered.map((m: any, idx: number) => {
-                    const qty = Number(m.quantity) || 0;
-                    const movType = m.movement?.movement_type || m.movement_type || '';
-                    if (movType === 'in') balance += qty;
-                    else if (movType === 'out') balance -= qty;
-                    const card = productCardReportFields(selectedProduct);
-                    return mapMovementToExtractRow(m, idx, balance, {
+                const projected = projectMaterialExtractLines(
+                    filtered.map((m: any, idx: number) => sourceFromMovementRow(m, idx)),
+                    { balanceKey: () => 'secili' },
+                );
+                const card = productCardReportFields(selectedProduct);
+                const mapped: ExtractRow[] = filtered.map((m: any, idx: number) =>
+                    mapMovementToExtractRow(m, idx, projected[idx], {
                         id: selectedProduct.id,
                         code: displayItemCode(selectedProduct.code, selectedProduct.barcode),
                         name: selectedProduct.name || '',
                         ...productCardCodesSnake(card),
-                    });
-                });
+                    }),
+                );
                 setRows(mapped);
                 setAllMaterialsMode(false);
                 setReportReady(true);
@@ -380,20 +387,12 @@ export function MaterialExtractReport() {
                     limit: ALL_MATERIALS_ROW_LIMIT,
                     firmNr: selectedFirm?.firm_nr,
                 });
-                const balances = new Map<string, number>();
+                const projected = projectMaterialExtractLines(
+                    result.rows.map((m: any, idx: number) => sourceFromMovementRow(m, idx)),
+                );
                 const mapped: ExtractRow[] = result.rows.map((m: any, idx: number) => {
-                    const qty = Number(m.quantity) || 0;
-                    const movType = m.movement?.movement_type || m.movement_type || '';
-                    const key =
-                        String(m.product_id || '').trim() ||
-                        displayItemCode(m.product_code) ||
-                        `row-${idx}`;
-                    let bal = balances.get(key) || 0;
-                    if (movType === 'in') bal += qty;
-                    else if (movType === 'out') bal -= qty;
-                    balances.set(key, bal);
                     const card = productCardReportFields(m);
-                    return mapMovementToExtractRow(m, idx, bal, {
+                    return mapMovementToExtractRow(m, idx, projected[idx], {
                         id: String(m.product_id || '').trim(),
                         code: displayItemCode(m.product_code),
                         name: String(m.product_name || '').trim(),
