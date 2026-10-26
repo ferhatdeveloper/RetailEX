@@ -3,7 +3,7 @@ import type { ReceiptSettings } from '../../services/receiptSettingsService';
 import { formatMoneyWithCode } from '../../utils/currency';
 import { formatNumber } from '../../utils/formatNumber';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
-import { receiptUnpaidBalance } from '../../utils/receiptUnpaidBalance';
+import { receiptLineGross, receiptSettlement } from '../../utils/receiptSettlement';
 import { customerReceiptRows } from '../../utils/saleCustomerSnapshot';
 import { RECEIPT_A4_DOCUMENT_CSS } from '../../utils/receiptA4DocumentCss';
 import { RECEIPT_A5_DOCUMENT_CSS } from '../../utils/receiptA5DocumentCss';
@@ -94,6 +94,14 @@ export function ReceiptStandardDocument({
     ? paymentData.payments
     : [{ method: sale.paymentMethod, amount: sale.total, currency: baseCurrency }];
 
+  const settlement = receiptSettlement({
+    items: sale.items,
+    discount: sale.discount,
+    tax: sale.tax,
+    total: sale.total,
+    subtotal: sale.subtotal,
+    paid: paymentData.totalPaid,
+  }, baseCurrency);
   const lbl = (key: string, fallback: string) => r[key] || fallback;
   const productLabel = lbl('productLabel', 'Ürün');
   const codeLabel = lbl('productCodeLabel', 'Kod');
@@ -217,7 +225,7 @@ export function ReceiptStandardDocument({
                       </td>
                       <td className={rx('unit')}>{lineUnitPrice(item, moneyDecimals)}</td>
                       <td className={rx('qty')}>{item.quantity}</td>
-                      <td className={rx('money')}>{fmtMoney(item.total)}</td>
+                      <td className={rx('money')}>{fmtMoney(receiptLineGross(item))}</td>
                     </tr>
                   );
                 })}
@@ -250,7 +258,7 @@ export function ReceiptStandardDocument({
               {showUnpaidBalance ? (
                 <div className={rx('pay-row')} style={{ fontWeight: 800 }}>
                   <span>{lbl('remaining', 'KALAN')}</span>
-                  <span>{fmtMoney(receiptUnpaidBalance(sale.total, paymentData.totalPaid || 0))}</span>
+                  <span>{fmtMoney(settlement.remaining)}</span>
                 </div>
               ) : null}
               {(paymentData.change ?? 0) > 0 ? (
@@ -264,12 +272,12 @@ export function ReceiptStandardDocument({
             <div className={rx('totals')} data-section="totals">
               <div className={rx('total-row')}>
                 <span>{lbl('subtotal', 'Ara Toplam')}</span>
-                <span>{fmtMoney(sale.subtotal)}</span>
+                <span>{fmtMoney(settlement.gross)}</span>
               </div>
-              {sale.discount > 0 ? (
+              {settlement.discount > 0 ? (
                 <div className={`${rx('total-row')} discount`}>
                   <span>{lbl('discount', 'İndirim')}</span>
-                  <span>-{fmtMoney(sale.discount)}</span>
+                  <span>-{fmtMoney(settlement.discount)}</span>
                 </div>
               ) : null}
               {(sale.campaignDiscount && sale.campaignDiscount > 0) || sale.campaignName ? (
@@ -293,7 +301,7 @@ export function ReceiptStandardDocument({
               ) : null}
               <div className={rx('grand-total')}>
                 <span>{lbl('total', 'TOPLAM')}</span>
-                <span>{fmtMoney(sale.total)}</span>
+                <span>{fmtMoney(settlement.net)}</span>
               </div>
             </div>
           </div>

@@ -474,9 +474,12 @@ ${orderNote?.trim() ? `<p style="margin:4px 0 6px 0;font-size:13px;font-weight:8
  * (Receipt80mm, WebView2, bazı Chrome sürümleri).
  */
 export async function printHtmlInHiddenIframe(html: string): Promise<void> {
+  const thermal = /size:\s*80mm/i.test(html);
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
+  iframe.style.cssText = thermal
+    ? 'position:fixed;left:-12000px;top:0;width:320px;height:1600px;border:0;opacity:0;pointer-events:none'
+    : 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
   document.body.appendChild(iframe);
   const w = iframe.contentWindow;
   const doc = w?.document;

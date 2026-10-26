@@ -22,6 +22,7 @@ export function printHtmlInMainDocument(html: string): void {
     .map((el) => el.textContent || '')
     .join('\n');
   const bodyHtml = doc.body?.innerHTML ?? '';
+  const thermal = /size:\s*80mm/i.test(styleText) || /size:\s*80mm/i.test(html);
 
   const host = document.createElement('div');
   host.id = PRINT_HOST_ID;
@@ -45,6 +46,8 @@ export function printHtmlInMainDocument(html: string): void {
     margin: 0 !important;
     padding: 0 !important;
     background: #fff !important;
+    height: auto !important;
+    min-height: 0 !important;
   }
   body > *:not(.retailex-report-print-host) {
     visibility: hidden !important;
@@ -64,14 +67,15 @@ export function printHtmlInMainDocument(html: string): void {
   .retailex-report-print-host {
     visibility: visible !important;
     position: fixed !important;
-    left: 0 !important;
+    left: ${thermal ? '0' : '0'} !important;
     top: 0 !important;
-    right: auto !important;
+    right: ${thermal ? '0' : 'auto'} !important;
     bottom: auto !important;
-    width: auto !important;
+    width: ${thermal ? '80mm' : 'auto'} !important;
     height: auto !important;
-    max-width: 100% !important;
-    margin: 0 !important;
+    min-height: 0 !important;
+    max-width: ${thermal ? '80mm' : '100%'} !important;
+    margin: ${thermal ? '0 auto' : '0'} !important;
     padding: 0 !important;
     overflow: visible !important;
     opacity: 1 !important;

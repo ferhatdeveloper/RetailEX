@@ -15,7 +15,7 @@ import { resolveProductNameForReceipt } from '../../utils/receiptProductName';
 import { getAccountReceiptSystemPrinterName } from '../../utils/restaurantAccountReceiptPrinter';
 import { printHtmlInHiddenIframe } from '../../utils/restaurantReceiptPrint';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
-import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from '../../utils/receipt80mmDocumentCss';
+import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_SLIP_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from '../../utils/receipt80mmDocumentCss';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { RECEIPT_A4_DOCUMENT_CSS } from '../../utils/receiptA4DocumentCss';
 import { RECEIPT_A5_DOCUMENT_CSS } from '../../utils/receiptA5DocumentCss';
@@ -24,8 +24,8 @@ import { beautyReceiptStaffNames, isBeautyReceiptSale } from '../../utils/beauty
 import {
   appointmentReceiptBanner,
   appointmentReceiptPayState,
-  receiptUnpaidBalance,
 } from '../../utils/receiptUnpaidBalance';
+import { receiptLineGross, receiptSettlement } from '../../utils/receiptSettlement';
 
 interface Receipt80mmProps {
   sale: Sale;
@@ -315,16 +315,27 @@ export function Receipt80mm({
   `;
 
   const receiptPaidAmount = Number(paymentData?.totalPaid) || 0;
-  const unpaidBalance = receiptUnpaidBalance(Number(sale?.total) || 0, receiptPaidAmount);
+  const settlement = useMemo(
+    () => receiptSettlement({
+      items: sale?.items,
+      discount: sale?.discount,
+      tax: sale?.tax,
+      total: sale?.total,
+      subtotal: sale?.subtotal,
+      paid: receiptPaidAmount,
+    }, baseCurrency),
+    [sale, receiptPaidAmount, baseCurrency],
+  );
+  const unpaidBalance = settlement.remaining;
   const displayHeaderBanner = useMemo(() => {
     if (headerBannerKind === 'appointment') {
       return appointmentReceiptBanner(
         selectedLang,
-        appointmentReceiptPayState(Number(sale?.total) || 0, receiptPaidAmount),
+        appointmentReceiptPayState(settlement.net, receiptPaidAmount),
       );
     }
     return headerBanner;
-  }, [headerBannerKind, headerBanner, selectedLang, sale?.total, receiptPaidAmount]);
+  }, [headerBannerKind, headerBanner, selectedLang, settlement.net, receiptPaidAmount]);
 
   // Add null/undefined checks
   if (!sale || !paymentData) {
@@ -363,9 +374,9 @@ export function Receipt80mm({
     cashier: sale.cashier,
     customerName: sale.customerName,
     table: sale.table,
-    subtotal: sale.subtotal,
-    discount: sale.discount,
-    total: sale.total,
+    subtotal: settlement.gross,
+    discount: settlement.discount,
+    total: settlement.net,
     totalPaid: paymentData?.totalPaid ?? 0,
     remaining: unpaidBalance,
     change: paymentData?.change ?? 0,
@@ -390,8 +401,8 @@ export function Receipt80mm({
       const fullHtml = `<!DOCTYPE html><html dir="${isRTL ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">${viewportMeta}<title>${t.receipt?.title || 'Fiş'} - ${sale.receiptNumber}</title><style>
       ${documentBaseCss}
       @page { size: ${printPageSize}; margin: ${printPageMargin}; }
-      body { padding: ${isThermalFormat ? '2mm 3mm 3mm' : '6mm'}; font-family: 'Courier New', Courier, monospace; font-size: ${isThermalFormat ? '13px' : '11px'}; font-weight: 800; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; -webkit-font-smoothing: none; text-rendering: geometricPrecision; }
-      .receipt-80mm, .receipt-a5, .receipt-a4, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
+      body { padding: ${isThermalFormat ? '0' : '6mm'}; font-family: 'Courier New', Courier, monospace; font-size: ${isThermalFormat ? '13px' : '11px'}; font-weight: 800; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; -webkit-font-smoothing: none; text-rendering: geometricPrecision; height: auto; min-height: 0; }
+      ${isThermalFormat ? RECEIPT_80MM_SLIP_CSS : '.receipt-80mm, .receipt-a5, .receipt-a4, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }'}
       ${receiptVariantCss}
       * { box-sizing: border-box; }
       .flex { display: flex; }
@@ -401,7 +412,7 @@ export function Receipt80mm({
       .border-b { border-bottom: 1px solid #000; }
       .border-t { border-top: 1px solid #000; }
       .border-dashed { border-style: dashed; }
-    </style></head><body>${fragment}</body></html>`;
+    </style></head><body>${isThermalFormat ? `<div class="rx-slip">${fragment}</div>` : fragment}</body></html>`;
 
       const { resolveSystemPrinterName } = await import('../../utils/resolveSystemPrinterName');
       const resolvedPrinterName = await resolveSystemPrinterName(getAccountReceiptSystemPrinterName());
@@ -521,8 +532,8 @@ export function Receipt80mm({
               <style>
                 ${documentBaseCss}
                 @page { size: ${printPageSize}; margin: ${printPageMargin}; }
-                body { padding: ${isThermalFormat ? '2mm 3mm 3mm' : '6mm'}; font-family: 'Courier New', Courier, monospace; direction: ${isRTL ? 'rtl' : 'ltr'}; }
-                .receipt-80mm, .receipt-a5, .receipt-a4, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
+                body { padding: ${isThermalFormat ? '0' : '6mm'}; font-family: 'Courier New', Courier, monospace; direction: ${isRTL ? 'rtl' : 'ltr'}; height: auto; min-height: 0; }
+                ${isThermalFormat ? RECEIPT_80MM_SLIP_CSS : '.receipt-80mm, .receipt-a5, .receipt-a4, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }'}
                 ${receiptVariantCss}
                 * { print-color-adjust: exact; -webkit-print-color-adjust: exact; box-sizing: border-box; }
                 .flex { display: flex; }
@@ -535,7 +546,7 @@ export function Receipt80mm({
               </style>
             </head>
             <body>
-              ${fragment}
+              ${isThermalFormat ? `<div class="rx-slip">${fragment}</div>` : fragment}
             </body>
           </html>
         `);
@@ -659,7 +670,7 @@ export function Receipt80mm({
           }}
         >
           <div
-            className={`${receiptVariantClassName} mx-auto origin-top text-gray-950 antialiased ${isThermalFormat ? 'font-mono text-[14px] font-bold leading-snug print:text-[11px] print:font-bold print:leading-tight' : isA4Format ? 'font-sans text-[13px] font-semibold leading-relaxed print:text-[12px] print:leading-snug' : 'font-sans text-[12px] font-semibold leading-snug print:text-[11px] print:leading-tight'}`}
+            className={`${receiptVariantClassName} ${isThermalFormat ? 'rx-slip' : ''} mx-auto origin-top text-gray-950 antialiased ${isThermalFormat ? 'font-mono text-[14px] font-bold leading-snug print:text-[11px] print:font-bold print:leading-tight' : isA4Format ? 'font-sans text-[13px] font-semibold leading-relaxed print:text-[12px] print:leading-snug' : 'font-sans text-[12px] font-semibold leading-snug print:text-[11px] print:leading-tight'}`}
             style={{ transformOrigin: 'top center', direction: isRTL ? 'rtl' : 'ltr' }}
           >
           <div
@@ -820,7 +831,7 @@ export function Receipt80mm({
                         <div className="text-[11px] font-bold text-gray-700 mt-0.5 print:text-[10px]">{qtyPrice}</div>
                       </td>
                       <td className={`py-2 font-black tabular-nums whitespace-nowrap align-top ${isRTL ? 'text-left' : 'text-right'}`}>
-                        {fmtMoney(item.total)}
+                        {fmtMoney(receiptLineGross(item))}
                       </td>
                     </tr>
                   );
@@ -837,7 +848,7 @@ export function Receipt80mm({
                 {sale.discount > 0 ? (
                   <tr className="border-b border-gray-300 text-red-600">
                     <td className={`py-1.5 ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.discount}</td>
-                    <td className={`py-1.5 tabular-nums ${isRTL ? 'text-left' : 'text-right'}`}>-{fmtMoney(sale.discount)}</td>
+                    <td className={`py-1.5 tabular-nums ${isRTL ? 'text-left' : 'text-right'}`}>-{fmtMoney(settlement.discount)}</td>
                   </tr>
                 ) : null}
                 <tr className="border-t-2 border-gray-900">
@@ -845,7 +856,7 @@ export function Receipt80mm({
                     {t.receipt.total}
                   </td>
                   <td className={`py-2 text-[1.05rem] font-black tabular-nums text-gray-950 print:text-base ${isRTL ? 'text-left' : 'text-right'}`}>
-                    {fmtMoney(sale.total)}
+                    {fmtMoney(settlement.net)}
                   </td>
                 </tr>
               </tbody>
@@ -1054,7 +1065,7 @@ export function Receipt80mm({
                       {item.quantity}
                     </td>
                     <td className="py-1 text-end font-black whitespace-nowrap text-[14px] tabular-nums print:text-[11px] align-top">
-                      {fmtMoney(item.total)}
+                      {fmtMoney(receiptLineGross(item))}
                     </td>
                   </tr>
                 ))}
@@ -1067,13 +1078,13 @@ export function Receipt80mm({
             <div data-section="totals" className="text-[14px] space-y-0.5 mb-2 font-bold print:text-[11px]">
               <div className="flex justify-between">
                 <span className="font-extrabold">{t.receipt.subtotal}:</span>
-                <span className="font-extrabold tabular-nums">{fmtMoney(sale.subtotal)}</span>
+                <span className="font-extrabold tabular-nums">{fmtMoney(settlement.gross)}</span>
               </div>
 
               {sale.discount > 0 && (
                 <div className="flex justify-between text-red-600 font-bold">
                   <span>{t.receipt.discount}:</span>
-                  <span className="tabular-nums">-{fmtMoney(sale.discount)}</span>
+                  <span className="tabular-nums">-{fmtMoney(settlement.discount)}</span>
                 </div>
               )}
 
@@ -1099,7 +1110,7 @@ export function Receipt80mm({
 
               <div className="flex justify-between text-[1.05rem] font-black text-gray-950 pt-1 print:text-base print:font-black">
                 <span>{t.receipt.total}:</span>
-                <span className="tabular-nums">{fmtMoney(sale.total)}</span>
+                <span className="tabular-nums">{fmtMoney(settlement.net)}</span>
               </div>
             </div>
 
@@ -1229,6 +1240,12 @@ export function Receipt80mm({
         }
         ${receiptVariantCss}
         @media print {
+          html, body {
+            height: auto !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
           body * {
             visibility: hidden;
             -webkit-print-color-adjust: exact;
@@ -1240,20 +1257,23 @@ export function Receipt80mm({
             font-weight: 700;
           }
           #receipt-content {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100% !important;
-            max-width: 100% !important;
+            position: ${isThermalFormat ? 'static' : 'absolute'};
+            left: ${isThermalFormat ? 'auto' : '0'};
+            top: ${isThermalFormat ? 'auto' : '0'};
+            width: ${isThermalFormat ? '72mm' : '100%'} !important;
+            max-width: ${isThermalFormat ? '72mm' : '100%'} !important;
+            margin: ${isThermalFormat ? '0 auto' : '0'} !important;
             direction: ${isRTL ? 'rtl' : 'ltr'};
             font-size: ${isThermalFormat ? '13px' : '11px'};
             font-weight: 800;
             overflow: visible;
-            min-height: auto !important;
+            height: auto !important;
+            min-height: 0 !important;
             page-break-after: avoid;
+            break-after: avoid;
           }
           @page { size: ${printPageSize}; margin: ${printPageMargin}; }
-          .receipt-80mm, .receipt-a5, .receipt-a4 { width: 100% !important; max-width: 100% !important; transform: none !important; }
+          ${isThermalFormat ? RECEIPT_80MM_SLIP_CSS : '.receipt-80mm, .receipt-a5, .receipt-a4 { width: 100% !important; max-width: 100% !important; transform: none !important; }'}
           #receipt-content .receipt-items-table {
             width: 100% !important;
             table-layout: fixed !important;

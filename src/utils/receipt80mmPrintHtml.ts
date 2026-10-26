@@ -3,13 +3,13 @@
  * Önizleme modalındaki görünümle hizalı satır düzeni, kesik çizgiler, ödeme blokları, barkod.
  */
 import type { Sale, SaleItem } from '../core/types/models';
-import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
+import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_SLIP_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
 import type { ReceiptSettings } from '../services/receiptSettingsService';
 import { formatNumber } from './formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency, getCurrencyDecimalPlaces, moneyEpsilon } from './currency';
 import { receiptNotesForDisplay } from './receiptNotes';
 import { beautyReceiptStaffNames, isBeautyReceiptSale } from './beautyReceiptLayout';
-import { receiptUnpaidBalance } from './receiptUnpaidBalance';
+import { receiptLineGross, receiptSettlement } from './receiptSettlement';
 import { getPrintString, resolvePrintLocale, type SupportedPrintLocale } from '../locales/printKeys';
 /** Receipt80mm / POS fiş dili */
 export type Receipt80mmPrintLocale = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
@@ -292,6 +292,14 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
 
   const baseCurrency = (currencyCode?.trim().toUpperCase() || getGlobalCurrency());
   const moneyDecimals = getCurrencyDecimalPlaces(baseCurrency);
+  const settlement = receiptSettlement({
+    items: sale.items,
+    discount: sale.discount,
+    tax: sale.tax,
+    total: sale.total,
+    subtotal: sale.subtotal,
+    paid: paymentData.totalPaid,
+  }, baseCurrency);
   const fmtMoney = (amount: number) => formatCurrency(amount, undefined, false);
   const fmtPayment = (amount: number, currency?: string) => {
     const code = (currency || baseCurrency).trim().toUpperCase();
@@ -385,8 +393,8 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
     : '';
 
   const discBlock =
-    sale.discount > 0
-      ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#b91c1c;font-weight:700;margin:2px 0"><span>${escapeHtml(T.discount)}:</span><span>-${escapeHtml(fmtMoney(sale.discount))}</span></div>`
+    settlement.discount > 0
+      ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#b91c1c;font-weight:700;margin:2px 0"><span>${escapeHtml(T.discount)}:</span><span>-${escapeHtml(fmtMoney(settlement.discount))}</span></div>`
       : '';
 
   const payments = paymentData.payments || [];
@@ -399,7 +407,7 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
     })
     .join('');
 
-  const remaining = paymentData.remaining ?? 0;
+  const remaining = settlement.remaining;
   const remainingBlock =
     remaining > moneyEpsilon(baseCurrency)
       ? `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:800;margin-top:6px"><span>${escapeHtml(T.remaining)}:</span><span>${escapeHtml(fmtMoney(remaining))}</span></div>`
@@ -458,6 +466,7 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
     const beautyItemRows = (sale.items || [])
       .map((item) => {
         const sub = itemSubline(item, moneyDecimals);
+        const lineGross = receiptLineGross(item);
         const lineStaff = item.beautyStaffName?.trim();
         const showLineStaff = beautyStaffList.length > 1 && !!lineStaff;
         return `<tr>
@@ -466,7 +475,7 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
 ${showLineStaff ? `<div style="font-size:9px;font-weight:700;margin-top:2px;color:#374151">${escapeHtml(T.staff)}: ${escapeHtml(lineStaff!)}</div>` : ''}
 <div style="font-size:9px;font-weight:700;color:#374151;margin-top:2px">${escapeHtml(sub)}</div>
 </td>
-<td style="padding:7px 2px;border-bottom:1px solid #d1d5db;vertical-align:top;text-align:end;font-weight:900;white-space:nowrap">${escapeHtml(fmtMoney(item.total))}</td>
+<td style="padding:7px 2px;border-bottom:1px solid #d1d5db;vertical-align:top;text-align:end;font-weight:900;white-space:nowrap">${escapeHtml(fmtMoney(lineGross))}</td>
 </tr>`;
       })
       .join('');
@@ -476,7 +485,7 @@ ${showLineStaff ? `<div style="font-size:9px;font-weight:700;margin-top:2px;colo
         ? `<table role="presentation" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;font-weight:700;margin:0 0 10px">
 <tbody>
 <tr><td style="padding:6px 2px;border-top:2px solid #000;font-weight:800;text-align:${ta}">${escapeHtml(TEXT[locale].paid)}</td><td style="padding:6px 2px;border-top:2px solid #000;font-weight:900;text-align:end">${escapeHtml(fmtMoney(paymentData.totalPaid || 0))}</td></tr>
-<tr><td style="padding:5px 2px;font-weight:800;text-align:${ta}">${escapeHtml(TEXT[locale].remaining)}</td><td style="padding:5px 2px;font-weight:800;text-align:end">${escapeHtml(fmtMoney(receiptUnpaidBalance(Number(sale.total) || 0, Number(paymentData.totalPaid) || 0)))}</td></tr>
+<tr><td style="padding:5px 2px;font-weight:800;text-align:${ta}">${escapeHtml(TEXT[locale].remaining)}</td><td style="padding:5px 2px;font-weight:800;text-align:end">${escapeHtml(fmtMoney(settlement.remaining))}</td></tr>
 ${
   paymentData.change > moneyEpsilon(baseCurrency)
     ? `<tr><td style="padding:5px 2px;font-weight:800;color:#15803d;text-align:${ta}">${escapeHtml(T.change)}</td><td style="padding:5px 2px;font-weight:800;color:#15803d;text-align:end">${escapeHtml(fmtMoney(paymentData.change))}</td></tr>`
@@ -490,8 +499,8 @@ ${
       : '';
 
     bodyInner = `
-<div style="width:100%;max-width:100%;box-sizing:border-box;margin:0;padding:2mm 3mm 3mm;font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:800;color:#000;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
-  <div style="text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px">
+<div class="rx-slip" style="width:100%;max-width:100%;box-sizing:border-box;margin:0 auto;padding:2mm 3mm 3mm;font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:800;color:#000;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
+  <div data-section="header" style="text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px">
     ${logoHtml}
     <div style="font-size:18px;font-weight:900;margin-bottom:4px">${escapeHtml(companyName)}</div>
     ${beautyPhoneOnly}
@@ -513,15 +522,15 @@ ${
   <table role="presentation" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;margin:0 0 10px">
     <tbody>
       ${
-        sale.discount > 0
-          ? `<tr><td style="padding:4px 2px;color:#b91c1c;font-weight:700;text-align:${ta}">${escapeHtml(T.discount)}</td><td style="padding:4px 2px;color:#b91c1c;font-weight:700;text-align:end">-${escapeHtml(fmtMoney(sale.discount))}</td></tr>`
+        settlement.discount > 0
+          ? `<tr><td style="padding:4px 2px;color:#b91c1c;font-weight:700;text-align:${ta}">${escapeHtml(T.discount)}</td><td style="padding:4px 2px;color:#b91c1c;font-weight:700;text-align:end">-${escapeHtml(fmtMoney(settlement.discount))}</td></tr>`
           : ''
       }
-      <tr><td style="padding:8px 2px;border-top:2px solid #000;font-size:16px;font-weight:900;text-align:${ta}">${escapeHtml(T.total)}</td><td style="padding:8px 2px;border-top:2px solid #000;font-size:16px;font-weight:900;text-align:end">${escapeHtml(fmtMoney(sale.total ?? 0))}</td></tr>
+      <tr><td style="padding:8px 2px;border-top:2px solid #000;font-size:16px;font-weight:900;text-align:${ta}">${escapeHtml(T.total)}</td><td style="padding:8px 2px;border-top:2px solid #000;font-size:16px;font-weight:900;text-align:end">${escapeHtml(fmtMoney(settlement.net))}</td></tr>
     </tbody>
   </table>
   ${beautyPaymentsTable}
-  <div style="text-align:center;font-size:13px;font-weight:800;margin-top:8px;padding-top:8px;border-top:2px solid #000">*** ${escapeHtml(T.thanks)} ***</div>
+  <div data-section="footer" style="text-align:center;font-size:13px;font-weight:800;margin-top:8px;padding-top:8px;border-top:2px solid #000">*** ${escapeHtml(T.thanks)} ***</div>
 </div>`;
   } else {
     const metaRows: string[] = [];
@@ -564,6 +573,7 @@ ${
     const itemRows = (sale.items || [])
       .map((item) => {
         const sub = itemSubline(item, moneyDecimals);
+        const lineGross = receiptLineGross(item);
         const variantExtra =
           item.variant && ((item.variant as any).color || (item.variant as any).size)
             ? `<div style="font-size:9px;font-weight:700;color:#374151">${escapeHtml(String((item.variant as any).color || ''))} ${escapeHtml(String((item.variant as any).size || ''))}</div>`
@@ -580,7 +590,7 @@ ${variantExtra}
 <span style="font-size:9px;font-weight:700;color:#374151;display:block">${escapeHtml(sub)}</span>
 </td>
 <td style="padding:5px 2px;text-align:center;vertical-align:top;font-weight:800;border-bottom:1px solid #e5e7eb">${escapeHtml(String(item.quantity))}</td>
-<td style="padding:5px 2px;text-align:end;vertical-align:top;font-weight:800;white-space:nowrap;border-bottom:1px solid #e5e7eb">${escapeHtml(fmtMoney(item.total))}</td>
+<td style="padding:5px 2px;text-align:end;vertical-align:top;font-weight:800;white-space:nowrap;border-bottom:1px solid #e5e7eb">${escapeHtml(fmtMoney(lineGross))}</td>
 </tr>`;
       })
       .join('');
@@ -611,8 +621,8 @@ ${variantExtra}
       .join('')}</svg>`;
 
     bodyInner = `
-<div style="width:100%;max-width:100%;box-sizing:border-box;margin:0;padding:2mm 3mm 3mm;font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:800;color:#000;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
-  <div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:8px;margin-bottom:8px">
+<div class="rx-slip" style="width:100%;max-width:100%;box-sizing:border-box;margin:0 auto;padding:2mm 3mm 3mm;font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:800;color:#000;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
+  <div data-section="header" style="text-align:center;border-bottom:2px dashed #000;padding-bottom:8px;margin-bottom:8px">
     ${logoHtml}
     <div style="font-size:18px;font-weight:900;margin-bottom:4px">${escapeHtml(companyName)}</div>
     ${addrBlock}
@@ -626,11 +636,11 @@ ${variantExtra}
   ${itemsTableHtml}
   <div style="border-top:2px dashed #000;margin:10px 0"></div>
   <div style="font-size:13px;margin-bottom:8px">
-    <div style="display:flex;justify-content:space-between;font-weight:800;margin:3px 0"><span>${escapeHtml(T.subtotal)}:</span><span>${escapeHtml(fmtMoney(sale.subtotal ?? 0))}</span></div>
+    <div style="display:flex;justify-content:space-between;font-weight:800;margin:3px 0"><span>${escapeHtml(T.subtotal)}:</span><span>${escapeHtml(fmtMoney(settlement.gross))}</span></div>
     ${discBlock}
     ${campaignBlock}
     <div style="border-top:1px solid #000;margin:8px 0"></div>
-    <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:4px"><span>${escapeHtml(T.total)}:</span><span>${escapeHtml(fmtMoney(sale.total ?? 0))}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:4px"><span>${escapeHtml(T.total)}:</span><span>${escapeHtml(fmtMoney(settlement.net))}</span></div>
   </div>
   <div style="border-top:2px dashed #000;margin:10px 0"></div>
   <div style="font-size:13px;margin-bottom:8px">
@@ -648,7 +658,7 @@ ${variantExtra}
       <div style="font-size:10px;margin-top:4px;font-family:system-ui,sans-serif;font-weight:800">${escapeHtml(sale.receiptNumber)}</div>
     </div>
   </div>
-  <div style="text-align:center;font-size:13px;font-weight:800;margin-top:8px">*** ${escapeHtml(T.thanks)} ***</div>
+  <div data-section="footer" style="text-align:center;font-size:13px;font-weight:800;margin-top:8px">*** ${escapeHtml(T.thanks)} ***</div>
   <div style="border-top:2px dashed #000;margin-top:10px"></div>
 </div>`;
   }
@@ -656,7 +666,8 @@ ${variantExtra}
   return `<!DOCTYPE html><html lang="${locale}" dir="${dir}"><head><meta charset="utf-8">${RECEIPT_80MM_VIEWPORT_FOR_HEADLESS}<title>${escapeHtml(companyName)} - ${escapeHtml(sale.receiptNumber)}</title>
 <style>
 ${RECEIPT_80MM_DOCUMENT_CSS}
-  body { padding: 0; font-family: 'Courier New', Courier, monospace; direction: ${dir}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; }
+${RECEIPT_80MM_SLIP_CSS}
+  body { padding: 0; font-family: 'Courier New', Courier, monospace; direction: ${dir}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; height: auto; min-height: 0; }
   * { box-sizing: border-box; }
 </style></head><body>${bodyInner}</body></html>`;
 }
