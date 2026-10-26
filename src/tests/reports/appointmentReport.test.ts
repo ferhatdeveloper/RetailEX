@@ -13,6 +13,12 @@ import {
   previousAppointmentPeriod,
   type AppointmentReportInput,
 } from '../../utils/appointmentReport';
+import {
+  buildAppointmentDonutArcs,
+  donutSlicePath,
+  layoutAppointmentHourBars,
+  layoutAppointmentTrendBars,
+} from '../../utils/appointmentReportCharts';
 
 const FROM = '2026-10-01';
 const TO = '2026-10-25';
@@ -134,8 +140,58 @@ describe('randevu raporu', () => {
     ).total).toBeNull();
   });
 
+  it('halka ve çubuklar durum adedinden çizilir', () => {
+    const five = Array.from({ length: 5 }, (_, index) => row({
+      id: `came-${index}`,
+      status: 'completed',
+      time: `${9 + index}:00`,
+    }));
+    const model = buildAppointmentReport(five, { from: FROM, to: TO });
+    const arcs = buildAppointmentDonutArcs(model.summary.slices);
+    expect(arcs).toHaveLength(1);
+    expect(arcs[0]).toMatchObject({ key: 'came', count: 5, sharePercent: 100 });
+    expect(arcs[0].end - arcs[0].start).toBeCloseTo(Math.PI * 2, 5);
+    const path = donutSlicePath(140, 140, 74, 118, arcs[0].start, arcs[0].end);
+    expect(path.startsWith('M')).toBe(true);
+    expect(path).toContain('A');
+    expect(JSON.stringify(arcs)).not.toMatch(/Merve|Selin/);
+
+    const mixed = buildAppointmentReport(rows, { from: FROM, to: TO });
+    const mixedArcs = buildAppointmentDonutArcs(mixed.summary.slices);
+    expect(mixedArcs.map((arc) => [arc.key, arc.count])).toEqual(
+      mixed.summary.slices.filter((slice) => slice.inChart).map((slice) => [slice.key, slice.count]),
+    );
+    expect(mixedArcs.reduce((sum, arc) => sum + arc.count, 0)).toBe(9);
+
+    const day = mixed.trend.find((point) => point.date === '2026-10-12');
+    const bars = layoutAppointmentTrendBars(
+      [{ ...day!, label: '12 Eki' }],
+      640,
+      280,
+    );
+    const cameBar = bars.rects.find((rect) => rect.series === 'came');
+    const missedBar = bars.rects.find((rect) => rect.series === 'noShow');
+    const cancelledBar = bars.rects.find((rect) => rect.series === 'cancelled');
+    expect(cameBar?.value).toBe(2);
+    expect(missedBar?.value).toBe(2);
+    expect(cancelledBar?.value).toBe(1);
+    expect(bars.rects.every((rect) => rect.height > 0)).toBe(true);
+    expect(missedBar && cameBar && missedBar.y < cameBar.y).toBe(true);
+    expect(cancelledBar && missedBar && cancelledBar.y < missedBar.y).toBe(true);
+
+    const hours = layoutAppointmentHourBars(
+      mixed.hours.map((point) => ({ ...point, label: `${point.hour}:00` })),
+      640,
+      280,
+    );
+    expect(hours.rects.find((rect) => rect.label === '9:00')?.value).toBe(2);
+    expect(hours.rects.every((rect) => rect.value > 0 && rect.height > 0)).toBe(true);
+  });
+
   it('menü adı Randevu Raporu; sahte personel ve tablo yok', () => {
     const report = readFileSync(resolve('src/components/beauty/components/AppointmentReport.tsx'), 'utf8');
+    const charts = readFileSync(resolve('src/components/beauty/components/AppointmentReportCharts.tsx'), 'utf8');
+    const geometry = readFileSync(resolve('src/utils/appointmentReportCharts.ts'), 'utf8');
     const logic = readFileSync(resolve('src/utils/appointmentReport.ts'), 'utf8');
     const menu = readFileSync(resolve('src/components/reports/ReportsModule.tsx'), 'utf8');
     expect(moduleTranslations.beautyAppointmentReport.tr).toBe('Randevu Raporu');
@@ -156,6 +212,15 @@ describe('randevu raporu', () => {
     expect(report).not.toContain('Selin');
     expect(logic).not.toContain('Merve');
     expect(logic).not.toContain('Selin');
+    expect(charts).not.toContain('Merve');
+    expect(charts).not.toContain('Selin');
+    expect(geometry).not.toContain('Merve');
+    expect(geometry).not.toContain('Selin');
+    expect(charts).toContain('data-testid="appointment-report-donut"');
+    expect(charts).toContain('data-testid="appointment-report-trend"');
+    expect(charts).toContain('data-testid="appointment-report-hours"');
+    expect(charts).not.toContain('ResponsiveContainer');
+    expect(report).toContain('AppointmentDonutChart');
     expect(report).not.toContain('updateAppointmentStatus');
     expect(logic).not.toContain('INSERT');
     expect(logic).not.toContain('UPDATE');

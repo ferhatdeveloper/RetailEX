@@ -1,0 +1,355 @@
+/* Randevu raporu. Kartlar eşit, grafikler sabit yükseklikte çizilir. */
+
+.appt-board {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+  color: #0f172a;
+}
+
+.appt-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e7edf5;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.appt-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.appt-kpi {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 6.5rem;
+  padding: 0.95rem 1.05rem;
+  border-radius: 16px;
+}
+
+.appt-kpi-total { background: #f3ebff; }
+.appt-kpi-retention { background: #e7f8ee; }
+.appt-kpi-miss { background: #feefef; }
+.appt-kpi-duration { background: #eef2f6; }
+
+.appt-kpi-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.9rem;
+  color: #fff;
+}
+
+.appt-kpi-total .appt-kpi-icon { background: #7239ea; }
+.appt-kpi-retention .appt-kpi-icon { background: #22c66b; }
+.appt-kpi-miss .appt-kpi-icon { background: #e63946; }
+.appt-kpi-duration .appt-kpi-icon { background: #475569; }
+
+.appt-kpi-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.appt-kpi-label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.appt-kpi-value {
+  margin: 0.15rem 0 0;
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+
+.appt-kpi-retention .appt-kpi-value { color: #047857; }
+.appt-kpi-miss .appt-kpi-value { color: #be123c; }
+
+.appt-kpi-delta {
+  margin: 0.28rem 0 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.appt-kpi-hint {
+  font-weight: 500;
+  color: #64748b;
+}
+
+.appt-delta-up { color: #059669; }
+.appt-delta-down { color: #e11d48; }
+.appt-delta-flat { color: #64748b; }
+
+.appt-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.appt-card {
+  min-width: 0;
+  padding: 1rem 1rem 0.85rem;
+  border: 1px solid #e7edf5;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+.appt-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.appt-card-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.appt-card-hint {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.appt-chip {
+  border: 0;
+  border-radius: 999px;
+  background: #f1f5f9;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+}
+
+.appt-donut-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(9.5rem, 13.5rem);
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  min-height: 280px;
+}
+
+.appt-donut-box {
+  position: relative;
+  height: 280px;
+  min-height: 280px;
+  min-width: 0;
+}
+
+.appt-donut-box svg {
+  display: block;
+  width: 100%;
+  height: 280px;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.appt-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+}
+
+.appt-donut-center span {
+  display: block;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.appt-donut-center strong {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+
+.appt-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.appt-legend button {
+  display: grid;
+  grid-template-columns: 0.7rem minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.45rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.32rem 0.4rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  font: inherit;
+  font-size: 0.92rem;
+  text-align: start;
+  color: #334155;
+  cursor: pointer;
+}
+
+.appt-legend button:hover,
+.appt-legend button.is-selected {
+  background: #f1f5f9;
+}
+
+.appt-legend button.is-dim {
+  opacity: 0.4;
+}
+
+.appt-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 0.18rem;
+}
+
+.appt-legend-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.appt-legend-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+
+.appt-chart {
+  width: 100%;
+  height: 280px;
+  min-height: 280px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.appt-chart svg {
+  display: block;
+  height: 280px;
+  max-width: none;
+}
+
+.appt-series {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.85rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.appt-series li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.appt-series i {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 0.15rem;
+}
+
+.appt-keep {
+  color: #059669;
+  font-weight: 700;
+}
+
+.appt-empty,
+.appt-note {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+.appt-board.is-dark .appt-toolbar,
+.appt-board.is-dark .appt-card {
+  border-color: #334155;
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+.appt-board.is-dark .appt-card-head h3,
+.appt-board.is-dark .appt-kpi-value,
+.appt-board.is-dark .appt-donut-center strong,
+.appt-board.is-dark .appt-legend-count {
+  color: #f8fafc;
+}
+
+.appt-board.is-dark .appt-kpi-total { background: #2e1064; }
+.appt-board.is-dark .appt-kpi-retention { background: #052e1b; }
+.appt-board.is-dark .appt-kpi-miss { background: #450a0a; }
+.appt-board.is-dark .appt-kpi-duration { background: #1e293b; }
+
+.appt-board.is-dark .appt-legend button,
+.appt-board.is-dark .appt-card-hint,
+.appt-board.is-dark .appt-kpi-label,
+.appt-board.is-dark .appt-donut-center span,
+.appt-board.is-dark .appt-series,
+.appt-board.is-dark .appt-empty,
+.appt-board.is-dark .appt-note {
+  color: #94a3b8;
+}
+
+.appt-board.is-dark .appt-legend button:hover,
+.appt-board.is-dark .appt-legend button.is-selected,
+.appt-board.is-dark .appt-chip {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+@media (max-width: 880px) {
+  .appt-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .appt-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .appt-kpis,
+  .appt-donut-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
