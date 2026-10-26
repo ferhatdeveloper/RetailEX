@@ -35,11 +35,9 @@ import { parseFicheDepositList } from '../../utils/beautyDepositAllocation';
 import {
   filterProfitLossByKind,
   foldProfitLossLines,
-  isExplicitProfitLossProductLine,
-  settleProfitLossReturn,
-  splitProfitLossLineReturn,
 } from '../../utils/profitLossDeposit';
-import { productCogsFromUnitPurchase } from '../../utils/productSaleCogs';
+import { productGrossProfitMarginPct } from '../../utils/productGrossProfitMargin';
+import { mapProfitLossAnalysisRows } from '../../utils/profitLossRows';
 import { makeInventoryPurchaseUnitLookup } from '../../services/layeredInventoryCost';
 import {
   ProductMovementHistoryModal,
@@ -144,6 +142,8 @@ export function ProfitLossReport() {
         SELECT
           s.id::text AS invoice_id,
           (${SQL_SALES_SIGN}) * COALESCE(s.net_amount, 0) AS invoice_net,
+          COALESCE(s.fiche_type, '') AS fiche_type,
+          COALESCE(s.trcode, 0) AS trcode,
           COALESCE(s.sale_group_id::text, '') AS sale_group_id,
           COALESCE(s.parent_sale_id::text, '') AS parent_sale_id,
           COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
@@ -175,6 +175,8 @@ export function ProfitLossReport() {
       const { rows } = await postgres.query<{
         invoice_id: string;
         invoice_net: string | number;
+        fiche_type?: string;
+        trcode?: string | number;
         sale_group_id?: string;
         parent_sale_id?: string;
         product_id?: string;
@@ -199,6 +201,8 @@ export function ProfitLossReport() {
         return {
           invoiceId: String(r.invoice_id || ''),
           invoiceNet,
+          ficheType: String(r.fiche_type || ''),
+          trcode: Number(r.trcode) || 0,
           saleGroupId: String(r.sale_group_id || '').trim(),
           parentSaleId: String(r.parent_sale_id || '').trim(),
           productId: String(r.product_id || '').trim(),
@@ -218,91 +222,20 @@ export function ProfitLossReport() {
           ficheRemainders: parseFicheDepositList(r.fiche_remainders).map((n) => sign * Math.abs(n)),
         };
       }));
-      let priced = folded;
+      let unitOf = (_ref: { productId?: string; productCode?: string }) => 0;
       try {
-        const unitOf = await makeInventoryPurchaseUnitLookup({ firmNr, periodNr });
-        priced = folded.map((line) => {
-          if (!isExplicitProfitLossProductLine(line)) return line;
-          const unit = unitOf({ id: line.productId, code: line.productCode });
-          if (!(unit > 0)) return line;
-          return { ...line, cost: productCogsFromUnitPurchase(line.quantity, unit) };
-        });
+        const lookup = await makeInventoryPurchaseUnitLookup({ firmNr, periodNr });
+        unitOf = (ref) => lookup({ id: ref.productId, code: ref.productCode });
       } catch (err) {
         console.warn('[ProfitLossReport] envanter birim alış okunamadı', err);
       }
-      const foldedView = filterProfitLossByKind(priced, lineKind);
-
-      type Agg = {
-        productId: string;
-        productCode: string;
-        productName: string;
-        lineKind: 'product' | 'service';
-        quantity: number;
-        grossRevenue: number;
-        returnAmount: number;
-        cost: number;
-      };
-      const agg = new Map<string, Agg>();
-      for (const line of foldedView) {
-        const month = line.saleDate.slice(0, 7);
-        const key = reportType === 'category'
-          ? `${line.lineKind}|${line.categoryCode}|${line.categoryName}`
-          : reportType === 'daily'
-            ? `${line.saleDate}|${line.lineKind}`
-            : reportType === 'monthly'
-              ? `${month}|${line.lineKind}`
-              : `${line.lineKind}|${line.productCode}|${line.productName}`;
-        const name = reportType === 'category'
-          ? line.categoryName
-          : reportType === 'daily'
-            ? line.saleDate
-            : reportType === 'monthly'
-              ? month
-              : line.productName;
-        const code = reportType === 'category'
-          ? line.categoryCode
-          : reportType === 'daily' || reportType === 'monthly'
-            ? name
-            : line.productCode;
-        const cur = agg.get(key) || {
-          productId: reportType === 'product' ? line.productId : '',
-          productCode: code,
-          productName: name,
-          lineKind: line.lineKind,
-          quantity: 0,
-          grossRevenue: 0,
-          returnAmount: 0,
-          cost: 0,
-        };
-        const part = splitProfitLossLineReturn(Number(line.total) || 0);
-        cur.quantity += line.quantity;
-        cur.grossRevenue += part.grossRevenue;
-        cur.returnAmount += part.returnAmount;
-        cur.cost += line.cost;
-        if (!cur.productId && line.productId) cur.productId = line.productId;
-        agg.set(key, cur);
-      }
-      const aggregated = Array.from(agg.values()).filter(
-        (row) => Math.abs(row.quantity) > 0.0001
-          || Math.abs(row.grossRevenue) > 0.009
-          || Math.abs(row.returnAmount) > 0.009,
-      );
-      aggregated.sort((a, b) => {
-        if (reportType === 'daily' || reportType === 'monthly') {
-          const byName = b.productName.localeCompare(a.productName);
-          if (byName !== 0) return byName;
-          return a.lineKind.localeCompare(b.lineKind);
-        }
-        const aNet = settleProfitLossReturn(a.grossRevenue, a.returnAmount).netRevenue;
-        const bNet = settleProfitLossReturn(b.grossRevenue, b.returnAmount).netRevenue;
-        return (bNet - b.cost) - (aNet - a.cost);
-      });
+      const foldedView = filterProfitLossByKind(folded, lineKind);
+      const aggregated = mapProfitLossAnalysisRows(foldedView, { reportType, unitOf });
 
       const mapped: SalesData[] = aggregated.map((r, idx) => {
-        const settled = settleProfitLossReturn(r.grossRevenue, r.returnAmount);
-        const revenue = settled.netRevenue;
+        const revenue = r.revenue;
         const cost = r.cost;
-        const profit = revenue - cost;
+        const profit = r.profit;
         const code = r.productCode;
         const name = r.productName;
         const productId = r.productId;
@@ -331,12 +264,12 @@ export function ProfitLossReport() {
           productName: displayName,
           lineKind: kind,
           quantity: parseFloat(String(r.quantity)) || 0,
-          grossRevenue: settled.grossRevenue,
-          returnAmount: settled.returnAmount,
+          grossRevenue: r.grossRevenue,
+          returnAmount: r.returnAmount,
           revenue,
           cost,
           profit,
-          profitMargin: Math.abs(revenue) > 0.009 ? (profit / revenue) * 100 : 0,
+          profitMargin: r.profitMargin,
         };
       });
 
@@ -359,7 +292,7 @@ export function ProfitLossReport() {
   const totalRevenue = salesData.reduce((sum, item) => sum + item.revenue, 0);
   const totalCost = salesData.reduce((sum, item) => sum + item.cost, 0);
   const totalProfit = salesData.reduce((sum, item) => sum + item.profit, 0);
-  const averageMargin = Math.abs(totalRevenue) > 0.009 ? (totalProfit / totalRevenue) * 100 : 0;
+  const averageMargin = productGrossProfitMarginPct(totalRevenue, totalProfit);
   const productCost = salesData
     .filter((item) => item.lineKind === 'product')
     .reduce((sum, item) => sum + item.cost, 0);
@@ -493,7 +426,7 @@ export function ProfitLossReport() {
         footerFormat: (_sum, rows) => {
           const rev = rows.reduce((s, r) => s + r.revenue, 0);
           const prof = rows.reduce((s, r) => s + r.profit, 0);
-          const m = Math.abs(rev) > 0.009 ? (prof / rev) * 100 : 0;
+          const m = productGrossProfitMarginPct(rev, prof);
           return `%${formatNumber(m, 2, false)}`;
         },
         cell: (row) => (
