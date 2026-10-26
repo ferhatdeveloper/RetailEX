@@ -1,20 +1,23 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Percent, RefreshCw, CalendarDays, Users, X } from 'lucide-react';
+import { Percent, RefreshCw, CalendarDays, X } from 'lucide-react';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { formatLocalYmd } from '../../../utils/dateLocal';
 import { formatReportDateCell } from '../../../utils/dateLocale';
-import type { CommissionReportLine } from '../../../utils/commissionReportLines';
+import {
+    filterCommissionLinesForHistory,
+    type CommissionReportLine,
+} from '../../../utils/commissionReportLines';
 import { ReportYmdDatePicker } from '../../shared/ReportDateRangePresets';
 import { ReportKpiStrip } from '../../reports/shared/ReportKpiStrip';
 import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
+import { CommissionStaffPieChart } from './CommissionStaffPieChart';
 
 const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
 type CommissionReportData = Awaited<ReturnType<typeof beautyService.getCommissionReport>>;
-type StaffRow = NonNullable<CommissionReportData>['rows'][number];
 type HistoryRow = NonNullable<CommissionReportData>['history_rows'][number];
 
 export function CommissionReport() {
@@ -28,20 +31,32 @@ export function CommissionReport() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<CommissionReportData | null>(null);
-    const [detailStaff, setDetailStaff] = useState<StaffRow | null>(null);
+    const [detail, setDetail] = useState<HistoryRow | null>(null);
     const [lines, setLines] = useState<CommissionReportLine[]>([]);
     const [lineLoading, setLineLoading] = useState(false);
     const [lineError, setLineError] = useState<string | null>(null);
+    const [selectedSpecialistId, setSelectedSpecialistId] = useState<string | null>(null);
     const lineReq = useRef(0);
 
+    const closeDetail = () => {
+        lineReq.current += 1;
+        setDetail(null);
+        setLines([]);
+        setLineError(null);
+        setLineLoading(false);
+    };
+
     const load = async () => {
+        closeDetail();
+        setSelectedSpecialistId(null);
         setLoading(true);
         setError(null);
         try {
             const res = await beautyService.getCommissionReport(startYmd, endYmd, { includeDeposit: true });
             setData(res);
-        } catch (e: any) {
-            setError(e?.message || String(e));
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            setError(message);
         } finally {
             setLoading(false);
         }
@@ -52,27 +67,21 @@ export function CommissionReport() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const closeDetail = () => {
-        lineReq.current += 1;
-        setDetailStaff(null);
-        setLines([]);
-        setLineError(null);
-        setLineLoading(false);
-    };
-
-    const openStaffLines = async (row: StaffRow) => {
+    const openHistoryLines = async (row: HistoryRow) => {
+        const day = String(row.date_ymd ?? '').trim().slice(0, 10);
         const id = String(row.specialist_id ?? '').trim();
-        if (!id) return;
+        if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
         const token = lineReq.current + 1;
         lineReq.current = token;
-        setDetailStaff(row);
+        setDetail({ ...row, date_ymd: day, specialist_id: id });
         setLines([]);
         setLineError(null);
         setLineLoading(true);
         try {
-            const res = await beautyService.getCommissionReportLines(startYmd, endYmd, id);
+            const res = await beautyService.getCommissionReportLines(day, day, id);
             if (token !== lineReq.current) return;
-            setLines(Array.isArray(res) ? res : []);
+            const list = Array.isArray(res) ? res : [];
+            setLines(filterCommissionLinesForHistory(list, day, id));
         } catch (e: unknown) {
             if (token !== lineReq.current) return;
             const message = e instanceof Error ? e.message : String(e);
@@ -81,6 +90,12 @@ export function CommissionReport() {
         } finally {
             if (token === lineReq.current) setLineLoading(false);
         }
+    };
+
+    const toggleSpecialist = (specialistId: string) => {
+        const id = String(specialistId ?? '').trim();
+        if (!id) return;
+        setSelectedSpecialistId((prev) => (prev === id ? null : id));
     };
 
     const totals = useMemo(() => data?.totals ?? {
@@ -95,118 +110,13 @@ export function CommissionReport() {
 
     const staffRows = data?.rows ?? [];
     const historyRows = data?.history_rows ?? [];
-
-    const staffColumns = useMemo<ReportColumnTableCol<StaffRow>[]>(
-        () => [
-            {
-                key: 'name',
-                header: tm('bStaffName'),
-                size: 200,
-                cell: (r) => (
-                    <span data-testid={`commission-staff-${r.specialist_id}`} className="font-bold text-gray-900">
-                        {r.name}
-                    </span>
-                ),
-            },
-            {
-                key: 'service_revenue',
-                header: tm('bServiceRevenueTotal'),
-                type: 'number',
-                align: 'right',
-                size: 140,
-                footerSum: true,
-                footerFormat: (n) => fmt(n),
-                cell: (r) => <span className="font-semibold text-gray-700">{fmt(r.service_revenue)}</span>,
-            },
-            {
-                key: 'service_commission',
-                header: tm('bServiceCommissionTotal'),
-                type: 'number',
-                align: 'right',
-                size: 140,
-                footerSum: true,
-                footerFormat: (n) => fmt(n),
-                cell: (r) => <span className="font-semibold text-purple-700">{fmt(r.service_commission)}</span>,
-            },
-            {
-                key: 'service_rate_effective',
-                header: tm('bServiceCommissionRate'),
-                type: 'number',
-                align: 'right',
-                size: 120,
-                cell: (r) => (
-                    <span className="font-semibold text-purple-700">%{r.service_rate_effective.toFixed(2)}</span>
-                ),
-            },
-            {
-                key: 'product_revenue',
-                header: tm('bProductRevenueTotal'),
-                type: 'number',
-                align: 'right',
-                size: 140,
-                footerSum: true,
-                footerFormat: (n) => fmt(n),
-                cell: (r) => <span className="font-semibold text-gray-700">{fmt(r.product_revenue)}</span>,
-            },
-            {
-                key: 'product_commission',
-                header: tm('bProductCommissionTotal'),
-                type: 'number',
-                align: 'right',
-                size: 140,
-                footerSum: true,
-                footerFormat: (n) => fmt(n),
-                cell: (r) => <span className="font-semibold text-emerald-700">{fmt(r.product_commission)}</span>,
-            },
-            {
-                key: 'product_rate_effective',
-                header: tm('bProductCommissionRate'),
-                type: 'number',
-                align: 'right',
-                size: 120,
-                cell: (r) => (
-                    <span className="font-semibold text-emerald-700">%{r.product_rate_effective.toFixed(2)}</span>
-                ),
-            },
-            {
-                key: 'total_commission',
-                header: tm('bTotalCommission'),
-                type: 'number',
-                align: 'right',
-                size: 140,
-                footerSum: true,
-                footerFormat: (n) => fmt(n),
-                cell: (r) => <span className="font-black text-gray-900">{fmt(r.total_commission)}</span>,
-            },
-            {
-                key: 'total_deposit',
-                header: tm('bStaffReservationTotal'),
-                type: 'number',
-                align: 'right',
-                size: 150,
-                footerSum: true,
-                footerFormat: (n) => fmt(n),
-                cell: (r) => <span className="font-semibold text-amber-700">{fmt(r.total_deposit ?? 0)}</span>,
-            },
-            {
-                key: 'total_outstanding',
-                header: tm('bStaffOutstandingTotal'),
-                type: 'number',
-                align: 'right',
-                size: 140,
-                footerSum: true,
-                footerFormat: (n) => fmt(n),
-                cell: (r) => {
-                    const v = Math.max(0, Number(r.total_outstanding) || 0);
-                    return (
-                        <span className={v > 0 ? 'font-bold text-red-600' : 'font-semibold text-green-600'}>
-                            {fmt(v)}
-                        </span>
-                    );
-                },
-            },
-        ],
-        [tm],
+    const visibleHistory = useMemo(
+        () => (
+            selectedSpecialistId
+                ? historyRows.filter((row) => row.specialist_id === selectedSpecialistId)
+                : historyRows
+        ),
+        [historyRows, selectedSpecialistId],
     );
 
     const historyColumns = useMemo<ReportColumnTableCol<HistoryRow>[]>(
@@ -224,7 +134,14 @@ export function CommissionReport() {
                 key: 'name',
                 header: tm('bStaffName'),
                 size: 200,
-                cell: (r) => <span className="font-bold text-gray-900">{r.name}</span>,
+                cell: (r) => (
+                    <span
+                        data-testid={`commission-history-${r.date_ymd}-${r.specialist_id}`}
+                        className="font-bold text-gray-900"
+                    >
+                        {r.name}
+                    </span>
+                ),
             },
             {
                 key: 'service_commission',
@@ -325,9 +242,12 @@ export function CommissionReport() {
         [tm],
     );
 
-    const detailTitle = detailStaff
-        ? tm('bCommissionLineDetailTitle').replace('{name}', detailStaff.name)
+    const detailTitle = detail
+        ? tm('bCommissionLineDetailTitle').replace('{name}', detail.name)
         : tm('bCommissionReportTitle');
+    const detailSubtitle = detail
+        ? tm('bCommissionLineDetailSubtitle').replace('{date}', formatReportDateCell(detail.date_ymd))
+        : '';
 
     return (
         <div className="p-6 space-y-6 bg-gray-50 min-h-full">
@@ -364,60 +284,38 @@ export function CommissionReport() {
                 </div>
             </div>
 
-            <ReportKpiStrip
-                columns={3}
-                items={[
-                    {
-                        key: 'svc',
-                        label: tm('bServiceCommissionTotal'),
-                        value: fmt(totals.service_commission),
-                        valueClassName: 'text-purple-700',
-                        hint: `${tm('bServiceRevenueTotal')}: ${fmt(totals.service_revenue)}`,
-                    },
-                    {
-                        key: 'prd',
-                        label: tm('bProductCommissionTotal'),
-                        value: fmt(totals.product_commission),
-                        valueClassName: 'text-emerald-700',
-                        hint: `${tm('bProductRevenueTotal')}: ${fmt(totals.product_revenue)}`,
-                    },
-                    {
-                        key: 'tot',
-                        label: tm('bTotalCommission'),
-                        value: fmt(totals.total_commission),
-                        hint: `${tm('bTransactionCount')}: ${totals.total_transactions}`,
-                    },
-                ]}
-            />
-
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-gray-900 font-black">
-                        <Users size={16} className="text-emerald-600" />
-                        {tm('bCommissionReportByStaff')}
-                    </div>
-                </div>
-                {error ? (
-                    <div className="p-6 text-sm font-semibold text-red-600">{error}</div>
-                ) : staffRows.length === 0 && !loading ? (
-                    <div className="p-10 text-center text-gray-400 text-sm font-bold">{tm('bNoStaffData')}</div>
-                ) : (
-                    <div className="p-2">
-                        <ReportColumnTable
-                            data={staffRows}
-                            columns={staffColumns}
-                            height={420}
-                            footerLabel={tm('rprTotal') || 'Toplam'}
-                            storageNamespace="beauty-commission-staff"
-                            onRowClick={(row) => {
-                                void openStaffLines(row);
-                            }}
-                        />
-                    </div>
-                )}
+            <div data-testid="commission-kpis">
+                <ReportKpiStrip
+                    columns={3}
+                    items={[
+                        {
+                            key: 'svc',
+                            label: tm('bServiceCommissionTotal'),
+                            value: <span data-testid="commission-kpi-service">{fmt(totals.service_commission)}</span>,
+                            valueClassName: 'text-purple-700',
+                            hint: `${tm('bServiceRevenueTotal')}: ${fmt(totals.service_revenue)}`,
+                        },
+                        {
+                            key: 'prd',
+                            label: tm('bProductCommissionTotal'),
+                            value: <span data-testid="commission-kpi-product">{fmt(totals.product_commission)}</span>,
+                            valueClassName: 'text-emerald-700',
+                            hint: `${tm('bProductRevenueTotal')}: ${fmt(totals.product_revenue)}`,
+                        },
+                        {
+                            key: 'tot',
+                            label: tm('bTotalCommission'),
+                            value: <span data-testid="commission-kpi-total">{fmt(totals.total_commission)}</span>,
+                            hint: `${tm('bTransactionCount')}: ${totals.total_transactions}`,
+                        },
+                    ]}
+                />
             </div>
 
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+            <div
+                data-testid="commission-history-panel"
+                className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden"
+            >
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2 text-gray-900 font-black">
                     <CalendarDays size={16} className="text-purple-600" />
                     {tm('bCommissionHistoryTitle')}
@@ -429,27 +327,44 @@ export function CommissionReport() {
                 ) : (
                     <div className="p-2">
                         <ReportColumnTable
-                            data={historyRows}
+                            data={visibleHistory}
                             columns={historyColumns}
                             height={480}
                             footerLabel={tm('rprTotal') || 'Toplam'}
                             storageNamespace="beauty-commission-history"
+                            onRowClick={(row) => {
+                                void openHistoryLines(row);
+                            }}
                         />
                     </div>
                 )}
             </div>
 
-            {detailStaff ? (
+            {data && !error ? (
+                <div
+                    data-testid="commission-pie-panel"
+                    className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4"
+                >
+                    <CommissionStaffPieChart
+                        rows={staffRows}
+                        totalCommission={totals.total_commission}
+                        title={tm('bCommissionPieTitle')}
+                        centerLabel={tm('bTotalCommission')}
+                        selectedId={selectedSpecialistId}
+                        onToggle={toggleSpecialist}
+                    />
+                </div>
+            ) : null}
+
+            {detail ? (
                 <PercentBodyModal onClose={closeDetail} size="wide" ariaLabel={detailTitle}>
                     <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white shrink-0 flex items-start justify-between gap-3">
                         <div className="min-w-0">
                             <h2 data-testid="commission-line-title" className="text-lg font-black truncate">
                                 {detailTitle}
                             </h2>
-                            <p className="text-xs font-semibold text-white/80 mt-1">
-                                {tm('bCommissionLineDetailSubtitle')}
-                                {' · '}
-                                {formatReportDateCell(startYmd)} – {formatReportDateCell(endYmd)}
+                            <p data-testid="commission-line-subtitle" className="text-xs font-semibold text-white/80 mt-1">
+                                {detailSubtitle}
                             </p>
                         </div>
                         <button

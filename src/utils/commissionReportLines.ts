@@ -160,3 +160,22 @@ export function mapCommissionReportLine(source: CommissionReportLineSource): Com
     commission_amount: signed.commission,
   };
 }
+
+/**
+ * Tarihsel satırın günü ve uzmanı.
+ * Dönen kalemler kaynaktaki nesnelerdir; prim tutarı yeniden yazılmaz.
+ */
+export function filterCommissionLinesForHistory(
+  lines: readonly CommissionReportLine[],
+  dateYmd: string,
+  specialistId: string,
+): CommissionReportLine[] {
+  const day = String(dateYmd ?? '').trim().slice(0, 10);
+  const id = String(specialistId ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !id) return [];
+  return lines.filter((line) => {
+    const lineDay = String(line.date_ymd ?? '').trim().slice(0, 10);
+    const lineId = String(line.specialist_id ?? '').trim();
+    return lineDay === day && lineId === id;
+  });
+}

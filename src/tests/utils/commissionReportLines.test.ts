@@ -3,8 +3,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  filterCommissionLinesForHistory,
   mapCommissionReportLine,
   signCommissionLineAmounts,
+  type CommissionReportLine,
 } from '../../utils/commissionReportLines';
 
 describe('prim kalemi işareti', () => {
@@ -77,5 +79,44 @@ describe('prim kalemi işareti', () => {
         paymentStatus: 'paid',
       })?.customer_or_fiche,
     ).toBe('BEA-3');
+  });
+});
+
+describe('tarihsel prim satırı gün ve uzman eşler', () => {
+  it('yalnız o gün ve o uzmanın kalemini bırakır, tutarı yeniden yazmaz', () => {
+    const zahra: CommissionReportLine = {
+      line_id: 'z-svc',
+      specialist_id: 'id-zahra',
+      date_ymd: '2026-10-26',
+      customer_or_fiche: 'Ayşe',
+      item_name: 'Saç boyama',
+      kind: 'service',
+      revenue: 36_000,
+      commission_rate: 20.83,
+      commission_amount: 7_500,
+    };
+    const otherDay: CommissionReportLine = {
+      ...zahra,
+      line_id: 'z-old',
+      date_ymd: '2026-10-20',
+      item_name: 'Dünkü kalem',
+      commission_amount: 1_000,
+    };
+    const admin: CommissionReportLine = {
+      ...zahra,
+      line_id: 'adm',
+      specialist_id: 'id-admin',
+      item_name: 'Yönetici kalemi',
+      commission_amount: 0,
+    };
+    const matched = filterCommissionLinesForHistory(
+      [zahra, otherDay, admin],
+      '2026-10-26',
+      'id-zahra',
+    );
+    expect(matched).toEqual([zahra]);
+    expect(matched[0]).toBe(zahra);
+    expect(matched[0].commission_amount).toBe(7_500);
+    expect(matched[0].revenue).toBe(36_000);
   });
 });
