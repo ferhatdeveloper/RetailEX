@@ -112,6 +112,7 @@ import {
   resolveDefaultInvoiceWorkplaceLabel,
 } from '../../../utils/invoiceDetailMasters';
 import { fetchKasalar as fetchKasaListForRegister, type Kasa as KasaRow } from '../../../services/api/kasa';
+import { applyKasaPinToPayment, readKasaPinnedRegister } from '../../../utils/cashDocumentInvoiceLaunch';
 import { allocateNextInvoiceCode } from '../../../services/invoiceCodeFormatService';
 import { looksLikeUuid } from '../../../utils/pgUuid';
 import { resolveInvoiceLineDisplayCode, splitInvoiceLineIdentity } from '../../../utils/invoiceLineDisplayCode';
@@ -732,12 +733,49 @@ export function UniversalInvoiceForm({
       .finally(() => { if (!cancelled) setCashRegistersLoading(false); });
     return () => { cancelled = true; };
   }, []);
+  const kasaPin = useMemo(() => readKasaPinnedRegister(editData), [editData]);
+  const invoiceCashRegisters = useMemo(() => {
+    const rows = cashRegisters.map((k) => ({
+      id: k.id,
+      kasa_adi: k.kasa_adi,
+      kasa_kodu: k.kasa_kodu,
+      id_doviz_kodu: k.id_doviz_kodu,
+    }));
+    if (!kasaPin || rows.some((k) => k.id === kasaPin.id)) return rows;
+    return [
+      {
+        id: kasaPin.id,
+        kasa_adi: kasaPin.name || kasaPin.code || kasaPin.id,
+        kasa_kodu: kasaPin.code,
+        id_doviz_kodu: '',
+      },
+      ...rows,
+    ];
+  }, [cashRegisters, kasaPin]);
   // Varsayılan kasa: ödeme tipi bir kasaya bağlanmayı gerektiriyorsa listenin
   // ilk öğesi (DB'ye ilk eklenmiş kasa — fetchKasalar created_at'e göre sıralı
-  // döner). Açık cari / veresiye gibi cariye yazılan ödemelerde kasa alanı
+  // döner). Kasa menüsünden açılan faturada bu ilk öğe kullanılmaz; seçilen kasa kalır.
+  // Açık cari / veresiye gibi cariye yazılan ödemelerde kasa alanı
   // temizlenir; bu sayede DB'deki `cash_register_id` null kalır ve kasa
   // defterine yanlışlıkla yansımaz.
   useEffect(() => {
+    if (kasaPin) {
+      const bound = applyKasaPinToPayment({
+        editData,
+        paymentMethod,
+        rows: paymentRows,
+      });
+      if (
+        cashRegisterId !== bound.registerId
+        || cashRegisterName !== bound.registerName
+        || cashRegisterCode !== bound.registerCode
+      ) {
+        setCashRegisterId(bound.registerId);
+        setCashRegisterName(bound.registerName);
+        setCashRegisterCode(bound.registerCode);
+      }
+      return;
+    }
     if (cashRegisters.length === 0) return;
     if (!paymentMethodImpliesCashRegisterOnInvoice(paymentMethod)) {
       if (cashRegisterId) {
@@ -752,7 +790,7 @@ export function UniversalInvoiceForm({
       setCashRegisterId(first.id);
       setCashRegisterName(first.kasa_adi);
     }
-  }, [paymentMethod, cashRegisters, cashRegisterId]);
+  }, [kasaPin, editData, paymentMethod, paymentRows, cashRegisters, cashRegisterId, cashRegisterName, cashRegisterCode]);
   const isSalesReturnForm = invoiceType.code === 3;
   // İşlem Yapan / Kasiyer alanı sadece müşteri tarafı (Satış + Satış İade) için anlamlı.
   // Tedarikçi tarafı (Alış/Alış İade) ve irsaliyelerde kasaya yazılan "kasiyer" audit alanı değil,
@@ -4069,7 +4107,17 @@ export function UniversalInvoiceForm({
     let effectiveCashRegisterCode = paySnap.cashRegisterCode || cashRegisterCode;
     let effectivePaymentRows = paySnap.paymentRows.length > 0 ? paySnap.paymentRows : paymentRows;
 
-    if (paymentMethodImpliesCashRegisterOnInvoice(effectivePaymentMethod)) {
+    const pinnedPay = applyKasaPinToPayment({
+      editData,
+      paymentMethod: effectivePaymentMethod,
+      rows: effectivePaymentRows,
+    });
+    if (pinnedPay.pinned) {
+      effectiveCashRegisterId = pinnedPay.registerId;
+      effectiveCashRegisterName = pinnedPay.registerName;
+      effectiveCashRegisterCode = pinnedPay.registerCode;
+      effectivePaymentRows = pinnedPay.rows;
+    } else if (paymentMethodImpliesCashRegisterOnInvoice(effectivePaymentMethod)) {
       const rowHasRegister = effectivePaymentRows.some(
         (p) => paymentMethodImpliesPaidNow(p.method) && Boolean(p.cashRegisterId),
       );
@@ -4767,11 +4815,13 @@ export function UniversalInvoiceForm({
                   cashierReadOnly={(editData as any)?.source === 'pos'}
                   showCashierField={isSalesSideInvoice}
                   cashierFieldLabel={isSalesReturnForm ? tm('salesReturnProcessedBy') : tm('cashier')}
-                  cashRegisters={cashRegisters}
+                  cashRegisters={invoiceCashRegisters}
                   cashRegistersLoading={cashRegistersLoading}
                   cashRegisterId={cashRegisterId}
                   cashRegisterName={cashRegisterName}
+                  cashRegisterLocked={Boolean(kasaPin)}
                   onCashRegisterChange={(id, name) => {
+                    if (kasaPin) return;
                     setCashRegisterId(id);
                     setCashRegisterName(name);
                   }}
@@ -5441,22 +5491,35 @@ export function UniversalInvoiceForm({
               currentPaymentMethod={paymentMethod}
               retailPosMode={isPosRetail}
               invoiceTotal={totals.netIQD}
+              lockedCashRegister={kasaPin}
               onSelect={(method, extra) => {
                 const nextRows = Array.isArray(extra?.payments) ? extra.payments : [];
-                const nextRegisterId = extra?.cashRegisterId || '';
-                const nextRegisterName = extra?.cashRegisterName || '';
-                const nextRegisterCode = extra?.cashRegisterCode || '';
+                const pinnedChoice = applyKasaPinToPayment({
+                  editData,
+                  paymentMethod: method,
+                  rows: nextRows,
+                });
+                const nextRegisterId = pinnedChoice.pinned
+                  ? pinnedChoice.registerId
+                  : (extra?.cashRegisterId || '');
+                const nextRegisterName = pinnedChoice.pinned
+                  ? pinnedChoice.registerName
+                  : (extra?.cashRegisterName || '');
+                const nextRegisterCode = pinnedChoice.pinned
+                  ? pinnedChoice.registerCode
+                  : (extra?.cashRegisterCode || '');
+                const rowsOut = pinnedChoice.pinned ? pinnedChoice.rows : nextRows;
                 setPaymentMethod(method);
                 setCashRegisterId(nextRegisterId);
                 setCashRegisterName(nextRegisterName);
                 setCashRegisterCode(nextRegisterCode);
-                setPaymentRows(nextRows);
+                setPaymentRows(rowsOut);
                 paymentSnapshotRef.current = {
                   method,
                   cashRegisterId: nextRegisterId,
                   cashRegisterName: nextRegisterName,
                   cashRegisterCode: nextRegisterCode,
-                  paymentRows: nextRows,
+                  paymentRows: rowsOut,
                 };
                 setPaymentInfoConfirmed(true);
                 paymentInfoConfirmedRef.current = true;

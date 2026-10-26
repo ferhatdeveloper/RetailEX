@@ -59,6 +59,8 @@ interface InvoiceHeaderProps {
     cashRegistersLoading?: boolean;
     cashRegisterId?: string;
     cashRegisterName?: string;
+    /** Kasa menüsünden açıldıysa seçilen kasa değişmez. */
+    cashRegisterLocked?: boolean;
     onCashRegisterChange?: (id: string, name: string) => void;
     warehouse: string;
     workplace: string;
@@ -162,6 +164,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     cashRegistersLoading = false,
     cashRegisterId = '',
     cashRegisterName = '',
+    cashRegisterLocked = false,
     onCashRegisterChange,
     warehouse,
     workplace,
@@ -945,7 +948,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     const found = cashRegisters.find((k) => k.id === id);
                                     onCashRegisterChange?.(id, found?.kasa_adi || '');
                                 }}
-                                disabled={cashRegistersLoading || cashRegisters.length === 0}
+                                disabled={cashRegisterLocked || cashRegistersLoading || cashRegisters.length === 0}
                                 className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
                             >
                                 <option value="">

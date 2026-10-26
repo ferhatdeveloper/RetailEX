@@ -1527,6 +1527,8 @@ export function ManagementModule({
               description={t.salesInvoicesDesc}
               initialSearchQuery={invoiceSearchPrefill}
               onInitialSearchConsumed={clearInvoiceSearchPrefill}
+              posSalesReturnPrefill={posSalesReturnPrefill}
+              onPosSalesReturnPrefillConsumed={clearPosSalesReturnPrefill}
             />
           );
         case 'sales-invoice-standard':
@@ -1564,6 +1566,8 @@ export function ManagementModule({
               onCountPurchaseDraftPrefillConsumed={clearCountPurchaseDraftPrefill}
               initialSearchQuery={invoiceSearchPrefill}
               onInitialSearchConsumed={clearInvoiceSearchPrefill}
+              posSalesReturnPrefill={posSalesReturnPrefill}
+              onPosSalesReturnPrefillConsumed={clearPosSalesReturnPrefill}
             />
           );
         case 'purchase-invoice-standard':

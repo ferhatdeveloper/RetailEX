@@ -59,6 +59,8 @@ interface InvoicePaymentInfoModalProps {
   retailPosMode?: boolean;
   /** Fatura net tutarı — çoklu ödemede kalan = total − satır toplamı */
   invoiceTotal?: number;
+  /** Kasa menüsünden açılan faturada nakit/kart bu kasada kalır. */
+  lockedCashRegister?: { id: string; code?: string; name?: string } | null;
 }
 
 export function resolvePrimaryInvoicePaymentMethod(rows: InvoicePaymentRow[], fallback?: string): string {
@@ -121,6 +123,7 @@ export function InvoicePaymentInfoModal({
   onClose,
   retailPosMode = false,
   invoiceTotal,
+  lockedCashRegister = null,
 }: InvoicePaymentInfoModalProps) {
   const { tm } = useLanguage();
   const initialCode =
@@ -205,19 +208,44 @@ export function InvoicePaymentInfoModal({
   // (DB'ye ilk eklenen kasa — fetchKasalar created_at'e göre sıralı döner).
   // Anahtar kelime eşleşmesi (nakit/kart otomatik önerisi) kaldırıldı.
   const showCashRegisterPicker = paymentMethodImpliesPaidNow(selectedMethod);
+  const lockedRegisterId = String(lockedCashRegister?.id || '').trim();
+  const registerChoices = useMemo(() => {
+    if (!lockedRegisterId) return cashRegisters;
+    if (cashRegisters.some((k) => k.id === lockedRegisterId)) return cashRegisters;
+    return [
+      {
+        id: lockedRegisterId,
+        kasa_adi: String(lockedCashRegister?.name || lockedRegisterId),
+        kasa_kodu: String(lockedCashRegister?.code || ''),
+        firma_id: '',
+        bakiye: 0,
+        id_bakiye: 0,
+        id_doviz_kodu: '',
+        aktif: true,
+        olusturma_tarihi: '',
+        guncelleme_tarihi: '',
+      } satisfies Kasa,
+      ...cashRegisters,
+    ];
+  }, [cashRegisters, lockedRegisterId, lockedCashRegister]);
 
   useEffect(() => {
     if (!showCashRegisterPicker) {
       setSelectedCashRegisterId('');
       return;
     }
+    if (lockedRegisterId) {
+      if (selectedCashRegisterId !== lockedRegisterId) setSelectedCashRegisterId(lockedRegisterId);
+      if (draftRegisterId !== lockedRegisterId) setDraftRegisterId(lockedRegisterId);
+      return;
+    }
     if (cashRegisters.length === 0) return;
     if (selectedCashRegisterId && cashRegisters.some((k) => k.id === selectedCashRegisterId)) return;
     // Varsayılan: listenin ilk öğesi (DB'ye ilk eklenmiş kasa)
     setSelectedCashRegisterId(cashRegisters[0]?.id || '');
-  }, [selectedMethod, cashRegisters, selectedCashRegisterId, showCashRegisterPicker]);
+  }, [selectedMethod, cashRegisters, selectedCashRegisterId, showCashRegisterPicker, lockedRegisterId, draftRegisterId]);
 
-  const selectedCashRegister = cashRegisters.find((k) => k.id === selectedCashRegisterId) || null;
+  const selectedCashRegister = registerChoices.find((k) => k.id === selectedCashRegisterId) || null;
 
   // Çoklu ödeme için "yeni satır ekle" — Market POS pattern.
   // Yalnızca kasa bağlantısı olan yöntemler (nakit / kart / havale / çek / senet)
@@ -235,9 +263,9 @@ export function InvoicePaymentInfoModal({
     const method = draftMethod || 'NAKIT';
     const impliesCash = paymentMethodImpliesPaidNow(method);
     const regId = impliesCash
-      ? draftRegisterId || cashRegisters[0]?.id || null
+      ? lockedRegisterId || draftRegisterId || registerChoices[0]?.id || null
       : null;
-    const reg = cashRegisters.find((k) => k.id === regId) || null;
+    const reg = registerChoices.find((k) => k.id === regId) || null;
     setAddedPayments((prev) => [
       ...prev,
       {
@@ -279,8 +307,20 @@ export function InvoicePaymentInfoModal({
     // birincil bilgi kaynağıdır. Tek-ödeme alanları (paymentMethod /
     // cashRegisterId) yalnızca geriye dönük uyumluluk için ilk satırdan
     // doldurulur — yeni createInvoice akışı payments[] dizisini kullanır.
+    const bindLockedRow = (row: InvoicePaymentRow): InvoicePaymentRow => {
+      if (!lockedRegisterId) return row;
+      if (!paymentMethodImpliesPaidNow(row.method)) {
+        return { ...row, cashRegisterId: null, cashRegisterName: null, cashRegisterCode: null };
+      }
+      return {
+        ...row,
+        cashRegisterId: lockedRegisterId,
+        cashRegisterName: lockedCashRegister?.name || null,
+        cashRegisterCode: lockedCashRegister?.code || null,
+      };
+    };
     if (multiPaymentEnabled && addedPayments.length > 0) {
-      const payments = appendRemainingOpenAccountRow(addedPayments, invoiceTotal);
+      const payments = appendRemainingOpenAccountRow(addedPayments, invoiceTotal).map(bindLockedRow);
       const first = payments[0];
       const method = resolvePrimaryInvoicePaymentMethod(payments, first.method);
       onSelect(method, {
@@ -295,7 +335,14 @@ export function InvoicePaymentInfoModal({
       return;
     }
     const method = selectedMethod || 'ACIK_CARI';
-    if (paymentMethodImpliesPaidNow(method) && cashRegisters.length > 0 && !selectedCashRegister?.id) {
+    const chosenRegisterId = lockedRegisterId || selectedCashRegister?.id || '';
+    const chosenRegisterName = lockedRegisterId
+      ? (lockedCashRegister?.name || selectedCashRegister?.kasa_adi || '')
+      : (selectedCashRegister?.kasa_adi || '');
+    const chosenRegisterCode = lockedRegisterId
+      ? (lockedCashRegister?.code || selectedCashRegister?.kasa_kodu || '')
+      : (selectedCashRegister?.kasa_kodu || '');
+    if (paymentMethodImpliesPaidNow(method) && !chosenRegisterId && cashRegisters.length > 0) {
       toast.error(tm('cashRegisterRequired'));
       return;
     }
@@ -308,16 +355,16 @@ export function InvoicePaymentInfoModal({
           method,
           amount: total,
           currency: 'IQD',
-          cashRegisterId: selectedCashRegister?.id || null,
-          cashRegisterName: selectedCashRegister?.kasa_adi || null,
-          cashRegisterCode: selectedCashRegister?.kasa_kodu || null,
+          cashRegisterId: chosenRegisterId || null,
+          cashRegisterName: chosenRegisterName || null,
+          cashRegisterCode: chosenRegisterCode || null,
         },
       ];
       onSelect(method, {
         paymentMethod: method,
-        cashRegisterId: selectedCashRegister?.id || null,
-        cashRegisterName: selectedCashRegister?.kasa_adi || null,
-        cashRegisterCode: selectedCashRegister?.kasa_kodu || null,
+        cashRegisterId: chosenRegisterId || null,
+        cashRegisterName: chosenRegisterName || null,
+        cashRegisterCode: chosenRegisterCode || null,
         notes,
         payments,
       });
@@ -326,9 +373,9 @@ export function InvoicePaymentInfoModal({
     }
     onSelect(method, {
       paymentMethod: method,
-      cashRegisterId: showCashRegisterPicker ? selectedCashRegister?.id || null : null,
-      cashRegisterName: showCashRegisterPicker ? selectedCashRegister?.kasa_adi || null : null,
-      cashRegisterCode: showCashRegisterPicker ? selectedCashRegister?.kasa_kodu || null : null,
+      cashRegisterId: showCashRegisterPicker ? chosenRegisterId || null : null,
+      cashRegisterName: showCashRegisterPicker ? chosenRegisterName || null : null,
+      cashRegisterCode: showCashRegisterPicker ? chosenRegisterCode || null : null,
       notes,
     });
     onClose();
@@ -390,8 +437,11 @@ export function InvoicePaymentInfoModal({
                 <select
                   aria-label={tm('cashRegisterLabel')}
                   value={selectedCashRegisterId}
-                  onChange={(e) => setSelectedCashRegisterId(e.target.value)}
-                  disabled={cashRegistersLoading || cashRegisters.length === 0}
+                  onChange={(e) => {
+                    if (lockedRegisterId) return;
+                    setSelectedCashRegisterId(e.target.value);
+                  }}
+                  disabled={Boolean(lockedRegisterId) || cashRegistersLoading || registerChoices.length === 0}
                   className="w-full px-3 py-2 pr-9 border border-gray-300 rounded appearance-none bg-white focus:outline-none focus:border-blue-600 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 >
                   <option value="">
@@ -399,7 +449,7 @@ export function InvoicePaymentInfoModal({
                       ? tm('loading')
                       : tm('selectCashRegister')}
                   </option>
-                  {cashRegisters.map((k) => (
+                  {registerChoices.map((k) => (
                     <option key={k.id} value={k.id}>
                       {`${k.kasa_adi} — ${k.kasa_kodu}`}
                     </option>
@@ -569,14 +619,17 @@ export function InvoicePaymentInfoModal({
                     <select
                       aria-label="Kasa"
                       value={draftRegisterId}
-                      onChange={(e) => setDraftRegisterId(e.target.value)}
-                      disabled={cashRegistersLoading || cashRegisters.length === 0}
+                      onChange={(e) => {
+                        if (lockedRegisterId) return;
+                        setDraftRegisterId(e.target.value);
+                      }}
+                      disabled={Boolean(lockedRegisterId) || cashRegistersLoading || registerChoices.length === 0}
                       className="col-span-2 px-2 py-1.5 text-xs border border-gray-300 rounded bg-white"
                     >
                       <option value="">
                         {cashRegistersLoading ? '…' : tm('selectCashRegister') || 'Kasa seçin'}
                       </option>
-                      {cashRegisters.map((k) => (
+                      {registerChoices.map((k) => (
                         <option key={k.id} value={k.id}>
                           {k.kasa_adi}
                         </option>

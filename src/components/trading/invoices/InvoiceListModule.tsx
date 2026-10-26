@@ -49,6 +49,7 @@ import {
   loadInvoiceListPrefs,
   saveInvoiceListPrefs,
 } from '../../../utils/invoiceListPrefs';
+import { cashPrefillInvoiceCode } from '../../../utils/cashDocumentInvoiceLaunch';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { InvoiceExcelExportModal } from './InvoiceExcelExportModal';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
@@ -714,16 +715,16 @@ export function InvoiceListModule({
     }
   }, [defaultCategory, countPurchaseDraftPrefill, onCountPurchaseDraftPrefillConsumed]);
 
-  /** POS veya kasa → satış / alış iade belgesi. Sade kasa fişi değil. */
+  /** POS veya kasa → tam fatura belgesi. Sade kasa fişi değil. */
   useEffect(() => {
-    const code = defaultInvoiceTypeFilter === '6' ? 6 : defaultInvoiceTypeFilter === '3' ? 3 : 0;
+    const code = cashPrefillInvoiceCode({
+      defaultInvoiceTypeFilter,
+      defaultCategory,
+      prefill: posSalesReturnPrefill,
+    });
     if (!code) return;
     const ext = posSalesReturnPrefill;
-    if (!ext || ext.openForm === false) return;
-    if (!ext.editData && !String(ext.openFicheNo || '').trim()) return;
-    const hintedRaw = Number(ext.editData?.trcode ?? ext.editData?.invoice_type ?? 0);
-    const hinted = hintedRaw || code;
-    if (hinted !== code) return;
+    if (!ext) return;
 
     const returnType = INVOICE_TYPES.find((t) => t.code === code);
     if (!returnType) return;
@@ -791,7 +792,7 @@ export function InvoiceListModule({
     return () => {
       cancelled = true;
     };
-  }, [defaultInvoiceTypeFilter, posSalesReturnPrefill, onPosSalesReturnPrefillConsumed, firmNrKey, periodNrKey]);
+  }, [defaultInvoiceTypeFilter, defaultCategory, posSalesReturnPrefill, onPosSalesReturnPrefillConsumed, firmNrKey, periodNrKey]);
 
   const loadInvoicesRequestIdRef = useRef(0);
 

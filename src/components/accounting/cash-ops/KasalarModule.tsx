@@ -60,6 +60,10 @@ import {
   buildCashReturnInvoiceLaunch,
   isCashReturnMenuType,
 } from '../../../utils/cashReturnInvoiceLaunch';
+import {
+  buildCashDocumentInvoiceLaunch,
+  isCashDocumentMenuType,
+} from '../../../utils/cashDocumentInvoiceLaunch';
 import { KasaIslemDetayModal } from './KasaIslemDetayModal';
 import { KasaIslemTurleriModal } from './KasaIslemTurleriModal';
 import { KasaIslemleriModal } from './KasaIslemleriModal';
@@ -297,6 +301,24 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
     }, 150);
   };
 
+  const openCashDocumentInvoice = (type: 'SATIS_FATURASI' | 'ALIS_FATURASI') => {
+    if (!selectedKasa) {
+      toast.error(tm('selectSafeFirst'));
+      return;
+    }
+    const detail = buildCashDocumentInvoiceLaunch({
+      type,
+      registerId: selectedKasa.id,
+      registerCode: selectedKasa.kasa_kodu,
+      registerName: selectedKasa.kasa_adi,
+    });
+    window.dispatchEvent(new CustomEvent('switchToManagement'));
+    window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
+    }, 150);
+  };
+
   const handleIslemClick = (type: KasaIslemTipi) => {
     if (!selectedKasa) {
       toast.error(tm('selectSafeFirst'));
@@ -305,6 +327,11 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
     if (isCashReturnMenuType(type)) {
       setEditingIslem(null);
       openReturnInvoiceDocument(type);
+      return;
+    }
+    if (isCashDocumentMenuType(type)) {
+      setEditingIslem(null);
+      openCashDocumentInvoice(type);
       return;
     }
     setEditingIslem(null);
@@ -728,13 +755,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
           onClose={() => setShowIslemTurleriModal(false)}
           onSelect={(type) => {
             setShowIslemTurleriModal(false);
-            if (isCashReturnMenuType(type)) {
-              setEditingIslem(null);
-              openReturnInvoiceDocument(type);
-              return;
-            }
-            setIslemModalType(type);
-            setShowIslemModal(true);
+            handleIslemClick(type);
           }}
         />
       )}
