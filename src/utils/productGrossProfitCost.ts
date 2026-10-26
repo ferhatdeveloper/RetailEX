@@ -139,3 +139,79 @@ export function applyProductGrossProfitWeightedCosts<T extends ProductGrossProfi
     };
   });
 }
+
+/** Malzeme kartı — kod boş satırı ada göre bağlamak için. Stok kimliği değildir. */
+export type ProductNameCardRef = {
+  id?: string | null;
+  code?: string | null;
+  name?: string | null;
+  name2?: string | null;
+  name_tr?: string | null;
+  name_en?: string | null;
+  name_ar?: string | null;
+  name_ku?: string | null;
+};
+
+function cardIdentity(card: ProductNameCardRef): string {
+  const id = String(card.id ?? '').trim();
+  if (id) return `id:${id}`;
+  const code = String(card.code ?? '').trim();
+  if (!isBlankGrossProfitProductCode(code)) return `code:${code}`;
+  return '';
+}
+
+/**
+ * Ad → tek kartın kodu.
+ * Aynı ad iki farklı karta gidiyorsa değer null: kod uydurulmaz.
+ * Kart yoksa anahtar yoktur.
+ */
+export function uniqueProductCodeByName(cards: ProductNameCardRef[]): Map<string, string | null> {
+  const groups = new Map<string, Map<string, string>>();
+  for (const card of cards || []) {
+    const identity = cardIdentity(card);
+    const code = String(card.code ?? '').trim();
+    if (!identity || isBlankGrossProfitProductCode(code)) continue;
+    const names = [card.name, card.name2, card.name_tr, card.name_en, card.name_ar, card.name_ku];
+    const seen = new Set<string>();
+    for (const raw of names) {
+      const key = grossProfitProductNameKey(raw);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      let bucket = groups.get(key);
+      if (!bucket) {
+        bucket = new Map();
+        groups.set(key, bucket);
+      }
+      if (!bucket.has(identity)) bucket.set(identity, code);
+    }
+  }
+  const out = new Map<string, string | null>();
+  for (const [key, bucket] of groups) {
+    if (bucket.size !== 1) {
+      out.set(key, null);
+      continue;
+    }
+    out.set(key, [...bucket.values()][0] || null);
+  }
+  return out;
+}
+
+/**
+ * Kodu boş malzeme satırına, adı tek karta giden kodu yazar.
+ * Satış satırının kodu kopyalanmaz. İki kart aynı addaysa satır boş kalır.
+ * Satırlar birleştirilmez; stok miktarı değişmez.
+ */
+export function fillBlankProductCodeFromUniqueCard<T extends {
+  productCode?: string;
+  productName?: string;
+  lineKind?: string;
+}>(rows: T[], cards: ProductNameCardRef[]): T[] {
+  const byName = uniqueProductCodeByName(cards);
+  return (rows || []).map((row) => {
+    if (row.lineKind === 'service') return row;
+    if (!isBlankGrossProfitProductCode(row.productCode)) return row;
+    const code = byName.get(grossProfitProductNameKey(row.productName));
+    if (!code) return row;
+    return { ...row, productCode: code };
+  });
+}

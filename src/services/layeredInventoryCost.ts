@@ -12,6 +12,7 @@ import {
 import { inventoryListUnitPurchaseCost } from '../utils/inventoryListValue';
 import { productCardUnitCost } from '../utils/productCardUnitCost';
 import { productCogsFromUnitPurchase } from '../utils/productSaleCogs';
+import type { ProductNameCardRef } from '../utils/productGrossProfitCost';
 import {
   isPurchaseFiche,
   isPlSalesOrReturnFiche,
@@ -52,6 +53,7 @@ import {
   lookupLayeredOnHand,
   consumeFifoForQuantity,
   buildCostProfitRows,
+  finishCostProfitRows,
   lookupPeriodCogs,
   type LayerMovement,
   type LayeredOnHand,
@@ -87,6 +89,15 @@ function productNameKey(name: unknown): string {
   return String(name ?? '').trim().toLocaleLowerCase('tr-TR');
 }
 
+export type InventoryPurchaseUnitLookup = ((ref: {
+  id?: string | null;
+  code?: string | null;
+  name?: string | null;
+}) => number) & {
+  /** Rapor kodu için kartlar. Stok miktarını değiştirmez. */
+  cards: ProductNameCardRef[];
+};
+
 /**
  * Envanter listesindeki birim alış (ağırlıklı ortalama → katman ortalaması → kart).
  * Karlılık ve kar-zarar ürün satırı bu birimi kullanır.
@@ -96,7 +107,7 @@ export async function makeInventoryPurchaseUnitLookup(opts?: {
   firmNr?: string | number | null;
   periodNr?: string | number | null;
   valuation?: LayeredInventoryValuation | null;
-}): Promise<(ref: { id?: string | null; code?: string | null; name?: string | null }) => number> {
+}): Promise<InventoryPurchaseUnitLookup> {
   const firmNr = padFirm(opts?.firmNr);
   const periodNr = padPeriod(opts?.periodNr);
   const [avgMaps, products, valuation] = await Promise.all([
@@ -112,10 +123,21 @@ export async function makeInventoryPurchaseUnitLookup(opts?: {
   const cardById = new Map<string, number>();
   const cardByCode = new Map<string, number>();
   const nameHits = new Map<string, Array<{ id: string; code: string }>>();
+  const cards: ProductNameCardRef[] = [];
   for (const product of products || []) {
     const unit = productCardUnitCost(product);
     const id = String(product.id || '').trim();
     const code = String(product.code || '').trim();
+    cards.push({
+      id,
+      code,
+      name: product.name,
+      name2: product.name2,
+      name_tr: product.name_tr,
+      name_en: product.name_en,
+      name_ar: product.name_ar,
+      name_ku: product.name_ku,
+    });
     if (id) cardById.set(id, unit);
     if (code) cardByCode.set(code, unit);
     const names = [product.name, product.name2, product.name_tr, product.name_en, product.name_ar, product.name_ku];
@@ -151,7 +173,7 @@ export async function makeInventoryPurchaseUnitLookup(opts?: {
     if (uniqueHits.length !== 1) return 0;
     return unitFor(uniqueHits[0].id, uniqueHits[0].code);
   };
-  return (ref) => {
+  const lookup = ((ref: { id?: string | null; code?: string | null; name?: string | null }) => {
     const id = String(ref.id || '').trim();
     const code = String(ref.code || '').trim();
     const usableCode = blankProductCode(code) ? '' : code;
@@ -164,21 +186,24 @@ export async function makeInventoryPurchaseUnitLookup(opts?: {
     const named = unitForName(name);
     if (named > 0) return named;
     return id || usableCode ? unitFor(id, usableCode) : 0;
-  };
+  }) as InventoryPurchaseUnitLookup;
+  lookup.cards = cards;
+  return lookup;
 }
 
 function stampProductPurchaseUnit<T extends {
   lineKind?: string;
   productId?: string;
   productCode?: string;
+  productName?: string;
   purchaseUnitCost?: number;
 }>(
   lines: T[],
-  unitOf: (ref: { id?: string | null; code?: string | null }) => number,
+  unitOf: (ref: { id?: string | null; code?: string | null; name?: string | null }) => number,
 ): T[] {
   return lines.map((line) => {
     if (line.lineKind === 'service') return line;
-    const unit = unitOf({ id: line.productId, code: line.productCode });
+    const unit = unitOf({ id: line.productId, code: line.productCode, name: line.productName });
     if (!(unit > 0)) return line;
     return { ...line, purchaseUnitCost: unit };
   });
@@ -930,6 +955,7 @@ async function loadCostProfitSaleLinesRest(opts: {
 /**
  * Maliyet ve Karlılık Analizi: satış satırları (perakende/POS/güzellik) + SMM.
  * Malzeme: envanter birim alış × miktar (satışın yüzdesi değil).
+ * Kodu boş satış iadesi, adı tek karta gidiyorsa o kartın kodunu ve birimini alır.
  * Hizmet: kart cost_price / alış / reçete (stok yok). getPaginated items:[] kullanılmaz.
  */
 export async function getCostProfitAnalysis(opts: {
@@ -974,18 +1000,31 @@ export async function getCostProfitAnalysis(opts: {
   }
 
   let priced = lines;
+  let cards: ProductNameCardRef[] = [];
+  let unitOf: InventoryPurchaseUnitLookup | null = null;
   try {
-    const unitOf = await makeInventoryPurchaseUnitLookup({ firmNr, periodNr, valuation });
+    unitOf = await makeInventoryPurchaseUnitLookup({ firmNr, periodNr, valuation });
+    cards = unitOf.cards;
     priced = stampProductPurchaseUnit(lines, unitOf);
   } catch (err) {
     console.warn('[layeredInventoryCost] envanter birim alış okunamadı', err);
   }
 
-  return buildCostProfitRows(
+  const built = buildCostProfitRows(
     priced,
     valuation?.periodCogsByProductId || new Map(),
     valuation?.aliases,
   );
+  return finishCostProfitRows(built, {
+    cards,
+    unitOf: unitOf
+      ? (ref) => unitOf!({
+        id: ref.productId,
+        code: ref.productCode,
+        name: ref.productName,
+      })
+      : undefined,
+  });
 }
 
 const CUSTOMER_COST_EPS = 0.0000001;

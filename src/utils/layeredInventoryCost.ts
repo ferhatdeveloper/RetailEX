@@ -11,6 +11,12 @@
  */
 
 import { productCogsFromUnitPurchase } from './productSaleCogs';
+import {
+  applyProductGrossProfitWeightedCosts,
+  fillBlankProductCodeFromUniqueCard,
+  type ProductGrossProfitUnitRef,
+  type ProductNameCardRef,
+} from './productGrossProfitCost';
 
 export type LayerDirection = 'in' | 'out';
 
@@ -440,4 +446,52 @@ export function buildCostProfitRows(
     })
     .filter((r) => Math.abs(r.quantity) > QTY_EPS || Math.abs(r.revenue) > 0.009)
     .sort((a, b) => b.profit - a.profit);
+}
+
+/**
+ * Maliyet ve Karlılık — kodu boş satış iadesi.
+ *
+ * Kod, adı tek malzemeye giden karttan gelir. İki kart aynı addaysa kod yazılmaz.
+ * SMM, Ürün Brüt Kârı ile aynı yardımcıdadır: işaretli miktar × ağırlıklı ortalama birim.
+ * Satış satırının SMM'si düşülmez; iade kendi satırında eksi maliyet yazar.
+ * Alış iadesi bu listeye girmez. Satırlar birleştirilmez.
+ */
+export function finishCostProfitRows(
+  rows: CostProfitRow[],
+  opts?: {
+    cards?: ProductNameCardRef[];
+    unitOf?: (ref: ProductGrossProfitUnitRef) => number;
+  },
+): CostProfitRow[] {
+  const coded = fillBlankProductCodeFromUniqueCard(rows || [], opts?.cards || []);
+  const unitOf = opts?.unitOf;
+  if (!unitOf) return coded;
+  const priced = applyProductGrossProfitWeightedCosts(
+    coded.map((row) => ({
+      productId: row.productId,
+      productCode: row.productCode,
+      productName: row.productName,
+      quantity: row.quantity,
+      revenue: row.revenue,
+      cost: row.cogs,
+      grossProfit: row.profit,
+      marginPct: row.marginPercent,
+      lineKind: row.lineKind,
+    })),
+    unitOf,
+  );
+  const next = priced.map((row, index) => {
+    const prev = coded[index];
+    if (prev.lineKind === 'service') return prev;
+    if (row.cost === prev.cogs && row.grossProfit === prev.profit) return prev;
+    return {
+      ...prev,
+      cogs: row.cost,
+      profit: row.grossProfit,
+      marginPercent: row.marginPct,
+      costSource: Math.abs(row.cost) > COST_EPS ? 'inventory_purchase' : prev.costSource,
+    };
+  });
+  next.sort((a, b) => b.profit - a.profit);
+  return next;
 }
