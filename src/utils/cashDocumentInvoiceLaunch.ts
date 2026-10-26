@@ -2,6 +2,7 @@
  * Kasa İşlem Oluştur → satış / alış faturası.
  * Mevcut fişe tahsilat diyaloğu açılmaz. Tam fatura formu açılır.
  * Nakit veya kart, menüde seçilen kasaya yazılır. Açık cari kasaya yazılmaz.
+ * Kayıtlı nakit fatura kasa satırı da aynı forma, fiş numarasıyla döner.
  */
 
 import {
@@ -16,6 +17,8 @@ export interface CashDocumentInvoiceLaunch {
   posSalesReturn: {
     editData: Record<string, unknown>;
     openForm: true;
+    /** Doluysa kayıtlı fiş açılır. Boşsa yeni belge taslağıdır. */
+    openFicheNo?: string;
   };
 }
 
@@ -165,4 +168,145 @@ export function cashPrefillInvoiceCode(input: {
   if (hintedRaw === 8 && category && category !== 'Satis') return null;
   if (hintedRaw === 1 && category && category !== 'Alis') return null;
   return hintedRaw;
+}
+
+export type SavedCashInvoiceKind = 'sale' | 'purchase';
+
+export interface SavedCashInvoiceOpen {
+  kind: SavedCashInvoiceKind;
+  ficheNo: string;
+  screen: 'salesinvoice' | 'purchaseinvoice';
+  trcode: 1 | 8;
+  category: 'Satis' | 'Alis';
+}
+
+export interface SavedCashInvoiceRow {
+  transactionType?: string | null;
+  description?: string | null;
+  ficheNo?: string | null;
+  isReservationDeposit?: boolean | null;
+}
+
+export type CashRowEditSurface = 'purchase-invoice' | 'sales-invoice' | 'cash-form';
+
+function foldTr(value: string): string {
+  return value
+    .toLocaleLowerCase('tr-TR')
+    .normalize('NFD')
+    .replace(/\u0307/g, '')
+    .normalize('NFC')
+    .trim();
+}
+
+function foldAscii(value: string): string {
+  return foldTr(value)
+    .replace(/ı/g, 'i')
+    .replace(/ş/g, 's')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c');
+}
+
+/** Açıklama "Alış faturası — 00002" biçimindedir. Tire, fiş numarasının içindedir. */
+function splitInvoiceCashDescription(description: string): string[] {
+  const raw = String(description || '').trim();
+  if (!raw) return [];
+  const byDash = raw.split(/[—–]/).map((part) => part.trim()).filter(Boolean);
+  if (byDash.length >= 2) return byDash;
+  return raw.split(/\s+-\s+/).map((part) => part.trim()).filter(Boolean);
+}
+
+function invoicePrefixKind(prefix: string): SavedCashInvoiceKind | null {
+  const folded = foldAscii(prefix);
+  if (!folded || folded.includes('iade') || folded.includes('hizmet')) return null;
+  if (folded.includes('satis fatur')) return 'sale';
+  if (folded.includes('alis fatur')) return 'purchase';
+  return null;
+}
+
+function cleanFicheToken(token: string): string {
+  return String(token || '')
+    .replace(/\s*\([^)]*\)\s*$/u, '')
+    .trim();
+}
+
+/**
+ * Kaydedilmiş nakit satış veya alış faturasının kasa satırı.
+ * Kasa tipi KASA_GIRIS / KASA_CIKIS kalır. Açıklamadaki fiş no belge kimliğidir.
+ * Faturasız kasa fişi, cari, hizmet, iade, banka ve gider buraya düşmez.
+ */
+export function resolveSavedCashInvoiceOpen(input: SavedCashInvoiceRow): SavedCashInvoiceOpen | null {
+  if (input.isReservationDeposit === true) return null;
+  const tip = String(input.transactionType || '').trim().toUpperCase();
+  if (tip !== 'KASA_GIRIS' && tip !== 'KASA_CIKIS') return null;
+  const parts = splitInvoiceCashDescription(String(input.description || ''));
+  if (parts.length < 2) return null;
+  const kind = invoicePrefixKind(parts[0]);
+  if (!kind) return null;
+  if (kind === 'purchase' && tip !== 'KASA_CIKIS') return null;
+  if (kind === 'sale' && tip !== 'KASA_GIRIS') return null;
+  const ficheNo = cleanFicheToken(parts[1]);
+  if (!ficheNo) return null;
+  const purchase = kind === 'purchase';
+  return {
+    kind,
+    ficheNo,
+    screen: purchase ? 'purchaseinvoice' : 'salesinvoice',
+    trcode: purchase ? 1 : 8,
+    category: purchase ? 'Alis' : 'Satis',
+  };
+}
+
+/** Kasa satırı düzenlenince hangi kabuk açılır. Fatura yoksa kasa formu. */
+export function cashRowEditSurface(input: SavedCashInvoiceRow): CashRowEditSurface {
+  const hit = resolveSavedCashInvoiceOpen(input);
+  if (!hit) return 'cash-form';
+  return hit.kind === 'purchase' ? 'purchase-invoice' : 'sales-invoice';
+}
+
+/**
+ * Kasa listesindeki kayıtlı nakit faturayı tam belge olarak açar.
+ * Yeni taslak üretmez. openFicheNo fişin kendi numarasıdır.
+ */
+export function buildSavedCashInvoiceLaunch(input: {
+  kind: SavedCashInvoiceKind;
+  ficheNo: string;
+  registerId: string;
+  registerCode?: string | null;
+  registerName?: string | null;
+}): CashDocumentInvoiceLaunch {
+  const purchase = input.kind === 'purchase';
+  const trcode = purchase ? 1 : 8;
+  const ficheNo = String(input.ficheNo || '').trim();
+  return {
+    screen: purchase ? 'purchaseinvoice' : 'salesinvoice',
+    posSalesReturn: {
+      openForm: true,
+      openFicheNo: ficheNo,
+      editData: {
+        payment_method: 'NAKIT',
+        cash_register_id: String(input.registerId || '').trim(),
+        cash_register_code: String(input.registerCode || '').trim(),
+        cash_register_name: String(input.registerName || '').trim(),
+        trcode,
+        invoice_type: trcode,
+        source: 'kasa',
+        invoice_no: ficheNo,
+      },
+    },
+  };
+}
+
+/**
+ * Kayıtlı fiş araması. Satış ve alış kategoriden bulunur (perakende 7, alış 1/5).
+ * İade kendi trcode filtresinde kalır.
+ */
+export function cashPrefillInvoiceLookup(trcode: number): {
+  invoiceCategory: 'Satis' | 'Alis' | 'Iade';
+  invoiceType: number;
+} {
+  if (trcode === 1) return { invoiceCategory: 'Alis', invoiceType: 0 };
+  if (trcode === 8 || trcode === 7) return { invoiceCategory: 'Satis', invoiceType: 0 };
+  return { invoiceCategory: 'Iade', invoiceType: trcode || 0 };
 }

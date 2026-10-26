@@ -62,7 +62,9 @@ import {
 } from '../../../utils/cashReturnInvoiceLaunch';
 import {
   buildCashDocumentInvoiceLaunch,
+  buildSavedCashInvoiceLaunch,
   isCashDocumentMenuType,
+  resolveSavedCashInvoiceOpen,
 } from '../../../utils/cashDocumentInvoiceLaunch';
 import { KasaIslemDetayModal } from './KasaIslemDetayModal';
 import { KasaIslemTurleriModal } from './KasaIslemTurleriModal';
@@ -345,12 +347,37 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
     return kasaIslemleri.find(i => i.id === id) || null;
   };
 
+  const openSavedCashInvoice = (islem: KasaIslemi | null): boolean => {
+    if (!islem || !selectedKasa) return false;
+    const target = resolveSavedCashInvoiceOpen({
+      transactionType: islem.islem_tipi,
+      description: islem.islem_aciklamasi,
+      ficheNo: islem.islem_no,
+      isReservationDeposit: islem.is_reservation_deposit === true,
+    });
+    if (!target) return false;
+    const detail = buildSavedCashInvoiceLaunch({
+      kind: target.kind,
+      ficheNo: target.ficheNo,
+      registerId: selectedKasa.id,
+      registerCode: selectedKasa.kasa_kodu,
+      registerName: selectedKasa.kasa_adi,
+    });
+    window.dispatchEvent(new CustomEvent('switchToManagement'));
+    window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
+    }, 150);
+    return true;
+  };
+
   const handleEditIslem = (islem: KasaIslemi | null) => {
     if (!islem || !islem.id || !selectedKasa) return;
     if (isCashReturnMenuType(islem.islem_tipi)) {
       openReturnInvoiceDocument(islem.islem_tipi, islem.islem_no);
       return;
     }
+    if (openSavedCashInvoice(islem)) return;
     setEditingIslem(islem);
     setIslemModalType(islem.islem_tipi as any);
     setShowIslemModal(true);
@@ -358,6 +385,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
 
   const handleViewIslem = (islem: KasaIslemi | null) => {
     if (!islem) return;
+    if (openSavedCashInvoice(islem)) return;
     setSelectedIslem(islem);
     setShowIslemDetayModal(true);
   };
@@ -651,6 +679,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
               onRowDoubleClick={(islem) => {
                 setSelectedId(islem.id || null);
                 setSelectedIslem(islem);
+                if (openSavedCashInvoice(islem)) return;
                 setShowIslemDetayModal(true);
               }}
               onRowContextMenu={(e, islem) => handleRowContextMenu(e, islem)}
@@ -862,7 +891,9 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
               label: tm('viewDetails'),
               icon: Eye,
               onClick: () => {
-                setSelectedIslem(contextMenu.data as KasaIslemi);
+                const row = contextMenu.data as KasaIslemi;
+                if (openSavedCashInvoice(row)) return;
+                setSelectedIslem(row);
                 setShowIslemDetayModal(true);
               }
             },

@@ -49,7 +49,7 @@ import {
   loadInvoiceListPrefs,
   saveInvoiceListPrefs,
 } from '../../../utils/invoiceListPrefs';
-import { cashPrefillInvoiceCode } from '../../../utils/cashDocumentInvoiceLaunch';
+import { cashPrefillInvoiceCode, cashPrefillInvoiceLookup } from '../../../utils/cashDocumentInvoiceLaunch';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { InvoiceExcelExportModal } from './InvoiceExcelExportModal';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
@@ -62,7 +62,7 @@ export type CountPurchaseDraftPrefill = {
 export type PosSalesReturnPrefill = {
   editData: Record<string, unknown>;
   openForm?: boolean;
-  /** Kasa satırından mevcut iade belgesi. Yeni fiş üretilmez. */
+  /** Kasa satırından mevcut satış, alış veya iade belgesi. Yeni fiş üretilmez. */
   openFicheNo?: string;
 };
 
@@ -751,12 +751,13 @@ export function InvoiceListModule({
       void (async () => {
         try {
           const { invoicesAPI } = await import('../../../services/api/invoices');
+          const lookup = cashPrefillInvoiceLookup(code);
           const result = await invoicesAPI.getPaginated({
             page: 1,
             pageSize: 50,
             search: fiche,
-            invoiceType: code,
-            invoiceCategory: 'Iade',
+            invoiceType: lookup.invoiceType,
+            invoiceCategory: lookup.invoiceCategory,
             firmNr: firmNrKey || undefined,
             periodNr: periodNrKey || undefined,
           });
@@ -767,22 +768,28 @@ export function InvoiceListModule({
             return no === fiche;
           });
           if (!hit?.id) {
-            console.warn('[InvoiceListModule] iade belgesi bulunamadı:', fiche);
+            console.warn('[InvoiceListModule] fatura belgesi bulunamadı:', fiche, lookup.invoiceCategory);
             return;
           }
           const full = await invoicesAPI.getById(String(hit.id));
           if (cancelled) return;
           const raw = full ?? hit;
+          const loadedCode = Number(
+            (raw as { trcode?: unknown; invoice_type?: unknown }).trcode
+            ?? (raw as { invoice_type?: unknown }).invoice_type
+            ?? code,
+          );
+          const loadedType = INVOICE_TYPES.find((t) => t.code === loadedCode);
           setShowInvoiceTypeModal(false);
           setEditInvoiceData({
             ...raw,
             items: Array.isArray(raw.items) ? raw.items.map((it) => ({ ...it })) : [],
           } as Invoice);
           setNewFormCounter((c) => c + 1);
-          setSelectedInvoiceType(returnType);
+          setSelectedInvoiceType(loadedType || returnType);
           setPurchaseCreateSaveOptions(null);
         } catch (error) {
-          if (!cancelled) console.warn('[InvoiceListModule] iade belgesi açılamadı:', error);
+          if (!cancelled) console.warn('[InvoiceListModule] fatura belgesi açılamadı:', error);
         } finally {
           finish();
         }
