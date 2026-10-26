@@ -202,7 +202,9 @@ describe('net = ciro + rezervasyon − iade − gider', () => {
     const clinic = readFileSync(resolve('src/components/beauty/components/ClinicDashboard.tsx'), 'utf8');
 
     expect(daily).toContain('reportDisplayNet');
-    expect(daily).toContain('formatLedgerAmount(dailyNetNakitAlways, reportCurrency)');
+    expect(daily).toContain('dailyRevenueDiscount(dailySalesActive)');
+    expect(daily).toContain('displayedDailySalesDetailNet');
+    expect(period).toContain('discount: sale.discount');
     expect(period).toContain('const netRemaining = headline.netRevenue');
     expect(period).toContain('netRemaining: acc.netRemaining + r.netRemaining');
     expect(clinic).not.toContain('reportDisplayNet');

@@ -6,10 +6,13 @@
  * net kalan brüt cirodan iadeyi düşmez.
  *
  * Muhasebe: satış geliri brüt kalır. İade ayrı tenzildir, bir kez düşülür.
- * Net kalan = brüt ciro + rezervasyon tutarı − iade − masraf.
+ * Net kalan = brüt ciro + rezervasyon tutarı − iade − indirim − masraf.
+ * Ciro brüt belge tutarıdır (`sale.total` / `total_net`, iskonto hariç).
+ * İndirim ayrı kolondadır ve netten bir kez düşülür. Ciro zaten
+ * indirim sonrasıysa indirim parametresi 0 kalır; ikinci kez düşülmez.
  * Rezervasyon tutarı açık peşinat ile iade edilmemiş iptal peşinatıdır.
  * Randevu kapanınca peşinat bu kutudan çıkar; hizmet tutarı cirodadır
- * ve nete ikinci kez girmez. İndirim brüt ciro netindedir.
+ * ve nete ikinci kez girmez.
  * Satış adedi iade fişiyle ve peşinatla artmaz.
  */
 import type { Sale } from '../core/types';
@@ -110,31 +113,35 @@ function displayMoney(value: number): number {
 
 /**
  * Görünen net.
- * Net = ciro + rezervasyon tutarı − iade − gider.
- * İndirim ciroya önceden işlemiştir; bu fonksiyona tekrar girmez.
+ * Net = ciro + rezervasyon tutarı − iade − indirim − gider.
+ * `discount` yalnız ciro brütken verilir ve bir kez düşülür.
+ * Ciro satır netiyse (indirim içine işlenmiş) discount 0 kalır.
  * Gider bir kez düşer. Kapalı gider parametresinde gider 0 sayılır.
  */
 export function reportDisplayNet(input: {
   revenue: number;
   reservationAmount?: number;
   returnDeduction?: number;
+  discount?: number;
   expenses?: number;
   expenseEnabled?: boolean;
 }): number {
   const revenue = Number(input.revenue) || 0;
   const reservation = Math.abs(Number(input.reservationAmount) || 0);
   const returns = Math.abs(Number(input.returnDeduction) || 0);
+  const discount = Math.abs(Number(input.discount) || 0);
   const expenses = input.expenseEnabled === false ? 0 : (Number(input.expenses) || 0);
-  return displayMoney(revenue + reservation - returns - expenses);
+  return displayMoney(revenue + reservation - returns - discount - expenses);
 }
 
 /**
- * Net kalan = brüt ciro + rezervasyon tutarı − iade − masraf.
+ * Net kalan = brüt ciro + rezervasyon tutarı − iade − indirim − masraf.
  * `reservationDeposit` verilirse rezervasyon kutusudur ve tek eklemedir.
  * Kutu 0 ise o güne rezervasyon yazılmaz. İptal peşinatı kutunun
  * içinde durur; `ciroDisiTahsilat` ile ikinci kez eklenmez.
  * Kutu argümanı yoksa eski çağrıdaki iptal peşinatı bir kez kalır.
  * Mahsup edilmiş peşinat kutuda yoktur; cirodadır.
+ * `discount` brüt cirodan bir kez düşülür. Ciro netse 0 verilir.
  */
 export function periodSummaryNetRemaining(input: {
   revenue: number;
@@ -143,6 +150,7 @@ export function periodSummaryNetRemaining(input: {
   expenseEnabled: boolean;
   ciroDisiTahsilat?: number;
   reservationDeposit?: number;
+  discount?: number;
 }): number {
   const reservationProvided = input.reservationDeposit != null;
   const reservation = Math.abs(Number(input.reservationDeposit) || 0);
@@ -151,6 +159,7 @@ export function periodSummaryNetRemaining(input: {
     revenue: Number(input.revenue) || 0,
     reservationAmount: reservationProvided ? reservation : forfeited,
     returnDeduction: input.returnDeduction,
+    discount: input.discount,
     expenses: input.expenses,
     expenseEnabled: input.expenseEnabled,
   });
@@ -161,7 +170,7 @@ export type PeriodSummaryHeadline = {
   grossRevenue: number;
   /** Görünen iade. Artı büyüklük. */
   returnAmount: number;
-  /** Brüt + rezervasyon − iade − masraf. */
+  /** Brüt + rezervasyon − iade − indirim − masraf. */
   netRevenue: number;
   /** Rezervasyon kutusu. Nete bir kez eklenir. */
   depositInfo: number;
@@ -170,6 +179,7 @@ export type PeriodSummaryHeadline = {
 /**
  * Aylık / yıllık başlık.
  * İade kartta görünür ve netten bir kez düşülür.
+ * İndirim brüt cirodan bir kez düşülür. Aylık gün ve yıllık ay aynıdır.
  * Rezervasyon kutusu nete bir kez eklenir.
  * İptal peşinatı kutunun içindedir; ayrı kanaldan ikinci kez girmez.
  * Kutu 0 ise o dönem rezervasyon eklenmez.
@@ -183,6 +193,8 @@ export function periodSummaryHeadline(input: {
   reservationDeposit?: number;
   /** İptal edilmiş, iade edilmemiş, mahsup edilmemiş peşinat. */
   forfeitedDeposit?: number;
+  /** Brüt ciro kolonunun yanındaki indirim. Bir kez düşülür. */
+  discount?: number;
 }): PeriodSummaryHeadline {
   const grossRevenue = Number(input.revenue) || 0;
   const returnAmount = Math.abs(Number(input.returnsAmount) || 0);
@@ -195,6 +207,7 @@ export function periodSummaryHeadline(input: {
     expenseEnabled: input.expenseEnabled,
     ciroDisiTahsilat: forfeitedDeposit,
     reservationDeposit: depositInfo,
+    discount: input.discount,
   });
   return { grossRevenue, returnAmount, netRevenue, depositInfo };
 }

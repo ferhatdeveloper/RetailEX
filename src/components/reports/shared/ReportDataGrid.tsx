@@ -141,6 +141,8 @@ export type ReportColumnTableCol<T> = {
   /** false → kolon başlığında huni yok (ör. gün 1–31) */
   enableColumnFilter?: boolean;
   cell?: (row: T) => ReactNode;
+  /** Excel ve filtre ham `row[key]` yerine bu değeri okur. Ekran hücresi `cell` ile kalır. */
+  accessor?: (row: T) => unknown;
   footerSum?: boolean;
   /**
    * 12.10.2026 — Dip toplam (grand total) için özel değer çıkarıcı.
@@ -224,6 +226,7 @@ export function ReportColumnTable<T extends object>({
           filterKind: c.type === 'date' ? 'date' : c.type === 'number' || c.type === 'currency' ? 'number' : 'text',
           type: c.type === 'currency' ? 'currency' : c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : undefined,
           cell: c.cell,
+          accessor: c.accessor,
         })),
       ),
     [columns],

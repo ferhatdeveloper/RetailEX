@@ -214,13 +214,38 @@ export function buildDataGridExportAoa<T>(
   return { headers, aoa };
 }
 
+/** Türkçe binlik: 75.000 ve 14.000,50. Tarih (26.10.2026) eşleşmez. */
+const TR_THOUSANDS_AMOUNT = /^-?\d{1,3}(\.\d{3})+(,\d{1,2})?$/;
+
+/**
+ * Excel İngilizce yerelde "75.000" metnini 75 okur.
+ * Tutar kolonunda bu metin gerçek sayıya çevrilir: 75.000 → 75000.
+ */
+export function excelAmountCellValue(header: string, value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  if (!/(tutar|indirim)/i.test(header)) return value;
+  const text = value.trim();
+  if (!TR_THOUSANDS_AMOUNT.test(text)) return value;
+  const n = Number(text.replace(/\./g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : value;
+}
+
+function coerceExcelAmountAoa(aoa: unknown[][]): unknown[][] {
+  const headers = (aoa[0] ?? []).map((cell) => (cell == null ? '' : String(cell)));
+  return aoa.map((row, rowIndex) => {
+    if (rowIndex === 0) return row;
+    return row.map((cell, colIndex) => excelAmountCellValue(headers[colIndex] ?? '', cell));
+  });
+}
+
 /**
  * Stil sayfası. Başlık ve alt başlık birleştirmesi yok:
  * o birleştirme kolon başlıklarını ve ilk veri satırını gizliyordu.
  */
 export function buildGridExportWorksheet(aoa: unknown[][], headers: string[]): XLSX.WorkSheet {
   const columnCount = Math.max(headers.length, aoa[0]?.length ?? 0);
-  const sheetAoa = aoa.length > 1 ? aoa : [headers, headers.map(() => '')];
+  const normalized = coerceExcelAmountAoa(aoa);
+  const sheetAoa = normalized.length > 1 ? normalized : [headers, headers.map(() => '')];
   const currencyColumns = headers.filter((h) =>
     /(tutar|fiyat|toplam|harcama|amount|price|total|borç|alacak|bakiye|debt|credit|balance|prim)/i.test(h),
   );

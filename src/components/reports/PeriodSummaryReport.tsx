@@ -843,7 +843,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       // ancak "Net Kalan = Ciro − Gider" doğru olur. CH_TAHSILAT ayrı
       // "Kasa Para Girişi" kolonunda izlenir, Ciro'ya katılmaz.
       //
-      // Net kalan = brüt ciro + rezervasyon kutusu − iade − masraf.
+      // Net kalan = brüt ciro + rezervasyon kutusu − iade − indirim − masraf.
+      // Ciro brüt belge tutarıdır; indirim ayrı kolondadır ve bir kez düşülür.
       // Rezervasyon kutusu açık ve iptal peşinatıdır. Kapanmış peşinat
       // cirodadır, kutuda kalmaz, nete ikinci kez yazılmaz.
       // Rezervasyon brüt/kalan fatura kesilene kadar bilgi kolonudur.
@@ -879,6 +880,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         expenseEnabled: showPeriodCardExpenses,
         reservationDeposit: reservationDepositInfo,
         forfeitedDeposit: forfeitedByPeriod.get(periodKey) || 0,
+        discount: sale.discount,
       });
       const netRemaining = headline.netRevenue;
       // 14.10.2026 — DEBUG kaldırıldı

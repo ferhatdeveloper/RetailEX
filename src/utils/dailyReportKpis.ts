@@ -61,8 +61,24 @@ function receiptKey(raw: unknown): string {
 }
 
 /**
+ * Brüt cirodaki indirim. Peşinat ve iade fişi katılmaz.
+ * `dailyNetSaleRevenue` brüt `total` toplar; bu tutar netten bir kez düşülür.
+ * Satır neti indirimi zaten düşmüşse bu fonksiyon ikinci kez çağrılmaz.
+ */
+export function dailyRevenueDiscount(sales: readonly DailyKpiSale[]): number {
+  let discount = 0;
+  for (const sale of sales) {
+    if (isDepositSale(asSale(sale))) continue;
+    if (isReturnSale(asSale(sale))) continue;
+    discount += Math.abs(Number(sale.discount) || 0);
+  }
+  return discount;
+}
+
+/**
  * Net ciro ve net belge. Peşinat fişi yok sayılır.
  * Brüt satışlar toplanır, iade bir kez düşülür.
+ * İndirim bu toplama girmez; `dailyRevenueDiscount` ile bir kez düşülür.
  */
 export function dailyNetSaleRevenue(sales: readonly DailyKpiSale[]): number {
   let gross = 0;

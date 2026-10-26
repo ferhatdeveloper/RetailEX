@@ -12,13 +12,14 @@
  * İndirim kartı açık lavanta zeminde kalır.
  * İade kutusu bilgi tutarıdır. Günlük ciro iadeyi bir kez düşmüştür;
  * Net (Nakit) bu tutarı tekrar düşmez.
- * Net (Nakit) = ciro + rezervasyon tutarı − gider.
+ * Net (Nakit) = brüt ciro + rezervasyon tutarı − indirim − gider.
  *
  * Kaldırılanlar (menü parametresi açık olsa da bu ekranda yok):
  * Toplam Satış, Nakit, Satış iade, Net (Brüt), kart, veresiye,
  * belge/tahsil/veresiye şeridi, kasa giriş, kasa çıkış, nakit gider.
  *
- * İndirim açık cari değildir; ciro netindedir, nete tekrar girmez.
+ * İndirim açık cari değildir. Brüt cirodan bir kez düşülür.
+ * Satır neti indirimi zaten düşmüşse ikinci kez düşülmez.
  * Rezervasyon ve peşinat ciro değildir. Açık ve iptal peşinatı
  * rezervasyon kutusundan nete bir kez eklenir.
  * Ciro altındaki miktar bilgi satırıdır; tutara eklenmez.

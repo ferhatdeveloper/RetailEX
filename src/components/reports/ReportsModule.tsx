@@ -15,7 +15,11 @@ import './DayEndZReportLayout.css';
 import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
 import { formatNumber } from '../../utils/formatNumber';
-import { dailySalesDetailNetAmount } from '../../utils/dailySalesDetailNet';
+import {
+  dailySalesDetailNetAmount,
+  displayedDailySalesDetailNet,
+  sumDisplayedDailySalesDetailNet,
+} from '../../utils/dailySalesDetailNet';
 import {
   buildDailySalesDetailExpenseRows,
   dailySalesDetailBeforeDiscountContribution,
@@ -36,6 +40,7 @@ import { ficheIsCancelTarget } from '../../utils/dailySalesDetailFicheSet';
 import { reportFicheShowsCancel } from '../../utils/beautyAppointmentCancel';
 import {
   dailyNetSaleRevenue,
+  dailyRevenueDiscount,
 } from '../../utils/dailyReportKpis';
 import {
   DAILY_REPORT_RETURN_COUNT_LABEL_KEY,
@@ -4023,26 +4028,31 @@ export function ReportsModule({
   }, [dailyKindFilter, dailyShowOnlyRemoved, dailyKindGridRows, dailyExpenseRowsForReport, tm, userNameById]);
 
   /**
-   * Net (Nakit) = ciro + rezervasyon kutusu − gider.
+   * Net (Nakit) = brüt ciro + rezervasyon kutusu − iade − indirim − gider.
    * Günlük ciro iadeyi bir kez düşmüş hâldedir; iade kartı tekrar düşülmez.
+   * Ciro brüt belge tutarıdır. İndirim ayrıdır ve bir kez düşülür.
+   * Adisyon neti indirimi zaten düşmüşse ikinci kez düşülmez.
    * Rezervasyon kutusu açık ve iptal peşinatıdır, bir kez eklenir.
    * Kapanan peşinat kutudan çıkar, hizmet tutarı cirodadır, ikinci kez yok.
-   * İndirim ciro netindedir. Gider bir kez düşer. Virman gider değildir.
-   * 25.000 ciro + 25.000 açık peşinat = 50.000.
+   * Gider bir kez düşer. Virman gider değildir.
    */
   const dailyNetNakitAlways = useMemo(
-    () => reportDisplayNet({
-      revenue: dailyTotal,
-      reservationAmount: cancelledUnclosedReservationBox({
-        appointments: dailyAppointments,
-        avansRows: dailyAvansList,
-        depositSales: dailyDepositSales,
-      }).amount,
-      returnDeduction: 0,
-      expenses: totalExpensesForReport,
-      expenseEnabled: true,
-    }),
-    [dailyTotal, dailyAppointments, dailyAvansList, dailyDepositSales, totalExpensesForReport],
+    () => {
+      const adisyonNet = businessType === 'restaurant' && dailySalesActive.length === 0;
+      return reportDisplayNet({
+        revenue: dailyTotal,
+        discount: adisyonNet ? 0 : dailyRevenueDiscount(dailySalesActive),
+        reservationAmount: cancelledUnclosedReservationBox({
+          appointments: dailyAppointments,
+          avansRows: dailyAvansList,
+          depositSales: dailyDepositSales,
+        }).amount,
+        returnDeduction: 0,
+        expenses: totalExpensesForReport,
+        expenseEnabled: true,
+      });
+    },
+    [businessType, dailySalesActive, dailyTotal, dailyAppointments, dailyAvansList, dailyDepositSales, totalExpensesForReport],
   );
 
   const dailyExpenseGridRows = useMemo(() => {
@@ -5834,7 +5844,7 @@ export function ReportsModule({
     const dailyPrintPayLabel = (row: DailyUnifiedRow) =>
       L(paymentMethodBucketTranslationKey(normalizePaymentMethodBucket(row.paymentMethod)));
     const dailyPrintNetCell = (row: DailyUnifiedRow) => {
-      const netTxt = formatNumber(row.total, 2, false);
+      const netTxt = formatNumber(displayedDailySalesDetailNet(row), 2, false);
       if (!dailyRowShowsCreditSplit(row)) return netTxt;
       const remaining = Number(row.remaining) > 0.009
         ? Number(row.remaining)
@@ -5895,7 +5905,7 @@ export function ReportsModule({
     const saleBlocks80 = dailyKindActiveRows
       .map((row) => {
         const pm = dailyPrintPayLabel(row);
-        const net = formatNumber(row.total, 2, false);
+        const net = formatNumber(displayedDailySalesDetailNet(row), 2, false);
         const disc = formatNumber(row.discount ?? 0, 2, false);
         const before = formatNumber(row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0)), 2, false);
         const cashier = isPlaceholderCashierName(row.cashier) ? '—' : String(row.cashier || '').trim() || '—';
@@ -7554,11 +7564,11 @@ export function ReportsModule({
                           align: 'right',
                           size: 140,
                           footerSum: true,
-                          // Dip net, kartla aynı formüldür: ciro + rezervasyon − iade − gider.
-                          // Günlük ciro iadeyi bir kez düşmüş hâldedir.
-                          // Açık ve iptal peşinat bir kez girer.
-                          // Kapanan peşinat satırı durur, tutarı cirodadır, ikinci kez yazılmaz.
-                          footerFormat: () => formatLedgerAmount(dailyNetNakitAlways, reportCurrency),
+                          // Dip toplam görünen net tutarı toplar. Brüt 15.000 net diye yazılmaz.
+                          // İndirim satır netinde bir kez düşülmüştür; tekrar düşülmez.
+                          footerGetValue: (row) => displayedDailySalesDetailNet(row),
+                          accessor: (row) => displayedDailySalesDetailNet(row),
+                          footerFormat: (sum) => formatLedgerAmount(sum, reportCurrency),
                           cell: (row) => {
                             if (row.isExpense) {
                               return (
