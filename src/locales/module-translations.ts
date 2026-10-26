@@ -13461,6 +13461,7 @@ export const excelModuleTranslations = {
   bCloseInvoiceFail: { tr: 'Fatura kapatılamadı', en: 'Could not close invoice', ar: 'تعذر إغلاق الفاتورة', ku: 'نەتوانرا فاتوورە داخە' },
   bAptStatusCompleted: { tr: 'Tamamlandı', en: 'Completed', ar: 'مكتمل', ku: 'تەواوبوو' },
   bAptStatusCancelled: { tr: 'İptal', en: 'Cancelled', ar: 'ملغى', ku: 'هەڵوەشاوە' },
+  bAptStatusWaiting: { tr: 'Bekliyor', en: 'Waiting', ar: 'منتظر', ku: 'چاوەڕوان' },
   bTodayAppointmentsTitle: { tr: 'Bugünün Randevuları', en: 'Today\'s Appointments', ar: 'مواعيد اليوم', ku: 'ئامادەبوونەکانی ئەمڕۆ' },
   bRegisteredAppointmentsSub: { tr: '{n} kayıtlı randevu', en: '{n} scheduled', ar: '{n} موعد مسجل', ku: '{n} ئامادەبوونی تۆمارکراو' },
   bDashboardColAmount: { tr: 'Tutar', en: 'Amount', ar: 'المبلغ', ku: 'بڕ' },

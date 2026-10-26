@@ -10,10 +10,14 @@ import '../ClinicStyles.css';
 import { QueueModeResourceList } from './QueueModeResourceList';
 import {
     groupBeautyQueueByCustomer,
-    mergeBeautyAppointmentsForBoardDisplay,
     suggestQueuePrefillTime,
 } from '../../../utils/beautyQueueOrder';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
+import {
+    beautyStaffTimelineBoxTone,
+    staffTimelineAppointmentCards,
+    staffTimelineStatusLabel,
+} from '../../../utils/beautyStaffTimelineStatus';
 import {
     beautySchedulerResourceColumnDropHandlers,
     beautySchedulerResourceDragStartHandler,
@@ -62,7 +66,7 @@ export function StaffTimelineView({
 
     const dateStr = formatLocalYmd(currentDate);
     const dayAppointments = appointments.filter(
-        a => beautyAppointmentDateKey(a) === dateStr && beautyAptVisibleOnSchedule(a),
+        a => beautyAppointmentDateKey(a) === dateStr,
     );
 
     const slots = (timeSlots && timeSlots.length > 0)
@@ -122,30 +126,32 @@ export function StaffTimelineView({
     const columnData = useMemo(() => {
         return columns.map(col => {
             const isUnassigned = col.id === UNASSIGNED_ID;
-            const colApts = dayAppointments.filter(a => {
+            const colAll = dayAppointments.filter(a => {
                 if (isUnassigned) return !(String(a.staff_id ?? a.specialist_id ?? '').trim());
                 return String(a.staff_id ?? a.specialist_id ?? '') === String(col.id);
             });
-            const mergedForTimeline = mergeBeautyAppointmentsForBoardDisplay(colApts, {
+            const colVisible = colAll.filter(beautyAptVisibleOnSchedule);
+            const timelineCards = staffTimelineAppointmentCards(colAll, {
                 mergeConsecutiveSameCustomer: mergeConsecutiveByCustomer,
             });
+            const shown = queueMode ? colVisible : timelineCards;
 
             const revenue = isUnassigned
                 ? 0
-                : colApts.reduce((sum, a) => sum + Number(a.total_price ?? 0), 0);
+                : colVisible.reduce((sum, a) => sum + Number(a.total_price ?? 0), 0);
             const rate = !isUnassigned && 'commission_rate' in col ? Number(col.commission_rate ?? 0) : 0;
             const commission = (revenue * rate) / 100;
 
             return {
                 col,
                 isUnassigned,
-                appointments: queueMode ? colApts : mergedForTimeline,
+                appointments: shown,
                 revenue,
                 commission,
                 rate,
             };
         });
-    }, [columns, dayAppointments, mergeConsecutiveByCustomer]);
+    }, [columns, dayAppointments, mergeConsecutiveByCustomer, queueMode]);
 
     const formatCurrency = (amount: number) =>
         new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
@@ -287,6 +293,11 @@ export function StaffTimelineView({
                                             {slots.map((time, i) => {
                                                 const p = spanPlacements.find(pl => pl.startIdx === i);
                                                 if (p) {
+                                                    const tone = beautyStaffTimelineBoxTone(p.apt.status);
+                                                    const statusLabel = staffTimelineStatusLabel(tone, tm);
+                                                    const borderColor = tone.kind === 'waiting'
+                                                        ? (p.apt.service_color ?? accent)
+                                                        : tone.accent;
                                                     return (
                                                         <div
                                                             key={p.apt.id}
@@ -299,6 +310,11 @@ export function StaffTimelineView({
                                                         >
                                                             <div
                                                                 {...staffDropHandlers}
+                                                                data-testid="staff-timeline-apt"
+                                                                data-apt-id={p.apt.id}
+                                                                data-tone={tone.kind}
+                                                                data-bg={tone.background}
+                                                                className={tone.className}
                                                                 draggable={resourceDragKind === 'staff' && !!onResourceColumnDrop}
                                                                 title={dragResourceTitle}
                                                                 onDragStart={
@@ -313,8 +329,8 @@ export function StaffTimelineView({
                                                                     boxSizing: 'border-box',
                                                                     padding: '6px 8px',
                                                                     borderRadius: 4,
-                                                                    background: '#ede9fe',
-                                                                    borderLeft: `3px solid ${p.apt.service_color ?? accent}`,
+                                                                    background: tone.background,
+                                                                    borderLeft: `3px solid ${borderColor}`,
                                                                     fontSize: 11,
                                                                     cursor:
                                                                         resourceDragKind === 'staff' && onResourceColumnDrop
@@ -326,8 +342,28 @@ export function StaffTimelineView({
                                                                     overflow: 'hidden',
                                                                 }}
                                                             >
-                                                                <p style={{ fontWeight: 700, color: '#111827', margin: 0 }}>{p.apt.customer_name ?? '—'}</p>
-                                                                <p style={{ color: '#6b7280', margin: 0, flex: 1 }}>{p.apt.service_name ?? '—'}</p>
+                                                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, minWidth: 0 }}>
+                                                                    <p style={{ flex: '1 1 auto', minWidth: 0, fontWeight: 700, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.apt.customer_name ?? '—'}</p>
+                                                                    <span
+                                                                        data-testid="staff-timeline-apt-status"
+                                                                        title={statusLabel}
+                                                                        style={{
+                                                                            flex: '0 1 auto',
+                                                                            maxWidth: '48%',
+                                                                            margin: 0,
+                                                                            fontSize: 9,
+                                                                            fontWeight: 800,
+                                                                            lineHeight: '12px',
+                                                                            color: tone.accent,
+                                                                            overflow: 'hidden',
+                                                                            textOverflow: 'ellipsis',
+                                                                            whiteSpace: 'nowrap',
+                                                                        }}
+                                                                    >
+                                                                        {statusLabel}
+                                                                    </span>
+                                                                </div>
+                                                                <p style={{ color: '#6b7280', margin: 0, flex: 1, minHeight: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.apt.service_name ?? '—'}</p>
                                                             </div>
                                                         </div>
                                                     );
