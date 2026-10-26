@@ -4,10 +4,11 @@
  * Mevcut `ErpCoreReports.tsx` mimarisiyle aynı kalıp.
  *
  * Mali denetim notu:
- *  - Satış iadesi miktar, satır neti ve fatura başlığı bir kez eksidir.
- *  - Kartlardaki satır toplam ve fatura toplam, satır netlerinin toplamıdır.
- *    Fatura başlığı iki hizmet satırında tekrar toplanmaz.
- *  - Telefon araması case-insensitive `ILIKE` benzeri içerir.
+ *  - Satış iadesi miktar ve satır neti bir kez eksidir. Birim fiyat artı kalır.
+ *  - İskonto = brüt − satır neti. Satır netinden ikinci kez düşülmez.
+ *  - Fatura toplam kolonu satır netidir (başlık total_net brüt ara toplamdır).
+ *  - Kart ve dip toplam satır netlerinin toplamıdır. Başlık satır sayısı kadar çarpılmaz.
+ *  - Grup dip toplamı boş satır dizisinde önceden toplanan neti gösterir.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, Loader2, RefreshCw } from 'lucide-react';
@@ -30,6 +31,14 @@ import { supplierAPI } from '../../services/api/suppliers';
 import type { Supplier } from '../../core/types';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 import { invoiceItemsDetailCards } from '../../utils/reportReturnCashSign';
+import {
+  INVOICE_ITEMS_DETAIL_EXPORT_HEADERS,
+  INVOICE_ITEMS_DETAIL_TYPE_LABELS_TR,
+  invoiceItemsDetailExportCells,
+  invoiceItemsDetailInvoiceFooterSum,
+  invoiceItemsDetailTypeLabel,
+  type InvoiceItemsDetailTypeLabels,
+} from '../../utils/invoiceItemsDetailAmounts';
 
 type SelectOption = { value: string; label: string };
 
@@ -42,19 +51,26 @@ export interface InvoiceItemsDetailRow {
   productName: string;
   /** Malzeme | Hizmet — hizmet raporundaki filtre/etiket kararları için */
   itemType: string;
+  /** sales.fiche_type — tür etiketi buradan. */
+  ficheType: string;
+  /** sales.trcode — iade ve hizmet ayrımı. */
+  trcode: number;
+  /** Türkçe fiş türü (satış / alış / iade / hizmet). */
+  invoiceType: string;
   quantity: number;
   unitPrice: number;
+  /** İskonto tutarı (yüzde değil). İskonto yoksa 0. */
   discount: number;
   /** Satır brüt (miktar × birim fiyat, indirim öncesi). */
   lineGross: number;
   /** Satır net (indirim sonrası); UI'da "Satır Toplam". */
   lineTotal: number;
-  /** Fatura brüt toplamı (total_net, avans hariç). */
+  /** Satır neti. Başlık brütü değil; dip toplamda bir kez toplanır. */
   invoiceTotal: number;
   phone: string;
 }
 
-function exportCsv(fileName: string, headers: string[], rows: string[][]): void {
+function exportCsv(fileName: string, headers: readonly string[], rows: string[][]): void {
   const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [headers.map(esc).join(';'), ...rows.map((r) => r.map(esc).join(';'))];
   const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
@@ -202,19 +218,45 @@ export function InvoiceItemsDetailReport() {
     void load();
   }, [load, selectedFirm?.firm_nr]);
 
+  const typeLabels = useMemo<InvoiceItemsDetailTypeLabels>(
+    () => ({
+      sales: tm('salesInvoice') || INVOICE_ITEMS_DETAIL_TYPE_LABELS_TR.sales,
+      purchase: tm('purchaseInvoice') || INVOICE_ITEMS_DETAIL_TYPE_LABELS_TR.purchase,
+      salesReturn: tm('salesReturnInvoice') || INVOICE_ITEMS_DETAIL_TYPE_LABELS_TR.salesReturn,
+      purchaseReturn: tm('purchaseReturnInvoice') || INVOICE_ITEMS_DETAIL_TYPE_LABELS_TR.purchaseReturn,
+      serviceGiven: tm('serviceGivenInvoice') || INVOICE_ITEMS_DETAIL_TYPE_LABELS_TR.serviceGiven,
+      serviceReceived: tm('serviceReceivedInvoice') || INVOICE_ITEMS_DETAIL_TYPE_LABELS_TR.serviceReceived,
+      waybill: tm('ficheTypeWaybill') || INVOICE_ITEMS_DETAIL_TYPE_LABELS_TR.waybill,
+      order: tm('ficheTypeOrder') || INVOICE_ITEMS_DETAIL_TYPE_LABELS_TR.order,
+      quote: tm('salesOffer') || INVOICE_ITEMS_DETAIL_TYPE_LABELS_TR.quote,
+    }),
+    [tm],
+  );
+
+  const typedRows = useMemo(
+    () =>
+      rows.map((r) => ({
+        ...r,
+        invoiceType: invoiceItemsDetailTypeLabel(r.ficheType, r.trcode, typeLabels),
+      })),
+    [rows, typeLabels],
+  );
+
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return rows.filter((r) => {
+    const q = search.trim().toLocaleLowerCase('tr-TR');
+    return typedRows.filter((r) => {
       if (cariIds.length > 0 && !cariIds.includes(r.customerId)) return false;
       if (q) {
-        const blob = `${r.invoiceNo} ${r.customerName} ${r.productName} ${r.phone}`.toLowerCase();
+        const blob = `${r.invoiceNo} ${r.invoiceType} ${r.customerName} ${r.productName} ${r.phone}`.toLocaleLowerCase(
+          'tr-TR',
+        );
         if (!blob.includes(q)) return false;
       }
       if (priceMin != null && r.unitPrice < priceMin) return false;
       if (priceMax != null && r.unitPrice > priceMax) return false;
       return true;
     });
-  }, [rows, cariIds, search, priceMin, priceMax]);
+  }, [typedRows, cariIds, search, priceMin, priceMax]);
 
   const totals = useMemo(() => invoiceItemsDetailCards(filtered), [filtered]);
 
@@ -234,6 +276,12 @@ export function InvoiceItemsDetailReport() {
         header: tm('rprColInvoiceNo') || 'Fatura No',
         size: 150,
         cell: (r) => <span className="font-mono text-xs">{r.invoiceNo || '—'}</span>,
+      },
+      {
+        key: 'invoiceType',
+        header: tm('invoiceType') || 'Fatura Türü',
+        size: 170,
+        cell: (r) => r.invoiceType || '—',
       },
       {
         key: 'customerName',
@@ -273,8 +321,10 @@ export function InvoiceItemsDetailReport() {
         header: tm('rprColDiscount') || 'İskonto',
         type: 'number',
         align: 'right',
-        size: 90,
-        cell: (r) => formatNumber(r.discount, 2, false),
+        size: 100,
+        cell: (r) => (
+          <span className={r.discount < 0 ? 'text-red-500' : ''}>{formatNumber(r.discount, 2, false)}</span>
+        ),
       },
       {
         key: 'lineTotal',
@@ -293,9 +343,13 @@ export function InvoiceItemsDetailReport() {
         align: 'right',
         size: 130,
         footerSum: true,
-        footerFormat: (_sum, rows) => {
-          const cards = invoiceItemsDetailCards(rows);
-          return `${formatNumber(cards.lineTotal, 2, false)} ${currency}`;
+        footerGetValue: (r) => {
+          const n = Number(r.lineTotal);
+          return Number.isFinite(n) ? n : 0;
+        },
+        footerFormat: (sum, groupRows) => {
+          const net = invoiceItemsDetailInvoiceFooterSum(sum, groupRows);
+          return `${formatNumber(net, 2, false)} ${currency}`;
         },
         cell: (r) => (
           <span className={`font-semibold ${r.invoiceTotal < 0 ? 'text-red-500' : ''}`}>
@@ -322,23 +376,8 @@ export function InvoiceItemsDetailReport() {
       onExport={() =>
         exportCsv(
           'fatura_kalem_detay',
-          [
-            'No', 'Tarih', 'Fatura No', 'Müşteri', 'Ürün', 'Miktar', 'Birim Fiyat',
-            'İskonto', 'Satır Toplam', 'Fatura Toplam', 'Telefon',
-          ],
-          filtered.map((r, i) => [
-            String(i + 1),
-            r.date,
-            r.invoiceNo,
-            r.customerName,
-            r.productName,
-            String(r.quantity),
-            String(r.unitPrice),
-            String(r.discount),
-            String(r.lineTotal),
-            String(r.invoiceTotal),
-            r.phone,
-          ]),
+          INVOICE_ITEMS_DETAIL_EXPORT_HEADERS,
+          filtered.map((r, i) => invoiceItemsDetailExportCells(r, i)),
         )
       }
       filters={

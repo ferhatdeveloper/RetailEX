@@ -60,9 +60,12 @@ import {
 } from '../../utils/lastPurchaseCostSql';
 import {
   mergeCashLedgerRefunds,
-  signInvoiceDetailAmounts,
   type SalesCashRefundSource,
 } from '../../utils/reportReturnCashSign';
+import {
+  invoiceItemsDetailTypeLabel,
+  mapInvoiceItemsDetailAmounts,
+} from '../../utils/invoiceItemsDetailAmounts';
 import {
   productCardUnitCost,
   SQL_PRODUCT_CARD_UNIT_COST,
@@ -3922,11 +3925,10 @@ export const erpReportsAPI = {
         LOWER(TRIM(COALESCE(s.fiche_type, ''))) AS fiche_type,
         COALESCE(si.quantity, 0) AS qty,
         COALESCE(si.unit_price, 0) AS unit_price,
-        COALESCE(si.discount_amount, 0) AS discount,
+        COALESCE(si.discount_amount, 0) AS discount_amount,
+        COALESCE(si.discount_rate, 0) AS discount_rate,
         COALESCE(si.total_amount, 0) AS line_gross,
         COALESCE(si.net_amount, 0) AS line_total,
-        -- Fatura başlığı satırda gösterilir. Satış iadesi işaretli mapper'da bir kez eksi olur.
-        COALESCE(s.total_net, 0) AS invoice_total,
         COALESCE(c.phone, '') AS phone
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.invoice_id
@@ -3943,13 +3945,18 @@ export const erpReportsAPI = {
     // döndürür. Burada iki katman arasında tip uyumunu koruyoruz — aksi halde
     // ürün adı boş, miktar 0 görünür (UI sızdıran alanlar).
     return (rows || []).map((r: any) => {
-      const isReturn = isSalesReturnFiche({ fiche_type: r.fiche_type, trcode: r.trcode });
-      const signed = signInvoiceDetailAmounts({
+      const ficheType = String(r.fiche_type ?? '');
+      const trcode = Number(r.trcode ?? 0);
+      const isReturn = isSalesReturnFiche({ fiche_type: ficheType, trcode });
+      const amounts = mapInvoiceItemsDetailAmounts({
         quantity: Number(r.qty ?? 0),
+        unitPrice: Number(r.unit_price ?? 0),
         lineGross: Number(r.line_gross ?? 0),
         lineTotal: Number(r.line_total ?? 0),
-        invoiceTotal: Number(r.invoice_total ?? 0),
-      }, isReturn);
+        discountAmount: Number(r.discount_amount ?? 0),
+        discountRate: Number(r.discount_rate ?? 0),
+        isReturn,
+      });
       return {
         id: String(r.id ?? ''),
         date: String(r.date ?? '').slice(0, 10),
@@ -3958,12 +3965,15 @@ export const erpReportsAPI = {
         customerName: String(r.customer ?? ''),
         productName: String(r.product ?? ''),
         itemType: String(r.item_type ?? ''),
-        quantity: signed.quantity,
-        unitPrice: Number(r.unit_price ?? 0),
-        discount: Number(r.discount ?? 0),
-        lineGross: signed.lineGross,
-        lineTotal: signed.lineTotal,
-        invoiceTotal: signed.invoiceTotal,
+        ficheType,
+        trcode,
+        invoiceType: invoiceItemsDetailTypeLabel(ficheType, trcode),
+        quantity: amounts.quantity,
+        unitPrice: amounts.unitPrice,
+        discount: amounts.discount,
+        lineGross: amounts.lineGross,
+        lineTotal: amounts.lineTotal,
+        invoiceTotal: amounts.invoiceTotal,
         phone: String(r.phone ?? ''),
       };
     });
