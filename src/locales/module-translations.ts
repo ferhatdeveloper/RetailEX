@@ -2991,10 +2991,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'سندوق {cash} — جاری {ledger}. نرخ: دراو و زێڕ (فرۆشتن).',
   },
   cashFxRateLabel: {
-    tr: '1 {ledger} = ? {cash}',
-    en: '1 {ledger} = ? {cash}',
-    ar: '1 {ledger} = ؟ {cash}',
-    ku: '1 {ledger} = ؟ {cash}',
+    tr: '1 {quote} = ? {pivot}',
+    en: '1 {quote} = ? {pivot}',
+    ar: '1 {quote} = ؟ {pivot}',
+    ku: '1 {quote} = ؟ {pivot}',
   },
   cashFxCariAmount: {
     tr: 'Cari düşülecek ({ledger})',

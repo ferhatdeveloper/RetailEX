@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { crossRateFromPivotQuotes } from '../../services/api/masterData';
-import { documentToLedgerFromInverse } from '../../utils/cashLineFx';
+import { convertCashAmountToLedger, documentToLedgerFromInverse } from '../../utils/cashLineFx';
 
 describe('crossRateFromPivotQuotes (Hatwan IQD pivot)', () => {
   it('IQD kasa → USD ledger: 1 IQD = 1/1677.5 USD', () => {
@@ -17,5 +17,19 @@ describe('crossRateFromPivotQuotes (Hatwan IQD pivot)', () => {
   it('UI ters kur → aynı docToLedger', () => {
     const inv = 1677.5;
     expect(documentToLedgerFromInverse(inv)).toBeCloseTo(1 / inv, 12);
+  });
+
+  it('kasa USD / cari IQD: 5 USD × 1678 = 8390 IQD (bölme değil)', () => {
+    const rateInPivot = 1678;
+    const documentToLedger = rateInPivot; // kasa yabancı → çarp
+    expect(convertCashAmountToLedger(5, documentToLedger)).toBe(8390);
+    // Eski hatalı yol (ekrandaki 2.980): amount / rate
+    expect(5_000_000 / rateInPivot).toBeCloseTo(2979.7, 0);
+  });
+
+  it('kasa IQD / cari USD: 750000 IQD ÷ 1678 ≈ 447 USD', () => {
+    const rateInPivot = 1678;
+    const documentToLedger = 1 / rateInPivot;
+    expect(convertCashAmountToLedger(750_000, documentToLedger)).toBeCloseTo(750_000 / 1678, 5);
   });
 });

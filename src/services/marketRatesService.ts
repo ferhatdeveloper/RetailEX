@@ -382,31 +382,73 @@ export function pickHatwanPivotRate(
 }
 
 /**
- * Cari tahsilat UI: 1 ledgerCurrency = kaç cashCurrency.
- * Öncelik: Hatwan (Kur & Altın) → exchange_rates DB.
- * Örn. kasa IQD + cari USD → Hatwan USD satış (1677,5).
+ * Hatwan tipi kur çifti (Irak piyasası): her zaman «1 yabancı = X IQD».
+ * documentToLedger = 1 birim kasa dövizi → kaç birim cari (firma ana para).
  */
-export async function resolveOneLedgerUnitInCash(
+export type CashFxHatwanQuote = {
+  /** Gösterim sol: örn. USD */
+  quoteCode: string;
+  /** Gösterim sağ / pivot: genelde IQD */
+  pivotCode: string;
+  /** 1 quoteCode = rateInPivot pivotCode (örn. 1677,5) */
+  rateInPivot: number;
+  /** cash_lines.exchange_rate: 1 cash → ? ledger */
+  documentToLedger: number;
+};
+
+/**
+ * Cari tahsilat için Hatwan uyumlu kur.
+ * Örn. kasa USD + cari IQD → rateInPivot=1677,5; documentToLedger=1677,5 (çarpma).
+ * Örn. kasa IQD + cari USD → rateInPivot=1677,5; documentToLedger=1/1677,5 (bölme).
+ */
+export async function resolveCashFxHatwanQuote(
   cashCurrency: string,
   ledgerCurrency: string,
   asOfDate: string,
   rateType: 'Satış' | 'Alış' = 'Satış',
-): Promise<number | null> {
+): Promise<CashFxHatwanQuote | null> {
   const cash = String(cashCurrency || '').trim().toUpperCase();
   const ledger = String(ledgerCurrency || '').trim().toUpperCase();
   if (!cash || !ledger) return null;
-  if (cash === ledger) return 1;
-
-  // En sık: IQD kasa ↔ USD (veya EUR) cari — Hatwan satırı doğrudan «1 USD = X IQD»
-  if (cash === 'IQD') {
-    const hatwan = pickHatwanPivotRate(ledger, rateType);
-    if (hatwan != null) return hatwan;
-  }
-  if (ledger === 'IQD') {
-    const hatwan = pickHatwanPivotRate(cash, rateType);
-    if (hatwan != null && hatwan > 0) return 1 / hatwan;
+  if (cash === ledger) {
+    return {
+      quoteCode: cash,
+      pivotCode: cash,
+      rateInPivot: 1,
+      documentToLedger: 1,
+    };
   }
 
+  const pivot = 'IQD';
+  const foreign = cash === pivot ? ledger : ledger === pivot ? cash : null;
+
+  if (foreign) {
+    let rateInPivot = pickHatwanPivotRate(foreign, rateType);
+    if (rateInPivot == null) {
+      const { resolveDocumentCurrencyRateToLedger } = await import('./api/masterData');
+      // 1 foreign → ? IQD
+      const foreignToIqd = await resolveDocumentCurrencyRateToLedger(
+        foreign,
+        pivot,
+        asOfDate,
+        rateType,
+      );
+      if (foreignToIqd != null && foreignToIqd > 0) rateInPivot = foreignToIqd;
+    }
+    if (rateInPivot == null || !(rateInPivot > 0)) return null;
+
+    // Kasa = yabancı (USD), cari = IQD → çarp
+    // Kasa = IQD, cari = yabancı (USD) → böl
+    const documentToLedger = cash === pivot ? 1 / rateInPivot : rateInPivot;
+    return {
+      quoteCode: foreign,
+      pivotCode: pivot,
+      rateInPivot,
+      documentToLedger,
+    };
+  }
+
+  // IQD dışındaki çapraz (örn. USD↔EUR): belge→ledger çapraz kur
   const { resolveDocumentCurrencyRateToLedger } = await import('./api/masterData');
   const docToLed = await resolveDocumentCurrencyRateToLedger(
     cash,
@@ -415,5 +457,22 @@ export async function resolveOneLedgerUnitInCash(
     rateType,
   );
   if (docToLed == null || !(docToLed > 0)) return null;
-  return 1 / docToLed;
+  return {
+    quoteCode: cash,
+    pivotCode: ledger,
+    rateInPivot: docToLed,
+    documentToLedger: docToLed,
+  };
+}
+
+/** @deprecated resolveCashFxHatwanQuote kullanın */
+export async function resolveOneLedgerUnitInCash(
+  cashCurrency: string,
+  ledgerCurrency: string,
+  asOfDate: string,
+  rateType: 'Satış' | 'Alış' = 'Satış',
+): Promise<number | null> {
+  const q = await resolveCashFxHatwanQuote(cashCurrency, ledgerCurrency, asOfDate, rateType);
+  if (!q || !(q.documentToLedger > 0)) return null;
+  return 1 / q.documentToLedger;
 }

@@ -29,7 +29,7 @@ import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { supplierAPI } from '../../../services/api/suppliers';
 import { partnerAPI } from '../../../services/api/partiesPartners';
 import { cashPaymentListBalanceForDisplay } from '../../../utils/cashPaymentListBalance';
-import { resolveOneLedgerUnitInCash } from '../../../services/marketRatesService';
+import { resolveCashFxHatwanQuote } from '../../../services/marketRatesService';
 import type { Invoice, PartyPartner } from '../../../core/types/models';
 import { formatNumber, parseNumber } from '../../../utils/formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency } from '../../../utils/currency';
@@ -183,12 +183,14 @@ export function KasaIslemModal({
   // Amount Formatting Logic
   const [displayAmount, setDisplayAmount] = useState('');
   /**
-   * Çapraz döviz: 1 firma ana para = ? işlem dövizi (örn. 1 USD = 1310 IQD).
-   * DB'ye yazılan exchange_rate bunun tersidir (1 IQD → USD).
+   * Hatwan gösterim kuru: 1 quote = ? pivot (örn. 1 USD = 1677,5 IQD).
+   * documentToLedger yönü kasa↔cari çiftine göre ayrı hesaplanır.
    */
-  const [displayInverseRate, setDisplayInverseRate] = useState('');
+  const [displayHatwanRate, setDisplayHatwanRate] = useState('');
+  const [fxQuoteCode, setFxQuoteCode] = useState('USD');
+  const [fxPivotCode, setFxPivotCode] = useState('IQD');
   const fxRateUserTouchedRef = useRef(false);
-  /** Belge (kasa) → ledger (ana para) kuru */
+  /** Belge (kasa) → ledger (ana para) kuru — cash_lines.exchange_rate */
   const [docToLedgerRate, setDocToLedgerRate] = useState(1);
 
   const cashCurrency = String(formData.doviz_kodu || ledgerCurrency).trim().toUpperCase();
@@ -214,11 +216,11 @@ export function KasaIslemModal({
     }
   }, [formData.tutar]);
 
-  // Çapraz döviz: önce Kur & Altın (Hatwan) USD/EUR, yoksa exchange_rates
+  // Çapraz döviz: Hatwan «1 USD = X IQD»; yön (çarp/böl) kasa↔cari’ye göre
   useEffect(() => {
     if (!isCrossCurrencyCari) {
       setDocToLedgerRate(1);
-      setDisplayInverseRate('');
+      setDisplayHatwanRate('');
       fxRateUserTouchedRef.current = false;
       return;
     }
@@ -229,20 +231,18 @@ export function KasaIslemModal({
     const asOf = String(formData.islem_tarihi || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
     (async () => {
       try {
-        // 1 ledger = ? cash — Hatwan USD satışı (örn. 1677,5) öncelikli
-        const oneLedgerInCash = await resolveOneLedgerUnitInCash(
+        const quote = await resolveCashFxHatwanQuote(
           cashCurrency,
           ledgerCurrency,
           asOf,
           'Satış',
         );
         if (cancelled || fxRateUserTouchedRef.current) return;
-        if (oneLedgerInCash != null && oneLedgerInCash > 0) {
-          const docRate = documentToLedgerFromInverse(oneLedgerInCash);
-          if (docRate != null && docRate > 0) {
-            setDocToLedgerRate(docRate);
-            setDisplayInverseRate(formatNumber(oneLedgerInCash));
-          }
+        if (quote && quote.documentToLedger > 0 && quote.rateInPivot > 0) {
+          setDocToLedgerRate(quote.documentToLedger);
+          setFxQuoteCode(quote.quoteCode);
+          setFxPivotCode(quote.pivotCode);
+          setDisplayHatwanRate(formatNumber(quote.rateInPivot));
         }
       } catch {
         /* kur yoksa kullanıcı elle girer */
@@ -253,14 +253,27 @@ export function KasaIslemModal({
     };
   }, [isCrossCurrencyCari, cashCurrency, ledgerCurrency, formData.islem_tarihi, isEdit]);
 
-  // Düzenleme: kayıtlı kuru yükle
+  // Düzenleme: kayıtlı kuru yükle — gösterimi Hatwan (1 yabancı = X IQD) olarak geri çevir
   useEffect(() => {
     if (!isEdit || !editingIslem) return;
     const storedRate = Number(editingIslem.exchange_rate);
     if (Number.isFinite(storedRate) && storedRate > 0 && Math.abs(storedRate - 1) > 1e-9) {
       setDocToLedgerRate(storedRate);
-      const inv = invertDocumentToLedgerRate(storedRate);
-      setDisplayInverseRate(inv != null ? formatNumber(inv) : '');
+      const cash = String(editingIslem.doviz_kodu || cashCurrency).trim().toUpperCase();
+      const led = ledgerCurrency;
+      if (cash === 'IQD' && led !== 'IQD') {
+        setFxQuoteCode(led);
+        setFxPivotCode('IQD');
+        const inv = invertDocumentToLedgerRate(storedRate);
+        setDisplayHatwanRate(inv != null ? formatNumber(inv) : '');
+      } else if (led === 'IQD' && cash !== 'IQD') {
+        setFxQuoteCode(cash);
+        setFxPivotCode('IQD');
+        setDisplayHatwanRate(formatNumber(storedRate));
+      } else {
+        const inv = invertDocumentToLedgerRate(storedRate);
+        setDisplayHatwanRate(inv != null ? formatNumber(inv) : formatNumber(storedRate));
+      }
       fxRateUserTouchedRef.current = true;
     }
   }, [isEdit, editingIslem?.id]);
@@ -285,19 +298,28 @@ export function KasaIslemModal({
     e.target.select();
   };
 
-  const handleInverseRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleHatwanRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     if (!/^[0-9.,]*$/.test(val)) return;
     fxRateUserTouchedRef.current = true;
-    setDisplayInverseRate(val);
-    const inv = parseNumber(val);
-    const docRate = documentToLedgerFromInverse(inv);
-    if (docRate != null && docRate > 0) setDocToLedgerRate(docRate);
+    setDisplayHatwanRate(val);
+    const rateInPivot = parseNumber(val);
+    if (!(rateInPivot > 0)) return;
+    // Hatwan: 1 quote = rateInPivot IQD. Kasa IQD ise böl; kasa yabancı ise çarp.
+    if (cashCurrency === 'IQD' && fxQuoteCode !== 'IQD') {
+      const docRate = documentToLedgerFromInverse(rateInPivot);
+      if (docRate != null && docRate > 0) setDocToLedgerRate(docRate);
+    } else if (ledgerCurrency === 'IQD' && cashCurrency !== 'IQD') {
+      setDocToLedgerRate(rateInPivot);
+    } else {
+      const docRate = documentToLedgerFromInverse(rateInPivot);
+      if (docRate != null && docRate > 0) setDocToLedgerRate(docRate);
+    }
   };
 
-  const handleInverseRateBlur = () => {
-    const inv = invertDocumentToLedgerRate(docToLedgerRate);
-    if (inv != null) setDisplayInverseRate(formatNumber(inv));
+  const handleHatwanRateBlur = () => {
+    const n = parseNumber(displayHatwanRate);
+    if (n > 0) setDisplayHatwanRate(formatNumber(n));
   };
 
   const [cariHesaplar, setCariHesaplar] = useState<CariHesap[]>([]);
@@ -1210,18 +1232,18 @@ export function KasaIslemModal({
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     {tm('cashFxRateLabel')
-                      ?.replace('{ledger}', ledgerCurrency)
-                      ?.replace('{cash}', cashCurrency) ||
-                      `1 ${ledgerCurrency} = ? ${cashCurrency}`}
+                      ?.replace('{quote}', fxQuoteCode)
+                      ?.replace('{pivot}', fxPivotCode) ||
+                      `1 ${fxQuoteCode} = ? ${fxPivotCode}`}
                   </label>
                   <input
                     type="text"
                     inputMode="decimal"
-                    value={displayInverseRate}
-                    onChange={handleInverseRateChange}
-                    onBlur={handleInverseRateBlur}
+                    value={displayHatwanRate}
+                    onChange={handleHatwanRateChange}
+                    onBlur={handleHatwanRateBlur}
                     className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 rounded text-sm font-semibold outline-none focus:ring-1 focus:ring-amber-500"
-                    placeholder="1310"
+                    placeholder="1677,5"
                   />
                 </div>
                 <div className="space-y-1.5">
