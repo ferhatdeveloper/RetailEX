@@ -12,7 +12,7 @@ const SKIP_SUM_RE =
 const UNIT_PRICE_RE = /(^|_)(price|unit_price|unitprice|avg|average)(_|$)/i;
 
 const SUM_ID_RE =
-  /qty|quantity|miktar|adet|amount|tutar|total|toplam|revenue|cogs|profit|stock|value|debit|credit|balance|incoming|outgoing|inqty|outqty|inamt|outamt|inamount|outamount|sold|satilan|net_|gross_|count/i;
+  /qty|quantity|miktar|adet|amount|tutar|total|toplam|revenue|cogs|profit|stock|value|debit|credit|balance|incoming|outgoing|inqty|outqty|inamt|outamt|inamount|outamount|sold|satilan|net_|gross_|count|commission/i;
 
 /** Miktar / adet / stok sayımı — footer'da para birimi yok. */
 const QTY_LIKE_COLUMN_RE =
@@ -20,7 +20,7 @@ const QTY_LIKE_COLUMN_RE =
 
 /** Tutar / para kolonları — footer'da sistem (firma) para birimi. */
 const MONEY_COLUMN_RE =
-  /(amount|tutar|(^|_)amt(_|$)|inamt|outamt|revenue|cogs|profit|value|debit|credit|balance|incoming|outgoing|collected|recv|pay|inflow|outflow|beforediscount|before_discount|(^|_)(total|cost|sales|purchased|gross)(_|$)|total_cost|totalcost|totalsales|totalpurchased|totalrevenue|grossprofit|stockvalue|stock_value)/i;
+  /(amount|tutar|(^|_)amt(_|$)|inamt|outamt|revenue|cogs|profit|value|debit|credit|balance|incoming|outgoing|collected|recv|pay|inflow|outflow|beforediscount|before_discount|(^|_)(total|cost|sales|purchased|gross)(_|$)|total_cost|totalcost|totalsales|totalpurchased|totalrevenue|grossprofit|stockvalue|stock_value|commission)/i;
 
 export function isReportCodeColumnId(id: unknown): boolean {
   const s = String(id || '').trim();

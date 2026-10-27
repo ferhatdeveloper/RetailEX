@@ -13,6 +13,7 @@ import {
   getCustomerCostProfitAnalysis,
   type CustomerCostProfitRow,
 } from '../../../services/layeredInventoryCost';
+import { downloadCsvTable } from '../../../utils/excelCellValue';
 import { toSqlDateInputString, localTodayDateKey } from '../../../utils/localCalendarDate';
 import {
   ReportDataGrid,
@@ -222,20 +223,20 @@ export function CustomerProfitabilityReport() {
   );
 
   const exportToExcel = () => {
-    let csv =
-      'Müşteri Kodu,Müşteri Adı,İşlem Sayısı,Satış Tutarı,Maliyet,Brüt Kar,Kar Marjı %,Ort. İşlem Değeri\n';
-    filteredData.forEach((c) => {
-      csv += `${c.customerCode || c.customerId},${c.customerName},${c.transactionCount},${c.totalRevenue},${c.totalCost},${c.grossProfit},${c.profitMargin.toFixed(2)},${c.avgTransactionValue}\n`;
-    });
-
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `customer-profitability-${period?.donem_adi ?? period?.name ?? 'donem'}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-
+    downloadCsvTable(
+      `customer-profitability-${period?.donem_adi ?? period?.name ?? 'donem'}`,
+      ['Müşteri Kodu', 'Müşteri Adı', 'İşlem Sayısı', 'Satış Tutarı', 'Maliyet', 'Brüt Kar', 'Kar Marjı %', 'Ort. İşlem Değeri'],
+      filteredData.map((c) => [
+        c.customerCode || c.customerId,
+        c.customerName,
+        c.transactionCount,
+        c.totalRevenue,
+        c.totalCost,
+        c.grossProfit,
+        c.profitMargin.toFixed(2),
+        c.avgTransactionValue,
+      ]),
+    );
     toast.success(tm('rptProfitExportOk'));
   };
 

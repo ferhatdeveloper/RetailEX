@@ -1,6 +1,5 @@
 import type { DevExPivotRow } from './devExGroupPivot';
-import { exportAoaToExcel, formatGridExportAmount } from './gridExcelExport';
-import { formatNumber } from './formatNumber';
+import { exportAoaToExcel } from './gridExcelExport';
 
 export type GroupDashboardMetric = {
   id: string;
@@ -41,12 +40,12 @@ export function buildGroupDashboardExportAoa(input: GroupDashboardExportInput): 
   if (pivot) {
     columns.push({
       header: countHeader,
-      read: (row) => formatNumber(row.count, 0, false),
+      read: (row) => Number(row.count) || 0,
     });
     for (const metric of metrics) {
       columns.push({
         header: metricLabel(metric, metric.id),
-        read: (row) => formatGridExportAmount(Number(row.values[metric.id]) || 0),
+        read: (row) => Number(row.values[metric.id]) || 0,
       });
     }
   } else {
@@ -56,14 +55,14 @@ export function buildGroupDashboardExportAoa(input: GroupDashboardExportInput): 
       if (id === '__count__') {
         columns.push({
           header: countHeader,
-          read: (row) => formatNumber(row.count, 0, false),
+          read: (row) => Number(row.count) || 0,
         });
         continue;
       }
       const metric = metricById.get(id);
       columns.push({
         header: metricLabel(metric, id),
-        read: (row) => formatGridExportAmount(Number(row.values[id]) || 0),
+        read: (row) => Number(row.values[id]) || 0,
       });
     }
   }

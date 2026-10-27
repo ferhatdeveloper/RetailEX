@@ -5,6 +5,7 @@
  */
 
 import { Sale, Product } from '../App';
+import { csvCell, csvTextCell, excelAmountCellValue, readExcelNumberCell } from '../utils/excelCellValue';
 
 // Export types
 export type ExportFormat = 'excel' | 'pdf' | 'csv';
@@ -65,9 +66,12 @@ class ExcelExportStrategy implements ExportStrategy {
       data.forEach(row => {
         xml += '<Row>\n';
         headers.forEach(header => {
-          const value = row[header];
-          const type = typeof value === 'number' ? 'Number' : 'String';
-          xml += `<Cell><Data ss:Type="${type}">${this.escapeXml(String(value))}</Data></Cell>\n`;
+          const prepared = excelAmountCellValue(header, row[header]);
+          const marked = readExcelNumberCell(prepared);
+          const numeric = marked?.value ?? (typeof prepared === 'number' && Number.isFinite(prepared) ? prepared : null);
+          const type = numeric != null ? 'Number' : 'String';
+          const shown = numeric != null ? String(numeric) : String(prepared ?? '');
+          xml += `<Cell><Data ss:Type="${type}">${this.escapeXml(shown)}</Data></Cell>\n`;
         });
         xml += '</Row>\n';
       });
@@ -173,20 +177,10 @@ class CSVExportStrategy implements ExportStrategy {
     let csv = '';
 
     if (data.length > 0) {
-      // Header
       const headers = Object.keys(data[0]);
-      csv += headers.join(',') + '\n';
-
-      // Data
+      csv += headers.map((header) => csvTextCell(header)).join(';') + '\n';
       data.forEach(row => {
-        const values = headers.map(header => {
-          let value = row[header];
-          if (typeof value === 'string' && value.includes(',')) {
-            value = `"${value}"`;
-          }
-          return value;
-        });
-        csv += values.join(',') + '\n';
+        csv += headers.map((header) => csvCell(header, row[header])).join(';') + '\n';
       });
     }
 

@@ -9,6 +9,7 @@ import {
   buildStyledWorksheet,
   type StyledWorksheetOptions,
 } from '../../../utils/excelStyles';
+import { excelAmountCellValue } from '../../../utils/excelCellValue';
 
 export type InvoiceExcelGroupMode = 'line' | 'customer' | 'product';
 
@@ -411,26 +412,31 @@ function rowsToWorksheet(
   const headers = Object.keys(rows[0]);
   const aoa: unknown[][] = [headers];
   for (const row of rows) {
-    aoa.push(headers.map((h) => row[h] ?? ''));
+    aoa.push(headers.map((h) => excelAmountCellValue(h, row[h] ?? '')));
   }
+  const flat = aoa.map((line) =>
+    line.map((cell) => {
+      if (cell && typeof cell === 'object' && (cell as { __excelNumber?: boolean }).__excelNumber) {
+        return (cell as { value: number }).value;
+      }
+      return cell;
+    }),
+  );
 
-  // Para birimi kolonları — başlık adına göre tespit
+  // Başlık ve ilk veri satırı birleştirilmez. Belge adı sayfa adındadır.
   const currencyColumns = headers.filter((h) =>
-    /(tutar|fiyat|toplam|harcama|amount|price|total|borç|alacak|bakiye)/i.test(h),
+    /(tutar|fiyat|toplam|harcama|amount|price|total|borç|alacak|bakiye|prim|indirim|miktar)/i.test(h),
   );
 
   const options2: StyledWorksheetOptions = {
-    title: options.title,
-    subtitle: options.subtitle,
-    headerRowIndex: 1, // AOA'nın 1. satırı (0-indexed = 0) veri başlığı
+    headerRowIndex: 1,
     columnCount: headers.length,
     currencyColumns,
     totalRow: options.totalRow,
-    groupRowIndices: options.groupRowIndices,
-    dataStartIndex: 1, // AOA'nın 1. satırı (0-indexed = 1) veri başlangıcı
+    dataStartIndex: 1,
   };
 
-  return buildStyledWorksheet(aoa, options2);
+  return buildStyledWorksheet(flat, options2);
 }
 
 export function InvoiceExcelExportModal({

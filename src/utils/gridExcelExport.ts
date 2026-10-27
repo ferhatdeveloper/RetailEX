@@ -5,11 +5,25 @@ import { formatReportDateCell, type DateInput } from './dateLocale';
 import { formatNumber } from './formatNumber';
 import { coerceReportNumber, excelCellDisplay, isReportMoneyColumnId, isReportSumColumnId } from './reportGridChrome';
 import { printReportHtml } from './reportHtmlPrint';
+import {
+  excelAmountCellValue,
+  excelNumberCell,
+  headerIsAmount,
+  headerKeepsText,
+  readExcelNumberCell,
+  type ExcelDirection,
+} from './excelCellValue';
 
 /** Otomatik grup başlığı / alt toplam. Ham satır kopyası olduğu için Excel’e yazılmaz. */
 const SYNTHETIC_ROW_KIND = '__devexRowKind';
 
 function cellText(value: unknown): string {
+  const marked = readExcelNumberCell(value);
+  if (marked) {
+    const text = formatGridExportAmount(marked.value);
+    return marked.direction ? `${text} (${marked.direction})` : text;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) return formatGridExportAmount(value);
   if (value == null) return '';
   if (typeof value === 'object') return '';
   return String(value);
@@ -41,6 +55,8 @@ type ColumnMeta = {
   type?: string;
   filterKind?: string;
   format?: string;
+  /** Ekrandaki (A) / (B). Satır tutarını işaretli bakiyeye çevirmez. */
+  excelDirection?: (row: unknown) => ExcelDirection | null | undefined;
 };
 
 function columnMeta<T>(col: ColumnDef<T, unknown>): ColumnMeta {
@@ -78,6 +94,17 @@ export function formatGridExportAmount(value: number): string {
   return formatNumber(value, 2);
 }
 
+function isExportAmountColumn<T>(col: ColumnDef<T, unknown>, id: string): boolean {
+  const header = headerLabel(col);
+  if (headerKeepsText(header) || isDateColumn(col)) return false;
+  const meta = columnMeta(col);
+  if (meta.type === 'currency' || meta.format === 'currency') return true;
+  if (isReportSumColumnId(id) || isReportMoneyColumnId(id)) return true;
+  if (headerIsAmount(header)) return true;
+  if (meta.type === 'number' || meta.filterKind === 'number' || meta.format === 'number') return true;
+  return false;
+}
+
 function formatExportCell<T>(
   col: ColumnDef<T, unknown>,
   raw: unknown,
@@ -90,9 +117,19 @@ function formatExportCell<T>(
     const text = formatReportDateCell(shown as DateInput, null, { fallback: '' });
     if (text) return text;
   }
-  if (amountColumnIds.has(id)) {
-    const n = coerceNumber(shown);
-    if (n != null) return formatGridExportAmount(n);
+  const header = headerLabel(col);
+  const amountColumn = amountColumnIds.has(id) || isExportAmountColumn(col, id);
+  if (amountColumn) {
+    if (shown == null || shown === '') return '';
+    const prepared = excelAmountCellValue(header, shown);
+    const marked = readExcelNumberCell(prepared);
+    const numeric = marked?.value ?? (typeof prepared === 'number' && Number.isFinite(prepared) ? prepared : null);
+    if (numeric != null) {
+      const fromMeta = columnMeta(col).excelDirection?.(row);
+      const direction = marked?.direction ?? (fromMeta === 'A' || fromMeta === 'B' ? fromMeta : undefined);
+      if (direction) return excelNumberCell(numeric, direction);
+      return numeric;
+    }
   }
   if (shown == null) return '';
   if (typeof shown === 'object') return '';
@@ -153,7 +190,7 @@ function amountColumnIds<T>(
 
 /**
  * Izgara Excel satırları. Başlıklar kolon başlığıdır; sentetik grup satırları yazılmaz.
- * Tutarlar ekrandaki gibi binlik ayraçlıdır. Dip toplam, verilen getValue ile hesaplanır.
+ * Tutarlar gerçek sayıdır. Dip toplam, verilen getValue ile hesaplanır.
  */
 export function buildDataGridExportAoa<T>(
   rows: T[],
@@ -201,7 +238,7 @@ export function buildDataGridExportAoa<T>(
     aoa.push(
       exportCols.map((col) => {
         const id = columnIdOf(col);
-        if (sumById.has(id)) return formatGridExportAmount(sumById.get(id) ?? 0);
+        if (sumById.has(id)) return sumById.get(id) ?? 0;
         if (!labelPlaced) {
           labelPlaced = true;
           return `${label} (${detailRows.length})`;
@@ -214,27 +251,37 @@ export function buildDataGridExportAoa<T>(
   return { headers, aoa };
 }
 
-/** Türkçe binlik: 75.000 ve 14.000,50. Tarih (26.10.2026) eşleşmez. */
-const TR_THOUSANDS_AMOUNT = /^-?\d{1,3}(\.\d{3})+(,\d{1,2})?$/;
-
-/**
- * Excel İngilizce yerelde "75.000" metnini 75 okur.
- * Tutar kolonunda bu metin gerçek sayıya çevrilir: 75.000 → 75000.
- */
-export function excelAmountCellValue(header: string, value: unknown): unknown {
-  if (typeof value !== 'string') return value;
-  if (!/(tutar|indirim)/i.test(header)) return value;
-  const text = value.trim();
-  if (!TR_THOUSANDS_AMOUNT.test(text)) return value;
-  const n = Number(text.replace(/\./g, '').replace(',', '.'));
-  return Number.isFinite(n) ? n : value;
-}
-
 function coerceExcelAmountAoa(aoa: unknown[][]): unknown[][] {
   const headers = (aoa[0] ?? []).map((cell) => (cell == null ? '' : String(cell)));
   return aoa.map((row, rowIndex) => {
     if (rowIndex === 0) return row;
     return row.map((cell, colIndex) => excelAmountCellValue(headers[colIndex] ?? '', cell));
+  });
+}
+
+function flattenExcelNumbers(aoa: unknown[][]): unknown[][] {
+  return aoa.map((row) =>
+    row.map((cell) => {
+      const marked = readExcelNumberCell(cell);
+      return marked ? marked.value : cell;
+    }),
+  );
+}
+
+/** (A) / (B) sayı değerinin üstüne biçim olarak yazılır. Toplam fonksiyonu sayıyı okur. */
+export function applyExcelDirectionFormats(ws: XLSX.WorkSheet, source: unknown[][]): void {
+  source.forEach((row, r) => {
+    row.forEach((cell, c) => {
+      const marked = readExcelNumberCell(cell);
+      if (!marked?.direction) return;
+      const ref = XLSX.utils.encode_cell({ r, c });
+      const sheetCell = ws[ref];
+      if (!sheetCell) return;
+      sheetCell.t = 'n';
+      sheetCell.v = marked.value;
+      const base = Number.isInteger(marked.value) ? '#,##0' : '#,##0.00';
+      sheetCell.z = `${base}" (${marked.direction})"`;
+    });
   });
 }
 
@@ -245,16 +292,16 @@ function coerceExcelAmountAoa(aoa: unknown[][]): unknown[][] {
 export function buildGridExportWorksheet(aoa: unknown[][], headers: string[]): XLSX.WorkSheet {
   const columnCount = Math.max(headers.length, aoa[0]?.length ?? 0);
   const normalized = coerceExcelAmountAoa(aoa);
-  const sheetAoa = normalized.length > 1 ? normalized : [headers, headers.map(() => '')];
-  const currencyColumns = headers.filter((h) =>
-    /(tutar|fiyat|toplam|harcama|amount|price|total|borç|alacak|bakiye|debt|credit|balance|prim)/i.test(h),
-  );
-  return buildStyledWorksheet(sheetAoa, {
+  const sheetAoa = flattenExcelNumbers(normalized.length > 1 ? normalized : [headers, headers.map(() => '')]);
+  const currencyColumns = headers.filter((h) => headerIsAmount(h));
+  const ws = buildStyledWorksheet(sheetAoa, {
     headerRowIndex: 1,
     columnCount,
     currencyColumns,
     dataStartIndex: 1,
   });
+  applyExcelDirectionFormats(ws, normalized.length > 1 ? normalized : sheetAoa);
+  return ws;
 }
 
 function writeAoaWorkbook(aoa: unknown[][], headers: string[], fileName: string): void {
@@ -326,3 +373,4 @@ function escapeHtml(s: string): string {
 }
 
 export { cellText, headerLabel, coerceNumber };
+export { excelAmountCellValue } from './excelCellValue';

@@ -1,5 +1,6 @@
 ﻿// Enterprise Warehouse Management System - Utility Functions
 
+import { downloadCsvTable } from '../../utils/excelCellValue';
 import type { Bin, StockItem, PickingTaskItem } from './types';
 
 /**
@@ -498,26 +499,12 @@ export const getStatusColor = (status: string): string => {
  */
 export const exportToCSV = (data: any[], filename: string): void => {
   if (data.length === 0) return;
-
   const headers = Object.keys(data[0]);
-  const csvContent = [
-    headers.join(','),
-    ...data.map(row =>
-      headers.map(header => {
-        const value = row[header];
-        // Escape quotes and wrap in quotes if contains comma
-        if (typeof value === 'string' && value.includes(',')) {
-          return `"${value.replace(/"/g, '""')}"`;
-        }
-        return value;
-      }).join(',')
-    )
-  ].join('\n');
-
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
-  link.click();
+  const stamp = new Date().toISOString().split('T')[0];
+  downloadCsvTable(
+    `${filename}_${stamp}`,
+    headers,
+    data.map((row) => headers.map((header) => row[header])),
+  );
 };
 

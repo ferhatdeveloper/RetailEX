@@ -3,6 +3,7 @@ import { BarChart3, FileText, Download, Filter, Calendar, TrendingUp, AlertCircl
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { downloadCsvTable } from '../../../utils/excelCellValue';
 import { formatNumber } from '../../../utils/formatNumber';
 import { productAPI } from '../../../services/api/products';
 import type { Product } from '../../../core/types';
@@ -350,22 +351,11 @@ function StockBalanceReport({
     }, [rows]);
 
     const exportCsv = () => {
-        const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-        const lines = [
-            ['Depo Kodu', 'Depo', 'Malzeme Kodu', 'Malzeme', 'Miktar', 'Birim Maliyet', 'Toplam Değer'].map(esc).join(';'),
-            ...rows.map((r) =>
-                [r.warehouseCode, r.warehouseName, r.productCode, r.productName, r.quantity, r.costPrice, r.value]
-                    .map(esc)
-                    .join(';'),
-            ),
-        ];
-        const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'malzeme_depo_bakiye.csv';
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadCsvTable(
+            'malzeme_depo_bakiye',
+            ['Depo Kodu', 'Depo', 'Malzeme Kodu', 'Malzeme', 'Miktar', 'Birim Maliyet', 'Toplam Değer'],
+            rows.map((r) => [r.warehouseCode, r.warehouseName, r.productCode, r.productName, r.quantity, r.costPrice, r.value]),
+        );
     };
 
     return (
@@ -589,24 +579,11 @@ function DetailedMaterialListReport({
     }, [warehouseId, startDate, endDate, selectedProduct?.id]);
 
     const exportCsv = () => {
-        const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-        const lines = [
-            ['Tarih', 'Depo', 'Hareket', 'Belge No', 'Malzeme Kodu', 'Malzeme', 'Miktar', 'Birim Fiyat', 'Tutar', 'Açıklama']
-                .map(esc)
-                .join(';'),
-            ...rows.map((r) =>
-                [r.date, r.warehouseName, r.movementType, r.documentNo, r.productCode, r.productName, r.quantity, r.unitPrice, r.amount, r.description]
-                    .map(esc)
-                    .join(';'),
-            ),
-        ];
-        const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'ayrintili_malzeme_listesi.csv';
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadCsvTable(
+            'ayrintili_malzeme_listesi',
+            ['Tarih', 'Depo', 'Hareket', 'Belge No', 'Malzeme Kodu', 'Malzeme', 'Miktar', 'Birim Fiyat', 'Tutar', 'Açıklama'],
+            rows.map((r) => [r.date, r.warehouseName, r.movementType, r.documentNo, r.productCode, r.productName, r.quantity, r.unitPrice, r.amount, r.description]),
+        );
     };
 
     return (

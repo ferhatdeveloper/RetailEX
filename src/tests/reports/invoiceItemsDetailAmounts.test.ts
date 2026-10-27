@@ -207,6 +207,7 @@ describe('fatura kalem detayı iskonto ve net toplam', () => {
     );
     expect(INVOICE_ITEMS_DETAIL_EXPORT_HEADERS).toContain('Fatura Türü');
     expect(cells).toHaveLength(INVOICE_ITEMS_DETAIL_EXPORT_HEADERS.length);
+    expect(cells[1]).toBe('26.10.2026');
     expect(cells[3]).toBe('Satış Faturası');
     expect(cells[8]).toBe('1000');
     expect(cells[9]).toBe('14000');

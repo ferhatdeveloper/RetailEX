@@ -1,6 +1,7 @@
 ﻿// Advanced DataTable Component - Enterprise Grade
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { downloadCsvTable } from '../../utils/excelCellValue';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { moduleTranslations } from '../../locales/module-translations';
 import { 
@@ -205,20 +206,11 @@ export function DataTable<T extends Record<string, any>>({
   // Export to CSV
   const exportToCSV = () => {
     const visibleColumns = columns.filter(c => !c.hidden);
-    const headers = visibleColumns.map(c => c.header).join(',');
-    const rows = sortedData.map(row =>
-      visibleColumns.map(col => {
-        const value = getCellValue(row, col);
-        return `"${String(value).replace(/"/g, '""')}"`;
-      }).join(',')
+    downloadCsvTable(
+      `export-${Date.now()}`,
+      visibleColumns.map(c => c.header),
+      sortedData.map(row => visibleColumns.map(col => getCellValue(row, col))),
     );
-
-    const csv = [headers, ...rows].join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `export-${Date.now()}.csv`;
-    link.click();
   };
 
   // Column resize handlers

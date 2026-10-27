@@ -10,6 +10,7 @@
  *  - Dip toplam satır netlerinin toplamıdır. Grup alt toplamı satır dizisi boş gelse de
  *    önceden hesaplanan toplam (sum) kullanılır; 0 yazılmaz.
  */
+import { formatReportDateCell } from './dateLocale';
 import { signInvoiceDetailAmounts } from './reportReturnCashSign';
 
 export type InvoiceItemsDetailTypeLabels = {
@@ -222,7 +223,7 @@ export function invoiceItemsDetailExportCells(row: {
 }, index: number): string[] {
   return [
     String(index + 1),
-    row.date,
+    formatReportDateCell(row.date, null, { fallback: row.date || '' }),
     row.invoiceNo,
     row.invoiceType,
     row.customerName,

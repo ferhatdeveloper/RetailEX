@@ -29,6 +29,7 @@ import { Download, Loader2, RefreshCw, X } from 'lucide-react';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import type { ColumnDef } from '@tanstack/react-table';
+import { downloadCsvRecords } from '../../utils/excelCellValue';
 import { staffDbApi } from '../../services/staffManagementService';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 
@@ -76,18 +77,7 @@ const STATUS_LABELS: Record<string, { tr: string; en: string; ar: string; ku: st
 };
 
 function exportCsv(fileName: string, headers: string[], rows: Array<Record<string, unknown>>): void {
-  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [headers.map(esc).join(';')];
-  for (const r of rows) {
-    lines.push(headers.map((h) => esc(r[h])).join(';'));
-  }
-  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${fileName}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCsvRecords(fileName, headers, rows);
 }
 
 function minutesToHm(m: number): string {

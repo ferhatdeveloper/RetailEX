@@ -179,7 +179,8 @@ describe('günlük excel net tutar', () => {
     expect(excelAmountCellValue('Net tutar', '75.000')).toBe(75_000);
     expect(excelAmountCellValue('Net tutar', '14.000')).not.toBe(14);
     expect(excelAmountCellValue('Tarih', '26.10.2026')).toBe('26.10.2026');
-    expect(excelAmountCellValue('Hizmet primi', '22.500')).toBe('22.500');
+    expect(excelAmountCellValue('Hizmet primi', '22.500')).toBe(22_500);
+    expect(excelAmountCellValue('Hizmet primi', '22.500')).not.toBe(22.5);
 
     const { headers, aoa } = buildDataGridExportAoa(rows, columns, {
       footerLabel: 'TOPLAM',
@@ -190,9 +191,9 @@ describe('günlük excel net tutar', () => {
       ],
     });
     expect(headers[0]).toBe('Müşteri');
-    expect(aoa[1]?.[3]).toBe('75.000');
-    expect(aoa[2]?.[3]).toBe('14.000');
-    expect(aoa[aoa.length - 1]?.[3]).toBe('89.000');
+    expect(aoa[1]?.[3]).toBe(75_000);
+    expect(aoa[2]?.[3]).toBe(14_000);
+    expect(aoa[aoa.length - 1]?.[3]).toBe(89_000);
 
     const ws = buildGridExportWorksheet(aoa, headers);
     const merges = ws['!merges'] ?? [];

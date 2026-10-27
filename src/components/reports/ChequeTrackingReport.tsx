@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { downloadCsvTable } from '../../utils/excelCellValue';
 import { formatNumber } from '../../utils/formatNumber';
 import { getReportingCurrency } from '../../utils/currency';
 import { localTodayDateKey, toSqlDateInputString } from '../../utils/localCalendarDate';
@@ -59,15 +60,7 @@ function defaultRange(): { start: string; end: string } {
 }
 
 function exportCsv(fileName: string, headers: string[], rows: string[][]): void {
-    const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [headers.map(esc).join(';'), ...rows.map((r) => r.map(esc).join(';'))];
-    const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${fileName}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsvTable(fileName, headers, rows);
 }
 
 const STATUS_KEY: Record<ChequeStatus, string> = {

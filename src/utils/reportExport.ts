@@ -16,6 +16,8 @@
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { csvCell, csvTextCell, excelAmountCellValue } from './excelCellValue';
+import { applyExcelDirectionFormats } from './gridExcelExport';
 
 /* -------------------------------------------------------------------------- */
 /* Tipler                                                                      */
@@ -75,17 +77,29 @@ function cellText(value: unknown): string {
   return String(value);
 }
 
+function sheetCell(header: string, value: unknown): unknown {
+  return excelAmountCellValue(header, value);
+}
+
 function buildBodyRows(
   rows: Array<Record<string, unknown>>,
   headers: string[],
   includeTotals: boolean,
   totals?: Record<string, unknown>,
 ): unknown[][] {
-  const out: unknown[][] = rows.map((r) => headers.map((h) => cellText(r[h])));
+  const out: unknown[][] = rows.map((r) => headers.map((h) => sheetCell(h, r[h])));
   if (includeTotals && totals) {
-    out.push(headers.map((h) => cellText(totals[h])));
+    out.push(headers.map((h) => sheetCell(h, totals[h])));
   }
   return out;
+}
+
+function flattenSheetValue(value: unknown): unknown {
+  if (value && typeof value === 'object' && (value as { __excelNumber?: boolean }).__excelNumber === true) {
+    const amount = (value as { value?: unknown }).value;
+    return typeof amount === 'number' ? amount : '';
+  }
+  return value;
 }
 
 function dateLabel(d: Date): string {
@@ -119,7 +133,9 @@ export function exportReportToXlsx(opts: ReportExportOptions): void {
   aoa.push(headers);
   for (const r of dataRows) aoa.push(r);
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const flat = aoa.map((row) => row.map((cell) => flattenSheetValue(cell)));
+  const ws = XLSX.utils.aoa_to_sheet(flat);
+  applyExcelDirectionFormats(ws, aoa);
   // Kolon genişlikleri (yaklaşık)
   const colWidths = headers.map((h) => ({ wch: Math.max(10, h.length + 2) }));
   (ws as any)['!cols'] = colWidths;
@@ -133,26 +149,19 @@ export function exportReportToXlsx(opts: ReportExportOptions): void {
 /* CSV                                                                         */
 /* -------------------------------------------------------------------------- */
 
-function csvEscape(value: string): string {
-  if (value == null) return '';
-  const needs = /[",;\n\r]/.test(value);
-  if (!needs) return value;
-  return `"${value.replace(/"/g, '""')}"`;
-}
-
 export function exportReportToCsv(opts: ReportExportOptions): void {
   const { fileName, headers, rows, totals, metadata } = opts;
   const lines: string[] = [];
 
   // Metadata üst satırlar (Excel TR uyumlu, BOM ile)
-  for (const l of metadataLines(metadata)) lines.push(csvEscape(l));
-  lines.push(headers.map(csvEscape).join(';'));
+  for (const l of metadataLines(metadata)) lines.push(csvTextCell(l));
+  lines.push(headers.map((header) => csvTextCell(header)).join(';'));
 
   for (const r of rows) {
-    lines.push(headers.map((h) => csvEscape(cellText(r[h]))).join(';'));
+    lines.push(headers.map((h) => csvCell(h, r[h])).join(';'));
   }
   if (totals) {
-    lines.push(headers.map((h) => csvEscape(cellText(totals[h]))).join(';'));
+    lines.push(headers.map((h) => csvCell(h, totals[h])).join(';'));
   }
 
   const csv = lines.join('\r\n');

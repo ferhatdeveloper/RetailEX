@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, RefreshCw, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import { downloadCsvTable } from '../../utils/excelCellValue';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
@@ -54,15 +55,7 @@ function cariTypeLabel(tm: (k: string) => string, cardType: string): string {
 }
 
 function exportCsv(fileName: string, headers: string[], rows: string[][]) {
-  const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [headers.map(esc).join(';'), ...rows.map((r) => r.map(esc).join(';'))];
-  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${fileName}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCsvTable(fileName, headers, rows);
 }
 
 function ReportShell({

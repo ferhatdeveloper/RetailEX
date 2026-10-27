@@ -5,6 +5,7 @@ import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { usePermission } from '../../../shared/hooks/usePermission';
+import { downloadCsvTable } from '../../../utils/excelCellValue';
 import { formatLocalYmd } from '../../../utils/dateLocal';
 import { localTodayDateKey } from '../../../utils/localCalendarDate';
 import { formatReportDateCell } from '../../../utils/dateLocale';
@@ -37,15 +38,7 @@ function defaultRange(): { start: string; end: string } {
 }
 
 function exportCsv(fileName: string, headers: string[], rows: string[][]) {
-  const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [headers.map(esc).join(';'), ...rows.map((r) => r.map(esc).join(';'))];
-  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${fileName}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCsvTable(fileName, headers, rows);
 }
 
 function subjectLabel(r: BeautyFollowUpReminder): string {

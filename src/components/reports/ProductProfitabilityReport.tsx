@@ -10,6 +10,7 @@ import { TrendingUp, TrendingDown, Package, Banknote, Download, Search } from 'l
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { getCostProfitAnalysis } from '../../services/layeredInventoryCost';
+import { downloadCsvTable } from '../../utils/excelCellValue';
 import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 import { toSqlDateInputString, localTodayDateKey } from '../../utils/localCalendarDate';
 import { toast } from 'sonner';
@@ -159,24 +160,36 @@ export function ProductProfitabilityReport() {
   };
 
   const exportToExcel = () => {
-    let csv =
-      'Tür,Ürün Kodu,Ürün Adı,Miktar,Satış Tutarı (KDV Hariç IQD),Maliyet (KDV Hariç IQD),Brüt Kar (KDV Hariç IQD),Kar Marjı %\n';
-    filteredData.forEach((p) => {
-      const kind =
-        p.lineKind === 'service'
-          ? tm('reportsDailyKindService')
-          : tm('reportsDailyKindProduct');
-      csv += `${kind},${displayItemCode(p.productCode)},${p.productName},${p.totalQuantitySold},${p.totalRevenue},${p.totalCost},${p.grossProfit},${p.profitMargin.toFixed(2)}\n`;
-    });
-
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `product-profitability-${period?.donem_adi ?? period?.name ?? 'donem'}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-
+    const headers = [
+      'Tür',
+      'Ürün Kodu',
+      'Ürün Adı',
+      'Miktar',
+      'Satış Tutarı (KDV Hariç IQD)',
+      'Maliyet (KDV Hariç IQD)',
+      'Brüt Kar (KDV Hariç IQD)',
+      'Kar Marjı %',
+    ];
+    downloadCsvTable(
+      `product-profitability-${period?.donem_adi ?? period?.name ?? 'donem'}`,
+      headers,
+      filteredData.map((p) => {
+        const kind =
+          p.lineKind === 'service'
+            ? tm('reportsDailyKindService')
+            : tm('reportsDailyKindProduct');
+        return [
+          kind,
+          displayItemCode(p.productCode),
+          p.productName,
+          p.totalQuantitySold,
+          p.totalRevenue,
+          p.totalCost,
+          p.grossProfit,
+          p.profitMargin.toFixed(2),
+        ];
+      }),
+    );
     toast.success(tm('rptProfitExportOk'));
   };
 

@@ -86,13 +86,13 @@ describe('prim dökümü Excel', () => {
 
     const dataRows = aoa.slice(1, -1);
     expect(dataRows).toHaveLength(4);
-    expect(dataRows[0]).toEqual(['26.10.2026', 'System Administrator', '22.500', '0', '22.500']);
-    expect(dataRows[1]).toEqual(['26.10.2026', 'DUNYA', '11.250', '0', '11.250']);
-    expect(dataRows[2]).toEqual(['26.10.2026', 'ZAHRA', '7.500', '0', '7.500']);
-    expect(dataRows[3]).toEqual(['25.10.2026', 'System Administrator', '0', '0', '0']);
-    expect(dataRows.filter((row) => row[1] === 'System Administrator' && row[2] === '22.500')).toHaveLength(1);
+    expect(dataRows[0]).toEqual(['26.10.2026', 'System Administrator', 22_500, 0, 22_500]);
+    expect(dataRows[1]).toEqual(['26.10.2026', 'DUNYA', 11_250, 0, 11_250]);
+    expect(dataRows[2]).toEqual(['26.10.2026', 'ZAHRA', 7_500, 0, 7_500]);
+    expect(dataRows[3]).toEqual(['25.10.2026', 'System Administrator', 0, 0, 0]);
+    expect(dataRows.filter((row) => row[1] === 'System Administrator' && row[2] === 22_500)).toHaveLength(1);
 
-    expect(aoa[aoa.length - 1]).toEqual(['TOPLAM (4)', '', '41.250', '0', '41.250']);
+    expect(aoa[aoa.length - 1]).toEqual(['TOPLAM (4)', '', 41_250, 0, 41_250]);
 
     const ws = buildGridExportWorksheet(aoa, headers);
     const merges = ws['!merges'] ?? [];
@@ -106,7 +106,12 @@ describe('prim dökümü Excel', () => {
     expect(ws['D1']?.v).toBe('Ürün primi');
     expect(ws['E1']?.v).toBe('Toplam prim');
     expect(ws['B2']?.v).toBe('System Administrator');
-    expect(ws['C2']?.v).toBe('22.500');
+    expect(ws['C2']?.v).toBe(22_500);
+    expect(ws['C2']?.t).toBe('n');
+    expect(ws['C2']?.v).not.toBe(22.5);
+    expect(ws['C6']?.v).toBe(41_250);
+    expect(ws['D6']?.v).toBe(0);
+    expect(ws['E6']?.v).toBe(41_250);
   });
 });
 
@@ -148,9 +153,9 @@ describe('grup dashboard Excel', () => {
     expect(aoa[0]).toEqual(['UZMAN', 'Kayıt adedi', 'Hizmet primi', 'Ürün primi', 'Toplam prim']);
     expect(aoa[0].every((h) => String(h).trim().length > 0)).toBe(true);
     expect(aoa.slice(1)).toEqual([
-      ['DUNYA', '1', '11.250', '0', '11.250'],
-      ['System Administrator', '2', '22.500', '0', '22.500'],
-      ['ZAHRA', '1', '7.500', '0', '7.500'],
+      ['DUNYA', 1, 11_250, 0, 11_250],
+      ['System Administrator', 2, 22_500, 0, 22_500],
+      ['ZAHRA', 1, 7_500, 0, 7_500],
     ]);
   });
 
@@ -165,6 +170,6 @@ describe('grup dashboard Excel', () => {
     });
     expect(aoa[0]).toEqual(['UZMAN', 'Hizmet primi', 'Toplam prim']);
     expect(aoa).toHaveLength(4);
-    expect(aoa[2]).toEqual(['System Administrator', '22.500', '22.500']);
+    expect(aoa[2]).toEqual(['System Administrator', 22_500, 22_500]);
   });
 });

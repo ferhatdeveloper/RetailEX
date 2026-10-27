@@ -15,6 +15,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useRegisterDatagridRefresh } from '../../hooks/useRegisterDatagridRefresh';
 import { usePermission } from '../../shared/hooks/usePermission';
+import { downloadCsvTable } from '../../utils/excelCellValue';
 import { formatNumber } from '../../utils/formatNumber';
 import { getReportingCurrency } from '../../utils/currency';
 import { erpReportsAPI } from '../../services/api/erpReports';
@@ -59,15 +60,7 @@ const DAY_COL_SIZE = 56;
 const DAY_COL_MIN = 48;
 
 function exportCsv(fileName: string, headers: string[], rows: string[][]): void {
-  const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [headers.map(esc).join(';'), ...rows.map((r) => r.map(esc).join(';'))];
-  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${fileName}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCsvTable(fileName, headers, rows);
 }
 
 function ReportShell({

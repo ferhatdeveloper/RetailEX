@@ -38,6 +38,7 @@ import {
   getCurrencyDecimalPlaces,
 } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
+import { downloadCsvTable } from '../../utils/excelCellValue';
 import { formatMoneyAmount } from '../../utils/formatMoney';
 import { localCalendarDateKey, localTodayDateKey } from '../../utils/localCalendarDate';
 import { formatReportDateCell } from '../../utils/dateLocale';
@@ -67,20 +68,7 @@ function exportCsv(
   headers: string[],
   rows: string[][],
 ): void {
-  const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [
-    headers.map(esc).join(';'),
-    ...rows.map((r) => r.map(esc).join(';')),
-  ];
-  const blob = new Blob(['\uFEFF' + lines.join('\n')], {
-    type: 'text/csv;charset=utf-8',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${fileName}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCsvTable(fileName, headers, rows);
 }
 
 export function PartySalesPeriodReport({ mode }: { mode: PartySalesPeriodMode }) {

@@ -6,6 +6,8 @@
  */
 
 import * as XLSX from 'xlsx';
+import { csvCell, csvTextCell, excelAmountCellValue, headerIsAmount } from '../utils/excelCellValue';
+import { applyExcelDirectionFormats } from '../utils/gridExcelExport';
 
 interface ExportOptions {
   filename: string;
@@ -76,24 +78,45 @@ export class AdvancedReportExportService {
       wsData.push([]);
     }
 
-    // Add data table
-    wsData.push(reportData.headers);
+    // Add data table. Tutarlar sayıdır; dip toplam her tutar kolonuna yazılır.
+    const headers = reportData.headers;
+    wsData.push(headers);
+    const dataStart = wsData.length;
     reportData.data.forEach(row => {
-      wsData.push(row);
+      wsData.push(row.map((cell, index) => excelAmountCellValue(headers[index] ?? '', cell)));
     });
 
-    // Add totals row
-    const totalsRow = new Array(reportData.headers.length).fill('');
+    const totalsRow: unknown[] = headers.map(() => '');
     totalsRow[0] = 'TOTAL';
-    const lastColumnIndex = reportData.headers.length - 1;
-    totalsRow[lastColumnIndex] = reportData.data.reduce((sum, row) => {
-      const val = row[lastColumnIndex];
-      return sum + (typeof val === 'number' ? val : 0);
-    }, 0);
+    headers.forEach((header, index) => {
+      if (index === 0) return;
+      if (!headerIsAmount(header)) return;
+      let sum = 0;
+      let any = false;
+      for (const row of wsData.slice(dataStart)) {
+        const cell = row[index];
+        const marked = cell && typeof cell === 'object' && (cell as { __excelNumber?: boolean }).__excelNumber
+          ? (cell as { value: number }).value
+          : cell;
+        if (typeof marked === 'number' && Number.isFinite(marked)) {
+          sum += marked;
+          any = true;
+        }
+      }
+      if (any) totalsRow[index] = sum;
+    });
     wsData.push(totalsRow);
 
-    // Create worksheet
-    const worksheet = XLSX.utils.aoa_to_sheet(wsData);
+    const flat = wsData.map((row) =>
+      row.map((cell) => {
+        if (cell && typeof cell === 'object' && (cell as { __excelNumber?: boolean }).__excelNumber) {
+          return (cell as { value: number }).value;
+        }
+        return cell;
+      }),
+    );
+    const worksheet = XLSX.utils.aoa_to_sheet(flat);
+    applyExcelDirectionFormats(worksheet, wsData);
 
     // Apply styling
     if (options.styling !== false) {
@@ -126,20 +149,13 @@ export class AdvancedReportExportService {
    * Export to CSV
    */
   static exportToCSV(reportData: ReportData, filename: string = 'report') {
-    const csvData: string[][] = [];
-
-    // Add headers
-    csvData.push(reportData.headers);
-
-    // Add data
-    reportData.data.forEach(row => {
-      csvData.push(row.map(cell => String(cell)));
-    });
-
-    // Convert to CSV string
-    const csvContent = csvData.map(row => 
-      row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
-    ).join('\n');
+    const headers = reportData.headers;
+    const csvContent = [
+      headers.map((header) => csvTextCell(header)).join(';'),
+      ...reportData.data.map((row) =>
+        row.map((cell, index) => csvCell(headers[index] ?? '', cell)).join(';'),
+      ),
+    ].join('\n');
 
     // Download
     this.downloadFile(
@@ -174,13 +190,26 @@ export class AdvancedReportExportService {
     let fileName: string;
 
     switch (emailConfig.format) {
-      case 'excel':
-        // Generate Excel blob
+      case 'excel': {
         const workbook = XLSX.utils.book_new();
-        const worksheet = XLSX.utils.aoa_to_sheet([
-          reportData.headers,
-          ...reportData.data
-        ]);
+        const mailHeaders = reportData.headers;
+        const mailAoa = [
+          mailHeaders,
+          ...reportData.data.map((row) =>
+            row.map((cell, index) => excelAmountCellValue(mailHeaders[index] ?? '', cell)),
+          ),
+        ];
+        const worksheet = XLSX.utils.aoa_to_sheet(
+          mailAoa.map((row) =>
+            row.map((cell) => {
+              if (cell && typeof cell === 'object' && (cell as { __excelNumber?: boolean }).__excelNumber) {
+                return (cell as { value: number }).value;
+              }
+              return cell;
+            }),
+          ),
+        );
+        applyExcelDirectionFormats(worksheet, mailAoa);
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Report');
         const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
         fileBlob = new Blob([excelBuffer], { 
@@ -188,15 +217,20 @@ export class AdvancedReportExportService {
         });
         fileName = `${reportData.reportTitle}.xlsx`;
         break;
+      }
 
-      case 'csv':
+      case 'csv': {
+        const mailCsvHeaders = reportData.headers;
         const csvContent = [
-          reportData.headers,
-          ...reportData.data
-        ].map(row => row.join(',')).join('\n');
-        fileBlob = new Blob([csvContent], { type: 'text/csv' });
+          mailCsvHeaders.map((header) => csvTextCell(header)).join(';'),
+          ...reportData.data.map((row) =>
+            row.map((cell, index) => csvCell(mailCsvHeaders[index] ?? '', cell)).join(';'),
+          ),
+        ].join('\n');
+        fileBlob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8' });
         fileName = `${reportData.reportTitle}.csv`;
         break;
+      }
 
       default:
         throw new Error(`Unsupported format: ${emailConfig.format}`);
@@ -284,14 +318,9 @@ export class AdvancedReportExportService {
    * Helper: Format value based on type
    */
   private static formatValue(value: any, format?: string): any {
-    if (format === 'currency') {
-      return new Intl.NumberFormat('tr-TR', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
-      }).format(value) + ' IQD';
-    }
-    if (format === 'number') {
-      return new Intl.NumberFormat('tr-TR').format(value);
+    if (format === 'currency' || format === 'number') {
+      const amount = Number(value);
+      return Number.isFinite(amount) ? amount : value;
     }
     if (format === 'percent') {
       return value.toFixed(2) + '%';

@@ -1145,6 +1145,10 @@ function KasaIslemleriTable({
     ),
     columnHelper.accessor('tutar', {
       header: tm('amount'),
+      meta: {
+        type: 'currency',
+        excelDirection: (row: KasaIslemi) => (cashTransactionAmountIsInflow(row) ? 'B' : 'A'),
+      },
       cell: info => {
         const tutar = Math.abs(Number(info.getValue()) || 0);
         const isGiris = cashTransactionAmountIsInflow(info.row.original);

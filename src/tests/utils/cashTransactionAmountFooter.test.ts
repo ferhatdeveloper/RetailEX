@@ -4,7 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ColumnDef } from '@tanstack/react-table';
-import { buildDataGridExportAoa } from '../../utils/gridExcelExport';
+import { buildDataGridExportAoa, buildGridExportWorksheet } from '../../utils/gridExcelExport';
+import { readExcelNumberCell } from '../../utils/excelCellValue';
 import {
   cashTransactionAmountFooterColumn,
   cashTransactionAmountIsInflow,
@@ -145,25 +146,41 @@ describe('kasa işlem tutar dip toplamı', () => {
   it('excel dip toplamı aynı neti yazar; satır tutarı mutlak kalır', () => {
     const columns: ColumnDef<CashTransactionFooterLine, unknown>[] = [
       { id: 'islem_no', accessorKey: 'islem_no', header: 'Fiş No' },
-      { id: 'tutar', accessorKey: 'tutar', header: 'Tutar' },
+      {
+        id: 'tutar',
+        accessorKey: 'tutar',
+        header: 'Tutar',
+        meta: {
+          type: 'currency',
+          excelDirection: (row: CashTransactionFooterLine) => (cashTransactionAmountIsInflow(row) ? 'B' : 'A'),
+        },
+      },
     ];
     const footer = cashTransactionAmountFooterColumn<CashTransactionFooterLine>();
-    const { aoa } = buildDataGridExportAoa(MERKEZ, columns, {
+    const { headers, aoa } = buildDataGridExportAoa(MERKEZ, columns, {
       footerLabel: 'TOPLAM',
       footerSumColumns: [footer],
     });
-    const purchaseCell = aoa[1]?.[1];
+    const purchaseCell = readExcelNumberCell(aoa[1]?.[1]);
     const footerRow = aoa[aoa.length - 1];
-    expect(purchaseCell).toBe('25.000');
-    expect(footerRow?.[1]).toBe('200.000');
-    expect(footerRow?.[1]).not.toBe('350.000');
+    expect(aoa.slice(1, -1)).toHaveLength(7);
+    expect(purchaseCell?.value).toBe(25_000);
+    expect(purchaseCell?.direction).toBe('A');
+    expect(footerRow?.[1]).toBe(200_000);
+    expect(footerRow?.[1]).not.toBe(350_000);
+    const ws = buildGridExportWorksheet(aoa, headers);
+    expect(ws['B2']?.v).toBe(25_000);
+    expect(ws['B2']?.t).toBe('n');
+    expect(String(ws['B2']?.z)).toContain('(A)');
+    expect(ws['B9']?.v).toBe(200_000);
+    expect(String(ws['B9']?.z ?? '')).not.toContain('(A)');
 
     const onlyOut = buildDataGridExportAoa(
       MERKEZ.filter((line) => line.islem_tipi === 'ALIS_FATURASI'),
       columns,
       { footerLabel: 'TOPLAM', footerSumColumns: [footer] },
     );
-    expect(onlyOut.aoa[onlyOut.aoa.length - 1]?.[1]).toBe('-75.000');
+    expect(onlyOut.aoa[onlyOut.aoa.length - 1]?.[1]).toBe(-75_000);
 
     const empty = buildDataGridExportAoa([], columns, {
       footerLabel: 'TOPLAM',

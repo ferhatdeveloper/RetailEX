@@ -263,10 +263,26 @@ export function buildStyledWorksheet(
   const lastCol = range.e.c;
   const columnCount = options.columnCount;
 
-  // Merge'leri en son toplu olarak ekleyeceğiz
+  // Kolon başlığı ve dolu veri satırı birleştirilmez.
+  // Birleştirme yalnız ilk hücreyi bırakıp Uzman, prim ve ilk veri satırını gizliyordu.
+  const headerRowIdx = options.headerRowIndex - 1;
   const merges: XLSX.Range[] = [];
+  const rowFilledCount = (row: number) => {
+    let count = 0;
+    const width = Math.max(columnCount, aoa[row]?.length ?? 0);
+    for (let c = 0; c < width; c++) {
+      const value = aoa[row]?.[c];
+      if (value == null || value === '') continue;
+      if (typeof value === 'string' && value.trim() === '') continue;
+      count += 1;
+      if (count > 1) return count;
+    }
+    return count;
+  };
   const addMerge = (row1: number, row2: number) => {
     if (columnCount <= 1) return;
+    if (row1 === headerRowIdx || row2 === headerRowIdx) return;
+    if (rowFilledCount(row1) > 1) return;
     merges.push({
       s: { r: row1, c: 0 },
       e: { r: row2, c: columnCount - 1 },
@@ -300,8 +316,7 @@ export function buildStyledWorksheet(
     });
   }
 
-  // 4) Veri başlığı (header row — 1-indexed)
-  const headerRowIdx = options.headerRowIndex - 1; // 0-indexed
+  // 4) Veri başlığı (header row — 1-indexed). Bu satır birleştirilmez.
   for (let c = 0; c < columnCount; c++) {
     const ref = XLSX.utils.encode_cell({ r: headerRowIdx, c });
     if (ws[ref]) ws[ref].s = HEADER_STYLE;

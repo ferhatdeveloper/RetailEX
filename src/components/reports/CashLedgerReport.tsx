@@ -29,6 +29,7 @@ import {
   type ReportDateRangeValue,
 } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
+import { downloadCsvTable } from '../../utils/excelCellValue';
 import { erpReportsAPI, type CashLedgerRow, type CashLedgerGroup } from '../../services/api/erpReports';
 import { cashLedgerTotals, withCashLedgerCumulative } from '../../utils/reportReturnCashSign';
 import { supplierAPI } from '../../services/api/suppliers';
@@ -37,15 +38,7 @@ import type { Supplier } from '../../core/types';
 type SelectOption = { value: string; label: string };
 
 function exportCsv(fileName: string, headers: string[], rows: string[][]): void {
-  const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [headers.map(esc).join(';'), ...rows.map((r) => r.map(esc).join(';'))];
-  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${fileName}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCsvTable(fileName, headers, rows);
 }
 
 function ReportShell({

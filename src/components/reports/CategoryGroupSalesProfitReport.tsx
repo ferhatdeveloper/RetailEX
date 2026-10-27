@@ -8,6 +8,7 @@ import { Layers, Package, RefreshCw, Download, ChevronDown, ChevronRight, Trendi
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { postgres, ERP_SETTINGS, getAppDefaultCurrency } from '../../services/postgres';
+import { downloadCsvTable } from '../../utils/excelCellValue';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import {
@@ -275,18 +276,11 @@ export function CategoryGroupSalesProfitReport() {
 
   const exportCsv = () => {
     if (rows.length === 0) return;
-    const header = 'Kategori Grubu;Kategori;Ürün Kodu;Ürün Adı;Adet;Ciro;Brüt Kar\n';
-    const body = rows
-      .map(
-        (r) =>
-          `${r.groupName};${r.categoryName};${r.productCode};"${r.productName.replace(/"/g, '""')}";${r.quantity};${r.revenue};${r.grossProfit}`
-      )
-      .join('\n');
-    const blob = new Blob(['\ufeff' + header + body], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `kategori-grup-satis-kar-${dateFrom}_${dateTo}.csv`;
-    a.click();
+    downloadCsvTable(
+      `kategori-grup-satis-kar-${dateFrom}_${dateTo}`,
+      ['Kategori Grubu', 'Kategori', 'Ürün Kodu', 'Ürün Adı', 'Adet', 'Ciro', 'Brüt Kar'],
+      rows.map((r) => [r.groupName, r.categoryName, r.productCode, r.productName, r.quantity, r.revenue, r.grossProfit]),
+    );
     toast.success(tm('rptProfitCsvDownloaded'));
   };
 
