@@ -3121,7 +3121,7 @@ export function DevExDataGrid<T>({
   // Mobile Card View
   if (isMobile) {
     return (
-      <div className={`flex flex-col h-full ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      <div className={`flex h-full min-h-0 flex-1 flex-col overflow-hidden ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
         {enableRefresh && (
           <div className={`shrink-0 flex justify-end px-3 py-2 border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
             <button
@@ -3142,7 +3142,7 @@ export function DevExDataGrid<T>({
           </div>
         )}
         {/* Mobile Cards */}
-        <div className="flex-1 overflow-auto p-3 space-y-3">
+        <div data-grid-body className="min-h-0 flex-1 overflow-x-auto overflow-y-auto p-3 space-y-3">
           {table.getRowModel().rows.length === 0 ? (
             <div className="text-center py-12 text-gray-400">{tm('noDataFound')}</div>
           ) : (
@@ -3203,7 +3203,7 @@ export function DevExDataGrid<T>({
 
         {/* Mobile Pagination */}
         {enablePagination && (
-          <div className="bg-white border-t border-gray-200 p-3 sm:p-4 space-y-2">
+          <div className="shrink-0 bg-white border-t border-gray-200 p-3 sm:p-4 space-y-2">
             <div className="text-xs sm:text-sm text-gray-600 text-center">
               {tm('page')} {table.getState().pagination.pageIndex + 1} {tm('of')} {table.getPageCount()} • {table.getFilteredRowModel().rows.length} {tm('records')}
             </div>
@@ -3248,8 +3248,8 @@ export function DevExDataGrid<T>({
 
   return (
     <div
-      className="flex flex-col h-full outline-none"
-      style={{ height: height }}
+      className="flex h-full min-h-0 flex-1 flex-col overflow-hidden outline-none"
+      style={{ height, maxHeight: height, minHeight: 0 }}
       data-datagrid-root
       tabIndex={enableSelection ? 0 : undefined}
       onKeyDown={
@@ -3376,7 +3376,8 @@ export function DevExDataGrid<T>({
 
       {/* Table Container */}
       <div
-        className={`relative z-0 flex-1 overflow-auto border isolate ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'} ${
+        data-grid-body
+        className={`relative z-0 min-h-0 flex-1 overflow-x-auto overflow-y-auto border isolate ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'} ${
           isColumnResizing ? 'select-none cursor-col-resize' : ''
         }`}
       >
@@ -3693,7 +3694,7 @@ export function DevExDataGrid<T>({
       {/* Pagination */}
       {enablePagination && (
         <div
-          className="relative flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white border-t border-gray-200"
+          className="relative flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white border-t border-gray-200"
           style={{ zIndex: GRID_CHROME_Z_INDEX }}
         >
           <div className="flex items-center gap-2 text-sm text-gray-600">

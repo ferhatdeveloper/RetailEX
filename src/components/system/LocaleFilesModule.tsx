@@ -27,6 +27,8 @@ import {
 
 interface EditorRow extends LocaleLeaf {
   id: string;
+  /** Dosyadan gelen metin. Taslakla kıyas ve arama bunu okur. */
+  original: string;
   draft: string;
   isNew?: boolean;
 }
@@ -39,6 +41,7 @@ function rowsFromText(text: string): EditorRow[] {
   return flattenLocale(parseLocaleJson(text)).map((leaf) => ({
     ...leaf,
     id: leaf.path,
+    original: leaf.text,
     draft: leaf.text,
   }));
 }
@@ -307,7 +310,7 @@ export function LocaleFilesModule() {
   }
 
   return (
-    <div data-testid="locale-files-page" className={`flex h-full min-h-0 flex-col ${shell}`}>
+    <div data-testid="locale-files-page" className={`flex h-full min-h-0 flex-1 flex-col overflow-hidden ${shell}`}>
       <header className={`flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-3 ${line}`}>
         <Languages className="h-5 w-5 text-blue-600" aria-hidden />
         <div className="min-w-0 flex-1">
@@ -360,8 +363,8 @@ export function LocaleFilesModule() {
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1">
-        <aside className={`flex w-56 shrink-0 flex-col border-r ${line}`}>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <aside className={`flex min-h-0 w-56 shrink-0 flex-col overflow-hidden border-r ${line}`}>
           <div className={`shrink-0 border-b px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-400 ${line}`}>
             {copy.file}
           </div>
@@ -404,7 +407,7 @@ export function LocaleFilesModule() {
           </div>
         </aside>
 
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div className="shrink-0 p-3">
             <input
               data-testid="locale-files-search"
@@ -416,7 +419,7 @@ export function LocaleFilesModule() {
             />
             <p className="mt-1 text-[11px] text-gray-500">{copy.emptyKeeps}</p>
           </div>
-          <div data-testid="locale-files-grid" className="min-h-0 flex-1 px-3 pb-3">
+          <div data-testid="locale-files-grid" className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-3">
             {loading ? (
               <p className="p-4 text-sm text-gray-500">{copy.loading}</p>
             ) : selected ? (
