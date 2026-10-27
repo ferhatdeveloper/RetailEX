@@ -673,6 +673,15 @@ export interface Invoice {
   header_fields?: Record<string, unknown>;
   /** Liste: ürün / hizmet / karma */
   line_mix?: 'product' | 'service' | 'mixed' | 'unknown';
+  /**
+   * Liste maliyeti: hizmet satırının kart birim maliyeti × miktar.
+   * Stok maliyeti ve kasa satırı buradan yazılmaz.
+   */
+  service_lines?: Array<{
+    itemType?: string;
+    quantity?: number;
+    cardUnitCost?: number;
+  }>;
   /** Migration 190: Kayıt anı (INSERT'te set edilir; UPDATE'te readonly). */
   insertion_at?: string;
   /** Migration 190: Geçmiş tarihli mi? Frontend'de hesaplanır; SQL'e yazılır. */

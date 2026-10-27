@@ -9,6 +9,11 @@ import { paymentFormCodeTranslationKey } from '../../../utils/paymentMethodUtils
 import { getInvoiceHeaderField } from '../../../utils/invoiceHeaderFields';
 import { formatInvoiceDualAmountLines } from '../../../utils/invoiceFxDisplay';
 import { invoiceListPayableNet } from '../../../utils/invoiceListPayableNet';
+import {
+  invoiceListDisplayedCost,
+  invoiceListDisplayedMargin,
+  invoiceListDisplayedProfit,
+} from '../../../utils/invoiceListEconomics';
 import { Eye, Edit, FileText } from 'lucide-react';
 
 /** v3: Durum/İşlem varsayılan gizli — eski v2 tercihlerinde status:true kalmasın
@@ -82,7 +87,7 @@ export const INVOICE_LIST_COLUMN_META: Record<InvoiceListColumnId, ColumnMeta> =
   subtotal: { id: 'subtotal', labelKey: 'subtotal', defaultVisible: false },
   discount: { id: 'discount', labelKey: 'discount', defaultVisible: false },
   tax: { id: 'tax', labelKey: 'tax', defaultVisible: false },
-  total: { id: 'total', labelKey: 'total', defaultVisible: true },
+  total: { id: 'total', labelKey: 'invoiceListNetAmount', defaultVisible: true },
   currency: { id: 'currency', labelKey: 'currency', defaultVisible: false },
   currency_rate: { id: 'currency_rate', labelKey: 'exchangeRate', defaultVisible: false },
   total_cost: { id: 'total_cost', labelKey: 'cost', defaultVisible: false },
@@ -226,18 +231,15 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
 
   if (isVisible('document_no')) {
     defs.push(
-      columnHelper.display({
-        id: 'document_no',
-        header: tm('documentNo'),
-        cell: ({ row }) => {
-          const inv = row.original;
-          const doc =
-            String(inv.document_no || '').trim() ||
-            getInvoiceHeaderField(inv, 'documentNo') ||
-            '—';
-          return <span className="text-gray-800">{doc}</span>;
+      columnHelper.accessor(
+        (row) =>
+          String(row.document_no || '').trim() || getInvoiceHeaderField(row, 'documentNo') || '',
+        {
+          id: 'document_no',
+          header: tm('documentNo'),
+          cell: (info) => <span className="text-gray-800">{info.getValue() || '—'}</span>,
         },
-      }),
+      ),
     );
   }
 
@@ -283,40 +285,35 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
     );
   }
 
+  const invoiceTypeLabel = (invoice: ListInvoice): string => {
+    const invoiceTypeCode = resolveInvoiceTypeCode(invoice);
+    const invoiceType = invoiceTypes.find((t) => t.code === invoiceTypeCode);
+    if (invoiceType) return invoiceType.name;
+    if (invoice.invoice_category) {
+      const categoryType = invoiceTypes.find((t) => t.category === invoice.invoice_category);
+      if (categoryType) return tm(categoryType.translationKey);
+    }
+    return tm('salesInvoices');
+  };
+
   if (isVisible('invoice_type')) {
     defs.push(
-      columnHelper.display({
+      columnHelper.accessor(invoiceTypeLabel, {
         id: 'invoice_type',
-        header: () => <span className="font-semibold">{tm('invoiceType')}</span>,
-        cell: ({ row }) => {
+        header: tm('invoiceType'),
+        cell: ({ row, getValue }) => {
           const invoice = row.original;
           const invoiceTypeCode = resolveInvoiceTypeCode(invoice);
           const invoiceType = invoiceTypes.find((t) => t.code === invoiceTypeCode);
-          if (invoiceType) {
-            const IconComponent = getIcon(invoiceType.icon);
-            return (
-              <div className="flex items-center gap-2 min-w-[120px]">
-                <IconComponent className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                <span className="text-sm font-medium text-gray-900">{invoiceType.name}</span>
-              </div>
-            );
-          }
-          if (invoice.invoice_category) {
-            const categoryType = invoiceTypes.find((t) => t.category === invoice.invoice_category);
-            if (categoryType) {
-              const IconComponent = getIcon(categoryType.icon);
-              return (
-                <div className="flex items-center gap-2 min-w-[120px]">
-                  <IconComponent className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                  <span className="text-sm font-medium text-gray-900">{tm(categoryType.translationKey)}</span>
-                </div>
-              );
-            }
-          }
+          const IconComponent = invoiceType
+            ? getIcon(invoiceType.icon)
+            : invoice.invoice_category
+              ? getIcon(invoiceTypes.find((t) => t.category === invoice.invoice_category)?.icon || 'FileText')
+              : FileText;
           return (
             <div className="flex items-center gap-2 min-w-[120px]">
-              <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-              <span className="text-sm text-gray-600">{tm('salesInvoices')}</span>
+              <IconComponent className="w-4 h-4 text-gray-600 flex-shrink-0" />
+              <span className="text-sm font-medium text-gray-900">{getValue()}</span>
             </div>
           );
         },
@@ -361,13 +358,10 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
   ) => {
     if (!isVisible(id)) return;
     defs.push(
-      columnHelper.display({
+      columnHelper.accessor((row) => getInvoiceHeaderField(row, field) || '', {
         id,
         header: tm(labelKey),
-        cell: ({ row }) => {
-          const val = getInvoiceHeaderField(row.original, field);
-          return <span className="text-sm text-gray-800">{val || '—'}</span>;
-        },
+        cell: (info) => <span className="text-sm text-gray-800">{info.getValue() || '—'}</span>,
       }),
     );
   };
@@ -379,18 +373,19 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
   headerCol('workplace', 'workplace', 'workplace');
   headerCol('salesperson', 'salespersonCode', 'salespersonLabel');
 
+  const paymentLabel = (rawValue: unknown): string => {
+    const raw = String(rawValue || '').trim();
+    if (!raw) return '—';
+    const key = paymentFormCodeTranslationKey(raw);
+    return key === 'openTerms' ? raw : tm(key);
+  };
+
   if (isVisible('payment_method')) {
     defs.push(
-      columnHelper.accessor('payment_method', {
+      columnHelper.accessor((row) => paymentLabel(row.payment_method), {
         id: 'payment_method',
         header: tm('payments'),
-        cell: (info) => {
-          const raw = String(info.getValue() || '').trim();
-          if (!raw) return <span>—</span>;
-          const key = paymentFormCodeTranslationKey(raw);
-          const label = key === 'openTerms' ? raw : tm(key);
-          return <span className="text-sm text-gray-800">{label}</span>;
-        },
+        cell: (info) => <span className="text-sm text-gray-800">{info.getValue()}</span>,
       }),
     );
   }
@@ -414,13 +409,13 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
     if (!isVisible(id)) return;
     const dualEligible = id === 'subtotal' || id === 'discount' || id === 'tax' || id === 'total';
     defs.push(
-      columnHelper.display({
+      columnHelper.accessor(pick, {
         id,
         header: tm(labelKey),
-        meta: { align: 'right', filterKind: 'number' },
-        cell: ({ row }) => {
-          const inv = row.original;
-          const value = pick(inv);
+        meta: { align: 'right', filterKind: 'number', type: 'currency' },
+        cell: (info) => {
+          const inv = info.row.original;
+          const value = Number(info.getValue() || 0);
           if (!dualEligible) {
             return (
               <span className={`tabular-nums text-right ${bold ? 'font-bold text-gray-900' : 'text-gray-800'}`}>
@@ -450,17 +445,17 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
   moneyCol('subtotal', 'subtotal', (inv) => Number(inv.subtotal || 0));
   moneyCol('discount', 'discount', (inv) => Number(inv.discount || 0));
   moneyCol('tax', 'tax', (inv) => Number(inv.tax || 0));
-  // Toplam = satır netleri − dip indirim. total_net dip öncesi tutardır;
-  // indirim kanıtı yoksa düşülmez. Yalnızca liste gösterimi.
-  moneyCol('total', 'total', (inv) => invoiceListPayableNet(inv), true);
-  moneyCol('total_cost', 'cost', (inv) => Number(inv.total_cost || 0));
-  moneyCol('gross_profit', 'profit', (inv) => Number(inv.gross_profit || 0));
+  // Net tutar = satır netleri − dip indirim. total_net dip öncesi tutardır.
+  moneyCol('total', 'invoiceListNetAmount', (inv) => invoiceListPayableNet(inv), true);
+  moneyCol('total_cost', 'cost', (inv) => invoiceListDisplayedCost(inv));
+  moneyCol('gross_profit', 'profit', (inv) => invoiceListDisplayedProfit(inv));
 
   if (isVisible('profit_margin')) {
     defs.push(
-      columnHelper.accessor('profit_margin', {
+      columnHelper.accessor((row) => invoiceListDisplayedMargin(row), {
         id: 'profit_margin',
         header: tm('profitPercent'),
+        meta: { filterKind: 'number', type: 'number' },
         cell: (info) => {
           const v = Number(info.getValue() || 0);
           return <span className="tabular-nums">{formatNumber(v, 2, true)}%</span>;

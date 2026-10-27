@@ -45,6 +45,8 @@ import {
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 import { localTodayDateKey } from '../../../utils/localCalendarDate';
 import { invoiceListPayableNet, sumInvoiceListPayableNet } from '../../../utils/invoiceListPayableNet';
+import { invoiceListDisplayedCost, invoiceListDisplayedProfit } from '../../../utils/invoiceListEconomics';
+import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import {
   invoiceListPrefsKey,
   loadInvoiceListPrefs,
@@ -52,7 +54,6 @@ import {
 } from '../../../utils/invoiceListPrefs';
 import { cashPrefillInvoiceCode, cashPrefillInvoiceLookup } from '../../../utils/cashDocumentInvoiceLaunch';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
-import { InvoiceExcelExportModal } from './InvoiceExcelExportModal';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 export type CountPurchaseDraftPrefill = {
@@ -503,7 +504,7 @@ export function InvoiceListModule({
     makeDefault: boolean;
   } | null>(null);
   const [specialPrintLoading, setSpecialPrintLoading] = useState(false);
-  const [showExcelModal, setShowExcelModal] = useState(false);
+  const visibleGridExcelRef = useRef<(() => void) | null>(null);
 
   // Sayfalama state
   const [currentPage, setCurrentPage] = useState(1);
@@ -1225,8 +1226,8 @@ export function InvoiceListModule({
       discount += Number(inv.discount || 0);
       tax += Number(inv.tax || 0);
       total += invoiceListPayableNet(inv);
-      totalCost += Number(inv.total_cost || 0);
-      grossProfit += Number(inv.gross_profit || 0);
+      totalCost += invoiceListDisplayedCost(inv);
+      grossProfit += invoiceListDisplayedProfit(inv);
     }
     return { subtotal, discount, tax, total, totalCost, grossProfit, fmt, count: invoices.length };
   }, [invoices, headerTotalsCurrency]);
@@ -1253,8 +1254,8 @@ export function InvoiceListModule({
     pushIfVisible('discount', columnVisibility.discount !== false, (inv) => Number(inv.discount || 0));
     pushIfVisible('tax', columnVisibility.tax !== false, (inv) => Number(inv.tax || 0));
     pushIfVisible('total', columnVisibility.total !== false, (inv) => invoiceListPayableNet(inv));
-    pushIfVisible('total_cost', columnVisibility.total_cost !== false, (inv) => Number(inv.total_cost || 0));
-    pushIfVisible('gross_profit', columnVisibility.gross_profit !== false, (inv) => Number(inv.gross_profit || 0));
+    pushIfVisible('total_cost', columnVisibility.total_cost !== false, (inv) => invoiceListDisplayedCost(inv));
+    pushIfVisible('gross_profit', columnVisibility.gross_profit !== false, (inv) => invoiceListDisplayedProfit(inv));
     return defs;
   }, [columnVisibility, headerTotalsCurrency]);
 
@@ -1349,7 +1350,20 @@ export function InvoiceListModule({
             </button>
             <button
               type="button"
-              onClick={() => setShowExcelModal(true)}
+              onClick={() => {
+                if (visibleGridExcelRef.current) {
+                  visibleGridExcelRef.current();
+                  return;
+                }
+                const visibleColumnIds = columns
+                  .map((col) => (col.id ? String(col.id) : ''))
+                  .filter((id) => id && id !== 'select' && id !== 'actions');
+                exportDataGridToExcel(invoices, columns, title || tm('invoices'), {
+                  footerSumColumns: gridFooterSumColumns,
+                  footerLabel: invoiceGridFooterLabel,
+                  visibleColumnIds,
+                });
+              }}
               disabled={isLoading || invoices.length === 0}
               title={tm('exportExcel') || 'Excel'}
               className="flex items-center gap-1 px-2 py-1 bg-emerald-500/90 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-[10px] font-bold rounded"
@@ -1746,6 +1760,10 @@ export function InvoiceListModule({
               enablePagination={false}
               enableSelection={defaultCategory === 'Alis' && !isMobile}
               enableExcelExport={false}
+              excelFileName={title || tm('invoices')}
+              onExcelExportReady={(fn) => {
+                visibleGridExcelRef.current = fn;
+              }}
               onRefresh={() => void loadInvoices()}
               onSelectionChange={(rows) => setBulkSelectedInvoices(rows as ListInvoice[])}
               onRowDoubleClick={(invoice) => handleEditInvoice(invoice)}
@@ -2532,14 +2550,6 @@ export function InvoiceListModule({
           }}
         />
       )}
-
-      <InvoiceExcelExportModal
-        open={showExcelModal}
-        onClose={() => setShowExcelModal(false)}
-        invoices={invoices}
-        title={title || tm('invoices')}
-        fileNameBase={title || tm('invoices')}
-      />
 
       {deletingInvoiceId && (
         <FullscreenBodyPortal

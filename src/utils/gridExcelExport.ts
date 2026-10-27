@@ -158,7 +158,8 @@ function selectExportColumns<T>(
     const id = columnIdOf(c);
     return id !== 'select' && id !== 'actions';
   });
-  if (!visibleColumnIds || visibleColumnIds.length === 0) return usable;
+  if (!visibleColumnIds) return usable;
+  if (visibleColumnIds.length === 0) return [];
   const byId = new Map<string, ColumnDef<T, unknown>>();
   for (const col of usable) {
     const id = columnIdOf(col);
@@ -169,7 +170,7 @@ function selectExportColumns<T>(
     const col = byId.get(id);
     if (col) ordered.push(col);
   }
-  return ordered.length > 0 ? ordered : usable;
+  return ordered;
 }
 
 function amountColumnIds<T>(

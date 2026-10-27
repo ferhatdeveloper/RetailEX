@@ -6630,6 +6630,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   clickToAddRow: { tr: 'Satır eklemek için tıklayın', en: 'Click to add row', ar: 'انقر لإضافة صف', ku: 'کلیک بکە بۆ زیادکردنی ڕیز' },
   grandTotal: { tr: 'Genel Toplam', en: 'Grand Total', ar: 'المجموع الكلي', ku: 'کۆی گشتی' },
   invoiceListDipTotal: { tr: 'Dip Toplam', en: 'Footer Total', ar: 'المجموع النهائي', ku: 'کۆی خوارەوە' },
+  invoiceListNetAmount: { tr: 'Net tutar', en: 'Net amount', ar: 'المبلغ الصافي', ku: 'بڕی نێت' },
   additionalNotes: { tr: 'Ek Notlar', en: 'Additional Notes', ar: 'ملاحظات إضافية', ku: 'تێبینی زیادە' },
   orderNotes: { tr: 'Sipariş Notları', en: 'Order Notes', ar: 'ملاحظات الطلب', ku: 'تێبینییەکانی داواکاری' },
   noFile: { tr: 'Dosya Yok', en: 'No File', ar: 'لا يوجد ملف', ku: 'هیچ فایلێک نییە' },

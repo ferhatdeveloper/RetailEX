@@ -4,6 +4,7 @@
  * Muhasebe: net = satır netleri − dip indirim.
  * Satır indirimi satır netine (ve kayıtlı net_amount'a) zaten girmiştir; ikinci kez düşülmez.
  * Dip indirim bir kez düşülür. Kayıtlı ödenecek tutar (total / total_amount) bu net ise aynen kullanılır.
+ * Kayıtlı tutar dip öncesiyle aynıysa indirim henüz düşülmemiştir; bir kez düşülür.
  * total_net başlıkta dip öncesi tutardır (satır brütü veya satır netleri toplamı).
  * İndirim kanıtı yoksa tutar düşülmez — indirimsiz fiş ve kanıtsız düşük net_amount olduğu gibi kalır.
  *
@@ -165,9 +166,10 @@ export function invoiceListPayableNet(inv: InvoiceListPayableSource): number {
     return expected ?? roundMoney(stored);
   }
 
-  // pre ile kayıtlı net aynıysa indirim bu tutara zaten işlemiş veya hiç ayrılmamış olabilir.
-  // Kanıt yalnızca "indirim alanı dolu" ise ikinci kez düşülmez.
+  // Kayıtlı tutar dip öncesiyle aynıysa indirim bu tutara işlenmemiştir.
+  // Satır indirimi satır netindeyse (kalem dalı) buraya düşülmez. Dip indirim bir kez düşülür.
   if (stored != null && pre != null && closeMoney(stored, pre)) {
+    if (evidenced > EPS && expected != null) return expected;
     return roundMoney(stored);
   }
 

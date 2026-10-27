@@ -20,7 +20,8 @@ import {
   isServiceInvoiceType,
 } from '../../utils/invoiceLineType';
 import { sanitizeInvoiceHeaderFields } from '../../utils/invoiceHeaderFields';
-import { invoiceLineMixFromItemTypes, type InvoiceLineMix } from '../../utils/invoiceLineMix';
+import { invoiceLineMixFromItemTypes, isServiceInvoiceLineType, type InvoiceLineMix } from '../../utils/invoiceLineMix';
+import { serviceCardUnitCost } from '../../utils/invoiceListEconomics';
 import { allocateNextInvoiceCode } from '../invoiceCodeFormatService';
 import { generateDefaultInvoiceStamp } from '../../utils/invoiceCodeFormat';
 import { saleItemVisibleCode, splitInvoiceLineIdentity } from '../../utils/invoiceLineDisplayCode';
@@ -2600,6 +2601,148 @@ async function hydrateInvoiceItemDisplayCodes(items: Invoice['items'] | undefine
   }
 }
 
+type SaleItemMixRow = {
+  invoice_id?: unknown;
+  item_type?: unknown;
+  quantity?: unknown;
+  product_id?: unknown;
+  item_code?: unknown;
+};
+
+function lineQuantity(row: SaleItemMixRow): number {
+  const qty = Number(row.quantity);
+  return Number.isFinite(qty) ? Math.abs(qty) : 0;
+}
+
+async function lookupServiceCardUnitCosts(
+  rows: SaleItemMixRow[],
+  firmNr: string,
+  periodNr: string,
+): Promise<{ byId: Map<string, number>; byCode: Map<string, number> }> {
+  const byId = new Map<string, number>();
+  const byCode = new Map<string, number>();
+  const ids = new Set<string>();
+  const codes = new Set<string>();
+  for (const row of rows) {
+    if (!isServiceInvoiceLineType(String(row.item_type ?? ''))) continue;
+    const pid = String(row.product_id || '').trim();
+    if (isValidUuid(pid)) ids.add(pid);
+    const code = String(row.item_code || '').trim();
+    if (code) codes.add(code);
+  }
+  if (ids.size === 0 && codes.size === 0) return { byId, byCode };
+
+  const remember = (id: unknown, code: unknown, unit: number) => {
+    if (!(unit > 0)) return;
+    const pid = String(id || '').trim();
+    const c = String(code || '').trim();
+    if (pid && !byId.has(pid)) byId.set(pid, unit);
+    if (c && !byCode.has(c)) byCode.set(c, unit);
+  };
+
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./postgrestClient');
+    const idList = [...ids];
+    if (idList.length > 0) {
+      const filter = `in.(${idList.join(',')})`;
+      const [services, beauty] = await Promise.all([
+        postgrest
+          .get<Array<{ id?: string; code?: string; purchase_price?: number }>>(
+            `/rex_${firmNr}_services`,
+            { select: 'id,code,purchase_price', id: filter, limit: 5000 },
+            { schema: 'public' },
+          )
+          .catch(() => []),
+        postgrest
+          .get<Array<{ id?: string; cost_price?: number }>>(
+            `/rex_${firmNr}_beauty_services`,
+            { select: 'id,cost_price', id: filter, limit: 5000 },
+            { schema: 'beauty' },
+          )
+          .catch(() => []),
+      ]);
+      for (const row of services || []) {
+        remember(row.id, row.code, serviceCardUnitCost({ purchasePrice: row.purchase_price }));
+      }
+      for (const row of beauty || []) {
+        const pid = String(row.id || '').trim();
+        if (!pid || byId.has(pid)) continue;
+        remember(pid, '', serviceCardUnitCost({ beautyCostPrice: row.cost_price }));
+      }
+    }
+    const missingCodes = [...codes].filter((code) => !byCode.has(code));
+    if (missingCodes.length > 0) {
+      const codeFilter = `in.(${missingCodes.map((code) => `"${code.replace(/"/g, '')}"`).join(',')})`;
+      const byCodeRows = await postgrest
+        .get<Array<{ id?: string; code?: string; purchase_price?: number }>>(
+          `/rex_${firmNr}_services`,
+          { select: 'id,code,purchase_price', code: codeFilter, limit: 5000 },
+          { schema: 'public' },
+        )
+        .catch(() => []);
+      for (const row of byCodeRows || []) {
+        remember(row.id, row.code, serviceCardUnitCost({ purchasePrice: row.purchase_price }));
+      }
+    }
+    return { byId, byCode };
+  }
+
+  const idList = [...ids];
+  if (idList.length > 0) {
+    try {
+      const { rows: services } = await postgres.query<{ id: string; code: string; purchase_price: string }>(
+        `SELECT id::text AS id, code, purchase_price
+         FROM services
+         WHERE id = ANY($1::uuid[])`,
+        [idList],
+        { firmNr, periodNr },
+      );
+      for (const row of services || []) {
+        remember(row.id, row.code, serviceCardUnitCost({ purchasePrice: row.purchase_price }));
+      }
+    } catch (error) {
+      console.warn('[InvoicesAPI] hizmet kartı alış fiyatı okunamadı:', error);
+    }
+    const missing = idList.filter((id) => !byId.has(id));
+    if (missing.length > 0) {
+      try {
+        const { rows: beauty } = await postgres.query<{ id: string; cost_price: string }>(
+          `SELECT id::text AS id, cost_price
+           FROM beauty_services
+           WHERE id = ANY($1::uuid[])`,
+          [missing],
+          { firmNr, periodNr },
+        );
+        for (const row of beauty || []) {
+          remember(row.id, '', serviceCardUnitCost({ beautyCostPrice: row.cost_price }));
+        }
+      } catch (error) {
+        console.warn('[InvoicesAPI] hizmet kartı maliyet alanı okunamadı:', error);
+      }
+    }
+  }
+
+  const missingCodes = [...codes].filter((code) => !byCode.has(code));
+  if (missingCodes.length > 0) {
+    try {
+      const { rows: services } = await postgres.query<{ id: string; code: string; purchase_price: string }>(
+        `SELECT id::text AS id, code, purchase_price
+         FROM services
+         WHERE code = ANY($1::text[])`,
+        [missingCodes],
+        { firmNr, periodNr },
+      );
+      for (const row of services || []) {
+        remember(row.id, row.code, serviceCardUnitCost({ purchasePrice: row.purchase_price }));
+      }
+    } catch (error) {
+      console.warn('[InvoicesAPI] hizmet kartı kod ile okunamadı:', error);
+    }
+  }
+
+  return { byId, byCode };
+}
+
 async function attachInvoiceLineMix(
   invoices: Invoice[],
   firmNr: string | number,
@@ -2610,50 +2753,73 @@ async function attachInvoiceLineMix(
   if (ids.length === 0) return invoices;
 
   const typesByInvoice = new Map<string, string[]>();
-  const recordRow = (invoiceId: unknown, itemType: unknown) => {
-    const id = String(invoiceId || '').trim();
+  const itemRows: SaleItemMixRow[] = [];
+  const recordRow = (row: SaleItemMixRow) => {
+    const id = String(row.invoice_id || '').trim();
     if (!id) return;
+    itemRows.push(row);
     const list = typesByInvoice.get(id) || [];
-    list.push(String(itemType ?? ''));
+    list.push(String(row.item_type ?? ''));
     typesByInvoice.set(id, list);
   };
 
+  const fn = String(firmNr).padStart(3, '0');
+  const pn = String(periodNr).padStart(2, '0');
   try {
-    const fn = String(firmNr).padStart(3, '0');
-    const pn = String(periodNr).padStart(2, '0');
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
       const itemsTable = `/rex_${fn}_${pn}_sale_items`;
       const chunkSize = 80;
       for (let i = 0; i < ids.length; i += chunkSize) {
         const chunk = ids.slice(i, i + chunkSize);
-        const rows = await postgrest.get<Array<{ invoice_id?: string; item_type?: string }>>(
+        const rows = await postgrest.get<SaleItemMixRow[]>(
           itemsTable,
           {
-            select: 'invoice_id,item_type',
+            select: 'invoice_id,item_type,quantity,product_id,item_code',
             invoice_id: `in.(${chunk.join(',')})`,
             limit: 20000,
           },
           { schema: 'public' },
         );
-        for (const row of Array.isArray(rows) ? rows : []) {
-          recordRow(row.invoice_id, row.item_type);
-        }
+        for (const row of Array.isArray(rows) ? rows : []) recordRow(row);
       }
     } else {
-      const { rows } = await postgres.query(
-        `SELECT invoice_id::text AS invoice_id, item_type
+      const { rows } = await postgres.query<SaleItemMixRow>(
+        `SELECT invoice_id::text AS invoice_id, item_type, quantity,
+                product_id::text AS product_id, item_code
          FROM sale_items
          WHERE invoice_id::text = ANY($1::text[])`,
         [ids],
         { firmNr: fn, periodNr: pn },
       );
-      for (const row of rows || []) {
-        recordRow(row.invoice_id, row.item_type);
-      }
+      for (const row of rows || []) recordRow(row);
     }
   } catch (error) {
     console.warn('[InvoicesAPI] attachInvoiceLineMix failed:', error);
+  }
+
+  let cardCosts = { byId: new Map<string, number>(), byCode: new Map<string, number>() };
+  try {
+    cardCosts = await lookupServiceCardUnitCosts(itemRows, fn, pn);
+  } catch (error) {
+    console.warn('[InvoicesAPI] hizmet kart maliyeti okunamadı:', error);
+  }
+
+  const serviceLinesByInvoice = new Map<string, NonNullable<Invoice['service_lines']>>();
+  for (const row of itemRows) {
+    if (!isServiceInvoiceLineType(String(row.item_type ?? ''))) continue;
+    const id = String(row.invoice_id || '').trim();
+    if (!id) continue;
+    const pid = String(row.product_id || '').trim();
+    const code = String(row.item_code || '').trim();
+    const unit = (pid && cardCosts.byId.get(pid)) || (code && cardCosts.byCode.get(code)) || 0;
+    const list = serviceLinesByInvoice.get(id) || [];
+    list.push({
+      itemType: String(row.item_type ?? ''),
+      quantity: lineQuantity(row),
+      cardUnitCost: unit,
+    });
+    serviceLinesByInvoice.set(id, list);
   }
 
   return invoices.map((inv) => {
@@ -2662,7 +2828,7 @@ async function attachInvoiceLineMix(
       invoiceType: inv.invoice_type,
       invoiceCategory: inv.invoice_category,
     });
-    return { ...inv, line_mix: mix };
+    return { ...inv, line_mix: mix, service_lines: serviceLinesByInvoice.get(id) || [] };
   });
 }
 

@@ -57,7 +57,30 @@ describe('invoiceListPayableNet', () => {
       total_amount: 19000,
       header_fields: { footerDiscountAmount: '1000' },
     });
-    expect(invoiceListPayableNet(alreadyNet)).toBe(19000);
+    // total_net dip öncesidir. Kayıtlı tutar da 19.000 ise indirim henüz düşülmemiştir.
+    expect(invoiceListPayableNet(alreadyNet)).toBe(18000);
+  });
+
+  it('dip indirim 12.000 ve satır 20.000 → liste net 8.000; indirimsiz 20.000', () => {
+    expect(
+      invoiceListPayableNet({
+        total_net: 20000,
+        subtotal: 20000,
+        discount: 12000,
+        total: 20000,
+        total_amount: 20000,
+        header_fields: { footerDiscountAmount: '12000' },
+      }),
+    ).toBe(8000);
+    expect(
+      invoiceListPayableNet({
+        total_net: 20000,
+        subtotal: 20000,
+        discount: 0,
+        total: 20000,
+        total_amount: 20000,
+      }),
+    ).toBe(20000);
   });
 
   it('satır indirimi nette ise bir daha düşülmez; dip ayrıca bir kez düşülür', () => {

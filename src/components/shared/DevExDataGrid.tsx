@@ -516,6 +516,11 @@ export interface DevExDataGridProps<T> {
   /** true ise filtrelenmiş satırları Excel olarak indirir */
   enableExcelExport?: boolean;
   excelFileName?: string;
+  /**
+   * Sayfa üstündeki Excel düğmesi bunu çağırır.
+   * Yazılanlar görünen kolonlar, süzülmüş satırlar ve dip toplamdır.
+   */
+  onExcelExportReady?: (exportFn: (() => void) | null) => void;
   /** true ise Excel yanındaki Yazdır (varsayılan: Excel açıksa açık) */
   enablePrint?: boolean;
   printTitle?: string;
@@ -2324,6 +2329,7 @@ export function DevExDataGrid<T>({
   density = 'compact',
   enableExcelExport = true,
   excelFileName = 'retailex_export',
+  onExcelExportReady,
   enablePrint,
   printTitle,
   onPrint,
@@ -3097,7 +3103,20 @@ export function DevExDataGrid<T>({
       typeof resolvedFooterLabel === 'string' && resolvedFooterLabel.trim()
         ? resolvedFooterLabel
         : 'Toplam',
+    visibleColumnIds: gridExcelColumns
+      .map((col) => (col.id ? String(col.id) : ''))
+      .filter(Boolean),
   };
+  const gridExcelExportRef = useRef<() => void>(() => {});
+  gridExcelExportRef.current = () => {
+    exportDataGridToExcel(gridExcelRows, gridExcelColumns, excelFileName, gridExcelOptions);
+  };
+  useEffect(() => {
+    if (!onExcelExportReady) return;
+    const run = () => gridExcelExportRef.current();
+    onExcelExportReady(run);
+    return () => onExcelExportReady(null);
+  }, [onExcelExportReady]);
 
   const resolveRowVisualClass = useCallback(
     (row: T, idx: number, isSelected: boolean) => {
@@ -3292,14 +3311,7 @@ export function DevExDataGrid<T>({
           {enableExcelExport && (
             <button
               type="button"
-              onClick={() =>
-                exportDataGridToExcel(
-                  gridExcelRows,
-                  gridExcelColumns,
-                  excelFileName,
-                  gridExcelOptions,
-                )
-              }
+              onClick={() => gridExcelExportRef.current()}
               className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100"
               title={tm('exportExcel') || 'Excel'}
             >
