@@ -211,7 +211,7 @@ describe('Kasa Durumu yerleşimi', () => {
 
     const moduleSource = readFileSync(resolve('src/components/reports/ReportsModule.tsx'), 'utf8');
     const cashBlock = moduleSource.slice(moduleSource.indexOf("selectedTab === 'cash-status'"));
-    const nextTab = cashBlock.indexOf("selectedTab === 'payment-distribution'");
+    const nextTab = cashBlock.indexOf("selectedTab === 'discount-report'");
     const summary = nextTab > 0 ? cashBlock.slice(0, nextTab) : cashBlock;
     expect(moduleSource).toContain("tm('cashStatusTotalIn')");
     expect(summary).toContain('formulaBalance');

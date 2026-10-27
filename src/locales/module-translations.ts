@@ -11437,7 +11437,6 @@ export const excelModuleTranslations = {
   malHareketRaporu: { tr: 'Mal Hareket Raporu', en: 'Material Movement Report', ar: 'تقرير حركة المواد', ku: 'ڕاپۆرti جووڵەی مادە' },
   sktYaklasanlar: { tr: 'SKT Yaklaşanlar', en: 'Expiring Soon', ar: 'تنتهي صلاحيتها قريبًا', ku: 'بەسەرچوون نزیکە' },
   odemeVeIslemler: { tr: 'ÖDEME VE İŞLEMLER', en: 'PAYMENTS & TRANSACTIONS', ar: 'المدفوعات والمعاملات', ku: 'پارەدان و کردارەکان' },
-  odemeDagilimi: { tr: 'Ödeme Dağılımı', en: 'Payment Distribution', ar: 'توزيع المدفوعات', ku: 'دابەشبوونی پارەدان' },
   indirimRaporu: { tr: 'İndirim Raporu', en: 'Discount Report', ar: 'تقرير الخصومات', ku: 'ڕاپۆرتی داشکاندن' },
   kasaDurumu: { tr: 'Kasa Durumu', en: 'Cash Status', ar: 'حالة الصندوق', ku: 'دۆخی سندوق' },
   komisyonRaporu: { tr: 'Komisyon Raporu', en: 'Commission Report', ar: 'تقرير العمولات', ku: 'ڕاپۆرتی کۆmیسیۆن' },
@@ -11713,12 +11712,6 @@ export const excelModuleTranslations = {
   reportsPriceCol: { tr: 'Fiyat', en: 'Price', ar: 'السعر', ku: 'نرخ' },
   reportsNoLowStockProducts: { tr: 'Düşük stokta ürün yok.', en: 'No products in low stock.', ar: 'لا منتجات بمخزون منخفض.', ku: 'هیچ بەرهەمێک بە کۆگای کەم نییە.' },
   reportsPaymentTypeDistribution: { tr: 'Ödeme Tipi Dağılımı', en: 'Payment type distribution', ar: 'توزيع أنواع الدفع', ku: 'دابەشبوونی جۆری پارەدان' },
-  reportsPaymentDistNoPositive: {
-    tr: 'Ödeme dağılımı için pozitif tutar bulunamadı.',
-    en: 'No positive amounts for payment distribution.',
-    ar: 'لا مبالغ موجبة لتوزيع المدفوعات.',
-    ku: 'بڕی ئەرێنی بۆ دابەشبوونی پارەدان نەدۆزرایەوە.',
-  },
   /** Pasta / grafik göstergeleri (ERP nakit-kart-havale) */
   reportsPaymentPieCash: { tr: 'Nakit', en: 'Cash', ar: 'نقد', ku: 'کاش' },
   reportsPaymentPieCard: { tr: 'Kredi kartı', en: 'Credit card', ar: 'بطاقة ائتمان', ku: 'کارتی کریت' },
@@ -12217,7 +12210,6 @@ export const excelModuleTranslations = {
   todayCash: { tr: 'Günlük Nakit', en: 'Daily Cash', ar: 'النقد اليومي', ku: 'کاشی ڕۆژانە' },
   todayCard: { tr: 'Günlük Kart', en: 'Daily Card', ar: 'البطاقة اليومية', ku: 'کارتی ڕۆژانە' },
   closingCash: { tr: 'Kapanış Kasası', en: 'Closing Cash', ar: 'النقد الختامي', ku: 'سندوقی داخستن' },
-  paymentDistribution: { tr: 'Ödeme Dağılımı', en: 'Payment Distribution', ar: 'توزيع المدفوعات', ku: 'دابەشبوونی پارەدان' },
   cardTypes: { tr: 'Kart Türleri', en: 'Card Types', ar: 'أنواع البطاقات', ku: 'جۆرەکانی کارت' },
   transferLabel: { tr: 'Transfer', en: 'Transfer', ar: 'تحويل', ku: 'گواستنەوە' },
   transactionLabel_rep: { tr: 'işlem', en: 'transaction', ar: 'عملية', ku: 'کار' },
@@ -14700,13 +14692,6 @@ export const excelModuleTranslations = {
   reportsExpiringSerialPrefix: { tr: 'Seri:', en: 'Serial:', ar: 'تسلسل:', ku: 'زنجیرە:' },
   reportsExpiringDaysOverdue: { tr: '{n} gün geçmiş', en: '{n} days overdue', ar: 'متأخر {n} يومًا', ku: '{n} ڕۆژ دواکەوتوو' },
 
-  reportsPaymentTxnLine: {
-    tr: '{count} işlem ({pct}%)',
-    en: '{count} txns ({pct}%)',
-    ar: '{count} عملية ({pct}٪)',
-    ku: '{count} مامەڵە ({pct}٪)',
-  },
-  reportsPaymentTxnShort: { tr: '{n} işlem', en: '{n} txns', ar: '{n} عملية', ku: '{n} مامەڵە' },
   reportsExtraCashCollections: {
     tr: 'Ek tahsilat (cari / kasa)',
     en: 'Extra collection (AR / cash)',

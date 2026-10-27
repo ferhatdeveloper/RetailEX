@@ -315,7 +315,7 @@ describe('Kasa Durumu filtre bağımlılığı', () => {
     expect(source).toContain('data-testid="cash-status-loading"');
     // Özet, aralık hazır değilken render edilmez.
     const cashBlock = source.slice(source.indexOf("selectedTab === 'cash-status'"));
-    const nextTab = cashBlock.indexOf("selectedTab === 'payment-distribution'");
+    const nextTab = cashBlock.indexOf("selectedTab === 'discount-report'");
     const summary = nextTab > 0 ? cashBlock.slice(0, nextTab) : cashBlock;
     expect(summary).toContain('cashStatusRangeReady');
     expect(summary).toContain('CashStatusFigures');

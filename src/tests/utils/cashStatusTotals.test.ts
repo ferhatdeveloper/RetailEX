@@ -2257,7 +2257,7 @@ describe('Kasa Durumu filtresi — yılbaşı ve seçilen aralık', () => {
     expect(moduleSource).toContain('balanceFromRegisters');
     const marker = "selectedTab === 'cash-status' &&";
     const cashBlock = moduleSource.slice(moduleSource.indexOf(marker));
-    const nextTab = cashBlock.indexOf("selectedTab === 'payment-distribution'");
+    const nextTab = cashBlock.indexOf("selectedTab === 'discount-report'");
     const summary = nextTab > 0 ? cashBlock.slice(0, nextTab) : cashBlock;
     expect(summary).toContain('cashStatusDate');
     expect(summary).toContain('formulaBalance');
