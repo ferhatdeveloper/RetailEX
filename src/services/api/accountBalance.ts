@@ -13,6 +13,7 @@ import {
   sqlPaymentMethodImpliesSupplierDebtExpr,
   sqlPaymentMethodIsCashSettledExpr,
 } from '../../utils/paymentMethodUtils';
+import { cashLineCariLedgerAmount } from '../../utils/cashLineFx';
 
 export function normalizeFirmTableNr(firmNr?: string | number | null): string {
   const d = String(firmNr ?? ERP_SETTINGS.firmNr ?? '001').replace(/\D/g, '');
@@ -85,22 +86,32 @@ export function sqlCashLineLedgerContribExpr(
   alias = '',
 ): string {
   const tt = alias ? `UPPER(TRIM(COALESCE(${alias}.transaction_type, '')))` : `UPPER(TRIM(COALESCE(transaction_type, '')))`;
-  const amt = alias ? `COALESCE(${alias}.amount, 0)` : `COALESCE(amount, 0)`;
+  const p = alias ? `${alias}.` : '';
+  // Çapraz döviz: exchange_rate ≠ 1 ve f_amount > 0 → cari tutarı f_amount (firma ana para).
+  // Aksi halde amount (kasa = cari aynı döviz; eski kayıtlarda f_amount=0).
+  const amt = `(
+    CASE
+      WHEN ABS(COALESCE(${p}exchange_rate, 1) - 1) > 1e-9
+           AND COALESCE(ABS(${p}f_amount), 0) > 0
+        THEN ABS(${p}f_amount)
+      ELSE ABS(COALESCE(${p}amount, 0))
+    END
+  )`;
   // customer: CH_TAHSILAT → -ABS, CH_ODEME → +ABS
   // supplier: CH_TAHSILAT → +ABS, CH_ODEME → -ABS
   if (cariSide === 'customer') {
     return `(
       CASE
-        WHEN ${tt} = 'CH_TAHSILAT' THEN -ABS(${amt})
-        WHEN ${tt} = 'CH_ODEME'    THEN  ABS(${amt})
+        WHEN ${tt} = 'CH_TAHSILAT' THEN -${amt}
+        WHEN ${tt} = 'CH_ODEME'    THEN  ${amt}
         ELSE 0
       END
     )`;
   }
   return `(
     CASE
-      WHEN ${tt} = 'CH_TAHSILAT' THEN  ABS(${amt})
-      WHEN ${tt} = 'CH_ODEME'    THEN -ABS(${amt})
+      WHEN ${tt} = 'CH_TAHSILAT' THEN  ${amt}
+      WHEN ${tt} = 'CH_ODEME'    THEN -${amt}
       ELSE 0
     END
   )`;
@@ -251,6 +262,9 @@ export type LedgerCashRow = {
   customer_id?: string | null;
   party_id?: string | null;
   amount?: number | string | null;
+  /** Cari/defter tutarı (çapraz dövizde firma ana para) */
+  f_amount?: number | string | null;
+  exchange_rate?: number | string | null;
   transaction_type?: string | null;
 };
 
@@ -273,6 +287,8 @@ function cashLineMatchesParty(cl: LedgerCashRow, idStr: string): boolean {
  * Müşteri simetrisi: tahsilat → borç ↓ (−amt), ödeme → borç ↑ (+amt).
  * Tedarikçi simetrisi: tahsilat → borç ↑ (+amt), ödeme → borç ↓ (−amt).
  * Cari türü verilmezse varsayılan müşteri (geriye uyumluluk).
+ *
+ * `amount` burada **cari/defter tutarı**dır (çapraz dövizde f_amount / dovizli_tutar).
  */
 export function cariCashLineLedgerContrib(
   amount: number | string | null | undefined,
@@ -443,29 +459,22 @@ export function computeCustomerBalanceFromLedger(
     if (!cashLineMatchesParty(cl, idStr)) continue;
     // cari türü 'customer' simetrisini kullan — CH_ODEME müşteriye ödeme ise
     // borcu artırır, CH_TAHSILAT müşteriden tahsilat ise borcu azaltır.
-    const contrib = cariCashLineLedgerContrib(cl.amount, tt, 'customer');
+    // Çapraz döviz: f_amount (ana para); aksi halde amount.
+    const cariAmt = cashLineCariLedgerAmount(cl.amount, cl.f_amount, cl.exchange_rate);
+    const contrib = cariCashLineLedgerContrib(cariAmt, tt, 'customer');
     if (!contrib) continue;
     cashTxn += 1;
     cashSum += contrib;
   }
   const txnCount = salesTxn + cashTxn;
-  // Hareket varsa ledger dön.
-  // Hareket yoksa orphan koruması: saklanan `_storedBalance` (DB'deki `customers.balance`)
-  // yedek olarak kullanılır — fatura silindikten veya tamamen iptal edildikten sonra
-  // ledger boşalırsa kullanıcı −40k gibi saçma orphan değerler görmez.
-  // Açılış bakiyesi de defter kaynaklarında (satış/kasa) yoksa 0; SQL repair CTE ile aynı.
+  // Hareket varsa ledger dön (SQL CTE ile aynı).
+  // Hareket yoksa 0 — orphan kart bakiyesi (fatura silindikten sonra kalan −40k) gösterilmez.
+  // Açılış bakiyesi deftere `opening_balance` fişi ile yazılmalı.
+  void _storedBalance;
   if (txnCount > 0) {
-    // Ledger her zaman öncelikli kaynaktır: sales + cash_lines CTE birebir
-    // doğru hesaplar. DB `customers.balance` kolonu yedek olup fatura
-    // silme / merge geçişleri sırasında geri kalabilir (kasap DB örneği:
-    // DB +9.973.363, ledger +7.666.363 → %23 fark; eski "limit aşımı
-    // koruması" bu durumda ledger'ı eziyordu → liste yanlış bakiye
-    // gösteriyordu). Migration 195 ile DB düzeltmesi uygulandıktan sonra
-    // bile ledger ile DB eşit olmalı; yine de DB'ye güvenmek yanlış.
-    // Orphan koruma: txnCount === 0 iken DB'ye fallback zaten aşağıda.
     return salesSum + cashSum;
   }
-  return Number.isFinite(_storedBalance) ? _storedBalance : 0;
+  return 0;
 }
 
 /** PostgREST: tedarikçi defter bakiyesi — alış/iade + kasa hareketleri */
@@ -484,9 +493,9 @@ export function computeSupplierBalanceFromLedger(
     if (!cashLineMatchesParty(cl, idStr)) continue;
     // cari türü 'supplier' simetrisini kullan — CH_ODEME tedarikçiye ödeme ise
     // borcu azaltır, CH_TAHSILAT tedarikçiden tahsilat ise borcu artırır.
-    // Eski davranış customer varsayılanını kullanıyordu; bu CH_TAHSILAT için
-    // bakiyeyi yanlış yönde düşürüyordu (muhasebe denetimi düzeltmesi).
-    const contrib = cariCashLineLedgerContrib(cl.amount, tt, 'supplier');
+    // Çapraz döviz: f_amount (ana para); aksi halde amount.
+    const cariAmt = cashLineCariLedgerAmount(cl.amount, cl.f_amount, cl.exchange_rate);
+    const contrib = cariCashLineLedgerContrib(cariAmt, tt, 'supplier');
     if (!contrib) continue;
     sum += contrib;
   }

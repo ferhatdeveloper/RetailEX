@@ -4,7 +4,7 @@
  * Flat design matching 'Ödeme Al' style
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Calendar, Search, Save, Wallet, FileText } from 'lucide-react';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -28,6 +28,10 @@ import { fetchBankalar, type Banka } from '../../../services/api/banka';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { supplierAPI } from '../../../services/api/suppliers';
 import { partnerAPI } from '../../../services/api/partiesPartners';
+import {
+  exchangeRateAPI,
+  resolveDocumentCurrencyRateToLedger,
+} from '../../../services/api/masterData';
 import { cashPaymentListBalanceForDisplay } from '../../../utils/cashPaymentListBalance';
 import type { Invoice, PartyPartner } from '../../../core/types/models';
 import { formatNumber, parseNumber } from '../../../utils/formatNumber';
@@ -35,6 +39,11 @@ import { formatCurrency, formatMoneyWithCode, getGlobalCurrency } from '../../..
 import { getCariBalanceDirection } from '../../../utils/cariAccountStatement';
 import { resolveCashLineActorWrite } from '../../../utils/cashLineActor';
 import { boundReturnCashAmount, invoiceRecordToCashInput } from '../../../utils/invoiceCashRegisterPosting';
+import {
+  convertCashAmountToLedger,
+  documentToLedgerFromInverse,
+  invertDocumentToLedgerRate,
+} from '../../../utils/cashLineFx';
 
 interface KasaIslemModalProps {
   kasa: Kasa;
@@ -176,6 +185,26 @@ export function KasaIslemModal({
 
   // Amount Formatting Logic
   const [displayAmount, setDisplayAmount] = useState('');
+  /**
+   * Çapraz döviz: 1 firma ana para = ? işlem dövizi (örn. 1 USD = 1310 IQD).
+   * DB'ye yazılan exchange_rate bunun tersidir (1 IQD → USD).
+   */
+  const [displayInverseRate, setDisplayInverseRate] = useState('');
+  const fxRateUserTouchedRef = useRef(false);
+  /** Belge (kasa) → ledger (ana para) kuru */
+  const [docToLedgerRate, setDocToLedgerRate] = useState(1);
+
+  const cashCurrency = String(formData.doviz_kodu || ledgerCurrency).trim().toUpperCase();
+  const isCrossCurrencyCari =
+    (islemTipi === 'CH_TAHSILAT' || islemTipi === 'CH_ODEME') &&
+    !!cashCurrency &&
+    !!ledgerCurrency &&
+    cashCurrency !== ledgerCurrency;
+
+  const cashAmountNum = Math.abs(parseNumber(displayAmount) || Number(formData.tutar) || 0);
+  const cariLedgerAmount = isCrossCurrencyCari
+    ? convertCashAmountToLedger(cashAmountNum, docToLedgerRate)
+    : cashAmountNum;
 
   // Sync display amount when formData.tutar changes (initial load or external change)
   useEffect(() => {
@@ -187,6 +216,60 @@ export function KasaIslemModal({
       }
     }
   }, [formData.tutar]);
+
+  // Çapraz döviz: işlem tarihi / döviz değişince günlük kurdan doldur
+  useEffect(() => {
+    if (!isCrossCurrencyCari) {
+      setDocToLedgerRate(1);
+      setDisplayInverseRate('');
+      fxRateUserTouchedRef.current = false;
+      return;
+    }
+    if (fxRateUserTouchedRef.current && isEdit) {
+      // Düzenlemede kullanıcı kuru değiştirmişse yeniden yükleme
+      return;
+    }
+    let cancelled = false;
+    const asOf = String(formData.islem_tarihi || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+    (async () => {
+      try {
+        let n = await resolveDocumentCurrencyRateToLedger(cashCurrency, ledgerCurrency, asOf, 'Satış');
+        if (n == null || !(n > 0)) {
+          const latest = await exchangeRateAPI.getLatestRates();
+          const rowD = latest.find((r) => String(r.currency_code).trim().toUpperCase() === cashCurrency);
+          const rowL = latest.find((r) => String(r.currency_code).trim().toUpperCase() === ledgerCurrency);
+          const vD = rowD ? Number(rowD.sell_rate || rowD.buy_rate) : NaN;
+          const vL = rowL ? Number(rowL.sell_rate || rowL.buy_rate) : NaN;
+          if (Number.isFinite(vD) && vD > 0) {
+            n = vD / (Number.isFinite(vL) && vL > 0 ? vL : 1);
+          }
+        }
+        if (cancelled || fxRateUserTouchedRef.current) return;
+        if (n != null && n > 0) {
+          setDocToLedgerRate(n);
+          const inv = invertDocumentToLedgerRate(n);
+          setDisplayInverseRate(inv != null ? formatNumber(inv) : '');
+        }
+      } catch {
+        /* kur yoksa kullanıcı elle girer */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isCrossCurrencyCari, cashCurrency, ledgerCurrency, formData.islem_tarihi, isEdit]);
+
+  // Düzenleme: kayıtlı kuru yükle
+  useEffect(() => {
+    if (!isEdit || !editingIslem) return;
+    const storedRate = Number(editingIslem.exchange_rate);
+    if (Number.isFinite(storedRate) && storedRate > 0 && Math.abs(storedRate - 1) > 1e-9) {
+      setDocToLedgerRate(storedRate);
+      const inv = invertDocumentToLedgerRate(storedRate);
+      setDisplayInverseRate(inv != null ? formatNumber(inv) : '');
+      fxRateUserTouchedRef.current = true;
+    }
+  }, [isEdit, editingIslem?.id]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -206,6 +289,21 @@ export function KasaIslemModal({
 
   const handleAmountFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     e.target.select();
+  };
+
+  const handleInverseRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (!/^[0-9.,]*$/.test(val)) return;
+    fxRateUserTouchedRef.current = true;
+    setDisplayInverseRate(val);
+    const inv = parseNumber(val);
+    const docRate = documentToLedgerFromInverse(inv);
+    if (docRate != null && docRate > 0) setDocToLedgerRate(docRate);
+  };
+
+  const handleInverseRateBlur = () => {
+    const inv = invertDocumentToLedgerRate(docToLedgerRate);
+    if (inv != null) setDisplayInverseRate(formatNumber(inv));
   };
 
   const [cariHesaplar, setCariHesaplar] = useState<CariHesap[]>([]);
@@ -404,6 +502,13 @@ export function KasaIslemModal({
       return;
     }
 
+    if (isCrossCurrencyCari) {
+      if (!(docToLedgerRate > 0) || !(cariLedgerAmount > 0)) {
+        toast.error(tm('cashFxRateRequired') || 'Çapraz döviz tahsilatı için geçerli kur giriniz.');
+        return;
+      }
+    }
+
     if ((islemTipi === 'CH_TAHSILAT' || islemTipi === 'CH_ODEME') && !formData.cari_hesap_id) {
       toast.error(t['pleaseSelectCurrentAccount']);
       return;
@@ -456,12 +561,20 @@ export function KasaIslemModal({
         cashier: formData.cashier,
         createdByUserId: formData.created_by_user_id || formData.created_by || formData.user_id,
       });
+      const fxRate = isCrossCurrencyCari ? docToLedgerRate : 1;
+      const cariTutar = isCrossCurrencyCari
+        ? convertCashAmountToLedger(submitTutar, fxRate)
+        : submitTutar;
       const submitFormData: KasaIslemi = {
         ...(formData as KasaIslemi),
         tutar: submitTutar,
-        dovizli_tutar: submitTutar,
-        // Virman: seçilen döviz yok. Aynı tutar, kaynak kasa birimi, kur 1 (servis). Hedefe ayrı kur yazılmaz.
-        ...(islemTipi === 'VIRMAN' ? { doviz_kodu: virmanCurrency, dovizli_tutar: submitTutar } : {}),
+        // Kasa = işlem dövizi tutarı; cari = firma ana para (çaprazda farklı)
+        dovizli_tutar: cariTutar,
+        exchange_rate: fxRate,
+        // Virman: seçilen döviz yok. Aynı tutar, kaynak kasa birimi, kur 1 (servis).
+        ...(islemTipi === 'VIRMAN'
+          ? { doviz_kodu: virmanCurrency, dovizli_tutar: submitTutar, exchange_rate: 1 }
+          : {}),
         islem_tipi: postedTip,
         islem_no: invoiceFiche || formData.islem_no,
         party_id: islemTipi === 'CH_ODEME' && ortakAdina ? formData.party_id : undefined,
@@ -1077,7 +1190,10 @@ export function KasaIslemModal({
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['currency']}</label>
               <select
                 value={formData.doviz_kodu}
-                onChange={(e) => setFormData({ ...formData, doviz_kodu: e.target.value })}
+                onChange={(e) => {
+                  fxRateUserTouchedRef.current = false;
+                  setFormData({ ...formData, doviz_kodu: e.target.value });
+                }}
                 className="w-full px-3 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none"
               >
                 <option value="IQD">IQD</option>
@@ -1086,6 +1202,45 @@ export function KasaIslemModal({
               </select>
             </div>
           </div>
+          )}
+
+          {isCrossCurrencyCari && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20 p-4 space-y-3">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
+                {tm('cashFxCrossHint')
+                  ?.replace('{cash}', cashCurrency)
+                  ?.replace('{ledger}', ledgerCurrency) ||
+                  `Kasa ${cashCurrency} — cari bakiye ${ledgerCurrency} cinsinden düşülecek.`}
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {tm('cashFxRateLabel')
+                      ?.replace('{ledger}', ledgerCurrency)
+                      ?.replace('{cash}', cashCurrency) ||
+                      `1 ${ledgerCurrency} = ? ${cashCurrency}`}
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={displayInverseRate}
+                    onChange={handleInverseRateChange}
+                    onBlur={handleInverseRateBlur}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 rounded text-sm font-semibold outline-none focus:ring-1 focus:ring-amber-500"
+                    placeholder="1310"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {tm('cashFxCariAmount')?.replace('{ledger}', ledgerCurrency) ||
+                      `Cari düşülecek (${ledgerCurrency})`}
+                  </label>
+                  <div className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-amber-300 dark:border-amber-700 rounded text-lg font-bold text-emerald-700 dark:text-emerald-300">
+                    {formatMoneyWithCode(cariLedgerAmount || 0, ledgerCurrency)}
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {!isVirman && (

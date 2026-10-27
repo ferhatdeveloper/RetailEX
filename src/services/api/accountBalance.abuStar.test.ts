@@ -63,14 +63,17 @@ describe('CTE muhasebe matris (müşteri × tedarikçi × tahsilat × ödeme)', 
     );
   });
 
-  it('müşteri CTE ifadesi gerçekten CH_TAHSILAT için -ABS içeriyor', () => {
+  it('müşteri CTE ifadesi gerçekten CH_TAHSILAT için negatif katkı içeriyor', () => {
     expect(customerExpr).toMatch(/CH_TAHSILAT/);
-    expect(customerExpr).toMatch(/-ABS\(/);
+    expect(customerExpr).toMatch(/THEN\s+-/);
+    expect(customerExpr).toMatch(/ABS\(/);
   });
 
   it('müşteri CTE ifadesi gerçekten CH_ODEME için +ABS içeriyor', () => {
     expect(customerExpr).toMatch(/CH_ODEME/);
     expect(customerExpr).toMatch(/ABS\(/);
+    // Çapraz döviz: f_amount öncelikli
+    expect(customerExpr).toMatch(/f_amount/);
   });
 
   it('tedarikçi CTE ifadesi gerçekten CH_TAHSILAT için +ABS içeriyor', () => {
@@ -78,9 +81,11 @@ describe('CTE muhasebe matris (müşteri × tedarikçi × tahsilat × ödeme)', 
     expect(supplierExpr).toMatch(/ABS\(/);
   });
 
-  it('tedarikçi CTE ifadesi gerçekten CH_ODEME için -ABS içeriyor', () => {
+  it('tedarikçi CTE ifadesi gerçekten CH_ODEME için negatif katkı içeriyor', () => {
     expect(supplierExpr).toMatch(/CH_ODEME/);
-    expect(supplierExpr).toMatch(/-ABS\(/);
+    // `THEN -${amt}` — amt CASE içinde ABS(...); düz `-ABS(` kalıbı zorunlu değil
+    expect(supplierExpr).toMatch(/THEN\s+-/);
+    expect(supplierExpr).toMatch(/ABS\(/);
   });
 });
 

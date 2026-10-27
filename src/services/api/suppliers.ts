@@ -28,7 +28,7 @@ import {
 } from '../../utils/paymentMethodUtils';
 import { sumCashPaymentBalanceOffsets } from '../../utils/cashPaymentListBalance';
 import { sumReservationDepositsByAccount } from '../../utils/reservationDepositByAccount';
-
+import { cashLineCariLedgerAmount } from '../../utils/cashLineFx';
 export type { Supplier };
 
 export type CariListFilter = 'all' | 'customer' | 'supplier';
@@ -73,12 +73,14 @@ function mapSalesRowToEkstre(r: any) {
 }
 
 function mapCashRowToEkstre(r: any) {
+  // Çapraz döviz: ekstre/cari tutarı f_amount (firma ana para); kasa amount ayrı.
+  const cariAmt = cashLineCariLedgerAmount(r.amount, r.f_amount, r.exchange_rate);
   return {
     fiche_no: r.fiche_no,
     date: r.date,
     trcode: 0,
     fiche_type: String(r.transaction_type || '').trim().toUpperCase(),
-    total_amount: Math.abs(parseFloat(String(r.amount ?? 0)) || 0),
+    total_amount: cariAmt,
     currency: r.currency_code,
     currency_rate: r.exchange_rate != null ? Number(r.exchange_rate) : 1,
     notes: r.definition,
@@ -162,7 +164,7 @@ export const supplierAPI = {
             limit: '50000',
           }),
           safeGet(cashPath, {
-            select: 'customer_id,party_id,amount,transaction_type',
+            select: 'customer_id,party_id,amount,f_amount,exchange_rate,transaction_type',
             transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
             // Deterministic order — 50000 limit'i ile bile keyfi sıralama riski.
             order: 'created_at.asc,id.asc',
@@ -934,7 +936,13 @@ export const supplierAPI = {
           AND LOWER(TRIM(COALESCE(t.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted', 'refunded')
         UNION ALL
         SELECT NULL::uuid AS id, fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
-               ABS(amount) AS total_amount, currency_code AS currency,
+               CASE
+                 WHEN ABS(COALESCE(exchange_rate, 1) - 1) > 1e-9
+                      AND COALESCE(ABS(f_amount), 0) > 0
+                   THEN ABS(f_amount)
+                 ELSE ABS(COALESCE(amount, 0))
+               END AS total_amount,
+               currency_code AS currency,
                COALESCE(exchange_rate, 1) AS currency_rate, definition AS notes,
                false AS is_cancelled, NULL::text AS payment_method,
                UPPER(TRIM(COALESCE(special_code, ''))) AS special_code

@@ -9,6 +9,7 @@ import {
   cariCashStoredBalanceDelta,
   normalizeFirmTableNr,
 } from './accountBalance';
+import { cashLineCariLedgerAmount, parsePositiveAmount } from '../../utils/cashLineFx';
 import { ensureCariAccountInCurrentFirm } from './cariAccountResolve';
 import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 import { assertPeriodOpen } from '../periodControl';
@@ -24,6 +25,23 @@ function padKasaFirmNr(): string {
 }
 function padKasaPeriodNr(): string {
   return String(ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
+}
+
+/** Kasa satırı yazımı: exchange_rate varsayılan 1 */
+function resolveKasaExchangeRate(islem: Pick<KasaIslemi, 'exchange_rate'>): number {
+  const r = Number(islem.exchange_rate);
+  return Number.isFinite(r) && r > 0 ? r : 1;
+}
+
+/**
+ * Cari bakiye / party_ledger tutarı.
+ * Çapraz dövizde dovizli_tutar (f_amount); aksi halde tutar.
+ */
+function resolveKasaCariAmount(islem: Pick<KasaIslemi, 'tutar' | 'dovizli_tutar' | 'exchange_rate'>): number {
+  const rate = resolveKasaExchangeRate(islem);
+  const cashAmt = parsePositiveAmount(islem.tutar);
+  const ledgerAmt = parsePositiveAmount(islem.dovizli_tutar);
+  return cashLineCariLedgerAmount(cashAmt, ledgerAmt > 0 ? ledgerAmt : cashAmt, rate);
 }
 
 let cashLineActorColumnsReady = false;
@@ -425,8 +443,17 @@ export interface KasaIslemi {
   cari_hesap_kodu?: string;
   cari_hesap_unvani?: string;
   doviz_kodu?: string;
+  /**
+   * 1 birim kasa dövizi → kaç birim firma ana para (cash_lines.exchange_rate).
+   * Aynı dövizde 1; çapraz tahsilatta örn. IQD→USD ≈ 1/1310.
+   */
+  exchange_rate?: number;
   /** cash_lines.sign. Virman hedef satırında +1, kaynakta −1. */
   sign?: number;
+  /**
+   * Cari/defter tutarı (firma ana para). Çapraz dövizde amount ≠ dovizli_tutar.
+   * cash_lines.f_amount olarak yazılır.
+   */
   dovizli_tutar?: number;
   olusturma_tarihi?: string;
   guncelleme_tarihi?: string;
@@ -1268,8 +1295,8 @@ async function createKasaIslemiViaPostgrest(
     customer_id: cariSplit.customer_id || (cariKind === 'customer' || !cariKind ? islem.cari_hesap_id : null) || null,
     party_id: cariSplit.party_id || islem.party_id || null,
     currency_code: islem.doviz_kodu || 'YEREL',
-    exchange_rate: 1,
-    f_amount: islem.dovizli_tutar || 0,
+    exchange_rate: resolveKasaExchangeRate(islem),
+    f_amount: resolveKasaCariAmount(islem),
     transfer_status: 0,
     special_code: islem.ozel_kod || '',
     target_register_id: islem.target_register_id || null,
@@ -1368,7 +1395,7 @@ async function createKasaIslemiViaPostgrest(
 
   if (islem.cari_hesap_id && (islem.islem_tipi === 'CH_ODEME' || islem.islem_tipi === 'CH_TAHSILAT')) {
     const delta = cariCashStoredBalanceDelta(
-      islem.tutar,
+      resolveKasaCariAmount(islem),
       islem.islem_tipi,
       storedCariTypeFromKind(cariKind),
     );
@@ -1432,53 +1459,58 @@ async function createKasaIslemiViaPostgrest(
         const periodP = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10);
         const ledgerPath = `/rex_${firmNrP}_${periodP}_party_ledger_movements`;
         const accountPath = `/rex_${firmNrP}_${periodP}_account_movements`;
-        const amount = Math.abs(Number(islem.tutar || 0));
-        if (amount > 0) {
+        const cariAmount = resolveKasaCariAmount(islem);
+        const cashAmount = parsePositiveAmount(islem.tutar);
+        if (cariAmount > 0 || cashAmount > 0) {
           const customerSign =
             cariKind === 'customer'
               ? (islem.islem_tipi === 'CH_TAHSILAT' ? -1 : 1) // customer CH_TAHSILAT -1 (alacak), CH_ODEME +1 (borç)
               : (islem.islem_tipi === 'CH_ODEME' ? 1 : -1); // supplier CH_ODEME +1 (borç azaltıcı), CH_TAHSILAT -1 (borç artırıcı)
           const cashLineId = (Array.isArray(mainRow) ? mainRow : (mainRow as any))?.id || null;
-          // party_ledger_movements: cari tarafı (customer/supplier) — cash_line_id bağlı tek satır.
-          await postgrest.post(
-            ledgerPath,
-            {
-              firm_nr: String(ERP_SETTINGS.firmNr || ''),
-              period_nr: periodP,
-              party_id: islem.cari_hesap_id,
-              card_type: cariKind,
-              trcode: 0,
-              transaction_type: islem.islem_tipi,
-              date: islem.islem_tarihi || new Date().toISOString(),
-              amount,
-              sign: customerSign,
-              definition: (islem.islem_aciklamasi || '').trim() || (islem.islem_tipi === 'CH_TAHSILAT' ? 'Cari Tahsilat' : 'Cari Ödeme'),
-              source_module: 'cash_create',
-              source_id: cashLineId,
-              cash_line_id: cashLineId,
-            },
-            { schema: 'public', prefer: 'return=minimal' },
-          );
-          // account_movements: kasa tarafı (CH_TAHSILAT +1, CH_ODEME -1). ref_id NULL → UNIQUE çakışmaz.
-          await postgrest.post(
-            accountPath,
-            {
-              firm_nr: String(ERP_SETTINGS.firmNr || ''),
-              period_nr: periodP,
-              ref_id: null,
-              client_ref: null,
-              customer_id: cariKind === 'customer' ? islem.cari_hesap_id : null,
-              supplier_id: cariKind === 'supplier' ? islem.cari_hesap_id : null,
-              fiche_no: ficheNo,
-              date: islem.islem_tarihi || new Date().toISOString(),
-              amount,
-              sign: islem.islem_tipi === 'CH_TAHSILAT' ? 1 : -1,
-              trcode: 0,
-              module_nr: 0,
-              definition: (islem.islem_aciklamasi || '').trim() || (islem.islem_tipi === 'CH_TAHSILAT' ? 'Cari Tahsilat (Kasa)' : 'Cari Ödeme (Kasa)'),
-            },
-            { schema: 'public', prefer: 'return=minimal' },
-          );
+          // party_ledger_movements: cari tarafı — çapraz dövizde defter (f_amount) tutarı.
+          if (cariAmount > 0) {
+            await postgrest.post(
+              ledgerPath,
+              {
+                firm_nr: String(ERP_SETTINGS.firmNr || ''),
+                period_nr: periodP,
+                party_id: islem.cari_hesap_id,
+                card_type: cariKind,
+                trcode: 0,
+                transaction_type: islem.islem_tipi,
+                date: islem.islem_tarihi || new Date().toISOString(),
+                amount: cariAmount,
+                sign: customerSign,
+                definition: (islem.islem_aciklamasi || '').trim() || (islem.islem_tipi === 'CH_TAHSILAT' ? 'Cari Tahsilat' : 'Cari Ödeme'),
+                source_module: 'cash_create',
+                source_id: cashLineId,
+                cash_line_id: cashLineId,
+              },
+              { schema: 'public', prefer: 'return=minimal' },
+            );
+          }
+          // account_movements: kasa tarafı (nakit tutarı).
+          if (cashAmount > 0) {
+            await postgrest.post(
+              accountPath,
+              {
+                firm_nr: String(ERP_SETTINGS.firmNr || ''),
+                period_nr: periodP,
+                ref_id: null,
+                client_ref: null,
+                customer_id: cariKind === 'customer' ? islem.cari_hesap_id : null,
+                supplier_id: cariKind === 'supplier' ? islem.cari_hesap_id : null,
+                fiche_no: ficheNo,
+                date: islem.islem_tarihi || new Date().toISOString(),
+                amount: cashAmount,
+                sign: islem.islem_tipi === 'CH_TAHSILAT' ? 1 : -1,
+                trcode: 0,
+                module_nr: 0,
+                definition: (islem.islem_aciklamasi || '').trim() || (islem.islem_tipi === 'CH_TAHSILAT' ? 'Cari Tahsilat (Kasa)' : 'Cari Ödeme (Kasa)'),
+              },
+              { schema: 'public', prefer: 'return=minimal' },
+            );
+          }
         }
       } catch (e) {
         // Sembolik: cash_lines ve kart balance zaten yazıldı; ledger yazımı başarısız olursa
@@ -1812,8 +1844,8 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
         cariSplit.customer_id || islem.cari_hesap_id || null,
         cariSplit.party_id || islem.party_id || null,
         islem.doviz_kodu || 'YEREL',
-        1,
-        islem.dovizli_tutar || 0,
+        resolveKasaExchangeRate(islem),
+        resolveKasaCariAmount(islem),
         islem.ozel_kod || '',
         islem.target_register_id || null,
         islem.bank_id || null,
@@ -1840,12 +1872,13 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     // Önemli: Kasa sign (+1/-1) cariye uygulanmaz. Tahsilat/ödeme açık bakiyeyi düşürür (-ABS).
     // CH_TAHSILAT: müşteriden tahsilat → alacak → borç ↓
     // CH_ODEME: tedarikçiye/müşteriye ödeme → açık ↓
+    // Çapraz döviz: cari delta = dovizli_tutar (firma ana para); kasa amount ayrı.
     // TÜR TESPİTİ: INSERT'te olduğu gibi burada da cariKind'e göre doğru tabloya yaz.
     // Eski "önce customer dene, yoksa supplier" yaklaşımı supplier ödemelerini müşteri tablosuna
     // düşürüyordu. cariKind=null ise (UUID hiçbir yerde yok) yine de fallback denenir.
     if (islem.cari_hesap_id && (islem.islem_tipi === 'CH_ODEME' || islem.islem_tipi === 'CH_TAHSILAT')) {
       const delta = cariCashStoredBalanceDelta(
-        islem.tutar,
+        resolveKasaCariAmount(islem),
         islem.islem_tipi,
         storedCariTypeFromKind(cariKind),
       );
@@ -1891,56 +1924,62 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     if (cariKind === 'customer' || cariKind === 'supplier') {
       try {
         await ensurePartyPeriodTables();
-        const amount = Math.abs(Number(islem.tutar || 0));
-        if (amount > 0) {
+        const cariAmount = resolveKasaCariAmount(islem);
+        const cashAmount = parsePositiveAmount(islem.tutar);
+        const partnerId = islem.cari_hesap_id;
+        if ((cariAmount > 0 || cashAmount > 0) && partnerId) {
           const customerSign =
             cariKind === 'customer'
               ? (islem.islem_tipi === 'CH_TAHSILAT' ? -1 : 1)
               : (islem.islem_tipi === 'CH_ODEME' ? 1 : -1);
           const cashLineId = rows[0]?.id;
-          await postgres.query(
-            `INSERT INTO ${partyLedgerTable()} (
-               firm_nr, period_nr, party_id, card_type, trcode, transaction_type,
-               date, amount, sign, definition, source_module, source_id, cash_line_id
-             ) VALUES (
-               $1::text, $2::text, $3::text::uuid, $4::text, 0, $5::text,
-               $6::text::timestamptz, $7::text::numeric, $8::integer, $9::text,
-               'cash_create', $10::text::uuid, $10::text::uuid
-             )`,
-            [
-              String(ERP_SETTINGS.firmNr || ''),
-              String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10),
-              partnerId,
-              cariKind,
-              islem.islem_tipi,
-              islem.islem_tarihi || new Date().toISOString(),
-              amount.toString(),
-              customerSign,
-              (islem.islem_aciklamasi || '').trim() || (islem.islem_tipi === 'CH_TAHSILAT' ? 'Cari Tahsilat' : 'Cari Ödeme'),
-              cashLineId,
-            ],
-          );
-          // account_movements: kasa tarafı. ref_id NULL → UNIQUE çakışmaz (re-runnable migration sonrası).
-          await postgres.query(
-            `INSERT INTO rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_${String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10)}_account_movements (
-               firm_nr, period_nr, ref_id, client_ref, customer_id, supplier_id, fiche_no,
-               date, amount, sign, trcode, module_nr, definition
-             ) VALUES (
-               $1::text, $2::text, NULL, NULL, $3::text::uuid, $4::text::uuid, $5::text,
-               $6::text::timestamptz, $7::text::numeric, $8::integer, 0, 0, $9::text
-             )`,
-            [
-              String(ERP_SETTINGS.firmNr || ''),
-              String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10),
-              cariKind === 'customer' ? partnerId : null,
-              cariKind === 'supplier' ? partnerId : null,
-              ficheNo,
-              islem.islem_tarihi || new Date().toISOString(),
-              amount.toString(),
-              islem.islem_tipi === 'CH_TAHSILAT' ? 1 : -1,
-              (islem.islem_aciklamasi || '').trim() || (islem.islem_tipi === 'CH_TAHSILAT' ? 'Cari Tahsilat (Kasa)' : 'Cari Ödeme (Kasa)'),
-            ],
-          );
+          if (cariAmount > 0) {
+            await postgres.query(
+              `INSERT INTO ${partyLedgerTable()} (
+                 firm_nr, period_nr, party_id, card_type, trcode, transaction_type,
+                 date, amount, sign, definition, source_module, source_id, cash_line_id
+               ) VALUES (
+                 $1::text, $2::text, $3::text::uuid, $4::text, 0, $5::text,
+                 $6::text::timestamptz, $7::text::numeric, $8::integer, $9::text,
+                 'cash_create', $10::text::uuid, $10::text::uuid
+               )`,
+              [
+                String(ERP_SETTINGS.firmNr || ''),
+                String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10),
+                partnerId,
+                cariKind,
+                islem.islem_tipi,
+                islem.islem_tarihi || new Date().toISOString(),
+                cariAmount.toString(),
+                customerSign,
+                (islem.islem_aciklamasi || '').trim() || (islem.islem_tipi === 'CH_TAHSILAT' ? 'Cari Tahsilat' : 'Cari Ödeme'),
+                cashLineId,
+              ],
+            );
+          }
+          // account_movements: kasa tarafı (nakit tutarı).
+          if (cashAmount > 0) {
+            await postgres.query(
+              `INSERT INTO rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_${String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10)}_account_movements (
+                 firm_nr, period_nr, ref_id, client_ref, customer_id, supplier_id, fiche_no,
+                 date, amount, sign, trcode, module_nr, definition
+               ) VALUES (
+                 $1::text, $2::text, NULL, NULL, $3::text::uuid, $4::text::uuid, $5::text,
+                 $6::text::timestamptz, $7::text::numeric, $8::integer, 0, 0, $9::text
+               )`,
+              [
+                String(ERP_SETTINGS.firmNr || ''),
+                String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10),
+                cariKind === 'customer' ? partnerId : null,
+                cariKind === 'supplier' ? partnerId : null,
+                ficheNo,
+                islem.islem_tarihi || new Date().toISOString(),
+                cashAmount.toString(),
+                islem.islem_tipi === 'CH_TAHSILAT' ? 1 : -1,
+                (islem.islem_aciklamasi || '').trim() || (islem.islem_tipi === 'CH_TAHSILAT' ? 'Cari Tahsilat (Kasa)' : 'Cari Ödeme (Kasa)'),
+              ],
+            );
+          }
         }
       } catch (e) {
         // cash_lines + balance zaten yazıldı; ledger yazımı başarısızsa konsola uyarı bırakıp devam.
@@ -2162,6 +2201,7 @@ function mapDbIslemToIslem(row: any): KasaIslemi {
     cari_hesap_unvani: row.current_account_name || undefined,
     cari_hesap_kodu: row.current_account_code || undefined,
     doviz_kodu: row.currency_code || undefined,
+    exchange_rate: row.exchange_rate != null ? Number(row.exchange_rate) || 1 : 1,
     sign: row.sign != null && row.sign !== '' ? Number(row.sign) : undefined,
     dovizli_tutar: row.f_amount !== undefined ? parseFloat(row.f_amount || 0) : undefined,
     ozel_kod: row.special_code || undefined,
@@ -2201,6 +2241,7 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
   if (!row) throw new Error('İşlem bulunamadı');
 
   const amount = Math.abs(parseKasaAmount(row.amount));
+  const cariAmount = cashLineCariLedgerAmount(row.amount, row.f_amount, row.exchange_rate);
   const sign = effectiveKasaPostedSign(row.sign, row.transaction_type);
   const registerId = row.register_id;
   const targetRegisterId = row.target_register_id;
@@ -2226,6 +2267,7 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
     // aynı satırda ikisi birden olamaz, ama eski veride yanlışlıkla customer_id'ye
     // tedarikçi UUID'si yazılmış olabilir — bu durumda partyId NULL'dır ve customerId
     // üzerinden tespit yaparız.
+    // Çapraz döviz: geri alma tutarı f_amount (cari), kasa amount değil.
     if ((customerId || partyId) && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
         const probeId = String(partyId || customerId || '');
         // CH_ODEME → tedarikçi ödemesi, CH_TAHSILAT → müşteri tahsilatı.
@@ -2236,7 +2278,7 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
           : trType === 'CH_TAHSILAT' ? 'customer'
           : null;
         const delKind = await resolveCariAccountKind(probeId, delHint);
-        const delta = -cariCashStoredBalanceDelta(amount, trType, storedCariTypeFromKind(delKind));
+        const delta = -cariCashStoredBalanceDelta(cariAmount, trType, storedCariTypeFromKind(delKind));
       if (delta !== 0) {
         const deltaStr = delta.toString();
         // Tedarikçi ödemelerinde party_id dolu (yeni davranış). Müşteri tahsilatlarında
@@ -2484,6 +2526,7 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
   if (!row) throw new Error('İşlem bulunamadı');
 
   const amount = Math.abs(parseKasaAmount(row.amount));
+  const cariAmount = cashLineCariLedgerAmount(row.amount, row.f_amount, row.exchange_rate);
   const sign = effectiveKasaPostedSign(row.sign, row.transaction_type);
   const registerId = row.register_id;
   const targetRegisterId = row.target_register_id;
@@ -2524,7 +2567,7 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
         : trType === 'CH_TAHSILAT' ? 'customer'
         : null;
       const delKind = await resolveCariAccountKind(probeId, delHint);
-    const delta = -cariCashStoredBalanceDelta(amount, trType, storedCariTypeFromKind(delKind));
+    const delta = -cariCashStoredBalanceDelta(cariAmount, trType, storedCariTypeFromKind(delKind));
     if (delta !== 0) {
       const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
       const patchPartner = async (path: string, withFirm: boolean, partnerId: string) => {
@@ -3451,9 +3494,18 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
       kasaIslemiPostedCash(oldAmount, oldSign),
       kasaIslemiPostedCash(newAmount, newSign),
     );
+    const newCariAmount = resolveKasaCariAmount({
+      tutar: newAmount,
+      dovizli_tutar: islem.dovizli_tutar != null ? Math.abs(Number(islem.dovizli_tutar) || 0) : newAmount,
+      exchange_rate: islem.exchange_rate ?? row.exchange_rate ?? 1,
+    });
+    const oldCariAmount = cashLineCariLedgerAmount(oldAmount, row.f_amount, row.exchange_rate);
     const patchBody: Record<string, unknown> = {
       amount: newAmount,
-      f_amount: islem.dovizli_tutar != null ? Math.abs(Number(islem.dovizli_tutar) || 0) : newAmount,
+      f_amount: newCariAmount,
+      exchange_rate: resolveKasaExchangeRate({
+        exchange_rate: islem.exchange_rate ?? row.exchange_rate ?? 1,
+      }),
       date: newDate,
       definition: newDef,
       transaction_type: newType || row.transaction_type,
@@ -3487,8 +3539,8 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
         newPartnerId: String(customerId || partyId || islem.cari_hesap_id || '').trim(),
         oldType,
         newType,
-        oldAmount,
-        newAmount,
+        oldAmount: oldCariAmount,
+        newAmount: newCariAmount,
         oldPartyId: String(row.party_id || '').trim(),
         newPartyId: String(partyId || '').trim(),
       });
@@ -3568,31 +3620,43 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
   const writeActorOnUpdate = await ensureCashLineActorColumns();
   const actorColsUpdate = writeActorOnUpdate ? cashLineActorPayload(islem) : null;
 
+  const newCariAmountPg = resolveKasaCariAmount({
+    tutar: newAmount,
+    dovizli_tutar: islem.dovizli_tutar != null ? Math.abs(Number(islem.dovizli_tutar) || 0) : newAmount,
+    exchange_rate: islem.exchange_rate ?? row.exchange_rate ?? 1,
+  });
+  const oldCariAmountPg = cashLineCariLedgerAmount(oldAmount, row.f_amount, row.exchange_rate);
+  const newRatePg = resolveKasaExchangeRate({
+    exchange_rate: islem.exchange_rate ?? row.exchange_rate ?? 1,
+  });
+
   await postgres.query('BEGIN');
   try {
     const { rows } = await postgres.query(
       `UPDATE ${table}
        SET amount = $1::text::numeric,
            f_amount = $2::text::numeric,
-           date = $3::text::date,
-           definition = $4::text,
-           transaction_type = $5::text,
-           sign = $6::text::integer,
-           special_code = $7::text,
-           register_id = COALESCE($8::text::uuid, register_id),
-           customer_id = $9::text::uuid,
-           party_id = $10::text::uuid
+           exchange_rate = $3::text::numeric,
+           date = $4::text::date,
+           definition = $5::text,
+           transaction_type = $6::text,
+           sign = $7::text::integer,
+           special_code = $8::text,
+           register_id = COALESCE($9::text::uuid, register_id),
+           customer_id = $10::text::uuid,
+           party_id = $11::text::uuid
            ${writeActorOnUpdate ? `,
            cashier = CASE
-             WHEN NULLIF(BTRIM(COALESCE(cashier, '')), '') IS NULL THEN $12::text
+             WHEN NULLIF(BTRIM(COALESCE(cashier, '')), '') IS NULL THEN $13::text
              ELSE cashier
            END,
-           created_by_user_id = COALESCE(created_by_user_id, $13::text::uuid)` : ''}
-       WHERE id = $11::text::uuid
+           created_by_user_id = COALESCE(created_by_user_id, $14::text::uuid)` : ''}
+       WHERE id = $12::text::uuid
        RETURNING *`,
       [
         newAmount,
-        islem.dovizli_tutar != null ? Math.abs(Number(islem.dovizli_tutar) || 0) : newAmount,
+        newCariAmountPg,
+        newRatePg,
         newDate,
         newDef,
         newType || row.transaction_type,
@@ -3614,8 +3678,8 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
       newPartnerId: String(customerId || partyId || islem.cari_hesap_id || '').trim(),
       oldType,
       newType,
-      oldAmount,
-      newAmount,
+      oldAmount: oldCariAmountPg,
+      newAmount: newCariAmountPg,
       oldPartyId: String(row.party_id || '').trim(),
       newPartyId: String(partyId || '').trim(),
     });

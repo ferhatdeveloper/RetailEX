@@ -68,7 +68,7 @@ export const customerAPI = {
             .get<any[]>(
               cashPath,
               {
-                select: 'customer_id,amount,transaction_type',
+                select: 'customer_id,party_id,amount,f_amount,exchange_rate,transaction_type',
                 transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
                 // Deterministic order — 200000 limit ile keyfi sıralama riski yok.
                 order: 'created_at.asc,id.asc',

@@ -30,6 +30,31 @@ describe('cariCashLineLedgerContrib', () => {
     expect(computeCustomerBalanceFromLedger('c1', 'TEST', sales, cash, 0)).toBe(10000);
   });
 
+  it('IQD kasa tahsilatı USD cari tutarı (f_amount) ile bakiyeyi düşürür', () => {
+    const sales = [
+      {
+        customer_id: 'c1',
+        customer_name: 'TEST',
+        net_amount: 480,
+        fiche_type: 'sales_invoice',
+        is_cancelled: false,
+        payment_method: 'veresiye',
+      },
+    ];
+    // 750.000 IQD kasaya; cari 572.52 USD düşülür (1 USD = 1310 IQD)
+    const cash = [
+      {
+        customer_id: 'c1',
+        amount: 750_000,
+        f_amount: 750_000 / 1310,
+        exchange_rate: 1 / 1310,
+        transaction_type: 'CH_TAHSILAT',
+      },
+    ];
+    const bal = computeCustomerBalanceFromLedger('c1', 'TEST', sales, cash, 0);
+    expect(bal).toBeCloseTo(480 - 750_000 / 1310, 5);
+  });
+
   it('CH_ODEME müşteriye ödeme → borç artar (pozitif katkı)', () => {
     // Müşteriye para iade → müşteri alacaklı olur → müşteri borcu ↑.
     // Önceki tur varsayımı yanlıştı; cari türüne göre işaret doğru.
