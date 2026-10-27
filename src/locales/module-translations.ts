@@ -2985,10 +2985,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   taxRateLabel: { tr: 'Vergi Oranı', en: 'Tax Rate', ar: 'نسبة الضريبة', ku: 'ڕێژەی باج' },
   operationAmount: { tr: 'İşlem Tutarı', en: 'Operation Amount', ar: 'مبلغ العملية', ku: 'بڕی مامەڵەکە' },
   cashFxCrossHint: {
-    tr: 'Kasa {cash} — müşteri/cari bakiyeden {ledger} karşılığı düşülür.',
-    en: 'Cash is {cash} — customer balance will be reduced by the {ledger} equivalent.',
-    ar: 'الصندوق {cash} — يُخصم من رصيد الحساب الجاري ما يعادله بـ {ledger}.',
-    ku: 'سندوق {cash} — باڵانسی جاری بە هاوتای {ledger} کەم دەکرێتەوە.',
+    tr: 'Kasa {cash} — cari {ledger} düşülür. Kur: Kur & Altın (Hatwan) satış.',
+    en: 'Cash {cash} — settle {ledger} on AR. Rate from FX & Gold (Hatwan) sell.',
+    ar: 'الصندوق {cash} — يُسدد {ledger}. السعر من العملات والذهب (بيع).',
+    ku: 'سندوق {cash} — جاری {ledger}. نرخ: دراو و زێڕ (فرۆشتن).',
   },
   cashFxRateLabel: {
     tr: '1 {ledger} = ? {cash}',

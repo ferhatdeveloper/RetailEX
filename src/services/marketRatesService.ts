@@ -347,3 +347,73 @@ export async function applyMarketRatesToDatabase(
   }
   return saved;
 }
+
+/**
+ * Kur & Altın (Hatwan) anlık görüntüsünden «1 CODE = ? IQD» kuru.
+ * Önce Döviz sekmesi satırı, yoksa altın bloğundaki USD per-1.
+ */
+export function pickHatwanPivotRate(
+  currencyCode: string,
+  rateType: 'Satış' | 'Alış' = 'Satış',
+): number | null {
+  const code = String(currencyCode || '').trim().toUpperCase();
+  if (!code) return null;
+  const snap = loadMarketRatesSnapshot();
+  if (!snap) return null;
+
+  const row = (snap.currencies || []).find(
+    (r) => String(r.code || '').trim().toUpperCase() === code,
+  );
+  if (row) {
+    const raw = rateType === 'Alış' ? Number(row.buy) : Number(row.sell);
+    const n = code === 'USD' ? normalizeUsdToPer1(raw) : raw;
+    return isValidPrice(n) ? n : null;
+  }
+
+  if (code === 'USD' && snap.gold) {
+    const n =
+      rateType === 'Alış'
+        ? Number(snap.gold.usdBuyPer1)
+        : Number(snap.gold.usdSellPer1);
+    const normalized = normalizeUsdToPer1(n);
+    return isValidPrice(normalized) ? normalized : null;
+  }
+  return null;
+}
+
+/**
+ * Cari tahsilat UI: 1 ledgerCurrency = kaç cashCurrency.
+ * Öncelik: Hatwan (Kur & Altın) → exchange_rates DB.
+ * Örn. kasa IQD + cari USD → Hatwan USD satış (1677,5).
+ */
+export async function resolveOneLedgerUnitInCash(
+  cashCurrency: string,
+  ledgerCurrency: string,
+  asOfDate: string,
+  rateType: 'Satış' | 'Alış' = 'Satış',
+): Promise<number | null> {
+  const cash = String(cashCurrency || '').trim().toUpperCase();
+  const ledger = String(ledgerCurrency || '').trim().toUpperCase();
+  if (!cash || !ledger) return null;
+  if (cash === ledger) return 1;
+
+  // En sık: IQD kasa ↔ USD (veya EUR) cari — Hatwan satırı doğrudan «1 USD = X IQD»
+  if (cash === 'IQD') {
+    const hatwan = pickHatwanPivotRate(ledger, rateType);
+    if (hatwan != null) return hatwan;
+  }
+  if (ledger === 'IQD') {
+    const hatwan = pickHatwanPivotRate(cash, rateType);
+    if (hatwan != null && hatwan > 0) return 1 / hatwan;
+  }
+
+  const { resolveDocumentCurrencyRateToLedger } = await import('./api/masterData');
+  const docToLed = await resolveDocumentCurrencyRateToLedger(
+    cash,
+    ledger,
+    asOfDate,
+    rateType,
+  );
+  if (docToLed == null || !(docToLed > 0)) return null;
+  return 1 / docToLed;
+}

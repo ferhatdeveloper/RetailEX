@@ -45,23 +45,56 @@ export interface ExchangeRate {
     created_at?: string;
 }
 
+/** Hatwan / 100$ notu: USD ≥ 10000 ise 1$ kuruna indir. */
+function normalizePivotQuotedRate(currencyCode: string, value: number): number {
+    if (!Number.isFinite(value) || value <= 0) return NaN;
+    const c = String(currencyCode || '').trim().toUpperCase();
+    if (c === 'USD' && value >= 10_000) return value / 100;
+    return value;
+}
+
 /** Kur türüne göre satırdan sayısal kur (fatura formu ile uyumlu). */
 export function pickExchangeRateValue(row: ExchangeRate, rateType: string): number {
     const t = (rateType || 'Satış').trim();
+    const code = String(row.currency_code || '').trim().toUpperCase();
     const num = (v: unknown) => {
         const n = Number(v);
         return Number.isFinite(n) && n > 0 ? n : NaN;
     };
+    let raw: number;
     if (t === 'Alış') {
-        return num(row.buy_rate) || num(row.sell_rate) || 1;
+        raw = num(row.buy_rate) || num(row.sell_rate) || 1;
+    } else if (t === 'Efektif Satış') {
+        raw = num(row.effective_sell) || num(row.sell_rate) || num(row.buy_rate) || 1;
+    } else if (t === 'Efektif Alış') {
+        raw = num(row.effective_buy) || num(row.buy_rate) || num(row.sell_rate) || 1;
+    } else {
+        raw = num(row.sell_rate) || num(row.buy_rate) || 1;
     }
-    if (t === 'Efektif Satış') {
-        return num(row.effective_sell) || num(row.sell_rate) || num(row.buy_rate) || 1;
-    }
-    if (t === 'Efektif Alış') {
-        return num(row.effective_buy) || num(row.buy_rate) || num(row.sell_rate) || 1;
-    }
-    return num(row.sell_rate) || num(row.buy_rate) || 1;
+    return normalizePivotQuotedRate(code, raw);
+}
+
+/**
+ * Pivot kur (Hatwan): satırlar genelde «1 USD = X IQD».
+ * Belge veya ledger tabloda yoksa eksik taraf pivot (IQD ≈ 1) kabul edilir.
+ */
+export function crossRateFromPivotQuotes(
+    documentCurrency: string,
+    ledgerCurrency: string,
+    quoteDocInPivot: number | null | undefined,
+    quoteLedInPivot: number | null | undefined,
+): number | null {
+    const dc = documentCurrency.trim().toUpperCase();
+    const lc = ledgerCurrency.trim().toUpperCase();
+    if (!dc || !lc || dc === lc) return 1;
+    const vD = Number(quoteDocInPivot);
+    const vL = Number(quoteLedInPivot);
+    const hasD = Number.isFinite(vD) && vD > 0;
+    const hasL = Number.isFinite(vL) && vL > 0;
+    if (!hasD && hasL) return 1 / vL; // belge = pivot (IQD), ledger = USD
+    if (hasD && !hasL) return vD; // ledger = pivot
+    if (hasD && hasL) return vD / vL;
+    return null;
 }
 
 /**
@@ -81,9 +114,12 @@ export function crossRateDocumentToLedgerFromLatest(
     const rowL = latestRates.find(r => String(r.currency_code).trim().toUpperCase() === lc);
     const vD = rowD ? pickExchangeRateValue(rowD, rateType) : NaN;
     const vL = rowL ? pickExchangeRateValue(rowL, rateType) : NaN;
-    const denom = Number.isFinite(vL) && vL > 0 ? vL : 1;
-    if (!Number.isFinite(vD) || vD <= 0) return null;
-    return vD / denom;
+    return crossRateFromPivotQuotes(
+        dc,
+        lc,
+        Number.isFinite(vD) && vD > 0 ? vD : null,
+        Number.isFinite(vL) && vL > 0 ? vL : null,
+    );
 }
 
 /**
@@ -548,9 +584,12 @@ export async function resolveDocumentCurrencyRateToLedger(
     ]);
     const vD = rowDoc ? pickExchangeRateValue(rowDoc, rateType) : NaN;
     const vL = rowLed ? pickExchangeRateValue(rowLed, rateType) : NaN;
-    const denom = Number.isFinite(vL) && vL > 0 ? vL : 1;
-    if (!Number.isFinite(vD) || vD <= 0) return null;
-    return vD / denom;
+    return crossRateFromPivotQuotes(
+        dc,
+        lc,
+        Number.isFinite(vD) && vD > 0 ? vD : null,
+        Number.isFinite(vL) && vL > 0 ? vL : null,
+    );
 }
 
 export interface Category {

@@ -28,11 +28,8 @@ import { fetchBankalar, type Banka } from '../../../services/api/banka';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { supplierAPI } from '../../../services/api/suppliers';
 import { partnerAPI } from '../../../services/api/partiesPartners';
-import {
-  exchangeRateAPI,
-  resolveDocumentCurrencyRateToLedger,
-} from '../../../services/api/masterData';
 import { cashPaymentListBalanceForDisplay } from '../../../utils/cashPaymentListBalance';
+import { resolveOneLedgerUnitInCash } from '../../../services/marketRatesService';
 import type { Invoice, PartyPartner } from '../../../core/types/models';
 import { formatNumber, parseNumber } from '../../../utils/formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency } from '../../../utils/currency';
@@ -217,7 +214,7 @@ export function KasaIslemModal({
     }
   }, [formData.tutar]);
 
-  // Çapraz döviz: işlem tarihi / döviz değişince günlük kurdan doldur
+  // Çapraz döviz: önce Kur & Altın (Hatwan) USD/EUR, yoksa exchange_rates
   useEffect(() => {
     if (!isCrossCurrencyCari) {
       setDocToLedgerRate(1);
@@ -226,29 +223,26 @@ export function KasaIslemModal({
       return;
     }
     if (fxRateUserTouchedRef.current && isEdit) {
-      // Düzenlemede kullanıcı kuru değiştirmişse yeniden yükleme
       return;
     }
     let cancelled = false;
     const asOf = String(formData.islem_tarihi || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
     (async () => {
       try {
-        let n = await resolveDocumentCurrencyRateToLedger(cashCurrency, ledgerCurrency, asOf, 'Satış');
-        if (n == null || !(n > 0)) {
-          const latest = await exchangeRateAPI.getLatestRates();
-          const rowD = latest.find((r) => String(r.currency_code).trim().toUpperCase() === cashCurrency);
-          const rowL = latest.find((r) => String(r.currency_code).trim().toUpperCase() === ledgerCurrency);
-          const vD = rowD ? Number(rowD.sell_rate || rowD.buy_rate) : NaN;
-          const vL = rowL ? Number(rowL.sell_rate || rowL.buy_rate) : NaN;
-          if (Number.isFinite(vD) && vD > 0) {
-            n = vD / (Number.isFinite(vL) && vL > 0 ? vL : 1);
-          }
-        }
+        // 1 ledger = ? cash — Hatwan USD satışı (örn. 1677,5) öncelikli
+        const oneLedgerInCash = await resolveOneLedgerUnitInCash(
+          cashCurrency,
+          ledgerCurrency,
+          asOf,
+          'Satış',
+        );
         if (cancelled || fxRateUserTouchedRef.current) return;
-        if (n != null && n > 0) {
-          setDocToLedgerRate(n);
-          const inv = invertDocumentToLedgerRate(n);
-          setDisplayInverseRate(inv != null ? formatNumber(inv) : '');
+        if (oneLedgerInCash != null && oneLedgerInCash > 0) {
+          const docRate = documentToLedgerFromInverse(oneLedgerInCash);
+          if (docRate != null && docRate > 0) {
+            setDocToLedgerRate(docRate);
+            setDisplayInverseRate(formatNumber(oneLedgerInCash));
+          }
         }
       } catch {
         /* kur yoksa kullanıcı elle girer */
