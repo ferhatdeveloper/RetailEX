@@ -10,6 +10,7 @@ import {
   type StyledWorksheetOptions,
 } from '../../../utils/excelStyles';
 import { excelAmountCellValue } from '../../../utils/excelCellValue';
+import { invoiceListPayableNet } from '../../../utils/invoiceListPayableNet';
 
 export type InvoiceExcelGroupMode = 'line' | 'customer' | 'product';
 
@@ -127,7 +128,7 @@ function buildLineRows(invoices: ListInvoice[], fallbackCurrency: string): Recor
         'İndirim': 0,
         'Satır Toplam': 0,
         'Para Birimi': cur,
-        'Fatura Toplam': Number(inv.total_amount ?? inv.total ?? 0),
+        'Fatura Toplam': invoiceListPayableNet(inv),
         'Açıklama': description,
         'Durum': safeText(inv.status),
       });
@@ -150,7 +151,7 @@ function buildLineRows(invoices: ListInvoice[], fallbackCurrency: string): Recor
         'İndirim': discount,
         'Satır Toplam': lineTotal,
         'Para Birimi': cur,
-        'Fatura Toplam': Number(inv.total_amount ?? inv.total ?? 0),
+        'Fatura Toplam': invoiceListPayableNet(inv),
         'Açıklama': description,
         'Durum': safeText(inv.status),
       });
@@ -230,7 +231,7 @@ function buildCustomerRows(invoices: ListInvoice[], fallbackCurrency: string): R
         });
       }
     }
-    bucket.grandTotal += Number(inv.total_amount ?? inv.total ?? 0);
+    bucket.grandTotal += invoiceListPayableNet(inv);
   }
 
   const rows: Record<string, unknown>[] = [];

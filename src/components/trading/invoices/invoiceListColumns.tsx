@@ -8,6 +8,7 @@ import { invoiceLineMixLabelKey, type InvoiceLineMix } from '../../../utils/invo
 import { paymentFormCodeTranslationKey } from '../../../utils/paymentMethodUtils';
 import { getInvoiceHeaderField } from '../../../utils/invoiceHeaderFields';
 import { formatInvoiceDualAmountLines } from '../../../utils/invoiceFxDisplay';
+import { invoiceListPayableNet } from '../../../utils/invoiceListPayableNet';
 import { Eye, Edit, FileText } from 'lucide-react';
 
 /** v3: Durum/İşlem varsayılan gizli — eski v2 tercihlerinde status:true kalmasın
@@ -449,27 +450,9 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
   moneyCol('subtotal', 'subtotal', (inv) => Number(inv.subtotal || 0));
   moneyCol('discount', 'discount', (inv) => Number(inv.discount || 0));
   moneyCol('tax', 'tax', (inv) => Number(inv.tax || 0));
-  // KRİTİK — Toplam kolonu fallback zinciri:
-  //   * `total_net` beautyService.createSale INSERT'inde HER ZAMAN tam hizmet
-  //     fiyatı (apt.total_price) olarak yazılır (9.10.2026 kök düzeltme).
-  //   * `total` kolonu bazen geri kalabiliyor (recompute/appendReservationHizmetiLine
-  //     ile tetiklendiğinde güncelleniyor). Detaya girip kaydet denince `total`
-  //     düzeliyordu (kullanıcı geri bildirimi) — bu fallback ile liste anında
-  //     doğru toplamı gösterir.
-  //   * `total_amount` yeni satışlarda 0/NULL; eski fişlerde güncel.
-  //   * Son çare `total` (recompute edilmemiş olabilir, fallback olarak en sonda).
-  // Muhasebe denetimi: sadece gösterim önceliği — veri/dekont/cari etkilenmez.
-  moneyCol(
-    'total',
-    'total',
-    (inv) => Number(
-      inv.total_net
-        ?? inv.total_amount
-        ?? inv.total
-        ?? 0,
-    ),
-    true,
-  );
+  // Toplam = satır netleri − dip indirim. total_net dip öncesi tutardır;
+  // indirim kanıtı yoksa düşülmez. Yalnızca liste gösterimi.
+  moneyCol('total', 'total', (inv) => invoiceListPayableNet(inv), true);
   moneyCol('total_cost', 'cost', (inv) => Number(inv.total_cost || 0));
   moneyCol('gross_profit', 'profit', (inv) => Number(inv.gross_profit || 0));
 

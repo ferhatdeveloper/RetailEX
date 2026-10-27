@@ -44,6 +44,7 @@ import {
 } from '../../../utils/countInvoicePurchaseDraft';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 import { localTodayDateKey } from '../../../utils/localCalendarDate';
+import { invoiceListPayableNet, sumInvoiceListPayableNet } from '../../../utils/invoiceListPayableNet';
 import {
   invoiceListPrefsKey,
   loadInvoiceListPrefs,
@@ -1206,18 +1207,7 @@ export function InvoiceListModule({
   );
 
   const totalAmount = useMemo(
-    () => invoices.reduce(
-      (sum, inv) =>
-        sum +
-        Number(
-          (inv as any).total_net
-          ?? (inv as any).total_gross
-          ?? inv.total_amount
-          ?? inv.total
-          ?? 0,
-        ),
-      0,
-    ),
+    () => sumInvoiceListPayableNet(invoices),
     [invoices],
   );
 
@@ -1234,16 +1224,7 @@ export function InvoiceListModule({
       subtotal += Number(inv.subtotal || 0);
       discount += Number(inv.discount || 0);
       tax += Number(inv.tax || 0);
-      // Öncelik: total_net → total_gross → total_amount → total (DB'de farklı
-      // sürümlerde farklı kolon adları kullanıldı; gösterim `invoiceListColumns`
-      // ile aynı sırayı izlemeli yoksa dip toplam satır toplamıyla eşleşmez).
-      total += Number(
-        (inv as any).total_net
-        ?? (inv as any).total_gross
-        ?? inv.total_amount
-        ?? inv.total
-        ?? 0,
-      );
+      total += invoiceListPayableNet(inv);
       totalCost += Number(inv.total_cost || 0);
       grossProfit += Number(inv.gross_profit || 0);
     }
@@ -1271,15 +1252,7 @@ export function InvoiceListModule({
     pushIfVisible('subtotal', columnVisibility.subtotal !== false, (inv) => Number(inv.subtotal || 0));
     pushIfVisible('discount', columnVisibility.discount !== false, (inv) => Number(inv.discount || 0));
     pushIfVisible('tax', columnVisibility.tax !== false, (inv) => Number(inv.tax || 0));
-    pushIfVisible('total', columnVisibility.total !== false, (inv) =>
-      Number(
-        (inv as any).total_net
-        ?? (inv as any).total_gross
-        ?? inv.total_amount
-        ?? inv.total
-        ?? 0,
-      ),
-    );
+    pushIfVisible('total', columnVisibility.total !== false, (inv) => invoiceListPayableNet(inv));
     pushIfVisible('total_cost', columnVisibility.total_cost !== false, (inv) => Number(inv.total_cost || 0));
     pushIfVisible('gross_profit', columnVisibility.gross_profit !== false, (inv) => Number(inv.gross_profit || 0));
     return defs;
@@ -1586,7 +1559,7 @@ export function InvoiceListModule({
                 invoices.map((inv) => {
                   const meta = getInvoiceTypeMeta(inv);
                   const TypeIcon = meta.Icon;
-                  const totalVal = inv.total_amount ?? inv.total ?? 0;
+                  const totalVal = invoiceListPayableNet(inv);
                   const rowKey = String(inv.id ?? inv.invoice_no);
                   const st = inv.status || '';
                   return (
@@ -1879,7 +1852,7 @@ export function InvoiceListModule({
                 [
                   tm('total'),
                   (() => {
-                    const v = mobileActionInvoice.total_amount ?? mobileActionInvoice.total ?? 0;
+                    const v = invoiceListPayableNet(mobileActionInvoice);
                     const cur = resolveListRowCurrency(mobileActionInvoice);
                     return v > 0 ? `${formatNumber(v, 2, true)} ${cur}` : `0 ${cur}`;
                   })()
@@ -2362,7 +2335,7 @@ export function InvoiceListModule({
                         <span className="text-gray-900 shrink-0">{tm('grandTotal')}:</span>
                         {(() => {
                           const dual = formatListDual(
-                            selectedInvoice.total || selectedInvoice.total_amount || 0,
+                            invoiceListPayableNet(selectedInvoice),
                             selectedInvoice,
                           );
                           return (
