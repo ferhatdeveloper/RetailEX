@@ -142,7 +142,7 @@ describe('gün sonu Z tarih aralığı', () => {
     expect(row.cashierStats.some((cashier) => cashier.name === 'dışarı')).toBe(false);
   });
 
-  it('aralık içindeki indirim, iade ve gider formülü bozmaz', () => {
+  it('aralık içindeki indirim bir kez düşülür; brüte eklenmez', () => {
     const row = composeDayEndZStatementForRange({
       dateFrom: '2026-10-05',
       dateTo: '2026-10-08',
@@ -175,14 +175,17 @@ describe('gün sonu Z tarih aralığı', () => {
       ],
     });
 
-    expect(row.grossSales).toBe(100);
+    expect(row.grossSales).toBe(80);
     expect(row.discount).toBe(20);
     expect(row.salesReturn).toBe(10);
     expect(row.expense).toBe(5);
-    expect(row.netSales).toBe(65);
-    expect(row.netSales).toBe(100 - 20 - 10 - 5);
+    expect(row.netSales).toBe(45);
+    expect(row.netSales).toBe(80 - 20 - 10 - 5);
+    expect(row.netSales).not.toBe(80);
+    expect(row.grossSales).not.toBe(100);
     expect(row.reservationAmount).toBe(0);
-    expect(row.netCash).toBe(65);
+    expect(row.netCash).toBe(45);
+    expect(row.netCash).toBe(row.netSales);
     expect(row.transactionCount).toBe(1);
   });
 });

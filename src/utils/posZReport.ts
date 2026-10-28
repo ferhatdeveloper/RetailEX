@@ -203,6 +203,255 @@ export function aggregateCashierPerformance(
   return Array.from(map.values()).sort((a, b) => b.netRevenue - a.netRevenue);
 }
 
+/**
+ * Fiş brütü ve bir kez düşülecek indirim.
+ *
+ * `sale.total` / `total_net` indirim öncesi brüttür. İndirim `sale.discount`
+ * alanındadır. Brüte indirim eklenmez; net = brüt − indirim.
+ * Eski Z yolu brüte indirimi ekleyip geri çıkarınca net, indirim öncesi
+ * tutara eşit kalıyordu. İndirim etikette duruyor, netin içinde kalıyordu.
+ *
+ * Satır zaten netse (liste 100, satır net 90, indirim 10) brüt satır
+ * listesidir, net 90 kalır. İndirim ikinci kez düşülmez.
+ * Başlık indirimi satır boşluğundan büyükse yalnız fark bir kez daha düşülür.
+ * İndirim 0 ise net brüte eşittir.
+ */
+export interface DayEndZDocumentLine {
+  quantity?: number | null;
+  price?: number | null;
+  unit_price?: number | null;
+  total?: number | null;
+  subtotal?: number | null;
+  discount?: number | null;
+  discount_amount?: number | null;
+  discount_pct?: number | null;
+  is_void?: boolean | null;
+  is_complimentary?: boolean | null;
+  isComplimentary?: boolean | null;
+}
+
+export interface DayEndZDocumentBasis {
+  gross: number;
+  discount: number;
+  net: number;
+}
+
+const DAY_END_MONEY_EPS = 0.02;
+
+function dayEndMoney(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function dayEndNear(a: number, b: number): boolean {
+  return Math.abs(a - b) <= Math.max(DAY_END_MONEY_EPS, Math.abs(b) * 1e-6);
+}
+
+export function resolveDayEndZDocument(input: {
+  total?: number | null;
+  subtotal?: number | null;
+  discount?: number | null;
+  items?: ReadonlyArray<DayEndZDocumentLine> | null;
+}): DayEndZDocumentBasis {
+  const headerDiscount = Math.abs(Number(input.discount) || 0);
+  const headerTotal = Math.abs(Number(input.total) || 0);
+  const headerSubtotal = Math.abs(Number(input.subtotal) || 0);
+
+  let lineList = 0;
+  let lineNet = 0;
+  let lineCut = 0;
+  let usedLine = false;
+
+  for (const item of input.items || []) {
+    if (!item || item.is_void === true) continue;
+    const qty = Math.abs(Number(item.quantity) || 0);
+    const price = Math.abs(Number(item.price ?? item.unit_price) || 0);
+    const listed = qty > 0 && price > 0 ? qty * price : 0;
+    const netField = item.total != null
+      ? Math.abs(Number(item.total) || 0)
+      : item.subtotal != null
+        ? Math.abs(Number(item.subtotal) || 0)
+        : listed;
+    const comp = item.is_complimentary === true || item.isComplimentary === true;
+    usedLine = true;
+    if (comp) {
+      const base = listed > DAY_END_MONEY_EPS ? listed : netField;
+      lineList += base;
+      lineCut += base;
+      continue;
+    }
+    if (listed > netField + DAY_END_MONEY_EPS) {
+      lineList += listed;
+      lineNet += netField;
+      lineCut += listed - netField;
+      continue;
+    }
+    const pctRaw = item.discount_pct != null ? Number(item.discount_pct) : Number(item.discount);
+    const pct = Number.isFinite(pctRaw) ? Math.abs(pctRaw) : 0;
+    const moneyField = Math.abs(Number(item.discount_amount) || 0);
+    if (listed > DAY_END_MONEY_EPS && pct > DAY_END_MONEY_EPS && pct <= 100 && dayEndNear(netField, listed)) {
+      const cut = listed * (pct / 100);
+      lineList += listed;
+      lineCut += cut;
+      lineNet += Math.max(0, listed - cut);
+      continue;
+    }
+    if (moneyField > DAY_END_MONEY_EPS && (listed <= DAY_END_MONEY_EPS || dayEndNear(netField, listed))) {
+      const base = listed > DAY_END_MONEY_EPS ? listed : netField + moneyField;
+      lineList += base;
+      lineCut += moneyField;
+      lineNet += Math.max(0, base - moneyField);
+      continue;
+    }
+    const base = listed > DAY_END_MONEY_EPS ? listed : netField;
+    lineList += base;
+    lineNet += netField;
+  }
+
+  if (usedLine && lineList > DAY_END_MONEY_EPS) {
+    const embedded = dayEndMoney(lineCut);
+    const extra = headerDiscount > embedded + DAY_END_MONEY_EPS
+      ? dayEndMoney(headerDiscount - embedded)
+      : 0;
+    const discount = dayEndMoney(embedded + extra);
+    const gross = dayEndMoney(lineList);
+    const net = dayEndMoney(Math.max(0, lineNet - extra));
+    return { gross, discount, net };
+  }
+
+  if (
+    headerSubtotal > headerTotal + DAY_END_MONEY_EPS
+    && headerDiscount > DAY_END_MONEY_EPS
+    && dayEndNear(headerSubtotal - headerDiscount, headerTotal)
+  ) {
+    return {
+      gross: dayEndMoney(headerSubtotal),
+      discount: dayEndMoney(headerDiscount),
+      net: dayEndMoney(headerTotal),
+    };
+  }
+
+  const gross = dayEndMoney(
+    headerSubtotal > DAY_END_MONEY_EPS ? Math.max(headerSubtotal, headerTotal) : headerTotal,
+  );
+  if (headerDiscount > DAY_END_MONEY_EPS && dayEndNear(headerTotal, headerSubtotal || headerTotal)) {
+    return {
+      gross,
+      discount: dayEndMoney(headerDiscount),
+      net: dayEndMoney(Math.max(0, gross - headerDiscount)),
+    };
+  }
+  if (headerDiscount > DAY_END_MONEY_EPS && headerSubtotal <= DAY_END_MONEY_EPS) {
+    return {
+      gross: dayEndMoney(headerTotal + headerDiscount),
+      discount: dayEndMoney(headerDiscount),
+      net: dayEndMoney(headerTotal),
+    };
+  }
+  return {
+    gross,
+    discount: dayEndMoney(headerDiscount),
+    net: dayEndMoney(Math.max(0, gross - headerDiscount)),
+  };
+}
+
+function isRestaurantPosSale(sale: Sale): boolean {
+  const notes = String(sale.notes || '');
+  const receipt = String(sale.receiptNumber || '');
+  return notes.includes('RestoranPOS') || notes.includes('rest_order_id') || receipt.startsWith('REST-');
+}
+
+function dayEndBasisOfSale(sale: Sale): DayEndZDocumentBasis {
+  const headerDiscount = Math.abs(Number(sale.discount) || 0);
+  const headerTotal = Math.abs(Number(sale.total) || 0);
+  const headerSubtotal = Math.abs(Number(sale.subtotal) || 0);
+  if (!isRestaurantPosSale(sale)) {
+    return resolveDayEndZDocument({
+      total: headerTotal,
+      subtotal: headerSubtotal,
+      discount: headerDiscount,
+      items: sale.items,
+    });
+  }
+  const lineBasis = resolveDayEndZDocument({
+    total: headerTotal,
+    subtotal: headerSubtotal || headerTotal,
+    discount: 0,
+    items: sale.items,
+  });
+  const gross = lineBasis.gross > DAY_END_MONEY_EPS ? lineBasis.gross : headerTotal;
+  const netBase = lineBasis.gross > DAY_END_MONEY_EPS ? lineBasis.net : headerTotal;
+  return {
+    gross: dayEndMoney(gross),
+    discount: dayEndMoney(lineBasis.discount + headerDiscount),
+    net: dayEndMoney(Math.max(0, netBase - headerDiscount)),
+  };
+}
+
+/**
+ * Kapalı adisyon, market ve güzellik fişiyle aynı güne sonu fonksiyonuna girer.
+ * Kalem indirimi, ikram ve başlık indirimi bir kez düşülür.
+ * Çıkan fişin `total` alanı brüttür; ikinci geçiş indirimi yeniden eklemez.
+ */
+export function restOrderToDayEndSale(order: {
+  id?: unknown;
+  order_no?: unknown;
+  orderNo?: unknown;
+  closed_at?: unknown;
+  closedAt?: unknown;
+  opened_at?: unknown;
+  openedAt?: unknown;
+  total_amount?: unknown;
+  discount_amount?: unknown;
+  discountAmount?: unknown;
+  waiter?: unknown;
+  items?: unknown;
+}): Sale {
+  const rawItems = Array.isArray(order.items) ? order.items : [];
+  const lines: DayEndZDocumentLine[] = [];
+  for (const item of rawItems) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    if (row.is_void === true) continue;
+    lines.push({
+      quantity: Number(row.quantity) || 0,
+      price: Number(row.unit_price ?? row.unitPrice ?? row.price) || 0,
+      total: row.subtotal != null ? Number(row.subtotal) : (row.total != null ? Number(row.total) : undefined),
+      subtotal: row.subtotal != null ? Number(row.subtotal) : undefined,
+      discount: Number(row.discount_pct ?? row.discountPct ?? row.discount) || 0,
+      discount_pct: row.discount_pct != null ? Number(row.discount_pct) : (row.discountPct != null ? Number(row.discountPct) : undefined),
+      discount_amount: row.discount_amount != null ? Number(row.discount_amount) : (row.discountAmount != null ? Number(row.discountAmount) : undefined),
+      is_complimentary: row.is_complimentary === true || row.isComplimentary === true,
+    });
+  }
+  const headerDiscount = Math.abs(Number(order.discount_amount ?? order.discountAmount) || 0);
+  const headerTotal = Math.abs(Number(order.total_amount) || 0);
+  const lineBasis = resolveDayEndZDocument({
+    total: headerTotal,
+    subtotal: headerTotal,
+    discount: 0,
+    items: lines,
+  });
+  const gross = lineBasis.gross > DAY_END_MONEY_EPS ? lineBasis.gross : headerTotal;
+  const basis = {
+    gross: dayEndMoney(gross),
+    discount: dayEndMoney(lineBasis.discount + headerDiscount),
+    net: dayEndMoney(Math.max(0, (lineBasis.gross > DAY_END_MONEY_EPS ? lineBasis.net : headerTotal) - headerDiscount)),
+  };
+  const id = String(order.id || '');
+  return {
+    id,
+    receiptNumber: String(order.order_no || order.orderNo || id || '-'),
+    date: String(order.closed_at ?? order.closedAt ?? order.opened_at ?? order.openedAt ?? ''),
+    items: [],
+    subtotal: basis.gross,
+    discount: basis.discount,
+    total: basis.gross,
+    paymentMethod: 'cash',
+    status: 'completed',
+    cashier: String(order.waiter || '').trim() || '—',
+  } as Sale;
+}
+
 function summarizePosZReportFromDaySales(
   daySales: Sale[],
   dateLabel: string,
@@ -213,9 +462,19 @@ function summarizePosZReportFromDaySales(
   const positiveSales = activeSales.filter((s) => !isReturnSale(s));
   const returnSales = daySales.filter((s) => isReturnSale(s) && !isCanceledSale(s));
 
-  const totalAmount = positiveSales.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0);
-  const totalDiscount = positiveSales.reduce((sum, s) => sum + Math.abs(Number(s.discount) || 0), 0);
-  const refundAmount = returnSales.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0);
+  let grossSales = 0;
+  let totalDiscount = 0;
+  let netBeforeReturn = 0;
+  for (const sale of positiveSales) {
+    const basis = dayEndBasisOfSale(sale);
+    grossSales += basis.gross;
+    totalDiscount += basis.discount;
+    netBeforeReturn += basis.net;
+  }
+  const refundAmount = returnSales.reduce((sum, sale) => sum + dayEndBasisOfSale(sale).net, 0);
+  grossSales = dayEndMoney(grossSales);
+  totalDiscount = dayEndMoney(totalDiscount);
+  netBeforeReturn = dayEndMoney(netBeforeReturn);
   const payments = aggregatePosPayments(positiveSales);
   const returnPayments = aggregateReturnPayments(returnSales);
   const cashierStats = aggregateCashierPerformance(daySales, dateKey, {
@@ -239,10 +498,10 @@ function summarizePosZReportFromDaySales(
     dateLabel,
     dateKey,
     totalSales: positiveSales.length,
-    amountBeforeDiscount: totalAmount + totalDiscount,
+    amountBeforeDiscount: grossSales,
     totalDiscount,
-    refundAmount,
-    totalAmount,
+    refundAmount: dayEndMoney(refundAmount),
+    totalAmount: netBeforeReturn,
     cashAmount: netPayments.cash,
     cardAmount: netPayments.card,
     creditAmount: netPayments.credit,

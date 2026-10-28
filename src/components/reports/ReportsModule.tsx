@@ -149,12 +149,10 @@ import { accumulateComparisonProducts } from '../../utils/periodComparisonProduc
 import {
   applyExtraCashCollections,
   buildPosZReportForRange,
-  clipReservationToDayEndRange,
-  composeDayEndZStatement,
   composeDayEndZStatementForRange,
   isReturnSale,
   resolveDayEndZDateRange,
-  sumExpensesInRange,
+  restOrderToDayEndSale,
 } from '../../utils/posZReport';
 import { detailedSalesLineMoney } from '../../utils/detailedSalesLineSign';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
@@ -4377,22 +4375,6 @@ export function ReportsModule({
       avansRows: dailyAvansList,
       depositSales: dailyDepositSales,
     };
-    const reservation = clipReservationToDayEndRange(reservationSource, zFrom, zTo);
-    const zExpense = sumExpensesInRange(zExpenses, zFrom, zTo);
-    const statementOf = (
-      transactionCount: number,
-      grossSales: number,
-      discount: number,
-      salesReturn: number,
-    ) => composeDayEndZStatement({
-      transactionCount,
-      grossSales,
-      discount,
-      salesReturn,
-      expense: zExpense,
-      reservation,
-    });
-
     const buildFromErpSales = () => {
       const extraCash = extraCustomerCollectionsNotOnSales(kasaLinesForSelectedDate, allDaySales);
       const base = applyExtraCashCollections(
@@ -4439,7 +4421,6 @@ export function ReportsModule({
       if (erpPositive.length > 0 || erpReturns.length > 0) {
         return buildFromErpSales();
       }
-      const totalAmount = restOrdersClosedOnSelectedDate.reduce((sum, o) => sum + restOrderNetAmount(o), 0);
       let cashAmount = 0;
       let cardAmount = 0;
       let creditAmount = 0;
@@ -4456,17 +4437,19 @@ export function ReportsModule({
       cashAmount += extraCash + reservationTopUp.cash;
       cardAmount += reservationTopUp.card;
       creditAmount = Math.max(0, creditAmount - extraCash - reservationOutsideSplit);
-      const totalDiscount = restOrdersClosedOnSelectedDate.reduce(
-        (sum, o) => sum + Number((o as any).discount_amount || 0),
-        0
-      );
-      const amountBeforeDiscount = totalAmount + totalDiscount;
       const ro = [...restOrdersClosedOnSelectedDate].sort(
         (a: any, b: any) =>
           new Date(a.closed_at || a.closedAt || a.opened_at).getTime() -
           new Date(b.closed_at || b.closedAt || b.opened_at).getTime()
       );
-      const statement = statementOf(ro.length, amountBeforeDiscount, totalDiscount, 0);
+      const statement = composeDayEndZStatementForRange({
+        sales: restOrdersClosedOnSelectedDate.map((order) => restOrderToDayEndSale(order)),
+        expenses: zExpenses,
+        dateFrom: zFrom,
+        dateTo: zTo,
+        dateLabel,
+        reservation: reservationSource,
+      });
       return {
         dateFrom: zFrom,
         dateTo: zTo,
@@ -4474,7 +4457,7 @@ export function ReportsModule({
         totalSales: statement.transactionCount,
         returnCount: 0,
         amountBeforeDiscount: statement.grossSales,
-        totalAmount,
+        totalAmount: statement.netSales + statement.salesReturn + statement.expense,
         netSales: statement.netSales,
         netCash: statement.netCash,
         totalExpenses: statement.expense,
@@ -4489,7 +4472,7 @@ export function ReportsModule({
         canceledSales: canceledSalesRows.length,
         refundAmount: statement.salesReturn,
         canceledAmount: 0,
-        cashierStats: [],
+        cashierStats: statement.cashierStats,
       };
     }
 
