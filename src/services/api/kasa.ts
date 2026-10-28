@@ -9,7 +9,11 @@ import {
   cariCashStoredBalanceDelta,
   normalizeFirmTableNr,
 } from './accountBalance';
-import { cashLineCariLedgerAmount, parsePositiveAmount } from '../../utils/cashLineFx';
+import {
+  cashLineCariLedgerAmount,
+  parsePositiveAmount,
+  resolveVirmanTargetAmount,
+} from '../../utils/cashLineFx';
 import { ensureCariAccountInCurrentFirm } from './cariAccountResolve';
 import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 import { assertPeriodOpen } from '../periodControl';
@@ -42,6 +46,13 @@ function resolveKasaCariAmount(islem: Pick<KasaIslemi, 'tutar' | 'dovizli_tutar'
   const cashAmt = parsePositiveAmount(islem.tutar);
   const ledgerAmt = parsePositiveAmount(islem.dovizli_tutar);
   return cashLineCariLedgerAmount(cashAmt, ledgerAmt > 0 ? ledgerAmt : cashAmt, rate);
+}
+
+/** Virman: hedef kasaya yazılacak tutar (çaprazda dovizli_tutar). */
+function resolveVirmanTargetCashAmount(
+  islem: Pick<KasaIslemi, 'tutar' | 'dovizli_tutar' | 'exchange_rate'>,
+): number {
+  return resolveVirmanTargetAmount(islem.tutar, resolveKasaExchangeRate(islem), islem.dovizli_tutar);
 }
 
 let cashLineActorColumnsReady = false;
@@ -477,6 +488,8 @@ export interface KasaIslemi {
   // New fields for Virman / Bank / Expense
   target_register_id?: string;
   target_register_name?: string; // Add this line
+  /** Çapraz döviz virman: hedef kasa para birimi (kaynak doviz_kodu ile farklı olabilir). */
+  target_doviz_kodu?: string;
   bank_id?: string;
   bank_account_id?: string;
   expense_card_id?: string;
@@ -1521,20 +1534,25 @@ async function createKasaIslemiViaPostgrest(
   }
 
   if (islem.islem_tipi === 'VIRMAN' && islem.target_register_id) {
+    const sourceAmt = parsePositiveAmount(islem.tutar);
+    const targetAmt = resolveVirmanTargetCashAmount(islem);
+    const sourceRate = resolveKasaExchangeRate(islem);
+    const targetCur = String(islem.target_doviz_kodu || islem.doviz_kodu || 'YEREL').trim().toUpperCase();
     const counterBody: Record<string, unknown> = {
       firm_nr: String(ERP_SETTINGS.firmNr),
       period_nr: String(ERP_SETTINGS.periodNr || '01'),
       register_id: islem.target_register_id,
       fiche_no: `${ficheNo}-VRM`,
       date: islem.islem_tarihi || new Date().toISOString(),
-      amount: islem.tutar || 0,
+      amount: targetAmt,
       sign: 1,
       definition: `${islem.islem_aciklamasi || ''} (Virman Alındı)`,
       transaction_type: 'VIRMAN',
       customer_id: null,
-      currency_code: islem.doviz_kodu || 'YEREL',
-      exchange_rate: 1,
-      f_amount: islem.dovizli_tutar || 0,
+      currency_code: targetCur,
+      // Hedef satırda kur: 1 hedef → kaç kaynak (ters); aynı dövizde 1
+      exchange_rate: sourceRate !== 1 && sourceRate > 0 ? 1 / sourceRate : 1,
+      f_amount: sourceAmt,
       transfer_status: 0,
       special_code: islem.ozel_kod || '',
       target_register_id: islem.kasa_id,
@@ -1555,10 +1573,10 @@ async function createKasaIslemiViaPostgrest(
     }
     // Hedef kasa bakiyesini güncelle; başarısız olursa her iki satırı temizle ve kaynak kasayı geri al.
     try {
-      await bumpKasaBalance(islem.target_register_id, Number(islem.tutar || 0));
+      await bumpKasaBalance(islem.target_register_id, targetAmt);
     } catch (e) {
       try {
-        await bumpKasaBalance(islem.kasa_id, -Number(islem.tutar || 0) * sign);
+        await bumpKasaBalance(islem.kasa_id, -sourceAmt * sign);
       } catch { /* ignore */ }
       try {
         await postgrest.delete(
@@ -2035,7 +2053,11 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     // VIRMAN Logic: Create counter transaction if target_register_id is present
     if (islem.islem_tipi === 'VIRMAN' && islem.target_register_id) {
       console.log('[Kasa] Executing VIRMAN Counter Transaction logic for target:', islem.target_register_id);
-      // Counter transaction: Money IN (+1) for Target Register
+      const sourceAmt = parsePositiveAmount(islem.tutar);
+      const targetAmt = resolveVirmanTargetCashAmount(islem);
+      const sourceRate = resolveKasaExchangeRate(islem);
+      const targetCur = String(islem.target_doviz_kodu || islem.doviz_kodu || 'YEREL').trim().toUpperCase();
+      // Counter transaction: Money IN (+1) for Target Register (hedef döviz tutarı)
       await postgres.query(
         `INSERT INTO ${table} (
            firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type, 
@@ -2066,24 +2088,24 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
           islem.target_register_id, // Target Register
           `${ficheNo}-VRM`, // VIRMAN karşı işlemi için benzersiz fiche_no
           islem.islem_tarihi || new Date().toISOString(),
-          islem.tutar || 0,
+          targetAmt,
           1, // Sign is +1 (IN) for target
           `${islem.islem_aciklamasi || ''} (Virman Alındı)`, // Modify description
           'VIRMAN',
           null, // No customer
-          islem.doviz_kodu || 'YEREL',
-          1,
-          islem.dovizli_tutar || 0,
+          targetCur,
+          sourceRate !== 1 && sourceRate > 0 ? 1 / sourceRate : 1,
+          sourceAmt,
           islem.ozel_kod || '',
           islem.kasa_id, // Link back to source register
           ...(writeActor ? [actorColsPg.cashier, actorColsPg.created_by_user_id] : []),
         ]
       );
 
-      // Update Target Kasa Balance
+      // Update Target Kasa Balance (hedef döviz tutarı)
       await postgres.query(
         `UPDATE ${kasaTable} SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
-        [islem.tutar.toString(), islem.target_register_id]
+        [targetAmt.toString(), islem.target_register_id]
       );
       console.log('[Kasa] VIRMAN Counter Transaction COMPLETED');
     } else if (islem.islem_tipi === 'VIRMAN') {

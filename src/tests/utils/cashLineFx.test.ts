@@ -5,6 +5,7 @@ import {
   documentToLedgerFromInverse,
   invertDocumentToLedgerRate,
   isCashLineCrossCurrency,
+  resolveVirmanTargetAmount,
 } from '../../utils/cashLineFx';
 
 describe('cashLineFx', () => {
@@ -29,5 +30,20 @@ describe('cashLineFx', () => {
     const inv = 1310;
     const doc = documentToLedgerFromInverse(inv)!;
     expect(invertDocumentToLedgerRate(doc)).toBeCloseTo(inv, 8);
+  });
+
+  it('virman IQD→USD: açık hedef tutar kullanılır', () => {
+    const rate = documentToLedgerFromInverse(1310)!;
+    const hedef = convertCashAmountToLedger(1_310_000, rate);
+    expect(resolveVirmanTargetAmount(1_310_000, rate, hedef)).toBeCloseTo(1000, 5);
+  });
+
+  it('virman aynı döviz: kaynak tutar', () => {
+    expect(resolveVirmanTargetAmount(500, 1, 500)).toBe(500);
+  });
+
+  it('virman kur var, hedef yok: rate ile hesap', () => {
+    const rate = documentToLedgerFromInverse(1310)!;
+    expect(resolveVirmanTargetAmount(1_310_000, rate, null)).toBeCloseTo(1000, 5);
   });
 });

@@ -92,7 +92,7 @@ export function KasaIslemModal({
     .toUpperCase();
 
   const isVirman = islemTipi === 'VIRMAN';
-  // Seçici yok: kaynak kasa para birimi (yoksa defter, o da yoksa IQD). Kur çevrimi yok.
+  // Kaynak kasa para birimi (yoksa defter, o da yoksa IQD).
   const virmanCurrency = (
     String(kasa.id_doviz_kodu || ledgerCurrency || 'IQD').trim().toUpperCase() || 'IQD'
   );
@@ -201,9 +201,6 @@ export function KasaIslemModal({
     cashCurrency !== ledgerCurrency;
 
   const cashAmountNum = Math.abs(parseNumber(displayAmount) || Number(formData.tutar) || 0);
-  const cariLedgerAmount = isCrossCurrencyCari
-    ? convertCashAmountToLedger(cashAmountNum, docToLedgerRate)
-    : cashAmountNum;
 
   // Sync display amount when formData.tutar changes (initial load or external change)
   useEffect(() => {
@@ -216,12 +213,70 @@ export function KasaIslemModal({
     }
   }, [formData.tutar]);
 
-  // Çapraz döviz: Hatwan «1 USD = X IQD»; yön (çarp/böl) kasa↔cari’ye göre
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    // Allow digits, dots, commas
+    if (/^[0-9.,]*$/.test(val)) {
+      setDisplayAmount(val);
+      const parsed = parseNumber(val);
+      setFormData(prev => ({ ...prev, tutar: parsed }));
+    }
+  };
+
+  const handleAmountBlur = () => {
+    if (formData.tutar) {
+      setDisplayAmount(formatNumber(formData.tutar));
+    }
+  };
+
+  const handleAmountFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.select();
+  };
+
+  const [cariHesaplar, setCariHesaplar] = useState<CariHesap[]>([]);
+  /** Peşinat + tamamlanan hizmet tahsilatı. Deftere yazılmaz; yalnız gösterim ofseti. */
+  const [paymentOffsetById, setPaymentOffsetById] = useState<Record<string, number>>({});
+  const [bankalar, setBankalar] = useState<Banka[]>([]);
+  const [digerKasalar, setDigerKasalar] = useState<Kasa[]>([]);
+  const [allKasalar, setAllKasalar] = useState<Kasa[]>([]);
+  const [kasalarLoading, setKasalarLoading] = useState(false);
+
+  const virmanTargetCurrency = useMemo(() => {
+    if (!isVirman) return '';
+    const tid = String(formData.target_register_id || '').trim();
+    if (!tid) return '';
+    const tgt = digerKasalar.find((k) => k.id === tid);
+    return String(tgt?.id_doviz_kodu || '').trim().toUpperCase();
+  }, [isVirman, formData.target_register_id, digerKasalar]);
+
+  const isCrossCurrencyVirman =
+    isVirman &&
+    !!virmanCurrency &&
+    !!virmanTargetCurrency &&
+    virmanCurrency !== virmanTargetCurrency;
+
+  const cariLedgerAmount = isCrossCurrencyCari
+    ? convertCashAmountToLedger(cashAmountNum, docToLedgerRate)
+    : cashAmountNum;
+  const virmanTargetAmount = isCrossCurrencyVirman
+    ? convertCashAmountToLedger(cashAmountNum, docToLedgerRate)
+    : cashAmountNum;
+
+  const needsFxRateUi = isCrossCurrencyCari || isCrossCurrencyVirman;
+  const fxSourceCurrency = isCrossCurrencyVirman ? virmanCurrency : cashCurrency;
+  const fxTargetCurrency = isCrossCurrencyVirman ? virmanTargetCurrency : ledgerCurrency;
+
+  // Çapraz döviz (cari veya virman): Hatwan «1 USD = X IQD»
   useEffect(() => {
-    if (!isCrossCurrencyCari) {
-      setDocToLedgerRate(1);
-      setDisplayHatwanRate('');
-      fxRateUserTouchedRef.current = false;
+    const useFx = isCrossCurrencyCari || isCrossCurrencyVirman;
+    const src = isCrossCurrencyVirman ? virmanCurrency : cashCurrency;
+    const dst = isCrossCurrencyVirman ? virmanTargetCurrency : ledgerCurrency;
+    if (!useFx || !src || !dst) {
+      if (!isCrossCurrencyCari && !isCrossCurrencyVirman) {
+        setDocToLedgerRate(1);
+        setDisplayHatwanRate('');
+        fxRateUserTouchedRef.current = false;
+      }
       return;
     }
     if (fxRateUserTouchedRef.current && isEdit) {
@@ -231,12 +286,7 @@ export function KasaIslemModal({
     const asOf = String(formData.islem_tarihi || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
     (async () => {
       try {
-        const quote = await resolveCashFxHatwanQuote(
-          cashCurrency,
-          ledgerCurrency,
-          asOf,
-          'Satış',
-        );
+        const quote = await resolveCashFxHatwanQuote(src, dst, asOf, 'Satış');
         if (cancelled || fxRateUserTouchedRef.current) return;
         if (quote && quote.documentToLedger > 0 && quote.rateInPivot > 0) {
           setDocToLedgerRate(quote.documentToLedger);
@@ -251,7 +301,16 @@ export function KasaIslemModal({
     return () => {
       cancelled = true;
     };
-  }, [isCrossCurrencyCari, cashCurrency, ledgerCurrency, formData.islem_tarihi, isEdit]);
+  }, [
+    isCrossCurrencyCari,
+    isCrossCurrencyVirman,
+    cashCurrency,
+    ledgerCurrency,
+    virmanCurrency,
+    virmanTargetCurrency,
+    formData.islem_tarihi,
+    isEdit,
+  ]);
 
   // Düzenleme: kayıtlı kuru yükle — gösterimi Hatwan (1 yabancı = X IQD) olarak geri çevir
   useEffect(() => {
@@ -278,26 +337,6 @@ export function KasaIslemModal({
     }
   }, [isEdit, editingIslem?.id]);
 
-  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    // Allow digits, dots, commas
-    if (/^[0-9.,]*$/.test(val)) {
-      setDisplayAmount(val);
-      const parsed = parseNumber(val);
-      setFormData(prev => ({ ...prev, tutar: parsed }));
-    }
-  };
-
-  const handleAmountBlur = () => {
-    if (formData.tutar) {
-      setDisplayAmount(formatNumber(formData.tutar));
-    }
-  };
-
-  const handleAmountFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    e.target.select();
-  };
-
   const handleHatwanRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     if (!/^[0-9.,]*$/.test(val)) return;
@@ -305,11 +344,13 @@ export function KasaIslemModal({
     setDisplayHatwanRate(val);
     const rateInPivot = parseNumber(val);
     if (!(rateInPivot > 0)) return;
-    // Hatwan: 1 quote = rateInPivot IQD. Kasa IQD ise böl; kasa yabancı ise çarp.
-    if (cashCurrency === 'IQD' && fxQuoteCode !== 'IQD') {
+    const src = fxSourceCurrency;
+    const dst = fxTargetCurrency;
+    // Hatwan: 1 quote = rateInPivot IQD. Kaynak IQD → hedef yabancı: böl; kaynak yabancı → hedef IQD: çarp.
+    if (src === 'IQD' && dst !== 'IQD') {
       const docRate = documentToLedgerFromInverse(rateInPivot);
       if (docRate != null && docRate > 0) setDocToLedgerRate(docRate);
-    } else if (ledgerCurrency === 'IQD' && cashCurrency !== 'IQD') {
+    } else if (dst === 'IQD' && src !== 'IQD') {
       setDocToLedgerRate(rateInPivot);
     } else {
       const docRate = documentToLedgerFromInverse(rateInPivot);
@@ -322,13 +363,6 @@ export function KasaIslemModal({
     if (n > 0) setDisplayHatwanRate(formatNumber(n));
   };
 
-  const [cariHesaplar, setCariHesaplar] = useState<CariHesap[]>([]);
-  /** Peşinat + tamamlanan hizmet tahsilatı. Deftere yazılmaz; yalnız gösterim ofseti. */
-  const [paymentOffsetById, setPaymentOffsetById] = useState<Record<string, number>>({});
-  const [bankalar, setBankalar] = useState<Banka[]>([]);
-  const [digerKasalar, setDigerKasalar] = useState<Kasa[]>([]);
-  const [allKasalar, setAllKasalar] = useState<Kasa[]>([]);
-  const [kasalarLoading, setKasalarLoading] = useState(false);
   const [showCariDropdown, setShowCariDropdown] = useState(false);
   const [cariSearch, setCariSearch] = useState(initialCari?.unvan || initialCari?.kod || '');
   const [selectedCariBakiye, setSelectedCariBakiye] = useState<number | null>(initialCari?.ledgerBalance ?? initialCari?.bakiye ?? null);
@@ -524,6 +558,16 @@ export function KasaIslemModal({
         return;
       }
     }
+    if (isCrossCurrencyVirman) {
+      if (!(docToLedgerRate > 0) || !(virmanTargetAmount > 0)) {
+        toast.error(tm('cashFxRateRequired') || 'Çapraz döviz virmanı için geçerli kur giriniz.');
+        return;
+      }
+      if (!virmanTargetCurrency) {
+        toast.error(t['pleaseSelectTargetKasa'] || 'Hedef kasa seçiniz.');
+        return;
+      }
+    }
 
     if ((islemTipi === 'CH_TAHSILAT' || islemTipi === 'CH_ODEME') && !formData.cari_hesap_id) {
       toast.error(t['pleaseSelectCurrentAccount']);
@@ -577,8 +621,12 @@ export function KasaIslemModal({
         cashier: formData.cashier,
         createdByUserId: formData.created_by_user_id || formData.created_by || formData.user_id,
       });
-      const fxRate = isCrossCurrencyCari ? docToLedgerRate : 1;
+      const fxRate =
+        isCrossCurrencyCari || isCrossCurrencyVirman ? docToLedgerRate : 1;
       const cariTutar = isCrossCurrencyCari
+        ? convertCashAmountToLedger(submitTutar, fxRate)
+        : submitTutar;
+      const virmanHedefTutar = isCrossCurrencyVirman
         ? convertCashAmountToLedger(submitTutar, fxRate)
         : submitTutar;
       const submitFormData: KasaIslemi = {
@@ -587,9 +635,14 @@ export function KasaIslemModal({
         // Kasa = işlem dövizi tutarı; cari = firma ana para (çaprazda farklı)
         dovizli_tutar: cariTutar,
         exchange_rate: fxRate,
-        // Virman: seçilen döviz yok. Aynı tutar, kaynak kasa birimi, kur 1 (servis).
+        // Virman: kaynak kasa birimi; çaprazda hedef tutar + kur (1 kaynak → N hedef)
         ...(islemTipi === 'VIRMAN'
-          ? { doviz_kodu: virmanCurrency, dovizli_tutar: submitTutar, exchange_rate: 1 }
+          ? {
+              doviz_kodu: virmanCurrency,
+              dovizli_tutar: virmanHedefTutar,
+              exchange_rate: fxRate,
+              ...(virmanTargetCurrency ? { target_doviz_kodu: virmanTargetCurrency } : {}),
+            }
           : {}),
         islem_tipi: postedTip,
         islem_no: invoiceFiche || formData.islem_no,
@@ -1085,7 +1138,10 @@ export function KasaIslemModal({
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['targetKasa']}</label>
                 <select
                   value={formData.target_register_id || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, target_register_id: e.target.value }))}
+                  onChange={(e) => {
+                    fxRateUserTouchedRef.current = false;
+                    setFormData((prev) => ({ ...prev, target_register_id: e.target.value }));
+                  }}
                   className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none"
                 >
                   <option value="">
@@ -1220,13 +1276,18 @@ export function KasaIslemModal({
           </div>
           )}
 
-          {isCrossCurrencyCari && (
+          {needsFxRateUi && (
             <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20 p-4 space-y-3">
               <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
-                {tm('cashFxCrossHint')
-                  ?.replace('{cash}', cashCurrency)
-                  ?.replace('{ledger}', ledgerCurrency) ||
-                  `Kasa ${cashCurrency} — cari bakiye ${ledgerCurrency} cinsinden düşülecek.`}
+                {isCrossCurrencyVirman
+                  ? tm('cashFxVirmanHint')
+                      ?.replace('{source}', fxSourceCurrency)
+                      ?.replace('{target}', fxTargetCurrency) ||
+                    `Kaynak ${fxSourceCurrency} → hedef ${fxTargetCurrency}. Kur: Kur & Altın (Hatwan) satış.`
+                  : tm('cashFxCrossHint')
+                      ?.replace('{cash}', cashCurrency)
+                      ?.replace('{ledger}', ledgerCurrency) ||
+                    `Kasa ${cashCurrency} — cari bakiye ${ledgerCurrency} cinsinden düşülecek.`}
               </p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
@@ -1248,11 +1309,17 @@ export function KasaIslemModal({
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {tm('cashFxCariAmount')?.replace('{ledger}', ledgerCurrency) ||
-                      `Cari düşülecek (${ledgerCurrency})`}
+                    {isCrossCurrencyVirman
+                      ? tm('cashFxVirmanAmount')?.replace('{target}', fxTargetCurrency) ||
+                        `Hedef kasaya geçecek (${fxTargetCurrency})`
+                      : tm('cashFxCariAmount')?.replace('{ledger}', ledgerCurrency) ||
+                        `Cari düşülecek (${ledgerCurrency})`}
                   </label>
                   <div className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-amber-300 dark:border-amber-700 rounded text-lg font-bold text-emerald-700 dark:text-emerald-300">
-                    {formatMoneyWithCode(cariLedgerAmount || 0, ledgerCurrency)}
+                    {formatMoneyWithCode(
+                      isCrossCurrencyVirman ? virmanTargetAmount || 0 : cariLedgerAmount || 0,
+                      isCrossCurrencyVirman ? fxTargetCurrency : ledgerCurrency,
+                    )}
                   </div>
                 </div>
               </div>

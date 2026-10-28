@@ -69,3 +69,22 @@ export function documentToLedgerFromInverse(oneLedgerInCash: number): number | n
   if (Math.abs(inv - 1) < 1e-12) return 1;
   return 1 / inv;
 }
+
+/**
+ * Virman hedef kasa tutarı.
+ * Çapraz dövizde dovizli_tutar (hedef döviz); aksi halde kaynak tutarı.
+ * exchange_rate = 1 kaynak birimi → kaç hedef birimi.
+ */
+export function resolveVirmanTargetAmount(
+  sourceAmount: number | string | null | undefined,
+  exchangeRate?: number | string | null,
+  targetAmount?: number | string | null,
+): number {
+  const src = parsePositiveAmount(sourceAmount);
+  const tgt = parsePositiveAmount(targetAmount);
+  const rate = Number(exchangeRate);
+  const isFx = Number.isFinite(rate) && rate > 0 && Math.abs(rate - 1) > 1e-9;
+  if (isFx && tgt > 0) return tgt;
+  if (isFx) return convertCashAmountToLedger(src, rate);
+  return src > 0 ? src : tgt;
+}

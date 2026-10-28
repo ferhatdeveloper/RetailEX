@@ -3008,6 +3008,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'أدخل سعر صرف صالحًا للتحصيل بعملة مختلفة.',
     ku: 'بۆ مامەڵەی دراوی جیاواز نرخی دروست بنووسە.',
   },
+  cashFxVirmanHint: {
+    tr: 'Kaynak {source} → hedef {target}. Kur: Kur & Altın (Hatwan) satış.',
+    en: 'Source {source} → target {target}. Rate from FX & Gold (Hatwan) sell.',
+    ar: 'المصدر {source} ← الهدف {target}. السعر من العملات والذهب (بيع).',
+    ku: 'سەرچاوە {source} → ئامانج {target}. نرخ: دراو و زێڕ (فرۆشتن).',
+  },
+  cashFxVirmanAmount: {
+    tr: 'Hedef kasaya geçecek ({target})',
+    en: 'Amount credited to target ({target})',
+    ar: 'المبلغ إلى الصندوق الهدف ({target})',
+    ku: 'بۆ سندوقی ئامانج ({target})',
+  },
   placeholderDocumentNo: { tr: 'Varsa belge no...', en: 'Document no if any...', ar: 'رقم المستند إن وجد...', ku: 'ژمارەی بەڵگەنامە ئەگەر هەیە...' },
   placeholderSpecialCode: { tr: 'Özel kod giriniz...', en: 'Enter special code...', ar: 'أدخل رمز خاص...', ku: 'کۆدی تایبەت بنووسە...' },
   description: { tr: 'Açıklama', en: 'Description', ar: 'الوصف', ku: 'وەسف' },
