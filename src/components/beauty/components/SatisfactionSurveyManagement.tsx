@@ -24,8 +24,6 @@ import {
     BarChartOutlined,
 } from '@ant-design/icons';
 import { ClipboardList } from 'lucide-react';
-import type { ColumnDef } from '@tanstack/react-table';
-import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { readSurveyDayParam, writeSurveyDayParam } from '../clinicShellV2';
 import dayjs, { type Dayjs } from 'dayjs';
 import { beautyService } from '../../../services/beautyService';
@@ -326,59 +324,19 @@ export function SatisfactionSurveyManagement({
         [selectedDayYmd, dateLocale, pendingAppointments.length, answeredCount, pendingCount, tm],
     );
 
+    const pendingItemLabel = (apt: BeautyAppointment) => {
+        const customer = String(apt.customer_name ?? tm('bCustomerFallbackName')).trim();
+        const service = String(apt.service_name ?? '—').trim();
+        const dateRaw = apt.appointment_date ?? apt.date;
+        const timeRaw = (apt.appointment_time ?? apt.time ?? '').slice(0, 5);
+        const when = dateRaw ? new Date(dateRaw).toLocaleDateString(dateLocale) : '—';
+        return `${customer} · ${service} · ${when}${timeRaw ? ` ${timeRaw}` : ''}`;
+    };
+
     const hasFeedbackForAppointment = useCallback(
         (aptId: string) => answeredIdSet.has(normalizeAptId(aptId)),
         [answeredIdSet],
     );
-
-    const queueColumns = useMemo<ColumnDef<BeautyAppointment, unknown>[]>(() => [
-        {
-            id: 'customer_name',
-            accessorFn: (row) => String(row.customer_name ?? ''),
-            header: tm('customer'),
-        },
-        {
-            id: 'service_name',
-            accessorFn: (row) => String(row.service_name ?? ''),
-            header: tm('service'),
-        },
-        {
-            id: 'appointment_time',
-            accessorFn: (row) => String(row.appointment_time ?? row.time ?? '').slice(0, 5),
-            header: tm('time'),
-        },
-        {
-            id: 'feedback',
-            accessorFn: (row) => (
-                answeredIdSet.has(normalizeAptId(row.id))
-                    ? tm('bSurveyFeedbackExists')
-                    : tm('bSurveyFeedbackMissing')
-            ),
-            header: tm('status'),
-        },
-        {
-            id: 'survey_action',
-            header: tm('bPanelRunSurvey'),
-            enableSorting: false,
-            enableColumnFilter: false,
-            cell: ({ row }) => {
-                const answered = hasFeedbackForAppointment(row.original.id);
-                return (
-                    <Button
-                        type={answered ? 'default' : 'primary'}
-                        size="small"
-                        disabled={!canExecuteSurvey || answered}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setSurveyTarget(row.original);
-                        }}
-                    >
-                        {answered ? tm('bSurveyCompletedButton') : tm('bPanelRunSurvey')}
-                    </Button>
-                );
-            },
-        },
-    ], [answeredIdSet, canExecuteSurvey, hasFeedbackForAppointment, tm]);
 
     const selectedDayValue: Dayjs = useMemo(() => {
         const parsed = dayjs(selectedDayYmd);
@@ -491,18 +449,43 @@ export function SatisfactionSurveyManagement({
                                 <Typography.Text type="secondary" className="text-xs">
                                     {pendingSummaryText}
                                 </Typography.Text>
-                                <div className="min-h-[16rem]">
-                                    <DevExDataGrid
-                                        data={pendingAppointments}
-                                        columns={queueColumns}
-                                        pageSize={20}
-                                        enableFiltering
-                                        enablePagination
-                                        storageNamespace="beautySurveyDayQueue"
-                                        height="16rem"
-                                        excelFileName="retailex_anket_gun"
+                                {pendingAppointments.length === 0 ? (
+                                    <Typography.Text type="secondary">{tm('bSurveyCompletedDateEmpty')}</Typography.Text>
+                                ) : (
+                                    <List
+                                        size="small"
+                                        dataSource={pendingAppointments}
+                                        rowKey={item => item.id}
+                                        renderItem={apt => (
+                                            <List.Item
+                                                actions={[
+                                                    <Button
+                                                        key={`ask-${apt.id}`}
+                                                        type={hasFeedbackForAppointment(apt.id) ? 'default' : 'primary'}
+                                                        size="small"
+                                                        disabled={
+                                                            !canExecuteSurvey || hasFeedbackForAppointment(apt.id)
+                                                        }
+                                                        onClick={() => setSurveyTarget(apt)}
+                                                    >
+                                                        {hasFeedbackForAppointment(apt.id)
+                                                            ? tm('bSurveyCompletedButton')
+                                                            : tm('bPanelRunSurvey')}
+                                                    </Button>,
+                                                ]}
+                                            >
+                                                <Space size={8}>
+                                                    <Typography.Text>{pendingItemLabel(apt)}</Typography.Text>
+                                                    {hasFeedbackForAppointment(apt.id) ? (
+                                                        <Tag color="success">{tm('bSurveyFeedbackExists')}</Tag>
+                                                    ) : (
+                                                        <Tag color="warning">{tm('bSurveyFeedbackMissing')}</Tag>
+                                                    )}
+                                                </Space>
+                                            </List.Item>
+                                        )}
                                     />
-                                </div>
+                                )}
                             </Space>
                         </Card>
                     </div>
