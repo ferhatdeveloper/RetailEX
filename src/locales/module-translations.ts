@@ -3008,6 +3008,24 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'أدخل سعر صرف صالحًا للتحصيل بعملة مختلفة.',
     ku: 'بۆ مامەڵەی دراوی جیاواز نرخی دروست بنووسە.',
   },
+  fxOriginalAmount: {
+    tr: 'Orijinal tutar',
+    en: 'Original amount',
+    ar: 'المبلغ الأصلي',
+    ku: 'بڕی سەرەکی',
+  },
+  fxBaseEquivalent: {
+    tr: 'Ana para karşılığı',
+    en: 'Base equivalent',
+    ar: 'المعادل بالعملة الأساسية',
+    ku: 'بەرامبەری دراوی سەرەکی',
+  },
+  fxTotalsByCurrency: {
+    tr: 'Para birimine göre toplam',
+    en: 'Totals by currency',
+    ar: 'المجاميع حسب العملة',
+    ku: 'کۆ بەپێی دراو',
+  },
   cashFxVirmanHint: {
     tr: 'Kaynak {source} → hedef {target}. Kur: Kur & Altın (Hatwan) satış.',
     en: 'Source {source} → target {target}. Rate from FX & Gold (Hatwan) sell.',

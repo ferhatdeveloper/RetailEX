@@ -61,6 +61,7 @@ import {
   dailySalesDetailInvoiceDateRaw,
 } from '../../utils/dailySalesDetailInvoiceDate';
 import { getCurrencyDecimalPlaces, getFirmLedgerCurrency, formatLedgerAmount } from '../../utils/currency';
+import { baseEquivalentFromStoredLine, reportAmountInBase, summarizeReportFx } from '../../utils/cashFxPosting';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { useProductStore, useCustomerStore } from '../../store';
 import { expiryReportsAPI, type ExpiringPurchaseItem } from '../../services/api/expiryReports';
@@ -968,6 +969,11 @@ type DailyExpenseRow = {
   description: string;
   partyName: string;
   amount: number;
+  /** Kasa para birimi. Boşsa eski satır. */
+  currencyCode: string;
+  exchangeRate: number | null;
+  /** Ana para karşılığı. Kur yoksa null; IQD tutarı USD yazılmaz. */
+  baseAmount: number | null;
   paymentMethod: string;
   isCash: boolean;
   /** expenses.created_at veya bağlı kasa satırının oluşturulma anı */
@@ -1574,6 +1580,18 @@ export function ReportsModule({
           description: String(e.description || ''),
           partyName: String(e.cost_center_name || ''),
           amount: Number(e.amount) || 0,
+          currencyCode: String(e.currency_code || '').trim(),
+          exchangeRate: e.exchange_rate != null && Number.isFinite(Number(e.exchange_rate))
+            ? Number(e.exchange_rate)
+            : null,
+          baseAmount: String(e.currency_code || '').trim()
+            ? baseEquivalentFromStoredLine({
+                amount: Number(e.amount) || 0,
+                currency: e.currency_code,
+                baseCurrency: reportCurrency,
+                exchangeRate: e.exchange_rate,
+              })
+            : null,
           paymentMethod: method || 'cash',
           isCash: isCashOut ? true : isCash,
           createdAt,
@@ -1594,7 +1612,7 @@ export function ReportsModule({
       setKasaLinesForSelectedDate([]);
       setCashRegisterLedgerLines([]);
     }
-  }, [ledgerFrom, ledgerTo]);
+  }, [ledgerFrom, ledgerTo, reportCurrency]);
 
   const [deletingExpenseKey, setDeletingExpenseKey] = useState<string | null>(null);
 
@@ -3955,9 +3973,27 @@ export function ReportsModule({
     if (showDailySupplierPayments) return dailyExpenseRows;
     return dailyExpenseRows.filter((r) => r.typeCode !== 'CH_ODEME');
   }, [dailyExpenseRows, showDailySupplierPayments]);
+  const expenseFxSummary = useMemo(
+    () => summarizeReportFx(
+      dailyExpenseRowsForReport.map((row) => ({
+        amount: row.amount,
+        currency: row.currencyCode,
+        exchangeRate: row.exchangeRate,
+      })),
+      reportCurrency,
+    ),
+    [dailyExpenseRowsForReport, reportCurrency],
+  );
   const totalExpensesForReport = useMemo(
-    () => dailyExpenseRowsForReport.reduce((sum, row) => sum + row.amount, 0),
-    [dailyExpenseRowsForReport],
+    () => reportAmountInBase(
+      dailyExpenseRowsForReport.map((row) => ({
+        amount: row.amount,
+        currency: row.currencyCode,
+        exchangeRate: row.exchangeRate,
+      })),
+      reportCurrency,
+    ),
+    [dailyExpenseRowsForReport, reportCurrency],
   );
   const cashExpensesForReport = useMemo(
     () => dailyExpenseRowsForReport.reduce((sum, row) => sum + (row.isCash ? row.amount : 0), 0),
@@ -7138,7 +7174,13 @@ export function ReportsModule({
       key: 'total-expense',
       label: tm(DAILY_REPORT_SCREEN_CARD_LABEL_KEY['total-expense']),
       value: formatNumber(totalExpensesForReport, 2, false),
-      hint: `${tm('expenseCount')}: ${dailyExpenseRowsForReport.length}`,
+      hint: expenseFxSummary.splitsCurrencies
+        ? `${expenseFxSummary.byCurrency.map((part) => `${formatNumber(part.total, 2, false)} ${part.currency}`).join(' · ')}${
+            expenseFxSummary.baseTotal != null
+              ? ` · ${tm('fxBaseEquivalent')} ${formatNumber(expenseFxSummary.baseTotal, 2, false)} ${reportCurrency}`
+              : ''
+          }`
+        : `${tm('expenseCount')}: ${dailyExpenseRowsForReport.length}`,
     },
     'net-cash': {
       key: 'net-cash',
@@ -7745,15 +7787,35 @@ export function ReportsModule({
                         { key: 'description', header: tm('description'), size: 180, cell: (row) => row.description || '—' },
                         {
                           key: 'amount',
-                          header: tm('amountLabel_rep'),
+                          header: tm('fxOriginalAmount'),
                           type: 'number',
                           align: 'right',
-                          size: 120,
-                          footerSum: true,
-                          footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                          size: 140,
+                          footerSum: false,
                           cell: (row) => (
                             <span className="font-medium text-rose-700 tabular-nums">
                               {formatNumber(row.amount, 2, false)}
+                              {row.currencyCode ? ` ${row.currencyCode}` : ''}
+                            </span>
+                          ),
+                        },
+                        {
+                          key: 'baseAmount',
+                          header: `${tm('fxBaseEquivalent')} (${reportCurrency})`,
+                          type: 'number',
+                          align: 'right',
+                          size: 140,
+                          footerSum: true,
+                          footerGetValue: (row) => (row.baseAmount != null && Number.isFinite(row.baseAmount) ? row.baseAmount : 0),
+                          footerFormat: (sum, rows) => {
+                            const any = rows.some((row) => row.baseAmount != null && Number.isFinite(Number(row.baseAmount)));
+                            return any ? formatLedgerAmount(sum, reportCurrency) : '—';
+                          },
+                          cell: (row) => (
+                            <span className="font-medium tabular-nums text-slate-700">
+                              {row.baseAmount != null && Number.isFinite(row.baseAmount)
+                                ? formatNumber(row.baseAmount, 2, false)
+                                : '—'}
                             </span>
                           ),
                         },

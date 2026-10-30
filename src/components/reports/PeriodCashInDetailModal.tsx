@@ -25,6 +25,7 @@ import {
 import type { KasaIslemi } from '../../services/api/kasa';
 import { localCalendarDateKey } from '../../utils/localCalendarDate';
 import { formatNumber } from '../../utils/formatNumber';
+import { summarizeReportFx } from '../../utils/cashFxPosting';
 
 interface PeriodCashInDetailModalProps {
   cashLines: KasaIslemi[];
@@ -50,6 +51,8 @@ type CashInDetailRow = {
   partyName: string;
   partyCode: string;
   amount: number;
+  currency: string;
+  exchangeRate: number | null;
   isBackDated: boolean;
 };
 
@@ -77,8 +80,28 @@ function toRow(cl: KasaIslemi, fallbackIndex: number, typeCode: string): CashInD
     partyName: String(cl.cari_hesap_unvani || '').trim(),
     partyCode: String(cl.cari_hesap_kodu || '').trim(),
     amount: amt,
+    currency: String(cl.doviz_kodu || '').trim(),
+    exchangeRate: cl.exchange_rate != null ? Number(cl.exchange_rate) : null,
     isBackDated: isCashLineBackDated(cl),
   };
+}
+
+function fxFooterText(
+  rows: CashInDetailRow[],
+  reportCurrency: string,
+  baseLabel: string,
+  sameCurrencyText: string,
+): string {
+  const summary = summarizeReportFx(
+    rows.map((row) => ({ amount: row.amount, currency: row.currency, exchangeRate: row.exchangeRate })),
+    reportCurrency,
+  );
+  if (!summary.splitsCurrencies) return sameCurrencyText;
+  const parts = summary.byCurrency.map((row) => `${formatNumber(row.total, 0, false)} ${row.currency}`);
+  if (summary.baseTotal != null) {
+    parts.push(`${baseLabel} ${formatNumber(summary.baseTotal, 0, false)} ${reportCurrency}`);
+  }
+  return parts.join(' · ');
 }
 
 export function PeriodCashInDetailModal({
@@ -167,7 +190,7 @@ export function PeriodCashInDetailModal({
           </span>
         </div>
         <div className="font-mono font-extrabold text-emerald-700 dark:text-emerald-300 text-lg">
-          {money(total)}
+          {fxFooterText(rows, currency, tm('fxBaseEquivalent'), money(total))}
         </div>
       </div>
 
@@ -215,7 +238,7 @@ export function PeriodCashInDetailModal({
                     <td className="px-4 py-2 text-slate-700 dark:text-slate-200">{row.description || '—'}</td>
                     <td className="px-4 py-2 text-slate-700 dark:text-slate-200">{row.partyName || '—'}</td>
                     <td className="px-4 py-2 text-right font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
-                      {money(row.amount)}
+                      {formatNumber(row.amount, 0, false)}{row.currency ? ` ${row.currency}` : ''}
                     </td>
                   </tr>
                 ))}
@@ -226,7 +249,7 @@ export function PeriodCashInDetailModal({
                     {tm('rptPeriodTotalRow')}
                   </td>
                   <td className="px-4 py-2 text-right font-mono font-extrabold text-emerald-700 dark:text-emerald-300">
-                    {money(total)}
+                    {fxFooterText(rows, currency, tm('fxBaseEquivalent'), money(total))}
                   </td>
                 </tr>
               </tfoot>
@@ -253,7 +276,7 @@ export function PeriodCashInDetailModal({
                   {tm('rptPeriodCashInCariTahsilatTotal')}
                 </span>
                 <span className="font-mono font-extrabold text-cyan-700 dark:text-cyan-300 text-base whitespace-nowrap">
-                  {money(cariTahsilatTotal)}
+                  {fxFooterText(cariTahsilatRows, currency, tm('fxBaseEquivalent'), money(cariTahsilatTotal))}
                 </span>
               </div>
             </div>
@@ -315,7 +338,7 @@ export function PeriodCashInDetailModal({
                         </div>
                       </td>
                       <td className="px-4 py-2 text-right font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
-                        {money(row.amount)}
+                        {formatNumber(row.amount, 0, false)}{row.currency ? ` ${row.currency}` : ''}
                       </td>
                     </tr>
                   ))}
@@ -326,7 +349,7 @@ export function PeriodCashInDetailModal({
                       {tm('rptPeriodTotalRow')}
                     </td>
                     <td className="px-4 py-2 text-right font-mono font-extrabold text-cyan-700 dark:text-cyan-300">
-                      {money(cariTahsilatTotal)}
+                      {fxFooterText(cariTahsilatRows, currency, tm('fxBaseEquivalent'), money(cariTahsilatTotal))}
                     </td>
                   </tr>
                 </tfoot>

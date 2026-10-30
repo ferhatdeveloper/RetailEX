@@ -11,7 +11,10 @@ import { CalendarClock, ChevronDown, FileText, Loader2, Search, X } from 'lucide
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { Party, PartyLedgerMovement } from '../../../core/types/models';
-import { PartyLedgerDipFooter } from './PartyLedgerDipFooter';
+import { formatFxBase, formatFxOriginal, fxTotalsLabel, PartyLedgerDipFooter } from './PartyLedgerDipFooter';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { getFirmLedgerCurrency } from '../../../utils/currency';
+import { getAppDefaultCurrency } from '../../../services/postgres';
 
 export interface PartnerCashModalProps {
   partner: Party;
@@ -32,6 +35,8 @@ type MovementRow = PartyLedgerMovement & {
 export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }: PartnerCashModalProps) {
   const t = useNestedT();
   const { tm } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  const baseCurrency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency());
   const [viewTab, setViewTab] = useState<ViewTab>('movements');
   const [action, setAction] = useState<Action>('in');
   const [amount, setAmount] = useState('');
@@ -98,8 +103,9 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
     const debit = rows.reduce((s, r) => s + (r.debit || 0), 0);
     const credit = rows.reduce((s, r) => s + (r.credit || 0), 0);
     const last = rows.length ? rows[rows.length - 1].balance_after : 0;
-    return { debit, credit, last };
-  }, [rows]);
+    const fxLine = fxTotalsLabel(rows, baseCurrency, tm('fxBaseEquivalent'));
+    return { debit, credit, last, fxLine };
+  }, [rows, baseCurrency, tm]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -419,6 +425,8 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
                       <th className="text-left px-3 py-2">{tm('ficheNo')}</th>
                       <th className="text-left px-3 py-2">{t('party.table.type')}</th>
                       <th className="text-left px-3 py-2">{t('party.partnerCash.note')}</th>
+                      <th className="text-right px-3 py-2">{tm('fxOriginalAmount')}</th>
+                      <th className="text-right px-3 py-2">{tm('fxBaseEquivalent')}</th>
                       <th className="text-right px-3 py-2">{tm('debtor')}</th>
                       <th className="text-right px-3 py-2">{tm('creditor')}</th>
                       <th className="text-right px-3 py-2">{t('party.table.balance')}</th>
@@ -446,6 +454,8 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${color}`}>{label}</span>
                           </td>
                           <td className="px-3 py-2 text-slate-600 max-w-[12rem] truncate" title={r.definition}>{r.definition || '—'}</td>
+                          <td className="px-3 py-2 text-right font-mono">{formatFxOriginal(r.original_amount, r.original_currency)}</td>
+                          <td className="px-3 py-2 text-right font-mono">{formatFxBase(r.base_amount)}</td>
                           <td className="px-3 py-2 text-right font-mono">{r.debit ? formatMoney(r.debit) : ''}</td>
                           <td className="px-3 py-2 text-right font-mono">{r.credit ? formatMoney(r.credit) : ''}</td>
                           <td className="px-3 py-2 text-right font-mono font-bold">{formatMoney(r.balance_after)}</td>
@@ -459,6 +469,8 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
                     credit={dip.credit}
                     balance={dip.last}
                     label={tm('invoiceListDipTotal')}
+                    leadColSpan={6}
+                    fxLine={dip.fxLine}
                   />
                 </table>
               </PercentBodyModalScrollBody>

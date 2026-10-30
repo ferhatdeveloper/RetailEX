@@ -341,6 +341,11 @@ export interface PartyLedgerMovement {
   cash_line_id?: string;
   fiche_no?: string | null;
   created_at?: string;
+  /** Kasa satırının orijinal tutarı. Ekstre kolonu; bakiye hesabı değil. */
+  original_amount?: number | null;
+  original_currency?: string | null;
+  /** Ana para karşılığı. Kur yoksa null. */
+  base_amount?: number | null;
 }
 
 export type PartnerDistributionMode = 'daily' | 'period' | 'manual';

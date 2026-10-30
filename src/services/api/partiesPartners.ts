@@ -11,6 +11,8 @@
 import { postgres, ERP_SETTINGS } from '../postgres';
 import { normalizeFirmTableNr } from './accountBalance';
 import { createKasaIslemi } from './kasa';
+import { loadBookCurrencies, resolveRegisterCashFx } from './cashFxResolve';
+import { fxDisplayFields } from '../../utils/cashFxPosting';
 import { partyAPI } from './parties';
 import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 import { splitAmountByPartners } from '../../utils/periodSummaryPartnerSplit';
@@ -358,7 +360,10 @@ export const partnerAPI = {
     await ensurePartyPeriodTables();
     const limit = opts?.limit ?? 500;
     const { rows } = await postgres.query(
-      `SELECT pl.*, cl.fiche_no
+      `SELECT pl.*, cl.fiche_no,
+              cl.amount AS cash_amount,
+              cl.currency_code AS cash_currency,
+              cl.exchange_rate AS cash_rate
        FROM ${ledgerTable()} pl
        LEFT JOIN ${cashLinesTable()} cl ON cl.id = pl.cash_line_id
        WHERE pl.party_id = $1::text::uuid
@@ -368,6 +373,7 @@ export const partnerAPI = {
        LIMIT $4::integer`,
       [partnerId, opts?.startDate || null, opts?.endDate || null, limit],
     );
+    const books = await loadBookCurrencies();
     return (rows || []).map((r: Record<string, unknown>) => ({
       id: String(r.id),
       firm_nr: String(r.firm_nr || ''),
@@ -385,6 +391,14 @@ export const partnerAPI = {
       cash_line_id: r.cash_line_id != null ? String(r.cash_line_id) : undefined,
       fiche_no: r.fiche_no != null ? String(r.fiche_no) : null,
       created_at: r.created_at != null ? String(r.created_at) : undefined,
+      ...fxDisplayFields({
+        ledgerAmount: parseFloat(String(r.amount || 0)),
+        cashAmount: r.cash_amount as number | string | null,
+        cashCurrency: r.cash_currency != null ? String(r.cash_currency) : null,
+        cashRate: r.cash_rate as number | string | null,
+        localCurrency: books.localCurrency,
+        baseCurrency: books.baseCurrency,
+      }),
     }));
   },
 
@@ -430,32 +444,57 @@ export const partnerAPI = {
     // createKasaIslemi içinde assertPeriodOpen ile dönem kontrolü yapılır.
     const txnDate = input.date ? String(input.date) : new Date().toISOString();
 
+    const fx = await resolveRegisterCashFx({
+      registerId: input.registerId,
+      cashAmount: input.amount,
+      asOfDate: txnDate,
+    });
     const cih = await createKasaIslemi({
       firma_id: normalizeFirmTableNr(ERP_SETTINGS.firmNr),
       kasa_id: input.registerId,
       islem_tarihi: txnDate,
-      tutar: input.amount,
       islem_tipi: kasaTipi,
       islem_aciklamasi: definition,
       party_id: partner.id,
       party_code: partner.code,
       party_name: partner.name,
-      doviz_kodu: 'YEREL',
-      dovizli_tutar: input.amount,
+      tutar: fx.cashAmount,
+      doviz_kodu: fx.cashCurrency,
+      dovizli_tutar: fx.baseAmount ?? undefined,
+      exchange_rate: fx.exchangeRate ?? undefined,
+      fx_rate_absent: fx.baseAmount == null,
+      hesap_tutari: fx.accountAmount,
     });
 
     invalidateYearNetSyncCache();
-    const ledger = await writePartnerLedger({
-      partyId: partner.id,
-      transactionType: ledgerTipi,
-      amount: input.amount,
-      sign: isIn ? 1 : -1,
-      definition,
-      sourceModule: 'partner_cash',
-      sourceId: cih.id,
-      cashLineId: cih.id,
-      date: txnDate,
-    });
+    // Hesap tutarı ortak para biriminde. Kur yoksa çapraz sayı hesaba yazılmaz.
+    const ledger = fx.accountAmount == null
+      ? {
+          id: String(cih.id || ''),
+          firm_nr: normalizeFirmTableNr(ERP_SETTINGS.firmNr),
+          period_nr: String(ERP_SETTINGS.periodNr || '01'),
+          party_id: partner.id,
+          card_type: 'partner' as const,
+          transaction_type: ledgerTipi,
+          date: txnDate,
+          amount: 0,
+          sign: isIn ? 1 : -1,
+          definition,
+          source_module: 'partner_cash',
+          source_id: cih.id,
+          cash_line_id: cih.id,
+        }
+      : await writePartnerLedger({
+          partyId: partner.id,
+          transactionType: ledgerTipi,
+          amount: fx.accountAmount,
+          sign: isIn ? 1 : -1,
+          definition,
+          sourceModule: 'partner_cash',
+          sourceId: cih.id,
+          cashLineId: cih.id,
+          date: txnDate,
+        });
 
     const fresh = await this.getById(partner.id);
     return {

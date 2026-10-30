@@ -23,6 +23,7 @@ import {
 } from '../../utils/reportUnifiedExpenses';
 import { localCalendarDateKey } from '../../utils/localCalendarDate';
 import { formatNumber } from '../../utils/formatNumber';
+import { summarizeReportFx } from '../../utils/cashFxPosting';
 import type { KasaIslemi } from '../../services/api/kasa';
 
 export type DailyCashFlowKind = 'cash-in' | 'cash-out';
@@ -38,6 +39,8 @@ interface DailyExpenseRowLike {
   description?: string;
   partyName?: string;
   amount: number;
+  currencyCode?: string;
+  exchangeRate?: number | null;
 }
 
 interface DailyCashFlowModalProps {
@@ -86,6 +89,8 @@ export function DailyCashFlowModal({
           description: String(cl.islem_aciklamasi || ''),
           partyName: String(cl.cari_hesap_unvani || ''),
           amount: Math.abs(Number(cl.tutar) || 0),
+          currencyCode: String(cl.doviz_kodu || '').trim(),
+          exchangeRate: cl.exchange_rate != null ? Number(cl.exchange_rate) : null,
           isBackDated: isCashLineBackDated(cl),
         }))
         .sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -116,6 +121,8 @@ export function DailyCashFlowModal({
         description: String(cl.islem_aciklamasi || ''),
         partyName: String(cl.cari_hesap_unvani || ''),
         amount: Math.abs(Number(cl.tutar) || 0),
+        currencyCode: String(cl.doviz_kodu || '').trim(),
+        exchangeRate: cl.exchange_rate != null ? Number(cl.exchange_rate) : null,
         isBackDated: isCashLineBackDated(cl),
       }))
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -128,6 +135,22 @@ export function DailyCashFlowModal({
 
   const showCariTahsilatSection = kind === 'cash-in' && cariTahsilatRows.length > 0;
   const money = (v: number) => `${formatNumber(v, 0, false)} ${currency}`;
+  const lineMoney = (row: DailyExpenseRowLike) => {
+    const code = String(row.currencyCode || '').trim();
+    return `${formatNumber(Number(row.amount) || 0, 0, false)}${code ? ` ${code}` : ''}`;
+  };
+  const footerText = (list: DailyExpenseRowLike[], sameCurrencyText: string) => {
+    const summary = summarizeReportFx(
+      list.map((row) => ({ amount: row.amount, currency: row.currencyCode, exchangeRate: row.exchangeRate })),
+      currency,
+    );
+    if (!summary.splitsCurrencies) return sameCurrencyText;
+    const parts = summary.byCurrency.map((row) => `${formatNumber(row.total, 0, false)} ${row.currency}`);
+    if (summary.baseTotal != null) {
+      parts.push(`${tm('fxBaseEquivalent')} ${formatNumber(summary.baseTotal, 0, false)} ${currency}`);
+    }
+    return parts.join(' · ');
+  };
 
   const Icon = kind === 'cash-in' ? Banknote : Wallet;
   const accent = kind === 'cash-in' ? 'from-emerald-600 to-emerald-700' : 'from-rose-600 to-rose-700';
@@ -162,7 +185,7 @@ export function DailyCashFlowModal({
         <div className={`text-[11px] font-bold uppercase tracking-wider ${accentText}`}>
           {kind === 'cash-in' ? tm('rptPeriodTotalCashIn') : tm('rptPeriodTotalExpenses')}
         </div>
-        <div className={`font-mono font-extrabold text-lg ${accentVal}`}>{money(total)}</div>
+        <div className={`font-mono font-extrabold text-lg ${accentVal}`}>{footerText(rows, money(total))}</div>
       </div>
 
       <PercentBodyModalScrollBody className="p-0">
@@ -222,7 +245,7 @@ export function DailyCashFlowModal({
                         {row.partyName || '—'}
                       </td>
                       <td className={`px-4 py-2 text-right font-semibold whitespace-nowrap ${accentVal}`}>
-                        {money(Number(row.amount) || 0)}
+                        {lineMoney(row)}
                       </td>
                     </tr>
                   );
@@ -234,7 +257,7 @@ export function DailyCashFlowModal({
                     {tm('rptPeriodTotalRow')}
                   </td>
                   <td className={`px-4 py-2 text-right font-mono font-extrabold ${accentVal}`}>
-                    {money(total)}
+                    {footerText(rows, money(total))}
                   </td>
                 </tr>
               </tfoot>
@@ -256,7 +279,7 @@ export function DailyCashFlowModal({
               </h4>
               <span className="ml-auto text-[11px] text-slate-500">{cariTahsilatRows.length} kayıt</span>
               <span className="font-mono font-extrabold text-cyan-700 dark:text-cyan-300">
-                {money(cariTahsilatTotal)}
+                {footerText(cariTahsilatRows, money(cariTahsilatTotal))}
               </span>
             </div>
             <div className="overflow-x-auto">
@@ -306,7 +329,7 @@ export function DailyCashFlowModal({
                           {row.partyName || '—'}
                         </td>
                         <td className="px-3 py-1.5 text-right font-semibold whitespace-nowrap text-cyan-700 dark:text-cyan-300">
-                          {money(Number(row.amount) || 0)}
+                          {lineMoney(row)}
                         </td>
                       </tr>
                     );

@@ -11,7 +11,7 @@
  * 90 yıllık muhasebeci denetimi:
  *   - Pozitif party balance = ödenmemiş maaş alacağı (işletme personele borçlu).
  *   - MAAS_HAKKEDIS: kasa 0, party balance +tutar.
- *   - MAAS_ODEME / AVANS_ODEME: kasa −tutar, party balance −tutar.
+ *   - MAAS_ODEME / AVANS_ODEME: kasa, kasanın para biriminde −tutar; personel borcu hesap para biriminde düşer.
  *   - AVANS_MAHSUP: kasa 0, party balance 0 (belge).
  *   - Kart bakiyesi ledger toplamından türetilir (denormalize kolon tek başına kaynak değil).
  */
@@ -19,6 +19,8 @@
 import { postgres, ERP_SETTINGS } from '../postgres';
 import { normalizeFirmTableNr } from './accountBalance';
 import { createKasaIslemi } from './kasa';
+import { loadBookCurrencies, resolveRegisterCashFx, type ResolvedCashFx } from './cashFxResolve';
+import { fxDisplayFields } from '../../utils/cashFxPosting';
 import { partyAPI, toDateInputValue } from './parties';
 import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 import {
@@ -48,6 +50,18 @@ function cashLinesTable(): string {
 
 function partiesTable(): string {
   return `rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties`;
+}
+
+/** Kasa satırı kasa biriminde; personel borcu hesap biriminde. Kur tahsilat kaynağından. */
+function payrollCashPayload(fx: ResolvedCashFx) {
+  return {
+    tutar: fx.cashAmount,
+    doviz_kodu: fx.cashCurrency,
+    dovizli_tutar: fx.baseAmount ?? undefined,
+    exchange_rate: fx.exchangeRate ?? undefined,
+    fx_rate_absent: fx.baseAmount == null,
+    hesap_tutari: fx.accountAmount,
+  };
 }
 
 export interface PayrollWriteResult {
@@ -438,34 +452,54 @@ export const employeeAPI = {
       : new Date().toISOString();
     const isBackDated = Boolean(input.isBackDated);
 
+    const fx = await resolveRegisterCashFx({
+      registerId: input.registerId,
+      cashAmount: grossPaid,
+      asOfDate: txnDate,
+    });
+
     const cih = await createKasaIslemi({
       firma_id: normalizeFirmTableNr(ERP_SETTINGS.firmNr),
       kasa_id: input.registerId,
       islem_tarihi: txnDate,
-      tutar: grossPaid,
       islem_tipi: 'MAAS_ODEME',
       islem_aciklamasi: input.definition || `Maaş ödemesi — ${emp.name}`,
       party_id: emp.id,
       party_code: emp.code,
       party_name: emp.name,
-      doviz_kodu: 'YEREL',
-      dovizli_tutar: grossPaid,
       is_back_dated: isBackDated,
+      ...payrollCashPayload(fx),
     });
 
-    // Ana maaş ödemesi ledger satırı — brüt tutar (kasadan çıkan)
-    const ledger = await writePartyLedger({
-      partyId: emp.id,
-      cardType: 'employee',
-      transactionType: 'MAAS_ODEME',
-      amount: grossPaid,
-      sign: -1,
-      definition: input.definition || `Maaş ödemesi — ${emp.name}`,
-      sourceModule: 'payroll',
-      sourceId: cih.id,
-      cashLineId: cih.id,
-      date: txnDate,
-    });
+    // Personel borcu hesap para biriminde. Kur yoksa çapraz tutar borca yazılmaz.
+    const ledger = fx.accountAmount == null
+      ? {
+          id: String(cih.id || ''),
+          firm_nr: normalizeFirmTableNr(ERP_SETTINGS.firmNr),
+          period_nr: String(ERP_SETTINGS.periodNr || '01'),
+          party_id: emp.id,
+          card_type: 'employee' as const,
+          transaction_type: 'MAAS_ODEME',
+          date: txnDate,
+          amount: 0,
+          sign: -1,
+          definition: input.definition || `Maaş ödemesi — ${emp.name}`,
+          source_module: 'payroll',
+          source_id: cih.id,
+          cash_line_id: cih.id,
+        }
+      : await writePartyLedger({
+          partyId: emp.id,
+          cardType: 'employee',
+          transactionType: 'MAAS_ODEME',
+          amount: fx.accountAmount,
+          sign: -1,
+          definition: input.definition || `Maaş ödemesi — ${emp.name}`,
+          sourceModule: 'payroll',
+          sourceId: cih.id,
+          cashLineId: cih.id,
+          date: txnDate,
+        });
 
     // Bonus hakkedişi (kasa etkisiz; party balance +bonus)
     if (bonus > 0) {
@@ -498,8 +532,9 @@ export const employeeAPI = {
     }
 
     const balances = await this.recomputeEmployeeBalances([emp.id]);
-    // Net bakiye: önceki + bonus − maaş − ceza
-    const balance = balances.get(emp.id) ?? ((emp.balance || 0) + bonus - grossPaid - penalty);
+    const paidOnAccount = fx.accountAmount ?? 0;
+    // Net bakiye: önceki + bonus − hesap para birimindeki maaş − ceza
+    const balance = balances.get(emp.id) ?? ((emp.balance || 0) + bonus - paidOnAccount - penalty);
     return {
       ledger: { ...ledger, fiche_no: cih.islem_no || null, cash_line_id: cih.id },
       ficheNo: cih.islem_no || null,
@@ -610,33 +645,50 @@ export const employeeAPI = {
     const emp = await this.getById(input.employeeId);
     if (!emp) throw new Error('Personel bulunamadı.');
 
+    const fx = await resolveRegisterCashFx({
+      registerId: input.registerId,
+      cashAmount: input.amount,
+    });
     const cih = await createKasaIslemi({
       firma_id: normalizeFirmTableNr(ERP_SETTINGS.firmNr),
       kasa_id: input.registerId,
       islem_tarihi: new Date().toISOString(),
-      tutar: input.amount,
       islem_tipi: 'AVANS_ODEME',
       islem_aciklamasi: input.definition || `Avans ödemesi — ${emp.name}`,
       party_id: emp.id,
       party_code: emp.code,
       party_name: emp.name,
-      doviz_kodu: 'YEREL',
-      dovizli_tutar: input.amount,
+      ...payrollCashPayload(fx),
     });
 
-    const ledger = await writePartyLedger({
-      partyId: emp.id,
-      cardType: 'employee',
-      transactionType: 'AVANS_ODEME',
-      amount: input.amount,
-      sign: -1,
-      definition: input.definition || `Avans ödemesi — ${emp.name}`,
-      sourceModule: 'payroll',
-      sourceId: cih.id,
-      cashLineId: cih.id,
-    });
+    const ledger = fx.accountAmount == null
+      ? {
+          id: String(cih.id || ''),
+          firm_nr: normalizeFirmTableNr(ERP_SETTINGS.firmNr),
+          period_nr: String(ERP_SETTINGS.periodNr || '01'),
+          party_id: emp.id,
+          card_type: 'employee' as const,
+          transaction_type: 'AVANS_ODEME',
+          date: new Date().toISOString(),
+          amount: 0,
+          sign: -1,
+          definition: input.definition || `Avans ödemesi — ${emp.name}`,
+          source_module: 'payroll',
+          cash_line_id: cih.id,
+        }
+      : await writePartyLedger({
+          partyId: emp.id,
+          cardType: 'employee',
+          transactionType: 'AVANS_ODEME',
+          amount: fx.accountAmount,
+          sign: -1,
+          definition: input.definition || `Avans ödemesi — ${emp.name}`,
+          sourceModule: 'payroll',
+          sourceId: cih.id,
+          cashLineId: cih.id,
+        });
     const balances = await this.recomputeEmployeeBalances([emp.id]);
-    const balance = balances.get(emp.id) ?? (emp.balance || 0) - input.amount;
+    const balance = balances.get(emp.id) ?? (emp.balance || 0) - (fx.accountAmount ?? 0);
     return {
       ledger: { ...ledger, fiche_no: cih.islem_no || null, cash_line_id: cih.id },
       ficheNo: cih.islem_no || null,
@@ -681,7 +733,10 @@ export const employeeAPI = {
     await ensurePartyPeriodTables();
     const limit = opts?.limit ?? 200;
     const { rows } = await postgres.query(
-      `SELECT pl.*, cl.fiche_no
+      `SELECT pl.*, cl.fiche_no,
+              cl.amount AS cash_amount,
+              cl.currency_code AS cash_currency,
+              cl.exchange_rate AS cash_rate
        FROM ${ledgerTable()} pl
        LEFT JOIN ${cashLinesTable()} cl ON cl.id = pl.cash_line_id
        WHERE pl.party_id = $1::text::uuid
@@ -691,6 +746,7 @@ export const employeeAPI = {
        LIMIT $4::integer`,
       [employeeId, opts?.startDate || null, opts?.endDate || null, limit],
     );
+    const books = await loadBookCurrencies();
     return (rows || []).map((r: any) => ({
       id: r.id,
       firm_nr: r.firm_nr,
@@ -708,6 +764,14 @@ export const employeeAPI = {
       cash_line_id: r.cash_line_id,
       fiche_no: r.fiche_no || null,
       created_at: r.created_at,
+      ...fxDisplayFields({
+        ledgerAmount: parseFloat(r.amount || 0),
+        cashAmount: r.cash_amount,
+        cashCurrency: r.cash_currency,
+        cashRate: r.cash_rate,
+        localCurrency: books.localCurrency,
+        baseCurrency: books.baseCurrency,
+      }),
     }));
   },
 };

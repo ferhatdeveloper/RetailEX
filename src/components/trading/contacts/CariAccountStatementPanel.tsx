@@ -24,6 +24,7 @@ import {
   type EkstreRow,
 } from '../../../utils/cariAccountStatement';
 import { formatExtractDate } from '../../../utils/materialExtractPrint';
+import { baseEquivalentFromStoredLine, sumBaseEquivalents, sumOriginalByCurrency } from '../../../utils/cashFxPosting';
 import { ekstreHeaderBalanceForDisplay } from '../../../utils/cariListBalance';
 import { CariEkstrePrintModal } from './CariEkstrePrintModal';
 
@@ -249,6 +250,49 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
         },
       },
       {
+        id: 'fxOriginal',
+        accessorKey: 'cash_original_amount',
+        header: tm('fxOriginalAmount'),
+        size: 150,
+        minSize: 120,
+        meta: { align: 'right' },
+        cell: ({ row }) => {
+          const amt = Number(row.original.cash_original_amount || 0);
+          const code = String(row.original.currency || '').trim();
+          if (!(amt > 0) || !code) return null;
+          return (
+            <span className="whitespace-nowrap font-mono font-bold text-slate-800">
+              {formatNumber(amt, mainDec, mainShowDec)} {code}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'fxBase',
+        accessorKey: 'currency_rate',
+        header: `${tm('fxBaseEquivalent')} (${mainCurrency})`,
+        size: 150,
+        minSize: 120,
+        meta: { align: 'right' },
+        cell: ({ row }) => {
+          const original = Number(row.original.cash_original_amount || 0);
+          const code = String(row.original.currency || '').trim();
+          if (!(original > 0) || !code) return null;
+          const base = baseEquivalentFromStoredLine({
+            amount: original,
+            currency: code,
+            baseCurrency: mainCurrency,
+            exchangeRate: row.original.currency_rate,
+          });
+          if (base == null) return <span className="text-gray-400">—</span>;
+          return (
+            <span className="whitespace-nowrap font-mono text-slate-700">
+              {formatNumber(base, mainDec, mainShowDec)}
+            </span>
+          );
+        },
+      },
+      {
         id: 'borc',
         accessorKey: 'borcAmount',
         header: tm('debtor'),
@@ -374,6 +418,22 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
     ];
   }, [tm, mainDec, mainShowDec, mainCurrency, account.cardType, hardDeletingId]);
 
+  const fxOriginals = sumOriginalByCurrency(
+    ekstresiRows.map((row) => ({ amount: row.cash_original_amount, currency: row.currency })),
+  );
+  const fxBaseTotal = sumBaseEquivalents(
+    ekstresiRows.map((row) => ({
+      baseAmount:
+        row.cash_original_amount && row.currency
+          ? baseEquivalentFromStoredLine({
+              amount: row.cash_original_amount,
+              currency: row.currency,
+              baseCurrency: mainCurrency,
+              exchangeRate: row.currency_rate,
+            })
+          : null,
+    })),
+  );
   const totalBorc = ekstresiRows.reduce((s, r) => s + r.borcAmount, 0);
   const totalAlacak = ekstresiRows.reduce((s, r) => s + r.alacakAmount, 0);
   const isSupplierAccount = account.cardType === 'supplier';
@@ -631,6 +691,19 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
                 >
                   Son Bakiye: {lastRowHdr.primary} {lastRowHdr.code}{lastRowBalanceDir.sideLabel ? ` · ${lastRowBalanceDir.sideLabel}` : ''}
                 </span>
+                {fxOriginals.map((part) => (
+                  <span
+                    key={part.currency}
+                    className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-black text-slate-700"
+                  >
+                    {formatNumber(part.total, mainDec, mainShowDec)} {part.currency}
+                  </span>
+                ))}
+                {fxBaseTotal != null ? (
+                  <span className="rounded border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-black text-indigo-800">
+                    {tm('fxBaseEquivalent')}: {formatNumber(fxBaseTotal, mainDec, mainShowDec)} {mainCurrency}
+                  </span>
+                ) : null}
               </div>
             ) : null}
             {reportingCurrency !== mainCurrency ? (

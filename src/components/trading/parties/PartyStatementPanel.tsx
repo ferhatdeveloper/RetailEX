@@ -17,7 +17,10 @@ import { defaultEkstreDateRange, ficheTypeToInfo } from '../../../utils/cariAcco
 import { useNestedT } from './useNestedT';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { Party } from '../../../core/types/models';
-import { PartyLedgerDipFooter } from './PartyLedgerDipFooter';
+import { formatFxBase, formatFxOriginal, fxTotalsLabel, PartyLedgerDipFooter } from './PartyLedgerDipFooter';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { getFirmLedgerCurrency } from '../../../utils/currency';
+import { getAppDefaultCurrency } from '../../../services/postgres';
 
 export interface PartyStatementPanelProps {
   party: Party;
@@ -41,6 +44,8 @@ function txKind(type: string): 'salary' | 'advance' | 'reconcile' | 'accrual' | 
 export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps) {
   const t = useNestedT();
   const { tm } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  const baseCurrency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency());
   const defaultRange = useMemo(() => defaultEkstreDateRange(party.card_type), [party.card_type]);
   const isPartner = party.card_type === 'partner';
   const debitColLabel = isPartner ? t('party.partnerCash.colDebit') : tm('debtor');
@@ -182,8 +187,9 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
     const debit = rows.reduce((s, r) => s + (Number(r.debit) || 0), 0);
     const credit = rows.reduce((s, r) => s + (Number(r.credit) || 0), 0);
     const last = rows.length ? rows[rows.length - 1].balance_after : data?.closing_balance || 0;
-    return { debit, credit, last };
-  }, [rows, data?.closing_balance]);
+    const fxLine = fxTotalsLabel(rows, baseCurrency, tm('fxBaseEquivalent'));
+    return { debit, credit, last, fxLine };
+  }, [rows, data?.closing_balance, baseCurrency, tm]);
 
   return (
     <>
@@ -330,11 +336,11 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-[1] border-b border-gray-200 bg-gray-100">
               <tr>
-                {[tm('dateLabel'), tm('ficheNo'), tm('type'), tm('description'), debitColLabel, creditColLabel, balanceColLabel, ''].map((h, hi) => (
+                {[tm('dateLabel'), tm('ficheNo'), tm('type'), tm('description'), tm('fxOriginalAmount'), tm('fxBaseEquivalent'), debitColLabel, creditColLabel, balanceColLabel, ''].map((h, hi) => (
                   <th
                     key={h || `act-${hi}`}
                     className={`px-4 py-3 text-[11px] font-black uppercase tracking-wider text-gray-600 ${
-                      [debitColLabel, creditColLabel, balanceColLabel].includes(h) ? 'text-right' : h === '' ? 'text-center w-12' : 'text-left'
+                      [debitColLabel, creditColLabel, balanceColLabel, tm('fxOriginalAmount'), tm('fxBaseEquivalent')].includes(h) ? 'text-right' : h === '' ? 'text-center w-12' : 'text-left'
                     }`}
                   >
                     {h}
@@ -400,6 +406,12 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
                       </span>
                     </td>
                     <td className="max-w-md break-words px-4 py-2 text-gray-700">{row.definition || ''}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right font-mono text-slate-800">
+                      {formatFxOriginal(row.original_amount, row.original_currency)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right font-mono text-slate-600">
+                      {formatFxBase(row.base_amount)}
+                    </td>
                     <td
                       className={`whitespace-nowrap px-4 py-2 text-right font-bold ${
                         Number(row.debit) < 0
@@ -447,7 +459,9 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
               credit={dip.credit}
               balance={dip.last}
               label={tm('invoiceListDipTotal')}
+              leadColSpan={6}
               trailColSpan={1}
+              fxLine={dip.fxLine}
             />
           </table>
         )}

@@ -23,6 +23,8 @@ import {
   invalidateYearNetSyncCache,
 } from './partiesPartners';
 import type { PartyCardType } from '../../core/types/models';
+import { loadBookCurrencies } from './cashFxResolve';
+import { fxDisplayFields } from '../../utils/cashFxPosting';
 
 export interface PartyStatementLine {
   date: string;
@@ -38,6 +40,11 @@ export interface PartyStatementLine {
   cash_line_id?: string | null;
   /** party_ledger.source_module — otomatik dönem payı vs elle eklenen */
   source_module?: string | null;
+  /** Kasa (veya tahakkuk) orijinal tutarı. Borç/alacak hesabından ayrı. */
+  original_amount?: number | null;
+  original_currency?: string | null;
+  /** Ana para karşılığı. Kur yoksa boş. */
+  base_amount?: number | null;
 }
 
 /** Elle / sonradan eklenen hareketler (para giriş-çıkış, kasa bağlı ödeme). Otomatik kâr payı silinemez. */
@@ -256,7 +263,10 @@ export async function getPartyStatement(
         COALESCE(pl.sign, 0) AS sign,
         pl.id,
         pl.cash_line_id,
-        pl.source_module
+        pl.source_module,
+        cl.amount AS cash_amount,
+        cl.currency_code AS cash_currency,
+        cl.exchange_rate AS cash_rate
       FROM ${partyLedgerTable()} pl
       LEFT JOIN ${cashLinesTable()} cl ON cl.id = pl.cash_line_id
       WHERE pl.party_id = $1::text::uuid${dateCond('pl.date')}
@@ -277,7 +287,10 @@ export async function getPartyStatement(
         END AS sign,
         cl.id,
         cl.id AS cash_line_id,
-        NULL::text AS source_module
+        NULL::text AS source_module,
+        cl.amount AS cash_amount,
+        cl.currency_code AS cash_currency,
+        cl.exchange_rate AS cash_rate
       FROM ${cashLinesTable()} cl
       WHERE cl.party_id = $1::text::uuid${dateCond('cl.date')}
         AND NOT EXISTS (
@@ -289,11 +302,24 @@ export async function getPartyStatement(
   }
 
   const { rows } = await postgres.query(sql, params);
+  const books = (resolvedType === 'employee' || resolvedType === 'partner')
+    ? await loadBookCurrencies()
+    : null;
   const lines: PartyStatementLine[] = (rows || []).map((r: any) => {
     const amount = parseFloat(r.amount || 0);
     const type = String(r.transaction_type || '');
     const cashLineId = r.cash_line_id != null ? String(r.cash_line_id) : null;
     const sourceModule = r.source_module != null ? String(r.source_module) : null;
+    const fx = books
+      ? fxDisplayFields({
+          ledgerAmount: amount,
+          cashAmount: r.cash_amount,
+          cashCurrency: r.cash_currency,
+          cashRate: r.cash_rate,
+          localCurrency: books.localCurrency,
+          baseCurrency: books.baseCurrency,
+        })
+      : { original_amount: null, original_currency: null, base_amount: null };
     if (resolvedType === 'employee') {
       const sides = employeeStatementSides(type, amount);
       return {
@@ -308,6 +334,7 @@ export async function getPartyStatement(
         id: r.id,
         cash_line_id: cashLineId,
         source_module: sourceModule,
+        ...fx,
       };
     }
     const sign = parseInt(r.sign || 0, 10);
@@ -325,6 +352,7 @@ export async function getPartyStatement(
       id: r.id,
       cash_line_id: cashLineId,
       source_module: sourceModule,
+      ...fx,
     };
   });
 

@@ -171,6 +171,12 @@ function attachLinkedCashIdentity(expense: Expense, cashById: ReadonlyMap<string
     const created = String(line.olusturma_tarihi || '').trim();
     if (created) next.created_at = created;
   }
+  const cashCurrency = String(line.doviz_kodu || '').trim();
+  if (cashCurrency) next.currency_code = cashCurrency;
+  if (line.exchange_rate != null) {
+    const rate = Number(line.exchange_rate);
+    next.exchange_rate = Number.isFinite(rate) ? rate : null;
+  }
   return applyCashLineActor(next, line);
 }
 
@@ -271,6 +277,8 @@ export function mergeExpensesWithCashOuts(
       category: reportCashOutCategory(type),
       description: String(cl.islem_aciklamasi || cl.cari_hesap_unvani || '').trim(),
       amount: amt,
+      currency_code: String(cl.doviz_kodu || '').trim() || null,
+      exchange_rate: cl.exchange_rate != null && Number.isFinite(Number(cl.exchange_rate)) ? Number(cl.exchange_rate) : null,
       payment_method: 'cash',
       document_number: String(cl.islem_no || '').trim() || undefined,
       store_id: '',

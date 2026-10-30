@@ -294,6 +294,8 @@ export type EkstreRow = {
   total_amount?: number | string;
   /** Belge / kasa döviz kodu */
   currency?: string;
+  /** Kasa satırının orijinal tutarı (cash_lines.amount). Borç/alacak bundan ayrıdır. */
+  cash_original_amount?: number;
   /** Belge→defter kuru (sales.currency_rate / cash_lines.exchange_rate) */
   currency_rate?: number;
   borcAmount: number;

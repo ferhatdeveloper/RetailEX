@@ -82,6 +82,7 @@ function mapCashRowToEkstre(r: any) {
     fiche_type: String(r.transaction_type || '').trim().toUpperCase(),
     total_amount: cariAmt,
     currency: r.currency_code,
+    cash_original_amount: r.amount != null ? Math.abs(Number(r.amount) || 0) : undefined,
     currency_rate: r.exchange_rate != null ? Number(r.exchange_rate) : 1,
     notes: r.definition,
     f_amount: r.f_amount != null ? Number(r.f_amount) : undefined,
@@ -929,7 +930,8 @@ export const supplierAPI = {
         SELECT id, fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency,
                COALESCE(currency_rate, 1) AS currency_rate, notes,
                COALESCE(is_cancelled, false) AS is_cancelled, payment_method,
-               NULL::text AS special_code
+               NULL::text AS special_code,
+               NULL::numeric AS cash_original_amount
         FROM sales t
         WHERE ${accountMatchSales}${ledgerFicheFilter}${dateFilter}
           AND COALESCE(t.is_cancelled, false) = false
@@ -945,7 +947,8 @@ export const supplierAPI = {
                currency_code AS currency,
                COALESCE(exchange_rate, 1) AS currency_rate, definition AS notes,
                false AS is_cancelled, NULL::text AS payment_method,
-               UPPER(TRIM(COALESCE(special_code, ''))) AS special_code
+               UPPER(TRIM(COALESCE(special_code, ''))) AS special_code,
+               ABS(COALESCE(amount, 0)) AS cash_original_amount
         FROM cash_lines t
         WHERE (t.customer_id::text = $1::text OR t.party_id::text = $1::text)${dateFilter}
           AND UPPER(TRIM(t.transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')

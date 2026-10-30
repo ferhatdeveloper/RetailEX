@@ -4,6 +4,8 @@
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import { createKasaIslemi, deleteKasaIslemi, ensureCashLineActorColumns } from './kasa';
+import { loadBookCurrencies, resolveRegisterCashFx } from './cashFxResolve';
+import { expenseFAmountOnUpdate } from '../../utils/cashFxPosting';
 import { parseDecimalStringForInput } from '../../utils/numberFormatter';
 import { resolveCashLineActorWrite } from '../../utils/cashLineActor';
 
@@ -87,6 +89,12 @@ export interface Expense {
    * Veritabanı kolonu değildir; güncelleme gövdesine yazılmaz.
    */
   entered_by_name?: string;
+  /**
+   * Bağlı kasa satırından. Veritabanı kolonu değildir.
+   * Güncelleme gövdesine yazılmaz.
+   */
+  currency_code?: string | null;
+  exchange_rate?: number | null;
   firm_nr: string;
   cash_line_id?: string;
   cash_register_id?: string;
@@ -355,15 +363,24 @@ export const expenseAPI = {
               );
             }
 
+            const books = await loadBookCurrencies();
+            const fx = await resolveRegisterCashFx({
+              registerId: String(kasa.id),
+              cashAmount: expense.amount,
+              asOfDate: expense.expense_date,
+              accountCurrency: books.baseCurrency,
+            });
             const kasaIslem = await createKasaIslemi({
               firma_id: String(ERP_SETTINGS.firmNr),
               kasa_id: kasa.id,
               islem_tarihi: expense.expense_date,
-              tutar: expense.amount,
+              tutar: fx.cashAmount,
               islem_aciklamasi: expense.description || 'Gider',
               islem_tipi: 'GIDER_PUSULASI',
-              doviz_kodu: kasa.currency_code || 'IQD',
-              dovizli_tutar: expense.amount,
+              doviz_kodu: fx.cashCurrency,
+              dovizli_tutar: fx.baseAmount ?? undefined,
+              exchange_rate: fx.exchangeRate ?? undefined,
+              fx_rate_absent: fx.baseAmount == null,
               ozel_kod: expense.category || '',
               skipExpenseMirror: true,
               ...(actor.cashier ? { cashier: actor.cashier } : {}),
@@ -446,6 +463,13 @@ export const expenseAPI = {
 
           const writeActor = await ensureCashLineActorColumns();
           const actor = resolveCashLineActorWrite({ createdByUserId: expense.created_by });
+          const books = await loadBookCurrencies();
+          const fx = await resolveRegisterCashFx({
+            registerId: String(kasa.id),
+            cashAmount: expense.amount,
+            asOfDate: expense.expense_date,
+            accountCurrency: books.baseCurrency,
+          });
           const ficheNo = `EXP-${ERP_SETTINGS.firmNr}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
           const { rows: lineRows } = await postgres.query(
             `INSERT INTO cash_lines (
@@ -454,8 +478,8 @@ export const expenseAPI = {
                ${writeActor ? ', cashier, created_by_user_id' : ''}
              ) VALUES (
                $1::text, $2::text, $3::text::uuid, $4::text, $5::text::date, $6::text::numeric, -1,
-               $7::text, 'GIDER_PUSULASI', $8::text, 1, $9::text::numeric, 0, $10::text, 0, 0
-               ${writeActor ? ', $11::text, $12::text::uuid' : ''}
+               $7::text, 'GIDER_PUSULASI', $8::text, $9::text::numeric, $10::text::numeric, 0, $11::text, 0, 0
+               ${writeActor ? ', $12::text, $13::text::uuid' : ''}
              ) RETURNING id`,
             [
               firmNr,
@@ -463,10 +487,11 @@ export const expenseAPI = {
               kasa.id,
               ficheNo,
               expense.expense_date,
-              expense.amount,
+              fx.cashAmount,
               expense.description || 'Gider',
-              kasa.currency_code || 'IQD',
-              expense.amount,
+              fx.cashCurrency,
+              fx.exchangeRate,
+              fx.baseAmount,
               expense.category || '',
               ...(writeActor ? [actor.cashier || null, actor.createdByUserId || null] : []),
             ]
@@ -536,7 +561,7 @@ export const expenseAPI = {
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
       const normalizeUpdateEntry = (key: string, value: unknown): unknown | undefined => {
-        if (['id', 'firm_nr', 'created_at', 'cost_center_name', 'entered_by_name'].includes(key) || value === undefined) return undefined;
+        if (['id', 'firm_nr', 'created_at', 'cost_center_name', 'entered_by_name', 'currency_code', 'exchange_rate'].includes(key) || value === undefined) return undefined;
         let normalizedValue = value;
         if (key === 'amount') {
           const n = Math.abs(parseExpenseAmount(value));
@@ -586,11 +611,24 @@ export const expenseAPI = {
           const oldAmount = Math.abs(Number(existing.amount || 0));
           const newAmount = Math.abs(Number(updated.amount || 0));
           const balDelta = expenseCashBalanceDeltaOnUpdate(oldAmount, newAmount);
+          const lineRows = await postgrest.get<any[]>(
+            cashLinesPathRest(),
+            { select: 'currency_code,exchange_rate', id: `eq.${cashLineId}`, limit: 1 },
+            { schema: 'public' },
+          );
+          const line = Array.isArray(lineRows) ? lineRows[0] : null;
+          const books = await loadBookCurrencies();
+          const fAmount = expenseFAmountOnUpdate({
+            newAmount,
+            currency: line?.currency_code,
+            exchangeRate: line?.exchange_rate,
+            baseCurrency: books.baseCurrency,
+          });
           await postgrest.patch(
             `${cashLinesPathRest()}?id=eq.${encodeURIComponent(cashLineId)}`,
             {
               amount: newAmount,
-              f_amount: newAmount,
+              f_amount: fAmount,
               date: updated.expense_date,
               definition: updated.description || 'Gider',
             },
@@ -656,15 +694,26 @@ export const expenseAPI = {
         const oldAmount = Math.abs(Number(existing.amount || 0));
         const newAmount = Math.abs(Number(updated.amount || 0));
         const balDelta = expenseCashBalanceDeltaOnUpdate(oldAmount, newAmount);
+        const { rows: fxRows } = await postgres.query(
+          `SELECT currency_code, exchange_rate FROM cash_lines WHERE id = $1::text::uuid LIMIT 1`,
+          [cashLineId],
+        );
+        const books = await loadBookCurrencies();
+        const fAmount = expenseFAmountOnUpdate({
+          newAmount,
+          currency: fxRows?.[0]?.currency_code,
+          exchangeRate: fxRows?.[0]?.exchange_rate,
+          baseCurrency: books.baseCurrency,
+        });
 
         await postgres.query(
           `UPDATE cash_lines
            SET amount = $1::text::numeric,
-               f_amount = $1::text::numeric,
-               date = $2::text::date,
-               definition = $3::text
-           WHERE id = $4::text::uuid`,
-          [newAmount, updated.expense_date, updated.description || 'Gider', cashLineId]
+               f_amount = $2::text::numeric,
+               date = $3::text::date,
+               definition = $4::text
+           WHERE id = $5::text::uuid`,
+          [newAmount, fAmount, updated.expense_date, updated.description || 'Gider', cashLineId]
         );
 
         if (balDelta !== 0) {

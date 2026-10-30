@@ -18,7 +18,10 @@ import { CalendarClock, ChevronDown, FileText, Loader2, Printer, X } from 'lucid
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { Party, PartyLedgerMovement } from '../../../core/types/models';
-import { PartyLedgerDipFooter } from './PartyLedgerDipFooter';
+import { formatFxBase, formatFxOriginal, fxTotalsLabel, PartyLedgerDipFooter } from './PartyLedgerDipFooter';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { getFirmLedgerCurrency } from '../../../utils/currency';
+import { getAppDefaultCurrency } from '../../../services/postgres';
 
 export interface EmployeePayrollModalProps {
   employee: Party;
@@ -62,6 +65,8 @@ export function EmployeePayrollModal({
 }: EmployeePayrollModalProps) {
   const t = useNestedT();
   const { tm } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  const baseCurrency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency());
   const [viewTab, setViewTab] = useState<ViewTab>(initialViewTab || 'form');
   const [action, setAction] = useState<Action>(initialAction || 'salary');
   const [amount, setAmount] = useState('');
@@ -170,9 +175,10 @@ export function EmployeePayrollModal({
   const dip = useMemo(() => {
     const debit = rows.reduce((s, r) => s + (r.debit || 0), 0);
     const credit = rows.reduce((s, r) => s + (r.credit || 0), 0);
+    const fxLine = fxTotalsLabel(rows, baseCurrency, tm('fxBaseEquivalent'));
     const last = rows.length ? rows[rows.length - 1].balance_after : 0;
-    return { debit, credit, last };
-  }, [rows]);
+    return { debit, credit, last, fxLine };
+  }, [rows, baseCurrency, tm]);
 
   const printRow = async (r: MovementRow) => {
     const kind = txKind(r.transaction_type);
@@ -557,6 +563,8 @@ export function EmployeePayrollModal({
                       <th className="text-left px-3 py-2">{tm('ficheNo')}</th>
                       <th className="text-left px-3 py-2">{t('party.table.type')}</th>
                       <th className="text-left px-3 py-2">{t('party.payroll.note')}</th>
+                      <th className="text-right px-3 py-2">{tm('fxOriginalAmount')}</th>
+                      <th className="text-right px-3 py-2">{tm('fxBaseEquivalent')}</th>
                       <th className="text-right px-3 py-2">{tm('debtor')}</th>
                       <th className="text-right px-3 py-2">{tm('creditor')}</th>
                       <th className="text-right px-3 py-2">{t('party.table.balance')}</th>
@@ -573,6 +581,8 @@ export function EmployeePayrollModal({
                           </span>
                         </td>
                         <td className="px-3 py-2 text-slate-500 text-xs">{t('party.payroll.movementsPriorBalance')}</td>
+                        <td className="px-3 py-2" />
+                        <td className="px-3 py-2" />
                         <td className="px-3 py-2 text-right font-mono text-red-600">
                           {ledgerOpening < 0 ? formatMoney(Math.abs(ledgerOpening)) : ''}
                         </td>
@@ -603,6 +613,8 @@ export function EmployeePayrollModal({
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${color}`}>{label}</span>
                           </td>
                           <td className="px-3 py-2 text-slate-600 max-w-xs truncate">{r.definition || ''}</td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-800">{formatFxOriginal(r.original_amount, r.original_currency)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-600">{formatFxBase(r.base_amount)}</td>
                           <td className="px-3 py-2 text-right font-mono text-red-600">{r.debit ? formatMoney(r.debit) : ''}</td>
                           <td className="px-3 py-2 text-right font-mono text-emerald-700">{r.credit ? formatMoney(r.credit) : ''}</td>
                           <td className={`px-3 py-2 text-right font-mono font-bold ${r.balance_after > 0 ? 'text-emerald-700' : r.balance_after < 0 ? 'text-amber-700' : 'text-slate-400'}`}>
@@ -618,6 +630,8 @@ export function EmployeePayrollModal({
                     credit={dip.credit}
                     balance={dip.last}
                     label={tm('invoiceListDipTotal')}
+                    leadColSpan={6}
+                    fxLine={dip.fxLine}
                   />
                 </table>
               </PercentBodyModalScrollBody>

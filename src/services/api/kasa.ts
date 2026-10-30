@@ -31,10 +31,40 @@ function padKasaPeriodNr(): string {
   return String(ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
 }
 
-/** Kasa satırı yazımı: exchange_rate varsayılan 1 */
+/** Kasa satırı yazımı: exchange_rate varsayılan 1 (aynı döviz / eski çağrı). */
 function resolveKasaExchangeRate(islem: Pick<KasaIslemi, 'exchange_rate'>): number {
   const r = Number(islem.exchange_rate);
   return Number.isFinite(r) && r > 0 ? r : 1;
+}
+
+function fxRateAbsent(islem: Pick<KasaIslemi, 'fx_rate_absent'>): boolean {
+  return islem.fx_rate_absent === true;
+}
+
+/** Kur yoksa null. Aksi halde belge→ana para kuru. */
+function storedExchangeRate(islem: Pick<KasaIslemi, 'exchange_rate' | 'fx_rate_absent'>): number | null {
+  if (fxRateAbsent(islem)) return null;
+  return resolveKasaExchangeRate(islem);
+}
+
+/** Kur yoksa ana para karşılığı boş. Aksi halde cari/defter tutarı. */
+function storedFAmount(
+  islem: Pick<KasaIslemi, 'tutar' | 'dovizli_tutar' | 'exchange_rate' | 'fx_rate_absent'>,
+): number | null {
+  if (fxRateAbsent(islem)) return null;
+  return resolveKasaCariAmount(islem);
+}
+
+/**
+ * Party bakiyesine yazılacak tutar.
+ * hesap_tutari sayıysa o (hesap para birimi); null ise 0; yoksa kasa tutarı.
+ */
+function partyLedgerAmount(islem: Pick<KasaIslemi, 'tutar' | 'hesap_tutari'>): number {
+  if (islem.hesap_tutari === null) return 0;
+  if (typeof islem.hesap_tutari === 'number' && Number.isFinite(islem.hesap_tutari)) {
+    return Math.abs(islem.hesap_tutari);
+  }
+  return Math.abs(Number(islem.tutar) || 0);
 }
 
 /**
@@ -466,6 +496,17 @@ export interface KasaIslemi {
    * cash_lines.f_amount olarak yazılır.
    */
   dovizli_tutar?: number;
+  /**
+   * true: çapraz kur yok. exchange_rate ve f_amount boş kalır;
+   * kasa tutarı ana para diye yazılmaz.
+   */
+  fx_rate_absent?: boolean;
+  /**
+   * Hesap para birimindeki tutar (maaş borcu, ortak).
+   * undefined: eski davranış (kasa tutarı).
+   * null: kur yok, hesaba yabancı sayı yazılmaz.
+   */
+  hesap_tutari?: number | null;
   olusturma_tarihi?: string;
   guncelleme_tarihi?: string;
   ozel_kod?: string;
@@ -1308,8 +1349,8 @@ async function createKasaIslemiViaPostgrest(
     customer_id: cariSplit.customer_id || (cariKind === 'customer' || !cariKind ? islem.cari_hesap_id : null) || null,
     party_id: cariSplit.party_id || islem.party_id || null,
     currency_code: islem.doviz_kodu || 'YEREL',
-    exchange_rate: resolveKasaExchangeRate(islem),
-    f_amount: resolveKasaCariAmount(islem),
+    exchange_rate: storedExchangeRate(islem),
+    f_amount: storedFAmount(islem),
     transfer_status: 0,
     special_code: islem.ozel_kod || '',
     target_register_id: islem.target_register_id || null,
@@ -1347,11 +1388,12 @@ async function createKasaIslemiViaPostgrest(
   await bumpKasaBalance(islem.kasa_id, Number(islem.tutar || 0) * sign);
 
   if (islem.party_id) {
-    let partyDelta = computePartyBalanceDelta(islem.tutar, islem.islem_tipi);
+    const partyAmt = partyLedgerAmount(islem);
+    let partyDelta = computePartyBalanceDelta(partyAmt, islem.islem_tipi);
     let ledgerTrType: string | null = null;
     if (islem.islem_tipi === 'CH_ODEME') {
       ledgerTrType = 'CH_ODEME_PARTNER';
-      partyDelta = -Math.abs(Number(islem.tutar || 0));
+      partyDelta = partyAmt > 0 ? -partyAmt : 0;
     }
     if (partyDelta !== 0) {
       try {
@@ -1391,7 +1433,7 @@ async function createKasaIslemiViaPostgrest(
             trcode: 0,
             transaction_type: ledgerTrType,
             date: new Date().toISOString(),
-            amount: Math.abs(Number(islem.tutar || 0)),
+            amount: partyLedgerAmount(islem),
             sign: -1,
             definition: `Ortak adına tedarikçi ödemesi: ${islem.islem_aciklamasi || ''}`.trim(),
             source_module: 'cash_create',
@@ -1862,8 +1904,8 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
         cariSplit.customer_id || islem.cari_hesap_id || null,
         cariSplit.party_id || islem.party_id || null,
         islem.doviz_kodu || 'YEREL',
-        resolveKasaExchangeRate(islem),
-        resolveKasaCariAmount(islem),
+        storedExchangeRate(islem),
+        storedFAmount(islem),
         islem.ozel_kod || '',
         islem.target_register_id || null,
         islem.bank_id || null,
@@ -2011,12 +2053,13 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     // CH_ODEME + party_id → tedarikçi ödemesi firma ortak adına yapıldı; ortağın firmadan alacağı azalır.
     // Kâr/zarar dağıtımı kasa yazmaz; ledger + parties.balance partnerDistribution içinde güncellenir.
     if (islem.party_id) {
-      let partyDelta = computePartyBalanceDelta(islem.tutar, islem.islem_tipi);
+      const partyAmt = partyLedgerAmount(islem);
+      let partyDelta = computePartyBalanceDelta(partyAmt, islem.islem_tipi);
       let ledgerTrType: string | null = null;
       // CH_ODEME_PARTNER: cash_lines.transaction_type CH_ODEME kalır; ek ledger CH_ODEME_PARTNER yazılır
       if (islem.islem_tipi === 'CH_ODEME') {
         ledgerTrType = 'CH_ODEME_PARTNER';
-        partyDelta = -Math.abs(islem.tutar || 0);
+        partyDelta = partyAmt > 0 ? -partyAmt : 0;
       }
       if (partyDelta !== 0) {
         await postgres.query(
@@ -2041,7 +2084,7 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
             islem.party_id,
             cardType,
             ledgerTrType,
-            Math.abs(islem.tutar || 0).toString(),
+            partyLedgerAmount(islem).toString(),
             -1,
             `Ortak adına tedarikçi ödemesi: ${islem.islem_aciklamasi || ''}`.trim(),
             rows[0]?.id,
