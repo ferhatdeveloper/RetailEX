@@ -46,7 +46,10 @@ export interface AppointmentReportSource {
 
 export interface AppointmentReportSlice {
   key: AppointmentReportBucket;
+  /** Lejant adedi. Ön ödemede aralıktaki rezervasyon tahsilatı. */
   count: number;
+  /** Halka dilimi. Randevu durumu; toplam randevuyu şişirmez. */
+  chartCount: number;
   inChart: boolean;
   sharePercent: number;
 }
@@ -247,6 +250,44 @@ function prepaidCashDay(row: AppointmentReportInput): string {
   return dayKey(row.depositDate) || dayKey(row.createdAt) || dayKey(row.date);
 }
 
+function reportRowId(row: AppointmentReportInput, index: number): string {
+  return String(row.id ?? '').trim() || `row-${index}`;
+}
+
+/** Tahsilat günü. Randevu günü yedek değildir; peşinat ileri güne taşınmaz. */
+function depositCollectionDay(row: AppointmentReportInput): string {
+  return dayKey(row.depositDate) || dayKey(row.createdAt);
+}
+
+function depositCollectedInRange(row: AppointmentReportInput, from: string, to: string): boolean {
+  const amount = Math.abs(Number(row.depositAmount) || 0);
+  if (!(amount > 0.004)) return false;
+  const day = depositCollectionDay(row);
+  return Boolean(day) && day >= from && day <= to;
+}
+
+/**
+ * Ön ödeme lejantı: aralıkta tahsil edilmiş rezervasyonlar.
+ * Durumu hâlâ ön ödeme olan randevu da buradadır. Kapanan randevu
+ * geldi diliminde kalır; tahsilatı ikinci randevu sayılmaz.
+ */
+function prepaidLegendCount(
+  rows: readonly AppointmentReportInput[],
+  source: readonly AppointmentReportSource[],
+  from: string,
+  to: string,
+): number {
+  const ids = new Set<string>();
+  for (const row of source) {
+    if (row.bucket === 'prepaid') ids.add(row.id);
+  }
+  rows.forEach((row, index) => {
+    if (!depositCollectedInRange(row, from, to)) return;
+    ids.add(reportRowId(row, index));
+  });
+  return ids.size;
+}
+
 export function collectAppointmentReportSources(
   rows: readonly AppointmentReportInput[],
   from: string,
@@ -258,7 +299,7 @@ export function collectAppointmentReportSources(
     const prepaid = openDepositPrepaid(row);
     const date = prepaid ? prepaidCashDay(row) : dayKey(row.date);
     if (!date || date < from || date > to) return;
-    const id = String(row.id ?? '').trim() || `row-${index}`;
+    const id = reportRowId(row, index);
     if (seen.has(id)) return;
     seen.add(id);
     const staffName = cleanStaffName(row.staffName);
@@ -280,14 +321,21 @@ function countBucket(rows: readonly AppointmentReportSource[], bucket: Appointme
   return rows.reduce((sum, row) => sum + (row.bucket === bucket ? 1 : 0), 0);
 }
 
-function summarize(rows: readonly AppointmentReportSource[]): AppointmentReportSummary {
-  const counts = APPOINTMENT_REPORT_BUCKETS.map((key) => ({
-    key,
-    count: countBucket(rows, key),
-  }));
-  const visible = counts.filter((slice) => slice.key !== 'other' || slice.count > 0);
-  const inChart = visible.map((slice) => slice.count > 0);
-  const percents = integerSharePercents(visible.map((slice) => (slice.count > 0 ? slice.count : 0)));
+function summarize(
+  rows: readonly AppointmentReportSource[],
+  prepaidCount: number,
+): AppointmentReportSummary {
+  const counts = APPOINTMENT_REPORT_BUCKETS.map((key) => {
+    const chartCount = countBucket(rows, key);
+    return {
+      key,
+      chartCount,
+      count: key === 'prepaid' ? prepaidCount : chartCount,
+    };
+  });
+  const visible = counts.filter((slice) => slice.key !== 'other' || slice.chartCount > 0 || slice.count > 0);
+  const inChart = visible.map((slice) => slice.chartCount > 0);
+  const percents = integerSharePercents(visible.map((slice) => (slice.chartCount > 0 ? slice.chartCount : 0)));
   const came = countBucket(rows, 'came');
   const noShow = countBucket(rows, 'noShow');
   const cancelled = countBucket(rows, 'cancelled');
@@ -308,6 +356,7 @@ function summarize(rows: readonly AppointmentReportSource[]): AppointmentReportS
     slices: visible.map((slice, index) => ({
       key: slice.key,
       count: slice.count,
+      chartCount: slice.chartCount,
       inChart: inChart[index],
       sharePercent: inChart[index] ? percents[index] : 0,
     })),
@@ -399,7 +448,7 @@ export function buildAppointmentReport(
   const source = collectAppointmentReportSources(rows, options.from, options.to);
   const status = options.status ?? null;
   return {
-    summary: summarize(source),
+    summary: summarize(source, prepaidLegendCount(rows, source, options.from, options.to)),
     trend: buildTrend(source, options.from, options.to, status),
     hours: buildHours(source, status),
     staff: buildStaff(source, status),

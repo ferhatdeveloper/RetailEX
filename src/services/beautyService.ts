@@ -9007,10 +9007,14 @@ export const beautyService = {
         // Parametre sırası: $1=start, $2=end, sonra opsiyonel filtreler,
         // sonda $N=fn (firm filtresi) JOIN'ler için tek seferlik kullanılır.
         const params: unknown[] = [start, end];
+        // Tarih kuralı prePaymentListedYmd ile aynıdır. Kapanan hizmet randevu
+        // gününde kalır. Açık peşinat, tutar fiyatı karşılasa da tahsilat günündedir.
         const listedDate = `
             CASE
                 WHEN LOWER(TRIM(COALESCE(pas.status, ''))) IN ('completed', 'closed') THEN pas.appointment_date
                 WHEN pas.payment_state IN ('deposit_only', 'partial')
+                     OR a.deposit_date IS NOT NULL
+                     OR (pas.payment_state = 'paid' AND COALESCE(pas.deposit_amount, 0) <> 0)
                     THEN COALESCE(a.deposit_date::date, a.created_at::date, pas.appointment_date)
                 ELSE pas.appointment_date
             END`;

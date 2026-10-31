@@ -43,19 +43,25 @@ export interface AppointmentBarLayout {
 
 const FULL = Math.PI * 2;
 
+/** Halka, lejanttaki rezervasyon adedini değil randevu durumu dilimini kullanır. */
+function ringCount(slice: AppointmentReportSlice): number {
+  return slice.chartCount;
+}
+
 /** Grafikte görünen dilimler. Sıfır adet yay olmaz. */
 export function buildAppointmentDonutArcs(
   slices: readonly AppointmentReportSlice[],
 ): AppointmentDonutArc[] {
-  const painted = slices.filter((slice) => slice.inChart && slice.count > 0);
-  const total = painted.reduce((sum, slice) => sum + slice.count, 0);
+  const painted = slices.filter((slice) => slice.inChart && ringCount(slice) > 0);
+  const total = painted.reduce((sum, slice) => sum + ringCount(slice), 0);
   if (total <= 0) return [];
   let cursor = 0;
   return painted.map((slice) => {
-    const sweep = (slice.count / total) * FULL;
+    const count = ringCount(slice);
+    const sweep = (count / total) * FULL;
     const arc: AppointmentDonutArc = {
       key: slice.key,
-      count: slice.count,
+      count,
       sharePercent: slice.sharePercent,
       start: cursor,
       end: cursor + sweep,

@@ -50,6 +50,7 @@ import {
 import { beautyCancelTargets } from '../../../utils/beautyAppointmentCancel';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { appointmentDepositCardAmounts } from '../../../utils/depositPrePaymentAllocation';
+import { appointmentCardNoteAndFiche } from '../../../utils/appointmentCardFicheLabel';
 import '../ClinicStyles.css';
 import { CLINIC } from '../clinicDesignTokens';
 import { buildBeautySpanPlacements, isBeautySpanContinuation } from '../../../utils/beautyScheduleGrid';
@@ -1142,6 +1143,10 @@ export function SmartScheduler() {
         const phone = customerPhoneLine(apt);
         const noteText = String(apt.notes ?? '').trim();
         const hasNote = noteText.length > 0;
+        const ficheCopy = view === 'svcboard'
+            ? appointmentCardNoteAndFiche(apt)
+            : { note: noteText, fiche: '' };
+        const visibleNote = view === 'svcboard' ? ficheCopy.note : noteText;
         const productLabels = resolveAppointmentProductLabels(apt.id, apt.notes, aptProductLabels);
         const custId = String(apt.customer_id ?? apt.client_id ?? '').trim();
         const lastTreat = custId ? lastCustomerTreatments.get(custId) : undefined;
@@ -1210,7 +1215,22 @@ export function SmartScheduler() {
                         {formatYmdShort(earlyDate)} tarihinde geldi
                     </p>
                 ) : null}
-                {hasNote ? (
+                {ficheCopy.fiche ? (
+                    <p
+                        data-testid="appointment-card-fiche"
+                        style={{
+                            margin: '0 0 6px',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: '#4f46e5',
+                            lineHeight: 1.35,
+                            fontFamily: 'monospace',
+                        }}
+                    >
+                        {ficheCopy.fiche}
+                    </p>
+                ) : null}
+                {visibleNote ? (
                     <p
                         style={{
                             margin: '0 0 6px',
@@ -1226,7 +1246,7 @@ export function SmartScheduler() {
                             WebkitBoxOrient: 'vertical',
                         }}
                     >
-                        {noteText}
+                        {visibleNote}
                     </p>
                 ) : null}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>

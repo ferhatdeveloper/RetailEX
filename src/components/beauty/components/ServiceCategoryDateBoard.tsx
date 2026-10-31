@@ -10,6 +10,7 @@ import { formatLongDate } from '../../../utils/dateLocale';
 import { beautyAppointmentDateKey } from '../../../utils/dateLocal';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { beautyServiceMainKey, beautyServiceSubKey, beautyServiceActive } from '../beautyServiceCategoryUtils';
+import { groupServiceDateBoardAppointments } from '../../../utils/serviceDateBoard';
 import { CLINIC } from '../clinicDesignTokens';
 
 export type ServiceBoardMainLayout = 'stack' | 'row';
@@ -22,13 +23,6 @@ function parseHhmmToMinutes(raw: string | undefined): number | null {
     const mm = Number(m[2]);
     if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
     return hh * 60 + mm;
-}
-
-function appointmentMatchesService(apt: BeautyAppointment, svc: BeautyService): boolean {
-    if (apt.service_id && svc.id && String(apt.service_id).trim() === String(svc.id).trim()) return true;
-    const sn = (apt.service_name ?? '').trim();
-    const name = (svc.name ?? '').trim();
-    return Boolean(sn && name && sn === name);
 }
 
 /** Aynı ana grup içinde alt başlık: en az bir kayıtta parent varsa `category` ile alt gruplar. */
@@ -437,7 +431,7 @@ function FollowUpBoardCard({
 function ServiceBoardServiceCell({
     svc,
     dayStr,
-    dayApts,
+    svcApts,
     followUpGroups,
     renderAppointment,
     onAddClick,
@@ -457,7 +451,7 @@ function ServiceBoardServiceCell({
 }: {
     svc: BeautyService;
     dayStr: string;
-    dayApts: BeautyAppointment[];
+    svcApts: BeautyAppointment[];
     followUpGroups: BeautyFollowUpReminder[][];
     renderAppointment: (apt: BeautyAppointment) => React.ReactNode;
     onAddClick: (dateYmd: string, serviceId: string, opts?: { customerId?: string }) => void;
@@ -475,15 +469,14 @@ function ServiceBoardServiceCell({
     appointmentsCountTemplate: string;
     followUpOpsCountTemplate: string;
 }) {
-    const svcApts = dayApts
-        .filter(a => appointmentMatchesService(a, svc))
+    const sortedApts = [...svcApts]
         .sort((a, b) => {
             const ma = parseHhmmToMinutes(a.appointment_time ?? a.time) ?? 0;
             const mb = parseHhmmToMinutes(b.appointment_time ?? b.time) ?? 0;
             if (ma !== mb) return ma - mb;
             return String(a.id).localeCompare(String(b.id));
         });
-    const countLabel = appointmentsCountTemplate.replace('{n}', String(svcApts.length + followUpGroups.length));
+    const countLabel = appointmentsCountTemplate.replace('{n}', String(sortedApts.length + followUpGroups.length));
     return (
         <div style={{ padding: '6px 8px 10px' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
@@ -514,7 +507,7 @@ function ServiceBoardServiceCell({
                         />
                     );
                 })}
-                {svcApts.length === 0 && followUpGroups.length === 0 ? (
+                {sortedApts.length === 0 && followUpGroups.length === 0 ? (
                     <div
                         style={{
                             fontSize: 10,
@@ -526,7 +519,7 @@ function ServiceBoardServiceCell({
                         {noAppointmentsInSlotLabel}
                     </div>
                 ) : (
-                    svcApts.map((apt, idx) => (
+                    sortedApts.map((apt, idx) => (
                         <div key={apt.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <span style={{ fontSize: 9, fontWeight: 800, color: '#9ca3af' }}>#{idx + 1}</span>
                             {renderAppointment(apt)}
@@ -672,12 +665,30 @@ export function ServiceCategoryDateBoard({
                         followUpReminders.filter(r => r.due_date === dayStr),
                         groupFollowUpsByCustomer,
                     );
+                    const placed = groupServiceDateBoardAppointments(
+                        dayApts,
+                        [...groupedMain.byMain.values()].flat(),
+                    );
+                    const claimedAptIds = new Set<string>();
+                    const aptsByService = new Map<BeautyService, BeautyAppointment[]>();
+                    for (const list of groupedMain.byMain.values()) {
+                        for (const svc of list) {
+                            const owned: BeautyAppointment[] = [];
+                            for (const apt of placed.get(String(svc.id ?? '').trim()) ?? []) {
+                                const id = String(apt.id);
+                                if (claimedAptIds.has(id)) continue;
+                                claimedAptIds.add(id);
+                                owned.push(apt);
+                            }
+                            aptsByService.set(svc, owned);
+                        }
+                    }
 
                     const mainBlocks = groupedMain.mainKeys.map(mainKey => {
                         const svcs = groupedMain.byMain.get(mainKey) ?? [];
                         const svcsForDay = showOnlyServicesWithBookings
                             ? svcs.filter(svc => {
-                                  const hasApt = dayApts.some(a => appointmentMatchesService(a, svc));
+                                  const hasApt = (aptsByService.get(svc)?.length ?? 0) > 0;
                                   const hasFu = (dayFollowUpGroups.get(String(svc.id))?.length ?? 0) > 0;
                                   return hasApt || hasFu;
                               })
@@ -733,7 +744,7 @@ export function ServiceCategoryDateBoard({
                                                 key={svc.id}
                                                 svc={svc}
                                                 dayStr={dayStr}
-                                                dayApts={dayApts}
+                                                svcApts={aptsByService.get(svc) ?? []}
                                                 followUpGroups={dayFollowUpGroups.get(String(svc.id)) ?? []}
                                                 {...cellProps}
                                             />

@@ -124,6 +124,59 @@ describe('randevu raporu', () => {
     expect(model.hours).toEqual([]);
   });
 
+  it('ön ödeme adedi aralıktaki iki tahsilattır, halka randevu sayısını şişirmez', () => {
+    const collected = '2026-10-31';
+    const later = '2026-11-02';
+    const model = buildAppointmentReport([
+      row({
+        id: 'closed-today',
+        date: collected,
+        time: '09:00',
+        duration: 60,
+        status: 'completed',
+        staffName: 'System Administrator',
+        depositAmount: 25_000,
+        depositDate: `${collected}T09:00:00`,
+      }),
+      row({
+        id: 'open-later',
+        date: later,
+        time: '10:00',
+        duration: 60,
+        status: 'pre_paid',
+        staffName: 'System Administrator',
+        depositAmount: 5_000,
+        depositDate: `${collected}T10:00:00`,
+      }),
+    ], { from: collected, to: '2026-11-03' });
+
+    expect(model.summary.total).toBe(2);
+    expect(model.summary.came).toBe(1);
+    expect(model.summary.noShow).toBe(0);
+    expect(model.summary.cancelled).toBe(0);
+    expect(model.summary.retention).toBe(100);
+    expect(model.summary.avgDurationMinutes).toBe(60);
+
+    const prepaid = model.summary.slices.find((slice) => slice.key === 'prepaid');
+    const came = model.summary.slices.find((slice) => slice.key === 'came');
+    expect(prepaid?.count).toBe(2);
+    expect(prepaid?.chartCount).toBe(1);
+    expect(came?.count).toBe(1);
+    expect(came?.chartCount).toBe(1);
+    expect(prepaid?.sharePercent).toBe(50);
+    expect(came?.sharePercent).toBe(50);
+
+    const arcs = buildAppointmentDonutArcs(model.summary.slices);
+    expect(arcs.reduce((sum, arc) => sum + arc.count, 0)).toBe(2);
+    expect(arcs.find((arc) => arc.key === 'prepaid')?.count).toBe(1);
+    expect(arcs.find((arc) => arc.key === 'came')?.count).toBe(1);
+    expect(model.trend.find((point) => point.date === collected)).toMatchObject({
+      came: 1,
+      noShow: 0,
+      cancelled: 0,
+    });
+  });
+
   it('önceki dönem aynı uzunluktadır', () => {
     expect(previousAppointmentPeriod(FROM, TO)).toEqual({ from: '2026-09-06', to: '2026-09-30' });
     const current = buildAppointmentReport(rows, { from: FROM, to: TO }).summary;

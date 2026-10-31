@@ -3,6 +3,8 @@
  * Randevu günü ileri olsa da rezervasyon kutusu orada 0 kalır.
  * Kapanınca tahsilat günü de 0 olur; hizmet cirosu kapanış günündedir.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildAppointmentReport } from '../../utils/appointmentReport';
 import {
@@ -187,6 +189,39 @@ describe('peşinat kasa günü', () => {
     expect(prepaidCollected?.count).toBe(1);
     expect(visit.summary.total).toBe(0);
     expect(prepaidVisit?.count ?? 0).toBe(0);
+  });
+
+  it('erken gelen rezervasyon tutarı tahsilat günündedir, kapanan hizmet randevu gününde kalır', () => {
+    expect(prePaymentListedYmd({
+      appointment_date: '2026-10-31',
+      deposit_date: '2026-10-31T09:00:00',
+      payment_state: 'paid',
+      status: 'completed',
+      deposit_amount: 25_000,
+    })).toBe('2026-10-31');
+    expect(prePaymentListedYmd({
+      appointment_date: VISIT,
+      deposit_date: `${COLLECTED}T10:00:00`,
+      payment_state: 'paid',
+      status: 'pre_paid',
+      deposit_amount: 5_000,
+    })).toBe(COLLECTED);
+    expect(prePaymentListedYmd({
+      appointment_date: VISIT,
+      deposit_date: `${COLLECTED}T10:00:00`,
+      payment_state: 'paid',
+      status: 'pre_paid',
+      deposit_amount: 5_000,
+    })).not.toBe(VISIT);
+
+    const service = readFileSync(resolve('src/services/beautyService.ts'), 'utf8');
+    const listed = service.slice(
+      service.indexOf('const listedDate'),
+      service.indexOf('const where: string[]'),
+    );
+    expect(listed).toContain("IN ('completed', 'closed') THEN pas.appointment_date");
+    expect(listed).toContain("pas.payment_state = 'paid' AND COALESCE(pas.deposit_amount, 0) <> 0");
+    expect(listed).toContain('COALESCE(a.deposit_date::date, a.created_at::date, pas.appointment_date)');
   });
 
   it('sadece peşinat satırının tarihi kasa günüdür, kapanan hizmet randevu gününde kalır', () => {
