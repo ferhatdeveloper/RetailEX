@@ -2446,7 +2446,7 @@ describe('Kasa Durumu hareket listesi', () => {
     expect(rows.find((row) => row.ficheNo === 'BUGUN')?.flow).toBe('gelir');
   });
 
-  it('peşinat bir kez listelenir; aynı satış fişi ikinci satır olmaz', () => {
+  it('peşinat kendi satırıdır; aynı tutarın ikinci aynası ve satış aynası bir kez durur', () => {
     const rows = cashStatusMovementRows({
       salesCash: 263_500,
       reservation: 10_000,
@@ -2515,12 +2515,16 @@ describe('Kasa Durumu hareket listesi', () => {
     expect(deposit[0]?.categoryCode).toBe('deposit');
     expect(deposit[0]?.party).toBe('Ayşe Demir');
 
-    const sale = rows.filter((row) => row.ficheNo === 'FIS-263');
+    const sale = rows.filter((row) => row.ficheNo === 'FIS-263' && row.categoryCode === 'sale');
     expect(sale).toHaveLength(1);
     expect(sale[0]?.flow).toBe('gelir');
     expect(sale[0]?.amount).toBe(263_500);
     expect(sale[0]?.typeCode).toBe('KASA_GIRIS');
-    expect(rows).toHaveLength(2);
+    const sameFicheDeposit = rows.filter((row) => row.ficheNo === 'FIS-263' && row.categoryCode === 'deposit');
+    expect(sameFicheDeposit).toHaveLength(1);
+    expect(sameFicheDeposit[0]?.amount).toBe(10_000);
+    expect(rows).toHaveLength(3);
+    expect(rows.reduce((sum, row) => sum + row.amount, 0)).toBe(283_500);
   });
 
   it('gider eksi ve bir kezdir; indirim ile açık cari satır açılmaz', () => {

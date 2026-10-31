@@ -28,6 +28,7 @@ import { useResponsive } from '../../../hooks/useResponsive';
 import { logger } from '../../../services/loggingService';
 import { POSPaymentModal, type POSPaymentModalDraftContext } from '../../pos/POSPaymentModal';
 import { resolvePosCheckoutSettlement } from '../../../utils/saleCollectedAmounts';
+import { appointmentStatusAfterPosPayment } from '../../../utils/beautyPosCheckoutStatus';
 import { Receipt80mm } from '../../pos/Receipt80mm';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useProductStore } from '../../../store/useProductStore';
@@ -2998,12 +2999,33 @@ export function AppointmentPOS({
              */
             const aptDateYmd = safeDateYmd(aptDate);
             const todayYmd = new Date().toISOString().slice(0, 10);
-            const isFutureAppointment = aptDateYmd > todayYmd;
-            const finalAptStatus: AppointmentStatus = isFutureAppointment
-                ? AppointmentStatus.SCHEDULED
-                : (isPesinatliPrePayment
-                    ? AppointmentStatus.PRE_PAID
-                    : AppointmentStatus.COMPLETED);
+            // Peşinat hizmeti kapatmaz. Satış fişi ve tahsilat kapanınca
+            // randevu tarihi gelecekte olsa da tamamlanır.
+            const finalAptStatus = appointmentStatusAfterPosPayment({
+                appointmentDate: aptDateYmd,
+                today: todayYmd,
+                prepaymentOnly: isPesinatliPrePayment || skipInvoice,
+            });
+            setAptStatus(finalAptStatus);
+            let serviceSaleAlreadyPosted = false;
+            if (!isPesinatliPrePayment && !skipInvoice && existingAppointment?.id) {
+                const posted = await beautyService.appointmentIdsWithPostedServiceSale([existingAppointment.id]);
+                serviceSaleAlreadyPosted = posted.includes(String(existingAppointment.id));
+            }
+            // Hizmet fişi zaten kasa ve satışa yazıldıysa ikinci fiş açılmaz.
+            // Randevu yine tamamlanır; gelecek tarih bu kapanışı engellemez.
+            if (serviceSaleAlreadyPosted && existingAppointment?.id) {
+                await updateAppointment(existingAppointment.id, {
+                    status: AppointmentStatus.COMPLETED,
+                });
+                setAptStatus(AppointmentStatus.COMPLETED);
+                clearCart();
+                void generateNewReceiptNumber();
+                setShowPay(false);
+                toast.info(tm('bPaymentAlreadyReceived'));
+                notifyPosSaleSuccess();
+                return;
+            }
 
             // ── Rezervasyon tutarı → ayrı ön ödeme sales kaydı ──
             // Eğer rezervasyon tutarı girildiyse + peşinatlı ön ödeme modunda

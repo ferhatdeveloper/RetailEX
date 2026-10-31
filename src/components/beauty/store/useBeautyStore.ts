@@ -13,6 +13,56 @@ import { ERP_SETTINGS } from '../../../services/postgres';
 /** Stale loadServices yanıtlarının boş listeyle üzerine yazmasını önler. */
 let servicesLoadSeq = 0;
 
+const TERMINAL_APPOINTMENT_STATUS = new Set([
+    'completed',
+    'closed',
+    'cancelled',
+    'canceled',
+    'no_show',
+    'no-show',
+    'void',
+]);
+
+/**
+ * Hizmet satış fişi yazılmış ama takvimde açık kalmış randevuyu tamamlar.
+ * Yeni kasa veya fatura satırı açmaz. Peşinat fişi tek başına kapatmaz.
+ */
+async function closeAppointmentsWithPostedServiceSale(
+    appointments: BeautyAppointment[],
+): Promise<BeautyAppointment[]> {
+    const openIds = appointments
+        .map((row) => String(row.id ?? '').trim())
+        .filter((id, index) => {
+            if (!id) return false;
+            const status = String(appointments[index]?.status ?? '').trim().toLowerCase();
+            return !TERMINAL_APPOINTMENT_STATUS.has(status);
+        });
+    if (openIds.length === 0) return appointments;
+    let closedIds: string[] = [];
+    try {
+        closedIds = await beautyService.appointmentIdsWithPostedServiceSale(openIds);
+    } catch (error) {
+        logger.warn('BeautyStore', 'hizmet fişi okunamadı', error);
+        return appointments;
+    }
+    if (closedIds.length === 0) return appointments;
+    const healed = new Set<string>();
+    await Promise.all(closedIds.map(async (id) => {
+        try {
+            await beautyService.updateAppointment(id, { status: AppointmentStatus.COMPLETED });
+            healed.add(id);
+        } catch (error) {
+            logger.warn('BeautyStore', 'hizmet fişi kapanışı yazılamadı', error);
+        }
+    }));
+    if (healed.size === 0) return appointments;
+    return appointments.map((row) => (
+        healed.has(String(row.id ?? '').trim())
+            ? { ...row, status: AppointmentStatus.COMPLETED }
+            : row
+    ));
+}
+
 interface BeautyState {
     // Data
     appointments:       BeautyAppointment[];
@@ -130,7 +180,8 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     loadAppointmentsInRange: async (start, end) => {
         set({ isLoading: true, error: null, lastAppointmentRange: { start, end } });
         try {
-            const appointments = await beautyService.getAppointmentsInRange(start, end);
+            let appointments = await beautyService.getAppointmentsInRange(start, end);
+            appointments = await closeAppointmentsWithPostedServiceSale(appointments);
             set({ appointments });
         } catch (e: any) {
             set({ error: e?.message || String(e) });

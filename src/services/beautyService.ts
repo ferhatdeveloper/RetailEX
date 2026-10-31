@@ -16,6 +16,7 @@ import {
     isAppointmentPrimaryKeyConflict,
     resolveBeautyAppointmentId,
 } from '../utils/appointmentInsertConflict';
+import { appointmentIdsClosedByServiceSale } from '../utils/beautyPosCheckoutStatus';
 import { postgres, ERP_SETTINGS } from './postgres';
 import {
     beautyInvoicePrefix,
@@ -3217,6 +3218,86 @@ export const beautyService = {
         const fn = erpFirmNrForRow();
         const result = await postgres.query(query, [startDate, endDate, fn, includeDepositCollected]);
         return result.rows.map((r: Record<string, unknown> & { clinical_data?: unknown }) => normalizeAppointmentRow(r));
+    },
+
+    /**
+     * Hizmet satış fişi yazılmış açık randevular.
+     * Peşinat fişi kapatmaz. Sorgu düşerse boş döner; kasa satırı yazılmaz.
+     */
+    async appointmentIdsWithPostedServiceSale(appointmentIds: string[]): Promise<string[]> {
+        const ids = [...new Set(
+            appointmentIds
+                .map((id) => String(id || '').trim())
+                .filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)),
+        )];
+        if (ids.length === 0) return [];
+        const open = ids.map((id) => ({ id, status: 'scheduled' }));
+        try {
+            if (shouldUseTenantPostgrestApi()) {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const pn = erpPeriodNrForRow();
+                const rows = await postgrest.get<Array<Record<string, unknown>>>(
+                    `/rex_${fn}_${pn}_beauty_sales`,
+                    {
+                        select: 'linked_appointment_id,is_deposit,paid_amount,total,payment_status,notes',
+                        linked_appointment_id: `in.(${ids.join(',')})`,
+                        limit: 500,
+                    },
+                    { schema: 'beauty' },
+                );
+                return appointmentIdsClosedByServiceSale(
+                    open,
+                    (Array.isArray(rows) ? rows : []).map((row) => ({
+                        appointmentId: row.linked_appointment_id == null ? '' : String(row.linked_appointment_id),
+                        isDeposit: row.is_deposit === true,
+                        paidAmount: Number(row.paid_amount) || 0,
+                        total: Number(row.total) || 0,
+                        paymentStatus: row.payment_status == null ? '' : String(row.payment_status),
+                        notes: row.notes == null ? '' : String(row.notes),
+                    })),
+                );
+            }
+            const salesT = postgres.getMovementTableName('beauty_sales', 'beauty');
+            const { rows } = await postgres.query(
+                `SELECT linked_appointment_id::text AS appointment_id,
+                        COALESCE(is_deposit, false) AS is_deposit,
+                        COALESCE(paid_amount, 0) AS paid_amount,
+                        COALESCE(total, 0) AS total,
+                        COALESCE(payment_status, '') AS payment_status,
+                        COALESCE(notes, '') AS notes
+                   FROM ${salesT}
+                  WHERE linked_appointment_id = ANY($1::uuid[])
+                     OR EXISTS (
+                          SELECT 1
+                            FROM unnest($1::uuid[]) AS probe(id)
+                           WHERE COALESCE(${salesT}.notes, '') LIKE '%rex_appt:' || probe.id::text || '%'
+                     )`,
+                [ids],
+            );
+            return appointmentIdsClosedByServiceSale(
+                open,
+                (Array.isArray(rows) ? rows : []).map((row: Record<string, unknown>) => {
+                    const notes = String(row.notes ?? '');
+                    const linked = String(row.appointment_id ?? '').trim();
+                    const fromNotes = notes.match(/rex_appt:([0-9a-f-]{36})/i)?.[1] ?? '';
+                    return {
+                        appointmentId: linked || fromNotes,
+                        isDeposit: row.is_deposit === true,
+                        paidAmount: Number(row.paid_amount) || 0,
+                        total: Number(row.total) || 0,
+                        paymentStatus: String(row.payment_status ?? ''),
+                        notes,
+                    };
+                }),
+            );
+        } catch (error) {
+            console.warn(
+                '[beautyService] hizmet fişi okunamadı:',
+                error instanceof Error ? error.message : error,
+            );
+            return [];
+        }
     },
 
     async listFollowUpReminderActionsInRange(

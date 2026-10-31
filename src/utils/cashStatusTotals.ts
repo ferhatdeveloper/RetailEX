@@ -1997,8 +1997,24 @@ function movementPreference(line: CashStatusRegisterLine, tip: string): number {
     score += 30;
   }
   if (SALE_INVOICE_COLLECTION_TYPES.has(tip) || tip === 'ALIS_FATURASI') score -= 15;
-  if (isReservationCashLine(line)) score -= 25;
   return score;
+}
+
+/**
+ * Rezervasyon tahsilatı ayrı bir kasa satırıdır.
+ * Satış fişiyle aynı numara veya açıklamadaki satış numarası bu satırı yutmaz.
+ * Aynı fiş ve aynı tutarın ikinci aynası bir kez durur.
+ */
+function reservationMovementKey(line: CashStatusRegisterLine): string {
+  const abs = round2(Math.abs(num(line.tutar))).toFixed(2);
+  const fiche = movementFicheKey(line);
+  if (fiche) return `deposit:${fiche}|${abs}`;
+  const id = receiptKey(line.id);
+  if (id) return `deposit-id:${id}`;
+  const day = ledgerDay(line.islem_tarihi);
+  const registerId = String(line.kasa_id || '').trim();
+  const desc = receiptKey(line.islem_aciklamasi || line.aciklama);
+  return `deposit:${day}|${registerId}|${desc}|${abs}`;
 }
 
 function movementGroupKey(
@@ -2007,15 +2023,9 @@ function movementGroupKey(
   saleKeys: ReadonlySet<string>,
   collectionsInSales: boolean,
 ): string {
+  void collectionsInSales;
+  if (isReservationCashLine(line)) return reservationMovementKey(line);
   const fiche = movementFicheKey(line);
-  if (fiche && saleKeys.has(fiche)) return `fis:${fiche}`;
-  if (
-    collectionsInSales
-    && isReservationCashLine(line)
-  ) {
-    const insideSale = matchedSaleKey(line, saleKeys);
-    if (insideSale) return `fis:${insideSale}`;
-  }
   if (fiche) return `fis:${fiche}`;
   const matched = matchedSaleKey(line, saleKeys);
   if (matched) return `fis:${matched}`;
@@ -2079,7 +2089,9 @@ function toMovementRow(
  * Giriş Gelir ve artı, çıkış Gider ve eksidir.
  * Açılış alacak eksi Gider, açılış borç artı Gelirdir.
  * Virman kaynakta eksi, hedefte artı listelenir; üç kutunun giren ve çıkanına yazılmaz.
- * Peşinat nakitin içindeyse bir kez durur. Aynı satış fişi ikinci satır olmaz.
+ * Rezervasyon tahsilatı kasaya giren ayrı satırdır. Satış fişi kalan hizmet tutarıdır.
+ * Aynı fiş numarası peşinatı gizlemez. Aynı fiş ve aynı tutarın ikinci aynası bir kez durur.
+ * Ciro listesi kapanmış peşinatı gizleyebilir. Kasa hareket listesi gizlemez.
  * Gider bir kez ve eksidir. İndirim satırı ve açık cari uydurulmaz.
  * Satış nakdi, gider toplamı ve indirim parametresi satır açmaz.
  */
@@ -2146,7 +2158,7 @@ export function cashStatusMovementRows(input: CashStatusMovementInput): CashStat
 /**
  * Seçili aralıkta kasaya gerçekten giren ve çıkan nakit.
  * Hareket listesiyle aynı fişler. Satış tutarı satır açmaz.
- * Peşinat bir kez girer. Aynı satış fişi ikinci kez girmez.
+ * Peşinat kendi satırıyla bir kez girer. Satış fişi bu tutarı yutmaz.
  * Virman şirket bakiyesini değiştirmez. Açılış alacak çıkandır.
  * İndirim ve açık cari yazılmaz. Kasa satırı olmayan gider çıkan olmaz.
  */
