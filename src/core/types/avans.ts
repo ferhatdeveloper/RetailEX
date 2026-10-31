@@ -108,6 +108,8 @@ export interface RecordAdvanceInput {
    * ödemesinin tamamı randevuya deposit olarak yansır.
    */
   appointmentId?: string;
+  /** Peşinat ile ana satışı gruplar. Numara bu bağdan okunur. */
+  saleGroupId?: string;
 }
 
 /** `recordAdvance` çıktısı */

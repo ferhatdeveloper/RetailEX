@@ -40,6 +40,10 @@ import type {
   ReservationStatus,
 } from '../core/types/avans';
 import { createKasaIslemi } from './api/kasa';
+import {
+  reservationCollectionDescription,
+  withReservedSaleFicheNote,
+} from '../utils/reservationSaleFiche';
 
 /* ------------------------------------------------------------------ */
 /* Tablo adı yardımcıları                                              */
@@ -144,6 +148,30 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
     throw new Error('recordAdvance: paymentMethod zorunlu');
   }
 
+  // Satış fişi henüz yoksa numara seriden ayrılır. Varsa o numara yazılır.
+  // Kasa benzersiz anahtarı KL- kalır; açıklama ve not satış numarasını taşır.
+  let reservedSaleFiche = '';
+  try {
+    const { reserveSaleFicheForCollection } = await import('./reservationSaleFicheStore');
+    reservedSaleFiche = await reserveSaleFicheForCollection({
+      appointmentId: input.appointmentId,
+      saleGroupId: input.saleGroupId,
+    });
+  } catch (reserveErr) {
+    console.warn(
+      '[avansService] satış fiş numarası ayrılamadı:',
+      reserveErr instanceof Error ? reserveErr.message : String(reserveErr),
+    );
+  }
+  const avansNotes = reservedSaleFiche
+    ? withReservedSaleFicheNote(
+      input.notes,
+      reservedSaleFiche,
+      input.appointmentId,
+      input.saleGroupId,
+    )
+    : (input.notes ?? null);
+
   // 1) cari_avans INSERT
   const avansId = crypto.randomUUID();
   const insertSql = `
@@ -174,7 +202,7 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
     input.cashRegisterId ?? null,
     input.cashRegisterCode ?? null,
     input.userName ?? input.userId ?? null,
-    input.notes ?? null,
+    avansNotes,
   ]);
   if (!avansRows || avansRows.length === 0) {
     throw new Error('recordAdvance: cari_avans INSERT başarısız');
@@ -236,7 +264,9 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
       islem_tipi: 'CH_TAHSILAT',
       tutar: amount,
       cari_hesap_id: input.customerId,
-      islem_aciklamasi: `Rezervasyon tahsilatı · ${avans.referenceNo ?? avans.id}`,
+      islem_aciklamasi: reservedSaleFiche
+        ? reservationCollectionDescription(reservedSaleFiche)
+        : `Rezervasyon tahsilatı · ${avans.referenceNo ?? avans.id}`,
       doviz_kodu: input.currency ?? 'IQD',
       payment_method: input.paymentMethod,
       ozel_kod: 'REZERVASYON',
@@ -317,7 +347,7 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
           it.productId,
           qty,
           avansId,
-          input.notes ?? null,
+          avansNotes,
         ],
       );
       if (resRows?.[0]) reservations.push(rowToReservation(resRows[0]));
@@ -353,6 +383,25 @@ export async function recordAdvance(input: RecordAdvanceInput): Promise<RecordAd
         '[avansService] appointment deposit_amount güncellenemedi:',
         aptErr instanceof Error ? aptErr.message : String(aptErr),
       );
+    }
+    if (reservedSaleFiche) {
+      try {
+        const tag = `reserved_sale_fiche:${reservedSaleFiche}`;
+        await postgres.query(
+          `UPDATE ${aptTable}
+              SET notes = CASE
+                    WHEN COALESCE(notes, '') ILIKE '%reserved_sale_fiche:%' THEN notes
+                    ELSE LEFT(TRIM(BOTH ' |' FROM CONCAT(COALESCE(notes, ''), ' | ', $2::text)), 500)
+                  END
+            WHERE id = $1`,
+          [input.appointmentId, tag],
+        );
+      } catch (noteErr) {
+        console.warn(
+          '[avansService] randevu fiş etiketi yazılamadı:',
+          noteErr instanceof Error ? noteErr.message : String(noteErr),
+        );
+      }
     }
   }
 

@@ -23,6 +23,13 @@ import {
   resolveEkstreDescription,
   type EkstreRow,
 } from '../../../utils/cariAccountStatement';
+import {
+  isInternalReservationFiche,
+  isReservationCollectionText,
+  isSaleSeriesFiche,
+  visibleStatementDescription,
+  visibleStatementFiche,
+} from '../../../utils/reservationSaleFiche';
 import { formatExtractDate } from '../../../utils/materialExtractPrint';
 import { baseEquivalentFromStoredLine, sumBaseEquivalents, sumOriginalByCurrency } from '../../../utils/cashFxPosting';
 import { ekstreHeaderBalanceForDisplay } from '../../../utils/cariListBalance';
@@ -158,7 +165,7 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
         size: 120,
         minSize: 90,
         cell: ({ row }) => {
-          const ficheNo = String(row.original.fiche_no ?? '').trim();
+          const ficheNo = visibleStatementFiche(row.original);
           if (!ficheNo) {
             return <span className="font-mono text-slate-400">-</span>;
           }
@@ -214,17 +221,26 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
         header: tm('description'),
         size: 240,
         minSize: 140,
-        cell: ({ row }) => (
-          <span className="break-words text-gray-700">
-            {resolveEkstreDescription(
-              row.original.notes,
-              row.original.fiche_type,
-              Number(row.original.trcode) || 0,
-              row.original.is_cancelled === true,
-              tm,
-            )}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const fiche = visibleStatementFiche(row.original);
+          const linked = visibleStatementDescription(row.original);
+          const showLinked = isReservationCollectionText(row.original.notes)
+            && !!fiche
+            && !isInternalReservationFiche(fiche);
+          return (
+            <span className="break-words text-gray-700">
+              {showLinked
+                ? linked
+                : resolveEkstreDescription(
+                  row.original.notes,
+                  row.original.fiche_type,
+                  Number(row.original.trcode) || 0,
+                  row.original.is_cancelled === true,
+                  tm,
+                )}
+            </span>
+          );
+        },
       },
       {
         id: 'reservationDeposit',
@@ -483,8 +499,13 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
   };
 
   const openInvoiceFromStatement = (row: EkstreRow) => {
-    const ficheNo = String(row?.fiche_no || '').trim();
+    const shown = visibleStatementFiche(row);
+    const reservation = isReservationCollectionText(row?.notes)
+      || row?.isReservationDeposit === true
+      && isReservationCollectionText(row?.notes);
+    const ficheNo = reservation ? shown : String(row?.fiche_no || shown || '').trim();
     if (!ficheNo) return;
+    if (reservation && !isSaleSeriesFiche(ficheNo)) return;
     const type = String(row?.fiche_type || '').toLowerCase();
     const purchase = type.includes('purchase');
     window.dispatchEvent(new CustomEvent('navigateToScreen', {

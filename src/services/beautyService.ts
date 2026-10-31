@@ -220,7 +220,30 @@ function erpPeriodNrForRow(): string {
 async function allocateBeautyInvoiceNumber(kind: 'sale' | 'checkout' = 'sale'): Promise<string> {
     const prefix = beautyInvoicePrefix(new Date().getFullYear(), kind);
     const existing = await listBeautyInvoiceCodes(prefix);
-    return nextPrefixedInvoiceNumber(existing, prefix);
+    if (kind !== 'sale') return nextPrefixedInvoiceNumber(existing, prefix);
+    let reserved: string[] = [];
+    try {
+        const { listReservedSaleFicheCodes } = await import('./reservationSaleFicheStore');
+        reserved = await listReservedSaleFicheCodes();
+    } catch (e) {
+        console.warn('[beautyService] ayrılmış satış fişi okunamadı', e);
+    }
+    return nextPrefixedInvoiceNumber([...existing, ...reserved], prefix);
+}
+
+/** Fatura, tahsilatta ayrılmış numarayı kullanır. Ayrılmış numara yoksa seri ilerler. */
+async function resolveBeautySaleInvoiceNumber(
+    appointmentId?: string | null,
+    saleGroupId?: string | null,
+): Promise<string> {
+    try {
+        const { findReservedSaleFiche } = await import('./reservationSaleFicheStore');
+        const held = await findReservedSaleFiche({ appointmentId, saleGroupId });
+        if (held) return held;
+    } catch (e) {
+        console.warn('[beautyService] ayrılmış satış fişi kullanılmadı', e);
+    }
+    return allocateBeautyInvoiceNumber('sale');
 }
 
 async function listBeautyInvoiceCodes(prefix: string): Promise<string[]> {
@@ -7616,7 +7639,10 @@ export const beautyService = {
         // modunda AppointmentPOS handlePayComplete bu fonksiyonu
         // çağırmıyor. Parametre imzası geriye uyumlu tutulur.
         const id = uuidv4();
-        const invoiceNumber = await allocateBeautyInvoiceNumber('sale');
+        const invoiceNumber = await resolveBeautySaleInvoiceNumber(
+            opts?.linkedAppointmentId,
+            opts?.saleGroupId,
+        );
         const docTotal = Number(sale.total ?? 0);
         const settlement = resolvePosCheckoutSettlement(docTotal, sale.payments ?? null);
         const hasPayRows = Array.isArray(sale.payments) && sale.payments.length > 0;

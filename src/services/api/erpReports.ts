@@ -85,7 +85,7 @@ import {
   type CashFlowLineRef,
   type CashFlowNameIndexes,
 } from '../../utils/cashFlowAccountName';
-import { foldCashFlowByFiche } from '../../utils/cashFlowByFiche';
+import { stampCashFlowReservationFiches } from '../reservationSaleFicheStore';
 import { cashVirmanDirection, withCashVirmanLines } from '../../utils/cashVirman';
 
 const ROW_LIMIT = 3000;
@@ -1807,7 +1807,8 @@ export const erpReportsAPI = {
       }
 
       const named = applyCashVirmanFlow(await withCashFlowNames(drafts), !registerId);
-      return foldCashFlowByFiche(named).sort((a, b) => b.date.localeCompare(a.date)).slice(0, ROW_LIMIT);
+      const stamped = await stampCashFlowReservationFiches(named);
+      return stamped.sort((a, b) => b.date.localeCompare(a.date)).slice(0, ROW_LIMIT);
     }
 
     const values: unknown[] = [start, end];
@@ -1846,7 +1847,7 @@ export const erpReportsAPI = {
       await withCashFlowNames(rawRows.map((row) => cashFlowDraft(row))),
       !registerId,
     );
-    return foldCashFlowByFiche(named);
+    return stampCashFlowReservationFiches(named);
   },
 
   async getPurchaseSummary(opts: {

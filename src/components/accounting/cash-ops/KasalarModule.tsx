@@ -70,6 +70,11 @@ import {
   isCashDocumentMenuType,
   resolveSavedCashInvoiceOpen,
 } from '../../../utils/cashDocumentInvoiceLaunch';
+import {
+  kasaReservationDescription,
+  kasaReservationFicheLabel,
+  resolveReservationCollectionInvoiceOpen,
+} from '../../../utils/reservationSaleFiche';
 import { KasaIslemDetayModal } from './KasaIslemDetayModal';
 import { KasaIslemTurleriModal } from './KasaIslemTurleriModal';
 import { KasaIslemleriModal } from './KasaIslemleriModal';
@@ -353,7 +358,14 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
 
   const openSavedCashInvoice = (islem: KasaIslemi | null): boolean => {
     if (!islem || !selectedKasa) return false;
-    const target = resolveSavedCashInvoiceOpen({
+    const reservationTarget = resolveReservationCollectionInvoiceOpen({
+      transactionType: islem.islem_tipi,
+      description: kasaReservationDescription(islem),
+      ficheNo: islem.islem_no,
+      isReservationDeposit: islem.is_reservation_deposit === true,
+      linkedSaleFiche: islem.linked_sale_fiche,
+    });
+    const target = reservationTarget ?? resolveSavedCashInvoiceOpen({
       transactionType: islem.islem_tipi,
       description: islem.islem_aciklamasi,
       ficheNo: islem.islem_no,
@@ -981,7 +993,11 @@ function KasaIslemleriTable({
   const columns = [
     columnHelper.accessor('islem_no', {
       header: tm('ficheNo'),
-      cell: info => <span className="font-mono font-bold text-gray-700">{info.getValue() || '-'}</span>,
+      cell: info => (
+        <span className="font-mono font-bold text-gray-700">
+          {kasaReservationFicheLabel(info.row.original) || '-'}
+        </span>
+      ),
       size: 150,
     }),
     columnHelper.accessor('islem_tarihi', {
@@ -1105,7 +1121,8 @@ function KasaIslemleriTable({
     columnHelper.accessor('islem_aciklamasi', {
       header: tm('description'),
       cell: info => {
-        const def = String(info.getValue() || '').trim();
+        const def = kasaReservationDescription(info.row.original).trim()
+          || String(info.getValue() || '').trim();
         if (!def) return '-';
         // Fatura satırında fiş no vurgusu: "Satış faturası — INV-001"
         const parts = def.split('—').map((p) => p.trim()).filter(Boolean);
@@ -1127,7 +1144,11 @@ function KasaIslemleriTable({
     // varsayılan GIZLI — kolon menüsünden "Görünür" yapılabilir.
     // Veri kaynağı: `islem_aciklamasi`'nın "—" sonrası kısmı (BEA-/INV-... vb.).
     columnHelper.accessor(
-      (row) => extractSalesInvoiceNo(row.islem_aciklamasi),
+      (row) => {
+        const linked = kasaReservationFicheLabel(row);
+        const fromText = extractSalesInvoiceNo(kasaReservationDescription(row) || row.islem_aciklamasi);
+        return fromText || (linked && linked !== String(row.islem_no || '').trim() ? linked : '');
+      },
       {
         id: 'satis_fatura_no',
         header: tm('cashLineSalesInvoiceNo') || 'Satış Fatura No',

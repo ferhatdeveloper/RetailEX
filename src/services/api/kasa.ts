@@ -548,6 +548,8 @@ export interface KasaIslemi {
    * (Bkz. `src/utils/cashLineReservationDeposit.ts` — Bug 22 / Plan §6)
    */
   is_reservation_deposit?: boolean;
+  /** Bağlı satış faturasının fiş numarası. Kasa anahtarı islem_no olarak kalır. */
+  linked_sale_fiche?: string;
   /**
    * Kasa İşlemleri UI: bu satırın `cash_lines.payment_method` ham değeri
    * (cash / card / credit / transfer vb.). Yeni "Ödeme Tipi" kolonu için.
@@ -1221,12 +1223,19 @@ export async function fetchKasaIslemleri(params?: {
     console.log('[Kasa] Fetched cash transactions:', rows.length);
 
     // Cari unvanı = gerçek cari; definition yalnızca islem_aciklamasi olarak kalır.
-    return rows.map((row) => ({
+    const mapped = rows.map((row) => ({
       ...mapDbIslemToIslem(row),
       cari_hesap_unvani: row.current_account_name || undefined,
       cari_hesap_kodu: row.current_account_code || undefined,
       target_register_name: row.target_register_name,
     }));
+    try {
+      const { attachKasaReservationFiches } = await import('../reservationSaleFicheStore');
+      return await attachKasaReservationFiches(mapped);
+    } catch (linkErr) {
+      console.warn('[Kasa] satış fiş bağı okunamadı:', linkErr instanceof Error ? linkErr.message : linkErr);
+      return mapped;
+    }
   } catch (error: any) {
     console.error('[Kasa] İşlem fetch error:', error);
     return [];

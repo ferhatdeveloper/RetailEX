@@ -30,6 +30,7 @@ import {
   appointmentIdFromAvansNotes,
   isForfeitedUnrefundedDeposit,
 } from '../../utils/forfeitedReservationCash';
+import { dailyReservationFicheLabel } from '../../utils/reservationSaleFiche';
 import {
   assembleDailySalesDetailRows,
   beautyPeriodFicheToSale,
@@ -879,6 +880,8 @@ type DailyUnifiedRow = {
    * uygulama / fatura kesme akışı için temel alan.
    */
   linkedAppointmentId?: string;
+  /** Bağlı satış faturasının numarası. Satır tutarı bu alandan okunmaz. */
+  linkedSaleFiche?: string;
 };
 
 /** Izgara satırı. Kimlik bir kez. Müşteri adı eski fişi ezmez. Dilim yok. */
@@ -3388,7 +3391,15 @@ export function ReportsModule({
           [fromIso, toIso],
         );
         if (cancelled) return;
-        setDailyAvansList(rows || []);
+        let avansRowsForList = Array.isArray(rows) ? rows : [];
+        try {
+          const { attachAvansLinkedSaleFiche } = await import('../../services/reservationSaleFicheStore');
+          avansRowsForList = await attachAvansLinkedSaleFiche(avansRowsForList);
+        } catch (linkErr) {
+          console.warn('[ReportsModule] satış fiş bağı okunamadı:', linkErr);
+        }
+        if (cancelled) return;
+        setDailyAvansList(avansRowsForList);
         // 16.10.2026 — Açık avanslara bağlı cash_line_id'leri Set'e al
         // (`extraReservationCustomerCollections` beyaz liste).
         // Uygulanan avanslara bağlı cash_line_id'ler ayrı Set'e alınır
@@ -3720,6 +3731,7 @@ export function ReportsModule({
         // Rezervasyon bağlantısı (kısa vadede salt bilgi; ileride
         // randevu tamamlandığında avans otomatik uygulama akışı için)
         linkedAppointmentId: linkedAppointmentId || undefined,
+        linkedSaleFiche: String(a.linked_sale_fiche || '').trim() || undefined,
       };
     };
     // Kapanmış randevunun avans satırı listede yoktur. Peşinat hizmet cirosundadır.
@@ -7477,7 +7489,12 @@ export function ReportsModule({
                       onRowClick={(row) => void openDailyRowReceiptModal(row)}
                       footerLabel={tm('totalSales')}
                       columns={[
-                        { key: 'receiptNumber', header: tm('receiptFicheNo'), size: 140 },
+                        {
+                          key: 'receiptNumber',
+                          header: tm('receiptFicheNo'),
+                          size: 140,
+                          cell: (row) => dailyReservationFicheLabel(row, dailySalesDetailGridRows),
+                        },
                         {
                           key: 'invoiceDate',
                           header: tm('dateLabel'),

@@ -28,6 +28,7 @@ import {
 } from '../../utils/paymentMethodUtils';
 import { sumCashPaymentBalanceOffsets } from '../../utils/cashPaymentListBalance';
 import { sumReservationDepositsByAccount } from '../../utils/reservationDepositByAccount';
+import { stampStatementReservationFiches } from '../reservationSaleFicheStore';
 import { cashLineCariLedgerAmount } from '../../utils/cashLineFx';
 export type { Supplier };
 
@@ -889,9 +890,10 @@ export const supplierAPI = {
           })
           .map(mapSalesRowToEkstre);
         const fromCash = (Array.isArray(cashRows) ? cashRows : []).map(mapCashRowToEkstre);
-        return dedupeEkstreRows([...byIdSales, ...byNameSales, ...fromCash]).sort(
+        const merged = dedupeEkstreRows([...byIdSales, ...byNameSales, ...fromCash]).sort(
           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
         );
+        return stampStatementReservationFiches(merged);
       }
 
       // Ekstresi = faturalar (sales) + kasa işlemleri (cash_lines)
@@ -955,7 +957,7 @@ export const supplierAPI = {
         ORDER BY date ASC`;
 
       const { rows } = await postgres.query(sql, values);
-      return dedupeEkstreRows(rows);
+      return stampStatementReservationFiches(dedupeEkstreRows(rows));
     } catch (error: any) {
       console.error('[SupplierAPI] getAccountStatement failed:', error);
       throw new Error(error?.message || 'Hesap ekstresi yüklenemedi');

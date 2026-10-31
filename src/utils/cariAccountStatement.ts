@@ -313,6 +313,8 @@ export type EkstreRow = {
   avansId?: string;
   /** cash_lines.special_code ham değeri (örn. REZERVASYON). Avans tespitinde kullanılır. */
   special_code?: string;
+  /** Bağlı satış faturasının fiş numarası. Bakiye hesabı fiche_no ile kalır. */
+  linked_sale_fiche?: string;
   /** Cash_lines tablosunun PK. Avans satırını çift satıra bölerken eşleşmede kullanılır. */
   cash_line_id?: string;
   /** Satırın sanal/in-memory eşi olup olmadığı (`expandReservationDepositRows` çıktısı). */
