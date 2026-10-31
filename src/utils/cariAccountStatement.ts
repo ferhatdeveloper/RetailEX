@@ -2,6 +2,7 @@
 
 import { splitPaymentRows } from './saleCollectedAmounts';
 import { receiptNotesForDisplay } from './receiptNotes';
+import { ekstreReservationDescription } from './reservationSaleFiche';
 
 export type ExtCardType = 'customer' | 'supplier' | 'employee' | 'partner' | undefined;
 
@@ -275,7 +276,7 @@ export function resolveEkstreDescription(
   if (!n || isRawFicheTypeKey(n) || n.toLowerCase() === ft.toLowerCase()) {
     return info.label;
   }
-  const cleaned = receiptNotesForDisplay(n);
+  const cleaned = ekstreReservationDescription(receiptNotesForDisplay(n));
   if (!cleaned || isRawFicheTypeKey(cleaned) || cleaned.toLowerCase() === ft.toLowerCase()) {
     return info.label;
   }

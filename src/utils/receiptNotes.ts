@@ -34,6 +34,18 @@ const TECH_KEY_VALUE_RE = new RegExp(
   'i',
 );
 const TECH_TOKEN_RE = /^(checkout_tek_tahsilat)$/i;
+/** Satış fiş bağı. Kullanıcı metninde durmaz; numara fiş kolonundadır. */
+const RESERVED_SALE_FICHE_SEGMENT_RE = /^reserved_sale_fiche:\s*BEA-\d{4}-\d+$/i;
+
+function stripReservedSaleFicheTag(part: string): string {
+  return part
+    .replace(/reserved_sale_fiche:\s*BEA-\d{4}-\d+/gi, '')
+    .replace(/\s*[|:—–]+\s*$/g, '')
+    .replace(/^\s*[|:—–]+\s*/g, '')
+    .replace(/\s*\|\s*\|+/g, '|')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
 
 function scrubTechnicalIds(part: string): string {
   return part
@@ -49,6 +61,7 @@ function scrubTechnicalIds(part: string): string {
 function isTechnicalSegment(part: string): boolean {
   const t = part.trim();
   if (!t) return true;
+  if (RESERVED_SALE_FICHE_SEGMENT_RE.test(t)) return true;
   if (TECH_KEY_VALUE_RE.test(t)) return true;
   if (TECH_TOKEN_RE.test(t)) return true;
   if (UUID_RE.test(t) && t.replace(UUID_GLOBAL_RE, '').replace(/[\s|-]/g, '') === '') return true;
@@ -62,7 +75,7 @@ function isTechnicalSegment(part: string): boolean {
  * Örn. `GüzellikPOSbeauty_sale_id …|res_appt …` → `GüzellikPOS`
  */
 export function receiptNotesForDisplay(raw: string | undefined | null): string {
-  const s = String(raw ?? '').trim();
+  const s = stripReservedSaleFicheTag(String(raw ?? '').trim());
   if (!s) return '';
 
   const hasPipe = s.includes('|');
@@ -74,13 +87,13 @@ export function receiptNotesForDisplay(raw: string | undefined | null): string {
     for (const segment of s.split('|')) {
       const trimmed = segment.trim();
       if (isTechnicalSegment(trimmed)) continue;
-      const cleaned = scrubTechnicalIds(trimmed);
+      const cleaned = stripReservedSaleFicheTag(scrubTechnicalIds(trimmed));
       if (cleaned) human.push(cleaned);
     }
     return human.join(' — ');
   }
 
-  return scrubTechnicalIds(s);
+  return stripReservedSaleFicheTag(scrubTechnicalIds(s));
 }
 
 const INVOICE_CHANNEL_OR_FILLER =
@@ -93,6 +106,7 @@ function segmentIsMachineNote(part: string): boolean {
   if (INVOICE_CHANNEL_OR_FILLER.test(t)) return true;
   if (/^(?:beauty_sale_id|rex_appt|res_appt|rest_order_id)[:\s]+[0-9a-fA-F-]{8}-/i.test(t)) return true;
   if (/^(?:parent_sale|sale_group):/i.test(t)) return true;
+  if (/^reserved_sale_fiche:\s*BEA-\d{4}-\d+$/i.test(t)) return true;
   if (/^deposit:1$/i.test(t)) return true;
   if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i.test(t)) return true;
   return false;
@@ -107,7 +121,7 @@ export function invoiceDescriptionForDisplay(raw: string | undefined | null): st
   const s = String(raw ?? '').trim();
   if (!s) return '';
   const hasMachine =
-    /beauty_sale_id|rex_appt|res_appt|rest_order_id|parent_sale:|sale_group:|deposit:1|checkout_tek_tahsilat/i.test(s)
+    /beauty_sale_id|rex_appt|res_appt|rest_order_id|parent_sale:|sale_group:|deposit:1|checkout_tek_tahsilat|reserved_sale_fiche:/i.test(s)
     || /^(?:GüzellikPOS|MarketPOS|RestoranPOS|RestPOS)\|/i.test(s);
   if (!hasMachine) return s;
   const cleaned = receiptNotesForDisplay(s);

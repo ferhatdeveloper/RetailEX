@@ -132,6 +132,21 @@ export function reservationCollectionDescription(saleFiche: string): string {
   return `Rezervasyon tahsilatı — ${fiche}`;
 }
 
+/**
+ * Ekstre açıklaması. Satış numarası fiş kolonunda durur.
+ * Nakit akış ve kasa açıklaması bu fonksiyondan geçmez.
+ */
+export function ekstreReservationDescription(text: unknown): string {
+  const raw = String(text ?? '').trim();
+  if (!isReservationCollectionText(raw)) return raw;
+  const stripped = raw
+    .replace(/\s*[—–]\s*BEA-\d{4}-\d+\b/gi, '')
+    .replace(/\s+-\s+BEA-\d{4}-\d+\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return stripped || 'Rezervasyon tahsilatı';
+}
+
 export interface ReservationFicheLink {
   ficheNo: string;
   appointmentId?: string | null;
@@ -374,6 +389,8 @@ export function visibleStatementFiche(row: {
   isReservationDeposit?: boolean | null;
 }): string {
   const own = String(row.fiche_no ?? '').trim();
+  // Satış faturası kendi numarasını taşır. Yalnızca iç kasa anahtarı satış numarasına çevrilir.
+  if (isSaleSeriesFiche(own)) return own;
   const linked = String(row.linked_sale_fiche ?? '').trim();
   const notes = String(row.notes ?? '');
   const reservation = row.isReservationDeposit === true
@@ -395,13 +412,11 @@ export function visibleStatementDescription(row: {
   linked_sale_fiche?: string | null;
   isReservationDeposit?: boolean | null;
 }): string {
+  const raw = String(row.notes ?? '');
+  if (!isReservationCollectionText(raw)) return raw;
   const fiche = visibleStatementFiche(row);
-  const reservation = fiche !== String(row.fiche_no ?? '').trim()
-    || isReservationCollectionText(row.notes);
-  if (reservation && fiche && !isInternalReservationFiche(fiche) && isReservationCollectionText(row.notes ?? '')) {
-    return reservationCollectionDescription(fiche);
-  }
-  return String(row.notes ?? '');
+  if (fiche && !isInternalReservationFiche(fiche)) return 'Rezervasyon tahsilatı';
+  return ekstreReservationDescription(raw);
 }
 
 export interface DailyFicheSource {

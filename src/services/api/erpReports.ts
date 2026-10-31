@@ -86,6 +86,7 @@ import {
   type CashFlowNameIndexes,
 } from '../../utils/cashFlowAccountName';
 import { stampCashFlowReservationFiches } from '../reservationSaleFicheStore';
+import { visibleStatementFiche } from '../../utils/reservationSaleFiche';
 import { cashVirmanDirection, withCashVirmanLines } from '../../utils/cashVirman';
 
 const ROW_LIMIT = 3000;
@@ -2926,7 +2927,10 @@ export const erpReportsAPI = {
         rows.push({
           id: `${r.id || r.fiche_no || 'e'}-${String(r.date || '').slice(0, 10)}-${idx}`,
           date: String(r.date || '').slice(0, 10),
-          ficheNo: String(r.fiche_no ?? ''),
+          ficheNo: visibleStatementFiche({
+            fiche_no: r.fiche_no,
+            notes: r.definition,
+          }),
           definition: String(r.definition || r.transaction_type || ''),
           debit,
           credit,
@@ -2986,7 +2990,14 @@ export const erpReportsAPI = {
       return {
         id: `${r.fiche_no || 'x'}-${String(r.date || '').slice(0, 10)}-${idx}`,
         date: String(r.date || '').slice(0, 10),
-        ficheNo: String(r.fiche_no ?? ''),
+        // Görünen fiş satış numarasıdır. Birleştirme anahtarı satırın kendi fiche_no'sunda kalır.
+        ficheNo: visibleStatementFiche({
+          fiche_no: r.fiche_no,
+          notes: r.notes,
+          special_code: r.special_code,
+          linked_sale_fiche: r.linked_sale_fiche,
+          isReservationDeposit: r.isReservationDeposit,
+        }),
         definition: resolveEkstreDescription(r.notes, ft, trcode, cancelled),
         debit: Number(r.borcAmount) || 0,
         credit: Number(r.alacakAmount) || 0,

@@ -19,6 +19,7 @@ import {
   type ExtCardType,
   type TFunction,
 } from './cariAccountStatement';
+import { visibleStatementFiche } from './reservationSaleFiche';
 
 export type CariEkstrePrintOrientation = 'landscape' | 'portrait';
 
@@ -179,7 +180,7 @@ export function mapCariEkstrePrintRows(
     const balDir = getCariBalanceDirection(cardType, row.balance, tm);
     return {
       date: formatExtractDate(String(row.date ?? '')) || '—',
-      ficheNo: String(row.fiche_no || '').trim() || '—',
+      ficheNo: visibleStatementFiche(row).trim() || '—',
       typeLabel: typeInfo.label,
       description: desc,
       debit: row.borcAmount > 0 ? fmtAmt(row.borcAmount, currency) : '',

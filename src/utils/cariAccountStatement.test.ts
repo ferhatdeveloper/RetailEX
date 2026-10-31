@@ -169,6 +169,19 @@ describe('resolveEkstreDescription', () => {
     expect(resolveEkstreDescription('Mal alımı', 'purchase_invoice', 1)).toBe('Mal alımı');
   });
 
+  it('satış fiş etiketi ve tahsilat numarası açıklamada durmaz', () => {
+    expect(
+      resolveEkstreDescription(
+        'GüzellikPOS|beauty_sale_id:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee|reserved_sale_fiche:BEA-2026-00005',
+        'sales_invoice',
+        8,
+      ),
+    ).toBe('GüzellikPOS');
+    expect(
+      resolveEkstreDescription('Rezervasyon tahsilatı — BEA-2026-00005', 'CH_TAHSILAT', 0),
+    ).toBe('Rezervasyon tahsilatı');
+  });
+
   it('GüzellikPOS teknik UUID’leri gizler', () => {
     expect(
       resolveEkstreDescription(

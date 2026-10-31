@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildEkstreRows } from '../../utils/cariAccountStatement';
+import { buildEkstreRows, resolveEkstreDescription } from '../../utils/cariAccountStatement';
 import { buildSavedCashInvoiceLaunch } from '../../utils/cashDocumentInvoiceLaunch';
 import {
   buildReservationFicheIndexFromSources,
@@ -67,8 +67,57 @@ describe('rezervasyon tahsilatı satış fiş numarası', () => {
     expect(isInternalReservationFiche(shownCollection)).toBe(false);
     expect(shownCollection.startsWith('KL-')).toBe(false);
     expect(shownCollection.startsWith('AVANS-')).toBe(false);
-    expect(visibleStatementDescription(statement[1])).toBe('Rezervasyon tahsilatı — BEA-2026-00001');
+    expect(visibleStatementDescription(statement[1])).toBe('Rezervasyon tahsilatı');
+    expect(visibleStatementDescription(statement[1])).not.toContain('BEA-');
     expect(statement[0].borcAmount + statement[1].borcAmount).toBe(75000);
+  });
+
+  it('cari ekstre fiş no satış numarasıdır, tutarlar ayrı kalır', () => {
+    const statement = buildEkstreRows([
+      {
+        fiche_no: 'KL-MVWM0LRI-NG5XPZ',
+        fiche_type: 'CH_TAHSILAT',
+        total_amount: 6000,
+        special_code: 'REZERVASYON',
+        date: '2026-10-31',
+        notes: 'Rezervasyon tahsilatı — BEA-2026-00005',
+      },
+      {
+        fiche_no: 'BEA-2026-00005',
+        fiche_type: 'sales_invoice',
+        total_amount: 19000,
+        payment_method: 'cash',
+        date: '2026-10-31',
+        notes: 'GüzellikPOS|beauty_sale_id:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee|reserved_sale_fiche:BEA-2026-00005',
+      },
+    ], 'customer');
+
+    expect(statement).toHaveLength(2);
+    const collection = statement[0];
+    const sale = statement[1];
+    expect(collection.fiche_no).toBe('KL-MVWM0LRI-NG5XPZ');
+    expect(sale.fiche_no).toBe('BEA-2026-00005');
+    expect(visibleStatementFiche(collection)).toBe('BEA-2026-00005');
+    expect(visibleStatementFiche(collection).startsWith('KL-')).toBe(false);
+    expect(visibleStatementFiche(sale)).toBe('BEA-2026-00005');
+    expect(visibleStatementDescription(collection)).toBe('Rezervasyon tahsilatı');
+    expect(visibleStatementDescription(collection)).not.toContain('reserved_sale_fiche');
+
+    const collectionText = resolveEkstreDescription(collection.notes, collection.fiche_type, 0, false);
+    const saleText = resolveEkstreDescription(sale.notes, sale.fiche_type, 8, false);
+    expect(collectionText).toBe('Rezervasyon tahsilatı');
+    expect(collectionText).not.toContain('reserved_sale_fiche');
+    expect(saleText).toBe('GüzellikPOS');
+    expect(saleText).not.toContain('reserved_sale_fiche');
+
+    expect(collection.borcAmount).toBe(6000);
+    expect(collection.alacakAmount).toBe(6000);
+    expect(sale.borcAmount).toBe(19000);
+    expect(sale.alacakAmount).toBe(19000);
+    expect(collection.borcAmount + sale.borcAmount).toBe(25000);
+    expect(collection.alacakAmount + sale.alacakAmount).toBe(25000);
+    expect(collection.balance).toBe(0);
+    expect(sale.balance).toBe(0);
   });
 
   it('aynı tutarlı başka randevuya bağlanmaz', () => {

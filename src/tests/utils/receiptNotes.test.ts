@@ -54,6 +54,17 @@ describe('receiptNotesForDisplay', () => {
     ).toBe('GüzellikPOS');
   });
 
+  it('satış fiş etiketi açıklamada görünmez', () => {
+    expect(
+      receiptNotesForDisplay(
+        'GüzellikPOS|beauty_sale_id:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee|reserved_sale_fiche:BEA-2026-00005',
+      ),
+    ).toBe('GüzellikPOS');
+    expect(
+      receiptNotesForDisplay('GüzellikPOS — reserved_sale_fiche:BEA-2026-00005'),
+    ).toBe('GüzellikPOS');
+  });
+
   it('pipe yok, boşluklu teknik id gizlenir', () => {
     expect(
       receiptNotesForDisplay(
