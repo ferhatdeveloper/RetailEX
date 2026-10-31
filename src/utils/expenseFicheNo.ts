@@ -7,39 +7,43 @@ export const EXPENSE_FICHE_WIDTH = 6;
 
 export const EXPENSE_ENTRY_CASH_LABEL = 'Kasa';
 
-/** Giriş formu sırası. Fiş no ve tarih en üstte, yan yana. */
+/** Giriş penceresi sırası. Kategori, tutar ve ödeme yöntemi tarih ile açıklamadan önce. */
 export const EXPENSE_ENTRY_FIELD_ORDER = [
-  'ficheNo',
-  'date',
   'category',
-  'description',
-  'documentNo',
-  'cashRegister',
   'amount',
   'paymentMethod',
+  'date',
+  'description',
+  'ficheNo',
+  'cashRegister',
+  'documentNo',
   'notes',
   'attachment',
 ] as const;
 
 export type ExpenseEntryField = (typeof EXPENSE_ENTRY_FIELD_ORDER)[number];
 
-export function expenseEntryDocumentAndCashBeforeAmount(
+export function expenseEntryCategoryAmountPayBeforeDate(
   order: readonly string[] = EXPENSE_ENTRY_FIELD_ORDER,
 ): boolean {
   const at = (key: string) => order.indexOf(key);
-  const documentNo = at('documentNo');
-  const cashRegister = at('cashRegister');
+  const category = at('category');
   const amount = at('amount');
   const paymentMethod = at('paymentMethod');
+  const date = at('date');
+  const description = at('description');
   return (
-    documentNo >= 0
-    && cashRegister >= 0
+    category >= 0
     && amount >= 0
     && paymentMethod >= 0
-    && documentNo < amount
-    && cashRegister < amount
-    && documentNo < paymentMethod
-    && cashRegister < paymentMethod
+    && date >= 0
+    && description >= 0
+    && category < date
+    && amount < date
+    && paymentMethod < date
+    && category < description
+    && amount < description
+    && paymentMethod < description
     && EXPENSE_ENTRY_CASH_LABEL === 'Kasa'
   );
 }

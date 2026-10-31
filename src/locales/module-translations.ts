@@ -9778,6 +9778,8 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   expenseFicheReadonly: { tr: 'Otomatik fiş numarası', en: 'Automatic slip number', ar: 'رقم السند تلقائي', ku: 'ژمارەی پسوڵەی ئۆتۆماتیکی' },
   uploadDocumentInvoiceReceipt: { tr: 'Belge Yükle (Fatura, Makbuz)', en: 'Upload Document (Invoice, Receipt)', ar: 'رفع مستند (فاتورة، إيصال)', ku: 'بارکردنی بەڵگەنامە (وەسڵ، پسوڵە)' },
   selectFile: { tr: 'Dosya Seç', en: 'Select File', ar: 'اختر ملف', ku: 'فایل هەڵبژێرە' },
+  expenseReceiptDropLabel: { tr: 'Fatura / fiş yükle', en: 'Upload invoice / receipt', ar: 'رفع الفاتورة / الإيصال', ku: 'بارکردنی وەسڵ / پسوڵە' },
+  expenseReceiptOnFile: { tr: 'Kayıtlı belge', en: 'Saved document', ar: 'مستند محفوظ', ku: 'بەڵگەنامەی پاشەکەوتکراو' },
   expenseDeleteConfirm: { tr: 'Bu gideri silmek istediğinizden emin misiniz?', en: 'Are you sure you want to delete this expense?', ar: 'هل أنت متأكد من حذف هذا المصروف؟', ku: 'دڵنیایت لە سڕینەوەی ئەم خەرجییە؟' },
   expenseCategoryRequired: { tr: 'Kategori zorunludur.', en: 'Category is required.', ar: 'الفئة مطلوبة.', ku: 'هاوپۆل پێویستە.' },
   descriptionRequired: { tr: 'Açıklama zorunludur.', en: 'Description is required.', ar: 'الوصف مطلوب.', ku: 'وەسف پێویستە.' },

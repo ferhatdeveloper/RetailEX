@@ -18,10 +18,16 @@ import {
   Banknote, TrendingUp, Filter, X, Upload, ChevronDown
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { PercentBodyModal } from '../../shared/PercentBodyModal';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
-import { InlineLanguageSwitcher } from '../../shared/InlineLanguageSwitcher';
 import { expenseAPI, ExpenseSaveError, parseExpenseAmount, type Expense } from '../../../services/api/expenses';
+import {
+  EXPENSE_ATTACHMENT_ACCEPT,
+  readExpenseAttachmentDataUrl,
+  recordExpenseAttachmentFromList,
+  type ExpenseAttachmentPick,
+} from '../../../utils/expenseAttachment';
 import { formatStoredExpenseFiche } from '../../../utils/expenseFicheNo';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import { expenseCategoryAPI, type ExpenseCategory as ApiExpenseCategory } from '../../../services/api/masterData';
@@ -93,12 +99,15 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
 
   // Form state
   const fichePreviewSeq = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachment, setAttachment] = useState<ExpenseAttachmentPick | null>(null);
   const [formData, setFormData] = useState({
     category: '',
     description: '',
     amount: '',
     payment_method: 'cash',
     document_number: '',
+    document_url: '',
     fiche_no: '',
     store_id: '',
     cost_center_id: '',
@@ -256,16 +265,35 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     void loadExpenses();
   }, [loadExpenses]);
 
+  const attachmentReadSeq = useRef(0);
+  const applyExpenseAttachmentPick = (picked: ExpenseAttachmentPick | null) => {
+    const seq = attachmentReadSeq.current + 1;
+    attachmentReadSeq.current = seq;
+    setAttachment(picked);
+    setFormData((prev) => ({ ...prev, document_url: '' }));
+    if (!picked) return;
+    void readExpenseAttachmentDataUrl(picked.file).then((url) => {
+      if (attachmentReadSeq.current !== seq) return;
+      setFormData((prev) => ({ ...prev, document_url: url }));
+    }).catch(() => {
+      if (attachmentReadSeq.current !== seq) return;
+      setFormData((prev) => ({ ...prev, document_url: '' }));
+    });
+  };
+
   const handleAddExpense = () => {
     const seq = fichePreviewSeq.current + 1;
     fichePreviewSeq.current = seq;
     setEditingExpense(null);
+    setAttachment(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setFormData({
       category: '',
       description: '',
       amount: '',
       payment_method: 'cash',
       document_number: '',
+      document_url: '',
       fiche_no: '',
       store_id: '',
       cost_center_id: '',
@@ -283,12 +311,15 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
   const handleEditExpense = (expense: Expense) => {
     fichePreviewSeq.current += 1;
     setEditingExpense(expense);
+    setAttachment(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setFormData({
       category: expense.category,
       description: expense.description,
       amount: expense.amount.toString(),
       payment_method: expense.payment_method,
       document_number: expense.document_number || '',
+      document_url: expense.document_url || '',
       fiche_no: formatStoredExpenseFiche(expense.fiche_no) || '—',
       store_id: expense.store_id,
       cost_center_id: expense.cost_center_id || '',
@@ -358,12 +389,21 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
         alert(tm('pleaseEnterValidAmount'));
         return;
       }
+      let documentUrl = formData.document_url;
+      if (attachment?.file && !documentUrl) {
+        try {
+          documentUrl = await readExpenseAttachmentDataUrl(attachment.file);
+        } catch {
+          documentUrl = '';
+        }
+      }
       const data = {
         category: formData.category,
         description: formData.description,
         amount: parsedAmount,
         payment_method: formData.payment_method,
         document_number: formData.document_number,
+        document_url: documentUrl,
         store_id: formData.store_id || undefined,
         cost_center_id: formData.cost_center_id || undefined,
         cash_register_id: formData.cash_register_id || undefined,
@@ -594,7 +634,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
 
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-white overscroll-y-contain touch-pan-y">
-      <div className={showExpenseModal ? 'hidden' : 'contents'} aria-hidden={showExpenseModal}>
+      <div className="contents">
       {/* Header */}
       <div
         className={`sticky top-0 z-10 flex-shrink-0 border-b border-gray-200 shadow-sm ${
@@ -809,63 +849,32 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       </div>
       </div>
 
-      {showExpenseModal && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[2147483647] flex flex-col bg-white min-h-0 overflow-hidden animate-in fade-in duration-200">
-          <div className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6 shrink-0">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">
-                  {editingExpense ? tm('editExpense') : tm('newExpense')}
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {tm('expenseManagementSubtitle')}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <InlineLanguageSwitcher />
-                <button
-                  type="button"
-                  onClick={() => setShowExpenseModal(false)}
-                  className="w-10 h-10 rounded-xl border border-slate-200 hover:bg-slate-50 flex items-center justify-center transition-colors text-slate-600"
-                  aria-label={tm('close')}
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
+      {showExpenseModal ? (
+        <PercentBodyModal
+          onClose={() => setShowExpenseModal(false)}
+          size="list"
+          shellClassName="!h-auto"
+          ariaLabel={editingExpense ? tm('editExpense') : tm('newExpense')}
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 shrink-0">
+            <h2 className="text-base font-semibold text-slate-900">
+              {editingExpense ? tm('editExpense') : tm('newExpense')}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setShowExpenseModal(false)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+              aria-label={tm('close')}
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-white px-4 py-5 sm:px-8 sm:py-6">
-            <div className="grid w-full grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-              <div data-expense-field="ficheNo">
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  {tm('ficheNo')}
-                </label>
-                <input
-                  type="text"
-                  readOnly
-                  tabIndex={-1}
-                  value={formData.fiche_no}
-                  aria-readonly="true"
-                  title={tm('expenseFicheReadonly')}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl bg-slate-50 text-slate-700 font-medium tabular-nums outline-none"
-                />
-              </div>
-              <div data-expense-field="date">
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  {tm('date')} *
-                </label>
-                <input
-                  type="date"
-                  value={formData.expense_date}
-                  onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
-                />
-              </div>
-
-              <div data-expense-field="category">
+          <div className="shrink-0 overflow-y-auto overscroll-contain px-5 py-4 max-h-[min(70vh,calc(100dvh-10rem))]">
+            <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-6">
+              <div className="sm:col-span-2" data-expense-field="category">
                 <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     {tm('category')} *
                   </label>
                   <button
@@ -880,62 +889,19 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full min-w-0 px-4 py-3 pr-11 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium bg-white appearance-none"
+                    className="w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 pr-10 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
                   >
                     <option value="">{tm('expenseCategoryPlaceholder')}</option>
                     {expenseCategories.map(cat => (
                       <option key={cat.id} value={cat.code}>{cat.name}</option>
                     ))}
                   </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" aria-hidden />
-                </div>
-              </div>
-              <div data-expense-field="description">
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  {tm('description')} *
-                </label>
-                <input
-                  type="text"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder={tm('expenseDescriptionPlaceholder')}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
-                />
-              </div>
-
-              <div data-expense-field="documentNo">
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  {tm('documentNo')}
-                </label>
-                <input
-                  type="text"
-                  value={formData.document_number}
-                  onChange={(e) => setFormData({ ...formData, document_number: e.target.value })}
-                  placeholder={tm('expenseDocumentNoPlaceholder')}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
-                />
-              </div>
-              <div data-expense-field="cashRegister">
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  {tm('costCenterCashRegister')}
-                </label>
-                <div className="relative">
-                  <select
-                    value={formData.cash_register_id}
-                    onChange={(e) => setFormData({ ...formData, cash_register_id: e.target.value })}
-                    className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-2xl appearance-none bg-white focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
-                  >
-                    {kasalar.length === 0 && <option value="">{tm('noCashRegisterFound')}</option>}
-                    {kasalar.map(kasa => (
-                      <option key={kasa.id} value={kasa.id}>{kasa.kasa_kodu} - {kasa.kasa_adi}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" aria-hidden />
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
                 </div>
               </div>
 
-              <div data-expense-field="amount">
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+              <div className="sm:col-span-2" data-expense-field="amount">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {tm('amount')} (IQD) *
                 </label>
                 <input
@@ -944,71 +910,182 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   value={formData.amount}
                   onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                   placeholder="45.000"
-                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
                 />
               </div>
-              <div data-expense-field="paymentMethod">
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+
+              <div className="sm:col-span-2" data-expense-field="paymentMethod">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {tm('paymentMethod')} *
                 </label>
                 <div className="relative">
                   <select
                     value={formData.payment_method}
                     onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
-                    className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-2xl appearance-none bg-white focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 pr-10 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
                   >
                     <option value="cash">{tm('cash')}</option>
                     <option value="bank_transfer">{tm('bankTransferEft')}</option>
                     <option value="credit_card">{tm('creditCard')}</option>
                     <option value="check">{tm('check')}</option>
                   </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" aria-hidden />
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
                 </div>
               </div>
 
-              <div className="sm:col-span-2" data-expense-field="notes">
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  {tm('notes')}
+              <div className="sm:col-span-2" data-expense-field="date">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  {tm('date')} *
                 </label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder={tm('additionalNotes')}
-                  rows={3}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium resize-y"
+                <input
+                  type="date"
+                  value={formData.expense_date}
+                  onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
                 />
               </div>
 
-              <div className="sm:col-span-2 flex flex-wrap items-center gap-3" data-expense-field="attachment">
-                <Upload className="w-5 h-5 text-slate-400 shrink-0" />
-                <p className="text-sm text-slate-600">{tm('uploadDocumentInvoiceReceipt')}</p>
-                <button type="button" className="text-sm text-red-600 hover:text-red-700 font-semibold">
-                  {tm('selectFile')}
-                </button>
+              <div className="sm:col-span-4" data-expense-field="description">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  {tm('description')} *
+                </label>
+                <input
+                  type="text"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder={tm('expenseDescriptionPlaceholder')}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                />
               </div>
 
-              <div className="sm:col-span-2 flex gap-3 pt-2">
+              <div className="sm:col-span-3" data-expense-field="ficheNo">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  {tm('ficheNo')}
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  tabIndex={-1}
+                  value={formData.fiche_no}
+                  aria-readonly="true"
+                  title={tm('expenseFicheReadonly')}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-medium tabular-nums text-slate-700 outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-3" data-expense-field="cashRegister">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  {tm('costCenterCashRegister')}
+                </label>
+                <div className="relative">
+                  <select
+                    value={formData.cash_register_id}
+                    onChange={(e) => setFormData({ ...formData, cash_register_id: e.target.value })}
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 pr-10 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                  >
+                    {kasalar.length === 0 && <option value="">{tm('noCashRegisterFound')}</option>}
+                    {kasalar.map(kasa => (
+                      <option key={kasa.id} value={kasa.id}>{kasa.kasa_kodu} - {kasa.kasa_adi}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                </div>
+              </div>
+
+              <div className="sm:col-span-3" data-expense-field="documentNo">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  {tm('documentNo')}
+                </label>
+                <input
+                  type="text"
+                  value={formData.document_number}
+                  onChange={(e) => setFormData({ ...formData, document_number: e.target.value })}
+                  placeholder={tm('expenseDocumentNoPlaceholder')}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+
+              <div className="sm:col-span-3" data-expense-field="notes">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  {tm('notes')}
+                </label>
+                <input
+                  type="text"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder={tm('additionalNotes')}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+
+              <div
+                className="sm:col-span-6"
+                data-expense-field="attachment"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const picked = recordExpenseAttachmentFromList(e.dataTransfer.files);
+                  applyExpenseAttachmentPick(picked);
+                }}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={EXPENSE_ATTACHMENT_ACCEPT}
+                  data-expense-file-input=""
+                  aria-label={tm('expenseReceiptDropLabel')}
+                  className="sr-only"
+                  onChange={(e) => {
+                    const picked = recordExpenseAttachmentFromList(e.target.files);
+                    applyExpenseAttachmentPick(picked);
+                    e.currentTarget.value = '';
+                  }}
+                />
                 <button
                   type="button"
-                  onClick={() => setShowExpenseModal(false)}
-                  className="flex-1 px-4 py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98] transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const picked = recordExpenseAttachmentFromList(e.dataTransfer.files);
+                    applyExpenseAttachmentPick(picked);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl bg-slate-50 px-4 py-4 text-left"
                 >
-                  {tm('cancel')}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveExpense}
-                  disabled={savingExpense}
-                  className="flex-1 px-4 py-3 rounded-2xl bg-red-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-red-200/50 hover:bg-red-700 active:scale-[0.98] transition-colors disabled:opacity-60 disabled:pointer-events-none"
-                >
-                  {savingExpense ? tm('loading') : (editingExpense ? tm('update') : tm('save'))}
+                  <Upload className="h-5 w-5 shrink-0 text-slate-400" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-slate-700">{tm('expenseReceiptDropLabel')}</span>
+                    {attachment?.name ? (
+                      <span className="block truncate text-sm text-slate-900">{attachment.name}</span>
+                    ) : formData.document_url ? (
+                      <span className="block truncate text-sm text-slate-900">{tm('expenseReceiptOnFile')}</span>
+                    ) : null}
+                  </span>
                 </button>
               </div>
             </div>
           </div>
-        </div>,
-        document.body
-      )}
+
+          <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowExpenseModal(false)}
+              className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+            >
+              {tm('giveUp')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSaveExpense()}
+              disabled={savingExpense}
+              className="rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:pointer-events-none disabled:opacity-60"
+            >
+              {savingExpense ? tm('loading') : (editingExpense ? tm('update') : tm('save'))}
+            </button>
+          </div>
+        </PercentBodyModal>
+      ) : null}
 
       {/* Gider Kategorileri Yönetimi — CRUD modal */}
       {showCategoryManager && typeof document !== 'undefined' && createPortal(

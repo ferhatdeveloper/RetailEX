@@ -4,9 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { moduleTranslations } from '../locales/module-translations';
 import { resolveDailyExpenseRowClick } from './dailyExpenseRowClick';
 import {
+  EXPENSE_ATTACHMENT_ACCEPT,
+  recordExpenseAttachmentFromList,
+} from './expenseAttachment';
+import {
   EXPENSE_ENTRY_CASH_LABEL,
   EXPENSE_ENTRY_FIELD_ORDER,
-  expenseEntryDocumentAndCashBeforeAmount,
+  expenseEntryCategoryAmountPayBeforeDate,
   isExpenseFicheConflict,
   nextExpenseFicheNo,
 } from './expenseFicheNo';
@@ -123,22 +127,25 @@ describe('gider detay modeli', () => {
 });
 
 describe('gider giriş alanı sırası', () => {
-  it('belge no ve kasa, tutar ile ödeme yönteminden önce; etiket Kasa', () => {
-    expect(expenseEntryDocumentAndCashBeforeAmount()).toBe(true);
+  it('kategori, tutar ve ödeme yöntemi tarih ile açıklamadan önce; etiket Kasa', () => {
+    expect(expenseEntryCategoryAmountPayBeforeDate()).toBe(true);
     expect(EXPENSE_ENTRY_CASH_LABEL).toBe('Kasa');
     expect(moduleTranslations.costCenterCashRegister.tr).toBe('Kasa');
     const order = [...EXPENSE_ENTRY_FIELD_ORDER];
-    expect(order.indexOf('documentNo')).toBeLessThan(order.indexOf('amount'));
-    expect(order.indexOf('cashRegister')).toBeLessThan(order.indexOf('amount'));
-    expect(order.indexOf('documentNo')).toBeLessThan(order.indexOf('paymentMethod'));
-    expect(order.indexOf('cashRegister')).toBeLessThan(order.indexOf('paymentMethod'));
-    expect(order[0]).toBe('ficheNo');
-    expect(order[1]).toBe('date');
-    expect(order.indexOf('ficheNo')).toBeLessThan(order.indexOf('category'));
-    expect(order.indexOf('date')).toBeLessThan(order.indexOf('category'));
+    expect(order.indexOf('category')).toBeLessThan(order.indexOf('date'));
+    expect(order.indexOf('amount')).toBeLessThan(order.indexOf('date'));
+    expect(order.indexOf('paymentMethod')).toBeLessThan(order.indexOf('date'));
     expect(order.indexOf('category')).toBeLessThan(order.indexOf('description'));
-    expect(order.indexOf('category')).toBeLessThan(order.indexOf('documentNo'));
-    expect(order.indexOf('notes')).toBeGreaterThan(order.indexOf('paymentMethod'));
+    expect(order.indexOf('amount')).toBeLessThan(order.indexOf('description'));
+    expect(order.indexOf('paymentMethod')).toBeLessThan(order.indexOf('description'));
+    expect(order[0]).toBe('category');
+    expect(order[1]).toBe('amount');
+    expect(order[2]).toBe('paymentMethod');
+    expect(order.indexOf('date')).toBeLessThan(order.indexOf('ficheNo'));
+    expect(order.indexOf('description')).toBeLessThan(order.indexOf('cashRegister'));
+    expect(order.indexOf('ficheNo')).toBeLessThan(order.indexOf('documentNo'));
+    expect(order.indexOf('cashRegister')).toBeLessThan(order.indexOf('notes'));
+    expect(order.indexOf('notes')).toBeGreaterThan(order.indexOf('documentNo'));
     expect(order.indexOf('attachment')).toBe(order.length - 1);
 
     const src = readFileSync(
@@ -159,6 +166,36 @@ describe('gider giriş alanı sırası', () => {
     expect(saveSrc).toContain(`NOTIFY pgrst, 'reload schema'`);
     expect(migration).toContain(`pg_notify('pgrst', 'reload schema')`);
     expect(migration).toContain('ADD COLUMN IF NOT EXISTS fiche_no VARCHAR(20)');
+    expect(src).toContain('PercentBodyModal');
+    expect(src).toContain('fileInputRef.current?.click()');
+    expect(src).not.toContain('fixed inset-0 z-[2147483647]');
+  });
+
+  it('dosya kontrolünün change işleyicisi seçilen dosyayı kaydeder', () => {
+    const file = new File(['makbuz'], 'fis-makbuz.pdf', { type: 'application/pdf' });
+    const picked = recordExpenseAttachmentFromList([file]);
+    expect(picked?.name).toBe('fis-makbuz.pdf');
+    expect(picked?.file).toBe(file);
+    expect(recordExpenseAttachmentFromList(null)).toBeNull();
+    expect(recordExpenseAttachmentFromList([])).toBeNull();
+    expect(EXPENSE_ATTACHMENT_ACCEPT).toContain('image/*');
+    expect(EXPENSE_ATTACHMENT_ACCEPT).toContain('pdf');
+
+    const src = readFileSync(
+      resolve('src/components/accounting/reports/ExpenseManagement.tsx'),
+      'utf8',
+    );
+    const inputAt = src.indexOf('data-expense-file-input');
+    expect(inputAt).toBeGreaterThan(-1);
+    const inputBlock = src.slice(Math.max(0, inputAt - 180), inputAt + 700);
+    expect(inputBlock).toContain('type="file"');
+    expect(inputBlock).toContain('onChange');
+    expect(inputBlock).toContain('recordExpenseAttachmentFromList(e.target.files)');
+    expect(inputBlock).toContain('applyExpenseAttachmentPick(picked)');
+    expect(src).toContain('fileInputRef.current?.click()');
+    expect(src).toContain("tm('expenseReceiptDropLabel')");
+    expect(moduleTranslations.expenseReceiptDropLabel.tr).toBe('Fatura / fiş yükle');
+    expect(moduleTranslations.costCenterCashRegister.tr).toBe('Kasa');
   });
 });
 
