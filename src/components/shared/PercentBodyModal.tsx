@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { FullscreenBodyPortal, MODAL_OVERLAY_NESTED_Z, MODAL_OVERLAY_Z } from './FullscreenBodyPortal';
 
 export const PERCENT_BODY_MODAL_PORTAL_CLASS =
@@ -34,6 +34,12 @@ export const PERCENT_BODY_MODAL_SIZES = {
 
 export type PercentBodyModalSize = keyof typeof PERCENT_BODY_MODAL_SIZES;
 
+/**
+ * Açık modallar. En son açılan (dizinin sonu) ESC ile kapanır.
+ * İç içe pencerede alttaki form açık kalır.
+ */
+const modalEscapeClosers: Array<() => void> = [];
+
 type PercentBodyModalProps = {
   children: ReactNode;
   onClose?: () => void;
@@ -54,25 +60,40 @@ export function PercentBodyModal({
 }: PercentBodyModalProps) {
   /** Satır tıklamasıyla açılınca aynı click overlay’e “düşüp” hemen kapanmasın. */
   const [overlayCloseArmed, setOverlayCloseArmed] = useState(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const arm = window.setTimeout(() => setOverlayCloseArmed(true), 80);
-    /** ESC ile kapatma — global dinleyici; onClose tanımlıysa çağırır. */
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape' && typeof onClose === 'function') {
-        ev.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = prev;
       window.clearTimeout(arm);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof onCloseRef.current !== 'function') return;
+    const entry = () => {
+      onCloseRef.current?.();
+    };
+    modalEscapeClosers.push(entry);
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== 'Escape') return;
+      if (typeof onCloseRef.current !== 'function') return;
+      if (modalEscapeClosers[modalEscapeClosers.length - 1] !== entry) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      entry();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      const idx = modalEscapeClosers.lastIndexOf(entry);
+      if (idx >= 0) modalEscapeClosers.splice(idx, 1);
       window.removeEventListener('keydown', onKey);
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <FullscreenBodyPortal

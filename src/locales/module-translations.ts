@@ -9800,6 +9800,26 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   expenseCategory_tax: { tr: 'Vergi', en: 'Tax', ar: 'ضريبة', ku: 'باج' },
   expenseCategory_insurance: { tr: 'Sigorta', en: 'Insurance', ar: 'تأمين', ku: 'بیمە' },
   expenseCategory_other: { tr: 'Diğer', en: 'Other', ar: 'أخرى', ku: 'هیتر' },
+  expenseCategoryManagerTitle: { tr: 'Gider Kategorileri', en: 'Expense Categories', ar: 'فئات المصروفات', ku: 'هاوپۆلەکانی خەرجی' },
+  expenseCategoryNewNamePlaceholder: { tr: 'Yeni kategori adı', en: 'New category name', ar: 'اسم الفئة الجديدة', ku: 'ناوی هاوپۆلی نوێ' },
+  expenseCategoryRename: { tr: 'Değiştir', en: 'Rename', ar: 'إعادة تسمية', ku: 'ناو گۆڕین' },
+  expenseCategoryRenameField: { tr: 'Kategori adı', en: 'Category name', ar: 'اسم الفئة', ku: 'ناوی هاوپۆل' },
+  expenseCategoryColumnType: { tr: 'Tip', en: 'Type', ar: 'النوع', ku: 'جۆر' },
+  expenseCategoryColumnAction: { tr: 'İşlem', en: 'Action', ar: 'إجراء', ku: 'کردار' },
+  expenseCategorySystem: { tr: 'Sistem', en: 'System', ar: 'النظام', ku: 'سیستەم' },
+  expenseCategoryUser: { tr: 'Kullanıcı', en: 'User', ar: 'المستخدم', ku: 'بەکارهێنەر' },
+  expenseCategorySystemNote: {
+    tr: 'Sistem kategorileri düzenlenemez veya silinemez. Kendi kategorilerinizi ekleyebilir, pasif yapabilir veya (üzerinde kayıt yoksa) silebilirsiniz.',
+    en: 'System categories cannot be edited or deleted. You can add your own, deactivate them, or delete them when no records use them.',
+    ar: 'لا يمكن تعديل فئات النظام أو حذفها. يمكنك إضافة فئاتك أو إيقافها أو حذفها إذا لم تُستخدم.',
+    ku: 'هاوپۆلی سیستەم ناگۆڕدرێت و ناسڕدرێتەوە. هاوپۆلی خۆت زیاد بکە، ناچالاکی بکە، یان ئەگەر تۆمار بەکاری نەهێنابێت بیسڕەوە.',
+  },
+  'expenseCategory.misafir_gideri': { tr: 'Misafir Gideri', en: 'Guest expense', ar: 'مصروف الضيافة', ku: 'خەرجی میوان' },
+  expenseCategory_misafir_gideri: { tr: 'Misafir Gideri', en: 'Guest expense', ar: 'مصروف الضيافة', ku: 'خەرجی میوان' },
+  'expenseCategory.hospitality_expenses': { tr: 'Ağırlama Giderleri', en: 'Hospitality expenses', ar: 'مصروفات الضيافة', ku: 'خەرجی میوانداری' },
+  expenseCategory_hospitality_expenses: { tr: 'Ağırlama Giderleri', en: 'Hospitality expenses', ar: 'مصروفات الضيافة', ku: 'خەرجی میوانداری' },
+  'expenseCategory.new_category_test': { tr: 'Yeni Kategori Test', en: 'New category test', ar: 'اختبار فئة جديدة', ku: 'تاقی هاوپۆلی نوێ' },
+  expenseCategory_new_category_test: { tr: 'Yeni Kategori Test', en: 'New category test', ar: 'اختبار فئة جديدة', ku: 'تاقی هاوپۆلی نوێ' },
 };
 
 // Helper function to translate
