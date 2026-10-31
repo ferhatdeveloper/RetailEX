@@ -60,20 +60,27 @@ function ymd(value: unknown): string {
 
 /**
  * Rezervasyon / Ön Ödeme raporunun tarih kolonu.
- * Kapanmış hizmet randevu gününde kalır.
- * Açık ve iptal peşinat, paranın kaydedildiği gündür. İleri randevu günü değildir.
+ * Kapanmış hizmet, işin yapıldığı gündür. Müşteri planlanan günden önce
+ * gelip hizmeti yaptırdıysa bu gün kapanış günüdür (`updated_at`).
+ * Kayıtlı randevu günü burada değişmez.
+ * Açık peşinat, paranın kaydedildiği gündür. Hizmet yapılmış sayılmaz.
  */
 export function prePaymentListedYmd(row: {
   appointment_date?: string | null;
   deposit_date?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
   payment_state?: string | null;
   status?: string | null;
   deposit_amount?: number | string | null;
 }): string {
   const visit = ymd(row.appointment_date);
   const status = String(row.status ?? '').trim().toLowerCase();
-  if (status === 'completed' || status === 'closed') return visit;
+  if (status === 'completed' || status === 'closed') {
+    const done = ymd(row.updated_at);
+    if (done && visit && done < visit) return done;
+    return visit;
+  }
   const state = String(row.payment_state ?? '').trim().toLowerCase();
   const deposit = Math.abs(Number(row.deposit_amount) || 0);
   const openReservation = state === 'deposit_only'

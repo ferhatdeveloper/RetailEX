@@ -219,7 +219,10 @@ describe('peşinat kasa günü', () => {
       service.indexOf('const listedDate'),
       service.indexOf('const where: string[]'),
     );
-    expect(listed).toContain("IN ('completed', 'closed') THEN pas.appointment_date");
+    expect(listed).toContain('a.updated_at::date < pas.appointment_date');
+    expect(listed).toContain('THEN a.updated_at::date');
+    expect(listed).toContain('THEN pas.appointment_date');
+    expect(listed).not.toContain("IN ('completed', 'closed') THEN pas.appointment_date");
     expect(listed).toContain("pas.payment_state = 'paid' AND COALESCE(pas.deposit_amount, 0) <> 0");
     expect(listed).toContain('COALESCE(a.deposit_date::date, a.created_at::date, pas.appointment_date)');
   });

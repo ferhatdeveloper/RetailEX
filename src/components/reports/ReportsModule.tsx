@@ -55,6 +55,7 @@ import {
   type DailyReportScreenCardKey,
 } from '../../utils/dailyReportScreenCards';
 import { DailyReportKpiGrid, type DailyReportKpiCardModel } from './DailyReportKpiGrid';
+import { resolveDailyExpenseRowClick, type DailyExpenseDetailModel } from '../../utils/dailyExpenseRowClick';
 import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
 import { dailyAvansPaymentLabel } from '../../utils/dailySalesDetailPaymentLabel';
 import {
@@ -1620,6 +1621,7 @@ export function ReportsModule({
   }, [ledgerFrom, ledgerTo, reportCurrency]);
 
   const [deletingExpenseKey, setDeletingExpenseKey] = useState<string | null>(null);
+  const [dailyExpenseDetail, setDailyExpenseDetail] = useState<DailyExpenseDetailModel | null>(null);
 
   const deleteDailyExpenseRow = useCallback(
     async (row: DailyExpenseRow) => {
@@ -7803,7 +7805,7 @@ export function ReportsModule({
                   <div className="p-4 border-b">
                     <h3 className="text-lg">{tm('expenseDetails')}</h3>
                     <p className="text-xs text-slate-500 mt-1">{tm('dailyExpenseDetailsHint')}</p>
-                    <p className="text-xs text-amber-700 mt-1">{tm('dailyExpenseClickToDeleteHint')}</p>
+                    <p className="text-xs text-slate-500 mt-1">{tm('dailyExpenseClickToDeleteHint')}</p>
                   </div>
                   <div className="p-2">
                     <ReportColumnTable
@@ -7811,8 +7813,9 @@ export function ReportsModule({
                       height={480}
                       footerLabel={tm('totalExpense')}
                       onRowClick={(row) => {
-                        if (deletingExpenseKey) return;
-                        void deleteDailyExpenseRow(row);
+                        const resolved = resolveDailyExpenseRowClick(row);
+                        if (resolved.action !== 'detail') return;
+                        setDailyExpenseDetail(resolved.detail);
                       }}
                       columns={[
                         { key: 'ficheNo', header: tm('receiptFicheNo'), size: 140 },
@@ -7896,6 +7899,67 @@ export function ReportsModule({
                 </div>
               </div>
             )}
+
+            {dailyExpenseDetail ? (
+              <PercentBodyModal
+                onClose={() => setDailyExpenseDetail(null)}
+                size="compact"
+                ariaLabel={tm('expenseDetails')}
+              >
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white flex items-center justify-between shrink-0">
+                  <div>
+                    <h3 className="text-base font-extrabold tracking-tight">{tm('expenseDetails')}</h3>
+                    <p className="text-[11px] font-semibold text-blue-100/90 mt-0.5">{dailyExpenseDetail.ficheNo}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDailyExpenseDetail(null)}
+                    className="p-1.5 rounded-lg hover:bg-white/15 active:scale-95 transition"
+                    aria-label={t.close}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <PercentBodyModalScrollBody className="p-6">
+                  <ul className="space-y-2 text-[13px] text-slate-600">
+                    {(
+                      [
+                        [tm('receiptFicheNo'), dailyExpenseDetail.ficheNo],
+                        [tm('hourLabel'), dailyExpenseDetail.timeLabel],
+                        [tm('type'), dailyExpenseDetail.typeLabel],
+                        [tm('category'), dailyExpenseDetail.category],
+                        [tm('description'), dailyExpenseDetail.description || '—'],
+                        [
+                          tm('fxOriginalAmount'),
+                          `${formatNumber(dailyExpenseDetail.amount, 2, false)}${dailyExpenseDetail.currencyCode ? ` ${dailyExpenseDetail.currencyCode}` : ''}`,
+                        ],
+                        [
+                          `${tm('fxBaseEquivalent')} (${reportCurrency})`,
+                          dailyExpenseDetail.baseAmount != null && Number.isFinite(dailyExpenseDetail.baseAmount)
+                            ? formatNumber(dailyExpenseDetail.baseAmount, 2, false)
+                            : '—',
+                        ],
+                        [tm('paymentLabel_rep'), dailyExpenseDetail.paymentLabel],
+                      ] as Array<[string, string]>
+                    ).map(([label, value]) => (
+                      <li key={label} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+                        <span className="font-semibold text-slate-500">{label}</span>
+                        <span className="font-bold text-slate-800 text-right">{value}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </PercentBodyModalScrollBody>
+                <div className="p-5 border-t border-slate-100 bg-slate-50/60 flex items-center justify-end shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setDailyExpenseDetail(null)}
+                    className="h-10 px-5 rounded-2xl bg-blue-600 text-white font-bold uppercase text-[12px] tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 active:scale-[0.98]"
+                  >
+                    {t.close}
+                  </button>
+                </div>
+              </PercentBodyModal>
+            ) : null}
 
             <Modal
               open={reportConfirmOpen}

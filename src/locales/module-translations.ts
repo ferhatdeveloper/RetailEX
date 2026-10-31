@@ -12083,10 +12083,10 @@ export const excelModuleTranslations = {
     ku: 'پسوڵەی خەرجی، مووچە، پێشەکی و پارەدانی حساب (هێڵی سندووقی پەیوەندیدار دووجار نادرێت).',
   },
   dailyExpenseClickToDeleteHint: {
-    tr: 'Satıra tıklayın veya çöp ikonuna basın — onay sonrası kayıt silinir (kasa bakiyesi geri alınır).',
-    en: 'Click a row or the trash icon — after confirmation the record is deleted (cash balance is reversed).',
-    ar: 'انقر على صف أو أيقونة الحذف — بعد التأكيد يُحذف السجل (يُعكس رصيد الصندوق).',
-    ku: 'سەر ڕیز یان ئایکۆنی سڕینەوە کلیک بکە — دوای پشتڕاستکردنەوە تۆمار دەسڕدرێتەوە (باڵانسی سندووق دەگەڕێتەوە).',
+    tr: 'Satıra tıklayınca fiş detayı açılır. Silme yalnızca çöp ikonundadır.',
+    en: 'Click a row to open the slip detail. Deletion stays on the trash icon.',
+    ar: 'انقر على الصف لفتح تفاصيل السند. الحذف يبقى على أيقونة السلة.',
+    ku: 'کلیک لەسەر ڕیز وردەکاری پسوڵە دەکاتەوە. سڕینەوە تەنها لەسەر ئایکۆنی سڕینەوە دەمێنێتەوە.',
   },
   dailyNetAfterExpense: { tr: 'Net (ciro - gider)', en: 'Net (revenue - expense)', ar: 'صافي (الإيراد - المصروف)', ku: 'خاوێن (داهات - خەرجی)' },
   /**

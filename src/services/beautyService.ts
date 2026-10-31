@@ -8986,6 +8986,8 @@ export const beautyService = {
         sale_group_id: string | null;
         created_at: string | null;
         deposit_date: string | null;
+        /** Kapanış günü. Erken gelen tamamlanmış hizmetin rapor tarihidir. */
+        updated_at: string | null;
     }>> {
         const start = String(startYmd || '').trim();
         const end = String(endYmd || '').trim();
@@ -9007,11 +9009,17 @@ export const beautyService = {
         // Parametre sırası: $1=start, $2=end, sonra opsiyonel filtreler,
         // sonda $N=fn (firm filtresi) JOIN'ler için tek seferlik kullanılır.
         const params: unknown[] = [start, end];
-        // Tarih kuralı prePaymentListedYmd ile aynıdır. Kapanan hizmet randevu
-        // gününde kalır. Açık peşinat, tutar fiyatı karşılasa da tahsilat günündedir.
+        // Tarih kuralı prePaymentListedYmd ile aynıdır. Kapanan hizmet, işin
+        // yapıldığı gündür. Erken gelen müşteride bu gün updated_at günüdür;
+        // planlanan randevu günü kayıtta durur. Açık peşinat tahsilat günündedir.
         const listedDate = `
             CASE
-                WHEN LOWER(TRIM(COALESCE(pas.status, ''))) IN ('completed', 'closed') THEN pas.appointment_date
+                WHEN LOWER(TRIM(COALESCE(pas.status, ''))) IN ('completed', 'closed')
+                     AND a.updated_at IS NOT NULL
+                     AND a.updated_at::date < pas.appointment_date
+                    THEN a.updated_at::date
+                WHEN LOWER(TRIM(COALESCE(pas.status, ''))) IN ('completed', 'closed')
+                    THEN pas.appointment_date
                 WHEN pas.payment_state IN ('deposit_only', 'partial')
                      OR a.deposit_date IS NOT NULL
                      OR (pas.payment_state = 'paid' AND COALESCE(pas.deposit_amount, 0) <> 0)
@@ -9083,6 +9091,7 @@ export const beautyService = {
                 a.sale_group_id::text                          AS sale_group_id,
                 a.created_at                                   AS created_at,
                 a.deposit_date                                 AS deposit_date,
+                to_char(a.updated_at::date, 'YYYY-MM-DD')      AS updated_at,
                 -- 16.10.2026 — cari_avans toplamı (müşteri bazında).
                 -- Randevuya deposit fişi bağlanmamış olsa bile cari_avans
                 -- tablosunda açık/uygulanmış avans varsa "Alınan Ödeme"
@@ -9125,7 +9134,7 @@ export const beautyService = {
                 GROUP BY customer_id
             ) ca ON ca.customer_id = pas.customer_id::text
             WHERE ${where.join(' AND ')}
-            ORDER BY pas.appointment_date DESC,
+            ORDER BY (${listedDate}) DESC,
                      a.appointment_time DESC NULLS LAST,
                      a.created_at DESC NULLS LAST
             LIMIT 1000
@@ -9157,6 +9166,7 @@ export const beautyService = {
                 sale_group_id: r.sale_group_id ? String(r.sale_group_id) : null,
                 created_at: r.created_at ? String(r.created_at) : null,
                 deposit_date: r.deposit_date ? String(r.deposit_date) : null,
+                updated_at: r.updated_at ? String(r.updated_at).slice(0, 10) : null,
                 // Müşteri avansı bilgi alanıdır. Toplam tutara eklenmez;
                 // depozito payı rapor gösteriminde ayrıca bölünür.
                 avans_total: Number(r.avans_total) || 0,
