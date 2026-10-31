@@ -1645,10 +1645,8 @@ export interface CashRegisterDistributionLine {
   /** `KASA.001 — MERKEZ KASA` */
   label: string;
   /**
-   * Kasanın içindeki tutar: dönem sonu bakiyesi
-   * (`computeCashBalanceForRegister`, dateTo'ya kadar).
-   * Nakit ve kart aynı hareketi iki kez saymaz. Rezervasyon bu bakiyenin
-   * içindedir; satır tutarına ikinci kez eklenmez.
+   * Kasa Durumu özetinde seçili aralığın hareket neti.
+   * Aralık öncesi açılış bu tutara eklenmez.
    */
   amount: number;
 }
@@ -1690,6 +1688,62 @@ export function cashRegisterDistributionLines(
 
 export function sumCashRegisterDistribution(lines: CashRegisterDistributionLine[]): number {
   return round2((lines || []).reduce((sum, line) => sum + num(line.amount), 0));
+}
+
+/**
+ * Hareket listesinin neti. Aralık dışındaki satır bu listeye girmez.
+ * Virman iki bacak toplanınca şirket bakiyesini değiştirmez.
+ */
+export function cashStatusMovementNet(movements: readonly { amount?: number }[]): number {
+  return round2((movements || []).reduce((sum, row) => sum + num(row.amount), 0));
+}
+
+/**
+ * Kasalar tablosundaki içindeki tutar.
+ * Tutar, aynı hareket listesinin o kasadaki netidir.
+ * Aralık öncesi açılış eklenmez. Bilinen kasa, aralıkta hareketi yoksa 0 yazar.
+ */
+export function cashStatusPeriodRegisterLines(input: {
+  movements: readonly { registerId?: string; registerName?: string; amount?: number }[];
+  registers?: ReadonlyArray<{ id: string; code?: string | null; name?: string | null }>;
+  unassignedLabel?: string;
+}): CashRegisterDistributionLine[] {
+  const totals = new Map<string, number>();
+  const movementNames = new Map<string, string>();
+  for (const row of input.movements || []) {
+    const id = String(row.registerId || '').trim() || CASH_REGISTER_UNASSIGNED_ID;
+    totals.set(id, round2((totals.get(id) || 0) + num(row.amount)));
+    const named = String(row.registerName || '').trim();
+    if (named && !movementNames.has(id)) movementNames.set(id, named);
+  }
+  const meta = new Map<string, { code: string; name: string }>();
+  for (const register of input.registers || []) {
+    const id = String(register.id || '').trim();
+    if (!id) continue;
+    meta.set(id, {
+      code: String(register.code || '').trim(),
+      name: String(register.name || register.code || '').trim(),
+    });
+    if (!totals.has(id)) totals.set(id, 0);
+  }
+  const lines: CashRegisterDistributionLine[] = [];
+  for (const [id, amount] of totals) {
+    if (id === CASH_REGISTER_UNASSIGNED_ID && Math.abs(amount) <= 0.004) continue;
+    const known = meta.get(id);
+    const code = known?.code || '';
+    const name = known?.name
+      || movementNames.get(id)
+      || (id === CASH_REGISTER_UNASSIGNED_ID ? String(input.unassignedLabel || '').trim() : '');
+    lines.push({
+      id,
+      code,
+      name,
+      label: formatCashRegisterDistributionLabel(code, name) || name || code,
+      amount: round2(amount),
+    });
+  }
+  lines.sort((a, b) => a.label.localeCompare(b.label, 'tr'));
+  return lines;
 }
 
 export interface CashRegisterDrawerLine {

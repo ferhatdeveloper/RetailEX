@@ -85,7 +85,10 @@ export interface CashStatusQueryRange {
   from: string;
   to: string;
   filtered: boolean;
-  /** Filtresizken yeşil kutu kasalar toplamıdır; yıl formülü bu tutarı ezmez. */
+  /**
+   * Eski üç kutu çağrısı için durur.
+   * Yeşil kutu ve kasanın içindeki tutar bunu okumaz; ikisi de bu aralığın hareket netidir.
+   */
   balanceFromRegisters: boolean;
 }
 
@@ -151,9 +154,9 @@ export function buildCashStatusRange(
 }
 
 /**
- * Filtresiz: giren ve çıkan yılbaşından yıl sonuna, bakiye kasalar toplamı.
- * Filtreli: üç kutu ve kasa satırları yalnızca seçilen aralık.
- * Hazır düğme veya elle girilen başlangıç/bitiş olduğu gibi kalır.
+ * Filtresiz: hareket aralığı yılbaşından yıl sonuna (1 Ocak ve 31 Aralık dahil).
+ * Filtreli: hazır düğme veya elle girilen başlangıç/bitiş olduğu gibi kalır.
+ * Yeşil kutu ve kasanın içindeki tutar bu aralığın hareket netidir.
  */
 export function resolveCashStatusQuery(
   value: CashStatusDateValue,
@@ -173,4 +176,15 @@ export function resolveCashStatusQuery(
     filtered: true,
     balanceFromRegisters: false,
   };
+}
+
+/**
+ * Yeşil kutu alt yazısı.
+ * Tarih boşken yıl aralığı güncel kasa bakiyesidir.
+ * Hazır düğme veya elle girilen aralıkta yazı seçili dönemi söyler.
+ */
+export function cashStatusBalanceHintKey(
+  filtered: boolean,
+): 'cashStatusBalanceTodayHint' | 'cashStatusBalanceRangeHint' {
+  return filtered ? 'cashStatusBalanceRangeHint' : 'cashStatusBalanceTodayHint';
 }

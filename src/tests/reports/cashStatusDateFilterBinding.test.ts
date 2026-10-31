@@ -18,9 +18,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  cashRegisterDistributionLines,
-  cashRegisterStatusFromLedger,
+  cashStatusMovementNet,
   cashStatusMovementRows,
+  cashStatusPeriodRegisterLines,
   cashStatusThreeBoxes,
   sumCashRegisterDistribution,
 } from '../../utils/cashStatusTotals';
@@ -184,35 +184,47 @@ describe('Kasa Durumu filtre bağımlılığı', () => {
     expect(rows[0].amount).toBe(-30_000);
   });
 
-  it('Kasalar tablosu da aynı aralığı kullanır (filtreye bağlı)', () => {
+  it('Kasalar tablosu da aynı aralığın hareket netini kullanır', () => {
     const todayQuery = resolveCashStatusQuery(buildCashStatusRange('today', 0, '', '', noon), noon);
-    const todayRows = cashRegisterStatusFromLedger({
-      registers: REGISTERS,
+    const todayMovements = cashStatusMovementRows({
       lines: LEDGER,
       dateFrom: todayQuery.from,
       dateTo: todayQuery.to,
+      customerCollectionsInSalesCash: true,
+    });
+    const todayLines = cashStatusPeriodRegisterLines({
+      movements: todayMovements,
+      registers: REGISTERS,
       unassignedLabel: 'Kasaya bağlanmayan',
     });
-    const todayLines = cashRegisterDistributionLines(todayRows);
-    // Kasalar tablosu ARALIK SONU bakiyesini gösterir (dateTo'ya kadar birikim):
-    // açılış −38.500 + borç 500 − cari ödeme 30.000 − kur farkı 5.000
-    // + rezervasyon 10.000 + satış 318.500 = 255.500
-    expect(sumCashRegisterDistribution(todayLines)).toBe(255_500);
+    const todayNet = cashStatusMovementNet(todayMovements);
+    // Bugün: kur farkı −5.000 + rezervasyon 10.000 + satış 318.500.
+    // 1 Ocak açılışı ve Eylül ödemesi bu aralıkta yoktur.
+    expect(todayNet).toBe(323_500);
+    expect(todayNet).not.toBe(255_500);
+    expect(sumCashRegisterDistribution(todayLines)).toBe(todayNet);
+    expect(todayLines.find((row) => row.id === 'k1')?.amount).toBe(todayNet);
+    expect(todayLines.find((row) => row.id === 'k2')?.amount).toBe(0);
 
     const lastMonthQuery = resolveCashStatusQuery(
       buildCashStatusRange('lastMonth', 0, '', '', noon),
       noon,
     );
-    const lastMonthRows = cashRegisterStatusFromLedger({
-      registers: REGISTERS,
+    const lastMonthMovements = cashStatusMovementRows({
       lines: LEDGER,
       dateFrom: lastMonthQuery.from,
       dateTo: lastMonthQuery.to,
+      customerCollectionsInSalesCash: true,
+    });
+    const lastMonthLines = cashStatusPeriodRegisterLines({
+      movements: lastMonthMovements,
+      registers: REGISTERS,
       unassignedLabel: 'Kasaya bağlanmayan',
     });
-    const lastMonthLines = cashRegisterDistributionLines(lastMonthRows);
-    // Eylül sonu bakiyesi: açılış −38.500 + 500 − 30.000 = −68.000
-    expect(sumCashRegisterDistribution(lastMonthLines)).toBe(-68_000);
+    const lastMonthNet = cashStatusMovementNet(lastMonthMovements);
+    expect(lastMonthNet).toBe(-30_000);
+    expect(lastMonthNet).not.toBe(-68_000);
+    expect(sumCashRegisterDistribution(lastMonthLines)).toBe(lastMonthNet);
   });
 
   it('gider kutusu kasadaki gider kalemlerinin toplamıdır ve çift sayım yoktur', () => {
@@ -258,9 +270,8 @@ describe('Kasa Durumu filtre bağımlılığı', () => {
     expect(outsideRange.totalOut).toBe(5_000);
   });
 
-  it('bakiye = önceki bakiye + giren − çıkan (aralık sonu)', () => {
+  it('görünen bakiye seçili aralığın hareket netidir; önceki bakiye eklenmez', () => {
     const query = resolveCashStatusQuery(buildCashStatusRange('today', 0, '', '', noon), noon);
-    // Satış nakdi 318.500 + rezervasyon peşinatı 10.000 = 328.500 (peşinat bir kez).
     const boxes = cashStatusThreeBoxes({
       salesCash: 328_500,
       expense: 0,
@@ -269,15 +280,29 @@ describe('Kasa Durumu filtre bağımlılığı', () => {
       dateTo: query.to,
       saleReceiptKeys: ['BEA-2026-00001'],
       customerCollectionsInSalesCash: true,
+      countLedgerInflows: true,
       balanceFromRegisters: false,
     });
-    // Aralık öncesi bakiye: açılış −38.500 + borç 500 − cari ödeme 30.000 = −68.000
+    const movements = cashStatusMovementRows({
+      lines: LEDGER,
+      dateFrom: query.from,
+      dateTo: query.to,
+      saleReceiptKeys: ['BEA-2026-00001'],
+      customerCollectionsInSalesCash: true,
+    });
+    const listed = cashStatusPeriodRegisterLines({
+      movements,
+      registers: REGISTERS,
+      unassignedLabel: 'Kasaya bağlanmayan',
+    });
+    const net = cashStatusMovementNet(movements);
     expect(boxes.priorBalance).toBe(-68_000);
     expect(boxes.totalIn).toBe(328_500);
     expect(boxes.totalOut).toBe(5_000);
-    expect(boxes.balance).toBe(boxes.priorBalance + boxes.totalIn - boxes.totalOut);
-    // Aralık sonu bakiye, Kasalar tablosu toplamıyla aynı olmalı (255.500).
-    expect(boxes.balance).toBe(255_500);
+    expect(net).toBe(boxes.totalIn - boxes.totalOut);
+    expect(net).toBe(323_500);
+    expect(net).not.toBe(boxes.priorBalance + boxes.totalIn - boxes.totalOut);
+    expect(sumCashRegisterDistribution(listed)).toBe(net);
   });
 
   it('kâr dağıtımı ve ortak sermaye ödemesi işletme gideri değildir', () => {

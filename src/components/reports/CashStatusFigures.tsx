@@ -149,10 +149,10 @@ export function CashStatusFigures({
   totalIn: number;
   /** Seçili aralıkta kasadan çıkan. */
   totalOut: number;
-  /** Aralık bugünde bitiyorsa güncel kasa; geçmişte aralık sonu bakiyesi. */
+  /** Seçili aralığın hareket neti. Aralık öncesi açılış eklenmez. */
   balance: number;
   currency: string;
-  /** Kasalar tablosu. Tutar, seçili aralığın son günündeki bakiyedir. */
+  /** Kasalar tablosu. Tutar, aynı aralıktaki hareket netidir. */
   registerLines?: CashRegisterDistributionLine[];
   labels: CashStatusFigureLabels;
   onRegisterRowClick?: (id: string) => void;

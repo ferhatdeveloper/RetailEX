@@ -214,7 +214,8 @@ describe('Kasa Durumu yerleşimi', () => {
     const nextTab = cashBlock.indexOf("selectedTab === 'discount-report'");
     const summary = nextTab > 0 ? cashBlock.slice(0, nextTab) : cashBlock;
     expect(moduleSource).toContain("tm('cashStatusTotalIn')");
-    expect(summary).toContain('formulaBalance');
+    expect(summary).toContain('cashStatusMovementNet');
+    expect(summary).not.toContain('cashStatusDisplayedBalance');
     expect(summary).not.toContain("tm('cardTypes')");
     expect(summary).not.toContain('cash-status-card-types');
     expect(summary).not.toContain('reservationDeposit={');

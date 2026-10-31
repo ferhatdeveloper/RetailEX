@@ -12284,9 +12284,9 @@ export const excelModuleTranslations = {
     ku: 'نەقدی دەرچوو لە سەرەتای ساڵەوە تا کۆتایی ساڵ',
   },
   cashStatusBalanceTodayHint: {
-    tr: 'Güncel kasa bakiyesi',
-    en: 'Current cash balance',
-    ar: 'الرصيد النقدي الحالي',
+    tr: 'Kasa güncel bakiyesi',
+    en: 'Current till balance',
+    ar: 'الرصيد الحالي للصندوق',
     ku: 'باڵانسی ئێستای سندوق',
   },
   cashStatusBalancePastHint: {
@@ -12294,6 +12294,12 @@ export const excelModuleTranslations = {
     en: 'Cash balance at the end of the range',
     ar: 'الرصيد في نهاية الفترة',
     ku: 'باڵانسی سندوق لە کۆتایی ماوە',
+  },
+  cashStatusBalanceRangeHint: {
+    tr: 'Seçili aralıktaki kasa bakiyesi',
+    en: 'Cash balance for the selected range',
+    ar: 'رصيد الصندوق للفترة المحددة',
+    ku: 'باڵانسی سندوق بۆ ماوەی هەڵبژێردراو',
   },
   todayCash: { tr: 'Günlük Nakit', en: 'Daily Cash', ar: 'النقد اليومي', ku: 'کاشی ڕۆژانە' },
   todayCard: { tr: 'Günlük Kart', en: 'Daily Card', ar: 'البطاقة اليومية', ku: 'کارتی ڕۆژانە' },

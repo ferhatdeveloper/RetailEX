@@ -127,6 +127,7 @@ import {
 } from '../../utils/saleWallClock';
 import {
   buildCashStatusRange,
+  cashStatusBalanceHintKey,
   emptyCashStatusDate,
   resolveCashStatusQuery,
   type CashStatusDateValue,
@@ -186,16 +187,15 @@ import {
 } from '../../utils/paymentTypeDistribution';
 import {
   cashRefundsFromSales,
-  cashRegisterDistributionLines,
   cashRegisterDrawerLines,
   cashRegisterExpenseGaps,
   cashRegisterStatusFromLedger,
-  cashStatusDisplayedBalance,
+  cashStatusMovementNet,
   cashStatusMovementRows,
+  cashStatusPeriodRegisterLines,
   cashStatusThreeBoxes,
   cashStatusWithVouchers,
   foldReservationIntoCashStatus,
-  sumCashRegisterDistribution,
   type CashStatusPaymentLine,
 } from '../../utils/cashStatusTotals';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
@@ -1358,6 +1358,11 @@ export function ReportsModule({
     : zReportActive
       ? zReportRange.to
       : selectedDateTo;
+  /** Kasa defteri bu anahtarla gelir. Aralık değişince eski satırlar ekrana yazılmaz. */
+  const cashStatusRangeKey = `${ledgerFrom}|${ledgerTo}`;
+  const [cashStatusLoadedRangeKey, setCashStatusLoadedRangeKey] = useState('');
+  const cashStatusRangeReady = cashStatusLoadedRangeKey === cashStatusRangeKey;
+  const cashExpenseTicketRef = useRef(0);
   /** Avans ve randevu. Z sekmesinde filtrenin aralığı, diğer sekmelerde mevcut dönem. */
   const movementFrom = zReportActive ? zReportRange.from : selectedDateFrom;
   const movementTo = zReportActive ? zReportRange.to : selectedDateTo;
@@ -1552,6 +1557,8 @@ export function ReportsModule({
   }, [comparisonPeriod, rememberDepositRefs]);
 
   const loadCashExpenses = useCallback(async () => {
+    const rangeKey = `${ledgerFrom}|${ledgerTo}`;
+    const ticket = ++cashExpenseTicketRef.current;
     try {
       const [expenseRows, cashLines, ledgerLines, registerRows] = await Promise.all([
         expenseAPI.getAll({ startDate: ledgerFrom, endDate: ledgerTo }),
@@ -1632,6 +1639,7 @@ export function ReportsModule({
         };
       });
 
+      if (ticket !== cashExpenseTicketRef.current) return;
       unified.sort((a, b) => String(b.date).localeCompare(String(a.date)));
       setDailyExpenseRows(unified);
 
@@ -1639,10 +1647,13 @@ export function ReportsModule({
       setCashRegisterLedgerLines(
         Array.isArray(ledgerLines) ? ledgerLines : (Array.isArray(cashLines) ? cashLines : []),
       );
+      setCashStatusLoadedRangeKey(rangeKey);
     } catch {
+      if (ticket !== cashExpenseTicketRef.current) return;
       setDailyExpenseRows([]);
       setKasaLinesForSelectedDate([]);
       setCashRegisterLedgerLines([]);
+      setCashStatusLoadedRangeKey(rangeKey);
     }
   }, [ledgerFrom, ledgerTo, reportCurrency]);
 
@@ -5336,9 +5347,7 @@ export function ReportsModule({
     totalOut: tm('cashStatusTotalOut'),
     totalOutHint: cashStatusQuery.filtered ? tm('cashStatusTotalOutHint') : tm('cashStatusTotalOutYearHint'),
     balance: tm('cashStatusBalance'),
-    balanceHint: (!cashStatusQuery.filtered || cashStatusQuery.to >= istanbulTodayDateKey())
-      ? tm('cashStatusBalanceTodayHint')
-      : tm('cashStatusBalancePastHint'),
+    balanceHint: tm(cashStatusBalanceHintKey(cashStatusQuery.filtered)),
     registersTitle: tm('cashStatusTabRegisters'),
     registerName: tm('rptCashRegisterName'),
     registerAmount: tm('cashStatusRegisterAmount'),
@@ -8697,16 +8706,17 @@ export function ReportsModule({
 
             {selectedTab === 'cash-status' && (() => {
               const cashStatus = getCashStatus();
-              const registerRows = getCashRegisterStatusRows();
-              const registerLines = cashRegisterDistributionLines(registerRows, {
-                unpostedExpense: cashStatus.expenses,
+              const movements = cashStatus.movements || [];
+              const registerLines = cashStatusPeriodRegisterLines({
+                movements,
+                registers: cashRegisterCards.map((kasa) => ({
+                  id: String(kasa.id || ''),
+                  code: kasa.kasa_kodu,
+                  name: kasa.kasa_adi || kasa.kasa_kodu || kasa.id,
+                })),
+                unassignedLabel: tm('cashStatusUnassignedRegister'),
               });
-              const registerTotal = sumCashRegisterDistribution(registerLines);
-              const balance = cashStatusDisplayedBalance({
-                formulaBalance: cashStatus.formulaBalance,
-                registerTotal,
-                balanceFromRegisters: cashStatusQuery.balanceFromRegisters && registerLines.length > 0,
-              });
+              const balance = cashStatusMovementNet(movements);
               return (
                 <div className="space-y-4">
                   <div className="bg-white rounded-lg border p-4">
@@ -8743,7 +8753,14 @@ export function ReportsModule({
                     </button>
                   </div>
 
-                  {cashStatusPane === 'registers' ? renderCashRegisterPanels() : (
+                  {!cashStatusRangeReady ? (
+                    <div
+                      data-testid="cash-status-loading"
+                      className="bg-white rounded-lg border p-8 text-center text-sm text-slate-500"
+                    >
+                      {tm('reportsLoadingShort')}
+                    </div>
+                  ) : cashStatusPane === 'registers' ? renderCashRegisterPanels() : (
                     <CashStatusFigures
                       totalIn={cashStatus.totalIn}
                       totalOut={cashStatus.totalOut}
