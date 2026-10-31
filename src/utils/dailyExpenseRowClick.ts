@@ -4,8 +4,13 @@
  * Tıklama fiş detayını açar; fatura silme eylemi üretmez ve kasa satırını silmez.
  */
 
+export const EXPENSE_NOTES_EMPTY = 'Not yok';
+
 export interface DailyExpenseClickRow {
   ficheNo?: string | null;
+  documentNo?: string | null;
+  notes?: string | null;
+  cashRegisterLabel?: string | null;
   timeLabel?: string | null;
   typeLabel?: string | null;
   category?: string | null;
@@ -18,6 +23,9 @@ export interface DailyExpenseClickRow {
 
 export interface DailyExpenseDetailModel {
   ficheNo: string;
+  documentNo: string;
+  notes: string;
+  cashRegisterLabel: string;
   timeLabel: string;
   typeLabel: string;
   category: string;
@@ -45,6 +53,9 @@ export function resolveDailyExpenseRowClick(row: DailyExpenseClickRow): DailyExp
     action: 'detail',
     detail: {
       ficheNo: text(row.ficheNo),
+      documentNo: text(row.documentNo),
+      notes: text(row.notes, EXPENSE_NOTES_EMPTY),
+      cashRegisterLabel: text(row.cashRegisterLabel),
       timeLabel: text(row.timeLabel),
       typeLabel: text(row.typeLabel),
       category: text(row.category),

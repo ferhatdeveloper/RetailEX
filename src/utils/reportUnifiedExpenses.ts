@@ -153,8 +153,8 @@ function applyCashLineActor(expense: Expense, line: KasaIslemi | null | undefine
 }
 
 /**
- * Bağlı kasa çıkışındaki fiş no, kayıt anı ve ekleyen kişiyi gider pusulasına taşır.
- * Dolu belge no, created_at ve created_by ezilmez. Tutar değişmez.
+ * Bağlı kasa çıkışındaki fiş anahtarı, kayıt anı ve ekleyen kişiyi gider pusulasına taşır.
+ * Belge no olduğu gibi kalır. Kasa fişi ledger_fiche_no olur. Tutar değişmez.
  * Kasa satırında alan yoksa boş kalır.
  */
 function attachLinkedCashIdentity(expense: Expense, cashById: ReadonlyMap<string, KasaIslemi>): Expense {
@@ -163,9 +163,12 @@ function attachLinkedCashIdentity(expense: Expense, cashById: ReadonlyMap<string
   const line = cashById.get(linkedId);
   if (!line) return expense;
   const next: Expense = { ...expense };
-  if (blankRecordText(next.document_number)) {
-    const fiche = String(line.islem_no || '').trim();
-    if (!blankRecordText(fiche)) next.document_number = fiche;
+  const fiche = String(line.islem_no || '').trim();
+  if (blankRecordText(next.ledger_fiche_no) && !blankRecordText(fiche)) {
+    next.ledger_fiche_no = fiche;
+  }
+  if (blankRecordText(next.cash_register_id) && !blankRecordText(line.kasa_id)) {
+    next.cash_register_id = String(line.kasa_id);
   }
   if (blankRecordText(next.created_at)) {
     const created = String(line.olusturma_tarihi || '').trim();
@@ -281,6 +284,8 @@ export function mergeExpensesWithCashOuts(
       exchange_rate: cl.exchange_rate != null && Number.isFinite(Number(cl.exchange_rate)) ? Number(cl.exchange_rate) : null,
       payment_method: 'cash',
       document_number: String(cl.islem_no || '').trim() || undefined,
+      cash_register_id: cl.kasa_id || undefined,
+      ledger_fiche_no: String(cl.islem_no || '').trim() || undefined,
       store_id: '',
       cost_center_name: String(cl.cari_hesap_unvani || '').trim() || undefined,
       expense_date: day,

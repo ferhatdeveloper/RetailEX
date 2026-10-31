@@ -2863,7 +2863,14 @@ BEGIN
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, description TEXT, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_expense_cards');
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, phone VARCHAR(50), email VARCHAR(255), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_sales_reps');
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), code VARCHAR(50) NOT NULL, name VARCHAR(100) NOT NULL, description TEXT, is_active BOOLEAN DEFAULT true, firm_nr VARCHAR(10) NOT NULL, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, UNIQUE(code, firm_nr));', v_prefix || '_cost_centers');
-  EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), category VARCHAR(50) NOT NULL, description TEXT NOT NULL, amount DECIMAL(18,2) NOT NULL, payment_method VARCHAR(50) NOT NULL, document_number VARCHAR(100), document_url TEXT, store_id UUID, cost_center_id UUID, expense_date DATE NOT NULL, notes TEXT, created_by UUID, firm_nr VARCHAR(10) NOT NULL, cash_line_id UUID, cash_register_id UUID, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);', v_prefix || '_expenses');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), category VARCHAR(50) NOT NULL, description TEXT NOT NULL, amount DECIMAL(18,2) NOT NULL, payment_method VARCHAR(50) NOT NULL, document_number VARCHAR(100), document_url TEXT, store_id UUID, cost_center_id UUID, expense_date DATE NOT NULL, notes TEXT, created_by UUID, firm_nr VARCHAR(10) NOT NULL, cash_line_id UUID, cash_register_id UUID, fiche_no VARCHAR(20), created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);', v_prefix || '_expenses');
+  EXECUTE format('ALTER TABLE %I ADD COLUMN IF NOT EXISTS fiche_no VARCHAR(20)', v_prefix || '_expenses');
+  EXECUTE format(
+    'CREATE UNIQUE INDEX IF NOT EXISTS %I ON %I (firm_nr, fiche_no) WHERE fiche_no IS NOT NULL AND btrim(fiche_no) <> %L',
+    v_prefix || '_expenses_fiche_no_uidx',
+    v_prefix || '_expenses',
+    ''
+  );
 
   -- 9. Parties (cari polymorphism — müşteri/tedarikçi/personel/şirket ortağı)
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (

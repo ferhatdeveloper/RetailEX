@@ -55,7 +55,8 @@ import {
   type DailyReportScreenCardKey,
 } from '../../utils/dailyReportScreenCards';
 import { DailyReportKpiGrid, type DailyReportKpiCardModel } from './DailyReportKpiGrid';
-import { resolveDailyExpenseRowClick, type DailyExpenseDetailModel } from '../../utils/dailyExpenseRowClick';
+import { EXPENSE_NOTES_EMPTY, resolveDailyExpenseRowClick, type DailyExpenseDetailModel } from '../../utils/dailyExpenseRowClick';
+import { formatCashRegisterLabel, formatStoredExpenseFiche } from '../../utils/expenseFicheNo';
 import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
 import { dailyAvansPaymentLabel } from '../../utils/dailySalesDetailPaymentLabel';
 import {
@@ -970,6 +971,16 @@ type DailyExpenseRow = {
   sourceId: string;
   date: string;
   ficheNo: string;
+  /** Kullanıcının yazdığı belge no. Fiş no değildir. */
+  documentNo: string;
+  /** Gider formundaki not. Kasa tipi burada durmaz. */
+  notes: string;
+  cashRegisterLabel: string;
+  /**
+   * Ciro eşlemesi: belge doluysa belge, değilse bağlı kasa fişi.
+   * Ekrandaki 000001 fiş no’su bu anahtarın yerine geçmez.
+   */
+  ledgerFicheNo: string;
   typeCode: string;
   category: string;
   description: string;
@@ -1542,7 +1553,7 @@ export function ReportsModule({
 
   const loadCashExpenses = useCallback(async () => {
     try {
-      const [expenseRows, cashLines, ledgerLines] = await Promise.all([
+      const [expenseRows, cashLines, ledgerLines, registerRows] = await Promise.all([
         expenseAPI.getAll({ startDate: ledgerFrom, endDate: ledgerTo }),
         fetchKasaIslemleri({
           baslangic_tarihi: ledgerFrom,
@@ -1551,7 +1562,13 @@ export function ReportsModule({
         fetchKasaIslemleri({
           bitis_tarihi: `${ledgerTo}T23:59:59`,
         }).catch(() => null),
+        fetchKasalar().catch(() => [] as Kasa[]),
       ]);
+      const registerLabelById = new Map<string, string>();
+      for (const kasa of Array.isArray(registerRows) ? registerRows : []) {
+        const label = formatCashRegisterLabel(kasa.kasa_kodu, kasa.kasa_adi);
+        if (kasa.id && label) registerLabelById.set(String(kasa.id), label);
+      }
       const unifiedSrc = mergeExpensesWithCashOuts(
         Array.isArray(expenseRows) ? expenseRows : [],
         Array.isArray(cashLines) ? cashLines : [],
@@ -1572,15 +1589,24 @@ export function ReportsModule({
         const typeCode = isCashOut
           ? String(e.notes || '').trim().toUpperCase() || 'KASA_CIKIS'
           : 'GIDER_PUSULASI';
-        const fiche = String(e.document_number || '').trim();
+        const slipNo = formatStoredExpenseFiche(e.fiche_no);
+        const belgeRaw = String(e.document_number || '').trim();
+        const belgeShown = !belgeRaw || belgeRaw === '—' || belgeRaw === '-' ? '' : belgeRaw;
+        const ledger = String(e.ledger_fiche_no || '').trim();
+        const legacyFiche = belgeShown || ledger;
         const createdAt = String(e.created_at || '').trim();
         const enteredBy = expenseEnteredBy(e);
+        const registerId = String(e.cash_register_id || '').trim();
         return {
           key: isCashOut ? rawId : `exp-${rawId}`,
           sourceKind: isCashOut ? 'cash' : 'expense',
           sourceId,
           date: String(e.expense_date || e.created_at || ''),
-          ficheNo: fiche && fiche !== '—' && fiche !== '-' ? fiche : '—',
+          ficheNo: isCashOut ? (belgeShown || '—') : (slipNo || '—'),
+          documentNo: isCashOut ? '—' : (belgeShown || '—'),
+          notes: isCashOut ? '' : String(e.notes || '').trim(),
+          cashRegisterLabel: registerLabelById.get(registerId) || '—',
+          ledgerFicheNo: legacyFiche,
           typeCode,
           category: String(e.category || ''),
           description: String(e.description || ''),
@@ -4040,7 +4066,7 @@ export function ReportsModule({
       dailyKindGridRows,
       dailyExpenseRowsForReport.map((row) => ({
         key: row.key,
-        ficheNo: row.ficheNo,
+        ficheNo: row.ledgerFicheNo || '—',
         amount: row.amount,
         date: row.date,
         createdAt: row.createdAt,
@@ -4766,7 +4792,7 @@ export function ReportsModule({
     };
     for (const row of dailyExpenseRowsForReport) {
       if (!row.isCash) continue;
-      rememberExpenseKey(row.ficheNo);
+      rememberExpenseKey(row.ledgerFicheNo);
       rememberExpenseKey(row.sourceId);
     }
     // Satış nakdi (rezervasyon bir kez içinde) durur. Açılış alacak ve
@@ -7818,7 +7844,8 @@ export function ReportsModule({
                         setDailyExpenseDetail(resolved.detail);
                       }}
                       columns={[
-                        { key: 'ficheNo', header: tm('receiptFicheNo'), size: 140 },
+                        { key: 'ficheNo', header: tm('receiptFicheNo'), size: 110 },
+                        { key: 'documentNo', header: tm('documentNo'), size: 140, cell: (row) => row.documentNo || '—' },
                         { key: 'timeLabel', header: tm('hourLabel'), size: 120 },
                         { key: 'typeLabel', header: tm('type'), size: 140 },
                         { key: 'category', header: tm('category'), size: 140 },
@@ -7903,7 +7930,7 @@ export function ReportsModule({
             {dailyExpenseDetail ? (
               <PercentBodyModal
                 onClose={() => setDailyExpenseDetail(null)}
-                size="compact"
+                size="list"
                 ariaLabel={tm('expenseDetails')}
               >
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white flex items-center justify-between shrink-0">
@@ -7925,10 +7952,17 @@ export function ReportsModule({
                     {(
                       [
                         [tm('receiptFicheNo'), dailyExpenseDetail.ficheNo],
+                        [tm('documentNo'), dailyExpenseDetail.documentNo],
                         [tm('hourLabel'), dailyExpenseDetail.timeLabel],
                         [tm('type'), dailyExpenseDetail.typeLabel],
                         [tm('category'), dailyExpenseDetail.category],
                         [tm('description'), dailyExpenseDetail.description || '—'],
+                        [
+                          tm('notes'),
+                          dailyExpenseDetail.notes && dailyExpenseDetail.notes !== EXPENSE_NOTES_EMPTY
+                            ? dailyExpenseDetail.notes
+                            : (tm('expenseNotesEmpty') || EXPENSE_NOTES_EMPTY),
+                        ],
                         [
                           tm('fxOriginalAmount'),
                           `${formatNumber(dailyExpenseDetail.amount, 2, false)}${dailyExpenseDetail.currencyCode ? ` ${dailyExpenseDetail.currencyCode}` : ''}`,
@@ -7940,11 +7974,12 @@ export function ReportsModule({
                             : '—',
                         ],
                         [tm('paymentLabel_rep'), dailyExpenseDetail.paymentLabel],
+                        [tm('costCenterCashRegister'), dailyExpenseDetail.cashRegisterLabel || '—'],
                       ] as Array<[string, string]>
                     ).map(([label, value]) => (
-                      <li key={label} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
-                        <span className="font-semibold text-slate-500">{label}</span>
-                        <span className="font-bold text-slate-800 text-right">{value}</span>
+                      <li key={label} className="flex items-start justify-between gap-3 border-b border-slate-100 pb-2">
+                        <span className="font-semibold text-slate-500 shrink-0">{label}</span>
+                        <span className="font-bold text-slate-800 text-right break-words whitespace-pre-wrap">{value}</span>
                       </li>
                     ))}
                   </ul>

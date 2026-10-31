@@ -76,9 +76,13 @@ describe('günlük rapor gider satırı', () => {
     expect(click).not.toContain('reportsDeleteInvoiceBtn');
 
     const modalAt = screen.indexOf('{dailyExpenseDetail ? (');
-    const modal = screen.slice(modalAt, modalAt + 1800);
+    const modalEnd = screen.indexOf('<Modal', modalAt);
+    const modal = screen.slice(modalAt, modalEnd > modalAt ? modalEnd : modalAt + 4000);
     expect(modal).toContain('<PercentBodyModal');
-    expect(modal).toContain('size="compact"');
+    expect(modal).toContain('size="list"');
+    expect(modal).toContain("tm('notes')");
+    expect(modal).toContain("tm('documentNo')");
+    expect(modal).toContain("tm('costCenterCashRegister')");
     expect(modal).not.toContain('deleteDailyExpenseRow');
     expect(modal).not.toContain('reportsDeleteInvoiceBtn');
   });

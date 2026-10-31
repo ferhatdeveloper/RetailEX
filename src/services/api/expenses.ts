@@ -8,6 +8,7 @@ import { loadBookCurrencies, resolveRegisterCashFx } from './cashFxResolve';
 import { expenseFAmountOnUpdate } from '../../utils/cashFxPosting';
 import { parseDecimalStringForInput } from '../../utils/numberFormatter';
 import { resolveCashLineActorWrite } from '../../utils/cashLineActor';
+import { isExpenseFicheConflict, nextExpenseFicheNo } from '../../utils/expenseFicheNo';
 
 /**
  * IQD / TR tutar ayrıştırma: "45.000" → 45000, "450.000" → 450000.
@@ -77,6 +78,16 @@ export interface Expense {
   amount: number;
   payment_method: string;
   document_number?: string;
+  /**
+   * Firma gider fiş sırası (000001). Belge no değildir.
+   * Kasa tutarı, işaret ve kur bu alandan etkilenmez.
+   */
+  fiche_no?: string | null;
+  /**
+   * Bağlı kasa fişi. Ekran fiş no değildir; ciro eşlemesi için.
+   * Veritabanı kolonu değildir. Güncelleme gövdesine yazılmaz.
+   */
+  ledger_fiche_no?: string | null;
   document_url?: string;
   store_id: string;
   cost_center_id?: string;
@@ -124,6 +135,7 @@ function buildExpenseInsertBody(
     amount: expense.amount,
     payment_method: expense.payment_method,
     document_number: emptyTextToNull(expense.document_number),
+    fiche_no: emptyTextToNull(expense.fiche_no),
     document_url: emptyTextToNull(expense.document_url),
     store_id: emptyUuidToNull(expense.store_id),
     cost_center_id: emptyUuidToNull(expense.cost_center_id),
@@ -176,36 +188,80 @@ export const expenseAPI = {
       }
       return;
     }
+    const tableName = expenseTableName();
+    let ensured = false;
     try {
       await postgres.query('SELECT public.ensure_firm_expense_tables($1)', [firmNr]);
-      return;
+      ensured = true;
     } catch {
       /* migration 078 öncesi — legacy CREATE */
     }
-    const tableName = expenseTableName();
-    await postgres.query(`
-      CREATE TABLE IF NOT EXISTS ${tableName} (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        category VARCHAR(50) NOT NULL,
-        description TEXT NOT NULL,
-        amount DECIMAL(18,2) NOT NULL,
-        payment_method VARCHAR(50) NOT NULL,
-        document_number VARCHAR(100),
-        document_url TEXT,
-        store_id UUID,
-        cost_center_id UUID,
-        expense_date DATE NOT NULL,
-        notes TEXT,
-        created_by UUID,
-        firm_nr VARCHAR(10) NOT NULL,
-        cash_line_id UUID,
-        cash_register_id UUID,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    // Backward compatibility for existing databases
-    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS cash_line_id UUID`);
-    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS cash_register_id UUID`);
+    if (!ensured) {
+      await postgres.query(`
+        CREATE TABLE IF NOT EXISTS ${tableName} (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          category VARCHAR(50) NOT NULL,
+          description TEXT NOT NULL,
+          amount DECIMAL(18,2) NOT NULL,
+          payment_method VARCHAR(50) NOT NULL,
+          document_number VARCHAR(100),
+          document_url TEXT,
+          store_id UUID,
+          cost_center_id UUID,
+          expense_date DATE NOT NULL,
+          notes TEXT,
+          created_by UUID,
+          firm_nr VARCHAR(10) NOT NULL,
+          cash_line_id UUID,
+          cash_register_id UUID,
+          fiche_no VARCHAR(20),
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS cash_line_id UUID`);
+      await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS cash_register_id UUID`);
+    }
+    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS fiche_no VARCHAR(20)`);
+    try {
+      await postgres.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS ${tableName}_fiche_no_uidx
+         ON ${tableName} (firm_nr, fiche_no)
+         WHERE fiche_no IS NOT NULL AND btrim(fiche_no) <> ''`,
+      );
+    } catch (indexErr) {
+      console.warn('[ExpenseAPI] fiş no indeksi:', indexErr);
+    }
+  },
+
+  /**
+   * Bu firmanın sonraki gider fiş no’su. Kayıt yoksa 000001.
+   * Numarasız eski satırlar yeniden numaralanmaz.
+   */
+  async peekNextFicheNo(): Promise<string> {
+    try {
+      await this.ensureTableExists();
+      const firmNr = padExpenseFirmNr();
+      const tableName = expenseTableName();
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest
+          .get<Array<{ fiche_no?: string | null }>>(
+            expenseTablePath(),
+            { select: 'fiche_no', firm_nr: `eq.${firmNr}`, limit: '20000' },
+            { schema: 'public' },
+          )
+          .catch(() => [] as Array<{ fiche_no?: string | null }>);
+        return nextExpenseFicheNo(Array.isArray(rows) ? rows : []);
+      }
+      const { rows } = await postgres.query(
+        `SELECT fiche_no FROM ${tableName} WHERE firm_nr = $1 AND fiche_no IS NOT NULL`,
+        [firmNr],
+      );
+      return nextExpenseFicheNo(rows || []);
+    } catch (error) {
+      console.warn('[ExpenseAPI] fiş no okunamadı:', error);
+      return nextExpenseFicheNo([]);
+    }
   },
 
   /**
@@ -284,7 +340,10 @@ export const expenseAPI = {
   /**
    * Create new expense
    */
-  async create(expense: Omit<Expense, 'id' | 'firm_nr' | 'created_at'>): Promise<Expense | null> {
+  async create(
+    expense: Omit<Expense, 'id' | 'firm_nr' | 'created_at'>,
+    attempt = 0,
+  ): Promise<Expense | null> {
     try {
       await this.ensureTableExists();
       const tableName = expenseTableName();
@@ -296,9 +355,11 @@ export const expenseAPI = {
         throw new Error('Geçersiz gider tutarı');
       }
       const actor = resolveCashLineActorWrite({ createdByUserId: expense.created_by });
+      const ficheNo = await this.peekNextFicheNo();
       expense = {
         ...expense,
         amount: expenseAmount,
+        fiche_no: ficheNo,
         created_by: actor.createdByUserId || String(expense.created_by || '').trim(),
       };
 
@@ -411,8 +472,8 @@ export const expenseAPI = {
         `INSERT INTO ${tableName} (
           category, description, amount, payment_method, 
           document_number, document_url, store_id, cost_center_id, 
-          expense_date, notes, created_by, firm_nr, cash_register_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::text::uuid) RETURNING *`,
+          expense_date, notes, created_by, firm_nr, cash_register_id, fiche_no
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::text::uuid, $14) RETURNING *`,
         [
           expense.category,
           expense.description,
@@ -426,7 +487,8 @@ export const expenseAPI = {
           expense.notes || '',
           expense.created_by || null,
           firmNr,
-          expense.cash_register_id || null
+          expense.cash_register_id || null,
+          expense.fiche_no || null,
         ]
       );
 
@@ -543,6 +605,11 @@ export const expenseAPI = {
       } catch {
         // ignore rollback errors
       }
+      if (attempt < 1 && isExpenseFicheConflict(error)) {
+        const retrySource = { ...expense };
+        delete retrySource.fiche_no;
+        return this.create(retrySource, attempt + 1);
+      }
       throw formatExpenseApiError(error);
     }
   },
@@ -561,7 +628,7 @@ export const expenseAPI = {
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
       const normalizeUpdateEntry = (key: string, value: unknown): unknown | undefined => {
-        if (['id', 'firm_nr', 'created_at', 'cost_center_name', 'entered_by_name', 'currency_code', 'exchange_rate'].includes(key) || value === undefined) return undefined;
+        if (['id', 'firm_nr', 'created_at', 'cost_center_name', 'entered_by_name', 'currency_code', 'exchange_rate', 'fiche_no', 'ledger_fiche_no'].includes(key) || value === undefined) return undefined;
         let normalizedValue = value;
         if (key === 'amount') {
           const n = Math.abs(parseExpenseAmount(value));
