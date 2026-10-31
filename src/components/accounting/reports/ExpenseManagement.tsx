@@ -835,8 +835,34 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
-            <div className="grid w-full grid-cols-1 gap-5 md:grid-cols-2">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-white px-4 py-5 sm:px-8 sm:py-6">
+            <div className="grid w-full grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+              <div data-expense-field="ficheNo">
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  {tm('ficheNo')}
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  tabIndex={-1}
+                  value={formData.fiche_no}
+                  aria-readonly="true"
+                  title={tm('expenseFicheReadonly')}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl bg-slate-50 text-slate-700 font-medium tabular-nums outline-none"
+                />
+              </div>
+              <div data-expense-field="date">
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  {tm('date')} *
+                </label>
+                <input
+                  type="date"
+                  value={formData.expense_date}
+                  onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
+                />
+              </div>
+
               <div data-expense-field="category">
                 <div className="mb-1.5 flex items-center justify-between gap-2">
                   <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
@@ -864,19 +890,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" aria-hidden />
                 </div>
               </div>
-              <div data-expense-field="date">
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  {tm('date')} *
-                </label>
-                <input
-                  type="date"
-                  value={formData.expense_date}
-                  onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
-                />
-              </div>
-
-              <div className="md:col-span-2" data-expense-field="description">
+              <div data-expense-field="description">
                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                   {tm('description')} *
                 </label>
@@ -886,21 +900,6 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder={tm('expenseDescriptionPlaceholder')}
                   className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
-                />
-              </div>
-
-              <div className="md:col-span-2" data-expense-field="ficheNo">
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  {tm('ficheNo')}
-                </label>
-                <input
-                  type="text"
-                  readOnly
-                  tabIndex={-1}
-                  value={formData.fiche_no}
-                  aria-readonly="true"
-                  title={tm('expenseFicheReadonly')}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl bg-slate-50 text-slate-700 font-medium tabular-nums outline-none"
                 />
               </div>
 
@@ -967,7 +966,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                 </div>
               </div>
 
-              <div className="md:col-span-2" data-expense-field="notes">
+              <div className="sm:col-span-2" data-expense-field="notes">
                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                   {tm('notes')}
                 </label>
@@ -975,37 +974,37 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   placeholder={tm('additionalNotes')}
-                  rows={4}
+                  rows={3}
                   className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium resize-y"
                 />
               </div>
 
-              <div className="md:col-span-2 border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center" data-expense-field="attachment">
-                <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                <p className="text-sm text-slate-600 mb-2">{tm('uploadDocumentInvoiceReceipt')}</p>
+              <div className="sm:col-span-2 flex flex-wrap items-center gap-3" data-expense-field="attachment">
+                <Upload className="w-5 h-5 text-slate-400 shrink-0" />
+                <p className="text-sm text-slate-600">{tm('uploadDocumentInvoiceReceipt')}</p>
                 <button type="button" className="text-sm text-red-600 hover:text-red-700 font-semibold">
                   {tm('selectFile')}
                 </button>
               </div>
-            </div>
-          </div>
 
-          <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
-            <button
-              type="button"
-              onClick={() => setShowExpenseModal(false)}
-              className="flex-1 px-4 py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98] transition-colors"
-            >
-              {tm('cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveExpense}
-              disabled={savingExpense}
-              className="flex-1 px-4 py-3 rounded-2xl bg-red-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-red-200/50 hover:bg-red-700 active:scale-[0.98] transition-colors disabled:opacity-60 disabled:pointer-events-none"
-            >
-              {savingExpense ? tm('loading') : (editingExpense ? tm('update') : tm('save'))}
-            </button>
+              <div className="sm:col-span-2 flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExpenseModal(false)}
+                  className="flex-1 px-4 py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98] transition-colors"
+                >
+                  {tm('cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveExpense}
+                  disabled={savingExpense}
+                  className="flex-1 px-4 py-3 rounded-2xl bg-red-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-red-200/50 hover:bg-red-700 active:scale-[0.98] transition-colors disabled:opacity-60 disabled:pointer-events-none"
+                >
+                  {savingExpense ? tm('loading') : (editingExpense ? tm('update') : tm('save'))}
+                </button>
+              </div>
+            </div>
           </div>
         </div>,
         document.body

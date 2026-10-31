@@ -7,12 +7,12 @@ export const EXPENSE_FICHE_WIDTH = 6;
 
 export const EXPENSE_ENTRY_CASH_LABEL = 'Kasa';
 
-/** Giriş formu sırası. Belge no ve kasa, tutar ile ödeme yönteminden önce. */
+/** Giriş formu sırası. Fiş no ve tarih en üstte, yan yana. */
 export const EXPENSE_ENTRY_FIELD_ORDER = [
-  'category',
-  'date',
-  'description',
   'ficheNo',
+  'date',
+  'category',
+  'description',
   'documentNo',
   'cashRegister',
   'amount',

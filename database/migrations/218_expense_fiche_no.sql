@@ -111,6 +111,10 @@ BEGIN
     WHEN OTHERS THEN
       NULL;
   END;
+
+  -- Kolon eklendikten sonra PostgREST şema önbelleği yenilensin.
+  -- Ayrı bir sıra tablosu yok. Eski fiş numaraları değişmez.
+  PERFORM pg_notify('pgrst', 'reload schema');
 END;
 $$;
 

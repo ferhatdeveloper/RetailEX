@@ -9,7 +9,10 @@ export default defineConfig({
     environment: 'jsdom',
     /** setup yolu proje köküne göre değil, bu dosyanın bulunduğu `src/` dizinine göre olmalı */
     setupFiles: [path.resolve(__dirname, 'tests/setup.ts')],
-    include: ['src/tests/**/*.{test,spec}.{ts,tsx}'],
+    include: [
+      'src/tests/**/*.{test,spec}.{ts,tsx}',
+      'src/utils/expenseFicheNo.test.ts',
+    ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.claude/**'],
     coverage: {
       provider: 'v8',

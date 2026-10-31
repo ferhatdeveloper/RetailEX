@@ -157,6 +157,63 @@ export class ExpenseSaveError extends Error {
   }
 }
 
+/**
+ * PostgREST şema önbelleği `fiche_no` kolonunu henüz görmüyor.
+ * Kasa satırı hatası burada değildir; ikinci kasa satırı açılmaz.
+ */
+export function isExpenseFicheSchemaCacheMiss(error: unknown): boolean {
+  const msg = String((error as { message?: unknown })?.message ?? error ?? '');
+  if (!/PGRST204/i.test(msg) || !/fiche_no/i.test(msg)) return false;
+  if (/cash_lines/i.test(msg)) return false;
+  return /schema cache/i.test(msg) || /could not find the/i.test(msg);
+}
+
+/**
+ * Kolon hazır olduktan sonra şema yenilenir, sonra aynı gövde yazılır.
+ * İlk POST hâlâ PGRST204 dönerse bir kez daha yenilenir ve aynı fiş no ile tekrarlanır.
+ * Fiş no gövdeden düşmez. Bu fonksiyon kasa satırı yazmaz.
+ */
+export async function postExpenseWithFicheSchemaRetry<T>(args: {
+  body: Record<string, unknown>;
+  post: (body: Record<string, unknown>) => Promise<T>;
+  reloadSchema: () => Promise<void>;
+  wait?: (ms: number) => Promise<void>;
+}): Promise<T> {
+  const payload = { ...args.body };
+  const wait = args.wait ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  await args.reloadSchema();
+  try {
+    return await args.post(payload);
+  } catch (error) {
+    if (!isExpenseFicheSchemaCacheMiss(error)) throw error;
+    await args.reloadSchema();
+    await wait(350);
+    return await args.post(payload);
+  }
+}
+
+async function reloadExpensePostgrestSchema(): Promise<void> {
+  const firmNr = padExpenseFirmNr();
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    try {
+      const { postgrest } = await import('./postgrestClient');
+      await postgrest.post(
+        '/rpc/ensure_firm_expense_tables',
+        { p_firm_nr: firmNr },
+        { schema: 'public', prefer: 'return=minimal' },
+      );
+    } catch (err) {
+      console.warn('[ExpenseAPI] PostgREST şema yenileme:', err);
+    }
+    return;
+  }
+  try {
+    await postgres.query(`NOTIFY pgrst, 'reload schema'`);
+  } catch (err) {
+    console.warn('[ExpenseAPI] PostgREST şema yenileme:', err);
+  }
+}
+
 function formatExpenseApiError(error: unknown): Error {
   if (error instanceof ExpenseSaveError) return error;
   const raw = (error as Error)?.message || String(error);
@@ -186,6 +243,7 @@ export const expenseAPI = {
       } catch (err) {
         console.warn('[ExpenseAPI] ensure_firm_expense_tables RPC:', err);
       }
+      await reloadExpensePostgrestSchema();
       return;
     }
     const tableName = expenseTableName();
@@ -231,6 +289,7 @@ export const expenseAPI = {
     } catch (indexErr) {
       console.warn('[ExpenseAPI] fiş no indeksi:', indexErr);
     }
+    await reloadExpensePostgrestSchema();
   },
 
   /**
@@ -244,14 +303,30 @@ export const expenseAPI = {
       const tableName = expenseTableName();
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
-        const rows = await postgrest
-          .get<Array<{ fiche_no?: string | null }>>(
+        let rows: Array<{ fiche_no?: string | null }> = [];
+        try {
+          const loaded = await postgrest.get<Array<{ fiche_no?: string | null }>>(
             expenseTablePath(),
             { select: 'fiche_no', firm_nr: `eq.${firmNr}`, limit: '20000' },
             { schema: 'public' },
-          )
-          .catch(() => [] as Array<{ fiche_no?: string | null }>);
-        return nextExpenseFicheNo(Array.isArray(rows) ? rows : []);
+          );
+          rows = Array.isArray(loaded) ? loaded : [];
+        } catch (err) {
+          if (!isExpenseFicheSchemaCacheMiss(err)) {
+            rows = [];
+          } else {
+            await reloadExpensePostgrestSchema();
+            const loaded = await postgrest
+              .get<Array<{ fiche_no?: string | null }>>(
+                expenseTablePath(),
+                { select: 'fiche_no', firm_nr: `eq.${firmNr}`, limit: '20000' },
+                { schema: 'public' },
+              )
+              .catch(() => [] as Array<{ fiche_no?: string | null }>);
+            rows = Array.isArray(loaded) ? loaded : [];
+          }
+        }
+        return nextExpenseFicheNo(rows);
       }
       const { rows } = await postgres.query(
         `SELECT fiche_no FROM ${tableName} WHERE firm_nr = $1 AND fiche_no IS NOT NULL`,
@@ -368,9 +443,13 @@ export const expenseAPI = {
         const { postgrest } = await import('./postgrestClient');
         const path = expenseTablePath();
         const body = buildExpenseInsertBody(expense, firmNr);
-        const rows = await postgrest.post<any[]>(path, body, {
-          schema: 'public',
-          prefer: 'return=representation',
+        const rows = await postExpenseWithFicheSchemaRetry({
+          body,
+          reloadSchema: reloadExpensePostgrestSchema,
+          post: (payload) => postgrest.post<any[]>(path, payload, {
+            schema: 'public',
+            prefer: 'return=representation',
+          }),
         });
         let inserted = (Array.isArray(rows) ? rows[0] : rows) as Expense | undefined;
         if (!inserted?.id) {
