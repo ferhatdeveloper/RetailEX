@@ -13,6 +13,7 @@ import { getAppDefaultCurrency } from '../../../services/postgres';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { toast } from 'sonner';
 import {
+    prePaymentListedYmd,
     prePaymentReceived,
     prePaymentRemaining,
     prePaymentServiceTotal,
@@ -145,8 +146,9 @@ export function DepositPrePaymentReport() {
                 header: tm('date'),
                 type: 'date',
                 size: 110,
+                accessor: (r) => prePaymentListedYmd(r),
                 cell: (r) => (
-                    <span className="font-semibold text-gray-700">{formatReportDateCell(r.appointment_date)}</span>
+                    <span className="font-semibold text-gray-700">{formatReportDateCell(prePaymentListedYmd(r))}</span>
                 ),
             },
             {
@@ -620,7 +622,7 @@ export function DepositPrePaymentReport() {
                                 <div className="space-y-3 text-[13px]">
                                     <div className="flex justify-between border-b border-slate-100 pb-2">
                                         <span className="font-semibold text-slate-500">{tm('date')}</span>
-                                        <span className="font-bold text-slate-800">{formatReportDateCell(detailRow.appointment_date)}</span>
+                                        <span className="font-bold text-slate-800">{formatReportDateCell(prePaymentListedYmd(detailRow))}</span>
                                     </div>
                                     <div className="flex justify-between border-b border-slate-100 pb-2">
                                         <span className="font-semibold text-slate-500">{tm('time')}</span>

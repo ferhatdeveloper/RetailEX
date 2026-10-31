@@ -66,9 +66,18 @@ export interface CancelledReservationAppointment {
   status?: string | null;
   deposit_amount?: number | string | null;
   depositAmount?: number | string | null;
+  /** Peşinatın kasaya girdiği an. Varsa gün anahtarı budur. */
+  deposit_date?: string | null;
+  depositDate?: string | null;
+  created_at?: string | null;
+  createdAt?: string | null;
   appointment_date?: string | null;
   appointmentDate?: string | null;
   date?: string | null;
+  customer_name?: string | null;
+  customerName?: string | null;
+  customer_id?: string | null;
+  client_id?: string | null;
 }
 
 export interface CancelledReservationAvansRow {
@@ -117,6 +126,8 @@ export interface CancelledReservationBox {
 interface ReservationSlot {
   amount: number;
   day: string;
+  /** Yüksek olan gün kazanır: peşinat tarihi, fiş günü, kayıt günü, randevu günü. */
+  rank: number;
 }
 
 type SlotMode = 'reservation-box' | 'closed-collection';
@@ -133,6 +144,31 @@ function positiveAmount(value: unknown): number {
 function dayKey(value: unknown): string {
   const day = String(value ?? '').trim().slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
+}
+
+/**
+ * Açık veya iptal peşinatın kasa günü.
+ * Para randevunun planlandığı günde değil, kaydedildiği günde durur.
+ * `deposit_date` varsa odur. Yoksa kayıt zamanı. İkisi de yoksa randevu günü.
+ * Peşinat yoksa randevu günü kalır; hizmet tarihi kaymaz.
+ */
+export function reservationCashDay(row: {
+  deposit_amount?: number | string | null;
+  depositAmount?: number | string | null;
+  deposit_date?: string | null;
+  depositDate?: string | null;
+  created_at?: string | null;
+  createdAt?: string | null;
+  appointment_date?: string | null;
+  appointmentDate?: string | null;
+  date?: string | null;
+} | null | undefined): string {
+  const visit = dayKey(row?.appointment_date || row?.appointmentDate || row?.date);
+  const deposit = positiveAmount(row?.deposit_amount ?? row?.depositAmount);
+  if (!(deposit > EPS)) return visit;
+  const recorded = dayKey(row?.deposit_date || row?.depositDate)
+    || dayKey(row?.created_at || row?.createdAt);
+  return recorded || visit;
 }
 
 function normStatus(value: unknown): string {
@@ -174,33 +210,42 @@ function keepAppointmentDeposit(mode: SlotMode, appointmentStatus: string): bool
 
 function collectSlots(input: CancelledReservationBoxInput, mode: SlotMode): ReservationSlot[] {
   const statusById = new Map<string, string>();
-  const dayById = new Map<string, string>();
+  const visitById = new Map<string, string>();
+  const depositDateById = new Map<string, string>();
+  const createdById = new Map<string, string>();
   const depositById = new Map<string, number>();
 
   for (const appointment of input.appointments || []) {
     const id = cleanId(appointment.id);
     if (!id) continue;
     statusById.set(id, String(appointment.status || ''));
-    const day = dayKey(appointment.appointment_date || appointment.appointmentDate || appointment.date);
-    if (day) dayById.set(id, day);
+    const visit = dayKey(appointment.appointment_date || appointment.appointmentDate || appointment.date);
+    if (visit) visitById.set(id, visit);
     const deposit = positiveAmount(appointment.deposit_amount ?? appointment.depositAmount);
-    if (deposit > 0) depositById.set(id, deposit);
+    if (deposit > 0) {
+      depositById.set(id, deposit);
+      const depositDate = dayKey(appointment.deposit_date || appointment.depositDate);
+      const created = dayKey(appointment.created_at || appointment.createdAt);
+      if (depositDate) depositDateById.set(id, depositDate);
+      if (created) createdById.set(id, created);
+    }
   }
 
   const chosen = new Map<string, ReservationSlot>();
   const orphans: ReservationSlot[] = [];
 
-  const remember = (id: string, amount: number, day: string) => {
+  const remember = (id: string, amount: number, day: string, rank: number) => {
     if (!(amount > EPS)) return;
-    const appointmentDay = dayById.get(id) || '';
-    const slotDay = appointmentDay || day;
     const prev = chosen.get(id);
     if (!prev) {
-      chosen.set(id, { amount, day: slotDay });
+      chosen.set(id, { amount, day, rank });
       return;
     }
     if (amount > prev.amount) prev.amount = amount;
-    if (!prev.day && slotDay) prev.day = slotDay;
+    if (day && (rank > prev.rank || (rank === prev.rank && !prev.day))) {
+      prev.day = day;
+      prev.rank = rank;
+    }
   };
 
   for (const row of input.avansRows || []) {
@@ -211,8 +256,8 @@ function collectSlots(input: CancelledReservationBoxInput, mode: SlotMode): Rese
     if (!keepAvans(mode, status, avansStatus)) continue;
     const amount = positiveAmount(row.amount);
     const day = dayKey(row.created_at || row.createdAt);
-    if (id) remember(id, amount, day);
-    else if (amount > 0) orphans.push({ amount, day });
+    if (id) remember(id, amount, day, 2);
+    else if (amount > 0) orphans.push({ amount, day, rank: 2 });
   }
 
   for (const sale of input.depositSales || []) {
@@ -224,12 +269,17 @@ function collectSlots(input: CancelledReservationBoxInput, mode: SlotMode): Rese
     if (!keepAvans(mode, status, '')) continue;
     const amount = positiveAmount(sale.amount ?? sale.total);
     const day = dayKey(sale.date || sale.created_at);
-    remember(id, amount, day);
+    remember(id, amount, day, 2);
   }
 
   for (const [id, amount] of depositById) {
     if (!keepAppointmentDeposit(mode, statusById.get(id) || '')) continue;
-    remember(id, amount, dayById.get(id) || '');
+    const depositDate = depositDateById.get(id) || '';
+    const created = createdById.get(id) || '';
+    const visit = visitById.get(id) || '';
+    if (depositDate) remember(id, amount, depositDate, 3);
+    else if (created) remember(id, amount, created, 1);
+    else remember(id, amount, visit, 0);
   }
 
   const slots: ReservationSlot[] = [];
@@ -319,7 +369,7 @@ export function dailyReservationAvansNet(row: CancelledReservationAvansRow): num
 
 /**
  * Aylık gün ve yıllık ay kolonları. Kutu ile aynı küme.
- * Gün anahtarı randevu tarihidir.
+ * Gün anahtarı peşinatın kaydedildiği gündür. Randevu günü değildir.
  */
 export function cancelledUnclosedReservationByPeriod(
   input: CancelledReservationBoxInput,

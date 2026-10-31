@@ -150,6 +150,7 @@ import { accumulateComparisonProducts } from '../../utils/periodComparisonProduc
 import {
   applyExtraCashCollections,
   buildPosZReportForRange,
+  clipReservationToDayEndRange,
   composeDayEndZStatementForRange,
   isReturnSale,
   resolveDayEndZDateRange,
@@ -245,6 +246,7 @@ import {
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
 import { reservationPendingForRange } from '../../utils/reportReservationPending';
+import { recordedCustomerName } from '../../utils/recordedCustomerName';
 import {
   cancelledUnclosedReservationBox,
   dailyReservationAvansList,
@@ -3516,7 +3518,9 @@ export function ReportsModule({
     let cancelled = false;
     (async () => {
       try {
-        const rows = await beautyService.getAppointmentsInRange(fromIso, toIso);
+        const rows = await beautyService.getAppointmentsInRange(fromIso, toIso, {
+          includeDepositCollected: true,
+        });
         if (cancelled) return;
         setDailyAppointments(Array.isArray(rows) ? rows : []);
       } catch (e) {
@@ -3610,24 +3614,41 @@ export function ReportsModule({
       if (id && name) localCustomerMap.set(id, name);
     }
     const appointmentStatusById = new Map<string, string>();
-    for (const appointment of dailyAppointments as Array<{ id?: string; status?: string }>) {
-      const id = String(appointment?.id || '').trim();
+    const appointmentNameById = new Map<string, string>();
+    const appointmentNameByCustomerId = new Map<string, string>();
+    for (const appointment of dailyAppointments as Array<{
+      id?: string;
+      status?: string;
+      customer_name?: string;
+      customerName?: string;
+      customer_id?: string;
+      client_id?: string;
+    }>) {
+      const id = String(appointment?.id || '').trim().toLowerCase();
       if (id) appointmentStatusById.set(id, String(appointment?.status || ''));
+      const name = recordedCustomerName(appointment?.customer_name, appointment?.customerName);
+      if (name !== '—') {
+        if (id) appointmentNameById.set(id.toLowerCase(), name);
+        const customerKey = String(appointment?.customer_id || appointment?.client_id || '').trim();
+        if (customerKey) appointmentNameByCustomerId.set(customerKey, name);
+      }
     }
     const mapAvans = (a: any): DailyUnifiedRow => {
       const amount = Number(a.amount || 0);
       const ref = a.reference_no || `AVANS-${String(a.id).slice(0, 8)}`;
       const customerId = String(a.customer_id || '').trim();
-      const customerName = customerId
-        ? (localCustomerMap.get(customerId) || customerId)
-        : '—';
-      // notes: "Rezervasyon Tutarı · Randevu No <uuid>" → uuid çıkar
       const noteStr = String(a.notes ?? '');
       const linkedAppointmentId = appointmentIdFromAvansNotes(noteStr);
+      const customerName = recordedCustomerName(
+        linkedAppointmentId ? appointmentNameById.get(linkedAppointmentId.toLowerCase()) : '',
+        customerId ? appointmentNameByCustomerId.get(customerId) : '',
+        a.customer_name,
+        customerId ? localCustomerMap.get(customerId) : '',
+      );
       const avansStatus = String(a.status || '').trim().toLowerCase();
       const appliedSaleId = String(a.applied_sale_id || '').trim();
       const appointmentStatus = linkedAppointmentId
-        ? (appointmentStatusById.get(linkedAppointmentId) || '')
+        ? (appointmentStatusById.get(linkedAppointmentId.toLowerCase()) || '')
         : '';
       const ownCancel = avansStatus === 'kept_on_cancel'
         || (appointmentStatus !== '' && isForfeitedUnrefundedDeposit({
@@ -3711,7 +3732,7 @@ export function ReportsModule({
         return {
           ...raw,
           appointmentStatus: linkedAppointmentId
-            ? (appointmentStatusById.get(linkedAppointmentId) || '')
+            ? (appointmentStatusById.get(linkedAppointmentId.toLowerCase()) || '')
             : '',
         };
       }),
@@ -4076,23 +4097,28 @@ export function ReportsModule({
    * Kapanan peşinat kutudan çıkar, hizmet tutarı cirodadır, ikinci kez yok.
    * Gider bir kez düşer. Virman gider değildir.
    */
+  const reservationForRange = useMemo(
+    () => clipReservationToDayEndRange({
+      appointments: dailyAppointments,
+      avansRows: dailyAvansList,
+      depositSales: dailyDepositSales,
+    }, movementFrom, movementTo),
+    [dailyAppointments, dailyAvansList, dailyDepositSales, movementFrom, movementTo],
+  );
+
   const dailyNetNakitAlways = useMemo(
     () => {
       const adisyonNet = businessType === 'restaurant' && dailySalesActive.length === 0;
       return reportDisplayNet({
         revenue: dailyTotal,
         discount: adisyonNet ? 0 : dailyRevenueDiscount(dailySalesActive),
-        reservationAmount: cancelledUnclosedReservationBox({
-          appointments: dailyAppointments,
-          avansRows: dailyAvansList,
-          depositSales: dailyDepositSales,
-        }).amount,
+        reservationAmount: cancelledUnclosedReservationBox(reservationForRange).amount,
         returnDeduction: 0,
         expenses: totalExpensesForReport,
         expenseEnabled: true,
       });
     },
-    [businessType, dailySalesActive, dailyTotal, dailyAppointments, dailyAvansList, dailyDepositSales, totalExpensesForReport],
+    [businessType, dailySalesActive, dailyTotal, reservationForRange, totalExpensesForReport],
   );
 
   const dailyExpenseGridRows = useMemo(() => {
@@ -4390,11 +4416,11 @@ export function ReportsModule({
   // önlemek için açık isim). Günlük özet satırı brüt / kalan gösterir.
   const reservationAggregate = useMemo(
     () => reservationPendingForRange(
-      dailyAppointments,
-      selectedDateFrom,
-      selectedDateTo,
+      reservationForRange.appointments,
+      movementFrom,
+      movementTo,
     ),
-    [dailyAppointments, selectedDateFrom, selectedDateTo],
+    [reservationForRange, movementFrom, movementTo],
   );
 
   // Z Report — ERP satış + satış iade (trcode 3); restoranda adisyon yedek
@@ -4406,11 +4432,7 @@ export function ReportsModule({
     const allDaySales = reportRangeSales.filter((s) => inReportPeriod(localCalendarDateKey(s.date)));
     const canceledSalesRows = allDaySales.filter((s) => isRemovedSaleStatus(s.status) && !isReturnSale(s));
     const zExpenses = dailyExpenseRowsForReport.map((row) => ({ date: row.date, amount: row.amount }));
-    const reservationSource = {
-      appointments: dailyAppointments,
-      avansRows: dailyAvansList,
-      depositSales: dailyDepositSales,
-    };
+    const reservationSource = reservationForRange;
     const buildFromErpSales = () => {
       const extraCash = extraCustomerCollectionsNotOnSales(kasaLinesForSelectedDate, allDaySales);
       const base = applyExtraCashCollections(
@@ -7135,11 +7157,7 @@ export function ReportsModule({
     : ['grp-general', 'grp-design', 'grp-sales'];
 
   const dailyReportReturnCard = dailyReportReturnCardSummary(dailySalesDetailGridRows);
-  const cancelledReservationBox = cancelledUnclosedReservationBox({
-    appointments: dailyAppointments,
-    avansRows: dailyAvansList,
-    depositSales: dailyDepositSales,
-  });
+  const cancelledReservationBox = cancelledUnclosedReservationBox(reservationForRange);
   const dailyReportKpiByKey: Record<DailyReportScreenCardKey, DailyReportKpiCardModel> = {
     'total-revenue': {
       key: 'total-revenue',

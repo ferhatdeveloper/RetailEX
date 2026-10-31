@@ -1,3 +1,5 @@
+import { reservationCashDay } from './cancelledReservationBox';
+
 /**
  * 14.10.2026 — Rezervasyon (henüz faturası kesilmemiş randevu) hesaplama.
  * Aylık Gün Özeti, Günlük Rapor, POS Z Raporu, Beauty Raporu gibi tüm
@@ -70,9 +72,15 @@ export function calcReservationForAppointment(
 }
 
 export function buildReservationMap(
-    appointments: Array<{
-        appointment_date?: string;
-        status?: string;
+    appointments: ReadonlyArray<{
+        appointment_date?: string | null;
+        appointmentDate?: string | null;
+        date?: string | null;
+        deposit_date?: string | null;
+        depositDate?: string | null;
+        created_at?: string | null;
+        createdAt?: string | null;
+        status?: string | null;
         total_price?: number | string | null;
         deposit_amount?: number | string | null;
         service_price?: number | string | null;
@@ -84,7 +92,7 @@ export function buildReservationMap(
     for (const a of appointments) {
         const st = String(a.status ?? '').trim().toLowerCase();
         if (st === 'completed' || st === 'cancelled' || st === 'canceled') continue;
-        const d = String(a.appointment_date ?? '').slice(0, 10);
+        const d = reservationCashDay(a);
         if (!d) continue;
         const key = mode === 'monthly-days' ? d : d.slice(0, 7);
         const r = calcReservationForAppointment(a);
@@ -142,9 +150,15 @@ export function buildClosedAppointmentDepositMap(
  * tek tarihli raporlarda kullanılır.
  */
 export function reservationPendingForDay(
-    appointments: Array<{
-        appointment_date?: string;
-        status?: string;
+    appointments: ReadonlyArray<{
+        appointment_date?: string | null;
+        appointmentDate?: string | null;
+        date?: string | null;
+        deposit_date?: string | null;
+        depositDate?: string | null;
+        created_at?: string | null;
+        createdAt?: string | null;
+        status?: string | null;
         total_price?: number | string | null;
         deposit_amount?: number | string | null;
         service_price?: number | string | null;
@@ -157,7 +171,7 @@ export function reservationPendingForDay(
     for (const a of appointments) {
         const st = String(a.status ?? '').trim().toLowerCase();
         if (st === 'completed' || st === 'cancelled' || st === 'canceled') continue;
-        const d = String(a.appointment_date ?? '').slice(0, 10);
+        const d = reservationCashDay(a);
         if (d !== dayKey) continue;
         const r = calcReservationForAppointment(a);
         if (!r.relevant) continue;
@@ -176,9 +190,15 @@ export function reservationPendingForDay(
  * aralık modunda (from..to) kullanılır.
  */
 export function reservationPendingForRange(
-    appointments: Array<{
-        appointment_date?: string;
-        status?: string;
+    appointments: ReadonlyArray<{
+        appointment_date?: string | null;
+        appointmentDate?: string | null;
+        date?: string | null;
+        deposit_date?: string | null;
+        depositDate?: string | null;
+        created_at?: string | null;
+        createdAt?: string | null;
+        status?: string | null;
         total_price?: number | string | null;
         deposit_amount?: number | string | null;
         service_price?: number | string | null;
@@ -192,7 +212,7 @@ export function reservationPendingForRange(
     for (const a of appointments) {
         const st = String(a.status ?? '').trim().toLowerCase();
         if (st === 'completed' || st === 'cancelled' || st === 'canceled') continue;
-        const d = String(a.appointment_date ?? '').slice(0, 10);
+        const d = reservationCashDay(a);
         if (!d || d < fromIso || d > toIso) continue;
         const r = calcReservationForAppointment(a);
         if (!r.relevant) continue;

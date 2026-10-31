@@ -28,6 +28,10 @@ export interface AppointmentReportInput {
   status?: string | null;
   staffId?: string | null;
   staffName?: string | null;
+  /** Açık peşinat. Varsa ön ödeme dilimi kasa gününe yazılır. */
+  depositAmount?: number | string | null;
+  depositDate?: string | null;
+  createdAt?: string | null;
 }
 
 export interface AppointmentReportSource {
@@ -225,6 +229,24 @@ function dayKey(value: unknown): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
 }
 
+/**
+ * Henüz kapanmamış peşinat. Ön ödeme adedi randevu gününe taşınmaz.
+ * Geldi, iptal, gelmedi ve başladı kendi gününde kalır.
+ */
+function openDepositPrepaid(row: AppointmentReportInput): boolean {
+  const amount = Math.abs(Number(row.depositAmount) || 0);
+  if (!(amount > 0.004)) return false;
+  const bucket = classifyAppointmentStatus(row.status);
+  if (bucket === 'came' || bucket === 'cancelled' || bucket === 'noShow' || bucket === 'started') {
+    return false;
+  }
+  return true;
+}
+
+function prepaidCashDay(row: AppointmentReportInput): string {
+  return dayKey(row.depositDate) || dayKey(row.createdAt) || dayKey(row.date);
+}
+
 export function collectAppointmentReportSources(
   rows: readonly AppointmentReportInput[],
   from: string,
@@ -233,7 +255,8 @@ export function collectAppointmentReportSources(
   const seen = new Set<string>();
   const out: AppointmentReportSource[] = [];
   rows.forEach((row, index) => {
-    const date = dayKey(row.date);
+    const prepaid = openDepositPrepaid(row);
+    const date = prepaid ? prepaidCashDay(row) : dayKey(row.date);
     if (!date || date < from || date > to) return;
     const id = String(row.id ?? '').trim() || `row-${index}`;
     if (seen.has(id)) return;
@@ -245,7 +268,7 @@ export function collectAppointmentReportSources(
       date,
       hour: hourOf(row.time),
       durationMinutes: durationMinutes(row.duration),
-      bucket: classifyAppointmentStatus(row.status),
+      bucket: prepaid ? 'prepaid' : classifyAppointmentStatus(row.status),
       staffId,
       staffName,
     });

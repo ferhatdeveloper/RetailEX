@@ -1,6 +1,7 @@
 import type { Sale } from '../core/types';
 import {
   cancelledUnclosedReservationBox,
+  reservationCashDay,
   type CancelledReservationBoxInput,
 } from './cancelledReservationBox';
 import { formatNumber } from './formatNumber';
@@ -751,7 +752,11 @@ export function sumExpensesInRange(
   return round2(sum);
 }
 
-/** Aralık dışındaki randevu, avans ve peşinat fişi rezervasyon kutusuna girmez. */
+/**
+ * Aralık dışındaki peşinat rezervasyon kutusuna girmez.
+ * Açık peşinat, randevu günü aralıkta olsa bile kasa günü dışarıdaysa düşer.
+ * Kasa günü aralıktaysa randevu ileri tarihte olsa da kalır.
+ */
 export function clipReservationToDayEndRange(
   input: CancelledReservationBoxInput | null | undefined,
   dateFrom: string,
@@ -761,7 +766,7 @@ export function clipReservationToDayEndRange(
   return {
     ...src,
     appointments: (src.appointments || []).filter((row) =>
-      datedInRange(row.appointment_date || row.appointmentDate || row.date, dateFrom, dateTo),
+      datedInRange(reservationCashDay(row), dateFrom, dateTo),
     ),
     avansRows: (src.avansRows || []).filter((row) =>
       datedInRange(row.created_at || row.createdAt, dateFrom, dateTo),

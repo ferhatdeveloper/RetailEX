@@ -454,6 +454,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         const rows = await beautyService.getAppointmentsInRange(
           periodRange!.start,
           periodRange!.end,
+          { includeDepositCollected: true },
         );
         return Array.isArray(rows) ? rows : [];
       } catch {
@@ -781,6 +782,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       id?: string;
       status?: string;
       deposit_amount?: number | string | null;
+      deposit_date?: string | null;
+      created_at?: string | null;
       appointment_date?: string;
       date?: string;
     }>) || [];

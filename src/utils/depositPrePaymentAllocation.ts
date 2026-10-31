@@ -53,6 +53,31 @@ function dateKey(row: PrePaymentDepositSource): string {
   return String(row.appointment_date ?? '').trim().slice(0, 10);
 }
 
+function ymd(value: unknown): string {
+  const day = String(value ?? '').trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
+}
+
+/**
+ * Rezervasyon / Ön Ödeme raporunun tarih kolonu.
+ * Sadece peşinat ve kısmi peşinat, paranın kaydedildiği gündür.
+ * Kapanmış hizmet randevu gününde kalır. Peşinat ikinci bir güne yazılmaz.
+ */
+export function prePaymentListedYmd(row: {
+  appointment_date?: string | null;
+  deposit_date?: string | null;
+  created_at?: string | null;
+  payment_state?: string | null;
+  status?: string | null;
+}): string {
+  const visit = ymd(row.appointment_date);
+  const status = String(row.status ?? '').trim().toLowerCase();
+  if (status === 'completed' || status === 'closed') return visit;
+  const state = String(row.payment_state ?? '').trim().toLowerCase();
+  if (state !== 'deposit_only' && state !== 'partial') return visit;
+  return ymd(row.deposit_date) || ymd(row.created_at) || visit;
+}
+
 /** Fiş kimliği. Boşsa satır kardeş hizmet olabilir. */
 function ficheKey(row: PrePaymentDepositSource): string {
   const group = String(row.sale_group_id ?? '').trim();

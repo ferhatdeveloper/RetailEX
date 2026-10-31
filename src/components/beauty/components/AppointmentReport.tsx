@@ -33,6 +33,9 @@ function toInput(row: BeautyAppointment): AppointmentReportInput {
     status: row.status,
     staffId: row.staff_id || row.specialist_id || '',
     staffName: row.specialist_name || row.staff_name || '',
+    depositAmount: row.deposit_amount,
+    depositDate: row.deposit_date,
+    createdAt: row.created_at,
   };
 }
 
@@ -93,8 +96,8 @@ export function AppointmentReport() {
     setError('');
     const prev = previousAppointmentPeriod(range.from, range.to);
     Promise.all([
-      beautyService.getAppointmentsInRange(range.from, range.to),
-      beautyService.getAppointmentsInRange(prev.from, prev.to),
+      beautyService.getAppointmentsInRange(range.from, range.to, { includeDepositCollected: true }),
+      beautyService.getAppointmentsInRange(prev.from, prev.to, { includeDepositCollected: true }),
     ])
       .then(([current, prior]) => {
         if (cancel) return;

@@ -1049,7 +1049,8 @@ async function getServicesPostgrestBranch(): Promise<BeautyService[] | null> {
 /** Randevu aralığı — PostgREST çoklu istek + birleştirme */
 async function getAppointmentsInRangePostgrestBranch(
     startDate: string,
-    endDate: string
+    endDate: string,
+    options?: { includeDepositCollected?: boolean },
 ): Promise<BeautyAppointment[] | null> {
     if (!shouldUseTenantPostgrestApi()) return null;
     const fn = erpFirmNrForRow();
@@ -1057,11 +1058,14 @@ async function getAppointmentsInRangePostgrestBranch(
     try {
         const { postgrest } = await import('./api/postgrestClient');
         const aptPath = `/rex_${fn}_${pn}_beauty_appointments`;
+        const depositClause = options?.includeDepositCollected
+            ? `,and(deposit_date.gte.${startDate}T00:00:00.000Z,deposit_date.lte.${endDate}T23:59:59.999Z)`
+            : '';
         const rows = await postgrest.get<Record<string, unknown>[]>(
             aptPath,
             {
                 select: '*',
-                or: `(and(appointment_date.gte.${startDate},appointment_date.lte.${endDate}),and(status.eq.completed,updated_at.gte.${startDate}T00:00:00.000Z,updated_at.lte.${endDate}T23:59:59.999Z))`,
+                or: `(and(appointment_date.gte.${startDate},appointment_date.lte.${endDate}),and(status.eq.completed,updated_at.gte.${startDate}T00:00:00.000Z,updated_at.lte.${endDate}T23:59:59.999Z)${depositClause})`,
                 order: 'appointment_date.asc,appointment_time.asc',
                 limit: 4000,
             },
@@ -3075,15 +3079,20 @@ export const beautyService = {
         return result.rows.map((r: Record<string, unknown> & { clinical_data?: unknown }) => normalizeAppointmentRow(r));
     },
 
-    async getAppointmentsInRange(startDate: string, endDate: string): Promise<BeautyAppointment[]> {
+    async getAppointmentsInRange(
+        startDate: string,
+        endDate: string,
+        options?: { includeDepositCollected?: boolean },
+    ): Promise<BeautyAppointment[]> {
         if (shouldUseTenantPostgrestApi()) {
             try {
-                const pr = await getAppointmentsInRangePostgrestBranch(startDate, endDate);
+                const pr = await getAppointmentsInRangePostgrestBranch(startDate, endDate, options);
                 if (pr != null) return pr;
             } catch (e) {
                 console.warn('[beautyService] getAppointmentsInRange PostgREST denemesi:', e);
             }
         }
+        const includeDepositCollected = options?.includeDepositCollected === true;
         const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
         const svcBeauty = postgres.getCardTableName('beauty_services', 'beauty');
         const svcFirm = postgres.getCardTableName('services');
@@ -3169,11 +3178,17 @@ export const beautyService = {
                     AND a.updated_at::date >= $1
                     AND a.updated_at::date <= $2
                 )
+                OR (
+                    $4::boolean
+                    AND a.deposit_date IS NOT NULL
+                    AND a.deposit_date::date >= $1::date
+                    AND a.deposit_date::date <= $2::date
+                )
             )
             ORDER BY a.appointment_date, a.appointment_time
         `;
         const fn = erpFirmNrForRow();
-        const result = await postgres.query(query, [startDate, endDate, fn]);
+        const result = await postgres.query(query, [startDate, endDate, fn, includeDepositCollected]);
         return result.rows.map((r: Record<string, unknown> & { clinical_data?: unknown }) => normalizeAppointmentRow(r));
     },
 
@@ -8843,6 +8858,7 @@ export const beautyService = {
         deposit_sale_fiche_no: string | null;
         sale_group_id: string | null;
         created_at: string | null;
+        deposit_date: string | null;
     }>> {
         const start = String(startYmd || '').trim();
         const end = String(endYmd || '').trim();
@@ -8864,9 +8880,16 @@ export const beautyService = {
         // Parametre sırası: $1=start, $2=end, sonra opsiyonel filtreler,
         // sonda $N=fn (firm filtresi) JOIN'ler için tek seferlik kullanılır.
         const params: unknown[] = [start, end];
+        const listedDate = `
+            CASE
+                WHEN LOWER(TRIM(COALESCE(pas.status, ''))) IN ('completed', 'closed') THEN pas.appointment_date
+                WHEN pas.payment_state IN ('deposit_only', 'partial')
+                    THEN COALESCE(a.deposit_date::date, a.created_at::date, pas.appointment_date)
+                ELSE pas.appointment_date
+            END`;
         const where: string[] = [
-            `pas.appointment_date >= ($1)::date`,
-            `pas.appointment_date <= ($2)::date`,
+            `(${listedDate}) >= ($1)::date`,
+            `(${listedDate}) <= ($2)::date`,
         ];
         if (opts.specialistId && String(opts.specialistId).trim()) {
             params.push(String(opts.specialistId).trim());
@@ -8928,6 +8951,7 @@ export const beautyService = {
                 a.deposit_sale_fiche_no                        AS deposit_sale_fiche_no,
                 a.sale_group_id::text                          AS sale_group_id,
                 a.created_at                                   AS created_at,
+                a.deposit_date                                 AS deposit_date,
                 -- 16.10.2026 — cari_avans toplamı (müşteri bazında).
                 -- Randevuya deposit fişi bağlanmamış olsa bile cari_avans
                 -- tablosunda açık/uygulanmış avans varsa "Alınan Ödeme"
@@ -9001,6 +9025,7 @@ export const beautyService = {
                 deposit_sale_fiche_no: r.deposit_sale_fiche_no ? String(r.deposit_sale_fiche_no) : null,
                 sale_group_id: r.sale_group_id ? String(r.sale_group_id) : null,
                 created_at: r.created_at ? String(r.created_at) : null,
+                deposit_date: r.deposit_date ? String(r.deposit_date) : null,
                 // Müşteri avansı bilgi alanıdır. Toplam tutara eklenmez;
                 // depozito payı rapor gösteriminde ayrıca bölünür.
                 avans_total: Number(r.avans_total) || 0,
