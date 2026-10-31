@@ -14,6 +14,12 @@ import {
     extractTechnicalError,
     extractPgCode,
 } from '../../utils/bookingError';
+import {
+    bookingUniqueReasonMessageKey,
+    classifyUniqueConflict,
+    isAppointmentPrimaryKeyConflict,
+    resolveBeautyAppointmentId,
+} from '../../utils/appointmentInsertConflict';
 
 describe('parseBookingApiError — Postgres SQLSTATE tanıma', () => {
     it('migration_required: undefined_table (42P01)', () => {
@@ -52,6 +58,8 @@ describe('parseBookingApiError — Postgres SQLSTATE tanıma', () => {
         expect(parsed.reasonKey).toBe('unique_violation');
         expect(parsed.pgCode).toBe('23505');
         expect(parsed.detail).toContain('duplicate key');
+        expect(parsed.uniqueTarget).toBe('fiche_or_number');
+        expect(bookingUniqueReasonMessageKey(parsed.uniqueTarget)).toBe('bBookingModalApiReasonUniqueFiche');
     });
 
     it('null_constraint: SQLSTATE 23502', () => {
@@ -198,6 +206,26 @@ describe('parseBookingApiError — gerçek senaryolar (kullanıcı hata aldığ�
         });
         expect(parsed.reasonKey).toBe('unique_violation');
         expect(parsed.failedStep).toBe('sale');
+        expect(parsed.uniqueTarget).toBe('fiche_or_number');
+    });
+
+    it('Senaryo F: randevu birincil anahtarı (pkey) fiş numarası değildir', () => {
+        const msg =
+            'PostgREST POST /rex_001_01_beauty_appointments: 409 Conflict — {"code":"23505","details":"Key (id)=(a31ab870-0351-4bc5-9d98-c3c27f88c48e) already exists.","hint":null,"message":"duplicate key value violates unique constraint \\"rex_001_01_beauty_appointments_pkey\\""}';
+        const parsed = parseBookingApiError(new Error(msg));
+        expect(parsed.reasonKey).toBe('unique_violation');
+        expect(parsed.failedStep).toBe('appointment');
+        expect(parsed.uniqueTarget).toBe('primary_key');
+        expect(classifyUniqueConflict(msg)).toBe('primary_key');
+        expect(isAppointmentPrimaryKeyConflict(new Error(msg))).toBe(true);
+        expect(bookingUniqueReasonMessageKey(parsed.uniqueTarget)).toBe('bBookingModalApiReasonUniquePkey');
+        expect(bookingUniqueReasonMessageKey('fiche_or_number')).toBe('bBookingModalApiReasonUniqueFiche');
+        expect(resolveBeautyAppointmentId(
+            'a31ab870-0351-4bc5-9d98-c3c27f88c48e',
+            () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        )).toBe('a31ab870-0351-4bc5-9d98-c3c27f88c48e');
+        expect(resolveBeautyAppointmentId('', () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'))
+            .toBe('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
     });
 
     it('Senaryo D: bridge timeout / unreachable', () => {

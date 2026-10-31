@@ -12,6 +12,10 @@ import {
     beautyCancelSqlArgsFromRow,
     type BeautyCancelSqlArgs,
 } from '../utils/beautyAppointmentCancel';
+import {
+    isAppointmentPrimaryKeyConflict,
+    resolveBeautyAppointmentId,
+} from '../utils/appointmentInsertConflict';
 import { postgres, ERP_SETTINGS } from './postgres';
 import {
     beautyInvoicePrefix,
@@ -3509,7 +3513,8 @@ export const beautyService = {
         // rezervasyon sales fişi (createSale) atlanır. Parametre imzası
         // geriye uyumlu tutulur.
         const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
-        const id = uuidv4();
+        // Aynı istemci kimliği (yeniden deneme) yeni satır açmasın.
+        const id = resolveBeautyAppointmentId(appointment.id, () => uuidv4());
         const fn = erpFirmNrForRow();
         const pn = erpPeriodNrForRow();
         const rawStatus = appointment.status;
@@ -3523,6 +3528,7 @@ export const beautyService = {
         const comm = Number(appointment.commission_amount ?? 0);
         if (shouldUseTenantPostgrestApi()) {
             const { postgrest } = await import('./api/postgrestClient');
+            try {
             await postgrest.post(
                 `/rex_${fn}_${pn}_beauty_appointments`,
                 {
@@ -3568,10 +3574,20 @@ export const beautyService = {
                         : null,
                     remainder_paid_amount: Number(appointment.remainder_paid_amount ?? 0),
                 },
-                { schema: 'beauty', prefer: 'return=minimal' }
+                {
+                    schema: 'beauty',
+                    prefer: 'return=minimal',
+                    onConflict: 'id',
+                    resolution: 'ignore-duplicates',
+                }
             );
+            } catch (err) {
+                // İlk POST commit olduysa aynı id 409 pkey döner. İkinci satır yok.
+                if (!isAppointmentPrimaryKeyConflict(err)) throw err;
+            }
             return id;
         }
+        try {
         await postgres.query(`
             INSERT INTO ${table} (
                 id, client_id, service_id, specialist_id, device_id, body_region_id,
@@ -3582,6 +3598,7 @@ export const beautyService = {
                 deposit_amount, deposit_date, deposit_provider, deposit_sale_id, deposit_sale_fiche_no,
                 sale_group_id, remainder_paid_amount
             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+            ON CONFLICT (id) DO NOTHING
         `, [
             id,
             pgUuidOrNull(appointment.customer_id ?? appointment.client_id),
@@ -3620,6 +3637,9 @@ export const beautyService = {
             appointment.sale_group_id ? String(appointment.sale_group_id).trim() || null : null,
             Number(appointment.remainder_paid_amount ?? 0),
         ]);
+        } catch (err) {
+            if (!isAppointmentPrimaryKeyConflict(err)) throw err;
+        }
         return id;
     },
 

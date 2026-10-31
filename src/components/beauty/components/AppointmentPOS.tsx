@@ -96,6 +96,7 @@ import { usePermission } from '../../../shared/hooks/usePermission';
 import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
 import { buildAppointmentProductNotesTag } from '../../../utils/beautyAppointmentProducts';
 import { parseBookingApiError, type BookingApiReasonKey, type BookingFailedStep } from '../../../utils/bookingError';
+import { bookingUniqueReasonMessageKey } from '../../../utils/appointmentInsertConflict';
 import { DentalChartScreen } from '../specialty/DentalChartScreen';
 import '../ClinicStyles.css';
 
@@ -2011,7 +2012,7 @@ export function AppointmentPOS({
                             tm('bBookingModalStepApi2'),
                         ];
                     } else if (parsed.reasonKey === 'unique_violation') {
-                        userReason = tm('bBookingModalApiReasonUnique');
+                        userReason = tm(bookingUniqueReasonMessageKey(parsed.uniqueTarget));
                         steps = [tm('bBookingModalStepApi1'), tm('bBookingModalStepApi2')];
                     } else if (parsed.reasonKey === 'null_constraint') {
                         userReason = tm('bBookingModalApiReasonNull');

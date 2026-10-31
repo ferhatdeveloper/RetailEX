@@ -8,6 +8,13 @@
  * Native `Error` veya düz string de gelebilir.
  */
 
+import {
+    classifyUniqueConflict,
+    type AppointmentUniqueTarget,
+} from './appointmentInsertConflict';
+
+export type { AppointmentUniqueTarget };
+
 export type BookingApiReasonKey =
     | 'migration_required'
     | 'unique_violation'
@@ -28,6 +35,8 @@ export interface ParsedBookingError {
     pgCode: string | null;
     hint: string | null;
     failedStep: BookingFailedStep;
+    /** 23505 ise hangi kısıt. Birincil anahtar, fiş numarası değildir. */
+    uniqueTarget: AppointmentUniqueTarget | null;
 }
 
 /** Hata objesi farklı formatta gelse bile teknik detayı (string) üretir. */
@@ -43,6 +52,7 @@ export function extractTechnicalError(e: unknown): string {
             anyErr.message,
             anyErr.code,
             anyErr.detail,
+            anyErr.details,
             anyErr.hint,
             anyErr.context,
         ]
@@ -107,6 +117,8 @@ export function parseBookingApiError(e: unknown): ParsedBookingError {
     }
 
     const failedStep = detectFailedStep(detail);
+    const uniqueTarget =
+        reasonKey === 'unique_violation' ? (classifyUniqueConflict(detail) ?? 'other') : null;
 
     return {
         reasonKey,
@@ -114,6 +126,7 @@ export function parseBookingApiError(e: unknown): ParsedBookingError {
         pgCode,
         hint: null,
         failedStep,
+        uniqueTarget,
     };
 }
 

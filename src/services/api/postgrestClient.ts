@@ -143,16 +143,37 @@ export async function postgrestUpsert<T = unknown>(
 }
 
 /**
- * POST — yeni kayıt (Prefer: return=representation ile oluşturulan satır döner)
+ * POST — yeni kayıt (Prefer: return=representation ile oluşturulan satır döner).
+ *
+ * `onConflict` + `resolution=ignore-duplicates` yalnızca o kolonun UNIQUE
+ * çakışmasını yok sayar (ON CONFLICT DO NOTHING). Başka bir UNIQUE
+ * (fiş no vb.) yine 409 döner.
  */
 export async function postgrestPost<T = unknown>(
   path: string,
   body: Record<string, unknown> | unknown[],
-  options?: PostgrestClientOptions & { prefer?: 'return=representation' | 'return=minimal' }
+  options?: PostgrestClientOptions & {
+    prefer?: 'return=representation' | 'return=minimal' | string;
+    onConflict?: string;
+    resolution?: 'ignore-duplicates' | 'merge-duplicates';
+  }
 ): Promise<T> {
-  const url = getPostgrestUrl(path);
+  const conflict = String(options?.onConflict ?? '').trim();
+  const sep = path.includes('?') ? '&' : '?';
+  const requestPath = conflict
+    ? `${path}${sep}on_conflict=${encodeURIComponent(conflict)}`
+    : path;
+  const url = getPostgrestUrl(requestPath);
   const headers = buildHeaders(options);
-  headers.Prefer = options?.prefer ?? 'return=representation';
+  const preferRaw = String(options?.prefer ?? '').trim();
+  const returnPart = /return=representation/i.test(preferRaw)
+    ? 'return=representation'
+    : 'return=minimal';
+  if (conflict && options?.resolution) {
+    headers.Prefer = `resolution=${options.resolution},${returnPart}`;
+  } else {
+    headers.Prefer = preferRaw || 'return=representation';
+  }
   const res = await fetchRetailexAware(url, {
     method: 'POST',
     headers,
@@ -160,7 +181,8 @@ export async function postgrestPost<T = unknown>(
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`PostgREST POST ${path}: ${res.status} ${res.statusText}${text ? ` — ${text}` : ''}`);
+    const logicalPath = path.split('?')[0];
+    throw new Error(`PostgREST POST ${logicalPath}: ${res.status} ${res.statusText}${text ? ` — ${text}` : ''}`);
   }
   const ct = res.headers.get('Content-Type');
   if (ct?.includes('application/json')) return res.json() as Promise<T>;
