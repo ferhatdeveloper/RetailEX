@@ -5,6 +5,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import {
+  expenseCategoryAddedByLabel,
   expenseCategoryAllowsEdit,
   resolveExpenseCategoryLabel,
   type ExpenseCategoryLabelSource,
@@ -15,13 +16,14 @@ export type ExpenseCategoryManagerRow = ExpenseCategoryLabelSource & {
   code: string;
   name: string;
   is_active: boolean;
+  created_by_name?: string | null;
 };
 
 type ExpenseCategoryManagerModalProps = {
   categories: ExpenseCategoryManagerRow[];
   onClose: () => void;
   onCreate: (name: string) => Promise<boolean> | boolean;
-  onRename: (id: string, name: string) => Promise<boolean> | boolean;
+  onRename: (id: string, name: string, isActive: boolean) => Promise<boolean> | boolean;
   onRemove: (id: string) => Promise<void> | void;
 };
 
@@ -39,6 +41,7 @@ export function ExpenseCategoryManagerModal({
   const [saving, setSaving] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const renameDraftRef = useRef('');
+  const statusDraftRef = useRef(true);
 
   const title = tm('expenseCategoryManagerTitle');
   const labelOf = (value: string) =>
@@ -47,6 +50,7 @@ export function ExpenseCategoryManagerModal({
   const beginRename = (row: ExpenseCategoryManagerRow) => {
     if (!expenseCategoryAllowsEdit(row)) return;
     renameDraftRef.current = labelOf(row.name || row.code);
+    statusDraftRef.current = row.is_active !== false;
     setRenamingId(row.id);
   };
 
@@ -55,7 +59,7 @@ export function ExpenseCategoryManagerModal({
     if (!name) return;
     setSaving(true);
     try {
-      const ok = await onRename(id, name);
+      const ok = await onRename(id, name, statusDraftRef.current);
       if (ok) setRenamingId(null);
     } finally {
       setSaving(false);
@@ -103,10 +107,14 @@ export function ExpenseCategoryManagerModal({
         id: 'categoryKind',
         header: header(tm('expenseCategoryColumnType')),
         cell: ({ row }) => {
+          const addedBy = expenseCategoryAddedByLabel(row.original, {
+            system: tm('expenseCategorySystem'),
+            unknownUser: tm('expenseCategoryUser'),
+          });
           const system = !expenseCategoryAllowsEdit(row.original);
           return (
             <span className={system ? 'text-xs font-semibold text-violet-600' : 'text-xs font-semibold text-sky-700'}>
-              {system ? tm('expenseCategorySystem') : tm('expenseCategoryUser')}
+              {addedBy}
             </span>
           );
         },
@@ -114,18 +122,36 @@ export function ExpenseCategoryManagerModal({
       }),
       columnHelper.display({
         id: 'categoryLive',
-        header: header(tm('active')),
-        cell: ({ row }) => (
-          <span
-            className={
-              row.original.is_active
-                ? 'rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-600'
-                : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500'
-            }
-          >
-            {row.original.is_active ? tm('active') : tm('passive')}
-          </span>
-        ),
+        header: header(tm('status')),
+        cell: ({ row }) => {
+          const cat = row.original;
+          if (renamingId === cat.id) {
+            return (
+              <select
+                aria-label={tm('status')}
+                defaultValue={cat.is_active !== false ? 'active' : 'passive'}
+                onChange={(e) => {
+                  statusDraftRef.current = e.target.value === 'active';
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800"
+              >
+                <option value="active">{tm('active')}</option>
+                <option value="passive">{tm('passive')}</option>
+              </select>
+            );
+          }
+          return (
+            <span
+              className={
+                cat.is_active
+                  ? 'rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-600'
+                  : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500'
+              }
+            >
+              {cat.is_active ? tm('active') : tm('passive')}
+            </span>
+          );
+        },
         meta: { defaultVisible: true },
       }),
       columnHelper.display({
@@ -178,7 +204,7 @@ export function ExpenseCategoryManagerModal({
         meta: { defaultVisible: true },
       }),
     ];
-  }, [categories, onRemove, renamingId, tm]);
+  }, [categories, onRemove, onRename, renamingId, tm]);
 
   return (
     <PercentBodyModal nested onClose={onClose} size="list" ariaLabel={title}>

@@ -37,7 +37,7 @@ import { formatStoredExpenseFiche } from '../../../utils/expenseFicheNo';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import { expenseCategoryAPI, type ExpenseCategory as ApiExpenseCategory } from '../../../services/api/masterData';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import { currentLoginUserId } from '../../../utils/loginCashierName';
+import { currentLoginDisplayName, currentLoginUserId } from '../../../utils/loginCashierName';
 
 interface ExpenseLocal extends Expense {
   store_name?: string;
@@ -155,11 +155,13 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     if (!name) return false;
     const code = uniqueExpenseCategoryCode(name, expenseCategories.map((row) => row.code));
     try {
+      const createdByName = currentLoginDisplayName();
       const created = await expenseCategoryAPI.create({
         code,
         name,
         color: 'bg-slate-100 text-slate-700',
         sort_order: 100,
+        created_by_name: createdByName || null,
       });
       if (created) {
         await loadExpenseCategories();
@@ -182,12 +184,16 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     }
   };
 
-  const handleRenameExpenseCategory = async (id: string, displayName: string): Promise<boolean> => {
+  const handleRenameExpenseCategory = async (
+    id: string,
+    displayName: string,
+    isActive: boolean,
+  ): Promise<boolean> => {
     const name = displayName.trim();
     const row = expenseCategories.find((item) => item.id === id);
     if (!name || !row || isSystemExpenseCategory(row)) return false;
     try {
-      const ok = await expenseCategoryAPI.update(id, { name });
+      const ok = await expenseCategoryAPI.update(id, { name, is_active: isActive });
       if (ok) {
         await loadExpenseCategories();
         return true;
@@ -209,7 +215,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
   const handleDeleteCategory = async (id: string) => {
     const row = expenseCategories.find((item) => item.id === id);
     if (!row || isSystemExpenseCategory(row)) return;
-    if (!confirm(tm('expenseCategoryDeleteConfirm') || 'Bu kategoriyi silmek/iptal etmek istiyor musunuz?')) return;
+    if (!confirm(tm('expenseCategoryDeleteConfirm') || 'Bu kategoriyi silmek istiyor musunuz? Eski gider kayıtları ve tutarları durur.')) return;
     try {
       const ok = await expenseCategoryAPI.remove(id);
       if (ok) {

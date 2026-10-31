@@ -231,6 +231,16 @@ export function expenseCategoryAllowsEdit(row: ExpenseCategoryLabelSource): bool
   return !isSystemExpenseCategory(row);
 }
 
+/** Ekleyen kolonu. Sistem tohumu Sistem. Kişi bilinmiyorsa mevcut etiket. Ad uydurulmaz. */
+export function expenseCategoryAddedByLabel(
+  row: ExpenseCategoryLabelSource & { created_by_name?: string | null },
+  labels: { system: string; unknownUser: string },
+): string {
+  if (isSystemExpenseCategory(row)) return labels.system;
+  const stored = String(row.created_by_name ?? '').trim();
+  return stored || labels.unknownUser;
+}
+
 const TR_CODE_MAP: Record<string, string> = {
   ç: 'c',
   Ç: 'c',

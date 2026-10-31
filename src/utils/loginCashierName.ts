@@ -163,6 +163,19 @@ function readPosCashierName(userId: string): string {
   }
 }
 
+/**
+ * Kategori kartına yazılacak görünen ad.
+ * Önce ad soyad, yoksa kullanıcı adı. Boşsa ad uydurulmaz.
+ */
+export function currentLoginDisplayName(): string {
+  const user = readPersistedLoginUser();
+  const full = String(user?.fullName ?? user?.full_name ?? '').trim();
+  if (full && !isPlaceholderCashierName(full) && !isCashMovementLabel(full)) return full;
+  const username = String(user?.username ?? '').trim();
+  if (username && !isPlaceholderCashierName(username) && !isCashMovementLabel(username)) return username;
+  return '';
+}
+
 export function currentLoginCashierName(): string {
   const user = readPersistedLoginUser();
   const fromPos = readPosCashierName(String(user?.id ?? '').trim());

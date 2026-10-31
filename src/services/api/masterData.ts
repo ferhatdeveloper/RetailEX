@@ -3,16 +3,15 @@
  */
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
+import { isSystemExpenseCategory } from '../../utils/expenseCategoryLabel';
+import {
+    expenseCategoryRemovalStatements,
+    pickExpenseCategoryTextColumn,
+    type ExpenseCategoryFkRef,
+} from '../../utils/expenseCategoryDelete';
 
 function padFirmNr(): string {
     return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
-}
-
-/** SQL identifier olarak kullanılacak padFirmNr: yalnızca rakam. */
-function safeFirmTableFirmNr(): string {
-    const raw = padFirmNr();
-    const sanitized = raw.replace(/[^0-9]/g, '').padStart(3, '0').slice(0, 10);
-    return sanitized || '001';
 }
 
 function isRestApi(): boolean {
@@ -657,6 +656,16 @@ export interface ExpenseCategory {
     is_active: boolean;
     created_at?: string;
     updated_at?: string;
+    /** Kategoriyi ekleyen kişinin görünen adı. Sistem tohumunda boş. */
+    created_by_name?: string | null;
+}
+
+const EXPENSE_CATEGORY_PATCH_KEYS = new Set(['name', 'color', 'description', 'sort_order', 'is_active']);
+
+function isMissingCreatedByNameColumn(error: unknown): boolean {
+    const code = String((error as { code?: string })?.code || '');
+    const msg = String((error as { message?: string })?.message || error);
+    return code === '42703' || (/42703/.test(msg) && /created_by_name/i.test(msg));
 }
 
 // ============================================================================
@@ -858,7 +867,8 @@ export const expenseCategoryAPI = {
                 `SELECT id, firm_nr, code, name, color, sort_order, is_active
                      , created_at, updated_at
                      , description
-                  FROM public.expense_categories
+                     , NULLIF(btrim(COALESCE(to_jsonb(ec) ->> 'created_by_name', '')), '') AS created_by_name
+                  FROM public.expense_categories ec
                  WHERE firm_nr = $1
                  ORDER BY sort_order ASC, name ASC`,
                 [padFirmNr()],
@@ -870,28 +880,21 @@ export const expenseCategoryAPI = {
         }
     },
 
-    async create(input: { code: string; name: string; color?: string; description?: string; sort_order?: number }): Promise<ExpenseCategory | null> {
+    async create(input: {
+        code: string;
+        name: string;
+        color?: string;
+        description?: string;
+        sort_order?: number;
+        created_by_name?: string | null;
+    }): Promise<ExpenseCategory | null> {
+        const createdByName = String(input.created_by_name || '').trim() || null;
         try {
-            const { postgres } = await import('../postgres');
-            const fn = padFirmNr();
-            const { rows } = await postgres.query<ExpenseCategory>(
-                `INSERT INTO public.expense_categories
-                    (firm_nr, code, name, color, description, sort_order)
-                 VALUES ($1, $2, $3, $4, $5, $6)
-                 ON CONFLICT (code, firm_nr) DO UPDATE
-                    SET name = EXCLUDED.name,
-                        color = EXCLUDED.color,
-                        description = EXCLUDED.description,
-                        sort_order = EXCLUDED.sort_order,
-                        updated_at = NOW()
-                 RETURNING id, firm_nr, code, name, color, sort_order, is_active, description`,
-                [fn, input.code, input.name, input.color || 'bg-gray-100 text-gray-700', input.description || null, input.sort_order ?? 100],
-            );
-            return rows[0] ?? null;
+            return await insertExpenseCategory(input, createdByName, true);
         } catch (error) {
-            // Sessizce yutmuyoruz: hatayı fırlat ki UI yakalasın.
-            // Kasap datasında tablo yoksa veya RLS/permission kısıtı varsa
-            // kullanıcı toast/alert ile gerçek nedeni görsün.
+            if (isMissingCreatedByNameColumn(error)) {
+                return await insertExpenseCategory(input, null, false);
+            }
             console.error('[ExpenseCategoryAPI] create failed:', error);
             throw error;
         }
@@ -905,6 +908,7 @@ export const expenseCategoryAPI = {
             let idx = 1;
             for (const [k, v] of Object.entries(patch)) {
                 if (v === undefined) continue;
+                if (!EXPENSE_CATEGORY_PATCH_KEYS.has(k)) continue;
                 fields.push(`${k} = $${idx}`);
                 values.push(v);
                 idx += 1;
@@ -921,32 +925,36 @@ export const expenseCategoryAPI = {
         }
     },
 
+    /**
+     * Kategori kartını siler. Pasif yapmaz.
+     * Yabancı anahtar varsa gider satırındaki kategori kimliği kopar;
+     * kayıtlı kategori metni ve tutar durur. Gider ve kasa satırı silinmez.
+     */
     async remove(id: string): Promise<boolean> {
         try {
             const { postgres } = await import('../postgres');
-            // Güvenli sil — referans varsa is_active=false yap, yoksa sil.
-            // Önce bu firmanın gerçek tablo adını bul: firmNr prefix'i ile
-            // dynamic tenant tablo (`rex_{firmNr}_expenses`). Identifier
-            // whitelist: sadece rakam — firmNr sanitize edilir.
-            const fn = safeFirmTableFirmNr();
-            const usageCheck = await postgres.query<{ c: number }>(
-                `SELECT count(*)::int AS c
-                   FROM public.rex_${fn}_expenses
-                  WHERE category = (SELECT code FROM public.expense_categories WHERE id = $1)`,
-                [id],
+            const cid = String(id || '').trim();
+            if (!cid) return false;
+            const found = await postgres.query<{ id: string; code: string; name: string }>(
+                `SELECT id, code, name
+                   FROM public.expense_categories
+                  WHERE id = $1`,
+                [cid],
             );
-            const uses = usageCheck.rows[0]?.c ?? 0;
-            if (uses > 0) {
-                await postgres.query(
-                    `UPDATE public.expense_categories SET is_active = false, updated_at = NOW() WHERE id = $1`,
-                    [id],
-                );
-                return true;
+            const row = found.rows[0];
+            if (!row) return false;
+            if (isSystemExpenseCategory(row)) return false;
+
+            const storedLabel = String(row.name || row.code || '').trim();
+            const foreignKeys = await loadExpenseCategoryForeignKeys();
+            const statements = expenseCategoryRemovalStatements({
+                categoryId: cid,
+                storedLabel,
+                foreignKeys,
+            });
+            for (const statement of statements) {
+                await postgres.query(statement.sql, statement.params);
             }
-            await postgres.query(
-                `DELETE FROM public.expense_categories WHERE id = $1`,
-                [id],
-            );
             return true;
         } catch (error) {
             console.error('[ExpenseCategoryAPI] remove failed:', error);
@@ -954,6 +962,90 @@ export const expenseCategoryAPI = {
         }
     },
 };
+
+async function insertExpenseCategory(
+    input: { code: string; name: string; color?: string; description?: string; sort_order?: number },
+    createdByName: string | null,
+    includeCreator: boolean,
+): Promise<ExpenseCategory | null> {
+    const { postgres } = await import('../postgres');
+    const fn = padFirmNr();
+    const color = input.color || 'bg-gray-100 text-gray-700';
+    const description = input.description || null;
+    const sortOrder = input.sort_order ?? 100;
+    if (includeCreator) {
+        const { rows } = await postgres.query<ExpenseCategory>(
+            `INSERT INTO public.expense_categories
+                (firm_nr, code, name, color, description, sort_order, created_by_name)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (code, firm_nr) DO UPDATE
+                SET name = EXCLUDED.name,
+                    color = EXCLUDED.color,
+                    description = EXCLUDED.description,
+                    sort_order = EXCLUDED.sort_order,
+                    created_by_name = COALESCE(public.expense_categories.created_by_name, EXCLUDED.created_by_name),
+                    updated_at = NOW()
+             RETURNING id, firm_nr, code, name, color, sort_order, is_active, description, created_by_name`,
+            [fn, input.code, input.name, color, description, sortOrder, createdByName],
+        );
+        return rows[0] ?? null;
+    }
+    const { rows } = await postgres.query<ExpenseCategory>(
+        `INSERT INTO public.expense_categories
+            (firm_nr, code, name, color, description, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (code, firm_nr) DO UPDATE
+            SET name = EXCLUDED.name,
+                color = EXCLUDED.color,
+                description = EXCLUDED.description,
+                sort_order = EXCLUDED.sort_order,
+                updated_at = NOW()
+         RETURNING id, firm_nr, code, name, color, sort_order, is_active, description`,
+        [fn, input.code, input.name, color, description, sortOrder],
+    );
+    return rows[0] ?? null;
+}
+
+async function loadExpenseCategoryForeignKeys(): Promise<ExpenseCategoryFkRef[]> {
+    const { postgres } = await import('../postgres');
+    try {
+        const fk = await postgres.query<{ schema_name: string; table_name: string; id_column: string }>(
+            `SELECT n.nspname AS schema_name,
+                    c.relname AS table_name,
+                    a.attname AS id_column
+               FROM pg_constraint con
+               JOIN pg_class c ON c.oid = con.conrelid
+               JOIN pg_namespace n ON n.oid = c.relnamespace
+               JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = con.conkey[1]
+              WHERE con.contype = 'f'
+                AND con.confrelid = 'public.expense_categories'::regclass`,
+        );
+        const foreignKeys: ExpenseCategoryFkRef[] = [];
+        for (const hit of fk.rows) {
+            const cols = await postgres.query<{ column_name: string }>(
+                `SELECT column_name
+                   FROM information_schema.columns
+                  WHERE table_schema = $1
+                    AND table_name = $2
+                    AND column_name IN ('category', 'category_name', 'category_label')`,
+                [hit.schema_name, hit.table_name],
+            );
+            foreignKeys.push({
+                schemaName: hit.schema_name,
+                tableName: hit.table_name,
+                idColumn: hit.id_column,
+                textColumn: pickExpenseCategoryTextColumn(
+                    cols.rows.map((column) => column.column_name),
+                    hit.id_column,
+                ),
+            });
+        }
+        return foreignKeys;
+    } catch (error) {
+        console.error('[ExpenseCategoryAPI] fk lookup failed:', error);
+        return [];
+    }
+}
 
 // ============================================================================
 // BRAND API

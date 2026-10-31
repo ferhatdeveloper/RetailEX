@@ -1732,11 +1732,14 @@ CREATE TABLE IF NOT EXISTS expense_categories (
     is_active   BOOLEAN NOT NULL DEFAULT true,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by_name VARCHAR(120),
     UNIQUE (code, firm_nr)
 );
 
 CREATE INDEX IF NOT EXISTS expense_categories_firm_idx
     ON expense_categories (firm_nr, is_active, sort_order);
+
+ALTER TABLE expense_categories ADD COLUMN IF NOT EXISTS created_by_name VARCHAR(120);
 
 CREATE TABLE IF NOT EXISTS brands (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
