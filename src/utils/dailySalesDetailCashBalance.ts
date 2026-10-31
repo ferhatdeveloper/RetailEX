@@ -5,7 +5,9 @@
  * İndirim açık cari değildir ve toplama geri eklenmez.
  * Rezervasyon / peşinat ciro değildir; satış gibi toplama yazılmaz.
  * Gider çıkıştır: satır eksi tutarla durur ve bakiyeden bir kez düşülür.
- * Aynı fiş numarası satışta varsa gider ikinci kez eklenmez.
+ * Karttaki her gider satırı kendi anahtarıyla bir kez yazılır.
+ * Artı hizmet fişi, belge no aynı olsa da gideri listeden düşürmez.
+ * Listede duran eksi çıkışın fişi ikinci kez eklenmez.
  *
  * 138.500 − 5.000 = 133.500.
  * 135.000 (indirimi geri eklemek veya brüt − gider) ve
@@ -109,26 +111,47 @@ export function dailyExpenseSourceHour(raw: {
   });
 }
 
-/** Gider pusulası ve kasa çıkışını eksi satıra çevirir. Çift fiş eklemez. */
+/** Satır zaten gider çıkışı. Artı hizmet ve açık peşinat bu kümede değildir. */
+function gridRowIsExpenseOutflow(row: DailySalesDetailCashRow): boolean {
+  if (row.isExpense === true) return true;
+  const total = Number(row.total) || 0;
+  if (total < -EPS) return true;
+  const before = Number(row.beforeDiscount);
+  if (Number.isFinite(before) && before < -EPS) return true;
+  return false;
+}
+
+/**
+ * Gider pusulası ve kasa çıkışını eksi satıra çevirir.
+ * Karttaki ayrı anahtar bir kez kalır. Aynı anahtar ikinci kez yazılmaz.
+ * Artı satış fişi gideri yutmaz. Eksi çıkış olarak duran fiş tekrar düşülmez.
+ */
 export function buildDailySalesDetailExpenseRows(
   sales: readonly DailySalesDetailCashRow[],
   expenses: readonly DailySalesDetailExpenseInput[],
   kindLabel = 'Gider',
   userNameById?: Map<string, string>,
 ): DailySalesDetailExpenseGridRow[] {
-  const booked = new Set<string>();
+  const outflowFiches = new Set<string>();
   for (const sale of sales) {
+    if (!gridRowIsExpenseOutflow(sale)) continue;
     const key = receiptKey(sale.receiptNumber);
-    if (key) booked.add(key);
+    if (key) outflowFiches.add(key);
   }
+  const seenKeys = new Set<string>();
+  const seenKeylessFiches = new Set<string>();
   const out: DailySalesDetailExpenseGridRow[] = [];
   for (const expense of expenses) {
     const amount = Math.abs(Number(expense.amount) || 0);
     if (!(amount > EPS)) continue;
+    const identity = String(expense.key ?? '').trim();
+    if (identity && seenKeys.has(identity)) continue;
     const fiche = blankFiche(expense.ficheNo);
-    const key = receiptKey(fiche);
-    if (key && booked.has(key)) continue;
-    if (key) booked.add(key);
+    const ficheKey = receiptKey(fiche);
+    if (ficheKey && outflowFiches.has(ficheKey)) continue;
+    if (!identity && ficheKey && seenKeylessFiches.has(ficheKey)) continue;
+    if (identity) seenKeys.add(identity);
+    else if (ficheKey) seenKeylessFiches.add(ficheKey);
     const method = String(expense.paymentMethod ?? '').trim() || 'cash';
     const names = userNameById ?? new Map<string, string>();
     const documentDate = expense.date == null ? '' : String(expense.date);

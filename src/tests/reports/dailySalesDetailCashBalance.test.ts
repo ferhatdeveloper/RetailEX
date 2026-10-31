@@ -17,6 +17,8 @@ import {
   dailySalesDetailExpenseNet,
   sumDailySalesDetailCashBalance,
 } from '../../utils/dailySalesDetailCashBalance';
+import { sumDisplayedDailySalesDetailNet } from '../../utils/dailySalesDetailNet';
+import { reportDisplayNet } from '../../utils/periodSummaryNet';
 import { dailySalesDetailKindLabel, isDailySalesDetailReturn } from '../../utils/dailySalesDetailKind';
 import { moduleTranslations } from '../../locales/module-translations';
 import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
@@ -127,11 +129,15 @@ describe('satış detayları kasa bakiyesi', () => {
     expect(sumDailySalesDetailCashBalance([...sales, reservation])).toBe(138_500);
   });
 
-  it('aynı gider fişi ikinci kez eklenmez; satış fişiyle çakışan çıkış tekrar düşülmez', () => {
-    expect(buildDailySalesDetailExpenseRows(sales, [officeRent, { ...officeRent, key: 'kira-2' }])).toHaveLength(1);
+  it('aynı gider anahtarı bir kez durur; listede eksi çıkış varsa eklenmez', () => {
+    expect(buildDailySalesDetailExpenseRows(sales, [officeRent, officeRent])).toHaveLength(1);
+    const twoCardLines = buildDailySalesDetailExpenseRows(sales, [officeRent, { ...officeRent, key: 'kira-2' }]);
+    expect(twoCardLines).toHaveLength(2);
+    expect(twoCardLines.map((row) => row.total)).toEqual([-5_000, -5_000]);
+    expect(sumDailySalesDetailCashBalance([...sales, ...twoCardLines])).toBe(128_500);
     const booked = buildDailySalesDetailExpenseRows(
-      [{ receiptNumber: 'GDR-2026-00001', beforeDiscount: -5_000, total: -5_000, discount: 0 }],
-      [officeRent],
+      [{ receiptNumber: 'GDR-2026-00001', beforeDiscount: -5_000, total: -5_000, discount: 0, isExpense: true }],
+      [officeRent, { ...officeRent, key: 'kira-2' }],
     );
     expect(booked).toHaveLength(0);
     expect(sumDailySalesDetailCashBalance([
@@ -227,7 +233,8 @@ describe('satış detayları kasa bakiyesi', () => {
     const unified = mergeExpensesWithCashOuts([expense], [cash]);
     expect(unified).toHaveLength(1);
     expect(unified[0].amount).toBe(5_000);
-    expect(unified[0].document_number).toBe('GDR-2026-00001');
+    expect(String(unified[0].document_number || '')).toBe('');
+    expect(unified[0].ledger_fiche_no).toBe('GDR-2026-00001');
     expect(unified[0].created_at).toBe('2026-10-24T11:57:00');
     expect(unified[0].created_by).toBe('user-admin');
 
@@ -243,7 +250,7 @@ describe('satış detayları kasa bakiyesi', () => {
     const names = new Map<string, string>([['user-admin', 'admin']]);
     const rows = buildDailySalesDetailExpenseRows(sales, [{
       key: unified[0].id,
-      ficheNo: unified[0].document_number,
+      ficheNo: String(unified[0].document_number || '').trim() || String(unified[0].ledger_fiche_no || ''),
       amount: unified[0].amount,
       date: unified[0].expense_date,
       createdAt: unified[0].created_at,
@@ -322,12 +329,13 @@ describe('satış detayları kasa bakiyesi', () => {
     expect(unified[0].amount).toBe(5_000);
     expect(unified[0].created_by).toBe('');
     expect(unified[0].entered_by_name).toBe('Ayşe');
-    expect(unified[0].document_number).toBe('KL-MVM0ETHL8-9TF896');
+    expect(String(unified[0].document_number || '')).toBe('');
+    expect(unified[0].ledger_fiche_no).toBe('KL-MVM0ETHL8-9TF896');
 
     const names = new Map<string, string>([['user-admin', 'admin']]);
     const rows = buildDailySalesDetailExpenseRows(sales, [{
       key: unified[0].id,
-      ficheNo: unified[0].document_number,
+      ficheNo: String(unified[0].document_number || '').trim() || String(unified[0].ledger_fiche_no || ''),
       amount: unified[0].amount,
       date: unified[0].expense_date,
       createdAt: unified[0].created_at,
@@ -554,6 +562,136 @@ describe('satış detayları kasa bakiyesi', () => {
     expect(pack.en).toBe('Expense');
     expect(pack.ar).toBe('مصروف');
     expect(pack.ku).toBe('خەرجی');
+  });
+});
+
+describe('günlük rapor 15.10–31.12 — kart 44.500, dip toplam aynı', () => {
+  const serviceSales = [
+    { receiptNumber: 'BEA-2026-00001', beforeDiscount: 75_000, total: 75_000, discount: 0 },
+    { receiptNumber: 'BEA-2026-00003', beforeDiscount: 25_000, total: 25_000, discount: 0 },
+  ];
+
+  const visibleExpenses: Expense[] = [
+    { id: 'exp-sal-750', description: 'SAL', amount: 750, expense_date: '2026-11-03', cash_line_id: 'line-750', document_number: '' },
+    { id: 'exp-sal-4000', description: 'SAL', amount: 4_000, expense_date: '2026-11-02', cash_line_id: 'line-4000', document_number: '' },
+    { id: 'exp-1750', description: 'TEST MAAS EILE', amount: 1_750, expense_date: '2026-11-01', document_number: 'EL-MWAW8S-GSVXP' },
+    { id: 'exp-2500', description: 'ACIKLAMA KOL', amount: 2_500, expense_date: '2026-11-01', document_number: 'EL-ACIKLAMA-KOL' },
+    { id: 'exp-1000a', description: 'ACIKLAMA', amount: 1_000, expense_date: '2026-11-01', document_number: 'EL-ACIKLAMA' },
+    { id: 'exp-1250', description: 'SU GIDERI', amount: 1_250, expense_date: '2026-11-01', document_number: 'EL-MWAWITT-S8WRD' },
+    { id: 'exp-1500', description: 'Avans ödemesi - YUSUF SAFIWAN', amount: 1_500, expense_date: '2026-11-01', document_number: 'EL-MWAWM9X-UAMDG' },
+    { id: 'exp-30000', description: 'MAAS', amount: 30_000, expense_date: '2026-10-31', document_number: 'EL-MWAU1X-KTEAQ' },
+    { id: 'exp-1000b', description: 'DUNYA', amount: 1_000, expense_date: '2026-10-31', document_number: 'OCTOBER SALARY' },
+    { id: 'exp-5000', description: 'ZAHRA', amount: 5_000, expense_date: '2026-10-31', document_number: 'EL-MWAUMHN-7WIM34' },
+    { id: 'exp-2000', description: 'Avans ödemesi - YUSUF SAFIWAN', amount: 2_000, expense_date: '2026-10-31', document_number: 'EL-MWAWMEV-T0D131' },
+  ].map((row) => ({
+    category: 'Gider',
+    payment_method: 'cash',
+    store_id: '',
+    created_by: '',
+    firm_nr: '001',
+    ...row,
+  })) as Expense[];
+
+  const salCashTwins: KasaIslemi[] = [
+    {
+      id: 'line-750',
+      firma_id: '001',
+      kasa_id: 'reg-1',
+      islem_tarihi: '2026-11-03',
+      islem_tipi: 'MAAS_ODEME',
+      islem_aciklamasi: 'SAL',
+      islem_no: 'EL-MWAZ3XH-JAWHL',
+      tutar: 750,
+      sign: -1,
+    } as KasaIslemi,
+    {
+      id: 'line-4000',
+      firma_id: '001',
+      kasa_id: 'reg-1',
+      islem_tarihi: '2026-11-02',
+      islem_tipi: 'MAAS_ODEME',
+      islem_aciklamasi: 'SAL',
+      islem_no: 'EL-MWAZPOC-1OHPE',
+      tutar: 4_000,
+      sign: -1,
+    } as KasaIslemi,
+  ];
+
+  function cardFiche(row: { document_number?: string | null; ledger_fiche_no?: string | null }): string {
+    const belgeRaw = String(row.document_number || '').trim();
+    const belgeShown = !belgeRaw || belgeRaw === '—' || belgeRaw === '-' ? '' : belgeRaw;
+    const ledger = String(row.ledger_fiche_no || '').trim();
+    return belgeShown || ledger || '—';
+  }
+
+  it('750 ve 4.000 kasa ikizi kartta durur, ızgarada birer kez eksi satır olur, dip toplam 44.500', () => {
+    const card = mergeExpensesWithCashOuts(visibleExpenses, salCashTwins);
+    const cardExpense = card.reduce((sum, row) => sum + Math.abs(Number(row.amount) || 0), 0);
+    expect(card).toHaveLength(13);
+    expect(cardExpense).toBe(55_500);
+    expect(reportDisplayNet({
+      revenue: 100_000,
+      reservationAmount: 0,
+      returnDeduction: 0,
+      discount: 0,
+      expenses: cardExpense,
+      expenseEnabled: true,
+    })).toBe(44_500);
+
+    const sal750Card = card.filter((row) => Math.abs(Number(row.amount) || 0) === 750);
+    const sal4000Card = card.filter((row) => Math.abs(Number(row.amount) || 0) === 4_000);
+    expect(sal750Card).toHaveLength(2);
+    expect(sal4000Card).toHaveLength(2);
+    expect(new Set(sal750Card.map(cardFiche)).size).toBe(1);
+    expect(new Set(sal4000Card.map(cardFiche)).size).toBe(1);
+
+    const gridInput = card.map((row) => ({
+      key: String(row.id),
+      ficheNo: cardFiche(row),
+      amount: row.amount,
+      date: row.expense_date,
+      description: row.description,
+      category: row.category,
+      paymentMethod: 'cash',
+      isCash: true,
+    }));
+    const repeatedVisible = gridInput.find((row) => row.key === 'exp-30000');
+    const rows = buildDailySalesDetailExpenseRows(serviceSales, [
+      ...gridInput,
+      repeatedVisible!,
+    ], 'Gider');
+
+    expect(rows).toHaveLength(13);
+    expect(rows.filter((row) => row.total === -750)).toHaveLength(2);
+    expect(rows.filter((row) => row.total === -4_000)).toHaveLength(2);
+    expect(rows.filter((row) => row.total === -30_000)).toHaveLength(1);
+    expect(rows.every((row) => row.isExpense === true && row.discount === 0)).toBe(true);
+
+    const table = [...serviceSales, ...rows];
+    expect(sumDailySalesDetailCashBalance(table)).toBe(44_500);
+    expect(sumDisplayedDailySalesDetailNet(table)).toBe(44_500);
+    expect(sumDisplayedDailySalesDetailNet(table)).not.toBe(49_250);
+  });
+
+  it('artı hizmet fişi aynı belge no ile gideri yutmaz', () => {
+    const rows = buildDailySalesDetailExpenseRows(
+      [{ receiptNumber: 'BEA-2026-00001', beforeDiscount: 75_000, total: 75_000, discount: 0 }],
+      [{
+        key: 'masraf-hizmet-fisi',
+        ficheNo: 'BEA-2026-00001',
+        amount: 2_250,
+        description: 'Masraf',
+        paymentMethod: 'cash',
+        isCash: true,
+      }],
+      'Gider',
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].total).toBe(-2_250);
+    expect(sumDailySalesDetailCashBalance([
+      { receiptNumber: 'BEA-2026-00001', beforeDiscount: 75_000, total: 75_000, discount: 0 },
+      ...rows,
+    ])).toBe(72_750);
   });
 });
 
