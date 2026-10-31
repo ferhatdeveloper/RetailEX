@@ -56,9 +56,18 @@ export function istanbulTodayDateKey(now: Date = new Date()): string {
 
 /** İçinde bulunulan İstanbul yılının 1 Ocak günü. */
 export function istanbulYearStartDateKey(now: Date = new Date()): string {
-    const today = istanbulTodayDateKey(now);
-    const year = today.slice(0, 4);
+    const year = istanbulCalendarYear(now);
     return year ? `${year}-01-01` : '';
+}
+
+/** İçinde bulunulan İstanbul yılının 31 Aralık günü. 1 Ocak ile birlikte aralık kapalıdır. */
+export function istanbulYearEndDateKey(now: Date = new Date()): string {
+    const year = istanbulCalendarYear(now);
+    return year ? `${year}-12-31` : '';
+}
+
+function istanbulCalendarYear(now: Date): string {
+    return istanbulTodayDateKey(now).slice(0, 4);
 }
 
 /**

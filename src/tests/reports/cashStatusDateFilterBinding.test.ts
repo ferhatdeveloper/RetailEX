@@ -7,10 +7,10 @@
  *  çalışması lazım. yani aşağıdaki tablodaki veriler yukarıdaki fltreye bağlı olmalı"
  *
  * Bu dosya şunları doğrular:
- *  1. Filtresiz → üç kutu 1 Ocak–bugün; tablolar yılbaşı→bugün.
+ *  1. Filtresiz → üç kutu 1 Ocak–31 Aralık; tablolar yılbaşı→yıl sonu.
  *  2. Filtreli → üç kutu + Kasalar tablosu + Kasa Hareketleri tablosu yalnız
  *     seçili aralıkta.
- *  3. Filtre temizlenince yılbaşı→bugüne dönüş.
+ *  3. Filtre temizlenince yılbaşı→yıl sonuna dönüş.
  *  4. Gider kutusu = kasadaki gider kalemlerinin toplamı; çift sayım yok.
  *  5. Aralık değişince ekranda ESKİ aralık rakamları gösterilmez (yarış koşulu).
  */
@@ -120,13 +120,13 @@ const REGISTERS = [
 ];
 
 describe('Kasa Durumu filtre bağımlılığı', () => {
-  it('filtresizken üç kutu 1 Ocak–bugün aralığını kullanır', () => {
+  it('filtresizken üç kutu 1 Ocak–31 Aralık aralığını kullanır', () => {
     const empty = emptyCashStatusDate();
     expect(cashStatusFilterActive(empty)).toBe(false);
 
     const query = resolveCashStatusQuery(empty, noon);
     expect(query.from).toBe('2026-01-01');
-    expect(query.to).toBe('2026-10-24');
+    expect(query.to).toBe('2026-12-31');
     expect(query.filtered).toBe(false);
     expect(query.balanceFromRegisters).toBe(true);
   });
@@ -302,7 +302,7 @@ describe('Kasa Durumu filtre bağımlılığı', () => {
     const again = resolveCashStatusQuery(cleared, noon);
     expect(again.filtered).toBe(false);
     expect(again.from).toBe('2026-01-01');
-    expect(again.to).toBe('2026-10-24');
+    expect(again.to).toBe('2026-12-31');
     expect(again.balanceFromRegisters).toBe(true);
   });
 

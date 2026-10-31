@@ -2084,7 +2084,7 @@ function toMovementRow(
 /**
  * Kasa Durumu hareket listesi.
  *
- * Aralık, üç kutunun aralığıdır: filtresizken 1 Ocak–bugün, seçilince yalnız o günler.
+ * Aralık, üç kutunun aralığıdır: filtresizken 1 Ocak–31 Aralık, seçilince yalnız o günler.
  * Aralık dışındaki fiş yoktur. Her kasa fişi bir satırdır.
  * Giriş Gelir ve artı, çıkış Gider ve eksidir.
  * Açılış alacak eksi Gider, açılış borç artı Gelirdir.

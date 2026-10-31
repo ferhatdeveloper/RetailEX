@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { computeCashBalanceForRegister } from '../../utils/cashBalance';
-import { istanbulTodayDateKey, istanbulYearStartDateKey } from '../../utils/localCalendarDate';
+import { istanbulTodayDateKey, istanbulYearEndDateKey, istanbulYearStartDateKey } from '../../utils/localCalendarDate';
 import {
   buildCashStatusRange,
   emptyCashStatusDate,
@@ -2095,7 +2095,7 @@ describe('Kasa Durumu filtresi — yılbaşı ve seçilen aralık', () => {
     },
   ];
 
-  it('filtresiz preset bugün değildir; giren ve çıkan 1 Ocak–bugün, bakiye kasalar toplamıdır', () => {
+  it('filtresiz preset bugün değildir; giren ve çıkan 1 Ocak–31 Aralık, bakiye kasalar toplamıdır', () => {
     const empty = emptyCashStatusDate();
     expect(empty.preset).toBe('none');
     expect(empty.preset).not.toBe('today');
@@ -2104,16 +2104,17 @@ describe('Kasa Durumu filtresi — yılbaşı ve seçilen aralık', () => {
 
     const open = resolveCashStatusQuery(empty, noon);
     expect(open.from).toBe('2026-01-01');
-    expect(open.to).toBe('2026-10-24');
+    expect(open.to).toBe('2026-12-31');
     expect(open.filtered).toBe(false);
     expect(open.balanceFromRegisters).toBe(true);
     expect(istanbulYearStartDateKey(noon)).toBe('2026-01-01');
+    expect(istanbulYearEndDateKey(noon)).toBe('2026-12-31');
     expect(istanbulTodayDateKey(noon)).toBe('2026-10-24');
 
     const lateUtc = new Date('2026-10-24T21:30:00.000Z');
     expect(istanbulTodayDateKey(lateUtc)).toBe('2026-10-25');
     expect(resolveCashStatusQuery(empty, lateUtc).from).toBe('2026-01-01');
-    expect(resolveCashStatusQuery(empty, lateUtc).to).toBe('2026-10-25');
+    expect(resolveCashStatusQuery(empty, lateUtc).to).toBe('2026-12-31');
 
     const boxes = cashStatusThreeBoxes({
       salesCash: 40_000,
@@ -2198,14 +2199,14 @@ describe('Kasa Durumu filtresi — yılbaşı ve seçilen aralık', () => {
     expect(moved).toBe(still);
   });
 
-  it('filtre kalkınca yine yılbaşı–bugün ve kasalar toplamına döner', () => {
+  it('filtre kalkınca yine yılbaşı–yıl sonu ve kasalar toplamına döner', () => {
     const picked = buildCashStatusRange('today', 0, '', '', noon);
     expect(resolveCashStatusQuery(picked, noon).filtered).toBe(true);
     const cleared = emptyCashStatusDate();
     const again = resolveCashStatusQuery(cleared, noon);
     expect(again.filtered).toBe(false);
     expect(again.from).toBe('2026-01-01');
-    expect(again.to).toBe('2026-10-24');
+    expect(again.to).toBe('2026-12-31');
     expect(again.balanceFromRegisters).toBe(true);
   });
 
@@ -2355,10 +2356,10 @@ describe('Kasa Durumu hareket listesi', () => {
     },
   ];
 
-  it('filtresiz liste 1 Ocak–bugündür; açılış işareti doğru, virman iki bacaktır ve kutulara yazılmaz', () => {
+  it('filtresiz liste 1 Ocak–31 Aralık’tır; açılış işareti doğru, virman iki bacaktır ve kutulara yazılmaz', () => {
     const open = resolveCashStatusQuery(emptyCashStatusDate(), noon);
     expect(open.from).toBe('2026-01-01');
-    expect(open.to).toBe('2026-10-24');
+    expect(open.to).toBe('2026-12-31');
     expect(open.filtered).toBe(false);
 
     const rows = cashStatusMovementRows({
@@ -2375,9 +2376,9 @@ describe('Kasa Durumu hareket listesi', () => {
       registerNames: { k1: 'MERKEZ KASA', k2: 'QICARD' },
     });
 
-    expect(rows.every((row) => row.date >= '2026-01-01' && row.date <= '2026-10-24')).toBe(true);
+    expect(rows.every((row) => row.date >= '2026-01-01' && row.date <= '2026-12-31')).toBe(true);
     expect(rows.some((row) => row.ficheNo === 'ONCEKI-YIL')).toBe(false);
-    expect(rows.some((row) => row.ficheNo === 'UTC-GECE')).toBe(false);
+    expect(rows.find((row) => row.ficheNo === 'UTC-GECE')?.date).toBe('2026-10-25');
     expect(rows.filter((row) => row.ficheNo === 'PESINAT')).toHaveLength(1);
     expect(rows.find((row) => row.ficheNo === 'PESINAT')?.amount).toBe(10_000);
     expect(rows.filter((row) => row.ficheNo === 'FIS-40')).toHaveLength(1);

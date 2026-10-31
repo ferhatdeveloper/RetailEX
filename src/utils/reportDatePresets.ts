@@ -2,6 +2,7 @@ import { getMonthRangeLocal, getWeekRangeLocal } from './dateLocal';
 import {
   istanbulCivilDate,
   istanbulTodayDateKey,
+  istanbulYearEndDateKey,
   istanbulYearStartDateKey,
   localTodayDateKey,
 } from './localCalendarDate';
@@ -80,7 +81,7 @@ export interface CashStatusDateValue {
 }
 
 export interface CashStatusQueryRange {
-  /** Hareket aralığı. Filtresizken İstanbul yılbaşı–bugün. */
+  /** Hareket aralığı. Filtresizken İstanbul yılbaşı–yıl sonu (1 Ocak ve 31 Aralık dahil). */
   from: string;
   to: string;
   filtered: boolean;
@@ -150,8 +151,9 @@ export function buildCashStatusRange(
 }
 
 /**
- * Filtresiz: giren ve çıkan yılbaşından bugüne, bakiye kasalar toplamı.
+ * Filtresiz: giren ve çıkan yılbaşından yıl sonuna, bakiye kasalar toplamı.
  * Filtreli: üç kutu ve kasa satırları yalnızca seçilen aralık.
+ * Hazır düğme veya elle girilen başlangıç/bitiş olduğu gibi kalır.
  */
 export function resolveCashStatusQuery(
   value: CashStatusDateValue,
@@ -160,7 +162,7 @@ export function resolveCashStatusQuery(
   if (!cashStatusFilterActive(value)) {
     return {
       from: istanbulYearStartDateKey(now),
-      to: istanbulTodayDateKey(now),
+      to: istanbulYearEndDateKey(now),
       filtered: false,
       balanceFromRegisters: true,
     };
