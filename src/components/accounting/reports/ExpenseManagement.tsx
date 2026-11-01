@@ -509,13 +509,14 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       size: 100,
       meta: { filterKind: 'date', format: 'date', type: 'date' },
     }),
-    columnHelper.accessor('category', {
+    columnHelper.accessor((row) => categoryLabel(row.category), {
+      id: 'category',
       header: tm('category').toUpperCase(),
-      cell: info => {
-        const cat = getCategoryInfo(info.getValue());
+      cell: (info) => {
+        const cat = getCategoryInfo(String(info.row.original.category || ''));
         return (
           <span className={`px-3 py-1 rounded-full text-xs font-medium ${cat.color} inline-flex items-center gap-1`}>
-            <span>{categoryLabel(info.getValue())}</span>
+            <span>{info.getValue()}</span>
           </span>
         );
       },

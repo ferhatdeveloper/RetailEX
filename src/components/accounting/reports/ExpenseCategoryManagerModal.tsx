@@ -81,10 +81,10 @@ export function ExpenseCategoryManagerModal({
   const columns = useMemo(() => {
     const header = (text: string) => text.toLocaleUpperCase('tr-TR');
     return [
-      columnHelper.accessor('name', {
+      columnHelper.accessor((row) => labelOf(row.name || row.code), {
         id: 'categoryName',
         header: header(tm('category')),
-        cell: ({ row }) => {
+        cell: ({ row, getValue }) => {
           const cat = row.original;
           if (renamingId === cat.id) {
             return (
@@ -99,7 +99,7 @@ export function ExpenseCategoryManagerModal({
               />
             );
           }
-          return <span>{labelOf(cat.name || cat.code)}</span>;
+          return <span>{getValue()}</span>;
         },
         meta: { defaultVisible: true },
       }),

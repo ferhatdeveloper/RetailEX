@@ -9801,7 +9801,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   expenseCategory_internet: { tr: 'İnternet', en: 'Internet', ar: 'إنترنت', ku: 'ئینتەرنێت' },
   expenseCategory_phone: { tr: 'Telefon', en: 'Phone', ar: 'هاتف', ku: 'تەلەفۆن' },
   expenseCategory_maintenance: { tr: 'Bakım-Onarım', en: 'Maintenance', ar: 'صيانة', ku: 'چاککردنەوە' },
-  expenseCategory_cleaning: { tr: 'Temizlik', en: 'Cleaning', ar: 'تنظيف', ku: 'پاککردنەوە' },
+  expenseCategory_cleaning: { tr: 'Temizlik', en: 'Cleaning', ar: 'نظافة', ku: 'پاککردنەوە' },
   expenseCategory_marketing: { tr: 'Pazarlama', en: 'Marketing', ar: 'تسويق', ku: 'مارکێتینگ' },
   expenseCategory_supplies: { tr: 'Malzeme', en: 'Supplies', ar: 'مستلزمات', ku: 'کەلوپەل' },
   expenseCategory_transport: { tr: 'Ulaşım', en: 'Transport', ar: 'نقل', ku: 'گواستنەوە' },

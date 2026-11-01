@@ -21,6 +21,7 @@ import { ReportKpiStrip, type ReportKpiItem } from '../../reports/shared/ReportK
 import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 import { defaultReportDateRange, type ReportDateRangeValue } from '../../../utils/reportDatePresets';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
+import { resolveExpenseCategoryLabel } from '../../../utils/expenseCategoryLabel';
 import {
   CLINIC_MIRROR_REPORTS,
   buildClinicMirrorReports,
@@ -464,12 +465,22 @@ export function ClinicReportCenter({ onOpenAllReports }: Props) {
         key: 'category',
         header: tm('bCrcColCategoryCustomer'),
         size: 220,
-        cell: (row) => (
-          <div>
-            <div className="font-semibold text-slate-800">{row.category}</div>
-            <div className="text-[11px] text-slate-400">{row.customerName}</div>
-          </div>
+        accessor: (row) => (
+          row.kind === 'expense'
+            ? (resolveExpenseCategoryLabel(row.category, { translate: tm }) || row.category)
+            : row.category
         ),
+        cell: (row) => {
+          const categoryLabel = row.kind === 'expense'
+            ? (resolveExpenseCategoryLabel(row.category, { translate: tm }) || row.category)
+            : row.category;
+          return (
+            <div>
+              <div className="font-semibold text-slate-800">{categoryLabel}</div>
+              <div className="text-[11px] text-slate-400">{row.customerName}</div>
+            </div>
+          );
+        },
       },
       { key: 'description', header: tm('bCrcColDescription'), size: 200 },
       { key: 'method', header: tm('bCrcColMethod'), size: 120 },
@@ -674,7 +685,10 @@ export function ClinicReportCenter({ onOpenAllReports }: Props) {
   const institutionRows = view.institutions.filter((row) => hit(query, [row.branchName, row.phone]));
   const movementRows = view.movements.filter((row) => {
     if (kindFilter !== 'all' && row.kind !== kindFilter) return false;
-    return hit(query, [row.category, row.customerName, row.description, row.method, kindLabel(row.kind)]);
+    const categoryLabel = row.kind === 'expense'
+      ? resolveExpenseCategoryLabel(row.category, { translate: tm })
+      : row.category;
+    return hit(query, [row.category, categoryLabel, row.customerName, row.description, row.method, kindLabel(row.kind)]);
   });
   const debtorPool = view.debtors.filter((row) => row.openAmount > 0.004);
   const debtorRows = (
@@ -833,12 +847,15 @@ export function ClinicReportCenter({ onOpenAllReports }: Props) {
   })();
 
   const expenseBars = (() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, { label: string; value: number }>();
     for (const row of view.movements) {
       if (row.kind !== 'expense') continue;
-      map.set(row.category, (map.get(row.category) || 0) + Math.abs(row.amount));
+      const stored = row.category;
+      const label = resolveExpenseCategoryLabel(stored, { translate: tm }) || stored;
+      const current = map.get(stored);
+      map.set(stored, { label, value: (current?.value || 0) + Math.abs(row.amount) });
     }
-    return [...map.entries()].map(([label, value]) => ({ id: label, label, value }));
+    return [...map.entries()].map(([id, row]) => ({ id, label: row.label, value: row.value }));
   })();
   const methodBars = (() => {
     const map = new Map<string, number>();

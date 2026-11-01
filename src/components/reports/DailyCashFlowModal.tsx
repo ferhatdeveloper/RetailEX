@@ -21,6 +21,7 @@ import {
   REPORT_CASH_IN_TYPES,
   isCashLineBackDated,
 } from '../../utils/reportUnifiedExpenses';
+import { resolveExpenseCategoryLabel } from '../../utils/expenseCategoryLabel';
 import { localCalendarDateKey } from '../../utils/localCalendarDate';
 import { formatNumber } from '../../utils/formatNumber';
 import { summarizeReportFx } from '../../utils/cashFxPosting';
@@ -209,11 +210,13 @@ export function DailyCashFlowModal({
               <tbody>
                 {rows.map((row) => {
                   const dateLabel = fmtDate(row.date);
-                  const category =
+                  const storedCategory =
                     row.category ||
                     (kind === 'cash-out'
                       ? reportCashOutCategory(row.typeCode)
                       : reportCashInCategory(row.typeCode));
+                  const category =
+                    resolveExpenseCategoryLabel(storedCategory, { translate: tm }) || storedCategory;
                   const isBackDated =
                     kind === 'cash-in'
                       ? Boolean((row as DailyExpenseRowLike & { isBackDated?: boolean }).isBackDated)

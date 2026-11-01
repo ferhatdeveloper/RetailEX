@@ -9,6 +9,7 @@ import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import { splitAmountByPartners, type PeriodPartnerShareSlice } from '../../utils/periodSummaryPartnerSplit';
 import type { Expense } from '../../services/api/expenses';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { resolveExpenseCategoryLabel } from '../../utils/expenseCategoryLabel';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 
 export type PeriodExpenseShareDetailScope = {
@@ -72,14 +73,21 @@ export function PeriodExpenseShareDetailModal({
       if (dateFrom && day && day < dateFrom) return false;
       if (dateTo && day && day > dateTo) return false;
       if (!q) return true;
-      const blob = `${e.category || ''} ${e.description || ''} ${e.notes || ''} ${e.document_number || ''}`.toLocaleLowerCase('tr-TR');
+      const storedCategory = String(e.category || '');
+      const visibleCategory = resolveExpenseCategoryLabel(storedCategory, { translate: tm });
+      const blob = `${storedCategory} ${visibleCategory} ${e.description || ''} ${e.notes || ''} ${e.document_number || ''}`.toLocaleLowerCase('tr-TR');
       return blob.includes(q);
     });
-  }, [scoped, search, category, dateFrom, dateTo]);
+  }, [scoped, search, category, dateFrom, dateTo, tm]);
 
   const money = (v: number) => `${formatNumber(v, 0, false)} ${currency}`;
 
-  type ExpenseGridRow = Expense & { expenseDay: string; amountNum: number; [key: string]: unknown };
+  type ExpenseGridRow = Expense & {
+    expenseDay: string;
+    amountNum: number;
+    categoryLabel: string;
+    [key: string]: unknown;
+  };
 
   const gridRows = useMemo((): ExpenseGridRow[] => {
     return rows.map((e) => {
@@ -91,19 +99,21 @@ export function PeriodExpenseShareDetailModal({
       for (const p of visiblePartners) {
         partnerFields[`share_${p.id}`] = shares.find((s) => s.id === p.id)?.amount ?? 0;
       }
+      const storedCategory = String(e.category || '');
       return {
         ...e,
         expenseDay: toSqlDateInputString(e.expense_date || '') || '—',
         amountNum: Number(e.amount) || 0,
+        categoryLabel: resolveExpenseCategoryLabel(storedCategory, { translate: tm }) || storedCategory || '—',
         ...partnerFields,
       };
     });
-  }, [rows, visiblePartners, partners]);
+  }, [rows, visiblePartners, partners, tm]);
 
   const tableColumns = useMemo((): ReportColumnTableCol<ExpenseGridRow>[] => {
     const cols: ReportColumnTableCol<ExpenseGridRow>[] = [
       { key: 'expenseDay', header: tm('dateLabel'), type: 'date', size: 110 },
-      { key: 'category', header: tm('rptPeriodFilterCategory'), size: 120 },
+      { key: 'categoryLabel', header: tm('rptPeriodFilterCategory'), size: 120 },
       {
         key: 'description',
         header: tm('description'),
@@ -171,7 +181,7 @@ export function PeriodExpenseShareDetailModal({
           >
             <option value="">{tm('rptPeriodFilterAllCategories')}</option>
             {categories.map((c) => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c}>{resolveExpenseCategoryLabel(c, { translate: tm }) || c}</option>
             ))}
           </select>
           <select

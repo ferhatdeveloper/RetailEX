@@ -25,6 +25,7 @@ import {
   dailySalesDetailBeforeDiscountContribution,
   dailySalesDetailDiscountContribution,
 } from '../../utils/dailySalesDetailCashBalance';
+import { resolveExpenseCategoryLabel } from '../../utils/expenseCategoryLabel';
 import { reportDisplayNet } from '../../utils/periodSummaryNet';
 import {
   appointmentIdFromAvansNotes,
@@ -4086,7 +4087,7 @@ export function ReportsModule({
         enteredById: row.enteredById,
         enteredByName: row.enteredByName,
         description: row.description,
-        category: row.category,
+        category: resolveExpenseCategoryLabel(row.category, { translate: tm }) || row.category,
         partyName: row.partyName,
         paymentMethod: row.paymentMethod,
         isCash: row.isCash,
@@ -4210,11 +4211,15 @@ export function ReportsModule({
             : bucket === 'transfer'
               ? tm('reportsPaymentPieTransfer')
               : tm('reportsPaymentOther');
+      const storedCategory = String(row.category || '').trim();
+      const categoryLabel = storedCategory
+        ? resolveExpenseCategoryLabel(storedCategory, { translate: tm })
+        : '';
       return {
         ...row,
         timeLabel,
         typeLabel: labelDailyExpenseType(row.typeCode),
-        category: row.category || row.partyName || '—',
+        category: categoryLabel || row.partyName || '—',
         payLabel,
       };
     });
@@ -6101,7 +6106,7 @@ export function ReportsModule({
         <tr>
           <td>${escHtml(row.ficheNo)}</td>
           <td>${escHtml(labelDailyExpenseType(row.typeCode))}</td>
-          <td>${escHtml(row.category || row.partyName || '—')}</td>
+          <td>${escHtml(resolveExpenseCategoryLabel(row.category, { translate: L }) || row.partyName || '—')}</td>
           <td>${escHtml(row.description || '—')}</td>
           <td style="text-align:right">${formatNumber(row.amount, 2, false)}</td>
           <td>${escHtml(payLabel)}</td>

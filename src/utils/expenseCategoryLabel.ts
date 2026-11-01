@@ -94,6 +94,50 @@ const SYSTEM_EXPENSE_CATEGORY_NAMES = new Set<string>([
   'ulaşım',
 ]);
 
+/** Makine kodu takma adı → i18n kodu. Kayıttaki kod değişmez. */
+const BUILTIN_EXPENSE_CATEGORY_CODE_ALIAS: Record<string, string> = {
+  kira: 'rent',
+  maas: 'salary',
+  bakim_onarim: 'maintenance',
+  diger: 'other',
+};
+
+const BUILTIN_EXPENSE_CATEGORY_I18N_CODES = new Set<string>([
+  'rent',
+  'salary',
+  'electricity',
+  'water',
+  'internet',
+  'phone',
+  'maintenance',
+  'cleaning',
+  'marketing',
+  'supplies',
+  'transport',
+  'tax',
+  'insurance',
+  'other',
+]);
+
+/** Türkçe kanonik ad → kod. Veritabanındaki name kolonu bu adla kalır. */
+const BUILTIN_EXPENSE_CATEGORY_NAME_TO_CODE: Record<string, string> = {
+  kira: 'rent',
+  maaş: 'salary',
+  elektrik: 'electricity',
+  su: 'water',
+  internet: 'internet',
+  telefon: 'phone',
+  'bakım-onarım': 'maintenance',
+  'bakım/onarım': 'maintenance',
+  temizlik: 'cleaning',
+  pazarlama: 'marketing',
+  malzeme: 'supplies',
+  ulaşım: 'transport',
+  vergi: 'tax',
+  sigorta: 'insurance',
+  diğer: 'other',
+};
+
 const TR_FIRST: Record<string, string> = {
   i: 'İ',
   ı: 'I',
@@ -162,6 +206,36 @@ function labelFromToken(token: string, translate: (key: string) => string): stri
   return '';
 }
 
+/** Sistem kodu veya Türkçe kanonik ad. Kullanıcının yazdığı ad bu kümeye girmez. */
+function builtinExpenseCategoryI18nCode(value: string): string | null {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+  if (/^[a-z0-9_]+$/.test(trimmed)) {
+    const alias = BUILTIN_EXPENSE_CATEGORY_CODE_ALIAS[trimmed];
+    if (alias) return alias;
+    if (BUILTIN_EXPENSE_CATEGORY_I18N_CODES.has(trimmed)) return trimmed;
+  }
+  return BUILTIN_EXPENSE_CATEGORY_NAME_TO_CODE[normalizeExpenseCategoryText(trimmed)] || null;
+}
+
+function labelForBuiltinExpenseCategory(code: string, translate: (key: string) => string): string {
+  return labelFromToken(code, translate) || KNOWN_EXPENSE_CATEGORY_LABELS[code] || code;
+}
+
+function systemExpenseCategoryDisplayLabel(
+  row: ExpenseCategoryLabelSource,
+  raw: string,
+  translate: (key: string) => string,
+): string | null {
+  if (!isSystemExpenseCategory(row)) return null;
+  const code =
+    builtinExpenseCategoryI18nCode(String(row.code || '')) ||
+    builtinExpenseCategoryI18nCode(String(row.name || '')) ||
+    builtinExpenseCategoryI18nCode(raw);
+  if (!code) return null;
+  return labelForBuiltinExpenseCategory(code, translate);
+}
+
 function findCategory(
   stored: string,
   categories: ExpenseCategoryLabelSource[],
@@ -193,7 +267,11 @@ export function resolveExpenseCategoryLabel(
 
   const suffix = expenseCategoryKeySuffix(raw);
   if (suffix) {
+    const systemCode = builtinExpenseCategoryI18nCode(suffix);
+    if (systemCode) return labelForBuiltinExpenseCategory(systemCode, translate);
     const linked = findCategory(suffix, categories);
+    const systemLabel = linked ? systemExpenseCategoryDisplayLabel(linked, suffix, translate) : null;
+    if (systemLabel) return systemLabel;
     const linkedName = String(linked?.name || '').trim();
     if (linked && isHumanExpenseCategoryName(linkedName)) return linkedName;
     return labelFromToken(suffix, translate) || titleCaseExpenseSlug(suffix);
@@ -201,6 +279,8 @@ export function resolveExpenseCategoryLabel(
 
   const linked = findCategory(raw, categories);
   if (linked) {
+    const systemLabel = systemExpenseCategoryDisplayLabel(linked, raw, translate);
+    if (systemLabel) return systemLabel;
     const linkedName = String(linked.name || '').trim();
     if (isHumanExpenseCategoryName(linkedName)) return linkedName;
     const linkedSuffix = expenseCategoryKeySuffix(linkedName);
@@ -211,6 +291,9 @@ export function resolveExpenseCategoryLabel(
     if (fromCode) return fromCode;
     if (isExpenseCategorySlug(linkedName)) return titleCaseExpenseSlug(linkedName);
   }
+
+  const directSystem = builtinExpenseCategoryI18nCode(raw);
+  if (directSystem) return labelForBuiltinExpenseCategory(directSystem, translate);
 
   const direct = labelFromToken(raw, translate);
   if (direct) return direct;
