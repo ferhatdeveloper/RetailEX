@@ -108,12 +108,14 @@ services:
       - postgrest_ozbek
       - postgrest_kucoglu
       - postgrest_guzel
+      - postgrest_ameerat_house
       - sync_lovan
       - sync_zetem
       - sync_ferhat
       - sync_ozbek
       - sync_kucoglu
       - sync_guzel
+      - sync_ameerat_house
     volumes:
       - ./database/docker/Caddyfile.api-gateway:/etc/caddy/Caddyfile:ro
     networks:
@@ -567,6 +569,21 @@ services:
     networks:
       - berqenas_net
 
+  postgrest_ameerat_house:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_ameerat_house
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/ameerat_house
+    ports:
+      - "${POSTGREST_PORT_AMEERAT_HOUSE:-3024}:3000"
+    networks:
+      - berqenas_net
+
   sync_aqua:
     <<: *sync-service
     container_name: saas_sync_aqua
@@ -636,6 +653,13 @@ services:
     environment:
       <<: *sync-env
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/guzel
+
+  sync_ameerat_house:
+    <<: *sync-service
+    container_name: saas_sync_ameerat_house
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/ameerat_house
 
   sync_mettu:
     <<: *sync-service

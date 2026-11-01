@@ -294,6 +294,24 @@
         }
     }
 
+    handle /ameerat_house/ws* {
+        uri strip_prefix /ameerat_house
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_ameerat_house:8080
+    }
+    handle /ameerat_house/sync/* {
+        uri strip_prefix /ameerat_house/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_ameerat_house:8080
+    }
+    handle_path /ameerat_house/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_ameerat_house:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
     handle {
         header Content-Type "application/json; charset=utf-8"
         respond "{\"ok\":false,\"error\":\"not_found\"}" 404
