@@ -685,7 +685,7 @@ export function MaterialExtractReport() {
         const receipt = await getReceiptSettings(firmNr).catch(() => ({}));
         const header = companyHeaderFromReceiptSettings(
             receipt,
-            selectedFirm?.name || selectedFirm?.firma_adi || 'RetailEX',
+            selectedFirm?.firma_adi || selectedFirm?.title || selectedFirm?.name || '',
         );
         const printRows: MaterialExtractPrintRow[] = rows.map((row) => ({
             date: row.date,

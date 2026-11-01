@@ -10,6 +10,7 @@ import {
   escapeHtml,
   formatExtractDate,
 } from './materialExtractPrint';
+import { buildCenteredFirmHeaderHtml } from './printFirmHeader';
 import {
   ficheTypeToInfo,
   getCariBalanceDirection,
@@ -196,9 +197,6 @@ export function buildCariEkstrePrintHtml(input: CariEkstrePrintInput): string {
   const orientation = input.orientation === 'portrait' ? 'portrait' : 'landscape';
   const rtl = input.printLang === 'ar' || input.printLang === 'ku';
   const taxLine = [input.companyTaxOffice, input.companyTaxNumber].filter(Boolean).join(' · ');
-  const logo = input.logoDataUrl
-    ? `<img src="${escapeHtml(input.logoDataUrl)}" alt="" class="logo" />`
-    : '';
   const printedAt =
     input.printedAt ||
     formatExtractDate(new Date().toISOString().slice(0, 10)) +
@@ -254,7 +252,7 @@ export function buildCariEkstrePrintHtml(input: CariEkstrePrintInput): string {
     display: flex; justify-content: space-between; gap: 16px; align-items: flex-start;
     border-bottom: 2.5px solid #1e3a5f; padding-bottom: 10px; margin-bottom: 10px;
   }
-  .head-left { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+  .head-left { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; min-width: 0; }
   .logo { max-height: 52px; max-width: 140px; object-fit: contain; }
   .co-name { font-size: 17px; font-weight: 800; letter-spacing: 0.02em; color: #0f172a; }
   .co-meta { color: #475569; margin-top: 3px; line-height: 1.45; font-size: 10px; }
@@ -355,10 +353,13 @@ export function buildCariEkstrePrintHtml(input: CariEkstrePrintInput): string {
 <div class="sheet">
   <div class="letterhead">
     <div class="head-left">
-      ${logo}
+      ${buildCenteredFirmHeaderHtml({
+        firmName: input.companyName,
+        logoDataUrl: input.logoDataUrl,
+        nameStyle: 'text-align:center;font-size:17px;font-weight:800',
+      })}
       <div>
-        <div class="co-name">${escapeHtml(input.companyName)}</div>
-        <div class="co-meta">
+        <div class="co-meta" style="text-align:center">
           ${input.companyAddress ? `${escapeHtml(input.companyAddress)}<br/>` : ''}
           ${input.companyPhone ? `${escapeHtml(input.companyPhone)}<br/>` : ''}
           ${taxLine ? escapeHtml(taxLine) : ''}

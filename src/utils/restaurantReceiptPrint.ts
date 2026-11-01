@@ -2,6 +2,7 @@ import type { Sale } from '../core/types/models';
 import type { ReceiptSettings } from '../services/receiptSettingsService';
 import { buildReceipt80mmPrintHtml } from './receipt80mmPrintHtml';
 import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
+import { buildCenteredFirmHeaderHtml } from './printFirmHeader';
 import { enqueueHtmlDocumentJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
 import { IS_TAURI } from './env';
 import { getPrintString, resolvePrintLocale } from '../locales/printKeys';
@@ -386,6 +387,8 @@ export function buildRestaurantKitchenTicketHtml(input: {
   printedAtLabel?: string;
   /** Fiş başlığı ve meta etiketleri (varsayılan: tr) */
   locale?: KitchenReceiptLocale;
+  firmName?: string | null;
+  logoDataUrl?: string | null;
 }): string {
   const {
     tableNumber,
@@ -445,6 +448,11 @@ export function buildRestaurantKitchenTicketHtml(input: {
     .join('');
 
   const dir = locale === 'ar' || locale === 'ku' ? 'rtl' : 'ltr';
+  const firmHeaderHtml = buildCenteredFirmHeaderHtml({
+    firmName: input.firmName,
+    logoDataUrl: input.logoDataUrl,
+    nameStyle: 'text-align:center;font-weight:900;font-size:16px;margin:0 0 4px',
+  });
 
   return `<!DOCTYPE html><html lang="${locale}"><head><meta charset="utf-8">${RECEIPT_80MM_VIEWPORT_FOR_HEADLESS}<title>${escapeHtml(L.title)}</title>
 <style>
@@ -458,6 +466,7 @@ ${RECEIPT_80MM_DOCUMENT_CSS}
   table.kitchen-lines th,table.kitchen-lines td{border:1px solid #000}
 </style>
 </head><body dir="${dir}">
+${firmHeaderHtml}
 <h2>${escapeHtml(L.title)}</h2>
 <table class="kitchen-lines"><tbody>${metaRows}</tbody></table>
 ${orderNote?.trim() ? `<p style="margin:4px 0 6px 0;font-size:13px;font-weight:800;border:1px dashed #000;padding:4px">${escapeHtml(orderNote.trim())}</p>` : ''}

@@ -11,6 +11,7 @@ import {
   type PatientFileCustomerLike,
 } from '../services/templateRenderService';
 import { companyHeaderFromReceiptSettings } from './materialExtractPrint';
+import { loadCenteredFirmHeader } from './printFirmHeader';
 import { ERP_SETTINGS } from '../services/postgres';
 
 export const PATIENT_FILE_PRINT_SCOPE = 'patient_file' as const;
@@ -66,9 +67,10 @@ export async function preparePatientFilePrintContext(
 ): Promise<Record<string, unknown>> {
   const fn = String(firmNr || ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0');
   const receipt = await getReceiptSettings(fn).catch(() => ({}));
-  const header = companyHeaderFromReceiptSettings(receipt, 'RetailEX');
+  const header = companyHeaderFromReceiptSettings(receipt, '');
+  const firm = await loadCenteredFirmHeader({ firmNr: fn });
   return buildPatientFilePrintContext(customer, {
-    storeName: header.companyName,
+    storeName: firm.firmName || header.companyName,
     storeAddress: header.companyAddress,
     storePhone: header.companyPhone,
     storeTaxNo: header.companyTaxNumber,

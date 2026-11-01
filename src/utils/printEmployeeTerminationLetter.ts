@@ -4,6 +4,7 @@
 import { ERP_SETTINGS, PostgresConnection } from '../services/postgres';
 import { getReceiptSettings } from '../services/receiptSettingsService';
 import { printReportHtml } from './reportHtmlPrint';
+import { buildCenteredFirmHeaderHtml, resolvePrintFirmName } from './printFirmHeader';
 
 function esc(s: string): string {
   return String(s || '')
@@ -31,7 +32,7 @@ function fmtMoney(n: number, currency = 'IQD'): string {
   return `${v} ${currency}`;
 }
 
-async function firmHeader(): Promise<{ name: string; address: string; phone: string }> {
+async function firmHeader(): Promise<{ name: string; address: string; phone: string; logoDataUrl: string }> {
   const postgres = PostgresConnection.getInstance();
   let firm: Record<string, unknown> | null = null;
   try {
@@ -45,10 +46,18 @@ async function firmHeader(): Promise<{ name: string; address: string; phone: str
   } catch {
     /* ignore */
   }
+  const row = firm || {};
   return {
-    name: String(receipt.companyName || firm?.title || firm?.name || 'RetailEX'),
-    address: String(receipt.companyAddress || firm?.address || ''),
-    phone: String(receipt.companyPhone || firm?.phone || ''),
+    name:
+      resolvePrintFirmName({
+        receiptCompanyName: receipt.companyName,
+        firmaAdi: typeof row.firma_adi === 'string' ? row.firma_adi : '',
+        title: typeof row.title === 'string' ? row.title : '',
+        name: typeof row.name === 'string' ? row.name : '',
+      }) || String(receipt.companyName || row.title || row.name || '').trim(),
+    address: String(receipt.companyAddress || row.address || ''),
+    phone: String(receipt.companyPhone || row.phone || ''),
+    logoDataUrl: String(receipt.logoDataUrl || ''),
   };
 }
 
@@ -101,8 +110,12 @@ export async function printEmployeeTerminationLetterEn(
   </style>
 </head>
 <body>
-  <div class="firm">${esc(firm.name)}</div>
-  <div class="muted">${esc(firm.address)}${firm.phone ? ` · ${esc(firm.phone)}` : ''}</div>
+  ${buildCenteredFirmHeaderHtml({
+    firmName: firm.name,
+    logoDataUrl: firm.logoDataUrl,
+    nameStyle: 'text-align:center;font-weight:700;font-size:14pt',
+  })}
+  <div class="muted" style="text-align:center">${esc(firm.address)}${firm.phone ? ` · ${esc(firm.phone)}` : ''}</div>
   <p class="muted" style="margin-top:14px">Date: <strong>${esc(fmtDateEn(issue))}</strong></p>
 
   <h1>Employment Termination Letter</h1>

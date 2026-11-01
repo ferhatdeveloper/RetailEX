@@ -26,6 +26,8 @@ import {
   appointmentReceiptPayState,
 } from '../../utils/receiptUnpaidBalance';
 import { receiptLineGross, receiptSettlement } from '../../utils/receiptSettlement';
+import { resolvePrintFirmName } from '../../utils/printFirmHeader';
+import { PrintFirmBrand } from '../shared/PrintFirmBrand';
 
 interface Receipt80mmProps {
   sale: Sale;
@@ -92,6 +94,24 @@ export function Receipt80mm({
     const s = String(raw).trim().padStart(3, '0').slice(0, 10);
     return s || undefined;
   }, [selectedFirm]);
+
+  const printFirmName = useMemo(
+    () =>
+      resolvePrintFirmName({
+        receiptCompanyName: receiptSettings?.companyName,
+        firmaAdi: selectedFirm?.firma_adi,
+        title: selectedFirm?.title,
+        name: selectedFirm?.name,
+      }) ||
+      String(
+        receiptSettings?.companyName ||
+          selectedFirm?.firma_adi ||
+          selectedFirm?.title ||
+          selectedFirm?.name ||
+          '',
+      ).trim(),
+    [receiptSettings?.companyName, selectedFirm],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -704,14 +724,12 @@ export function Receipt80mm({
             <>
             {/* Güzellik — temiz tablo fişi (kesik çizgi yok) */}
             <div data-section="header" className="text-center border-b-2 border-gray-900 pb-2 mb-3 receipt-print-dark">
-              {receiptSettings?.logoDataUrl && (
-                <div className="flex justify-center mb-1">
-                  <img src={receiptSettings.logoDataUrl} alt="" className="h-10 w-auto object-contain" style={{ maxWidth: logoMaxWidth }} />
-                </div>
-              )}
-              <div className="text-[1.35rem] font-black mb-0.5 text-gray-950 leading-tight print:text-lg print:font-black">
-                {receiptSettings?.companyName || selectedFirm?.name || 'RetailEX'}
-              </div>
+              <PrintFirmBrand
+                firmName={printFirmName}
+                logoDataUrl={receiptSettings?.logoDataUrl}
+                nameClassName="text-[1.35rem] font-black mb-0.5 text-gray-950 leading-tight print:text-lg print:font-black"
+                logoStyle={{ maxWidth: logoMaxWidth }}
+              />
               {receiptSettings?.companyPhone && (
                 <div className="text-[12px] font-bold text-gray-900 mt-0.5 print:text-[10px] print:font-bold">
                   {receiptSettings.companyPhone}
@@ -901,14 +919,12 @@ export function Receipt80mm({
             <>
             {/* Store Header - fiş ayarlarından logo ve firma bilgisi */}
             <div data-section="header" className="text-center border-b-[3px] border-dashed border-gray-900 pb-2 mb-2 receipt-print-dark">
-              {receiptSettings?.logoDataUrl && (
-                <div className="flex justify-center mb-1">
-                  <img src={receiptSettings.logoDataUrl} alt="" className="h-10 w-auto object-contain" style={{ maxWidth: logoMaxWidth }} />
-                </div>
-              )}
-              <div className="text-[1.35rem] font-black mb-0.5 text-gray-950 leading-tight print:text-lg print:font-black">
-                {receiptSettings?.companyName || selectedFirm?.name || 'RetailEX'}
-              </div>
+              <PrintFirmBrand
+                firmName={printFirmName}
+                logoDataUrl={receiptSettings?.logoDataUrl}
+                nameClassName="text-[1.35rem] font-black mb-0.5 text-gray-950 leading-tight print:text-lg print:font-black"
+                logoStyle={{ maxWidth: logoMaxWidth }}
+              />
               {(receiptSettings?.companyAddress || receiptSettings?.companyPhone) && (
                 <div className="text-[12px] font-bold text-gray-900 space-y-0 leading-tight mt-0.5 print:text-[10px] print:font-bold">
                   {receiptSettings.companyAddress && <div className="break-words">{receiptSettings.companyAddress}</div>}
@@ -918,7 +934,9 @@ export function Receipt80mm({
               {!receiptSettings?.companyAddress && !receiptSettings?.companyPhone && (
                 <div className="text-[12px] font-bold text-gray-900 print:text-[10px] print:font-bold">{t.receipt.footer}</div>
               )}
-              <div className="text-[12px] font-bold text-gray-900 mt-0.5 print:text-[10px] print:font-bold">{receiptSettings?.companyName ? (selectedFirm?.title || '') : (selectedFirm?.title || '')}</div>
+              {selectedFirm?.title?.trim() && selectedFirm.title.trim() !== printFirmName ? (
+                <div className="text-[12px] font-bold text-gray-900 mt-0.5 print:text-[10px] print:font-bold">{selectedFirm.title.trim()}</div>
+              ) : null}
             </div>
 
             {displayHeaderBanner?.trim() && (

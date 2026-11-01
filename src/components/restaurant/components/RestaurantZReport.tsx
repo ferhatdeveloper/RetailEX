@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FileText, Printer, X, Clock, Banknote, CreditCard } from 'lucide-react';
 import { cn } from '../../ui/utils';
 import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 import { formatCurrency } from '../../../utils/currency';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { getReceiptSettings } from '../../../services/receiptSettingsService';
+import { buildCenteredFirmHeaderHtml, resolvePrintFirmName } from '../../../utils/printFirmHeader';
 
 interface ZReportData {
     date: string;
@@ -35,6 +38,38 @@ function padLine(left: string, right: string, width = 32): string {
 
 export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onClose, onPrint }) => {
     const fmt = (num: number) => formatCurrency(num, 0, false);
+    const { selectedFirm } = useFirmaDonem();
+    const [logoDataUrl, setLogoDataUrl] = useState('');
+    const [receiptCompanyName, setReceiptCompanyName] = useState('');
+    useEffect(() => {
+        let cancelled = false;
+        const nr = selectedFirm?.firm_nr != null ? String(selectedFirm.firm_nr) : undefined;
+        void getReceiptSettings(nr)
+            .then((rs) => {
+                if (cancelled) return;
+                setLogoDataUrl(rs.logoDataUrl || '');
+                setReceiptCompanyName(rs.companyName || '');
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setLogoDataUrl('');
+                    setReceiptCompanyName('');
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedFirm?.firm_nr]);
+    const firmName = useMemo(
+        () =>
+            resolvePrintFirmName({
+                receiptCompanyName,
+                firmaAdi: selectedFirm?.firma_adi,
+                title: selectedFirm?.title,
+                name: selectedFirm?.name,
+            }),
+        [receiptCompanyName, selectedFirm],
+    );
 
     /** 80mm termal fiş içeriği — yazdırma penceresine gönderilecek HTML */
     const getReceipt80mmHtml = () => {
@@ -94,7 +129,8 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
         const html = getReceipt80mmHtml();
         const win = window.open('', '_blank', 'width=320,height=600');
         if (!win) return;
-        const content = html.split('\n').map(line => `<div class="line">${line.replace(/ /g, '&nbsp;')}</div>`).join('');
+        const brand = buildCenteredFirmHeaderHtml({ firmName, logoDataUrl });
+        const content = brand + html.split('\n').map(line => `<div class="line">${line.replace(/ /g, '&nbsp;')}</div>`).join('');
         win.document.write(`
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Z-Raporu</title>

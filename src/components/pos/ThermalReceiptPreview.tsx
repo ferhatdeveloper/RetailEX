@@ -1,10 +1,12 @@
 ﻿import type { Sale } from '../../core/types';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatNumber } from '../../utils/formatNumber';
+import { PrintFirmBrand } from '../shared/PrintFirmBrand';
 
 interface ThermalReceiptPreviewProps {
   sale: Sale;
   companyName?: string;
+  logoDataUrl?: string | null;
 }
 
 /**
@@ -13,16 +15,15 @@ interface ThermalReceiptPreviewProps {
  */
 export function ThermalReceiptPreview({
   sale,
-  companyName = 'ExRetailOS'
+  companyName = '',
+  logoDataUrl,
 }: ThermalReceiptPreviewProps) {
   const { darkMode } = useTheme();
 
   return (
     <div className={`w-[302px] mx-auto font-mono text-xs leading-tight ${darkMode ? 'bg-white text-black' : 'bg-white text-black'} shadow-xl border-4 border-gray-300 p-4`}>
       {/* Header */}
-      <div className="text-center font-bold text-sm mb-1">
-        {companyName}
-      </div>
+      <PrintFirmBrand firmName={companyName} logoDataUrl={logoDataUrl} nameClassName="font-bold text-sm mb-1" />
       <div className="text-center text-[9px] mb-2">
         Tel: 0850 XXX XX XX
       </div>

@@ -34,6 +34,7 @@ import {
 } from '../../utils/barcodeScannerInput';
 import { isProductExpired } from '../../utils/productExpiry';
 import { printThermalReceipt } from '../../utils/thermalPrinter';
+import { resolvePrintFirmName } from '../../utils/printFirmHeader';
 import { postgres } from '../../services/postgres';
 
 interface MobilePOSProps {
@@ -679,7 +680,11 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
     // Automatic Printing Logic
     if (autoPrint) {
-      const companyName = 'RetailEX Mobile'; // Dynamic value could be added if needed
+      const companyName = resolvePrintFirmName({
+        firmaAdi: selectedFirm?.firma_adi,
+        title: selectedFirm?.title,
+        name: selectedFirm?.name,
+      });
       printThermalReceipt(sale, companyName, { 
         autoPrint: true, 
         language: receiptLanguage 

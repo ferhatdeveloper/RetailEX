@@ -4,6 +4,8 @@ import { formatMoneyWithCode } from '../../utils/currency';
 import { formatNumber } from '../../utils/formatNumber';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
 import { receiptLineGross, receiptSettlement } from '../../utils/receiptSettlement';
+import { resolvePrintFirmName } from '../../utils/printFirmHeader';
+import { PrintFirmBrand } from '../shared/PrintFirmBrand';
 import { customerReceiptRows } from '../../utils/saleCustomerSnapshot';
 import { RECEIPT_A4_DOCUMENT_CSS } from '../../utils/receiptA4DocumentCss';
 import { RECEIPT_A5_DOCUMENT_CSS } from '../../utils/receiptA5DocumentCss';
@@ -86,7 +88,12 @@ export function ReceiptStandardDocument({
   const barcodeH = isA5 ? 34 : 40;
 
   const r = translations.receipt;
-  const companyName = receiptSettings?.companyName?.trim() || 'RetailEX';
+  const companyName =
+    resolvePrintFirmName({
+      receiptCompanyName: receiptSettings?.companyName,
+      title: firmTitle,
+      name: firmTitle,
+    }) || receiptSettings?.companyName?.trim() || firmTitle?.trim() || 'RetailEX';
   const logo = receiptSettings?.logoDataUrl?.trim();
   const logoSafe = logo && logo.startsWith('data:image/') ? logo : undefined;
   const noteText = receiptNotesForDisplay(sale.notes);
@@ -116,11 +123,15 @@ export function ReceiptStandardDocument({
         <div className={rx('accent-bar')} />
         <div className={rx('sheet')}>
           <header className={rx('header')}>
-            <div className={rx('brand')}>
-              {logoSafe ? <img src={logoSafe} alt="" className={rx('logo')} /> : null}
+            <div className={rx('brand')} style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+              <PrintFirmBrand
+                firmName={companyName}
+                logoDataUrl={logoSafe}
+                nameClassName={rx('company-name')}
+                logoClassName={rx('logo')}
+              />
               <div>
-                <h1 className={rx('company-name')}>{companyName}</h1>
-                <div className={rx('company-meta')}>
+                <div className={rx('company-meta')} style={{ textAlign: 'center' }}>
                   {receiptSettings?.companyAddress ? <div>{receiptSettings.companyAddress}</div> : null}
                   {receiptSettings?.companyPhone ? <div>{receiptSettings.companyPhone}</div> : null}
                   {receiptSettings?.companyTaxNumber ? (
@@ -129,7 +140,9 @@ export function ReceiptStandardDocument({
                       {receiptSettings.companyTaxNumber}
                     </div>
                   ) : null}
-                  {firmTitle?.trim() ? <div style={{ marginTop: 4, fontWeight: 700 }}>{firmTitle.trim()}</div> : null}
+                  {firmTitle?.trim() && firmTitle.trim() !== companyName ? (
+                    <div style={{ marginTop: 4, fontWeight: 700 }}>{firmTitle.trim()}</div>
+                  ) : null}
                 </div>
               </div>
             </div>

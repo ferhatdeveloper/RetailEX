@@ -4,10 +4,12 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { Banknote } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import { formatCurrency } from '../../utils/currency';
+import { PrintFirmBrand } from '../shared/PrintFirmBrand';
 
 interface PaymentReceiptPreviewProps {
   sale: Sale;
   companyName?: string;
+  logoDataUrl?: string | null;
   location?: string;
 }
 
@@ -17,7 +19,8 @@ interface PaymentReceiptPreviewProps {
  */
 export function PaymentReceiptPreview({
   sale,
-  companyName = 'ExRetailOS',
+  companyName = '',
+  logoDataUrl,
   location = 'Bağdat, Irak'
 }: PaymentReceiptPreviewProps) {
   const { darkMode } = useTheme();
@@ -83,8 +86,13 @@ export function PaymentReceiptPreview({
     <div className={`w-full max-w-md mx-auto ${darkMode ? 'bg-white text-black' : 'bg-white text-black'} shadow-lg rounded-lg overflow-hidden`}>
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 text-center">
+        <PrintFirmBrand
+          firmName={companyName}
+          logoDataUrl={logoDataUrl}
+          nameClassName="text-lg font-semibold mb-1"
+          logoClassName="h-12 w-auto object-contain mx-auto mb-1 bg-white rounded"
+        />
         <h2 className="text-xl font-bold mb-1">Ödeme Fişi</h2>
-        <div className="text-lg font-semibold mb-1">{companyName}</div>
         <div className="text-sm opacity-90">Profesyonel Satış Yönetim Sistemi</div>
         <div className="text-xs opacity-75 mt-1">{location}</div>
       </div>

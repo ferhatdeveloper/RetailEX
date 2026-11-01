@@ -1,6 +1,7 @@
 import { ERP_SETTINGS, PostgresConnection } from '../services/postgres';
 import { getReceiptSettings } from '../services/receiptSettingsService';
 import { printReportHtml } from './reportHtmlPrint';
+import { buildCenteredFirmHeaderHtml, resolvePrintFirmName } from './printFirmHeader';
 import { receiptNotesForDisplay } from './receiptNotes';
 import type { PartyStatement, PartyStatementLine } from '../services/api/partyStatements';
 
@@ -24,7 +25,7 @@ function fmtDate(d?: string | null): string {
   return s;
 }
 
-async function firmHeader(): Promise<{ name: string; address: string; phone: string; tax: string }> {
+async function firmHeader(): Promise<{ name: string; address: string; phone: string; tax: string; logoDataUrl: string }> {
   const postgres = PostgresConnection.getInstance();
   let firm: any = null;
   try {
@@ -40,11 +41,19 @@ async function firmHeader(): Promise<{ name: string; address: string; phone: str
   }
   const taxOffice = receipt.companyTaxOffice || firm?.tax_office || '';
   const taxNr = receipt.companyTaxNumber || firm?.tax_nr || '';
+  const name =
+    resolvePrintFirmName({
+      receiptCompanyName: receipt.companyName,
+      firmaAdi: firm?.firma_adi,
+      title: firm?.title,
+      name: firm?.name,
+    }) || String(receipt.companyName || firm?.title || firm?.name || '').trim();
   return {
-    name: receipt.companyName || firm?.title || firm?.name || 'RetailEX',
+    name,
     address: receipt.companyAddress || firm?.address || '',
     phone: receipt.companyPhone || firm?.phone || '',
     tax: [taxOffice, taxNr].filter(Boolean).join(' / '),
+    logoDataUrl: receipt.logoDataUrl || '',
   };
 }
 
@@ -84,8 +93,12 @@ export async function printPayrollVoucher(opts: {
   </style>
 </head>
 <body>
-  <h1>${esc(firm.name)}</h1>
-  <div class="muted">${esc(firm.address)}</div>
+  ${buildCenteredFirmHeaderHtml({
+    firmName: firm.name,
+    logoDataUrl: firm.logoDataUrl,
+    nameStyle: 'text-align:center;font-size:22px;font-weight:800;letter-spacing:0.04em',
+  })}
+  <div class="muted" style="text-align:center">${esc(firm.address)}</div>
   <div class="muted">${esc([firm.phone, firm.tax].filter(Boolean).join(' · '))}</div>
   <div class="box">
     <h1>${esc(opts.title)}</h1>
@@ -197,8 +210,12 @@ export async function printPartyStatementDoc(opts: {
 </head>
 <body>
   <div class="letterhead">
-    <div>
-      <div class="co-name">${esc(firm.name)}</div>
+    <div style="text-align:center">
+      ${buildCenteredFirmHeaderHtml({
+        firmName: firm.name,
+        logoDataUrl: firm.logoDataUrl,
+        nameStyle: 'text-align:center;font-size:17px;font-weight:800',
+      })}
       <div class="muted">${esc(firm.address)}${firm.phone ? `<br/>${esc(firm.phone)}` : ''}${firm.tax ? `<br/>${esc(firm.tax)}` : ''}</div>
     </div>
     <div class="muted" style="text-align:right">

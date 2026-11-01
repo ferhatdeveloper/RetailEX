@@ -221,6 +221,9 @@ export async function printKitchenTicketsAfterSend(params: {
     groups.get(key)!.items.push(item);
   }
 
+  const { loadCenteredFirmHeader } = await import('./printFirmHeader');
+  const firmHeader = await loadCenteredFirmHeader();
+
   for (const { target, items } of groups.values()) {
     const lines = orderItemToKitchenLines(items);
     const base = {
@@ -230,6 +233,8 @@ export async function printKitchenTicketsAfterSend(params: {
       orderNote,
       items: lines,
       locale,
+      firmName: firmHeader.firmName,
+      logoDataUrl: firmHeader.logoDataUrl,
     };
 
     if (target.kind === 'network') {

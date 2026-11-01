@@ -5,6 +5,7 @@ import type { Template, TemplateType, TemplateUsageScope } from '../core/types/t
 import { DEFAULT_TEMPLATES } from '../core/types/templates';
 import type { PrintDesignKind } from '../core/types/printDesignBindings';
 import type { ReceiptSettings } from '../services/receiptSettingsService';
+import { buildCenteredFirmHeaderHtml, resolvePrintFirmName } from './printFirmHeader';
 import { formatNumber } from './formatNumber';
 import { displayItemCode } from './lastPurchaseCostSql';
 import { isInboundMovement, isOutboundMovement } from './materialExtractLabels';
@@ -124,7 +125,12 @@ export function companyHeaderFromReceiptSettings(
 > {
   const s = settings || {};
   return {
-    companyName: String(s.companyName || fallbackName || 'RetailEX').trim() || 'RetailEX',
+    companyName:
+      resolvePrintFirmName({
+        receiptCompanyName: s.companyName,
+        name: fallbackName,
+        title: fallbackName,
+      }) || String(s.companyName || fallbackName || '').trim() || 'RetailEX',
     companyAddress: s.companyAddress || '',
     companyPhone: s.companyPhone || '',
     companyTaxNumber: s.companyTaxNumber || '',
@@ -289,9 +295,6 @@ export function buildMaterialExtractPrintHtml(input: MaterialExtractPrintInput):
   const items = mapPrintRows(input);
   const lastBalance = input.rows[input.rows.length - 1]?.running_balance ?? 0;
   const taxLine = [input.companyTaxOffice, input.companyTaxNumber].filter(Boolean).join(' · ');
-  const logo = input.logoDataUrl
-    ? `<img src="${escapeHtml(input.logoDataUrl)}" alt="" style="max-height:48px;max-width:160px;object-fit:contain" />`
-    : '';
   const purchaseUnitHdr = L.purchaseUnitPrice || 'Alış Birim Fiyatı';
   const salesUnitHdr = L.salesUnitPrice || 'Satış Birim Fiyatı';
   const bodyRows =
@@ -331,7 +334,7 @@ export function buildMaterialExtractPrintHtml(input: MaterialExtractPrintInput):
   html, body { margin: 0; padding: 0; background: #fff; color: #0f172a; font-family: Arial, Helvetica, sans-serif; font-size: 11px; }
   .sheet { width: 100%; }
   .head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; border-bottom: 2px solid #1d4ed8; padding-bottom: 10px; }
-  .head-left { display: flex; gap: 12px; align-items: flex-start; }
+  .head-left { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; }
   .co-name { font-size: 16px; font-weight: 800; letter-spacing: 0.02em; }
   .co-meta { color: #475569; margin-top: 2px; line-height: 1.4; }
   .title { text-align: center; margin: 14px 0 6px; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; }
@@ -352,10 +355,13 @@ export function buildMaterialExtractPrintHtml(input: MaterialExtractPrintInput):
 <div class="sheet">
   <div class="head">
     <div class="head-left">
-      ${logo}
+      ${buildCenteredFirmHeaderHtml({
+        firmName: input.companyName,
+        logoDataUrl: input.logoDataUrl,
+        nameStyle: 'text-align:center;font-size:16px;font-weight:800',
+      })}
       <div>
-        <div class="co-name">${escapeHtml(input.companyName)}</div>
-        <div class="co-meta">
+        <div class="co-meta" style="text-align:center">
           ${input.companyAddress ? `${escapeHtml(input.companyAddress)}<br/>` : ''}
           ${input.companyPhone ? `${escapeHtml(input.companyPhone)}<br/>` : ''}
           ${taxLine ? escapeHtml(taxLine) : ''}

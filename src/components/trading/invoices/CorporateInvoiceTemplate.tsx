@@ -90,15 +90,16 @@ export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> =
             {/* Header Section */}
             <div className="flex justify-between items-start border-b-2 border-slate-800 pb-6 mb-8">
                 {/* Company Info */}
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col items-center text-center gap-2">
                     {config.showLogo && config.logoUrl ? (
-                        <img src={config.logoUrl} alt="Logo" className="h-16 w-auto object-contain mb-2" />
-                    ) : (
-                        <h1 className="text-3xl font-bold tracking-tight text-slate-900">{config.companyName}</h1>
-                    )}
-                    {config.showLogo && config.logoUrl && (
-                        <h2 className="text-xl font-bold text-slate-800 mb-2">{config.companyName}</h2>
-                    )}
+                        <img src={config.logoUrl} alt="Logo" className="h-16 w-auto object-contain" data-print-firm-logo="1" />
+                    ) : null}
+                    <h1
+                        data-print-firm-name="1"
+                        className={`font-bold tracking-tight text-slate-900 text-center ${config.showLogo && config.logoUrl ? 'text-xl' : 'text-3xl'}`}
+                    >
+                        {config.companyName}
+                    </h1>
                     <div className="text-sm text-slate-600 max-w-xs leading-relaxed">
                         <p>{config.companyAddress}</p>
                         {config.companyPhone && (

@@ -9,6 +9,7 @@ import { integerSharePercents } from './sharePercent';
 import { localCalendarDateKey } from './localCalendarDate';
 import { saleCollectedSplit } from './saleCollectedAmounts';
 import { isDepositSale } from './reportDepositFilter';
+import { buildCenteredFirmHeaderHtml, isProductPrintLine, resolvePrintFirmName } from './printFirmHeader';
 
 export interface PosPaymentBreakdown {
   cash: number;
@@ -880,9 +881,25 @@ function escHtml(value: string): string {
 
 export function printPosZReport(
   report: PosZReport,
-  options?: { companyName?: string; cashier?: string; openingCash?: number; actualCash?: number },
+  options?: {
+    companyName?: string;
+    logoDataUrl?: string | null;
+    cashier?: string;
+    openingCash?: number;
+    actualCash?: number;
+  },
 ): void {
-  const company = escHtml(options?.companyName || 'RetailOS');
+  const rawCompany = String(options?.companyName || '').trim();
+  const firmName =
+    resolvePrintFirmName({
+      receiptCompanyName: rawCompany,
+      title: rawCompany,
+      name: rawCompany,
+    }) || (!isProductPrintLine(rawCompany) ? rawCompany : '');
+  const firmHeaderHtml = buildCenteredFirmHeaderHtml({
+    firmName,
+    logoDataUrl: options?.logoDataUrl,
+  });
   const cashier = options?.cashier ? escHtml(options.cashier) : '';
   const { payments, cashierStats } = report;
 
@@ -935,8 +952,8 @@ export function printPosZReport(
       </style>
     </head>
     <body>
+      ${firmHeaderHtml}
       <div class="center bold large">Z RAPORU</div>
-      <div class="center">${company}</div>
       <div class="divider"></div>
       <div class="row"><span>Tarih:</span><span class="bold">${escHtml(report.dateLabel)}</span></div>
       <div class="row"><span>Saat:</span><span>${new Date().toLocaleTimeString('tr-TR')}</span></div>

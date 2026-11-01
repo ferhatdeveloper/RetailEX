@@ -76,7 +76,7 @@ export function CariEkstrePrintModal({
         const receipt = await getReceiptSettings(firmNr).catch(() => ({}));
         const header = companyHeaderFromReceiptSettings(
           receipt,
-          selectedFirm?.name || selectedFirm?.firma_adi || 'RetailEX',
+          selectedFirm?.firma_adi || selectedFirm?.title || selectedFirm?.name || '',
         );
         const labels = buildCariEkstrePrintLabels(printLang);
         const cardTypeLabel = cardType === 'supplier' ? labels.supplier : labels.customer;

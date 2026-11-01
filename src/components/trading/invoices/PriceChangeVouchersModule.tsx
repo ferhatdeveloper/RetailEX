@@ -9,6 +9,7 @@ import { priceChangeVouchersAPI, type PriceChangeVoucher, type PriceChangeVouche
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { printPriceChangeVoucher } from '../../../utils/priceChangeVoucherPrint';
+import { loadCenteredFirmHeader } from '../../../utils/printFirmHeader';
 import { toast } from 'sonner';
 import type { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -256,8 +257,18 @@ export function PriceChangeVouchersModule({ products = [] }: PriceChangeVouchers
 
   const handlePrint = async (voucher: PriceChangeVoucher) => {
     try {
+      const firmNr = selectedFirma?.firm_nr != null ? String(selectedFirma.firm_nr) : undefined;
+      const header = await loadCenteredFirmHeader({
+        firmNr,
+        firm: {
+          firmaAdi: selectedFirma?.firma_adi,
+          title: selectedFirma?.title,
+          name: selectedFirma?.name,
+        },
+      });
       await printPriceChangeVoucher(voucher, {
-        companyName: selectedFirma?.firma_adi || 'RetailOS',
+        companyName: header.firmName || selectedFirma?.firma_adi || '',
+        logoDataUrl: header.logoDataUrl,
         companyAddress: '',
         companyPhone: '',
         companyTaxNo: ''

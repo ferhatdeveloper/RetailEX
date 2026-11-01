@@ -3,6 +3,7 @@ import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from '.
 import { getBindingForScope } from '../services/printDesignBindingService';
 import { enqueueFastReportFrxJob, enqueueFastReportTemplateJob, enqueuePrintJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
 import { getPrintString, resolvePrintLocale, type PrintStringKey } from '../locales/printKeys';
+import { buildCenteredFirmHeaderHtml, resolvePrintFirmName } from './printFirmHeader';
 
 export interface ReturnReceipt {
   id: string;
@@ -42,10 +43,17 @@ function generateReceiptHTML(sale: any, companyName: string, language: string, r
     hour: '2-digit', minute: '2-digit'
   });
 
-  const displayName = receiptSettings?.companyName || companyName;
-  const logoHtml = receiptSettings?.logoDataUrl
-    ? `<div class="center" style="margin-bottom: 2mm;"><img src="${receiptSettings.logoDataUrl}" alt="" style="max-height: 12mm; width: auto; display: block; margin: 0 auto;" /></div>`
-    : '';
+  const displayName =
+    resolvePrintFirmName({
+      receiptCompanyName: receiptSettings?.companyName,
+      title: companyName,
+      name: companyName,
+    }) || String(receiptSettings?.companyName || companyName || '').trim();
+  const firmHeaderHtml = buildCenteredFirmHeaderHtml({
+    firmName: displayName,
+    logoDataUrl: receiptSettings?.logoDataUrl,
+    nameStyle: 'text-align:center;font-weight:700;font-size:11px',
+  });
   const companyLines = [receiptSettings?.companyAddress, receiptSettings?.companyPhone].filter(Boolean);
   const companyLinesHtml = companyLines.length
     ? `<div class="center" style="font-size: 9px; margin-bottom: 2mm;">${companyLines.join(' | ')}</div>`
@@ -104,8 +112,7 @@ function generateReceiptHTML(sale: any, companyName: string, language: string, r
       </style>
     </head>
     <body>
-      ${logoHtml}
-      <div class="center bold large">${displayName}</div>
+      ${firmHeaderHtml}
       ${companyLinesHtml}
       <div class="double-divider"></div>
       <div class="info-row"><span>${labels.receiptNo}:</span><span class="bold">${sale.receiptNumber}</span></div>
@@ -146,7 +153,12 @@ function buildPosReceiptPrintData(sale: any, companyName: string, language: stri
     sale,
     receipt: sale,
     items: Array.isArray(sale?.items) ? sale.items : [],
-    storeName: receiptSettings?.companyName || companyName,
+    storeName:
+      resolvePrintFirmName({
+        receiptCompanyName: receiptSettings?.companyName,
+        title: companyName,
+        name: companyName,
+      }) || String(receiptSettings?.companyName || companyName || '').trim(),
     storeAddress: receiptSettings?.companyAddress || '',
     storePhone: receiptSettings?.companyPhone || '',
     receiptNumber: sale?.receiptNumber ?? '',
@@ -262,7 +274,11 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
 }
 
 export async function printReturnReceipt(returnReceipt: ReturnReceipt, companyName: string = 'RetailOS') {
-  const html = `<html><body><pre>${JSON.stringify(returnReceipt, null, 2)}</pre></body></html>`;
+  const { loadCenteredFirmHeader } = await import('./printFirmHeader');
+  const header = await loadCenteredFirmHeader({
+    firm: { receiptCompanyName: companyName, title: companyName, name: companyName },
+  });
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>İade fişi</title><style>body{font-family:'Courier New',monospace;width:80mm;margin:0;padding:4mm}.center{text-align:center}</style></head><body>${header.html}<pre>${JSON.stringify(returnReceipt, null, 2)}</pre></body></html>`;
   try {
     if (await isWindowsPrinterServiceEnabled()) {
       await enqueuePrintJob({

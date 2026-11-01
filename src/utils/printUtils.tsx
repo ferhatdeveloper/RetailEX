@@ -12,6 +12,7 @@ import {
   getInvoicePrintLabels,
 } from './invoicePrintI18n';
 import { translate } from '../locales/module-translations';
+import { resolvePrintFirmName } from './printFirmHeader';
 
 export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA') => {
   try {
@@ -53,7 +54,13 @@ export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA
       showLogo: !!receiptSettings.logoDataUrl,
       logoUrl: receiptSettings.logoDataUrl || undefined,
       showQRCode: true,
-      companyName: receiptSettings.companyName || firmDetails?.title || firmDetails?.name || 'RetailEX ERP',
+      companyName:
+        resolvePrintFirmName({
+          receiptCompanyName: receiptSettings.companyName,
+          title: firmDetails?.title,
+          name: firmDetails?.name,
+          firmaAdi: firmDetails?.firma_adi,
+        }) || receiptSettings.companyName || firmDetails?.title || firmDetails?.name || 'RetailEX ERP',
       companyAddress:
         receiptSettings.companyAddress ||
         firmDetails?.address ||

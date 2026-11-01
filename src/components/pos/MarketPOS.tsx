@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { exchangeRateAPI } from '../../services/api/masterData';
 import { logger } from '../../utils/logger';
+import { resolvePrintFirmName } from '../../utils/printFirmHeader';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
 import { isCompositeScaleBarcode, normalizeScannedBarcode, parseBarcode, expandBarcodeLookupKeys } from '../../utils/barcodeParser';
 import {
@@ -3082,7 +3083,11 @@ export default function MarketPOS({
           onPrintReceipt={(sale) => {
             // Dinamik import ile thermalPrinter modülünü yükle
             import('../../utils/thermalPrinter').then(({ printThermalReceipt }) => {
-              const companyName = selectedFirma?.title || selectedFirma?.name || 'RetailOS';
+              const companyName = resolvePrintFirmName({
+                firmaAdi: selectedFirma?.firma_adi,
+                title: selectedFirma?.title,
+                name: selectedFirma?.name,
+              });
               printThermalReceipt(sale, companyName);
             });
           }}
@@ -3098,7 +3103,11 @@ export default function MarketPOS({
           onPrintReceipt={(sale) => {
             // Dinamik import ile thermalPrinter modülünü yükle
             import('../../utils/thermalPrinter').then(({ printThermalReceipt }) => {
-              const companyName = selectedFirma?.title || selectedFirma?.name || 'RetailOS';
+              const companyName = resolvePrintFirmName({
+                firmaAdi: selectedFirma?.firma_adi,
+                title: selectedFirma?.title,
+                name: selectedFirma?.name,
+              });
               printThermalReceipt(sale, companyName);
             });
           }}

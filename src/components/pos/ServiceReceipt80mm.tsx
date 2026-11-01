@@ -1,8 +1,13 @@
+import { useEffect, useMemo, useState } from 'react';
 import { X, Printer } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../utils/formatNumber';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
+import { PrintFirmBrand } from '../shared/PrintFirmBrand';
+import { getReceiptSettings } from '../../services/receiptSettingsService';
+import { resolvePrintFirmName } from '../../utils/printFirmHeader';
 
 interface ServiceReceiptProps {
     data: {
@@ -21,6 +26,38 @@ interface ServiceReceiptProps {
 export function ServiceReceipt80mm({ data, onClose }: ServiceReceiptProps) {
     const { darkMode } = useTheme();
     const { t, language } = useLanguage();
+    const { selectedFirm } = useFirmaDonem();
+    const [logoDataUrl, setLogoDataUrl] = useState('');
+    const [receiptCompanyName, setReceiptCompanyName] = useState('');
+    useEffect(() => {
+        let cancelled = false;
+        const nr = selectedFirm?.firm_nr != null ? String(selectedFirm.firm_nr) : undefined;
+        void getReceiptSettings(nr)
+            .then((rs) => {
+                if (cancelled) return;
+                setLogoDataUrl(rs.logoDataUrl || '');
+                setReceiptCompanyName(rs.companyName || '');
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setLogoDataUrl('');
+                    setReceiptCompanyName('');
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedFirm?.firm_nr]);
+    const firmName = useMemo(
+        () =>
+            resolvePrintFirmName({
+                receiptCompanyName,
+                firmaAdi: selectedFirm?.firma_adi,
+                title: selectedFirm?.title,
+                name: selectedFirm?.name,
+            }),
+        [receiptCompanyName, selectedFirm],
+    );
 
     const localeMap: Record<string, string> = { tr: 'tr-TR', en: 'en-US', ar: 'ar-IQ', ku: 'ku' };
     const dateLocale = localeMap[language] || 'tr-TR';
@@ -66,7 +103,7 @@ export function ServiceReceipt80mm({ data, onClose }: ServiceReceiptProps) {
 
                         {/* Store Header */}
                         <div className="text-center border-b-2 border-dashed border-gray-400 pb-3 mb-3">
-                            <div className="text-xl font-bold mb-1">{String(t.defaultCompanyName)}</div>
+                            <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-xl font-bold mb-1" />
                             <div className="text-xs text-gray-700">{String(t.tagline)}</div>
                         </div>
 

@@ -8,6 +8,8 @@ import { POSNumpad } from './POSNumpad';
 import { POSCashHandoverModal } from './POSCashHandoverModal';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { aggregatePosPayments, aggregateReturnPayments, buildPosZReport, isReturnSale, printPosZReport } from '../../utils/posZReport';
+import { loadCenteredFirmHeader } from '../../utils/printFirmHeader';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
 import type { PosCashSession } from '../../utils/posCashSession';
 import { buildSessionCashBreakdown, filterSalesForCashSession } from '../../utils/posCashSession';
@@ -131,13 +133,27 @@ export function POSCloseCashRegisterModal({
     setShowPrintPreview(true);
   };
 
+  const { selectedFirm } = useFirmaDonem();
+
   const handlePrintZReport = () => {
-    printPosZReport(zReport, {
-      companyName: 'ExRetailOS',
-      cashier: currentStaff,
-      openingCash,
-      actualCash: actualCash > 0 ? actualCash : undefined,
-    });
+    void (async () => {
+      const firmNr = selectedFirm?.firm_nr != null ? String(selectedFirm.firm_nr) : undefined;
+      const header = await loadCenteredFirmHeader({
+        firmNr,
+        firm: {
+          firmaAdi: selectedFirm?.firma_adi,
+          title: selectedFirm?.title,
+          name: selectedFirm?.name,
+        },
+      });
+      printPosZReport(zReport, {
+        companyName: header.firmName,
+        logoDataUrl: header.logoDataUrl,
+        cashier: currentStaff,
+        openingCash,
+        actualCash: actualCash > 0 ? actualCash : undefined,
+      });
+    })();
   };
 
   const handleActualPrint = () => {

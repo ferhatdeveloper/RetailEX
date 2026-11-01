@@ -66,6 +66,7 @@ export function buildKitchenTicketEscPosBuffer(input: {
   orderNote?: string;
   items: KitchenTicketItemLine[];
   locale?: KitchenReceiptLocale;
+  firmName?: string | null;
 }): Uint8Array {
   const L = {
     title: t(input.locale, 'kitchenHeader'),
@@ -93,6 +94,10 @@ export function buildKitchenTicketEscPosBuffer(input: {
   const dash = txt(`${'-'.repeat(LINE_W)}\n`);
 
   parts.push(init);
+  const firmName = String(input.firmName || '').trim();
+  if (firmName) {
+    parts.push(alignCenter, boldOn, txt(`${firmName}\n`), boldOff, nl);
+  }
   parts.push(alignCenter, doubleOn, boldOn, txt(`${L.title}\n`), boldOff, doubleOff, nl);
   parts.push(alignLeft, dash);
   parts.push(txt(`${L.tableSource} ${input.tableNumber}\n`));

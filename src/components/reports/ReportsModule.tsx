@@ -261,6 +261,8 @@ import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { useResponsive } from '../../hooks/useResponsive';
 import { buildReceipt80mmPrintHtml } from '../../utils/receipt80mmPrintHtml';
+import { buildDayEndZReportPrintHtml } from '../../utils/dayEndZReportPrint';
+import { loadCenteredFirmHeader } from '../../utils/printFirmHeader';
 import {
   printReportHtml,
   shouldPreviewReportPrint,
@@ -5883,7 +5885,19 @@ export function ReportsModule({
   type DailyReportPrintFormat = 'a4' | '80mm';
 
   /** Günlük rapor — A4 veya 80 mm termal */
-  const printDailySalesReport = (format: DailyReportPrintFormat) => {
+  const printDailySalesReport = async (format: DailyReportPrintFormat) => {
+    const firmNrForPrint =
+      (selectedFirm?.firm_nr && String(selectedFirm.firm_nr).trim()) ||
+      (selectedFirm?.nr != null ? String(selectedFirm.nr).padStart(3, '0') : undefined);
+    const dailyFirmHeader = await loadCenteredFirmHeader({
+      firmNr: firmNrForPrint,
+      firm: {
+        firmaAdi: selectedFirm?.firma_adi,
+        title: selectedFirm?.title,
+        name: selectedFirm?.name,
+      },
+    });
+    const firmHeaderHtml = dailyFirmHeader.html;
     const lang = language as ModuleLanguage;
     const L = (key: string) => translateModule(key, lang);
     const dateLabel = formatReportsDateRangeTr(selectedDateFrom, selectedDateTo);
@@ -6138,6 +6152,7 @@ export function ReportsModule({
   .t th, .t td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; }
   .t thead { background: #f8fafc; }
 </style></head><body>
+  ${firmHeaderHtml}
   <h1>${escHtml(L('reportsPrintDailyTitle'))}</h1>
   <p class="muted">${escHtml(dateLabel)} · ${escHtml(printKindFilterLabel)}</p>
   <div class="grid">
@@ -6222,6 +6237,7 @@ export function ReportsModule({
   .sale-block { margin-top: 2mm; }
   .section-title { margin: 3mm 0 2mm; text-align: center; font-weight: bold; font-size: 11px; }
 </style></head><body>
+  ${firmHeaderHtml}
   <div class="center bold large">${escHtml(L('reportsPrintDailyTitle80'))}</div>
   <div class="center small">${escHtml(dateLabel)} · ${escHtml(printKindFilterLabel)}</div>
   <div class="divider"></div>
@@ -6255,7 +6271,7 @@ export function ReportsModule({
   };
 
   // Print Z Report
-  const printZReport = () => {
+  const printZReport = async () => {
     const restaurantProductBlock =
       businessType === 'restaurant' && productSales.length > 0
         ? `
@@ -6272,114 +6288,48 @@ export function ReportsModule({
         `
         : '';
 
-    const reportHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>${escHtml(tm('reportsZPrintDocTitle'))} - ${escHtml(zReport.dateLabel)}</title>
-        <style>
-          html {
-            width: 80mm;
-            max-width: 80mm;
-            margin: 0;
-            padding: 0;
-          }
-          @media print {
-            @page { size: 80mm auto; margin: 0; }
-            html, body {
-              width: 80mm !important;
-              max-width: 80mm !important;
-              margin: 0 !important;
-            }
-          }
-          body {
-            box-sizing: border-box;
-            width: 100%;
-            max-width: 80mm;
-            font-family: 'Courier New', monospace;
-            font-size: 11px;
-            line-height: 1.3;
-            padding: 5mm;
-            margin: 0;
-            color: #000;
-            text-align: left;
-          }
-          .center { text-align: center; }
-          .bold { font-weight: bold; }
-          .large { font-size: 14px; }
-          .divider { border-top: 1px dashed #000; margin: 3mm 0; }
-          .row { display: flex; justify-content: space-between; margin: 1mm 0; }
-          .row .label { color: #111; }
-          .row .value { font-weight: 700; }
-          .header { margin-bottom: 3mm; }
-          .small { font-size: 9px; color: #444; }
-          .section-title { text-align: center; font-weight: 700; margin: 1mm 0 2mm; }
-          .deduct { color: #b91c1c; }
-          .final { border-top: 1px solid #000; padding-top: 1.2mm; margin-top: 1.2mm; font-size: 13px; font-weight: 700; }
-        </style>
-      </head>
-      <body>
-        <div class="header center">
-          <div class="bold large">${escHtml(tm('reportsZPrintHeader'))}</div>
-          <div>${escHtml(tm('reportsZPrintStoreSystem'))}</div>
-        </div>
-        
-        <div class="divider"></div>
-        
-        <div class="row">
-          <span>${escHtml(tm('dateLabel'))}:</span>
-          <span class="bold">${escHtml(zReport.dateLabel)}</span>
-        </div>
-        <div class="row">
-          <span>${escHtml(tm('reportsZPrintReportTime'))}:</span>
-          <span>${new Date().toLocaleTimeString(tm('localeCode'))}</span>
-        </div>
-        
-        <div class="divider"></div>
-        
-        <div class="row">
-          <span class="label">${escHtml(tm('reportsZTxnCount'))}</span>
-          <span class="value">${zReport.totalSales}</span>
-        </div>
-        <div class="row">
-          <span class="label">${escHtml(tm('reportsZGrossSales'))}</span>
-          <span class="value">${formatNumber(zReport.amountBeforeDiscount, 2, false)}</span>
-        </div>
-        <div class="row">
-          <span class="label">${escHtml(tm('reportsTotalDiscount'))}</span>
-          <span>${formatNumber(zReport.totalDiscount, 2, false)}</span>
-        </div>
-        <div class="row">
-          <span class="label">${escHtml(tm('reportsZSalesReturnAmount'))}</span>
-          <span class="deduct">${formatNumber(zReport.refundAmount, 2, false)}</span>
-        </div>
-        <div class="row">
-          <span class="label">${escHtml(tm('totalExpense'))}</span>
-          <span class="deduct">${formatNumber(zReport.totalExpenses, 2, false)}</span>
-        </div>
-        <div class="row final">
-          <span class="label">${escHtml(tm('reportsZNetSalesAmount'))}</span>
-          <span>${formatNumber(zReport.netSales, 2, false)}</span>
-        </div>
-        <div class="row">
-          <span class="label">${escHtml(tm('dailyDepositCollected'))}</span>
-          <span>${formatNumber(zReport.reservationDeposit ?? 0, 2, false)}</span>
-        </div>
-        <div class="row final">
-          <span class="label">${escHtml(tm('reportsZNetCashAmount'))}</span>
-          <span>${formatNumber(zReport.netCash, 2, false)}</span>
-        </div>
-        ${restaurantProductBlock}
-        <div class="divider"></div>
-        
-        <div class="center" style="margin-top: 5mm; font-size: 10px;">
-          <div>${escHtml(tm('reportsZPrintAutoGenerated'))}</div>
-          <div>RetailOS v1.0</div>
-        </div>
-      </body>
-      </html>
-    `;
+    const firmNrForZ =
+      (selectedFirm?.firm_nr && String(selectedFirm.firm_nr).trim()) ||
+      (selectedFirm?.nr != null ? String(selectedFirm.nr).padStart(3, '0') : undefined);
+    const zFirmHeader = await loadCenteredFirmHeader({
+      firmNr: firmNrForZ,
+      firm: {
+        firmaAdi: selectedFirm?.firma_adi,
+        title: selectedFirm?.title,
+        name: selectedFirm?.name,
+      },
+    });
+
+    const reportHTML = buildDayEndZReportPrintHtml({
+      firmName: zFirmHeader.firmName,
+      logoDataUrl: zFirmHeader.logoDataUrl,
+      docTitle: tm('reportsZPrintDocTitle'),
+      headerTitle: tm('reportsZPrintHeader'),
+      storeSystem: tm('reportsZPrintStoreSystem'),
+      dateCaption: tm('dateLabel'),
+      dateLabel: zReport.dateLabel,
+      reportTimeCaption: tm('reportsZPrintReportTime'),
+      reportTime: new Date().toLocaleTimeString(tm('localeCode')),
+      txnCaption: tm('reportsZTxnCount'),
+      txnCount: String(zReport.totalSales),
+      grossCaption: tm('reportsZGrossSales'),
+      grossSales: formatNumber(zReport.amountBeforeDiscount, 2, false),
+      discountCaption: tm('reportsTotalDiscount'),
+      discount: formatNumber(zReport.totalDiscount, 2, false),
+      returnCaption: tm('reportsZSalesReturnAmount'),
+      salesReturn: formatNumber(zReport.refundAmount, 2, false),
+      expenseCaption: tm('totalExpense'),
+      expense: formatNumber(zReport.totalExpenses, 2, false),
+      netSalesCaption: tm('reportsZNetSalesAmount'),
+      netSales: formatNumber(zReport.netSales, 2, false),
+      reservationCaption: tm('dailyDepositCollected'),
+      reservation: formatNumber(zReport.reservationDeposit ?? 0, 2, false),
+      netCashCaption: tm('reportsZNetCashAmount'),
+      netCash: formatNumber(zReport.netCash, 2, false),
+      restaurantProductsHtml: restaurantProductBlock,
+      autoGenerated: tm('reportsZPrintAutoGenerated'),
+      versionLine: 'RetailOS v1.0',
+    });
 
     const previewTitle = `${tm('reportsZPrintDocTitle')} — ${zReport.dateLabel}`;
     if (shouldPreviewReportPrint(isMobile)) {

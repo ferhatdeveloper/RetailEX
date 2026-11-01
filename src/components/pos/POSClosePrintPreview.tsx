@@ -1,10 +1,15 @@
+import { useEffect, useMemo, useState } from 'react';
 import { X, Printer } from 'lucide-react';
 import type { Sale } from '../../core/types';
 import { formatNumber } from '../../utils/formatNumber';
 import { aggregatePosPayments, buildPosZReport } from '../../utils/posZReport';
 import type { PosCashSession, PosSessionCashBreakdown } from '../../utils/posCashSession';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
+import { PrintFirmBrand } from '../shared/PrintFirmBrand';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { getReceiptSettings } from '../../services/receiptSettingsService';
+import { resolvePrintFirmName } from '../../utils/printFirmHeader';
 
 interface POSClosePrintPreviewProps {
   onClose: () => void;
@@ -38,6 +43,38 @@ export function POSClosePrintPreview({
   note
 }: POSClosePrintPreviewProps) {
   const { t, tm } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  const [logoDataUrl, setLogoDataUrl] = useState('');
+  const [receiptCompanyName, setReceiptCompanyName] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    const nr = selectedFirm?.firm_nr != null ? String(selectedFirm.firm_nr) : undefined;
+    void getReceiptSettings(nr)
+      .then((rs) => {
+        if (cancelled) return;
+        setLogoDataUrl(rs.logoDataUrl || '');
+        setReceiptCompanyName(rs.companyName || '');
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLogoDataUrl('');
+          setReceiptCompanyName('');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFirm?.firm_nr]);
+  const firmName = useMemo(
+    () =>
+      resolvePrintFirmName({
+        receiptCompanyName,
+        firmaAdi: selectedFirm?.firma_adi,
+        title: selectedFirm?.title,
+        name: selectedFirm?.name,
+      }),
+    [receiptCompanyName, selectedFirm],
+  );
   const positiveSales = sales.filter((s) => Number(s.total) > 0 && String(s.status ?? '').toLowerCase() !== 'cancelled');
   const returnSales = sales.filter(s => Number(s.total) < 0 || String(s.status ?? '').toLowerCase() === 'return');
   const paymentBreakdown = aggregatePosPayments(positiveSales);
@@ -114,7 +151,7 @@ export function POSClosePrintPreview({
                   /* 80mm Format */
                   <div className="font-mono text-xs">
                     <div className="text-center mb-4">
-                      <div className="text-base font-bold">ExRetailOS</div>
+                      <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-base font-bold" />
                       <div className="text-xs">{tm('posStoreSalesSystem')}</div>
                       <div className="border-t border-b border-dashed border-gray-400 my-2 py-1">
                         {tm('posCashCloseReport')}
@@ -280,7 +317,7 @@ export function POSClosePrintPreview({
                   /* A4 Format */
                   <div>
                     <div className="text-center mb-6">
-                      <h1 className="text-2xl font-bold mb-2">ExRetailOS</h1>
+                      <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-2xl font-bold mb-2" />
                       <p className="text-sm text-gray-600">{tm('posStoreSalesMgmtSystem')}</p>
                       <h2 className="text-xl font-bold mt-4 border-t border-b border-gray-300 py-2">
                         {tm('posCashCloseReport')}
@@ -496,7 +533,7 @@ export function POSClosePrintPreview({
             /* 80mm Print */
             <div className="font-mono text-xs p-2">
               <div className="text-center mb-3">
-                <div className="text-base font-bold">ExRetailOS</div>
+                <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-base font-bold" />
                 <div className="text-xs">{tm('posStoreSalesSystem')}</div>
                 <div className="border-t border-b border-dashed border-black my-2 py-1">
                   {tm('posCashCloseReport')}
@@ -574,7 +611,7 @@ export function POSClosePrintPreview({
             /* A4 Print - same as preview */
             <div className="p-8">
               <div className="text-center mb-6">
-                <h1 className="text-2xl font-bold mb-2">ExRetailOS</h1>
+                <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-2xl font-bold mb-2" />
                 <p className="text-sm text-gray-600">{tm('posStoreSalesMgmtSystem')}</p>
                 <h2 className="text-xl font-bold mt-4 border-t border-b border-gray-300 py-2">
                   {tm('posCashCloseReport')}

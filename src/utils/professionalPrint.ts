@@ -5,6 +5,7 @@
 
 import { logger } from './logger';
 import type { Sale, Product } from '../core/types';
+import { buildCenteredFirmHeaderHtml } from './printFirmHeader';
 
 export interface PrintConfig {
   printerType: 'thermal-58mm' | 'thermal-80mm' | 'a4' | 'pdf';
@@ -99,13 +100,11 @@ export function generateThermalReceipt(
       </style>
     </head>
     <body>
-      ${config.showLogo && config.logoUrl ? `
-        <div class="center">
-          <img src="${config.logoUrl}" class="logo" alt="Logo" />
-        </div>
-      ` : ''}
-      
-      <div class="center bold">${config.companyName}</div>
+      ${buildCenteredFirmHeaderHtml({
+        firmName: config.companyName,
+        logoDataUrl: config.showLogo ? config.logoUrl : undefined,
+        nameStyle: 'text-align:center;font-weight:700',
+      })}
       <div class="center">${config.companyAddress}</div>
       <div class="center">${config.companyPhone}</div>
       <div class="center">Vergi No: ${config.companyTaxNo}</div>
@@ -297,11 +296,11 @@ export function generateA4Invoice(
     <body>
       <div class="header">
         <div>
-          ${config.showLogo && config.logoUrl ? `
-            <img src="${config.logoUrl}" class="logo" alt="Company Logo" />
-          ` : `
-            <h2>${config.companyName}</h2>
-          `}
+          ${buildCenteredFirmHeaderHtml({
+            firmName: config.companyName,
+            logoDataUrl: config.showLogo ? config.logoUrl : undefined,
+            nameStyle: 'text-align:center;font-weight:700;font-size:18px',
+          })}
           <div>${config.companyAddress}</div>
           <div>Tel: ${config.companyPhone}</div>
           <div>Vergi No: ${config.companyTaxNo}</div>

@@ -4,6 +4,7 @@
  */
 import type { Sale, SaleItem } from '../core/types/models';
 import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_SLIP_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
+import { buildCenteredFirmHeaderHtml, resolvePrintFirmName } from './printFirmHeader';
 import type { ReceiptSettings } from '../services/receiptSettingsService';
 import { formatNumber } from './formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency, getCurrencyDecimalPlaces, moneyEpsilon } from './currency';
@@ -351,13 +352,23 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
   const ta = isRTL ? 'right' : 'left';
 
   const companyName =
-    receiptSettings.companyName?.trim() || companyNameFallback.trim() || 'RetailEX';
+    resolvePrintFirmName({
+      receiptCompanyName: receiptSettings.companyName,
+      title: firmTitle,
+      name: companyNameFallback,
+    }) ||
+    String(receiptSettings.companyName || companyNameFallback || '').trim() ||
+    'RetailEX';
   const logoTrim = receiptSettings.logoDataUrl && String(receiptSettings.logoDataUrl).trim();
   const logoSafe =
-    logoTrim && logoTrim.startsWith('data:image/') ? logoTrim : undefined;
-  const logoHtml = logoSafe
-    ? `<div style="display:flex;justify-content:center;margin-bottom:4px"><img src=${JSON.stringify(logoSafe)} alt="" style="height:40px;max-width:60mm;width:auto;object-fit:contain" /></div>`
-    : '';
+    logoTrim && (logoTrim.startsWith('data:image/') || /^https?:\/\//i.test(logoTrim))
+      ? logoTrim
+      : undefined;
+  const firmHeaderHtml = buildCenteredFirmHeaderHtml({
+    firmName: companyName,
+    logoDataUrl: logoSafe,
+    nameStyle: 'text-align:center;font-size:18px;font-weight:900;margin-bottom:4px',
+  });
 
   const isBeautyReceipt = isBeautyReceiptSale(sale);
   const beautyStaffList = beautyReceiptStaffNames(sale);
@@ -368,9 +379,11 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
     ? `<div style="font-size:10px;font-weight:600;line-height:1.25;margin-top:4px">${addr ? `<div style="word-break:break-word">${escapeHtml(addr)}</div>` : ''}${phone ? `<div>${escapeHtml(phone)}</div>` : ''}</div>`
     : `<div style="font-size:10px;font-weight:600">${escapeHtml(T.footerLine)}</div>`;
 
-  const titleLine = firmTitle.trim()
-    ? `<div style="font-size:10px;font-weight:600;margin-top:4px">${escapeHtml(firmTitle.trim())}</div>`
-    : '';
+  const titleTrim = firmTitle.trim();
+  const titleLine =
+    titleTrim && titleTrim !== companyName
+      ? `<div style="font-size:10px;font-weight:600;margin-top:4px">${escapeHtml(titleTrim)}</div>`
+      : '';
 
   const bannerHtml =
     interimBanner?.trim()
@@ -501,8 +514,7 @@ ${
     bodyInner = `
 <div class="rx-slip" style="width:100%;max-width:100%;box-sizing:border-box;margin:0 auto;padding:2mm 3mm 3mm;font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:800;color:#000;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
   <div data-section="header" style="text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px">
-    ${logoHtml}
-    <div style="font-size:18px;font-weight:900;margin-bottom:4px">${escapeHtml(companyName)}</div>
+    ${firmHeaderHtml}
     ${beautyPhoneOnly}
   </div>
   ${bannerSolid}
@@ -623,8 +635,7 @@ ${variantExtra}
     bodyInner = `
 <div class="rx-slip" style="width:100%;max-width:100%;box-sizing:border-box;margin:0 auto;padding:2mm 3mm 3mm;font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:800;color:#000;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
   <div data-section="header" style="text-align:center;border-bottom:2px dashed #000;padding-bottom:8px;margin-bottom:8px">
-    ${logoHtml}
-    <div style="font-size:18px;font-weight:900;margin-bottom:4px">${escapeHtml(companyName)}</div>
+    ${firmHeaderHtml}
     ${addrBlock}
     ${titleLine}
   </div>

@@ -1,4 +1,5 @@
 import type { Sale } from '../App';
+import { buildCenteredFirmHeaderHtml } from './printFirmHeader';
 
 export interface InvoiceData {
   invoiceNo: string;
@@ -27,6 +28,7 @@ export interface InvoiceData {
   storeAddress: string;
   storeTaxNo: string;
   storePhone: string;
+  logoDataUrl?: string;
 }
 
 export function generateInvoiceNumber(): string {
@@ -116,7 +118,11 @@ export function printInvoiceHTML(invoice: InvoiceData): string {
 </head>
 <body>
   <div class="center bold">
-    <div style="font-size: 16px;">${invoice.storeName}</div>
+    ${buildCenteredFirmHeaderHtml({
+      firmName: invoice.storeName,
+      logoDataUrl: invoice.logoDataUrl,
+      nameStyle: 'text-align:center;font-size:16px;font-weight:700',
+    })}
     <div style="font-size: 11px;">${invoice.storeAddress}</div>
     <div style="font-size: 11px;">Vergi No: ${invoice.storeTaxNo}</div>
     <div style="font-size: 11px;">Tel: ${invoice.storePhone}</div>

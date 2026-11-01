@@ -4,12 +4,14 @@
  */
 
 import type { PriceChangeVoucher } from '../services/api/priceChangeVouchers';
+import { buildCenteredFirmHeaderHtml } from './printFirmHeader';
 
 export interface PrintCompanyInfo {
   companyName: string;
   companyAddress?: string;
   companyPhone?: string;
   companyTaxNo?: string;
+  logoDataUrl?: string | null;
 }
 
 /**
@@ -130,9 +132,11 @@ export async function printPriceChangeVoucher(
     </head>
     <body>
       <!-- Header -->
-      <div class="center bold large">
-        ${companyInfo.companyName}
-      </div>
+      ${buildCenteredFirmHeaderHtml({
+        firmName: companyInfo.companyName,
+        logoDataUrl: companyInfo.logoDataUrl,
+        nameStyle: 'text-align:center;font-weight:700;font-size:14px',
+      })}
       ${companyInfo.companyAddress ? `<div class="center" style="margin-top: 2mm; font-size: 9px;">${companyInfo.companyAddress}</div>` : ''}
       ${companyInfo.companyPhone ? `<div class="center" style="font-size: 9px;">Tel: ${companyInfo.companyPhone}</div>` : ''}
       ${companyInfo.companyTaxNo ? `<div class="center" style="font-size: 9px;">Vergi No: ${companyInfo.companyTaxNo}</div>` : ''}

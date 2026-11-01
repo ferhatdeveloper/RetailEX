@@ -4,6 +4,9 @@ import { X, FileText, Calendar, Search, Printer, Eye, ArrowLeft, Download, Filte
 import { createColumnHelper } from '@tanstack/react-table';
 import type { Sale } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { getReceiptSettings } from '../../services/receiptSettingsService';
+import { resolvePrintFirmName } from '../../utils/printFirmHeader';
 import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
 import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -78,6 +81,38 @@ export function POSSalesHistoryModal({
   isLoading = false,
 }: POSSalesHistoryModalProps) {
   const { t, tm, language } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  const [logoDataUrl, setLogoDataUrl] = useState('');
+  const [receiptCompanyName, setReceiptCompanyName] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    const nr = selectedFirm?.firm_nr != null ? String(selectedFirm.firm_nr) : undefined;
+    void getReceiptSettings(nr)
+      .then((rs) => {
+        if (cancelled) return;
+        setLogoDataUrl(rs.logoDataUrl || '');
+        setReceiptCompanyName(rs.companyName || '');
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLogoDataUrl('');
+          setReceiptCompanyName('');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFirm?.firm_nr]);
+  const firmName = useMemo(
+    () =>
+      resolvePrintFirmName({
+        receiptCompanyName,
+        firmaAdi: selectedFirm?.firma_adi,
+        title: selectedFirm?.title,
+        name: selectedFirm?.name,
+      }),
+    [receiptCompanyName, selectedFirm],
+  );
   const { darkMode } = useTheme();
   // Intl locale map: POS Sales history tooltip için.
   const localeCode = String(language || 'tr-TR');
@@ -360,7 +395,7 @@ export function POSSalesHistoryModal({
           {/* Ödeme Fişi Önizleme */}
           <div className="flex-1 overflow-auto p-4">
             <div className="flex justify-center">
-              <PaymentReceiptPreview sale={selectedSale} companyName="ExRetailOS" location="Bağdat, Irak" />
+              <PaymentReceiptPreview sale={selectedSale} companyName={firmName} logoDataUrl={logoDataUrl} location="Bağdat, Irak" />
             </div>
           </div>
         </div>
@@ -395,7 +430,7 @@ export function POSSalesHistoryModal({
         {/* Detay İçeriği - Sadece 80mm Önizleme */}
         <div className="flex-1 overflow-auto p-6">
           <div className="flex justify-center">
-            <ThermalReceiptPreview sale={selectedSale} companyName="ExRetailOS" />
+            <ThermalReceiptPreview sale={selectedSale} companyName={firmName} logoDataUrl={logoDataUrl} />
           </div>
         </div>
       </div>
