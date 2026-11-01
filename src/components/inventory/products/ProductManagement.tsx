@@ -64,6 +64,7 @@ import {
 } from './quickRetailProductLabelTemplate';
 import { DEMO_PRODUCT_CODES } from '../../../utils/demoSeedCodes';
 import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 import { PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY } from '../../../utils/countSlipPurchaseDraft';
 import {
@@ -71,6 +72,13 @@ import {
   productNeedPurchaseDraftMaxLines,
 } from '../../../utils/productNeedPurchaseDraft';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
+import {
+  formatProductExcelImportSummary,
+  importProductExcelBuffer,
+  isProductExcelFileName,
+  PRODUCT_EXCEL_FILE_ACCEPT,
+  type ProductExcelImportError,
+} from '../../../utils/productManagementExcelImport';
 
 const NEW_PRODUCT_PURCHASE_DRAFT_DAYS = 30;
 
@@ -277,6 +285,11 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const [bulkLabelModalKey, setBulkLabelModalKey] = useState(0);
   const [bulkLabelInitial, setBulkLabelInitial] = useState<Product[] | undefined>(undefined);
   const [purchaseDraftBusy, setPurchaseDraftBusy] = useState(false);
+  const [excelImportBusy, setExcelImportBusy] = useState(false);
+  const [excelImportErrors, setExcelImportErrors] = useState<ProductExcelImportError[] | null>(null);
+  const [excelImportSummary, setExcelImportSummary] = useState('');
+  const excelImportInputRef = useRef<HTMLInputElement>(null);
+  const excelImportLockRef = useRef(false);
   const [bulkRate, setBulkRate] = useState(1530); // Default common rate
   const [roundTo, setRoundTo] = useState(250); // Default rounding for IQD
   const [columnVisibility, setColumnVisibility] = useState(loadProductColumnVisibility);
@@ -610,6 +623,55 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     void loadProducts(true);
   };
 
+  const excelImportErrorColumns = useMemo<ColumnDef<ProductExcelImportError, unknown>[]>(
+    () => [
+      { id: 'row', accessorKey: 'row', header: 'Satır', size: 90 },
+      { id: 'message', accessorKey: 'message', header: 'Hata', size: 520 },
+    ],
+    [],
+  );
+
+  const handleProductExcelFile = useCallback(async (file: File | null) => {
+    if (!file || excelImportLockRef.current) return;
+    if (!isProductExcelFileName(file.name)) {
+      toast.error('Yalnızca Excel dosyası seçin (.xlsx veya .xls).');
+      return;
+    }
+    excelImportLockRef.current = true;
+    setExcelImportBusy(true);
+    const toastId = 'product-excel-import';
+    toast.loading('Excel içe aktarılıyor…', { id: toastId });
+    try {
+      const outcome = await importProductExcelBuffer(await file.arrayBuffer(), {
+        getByCode: (code) => productAPI.getByCode(code),
+        getByBarcode: (barcode) => productAPI.getByBarcode(barcode),
+        create: (payload) => productAPI.create(payload as Omit<Product, 'id'>),
+        update: (id, payload) => productAPI.update(id, payload as Partial<Product>),
+      });
+      if (outcome.fileError) {
+        toast.error(outcome.fileError, { id: toastId });
+        return;
+      }
+      await loadProducts(true);
+      const summary = formatProductExcelImportSummary(outcome);
+      if (outcome.created + outcome.updated === 0) {
+        toast.error(outcome.errors[0]?.message || summary, { id: toastId });
+      } else {
+        toast.success(summary, { id: toastId });
+      }
+      if (outcome.errors.length > 0) {
+        setExcelImportSummary(summary);
+        setExcelImportErrors(outcome.errors);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Excel içe aktarılamadı.';
+      toast.error(message, { id: toastId });
+    } finally {
+      excelImportLockRef.current = false;
+      setExcelImportBusy(false);
+    }
+  }, [loadProducts]);
+
   const columnLabelOverrides = useMemo(() => getProductGridColumnLabels(tm), [tm]);
 
   const columns = useMemo<ColumnDef<Product, unknown>[]>(
@@ -743,10 +805,28 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               <Download className="w-3 h-3" />
               <span>{tm('export')}</span>
             </button>
-            <button className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
-              <Upload className="w-3 h-3" />
+            <button
+              type="button"
+              disabled={excelImportBusy}
+              onClick={() => excelImportInputRef.current?.click()}
+              className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px] disabled:opacity-50"
+              title="Excel (.xlsx, .xls)"
+            >
+              {excelImportBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
               <span>{tm('import')}</span>
             </button>
+            <input
+              ref={excelImportInputRef}
+              type="file"
+              accept={PRODUCT_EXCEL_FILE_ACCEPT}
+              className="hidden"
+              aria-label={tm('import')}
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                event.target.value = '';
+                void handleProductExcelFile(file);
+              }}
+            />
             <button
               onClick={() => {
                 setBulkLabelInitial(selectedProducts.length > 0 ? [...selectedProducts] : undefined);
@@ -1499,6 +1579,52 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
           initialQueueProducts={bulkLabelInitial}
           gridSelectedProducts={selectedProducts}
         />
+      )}
+
+      {excelImportErrors && (
+        <PercentBodyModal
+          onClose={() => setExcelImportErrors(null)}
+          size="list"
+          ariaLabel="Excel içe aktarma hataları"
+        >
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white shrink-0 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">Excel içe aktarma</h3>
+              <p className="text-[11px] text-blue-100">{excelImportSummary}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setExcelImportErrors(null)}
+              className="p-1 hover:bg-white/10"
+              aria-label="Kapat"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <PercentBodyModalScrollBody className="p-3">
+            <DevExDataGrid
+              data={excelImportErrors}
+              columns={excelImportErrorColumns}
+              pageSize={50}
+              enableFiltering
+              enablePagination
+              enableExcelExport={false}
+              enableRefresh={false}
+              enableSelection={false}
+              storageNamespace="productExcelImportErrors"
+              height={360}
+            />
+          </PercentBodyModalScrollBody>
+          <div className="shrink-0 border-t border-slate-100 px-4 py-3 flex justify-end bg-slate-50">
+            <button
+              type="button"
+              onClick={() => setExcelImportErrors(null)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800"
+            >
+              Kapat
+            </button>
+          </div>
+        </PercentBodyModal>
       )}
     </div>
   );
