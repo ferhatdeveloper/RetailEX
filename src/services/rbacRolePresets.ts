@@ -2,7 +2,7 @@
  * Hazır rol yetki setleri.
  * Market kasiyeri: Market POS ve kasa. Memnuniyet anketi yok.
  * Klinik kasiyeri: güzellik kabuğunun operasyon menüsü (özet iniş). Anket satırı menüde durur.
- * Leads & CRM ve Klinik operasyon kasiyerde yoktur; yönetici görür.
+ * Leads & CRM ve Klinik operasyon klinik kabuk menüsünde hiçbir rolde yoktur.
  * Sistem yönetimi, kullanıcı, rol, firma/dönem ve menü yönetimi kasiyerde yoktur.
  * Anket operatörü ve yönetici kendi yetkilerini korur.
  */
@@ -12,7 +12,8 @@ export const SURVEY_PERMISSION_MODULE = 'beauty.surveys';
 
 /**
  * Leads & CRM ve Klinik operasyon. Yalnız bu iki menü için duran anahtarlar.
- * Klinik kasiyer kaydından düşer. Yönetici kaydına dokunulmaz. Ekranlar silinmez.
+ * Klinik kabuk menüsünde kasiyer ve yönetici dahil herkes için kapalıdır.
+ * Kasiyer yetki kaydından düşer. Yönetici yetki kaydına dokunulmaz. Ekranlar silinmez.
  */
 export const CASHIER_EXCLUDED_CLINIC_NAV_MODULE_IDS = [
   'leads',

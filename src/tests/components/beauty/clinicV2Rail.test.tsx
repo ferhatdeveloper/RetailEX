@@ -126,9 +126,11 @@ describe('Klinik V2 sol şerit', () => {
         );
 
         expect(screen.getByTestId('clinic-v2-rail').getAttribute('data-expanded')).toBe('0');
-        for (const label of ['Anasayfa', 'Randevu', 'Müşteriler', 'Hizmet', 'Gider', 'Rapor', 'Ayarlar']) {
+        for (const label of ['Anasayfa', 'Randevu', 'Müşteriler', 'Hizmet', 'Gider', 'Rapor']) {
             expect(screen.getByRole('button', { name: label })).toBeTruthy();
         }
+        expect(screen.queryByRole('button', { name: 'Ayarlar' })).toBeNull();
+        expect(screen.queryByText('Klinik operasyon')).toBeNull();
         expect(screen.queryByRole('button', { name: 'Personel' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Leads & CRM' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'CRM' })).toBeNull();
@@ -166,8 +168,9 @@ describe('Klinik V2 sol şerit', () => {
         expect(onSelect).toHaveBeenCalledWith('share_open_slots');
         fireEvent.click(screen.getByRole('button', { name: 'Gelen kutu' }));
         expect(onSelect).toHaveBeenCalledWith('clinic_inbox');
-        fireEvent.click(screen.getByRole('button', { name: 'Ayarlar' }));
-        expect(onSelect).toHaveBeenCalledWith('clinic_ops');
+        expect(screen.queryByRole('button', { name: 'Ayarlar' })).toBeNull();
+        expect(onSelect).not.toHaveBeenCalledWith('clinic_ops');
+        expect(onSelect).not.toHaveBeenCalledWith('leads');
         fireEvent.click(screen.getByRole('button', { name: 'Giderler' }));
         expect(onSelect).toHaveBeenCalledWith('expenses');
         fireEvent.click(screen.getByRole('button', { name: 'Raporlar' }));
@@ -180,15 +183,15 @@ describe('Klinik V2 sol şerit', () => {
         expect(screen.getByRole('button', { name: 'Randevu tahtası' }).getAttribute('aria-pressed')).toBe('true');
     });
 
-    it('CRM menü anahtarı açıkken Leads & CRM geniş menüde görünür', () => {
+    it('CRM menü anahtarı açıkken de Leads & CRM ve Klinik operasyon görünmez', () => {
         localStorage.setItem(CLINIC_V2_CRM_MENU_KEY, '1');
         localStorage.setItem(CLINIC_V2_RAIL_EXPANDED_KEY, '1');
         const onSelect = vi.fn();
         render(<ClinicV2SideRail activeTab="dashboard" onSelect={onSelect} isMobile={false} mobileOpen={false} />);
-        const crm = screen.getByRole('button', { name: 'Leads & CRM' });
-        expect(crm).toBeTruthy();
-        fireEvent.click(crm);
-        expect(onSelect).toHaveBeenCalledWith('leads');
+        expect(screen.queryByRole('button', { name: 'Leads & CRM' })).toBeNull();
+        expect(screen.queryByText('Klinik operasyon')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Ayarlar' })).toBeNull();
+        expect(onSelect).not.toHaveBeenCalled();
     });
 
     it('CRM kapalıyken leads sekmesi anasayfaya döner, açıkken kalır', () => {
