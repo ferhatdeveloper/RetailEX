@@ -569,6 +569,7 @@ services:
     networks:
       - berqenas_net
 
+  # Zorunlu servis: veritabanı ameerat_house; guzel güzellik merkezinden ve veritabanından ayrıdır.
   postgrest_ameerat_house:
     image: postgrest/postgrest:v12.2.0
     container_name: saas_postgrest_ameerat_house
