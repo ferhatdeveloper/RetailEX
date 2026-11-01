@@ -26,9 +26,31 @@ type BeautyRoleHint = { name?: string | null; id?: string | null } | null | unde
 
 /**
  * Güzellik okuması olmayan, kasiyer de olmayan POS kullanıcısının ürün satış sekmesi.
- * Klinik kasiyer buraya düşmez; aqua kasiyeri klinik özetini açar.
+ * Klinik kasiyer buraya düşmez; klinik özeti (panel) açılır.
  */
 export const BEAUTY_CASHIER_POS_TAB = 'product_sales';
+
+/**
+ * Klinik kabuğunun operasyon menüsü (güzellik varsayılan sırası).
+ * İniş `dashboard`. Anket satırı menüdedir, ilk sayfa değildir.
+ */
+export const CLINIC_OPERATIONAL_MENU_TABS = [
+    'dashboard',
+    'clinic_board',
+    'clients',
+    'calendar',
+    'services',
+    'product_sales',
+    'service_recipes',
+    'packages',
+    'devices',
+    'surveys',
+    'staff',
+    'leads',
+    'expenses',
+    'reports',
+    'clinic_ops',
+] as const;
 
 /** Klinik kabuğu sekmesi → RBAC modülü (anket operatörü yalnızca surveys görür) */
 export function getBeautyTabRbacModule(tabId: string): string {
@@ -57,7 +79,7 @@ export function canAccessBeautyTab(
         return hasPermission('beauty.surveys', 'READ') || hasPermission('beauty.surveys', 'EXECUTE');
     }
     if (hasPermission('beauty', 'READ')) return true;
-    // Kasiyer rolü anket yetkisi vermez; klinik menüsünün diğer sekmeleri aqua ile aynı kalır.
+    // Klinik kasiyer kimliği operasyon sekmelerini açık tutar. Anket ayrı yetki ister.
     if (role && isCashierRoleIdentity(role.name, role.id)) return true;
     if (tabId === BEAUTY_CASHIER_POS_TAB && hasPosCashierPermission(hasPermission)) return true;
     return false;
@@ -85,8 +107,8 @@ export function getLandingTabForSpecialty(s: ClinicErpSpecialty): string {
 
 /**
  * Rol / yetkiye göre ilk açılacak sekme.
- * Klinik kasiyer (aqua) güzellik okusa da okumasa da uzmanlık ana sayfasını açar
- * (varsayılan: özet / Klinik Paneli). Ürün satışı ve memnuniyet anketi değil.
+ * Klinik kasiyer güzellik okusa da okumasa da uzmanlık ana sayfasını açar
+ * (varsayılan: özet / Klinik Paneli). Ürün satışı ve memnuniyet anketi ilk sayfa değildir.
  */
 export function getLandingTabForBeautyAccess(
     hasPermission: BeautyPermCheck,

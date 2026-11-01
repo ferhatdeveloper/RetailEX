@@ -5,7 +5,9 @@ import {
   cashierPermissionPreset,
   cashierPostLoginModule,
   cashierPostLoginModuleFromUser,
+  clinicCashierPermissionPreset,
   landingRouteForCashierRole,
+  MANAGEMENT_ENTRY_MODULE_IDS,
   permissionsIncludeSurvey,
   sanitizePermissionsForRole,
   SURVEY_PERMISSION_MODULE,
@@ -15,6 +17,7 @@ import {
 import { isRbacParentModule } from '../../utils/rbacPermissionMap';
 import {
   BEAUTY_CASHIER_POS_TAB,
+  CLINIC_OPERATIONAL_MENU_TABS,
   canAccessBeautyTab,
   getLandingTabForBeautyAccess,
   nextBeautyTabWhenDenied,
@@ -31,9 +34,21 @@ function role(partial: Pick<Role, 'id' | 'name' | 'permissions'>): Role {
   };
 }
 
+const marketShell = {
+  tenantModule: 'market',
+  systemType: 'market',
+  enabledModules: ['pos', 'management'],
+};
+
+const clinicShell = {
+  tenantModule: 'clinic',
+  systemType: 'beauty',
+  enabledModules: ['beauty', 'management'],
+};
+
 describe('kasiyer hazır rolü', () => {
-  it('anket yetki anahtarını içermez; güzellik kasası ve kasa kalır', () => {
-    const preset = cashierPermissionPreset();
+  it('market kasiyerinde anket yoktur; güzellik kasası ve kasa kalır', () => {
+    const preset = cashierPermissionPreset(marketShell);
     expect(permissionsIncludeSurvey(preset)).toBe(false);
     expect(preset.some((entry) => entry.module === SURVEY_PERMISSION_MODULE)).toBe(false);
     expect(preset.some((entry) => entry.module === 'beauty' && entry.actions.includes('READ'))).toBe(true);
@@ -69,10 +84,26 @@ describe('kasiyer hazır rolü', () => {
       { module: 'pos', actions: ['EXECUTE'] },
     ]);
     expect(
-      sanitizePermissionsForRole(mixed, { name: 'Kasiyer', id: 'cashier' }).some((entry) =>
+      sanitizePermissionsForRole(mixed, { name: 'Kasiyer', id: 'cashier' }, marketShell).some((entry) =>
         permissionsIncludeSurvey([entry]),
       ),
     ).toBe(false);
+  });
+
+  it('klinik kasiyerinde anket menüde kalır; sistem yönetimi girişi düşer', () => {
+    const mixed = [
+      { module: 'beauty', actions: ['READ'] },
+      { module: SURVEY_PERMISSION_MODULE, actions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'] },
+      { module: 'management', actions: ['READ'] },
+      { module: 'users.roles', actions: ['READ', 'UPDATE'] },
+      'menumanagement',
+      'firm-period-definitions',
+    ];
+    expect(sanitizePermissionsForRole(mixed, { name: 'Kasiyer', id: 'cashier' }, clinicShell)).toEqual([
+      { module: 'beauty', actions: ['READ'] },
+      { module: SURVEY_PERMISSION_MODULE, actions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'] },
+    ]);
+    expect(sanitizePermissionsForRole(mixed, { name: 'admin', id: 'admin' }, clinicShell)).toEqual(mixed);
   });
 
   it('yönetici ve anket rolünden anket yetkisini düşürmez', () => {
@@ -129,8 +160,10 @@ describe('kasiyer hazır rolü', () => {
       enabledModules: ['pos', 'management'],
     };
 
-    expect(permissionsIncludeSurvey(cashierPermissionPreset())).toBe(false);
-    expect(cashierPermissionPreset().some((entry) => entry.module === SURVEY_PERMISSION_MODULE)).toBe(false);
+    expect(permissionsIncludeSurvey(cashierPermissionPreset(marketShell))).toBe(false);
+    expect(cashierPermissionPreset(marketShell).some((entry) => entry.module === SURVEY_PERMISSION_MODULE)).toBe(false);
+    expect(permissionsIncludeSurvey(cashierPermissionPreset(clinicShell))).toBe(true);
+    expect(clinicCashierPermissionPreset()).toEqual(cashierPermissionPreset(clinicShell));
     expect(landingRouteForCashierRole('cashier', 'cashier', 'pos', clinic)).toBe('beauty');
     expect(landingRouteForCashierRole('cashier', 'cashier', 'beauty', clinic)).toBe('beauty');
     expect(landingRouteForCashierRole('cashier', 'cashier', '', clinic)).toBe('beauty');
@@ -223,18 +256,23 @@ describe('kasiyer hazır rolü', () => {
     expect(canAccessBeautyTab(aquaHp, 'surveys', cashierRole)).toBe(true);
     expect(canAccessBeautyTab(aquaHp, 'dashboard', cashierRole)).toBe(true);
 
-    const houseHp = (module: string, action?: string) =>
+    const clinicHp = (module: string, action?: string) =>
       hasPermission([role({
         id: '00000000-0000-0000-0000-000000000003',
         name: 'cashier',
-        permissions: [
-          { module: 'pos.view', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
-          { module: 'pos.sell', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
-        ],
+        permissions: clinicCashierPermissionPreset(),
       })], module, action || 'READ');
-    expect(getLandingTabForBeautyAccess(houseHp, 'beauty_default', cashierRole)).toBe('dashboard');
-    expect(canAccessBeautyTab(houseHp, 'surveys', cashierRole)).toBe(false);
-    expect(canAccessBeautyTab(houseHp, 'calendar', cashierRole)).toBe(true);
+    expect(getLandingTabForBeautyAccess(clinicHp, 'beauty_default', cashierRole)).toBe('dashboard');
+    expect(getLandingTabForBeautyAccess(clinicHp, 'beauty_default', cashierRole)).not.toBe('surveys');
+    expect(getLandingTabForBeautyAccess(clinicHp, 'beauty_default', cashierRole)).not.toBe(BEAUTY_CASHIER_POS_TAB);
+    for (const tab of CLINIC_OPERATIONAL_MENU_TABS) {
+      expect(canAccessBeautyTab(clinicHp, tab, cashierRole)).toBe(true);
+    }
+    for (const key of MANAGEMENT_ENTRY_MODULE_IDS) {
+      expect(clinicHp(key, 'READ')).toBe(false);
+    }
+    expect(clinicHp('pos', 'READ')).toBe(false);
+    expect(landingRouteForCashierRole('cashier', 'cashier', 'pos', marketShell)).toBe('pos');
     expect(permissionsIncludeSurvey([
       { module: 'pos.view', actions: ['READ'] },
       { module: 'pos.sell', actions: ['EXECUTE'] },

@@ -1,11 +1,32 @@
 /**
  * Hazır rol yetki setleri.
- * Kasiyer: POS, kasa ve güzellik kasası. Memnuniyet anketi yönetimi yok.
- * Anket operatörü ve yönetici anket yetkisini korur.
+ * Market kasiyeri: Market POS ve kasa. Memnuniyet anketi yok.
+ * Klinik kasiyeri: güzellik kabuğunun operasyon menüsü (özet iniş). Anket satırı menüde durur.
+ * Sistem yönetimi, kullanıcı, rol, firma/dönem ve menü yönetimi kasiyerde yoktur.
+ * Anket operatörü ve yönetici kendi yetkilerini korur.
  */
 import type { Permission, PermissionAction } from './rbacService';
 
 export const SURVEY_PERMISSION_MODULE = 'beauty.surveys';
+
+/** Sistem yönetimi giriş anahtarları. Klinik operasyon sekmeleri bu listeye girmez. */
+export const MANAGEMENT_ENTRY_MODULE_IDS = [
+  'management',
+  'users',
+  'users.roles',
+  'roles',
+  'roleauth',
+  'usermanagement',
+  'settings.system',
+  'settings',
+  'system',
+  'firms',
+  'firm',
+  'firm-period-definitions',
+  'menumanagement',
+  'menu-management',
+  'generalsettings',
+] as const;
 
 const ALL_ACTIONS: PermissionAction[] = ['CREATE', 'READ', 'UPDATE', 'DELETE', 'EXECUTE'];
 
@@ -37,14 +58,29 @@ export function isAdminRoleIdentity(name?: string | null, id?: string | null): b
   return n === 'admin' || i === 'admin' || n === 'sistem yöneticisi';
 }
 
-export function permissionEntryIsSurvey(entry: unknown): boolean {
+export function permissionModuleKey(entry: unknown): string {
   if (typeof entry === 'string') {
     const key = entry.trim();
-    return key === SURVEY_PERMISSION_MODULE || key.startsWith(`${SURVEY_PERMISSION_MODULE}.`);
+    if (key.endsWith('.*')) return key.slice(0, -2);
+    return key;
   }
   if (entry && typeof entry === 'object' && 'module' in entry) {
-    return String((entry as { module?: string }).module || '') === SURVEY_PERMISSION_MODULE;
+    return String((entry as { module?: string }).module || '').trim();
   }
+  return '';
+}
+
+export function permissionEntryIsSurvey(entry: unknown): boolean {
+  const key = permissionModuleKey(entry);
+  return key === SURVEY_PERMISSION_MODULE || key.startsWith(`${SURVEY_PERMISSION_MODULE}.`);
+}
+
+export function permissionEntryIsManagementEntry(entry: unknown): boolean {
+  const key = permissionModuleKey(entry);
+  if (!key || key === '*') return false;
+  if ((MANAGEMENT_ENTRY_MODULE_IDS as readonly string[]).includes(key)) return true;
+  if (key.startsWith('management.')) return true;
+  if (key.startsWith('users.')) return true;
   return false;
 }
 
@@ -56,23 +92,35 @@ export function withoutSurveyAdministration<T>(permissions: readonly T[] | null 
   return (permissions || []).filter((entry) => !permissionEntryIsSurvey(entry));
 }
 
-/** Kasiyer kaydından anket anahtarını düşürür. Yönetici ve anket rolüne dokunmaz. */
+export function withoutManagementEntries<T>(permissions: readonly T[] | null | undefined): T[] {
+  return (permissions || []).filter((entry) => !permissionEntryIsManagementEntry(entry));
+}
+
+/**
+ * Kasiyer kaydından sistem yönetimi girişini düşürür.
+ * Market kasiyerinden anket satırını da düşürür. Klinik kasiyerinde anket menüde kalır.
+ * Yönetici ve anket rolüne dokunmaz.
+ */
 export function sanitizePermissionsForRole<T>(
   permissions: readonly T[] | null | undefined,
   role: { name?: string | null; id?: string | null },
+  shell?: CashierShellHint | null,
 ): T[] {
   const list = [...(permissions || [])];
   if (isAdminRoleIdentity(role.name, role.id) || isSurveyOperatorRoleIdentity(role.name, role.id)) {
     return list;
   }
   if (isCashierRoleIdentity(role.name, role.id)) {
-    return withoutSurveyAdministration(list);
+    const operational = withoutManagementEntries(list);
+    const hint = shell === undefined ? readCashierShellHintFromStorage() : (shell ?? {});
+    if (cashierShellHasClinic(hint)) return operational;
+    return withoutSurveyAdministration(operational);
   }
   return list;
 }
 
-/** POS, kasa ve güzellik kasası. Anket yönetimi yok. */
-export function cashierPermissionPreset(): Permission[] {
+/** Market kasiyeri: Market POS ve kasa. Anket ve sistem yönetimi yok. */
+export function marketCashierPermissionPreset(): Permission[] {
   return [
     { module: 'dashboard', actions: ['READ'] },
     { module: 'pos', actions: ['READ', 'CREATE', 'EXECUTE'] },
@@ -83,6 +131,29 @@ export function cashierPermissionPreset(): Permission[] {
     { module: 'sales-invoices', actions: ['CREATE', 'READ'] },
     { module: 'campaigns', actions: ['READ', 'EXECUTE'] },
   ];
+}
+
+/**
+ * Klinik kasiyeri. İniş özet sekmesidir; anket menüde durur, ilk sayfa değildir.
+ * Sistem yönetimi, kullanıcı, rol, firma ve menü yönetimi yoktur.
+ */
+export function clinicCashierPermissionPreset(): Permission[] {
+  return [
+    { module: 'pos.view', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
+    { module: 'pos.sell', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
+    { module: 'beauty', actions: ['READ'] },
+    { module: SURVEY_PERMISSION_MODULE, actions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'] },
+  ];
+}
+
+/**
+ * Hazır rol → Kasiyer.
+ * Klinik kabuğunda klinik operasyon seti, yalnız markette Market POS seti.
+ */
+export function cashierPermissionPreset(shell?: CashierShellHint | null): Permission[] {
+  const hint = shell === undefined ? readCashierShellHintFromStorage() : (shell ?? {});
+  if (cashierShellHasClinic(hint)) return clinicCashierPermissionPreset();
+  return marketCashierPermissionPreset();
 }
 
 /** Yalnızca memnuniyet anketini uygulama. */

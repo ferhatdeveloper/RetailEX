@@ -5,8 +5,11 @@ import { roleAPI, Role as RoleType } from '../../services/api/roles';
 import { Permission, PermissionAction } from '../../services/rbacService';
 import {
   builtinRolePermissionPreset,
+  cashierShellHasClinic,
   isCashierRoleIdentity,
   landingRouteForCashierRole,
+  permissionEntryIsManagementEntry,
+  readCashierShellHintFromStorage,
   sanitizePermissionsForRole,
   SURVEY_PERMISSION_MODULE,
   type BuiltinRolePresetId,
@@ -212,11 +215,10 @@ export function RoleForm(props: RoleFormProps = {}) {
     }
   };
 
-  const cashierMatrix = isCashierRoleIdentity(formData.name, role?.id);
-
   const applyBuiltinPreset = (presetId: BuiltinRolePresetId) => {
     const permissions = builtinRolePermissionPreset(presetId);
     const cashierLanding = landingRouteForCashierRole('Kasiyer', 'cashier', '');
+    const clinicCashier = cashierShellHasClinic(readCashierShellHintFromStorage());
     setFormData((prev) => ({
       ...prev,
       permissions,
@@ -232,7 +234,7 @@ export function RoleForm(props: RoleFormProps = {}) {
         prev.description.trim()
           ? prev.description
           : presetId === 'cashier'
-            ? tm('roleBuiltinPresetCashierDesc')
+            ? tm(clinicCashier ? 'roleBuiltinPresetCashierClinicDesc' : 'roleBuiltinPresetCashierDesc')
             : presetId === 'survey'
               ? tm('roleBuiltinPresetSurveyDesc')
               : prev.description,
@@ -248,8 +250,14 @@ export function RoleForm(props: RoleFormProps = {}) {
     if (presetId === 'admin') setActiveCategoryTab('backoffice');
   };
 
+  const cashierModuleLocked = (moduleId: string) => {
+    if (!isCashierRoleIdentity(formData.name, role?.id)) return false;
+    if (permissionEntryIsManagementEntry({ module: moduleId })) return true;
+    return moduleId === SURVEY_PERMISSION_MODULE && !cashierShellHasClinic(readCashierShellHintFromStorage());
+  };
+
   const toggleAction = (moduleId: string, action: PermissionAction) => {
-    if (moduleId === SURVEY_PERMISSION_MODULE && isCashierRoleIdentity(formData.name, role?.id)) return;
+    if (cashierModuleLocked(moduleId)) return;
     setFormData((prev) => {
       const existingModuleIndex = prev.permissions.findIndex((p) => p.module === moduleId);
       const newPermissions = [...prev.permissions];
@@ -273,7 +281,7 @@ export function RoleForm(props: RoleFormProps = {}) {
   };
 
   const toggleAllInModule = (moduleId: string, availableActions: PermissionAction[]) => {
-    if (moduleId === SURVEY_PERMISSION_MODULE && isCashierRoleIdentity(formData.name, role?.id)) return;
+    if (cashierModuleLocked(moduleId)) return;
     setFormData((prev) => {
       const existingModuleIndex = prev.permissions.findIndex((p) => p.module === moduleId);
       const newPermissions = [...prev.permissions];
@@ -575,7 +583,7 @@ export function RoleForm(props: RoleFormProps = {}) {
                   <tbody>
                     {activeGroup.modules.map((module) => {
                       const allSelected = isModuleAllSelected(module.id, module.availableActions);
-                      const surveyLocked = cashierMatrix && module.id === SURVEY_PERMISSION_MODULE;
+                      const surveyLocked = cashierModuleLocked(module.id);
                       return (
                         <tr
                           key={module.id}

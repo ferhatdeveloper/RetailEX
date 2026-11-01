@@ -1,5 +1,6 @@
--- Kasiyer / kasiyer rolünden memnuniyet anketi yönetimi (beauty.surveys) çıkarılır.
--- Güzellik kasası (beauty), POS ve kasa yetkileri durur.
+-- Market kasiyerinden memnuniyet anketi (beauty.surveys) çıkarılır.
+-- Klinik kiracı (firms.enabled_modules içinde beauty) kasiyerine dokunulmaz;
+-- anket satırı klinik menüsünde kalır, iniş sayfası olmaz.
 -- admin, anket ve diğer özel rollerin izin dizisi değişmez.
 
 UPDATE public.roles AS r
@@ -37,4 +38,10 @@ WHERE r.permissions IS NOT NULL
     r.id = '00000000-0000-0000-0000-000000000003'
     OR lower(btrim(r.name)) IN ('cashier', 'kasiyer')
     OR lower(btrim(r.name)) LIKE 'kasiyer%'
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.firms AS f
+    WHERE COALESCE(f.is_active, true)
+      AND COALESCE(f.enabled_modules, '[]'::jsonb) @> '["beauty"]'::jsonb
   );
