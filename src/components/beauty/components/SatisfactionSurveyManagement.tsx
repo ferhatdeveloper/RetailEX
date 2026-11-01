@@ -69,8 +69,7 @@ export function SatisfactionSurveyManagement({
         !hasPermission('beauty', 'READ');
     const canManageSurveys =
         !isSurveyOperatorOnly &&
-        (hasPermission('beauty', 'READ') ||
-            hasPermission('beauty.surveys', 'CREATE') ||
+        (hasPermission('beauty.surveys', 'CREATE') ||
             hasPermission('beauty.surveys', 'UPDATE') ||
             hasPermission('beauty.surveys', 'DELETE'));
     const canExecuteSurvey =
@@ -378,7 +377,10 @@ export function SatisfactionSurveyManagement({
                         </Space>
                         <Space size={12} wrap>
                             <InlineLanguageSwitcher />
-                            {(onOpenSurveyReport || hasPermission('beauty', 'READ')) && (
+                            {onOpenSurveyReport &&
+                            (hasPermission('beauty.surveys', 'READ') ||
+                                hasPermission('beauty.surveys', 'EXECUTE') ||
+                                hasPermission('beauty.surveys', 'CREATE')) && (
                                 <Button
                                     shape="round"
                                     icon={<BarChartOutlined />}

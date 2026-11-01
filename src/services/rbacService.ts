@@ -14,6 +14,7 @@
 import {
   expandRbacModuleIds,
   isRbacParentModule,
+  rbacGranularInheritsParent,
   RBAC_POS_GRANULAR_ACTIONS,
 } from '../utils/rbacPermissionMap';
 
@@ -244,8 +245,9 @@ export function hasPermission(
   }
 
   const requestedModules = [...expandRbacModuleIds(String(module || ''))];
-  // pos.discount isteği → ayrıca üst "pos" EXECUTE ile de karşılanabilir
-  if (String(module).includes('.')) {
+  // pos.discount isteği → ayrıca üst "pos" ile de karşılanabilir.
+  // beauty.surveys üst beauty kasasından gelmez.
+  if (rbacGranularInheritsParent(String(module))) {
     const parent = String(module).split('.')[0];
     if (parent && !requestedModules.includes(parent)) requestedModules.push(parent);
   }

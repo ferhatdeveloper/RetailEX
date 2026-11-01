@@ -3,6 +3,13 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Shield, CheckCircle, AlertCircle, Check } from 'lucide-react';
 import { roleAPI, Role as RoleType } from '../../services/api/roles';
 import { Permission, PermissionAction } from '../../services/rbacService';
+import {
+  builtinRolePermissionPreset,
+  isCashierRoleIdentity,
+  sanitizePermissionsForRole,
+  SURVEY_PERMISSION_MODULE,
+  type BuiltinRolePresetId,
+} from '../../services/rbacRolePresets';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { logger } from '../../services/loggingService';
@@ -149,7 +156,10 @@ export function RoleForm(props: RoleFormProps = {}) {
         setFormData({
           name: existingRole.name,
           description: existingRole.description || '',
-          permissions: normalizedPermissions,
+          permissions: sanitizePermissionsForRole(normalizedPermissions, {
+            name: existingRole.name,
+            id: existingRole.id,
+          }),
           color: existingRole.color || '#3B82F6',
           landing_route: landing,
         });
@@ -177,7 +187,10 @@ export function RoleForm(props: RoleFormProps = {}) {
       const cleanedData = {
         ...formData,
         name: formData.name.trim(),
-        permissions: formData.permissions.filter((p) => p.actions.length > 0),
+        permissions: sanitizePermissionsForRole(
+          formData.permissions.filter((p) => p.actions.length > 0),
+          { name: formData.name, id: role?.id },
+        ),
       };
       if (isEditing && id) {
         await roleAPI.update(id, cleanedData);
@@ -193,7 +206,36 @@ export function RoleForm(props: RoleFormProps = {}) {
     }
   };
 
+  const cashierMatrix = isCashierRoleIdentity(formData.name, role?.id);
+
+  const applyBuiltinPreset = (presetId: BuiltinRolePresetId) => {
+    const permissions = builtinRolePermissionPreset(presetId);
+    setFormData((prev) => ({
+      ...prev,
+      permissions,
+      name:
+        prev.name.trim()
+          ? prev.name
+          : presetId === 'cashier'
+            ? 'Kasiyer'
+            : presetId === 'survey'
+              ? 'Anket'
+              : 'admin',
+      description:
+        prev.description.trim()
+          ? prev.description
+          : presetId === 'cashier'
+            ? tm('roleBuiltinPresetCashierDesc')
+            : presetId === 'survey'
+              ? tm('roleBuiltinPresetSurveyDesc')
+              : prev.description,
+    }));
+    if (presetId === 'cashier' || presetId === 'survey') setActiveCategoryTab('beauty');
+    if (presetId === 'admin') setActiveCategoryTab('backoffice');
+  };
+
   const toggleAction = (moduleId: string, action: PermissionAction) => {
+    if (moduleId === SURVEY_PERMISSION_MODULE && isCashierRoleIdentity(formData.name, role?.id)) return;
     setFormData((prev) => {
       const existingModuleIndex = prev.permissions.findIndex((p) => p.module === moduleId);
       const newPermissions = [...prev.permissions];
@@ -217,6 +259,7 @@ export function RoleForm(props: RoleFormProps = {}) {
   };
 
   const toggleAllInModule = (moduleId: string, availableActions: PermissionAction[]) => {
+    if (moduleId === SURVEY_PERMISSION_MODULE && isCashierRoleIdentity(formData.name, role?.id)) return;
     setFormData((prev) => {
       const existingModuleIndex = prev.permissions.findIndex((p) => p.module === moduleId);
       const newPermissions = [...prev.permissions];
@@ -337,11 +380,38 @@ export function RoleForm(props: RoleFormProps = {}) {
               <input
                 type="text"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setFormData((prev) => ({
+                    ...prev,
+                    name,
+                    permissions: sanitizePermissionsForRole(prev.permissions, { name, id: role?.id }),
+                  }));
+                }}
                 className={inputCls}
                 placeholder={tm('roleNamePlaceholder')}
                 required
               />
+              {!isEditing && (
+                <div>
+                  <label className={`block mb-1 ${labelCls}`}>{tm('roleBuiltinPresetLabel')}</label>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const presetId = e.target.value as BuiltinRolePresetId | '';
+                      if (presetId === 'cashier' || presetId === 'survey' || presetId === 'admin') {
+                        applyBuiltinPreset(presetId);
+                      }
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="">{tm('roleBuiltinPresetNone')}</option>
+                    <option value="cashier">{tm('roleBuiltinPresetCashier')}</option>
+                    <option value="survey">{tm('roleBuiltinPresetSurvey')}</option>
+                    <option value="admin">{tm('roleBuiltinPresetAdmin')}</option>
+                  </select>
+                </div>
+              )}
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -491,6 +561,7 @@ export function RoleForm(props: RoleFormProps = {}) {
                   <tbody>
                     {activeGroup.modules.map((module) => {
                       const allSelected = isModuleAllSelected(module.id, module.availableActions);
+                      const surveyLocked = cashierMatrix && module.id === SURVEY_PERMISSION_MODULE;
                       return (
                         <tr
                           key={module.id}
@@ -510,8 +581,9 @@ export function RoleForm(props: RoleFormProps = {}) {
                           <td className="p-2 text-center align-middle">
                             <button
                               type="button"
+                              disabled={surveyLocked}
                               onClick={() => toggleAllInModule(module.id, module.availableActions)}
-                              className={`w-7 h-7 mx-auto flex items-center justify-center border rounded ${
+                              className={`w-7 h-7 mx-auto flex items-center justify-center border rounded disabled:opacity-40 ${
                                 allSelected
                                   ? 'bg-blue-600 border-blue-600 text-white'
                                   : darkMode
@@ -537,8 +609,9 @@ export function RoleForm(props: RoleFormProps = {}) {
                               <td key={act} className="p-2 text-center align-middle">
                                 <button
                                   type="button"
+                                  disabled={surveyLocked}
                                   onClick={() => toggleAction(module.id, act)}
-                                  className={`w-7 h-7 mx-auto flex items-center justify-center border rounded ${
+                                  className={`w-7 h-7 mx-auto flex items-center justify-center border rounded disabled:opacity-40 ${
                                     isChecked
                                       ? act === 'DELETE'
                                         ? 'bg-red-600 border-red-600 text-white'

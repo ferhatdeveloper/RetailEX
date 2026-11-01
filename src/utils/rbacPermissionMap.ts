@@ -55,12 +55,27 @@ export function expandRbacModuleIds(moduleId: string): string[] {
   return Array.from(new Set([id, ...extras]));
 }
 
+/**
+ * Üst modül alt granüler yetkiyi kapsamaz.
+ * Memnuniyet anketi (`beauty.surveys`) güzellik kasasından ayrıdır;
+ * `beauty` okuma yetkisi anket yönetimini açmaz.
+ */
+const RBAC_PARENT_EXCEPTIONS = new Set(['beauty.surveys']);
+
 /** Üst modülün alt granüler yetkiyi kapsayıp kapsamadığı (pos → pos.discount). */
 export function isRbacParentModule(parent: string, child: string): boolean {
   const p = String(parent || '').trim();
   const c = String(child || '').trim();
   if (!p || !c || p === c) return false;
+  if (RBAC_PARENT_EXCEPTIONS.has(c)) return false;
   return c.startsWith(`${p}.`);
+}
+
+/** Granüler istek üst modül yetkisiyle de karşılanır mı (pos.discount → pos). Anket hariç. */
+export function rbacGranularInheritsParent(moduleId: string): boolean {
+  const id = String(moduleId || '').trim();
+  if (!id.includes('.')) return false;
+  return !RBAC_PARENT_EXCEPTIONS.has(id);
 }
 
 /** POS özel aksiyonları — EXECUTE’a ezilmeden ayrı modül olarak tutulur. */

@@ -30,7 +30,7 @@ export function getBeautyTabRbacModule(tabId: string): string {
 export function canAccessBeautyTab(hasPermission: BeautyPermCheck, tabId: string): boolean {
     const module = getBeautyTabRbacModule(tabId);
     if (module === 'beauty.surveys') {
-        return hasPermission('beauty.surveys', 'READ') || hasPermission('beauty', 'READ');
+        return hasPermission('beauty.surveys', 'READ') || hasPermission('beauty.surveys', 'EXECUTE');
     }
     return hasPermission('beauty', 'READ');
 }
