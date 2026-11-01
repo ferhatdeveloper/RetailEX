@@ -6,6 +6,7 @@ import { Permission, PermissionAction } from '../../services/rbacService';
 import {
   builtinRolePermissionPreset,
   isCashierRoleIdentity,
+  landingRouteForCashierRole,
   sanitizePermissionsForRole,
   SURVEY_PERMISSION_MODULE,
   type BuiltinRolePresetId,
@@ -152,7 +153,11 @@ export function RoleForm(props: RoleFormProps = {}) {
           });
         }
 
-        const landing = existingRole.landing_route ?? '';
+        const landing = landingRouteForCashierRole(
+          existingRole.name,
+          existingRole.id,
+          existingRole.landing_route ?? '',
+        );
         setFormData({
           name: existingRole.name,
           description: existingRole.description || '',
@@ -187,6 +192,7 @@ export function RoleForm(props: RoleFormProps = {}) {
       const cleanedData = {
         ...formData,
         name: formData.name.trim(),
+        landing_route: landingRouteForCashierRole(formData.name, role?.id, formData.landing_route),
         permissions: sanitizePermissionsForRole(
           formData.permissions.filter((p) => p.actions.length > 0),
           { name: formData.name, id: role?.id },
@@ -229,8 +235,15 @@ export function RoleForm(props: RoleFormProps = {}) {
             : presetId === 'survey'
               ? tm('roleBuiltinPresetSurveyDesc')
               : prev.description,
+      landing_route:
+        presetId === 'cashier'
+          ? 'pos'
+          : presetId === 'survey'
+            ? 'beauty'
+            : prev.landing_route,
     }));
-    if (presetId === 'cashier' || presetId === 'survey') setActiveCategoryTab('beauty');
+    if (presetId === 'cashier') setActiveCategoryTab('pos');
+    if (presetId === 'survey') setActiveCategoryTab('beauty');
     if (presetId === 'admin') setActiveCategoryTab('backoffice');
   };
 

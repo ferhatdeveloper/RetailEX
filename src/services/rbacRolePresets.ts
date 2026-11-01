@@ -100,3 +100,48 @@ export function builtinRolePermissionPreset(id: BuiltinRolePresetId): Permission
   if (id === 'survey') return surveyOperatorPermissionPreset();
   return adminPermissionPreset();
 }
+
+/** Kasiyer hazır rolünün kayıtlı iniş modülü. Anket kabuğu değil. */
+export function landingRouteForCashierRole(
+  name?: string | null,
+  id?: string | null,
+  landing?: string | null,
+): string {
+  const value = String(landing ?? '').trim();
+  if (!isCashierRoleIdentity(name, id)) return value;
+  if (!value || value === 'beauty') return 'pos';
+  return value;
+}
+
+/**
+ * Girişten sonra açılacak kabuk.
+ * Kasiyerde boş veya güzellik inişi anket sayfasına düşmesin diye POS olur.
+ * Anket operatörü ve yönetici buradan geçmez.
+ */
+export function cashierPostLoginModule(input: {
+  name?: string | null;
+  id?: string | null;
+  landingRoute?: string | null;
+}): 'pos' | 'restaurant' | 'management' | 'wms' | null {
+  if (!isCashierRoleIdentity(input.name, input.id)) return null;
+  const landing = String(input.landingRoute ?? '').trim();
+  if (landing === 'restaurant' || landing === 'management' || landing === 'wms') return landing;
+  return 'pos';
+}
+
+export function cashierPostLoginModuleFromUser(user: {
+  role?: string | null;
+  roles?: Array<{
+    name?: string | null;
+    id?: string | null;
+    landingRoute?: string | null;
+    landing_route?: string | null;
+  }> | null;
+} | null | undefined): 'pos' | 'restaurant' | 'management' | 'wms' | null {
+  const role = user?.roles?.[0];
+  return cashierPostLoginModule({
+    name: role?.name || user?.role,
+    id: role?.id,
+    landingRoute: role?.landingRoute ?? role?.landing_route ?? null,
+  });
+}

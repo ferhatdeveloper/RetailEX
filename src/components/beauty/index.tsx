@@ -38,6 +38,7 @@ import { ClinicErpSpecialtyProvider, useClinicErpSpecialty } from './context/Cli
 import {
     canAccessBeautyTab,
     getLandingTabForBeautyAccess,
+    nextBeautyTabWhenDenied,
 } from './clinicShellNavConfig';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { useResponsive } from '../../hooks/useResponsive';
@@ -115,7 +116,14 @@ export type BeautyModuleProps = {
 
 function BeautyModuleShell({ sales = [], products = [], onRequestManagementAccess, clinicSessionBar }: BeautyModuleProps) {
     const { tm, t, language } = useLanguage();
-    const { hasPermission } = usePermission();
+    const { hasPermission, user } = usePermission();
+    const beautyRoleHint = useMemo(
+        () => ({
+            name: user?.roles?.[0]?.name ?? null,
+            id: user?.roles?.[0]?.id ?? null,
+        }),
+        [user],
+    );
     const { specialty } = useClinicErpSpecialty();
     const [activeTab, setActiveTab] = useState('dashboard');
     const [beautyClientDetailId, setBeautyClientDetailId] = useState<string | null>(null);
@@ -340,16 +348,16 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
      * `__init__`: ilk yüklemede localStorage’daki `dental` vb. için doğru sekmeyi aç.
      */
     const prevSpecialtyRef = React.useRef<typeof specialty | '__init__'>('__init__');
+    const prevRoleKeyRef = React.useRef('');
     React.useEffect(() => {
         const prev = prevSpecialtyRef.current;
+        const roleKey = `${beautyRoleHint.id ?? ''}|${beautyRoleHint.name ?? ''}`;
+        const roleChanged = prevRoleKeyRef.current !== roleKey;
         prevSpecialtyRef.current = specialty;
-        if (prev === '__init__') {
-            setActiveTab(getLandingTabForBeautyAccess(hasPermission, specialty));
-            return;
-        }
-        if (prev === specialty) return;
-        setActiveTab(getLandingTabForBeautyAccess(hasPermission, specialty));
-    }, [specialty, hasPermission]);
+        prevRoleKeyRef.current = roleKey;
+        if (prev !== '__init__' && prev === specialty && !roleChanged) return;
+        setActiveTab(getLandingTabForBeautyAccess(hasPermission, specialty, beautyRoleHint));
+    }, [specialty, hasPermission, beautyRoleHint]);
 
     /** V2'de CRM kapalıyken leads açıksa anasayfaya dön. V1 mor menü aynı sekmede kalır. */
     React.useEffect(() => {
@@ -358,12 +366,11 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         if (next !== activeTab) setActiveTab(next);
     }, [shellV2, crmMenuOn, activeTab]);
 
-    /** Yetkisi olmayan sekmede kalma (ör. anket operatörü) */
+    /** Yetkisi olmayan sekmede kalma. İzinli sekme yoksa anket sayfasına zorlama. */
     React.useEffect(() => {
-        if (canAccessBeautyTab(hasPermission, activeTab)) return;
-        const first =
-            MENU_GROUPS.flatMap(g => g.items).find(item => canAccessBeautyTab(hasPermission, item.id))?.id ?? 'surveys';
-        setActiveTab(first);
+        const visible = MENU_GROUPS.flatMap(g => g.items).map(item => item.id);
+        const next = nextBeautyTabWhenDenied(hasPermission, activeTab, visible);
+        if (next && next !== activeTab) setActiveTab(next);
     }, [activeTab, hasPermission, MENU_GROUPS]);
 
     React.useEffect(() => {

@@ -1,4 +1,5 @@
 import type { ClinicErpSpecialty } from '../../types/beauty';
+import { isCashierRoleIdentity } from '../../services/rbacRolePresets';
 
 /**
  * Yaygın diş pratiği yazılımları (Dentrix, Open Dental, Curve, Dental Asistanım vb.)
@@ -21,10 +22,21 @@ import type { ClinicErpSpecialty } from '../../types/beauty';
 
 type BeautyPermCheck = (module: string, action?: string) => boolean;
 
+/** Klinik kabuğunda kasiyerin açtığı kasa ekranı (randevu + ödeme). Anket sekmesi değil. */
+export const BEAUTY_CASHIER_POS_TAB = 'product_sales';
+
 /** Klinik kabuğu sekmesi → RBAC modülü (anket operatörü yalnızca surveys görür) */
 export function getBeautyTabRbacModule(tabId: string): string {
     if (tabId === 'surveys') return 'beauty.surveys';
     return 'beauty';
+}
+
+function hasPosCashierPermission(hasPermission: BeautyPermCheck): boolean {
+    return (
+        hasPermission('pos', 'READ')
+        || hasPermission('pos', 'EXECUTE')
+        || hasPermission('pos', 'CREATE')
+    );
 }
 
 export function canAccessBeautyTab(hasPermission: BeautyPermCheck, tabId: string): boolean {
@@ -32,6 +44,7 @@ export function canAccessBeautyTab(hasPermission: BeautyPermCheck, tabId: string
     if (module === 'beauty.surveys') {
         return hasPermission('beauty.surveys', 'READ') || hasPermission('beauty.surveys', 'EXECUTE');
     }
+    if (tabId === BEAUTY_CASHIER_POS_TAB && hasPosCashierPermission(hasPermission)) return true;
     return hasPermission('beauty', 'READ');
 }
 
@@ -59,10 +72,30 @@ export function getLandingTabForSpecialty(s: ClinicErpSpecialty): string {
 export function getLandingTabForBeautyAccess(
     hasPermission: BeautyPermCheck,
     specialty: ClinicErpSpecialty,
+    role?: { name?: string | null; id?: string | null } | null,
 ): string {
+    const cashier = role ? isCashierRoleIdentity(role.name, role.id) : false;
     const fullBeauty = hasPermission('beauty', 'READ');
+    const posCashier = hasPosCashierPermission(hasPermission);
     const surveysOnly =
-        !fullBeauty && (hasPermission('beauty.surveys', 'READ') || hasPermission('beauty.surveys', 'EXECUTE'));
+        !fullBeauty
+        && !cashier
+        && !posCashier
+        && (hasPermission('beauty.surveys', 'READ') || hasPermission('beauty.surveys', 'EXECUTE'));
     if (surveysOnly) return 'surveys';
+    if (cashier || (posCashier && !fullBeauty)) return BEAUTY_CASHIER_POS_TAB;
     return getLandingTabForSpecialty(specialty);
+}
+
+/**
+ * Açık sekmenin yetkisi yoksa menüdeki ilk izinli sekmeye geç.
+ * İzinli sekme yoksa anket sayfasına zorlama.
+ */
+export function nextBeautyTabWhenDenied(
+    hasPermission: BeautyPermCheck,
+    activeTab: string,
+    visibleTabIds: readonly string[],
+): string | null {
+    if (canAccessBeautyTab(hasPermission, activeTab)) return null;
+    return visibleTabIds.find((id) => canAccessBeautyTab(hasPermission, id)) ?? null;
 }

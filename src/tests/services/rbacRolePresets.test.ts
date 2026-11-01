@@ -3,6 +3,9 @@ import { hasPermission, type Role } from '../../services/rbacService';
 import {
   adminPermissionPreset,
   cashierPermissionPreset,
+  cashierPostLoginModule,
+  cashierPostLoginModuleFromUser,
+  landingRouteForCashierRole,
   permissionsIncludeSurvey,
   sanitizePermissionsForRole,
   SURVEY_PERMISSION_MODULE,
@@ -10,7 +13,12 @@ import {
   withoutSurveyAdministration,
 } from '../../services/rbacRolePresets';
 import { isRbacParentModule } from '../../utils/rbacPermissionMap';
-import { canAccessBeautyTab } from '../../components/beauty/clinicShellNavConfig';
+import {
+  BEAUTY_CASHIER_POS_TAB,
+  canAccessBeautyTab,
+  getLandingTabForBeautyAccess,
+  nextBeautyTabWhenDenied,
+} from '../../components/beauty/clinicShellNavConfig';
 
 function role(partial: Pick<Role, 'id' | 'name' | 'permissions'>): Role {
   return {
@@ -107,5 +115,47 @@ describe('kasiyer hazır rolü', () => {
     const surveyOnly = (module: string, action?: string) =>
       module === SURVEY_PERMISSION_MODULE && (!action || action === 'READ' || action === 'EXECUTE');
     expect(canAccessBeautyTab(surveyOnly, 'surveys')).toBe(true);
+  });
+
+  it('kasiyer inişi anket sayfası değildir; kasa ekranına düşer', () => {
+    expect(permissionsIncludeSurvey(cashierPermissionPreset())).toBe(false);
+    expect(landingRouteForCashierRole('cashier', 'cashier', 'beauty')).toBe('pos');
+    expect(landingRouteForCashierRole('cashier', 'cashier', '')).toBe('pos');
+    expect(landingRouteForCashierRole('anket', 'anket', 'beauty')).toBe('beauty');
+    expect(landingRouteForCashierRole('admin', 'admin', '')).toBe('');
+
+    expect(cashierPostLoginModule({
+      name: 'cashier',
+      id: '00000000-0000-0000-0000-000000000003',
+      landingRoute: 'pos',
+    })).toBe('pos');
+    expect(cashierPostLoginModule({ name: 'Kasiyer', id: 'cashier', landingRoute: 'beauty' })).toBe('pos');
+    expect(cashierPostLoginModule({ name: 'anket', id: 'anket', landingRoute: 'beauty' })).toBeNull();
+    expect(cashierPostLoginModule({ name: 'admin', id: 'admin', landingRoute: null })).toBeNull();
+    expect(cashierPostLoginModuleFromUser({
+      role: 'cashier',
+      roles: [{ name: 'cashier', id: 'cashier', landingRoute: 'pos' }],
+    })).toBe('pos');
+
+    const duhaPos = (module: string, action?: string) =>
+      module === 'pos' && (!action || action === 'READ' || action === 'EXECUTE');
+    expect(getLandingTabForBeautyAccess(duhaPos, 'beauty_default', { name: 'cashier', id: 'cashier' }))
+      .toBe(BEAUTY_CASHIER_POS_TAB);
+    expect(getLandingTabForBeautyAccess(duhaPos, 'beauty_default', { name: 'cashier', id: 'cashier' }))
+      .not.toBe('surveys');
+    expect(canAccessBeautyTab(duhaPos, 'surveys')).toBe(false);
+    expect(canAccessBeautyTab(duhaPos, BEAUTY_CASHIER_POS_TAB)).toBe(true);
+    expect(nextBeautyTabWhenDenied(duhaPos, 'dashboard', ['dashboard', 'surveys', BEAUTY_CASHIER_POS_TAB]))
+      .toBe(BEAUTY_CASHIER_POS_TAB);
+    expect(nextBeautyTabWhenDenied(duhaPos, 'surveys', ['dashboard', 'surveys'])).toBeNull();
+
+    const surveyOnly = (module: string, action?: string) =>
+      module === SURVEY_PERMISSION_MODULE && (!action || action === 'READ' || action === 'EXECUTE');
+    expect(getLandingTabForBeautyAccess(surveyOnly, 'beauty_default', { name: 'anket', id: 'anket' }))
+      .toBe('surveys');
+
+    const adminAll = () => true;
+    expect(getLandingTabForBeautyAccess(adminAll, 'beauty_default', { name: 'admin', id: 'admin' }))
+      .toBe('dashboard');
   });
 });
