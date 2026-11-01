@@ -1221,9 +1221,16 @@ export function Login({ onLogin }: LoginProps) {
           }
           if (DB_SETTINGS.activeMode === 'hybrid' || DB_SETTINGS.activeMode === 'online' || DB_SETTINGS.activeMode === 'offline') {
             const { provisionFirmEverywhere } = await import('../../services/firmProvisionService');
+            const { firmNameArgForProvision } = await import('../../services/firmNamePreserve');
+            const firmRow = firms.find((f) => String(f.firm_nr) === firmForLogin);
             void provisionFirmEverywhere({
-              firmNr: selectedFirmNr || ERP_SETTINGS.firmNr,
+              firmNr: firmForLogin,
               periodNr: '01',
+              firmName: firmNameArgForProvision(
+                firmRow ? { name: firmRow.name, title: firmRow.title } : null,
+                firmRow?.name,
+                firmForLogin,
+              ) ?? undefined,
             }).catch(() => {});
           }
           if (rememberMe) {

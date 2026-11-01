@@ -5,6 +5,7 @@
 import { DB_SETTINGS, LOCAL_CONFIG, postgres, getCentralRemotePgConfig, shouldUseCentralApi } from './postgres';
 import { queryPgRows, type PgEndpointConfig } from './hybridSyncEngine';
 import { centralRpcCall, isCentralRestAvailable } from './centralRpcService';
+import { firmNameArgForProvision } from './firmNamePreserve';
 
 export function padFirmNr(nr: string): string {
   const d = String(nr ?? '').replace(/\D/g, '');
@@ -24,11 +25,28 @@ export type ProvisionFirmOptions = {
   bootstrapModules?: boolean;
 };
 
+async function readExistingFirmLabels(
+  cfg: PgEndpointConfig,
+  firmNr: string,
+): Promise<{ name?: string | null; title?: string | null } | null> {
+  try {
+    const rows = await queryPgRows(
+      cfg,
+      `SELECT name, title FROM public.firms WHERE firm_nr = $1 LIMIT 1`,
+      [firmNr],
+    );
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function ensureOnEndpoint(
   cfg: PgEndpointConfig,
   firmNr: string,
   periodNr: string,
   label: string,
+  firmName?: string | null,
 ): Promise<{ ok: boolean; message: string }> {
   if (!cfg.host?.trim() || !cfg.database?.trim()) {
     return { ok: false, message: `${label}: bağlantı yapılandırılmamış.` };
@@ -36,11 +54,14 @@ async function ensureOnEndpoint(
 
   const firm = padFirmNr(firmNr);
   const period = padPeriodNr(periodNr);
+  const existing = await readExistingFirmLabels(cfg, firm);
+  const nameArg = firmNameArgForProvision(existing, firmName, firm);
 
   try {
-    await queryPgRows(cfg, `SELECT public.provision_firm_schema($1, $2, NULL, 'IQD', true)`, [
+    await queryPgRows(cfg, `SELECT public.provision_firm_schema($1, $2, $3, 'IQD', true)`, [
       firm,
       period,
+      nameArg,
     ]);
     return { ok: true, message: `${label}: firma ${firm}, dönem ${period} hazır.` };
   } catch {
@@ -73,7 +94,7 @@ async function provisionCentralViaRpc(opts: ProvisionFirmOptions): Promise<{ ok:
       {
         p_firm_nr: firm,
         p_period_nr: period,
-        p_firm_name: opts.firmName ?? null,
+        p_firm_name: firmNameArgForProvision(null, opts.firmName, firm),
         p_currency: opts.currency ?? 'IQD',
         p_bootstrap_modules: opts.bootstrapModules !== false,
       },
@@ -88,7 +109,7 @@ async function provisionCentralViaRpc(opts: ProvisionFirmOptions): Promise<{ ok:
       return { ok: false, message: `Merkez RPC: ${msg}` };
     }
     if (msg.includes('42883') || msg.includes('does not exist') || msg.includes('provision_firm_schema')) {
-      return ensureOnEndpoint(getCentralRemotePgConfig(), firm, period, 'Merkez DB');
+      return ensureOnEndpoint(getCentralRemotePgConfig(), firm, period, 'Merkez DB', opts.firmName);
     }
     return { ok: false, message: `Merkez RPC: ${msg}` };
   }
@@ -97,8 +118,9 @@ async function provisionCentralViaRpc(opts: ProvisionFirmOptions): Promise<{ ok:
 export async function ensureLocalFirmPeriodSchemas(
   firmNr: string,
   periodNr?: string,
+  firmName?: string | null,
 ): Promise<{ ok: boolean; message: string }> {
-  return ensureOnEndpoint(LOCAL_CONFIG, firmNr, padPeriodNr(periodNr), 'Yerel DB');
+  return ensureOnEndpoint(LOCAL_CONFIG, firmNr, padPeriodNr(periodNr), 'Yerel DB', firmName);
 }
 
 export async function ensureCentralFirmPeriodSchemas(
@@ -117,7 +139,13 @@ export async function ensureCentralFirmPeriodSchemas(
     return { ok: false, message: 'Merkez API (remote_rest_url) yapılandırılmamış.' };
   }
 
-  return ensureOnEndpoint(getCentralRemotePgConfig(), firmNr, padPeriodNr(periodNr), 'Merkez DB');
+  return ensureOnEndpoint(
+    getCentralRemotePgConfig(),
+    firmNr,
+    padPeriodNr(periodNr),
+    'Merkez DB',
+    opts?.firmName,
+  );
 }
 
 /** Yerel firma oluşturulduğunda veya güncellendiğinde: yerel + merkez şema */
@@ -130,7 +158,7 @@ export async function provisionFirmEverywhere(
   let ok = true;
 
   if (DB_SETTINGS.activeMode === 'offline' || DB_SETTINGS.activeMode === 'hybrid') {
-    const local = await ensureLocalFirmPeriodSchemas(firm, period);
+    const local = await ensureLocalFirmPeriodSchemas(firm, period, opts.firmName);
     messages.push(local.message);
     ok = ok && local.ok;
   }
@@ -147,6 +175,7 @@ export async function provisionFirmEverywhere(
       firm,
       period,
       'Merkez DB',
+      opts.firmName,
     );
     messages.push(central.message);
     ok = ok && central.ok;
@@ -177,7 +206,7 @@ export async function ensureFirmPeriodSchemasOnce(
   if (ensuredKeys.has(key)) return;
 
   if (target === 'local' || target === 'both') {
-    const r = await ensureLocalFirmPeriodSchemas(firm, period);
+    const r = await ensureLocalFirmPeriodSchemas(firm, period, opts?.firmName);
     if (r.ok) ensuredKeys.add(`local:${firm}:${period}`);
   }
   if (target === 'central' || target === 'both') {

@@ -1,4 +1,56 @@
 -- Merkez/yerel: firma metadata + rex_* tablolarını tek RPC ile oluştur (PostgREST)
+-- Çakışmada özel firma adı "Firma NNN" / "RetailEx OS" ile ezilmez (222 ile aynı kural).
+
+CREATE OR REPLACE FUNCTION public.firm_name_is_generic(p_name TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT COALESCE(btrim(p_name), '') = ''
+      OR btrim(p_name) = 'RetailEx OS'
+      OR btrim(p_name) ~ '^Firma [0-9]{3}$';
+$$;
+
+CREATE OR REPLACE FUNCTION public.resolve_provision_firm_name(
+  p_existing_name TEXT,
+  p_existing_title TEXT,
+  p_incoming_name TEXT,
+  p_firm_nr TEXT
+) RETURNS TEXT
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  v_firm TEXT;
+  v_existing_name TEXT;
+  v_existing_title TEXT;
+  v_incoming TEXT;
+  v_placeholder TEXT;
+BEGIN
+  v_firm := lpad(ltrim(regexp_replace(COALESCE(p_firm_nr, ''), '[^0-9]', '', 'g'), '0'), 3, '0');
+  IF v_firm = '' OR v_firm = '000' THEN
+    v_firm := '001';
+  END IF;
+  v_existing_name := NULLIF(btrim(COALESCE(p_existing_name, '')), '');
+  v_existing_title := NULLIF(btrim(COALESCE(p_existing_title, '')), '');
+  v_incoming := NULLIF(btrim(COALESCE(p_incoming_name, '')), '');
+  v_placeholder := 'Firma ' || v_firm;
+
+  IF v_incoming IS NOT NULL AND NOT public.firm_name_is_generic(v_incoming) THEN
+    RETURN v_incoming;
+  END IF;
+  IF v_existing_name IS NOT NULL AND NOT public.firm_name_is_generic(v_existing_name) THEN
+    RETURN v_existing_name;
+  END IF;
+  IF v_existing_title IS NOT NULL AND NOT public.firm_name_is_generic(v_existing_title) THEN
+    RETURN v_existing_title;
+  END IF;
+  IF v_existing_name IS NOT NULL THEN
+    RETURN v_existing_name;
+  END IF;
+  RETURN COALESCE(v_incoming, v_placeholder);
+END;
+$$;
 
 CREATE OR REPLACE FUNCTION public.provision_firm_schema(
   p_firm_nr TEXT,
@@ -36,7 +88,7 @@ BEGIN
   END IF;
   v_period_int := v_period::integer;
 
-  v_name := COALESCE(NULLIF(trim(p_firm_name), ''), 'Firma ' || v_firm);
+  v_name := public.resolve_provision_firm_name(NULL, NULL, p_firm_name, v_firm);
 
   INSERT INTO public.firms (firm_nr, name, ana_para_birimi, raporlama_para_birimi, is_active)
   VALUES (
@@ -47,7 +99,7 @@ BEGIN
     true
   )
   ON CONFLICT (firm_nr) DO UPDATE SET
-    name = EXCLUDED.name,
+    name = public.resolve_provision_firm_name(firms.name, firms.title, p_firm_name, v_firm),
     is_active = true;
 
   SELECT id INTO v_firm_id FROM public.firms WHERE firm_nr = v_firm LIMIT 1;
