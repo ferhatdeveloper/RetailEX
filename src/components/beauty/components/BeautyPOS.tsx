@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import type { BeautyService, BeautyCustomer, BeautySpecialist } from '../../../types/beauty';
-import { beautyServiceMainKey, beautyServiceSubKey } from '../beautyServiceCategoryUtils';
+import { beautyServiceCategoryPathLabel, beautyServiceMainKey, beautyServiceSubKey, resolveBeautyCategoryLabel } from '../beautyServiceCategoryUtils';
+import { categoryAPI } from '../../../services/api/masterData';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useResponsive } from '../../../hooks/useResponsive';
@@ -70,6 +71,23 @@ export function BeautyPOS() {
         botox: tm('bCatBotox'), filler: tm('bCatFiller'), massage: tm('bCatMassage'),
         skincare: tm('bCatSkincare'), makeup: tm('bCatMakeup'), nails: tm('bCatNails'), spa: tm('bCatSpa'),
     };
+    const [beautyCategoryMasters, setBeautyCategoryMasters] = useState<Array<{ code?: string | null; name?: string | null }>>([]);
+    useEffect(() => {
+        let alive = true;
+        categoryAPI.getAll()
+            .then((rows) => {
+                if (!alive) return;
+                setBeautyCategoryMasters(rows.map((row) => ({ code: row.code, name: row.name })));
+            })
+            .catch(() => {
+                if (!alive) return;
+                setBeautyCategoryMasters([]);
+            });
+        return () => {
+            alive = false;
+        };
+    }, []);
+    const labelForCategoryKey = (key: string) => resolveBeautyCategoryLabel(key, beautyCategoryMasters, CATEGORY_TR);
 
     const [tab,         setTab]         = useState<'services' | 'packages'>('services');
     const [svcFilterMain, setSvcFilterMain] = useState<string>('all');
@@ -327,7 +345,7 @@ export function BeautyPOS() {
                                                 minHeight: 40, touchAction: 'manipulation',
                                             }}
                                         >
-                                            {mk === 'all' ? tm('bAll') : (CATEGORY_TR[mk] ?? mk)}
+                                            {mk === 'all' ? tm('bAll') : labelForCategoryKey(mk)}
                                         </button>
                                     );
                                 })}
@@ -350,7 +368,7 @@ export function BeautyPOS() {
                                                     minHeight: 36, touchAction: 'manipulation',
                                                 }}
                                             >
-                                                {lk === 'all' ? tm('bAll') : (CATEGORY_TR[lk] ?? lk)}
+                                                {lk === 'all' ? tm('bAll') : labelForCategoryKey(lk)}
                                             </button>
                                         );
                                     })}
@@ -421,7 +439,7 @@ export function BeautyPOS() {
                                                 boxShadow: sel ? '0 4px 14px rgba(124, 58, 237, 0.12)' : '0 1px 2px rgba(15, 23, 42, 0.06)',
                                             }}
                                         >
-                                            {mk === 'all' ? tm('bAll') : (CATEGORY_TR[mk] ?? mk)}
+                                            {mk === 'all' ? tm('bAll') : labelForCategoryKey(mk)}
                                         </button>
                                     );
                                 })}
@@ -458,7 +476,7 @@ export function BeautyPOS() {
                                                         touchAction: 'manipulation',
                                                     }}
                                                 >
-                                                    {lk === 'all' ? tm('bAll') : (CATEGORY_TR[lk] ?? lk)}
+                                                    {lk === 'all' ? tm('bAll') : labelForCategoryKey(lk)}
                                                 </button>
                                             );
                                         })}
@@ -470,9 +488,7 @@ export function BeautyPOS() {
                 {/* Grid */}
                 <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, alignContent: 'start' }} className="custom-scrollbar">
                     {tab === 'services' && filteredSvcs.map(svc => {
-                        const catPath = String(svc.parent_category ?? '').trim()
-                            ? `${CATEGORY_TR[String(svc.parent_category)] ?? svc.parent_category} › ${CATEGORY_TR[svc.category] ?? svc.category}`
-                            : (CATEGORY_TR[svc.category] ?? svc.category);
+                        const catPath = beautyServiceCategoryPathLabel(svc, beautyCategoryMasters, CATEGORY_TR);
                         const pathLine = `${catPath} · ${svc.duration_min}dk`;
                         return (
                         <button

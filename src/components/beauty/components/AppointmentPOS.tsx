@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus, appointmentStatusMatches } from '../../../types/beauty';
-import { beautyServiceMainKey, beautyServiceSubKey } from '../beautyServiceCategoryUtils';
+import { beautyServiceCategoryPathLabel, beautyServiceMainKey, beautyServiceSubKey, resolveBeautyCategoryLabel } from '../beautyServiceCategoryUtils';
 import type { BeautyAppointment, BeautyAppointmentClinicalData, BeautyCustomer } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -35,6 +35,7 @@ import { useProductStore } from '../../../store/useProductStore';
 import type { Product } from '../../../core/types';
 import type { Sale, SaleItem } from '../../../core/types/models';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { categoryAPI } from '../../../services/api/masterData';
 import { currentLoginCashierName, currentLoginUserId, resolveWriteCashierName } from '../../../utils/loginCashierName';
 import { salesAPI } from '../../../services/api/sales';
 // POSPaymentModal'dan gelen "peşinatlı ödemede sadece avans kaydet" callback'i
@@ -519,6 +520,27 @@ export function AppointmentPOS({
             restorative: tm('bCatDentalRestorative'),
         };
     }, [tm, isDentalMode]);
+
+    const [beautyCategoryMasters, setBeautyCategoryMasters] = useState<Array<{ code?: string | null; name?: string | null }>>([]);
+    useEffect(() => {
+        let alive = true;
+        categoryAPI.getAll()
+            .then((rows) => {
+                if (!alive) return;
+                setBeautyCategoryMasters(rows.map((row) => ({ code: row.code, name: row.name })));
+            })
+            .catch(() => {
+                if (!alive) return;
+                setBeautyCategoryMasters([]);
+            });
+        return () => {
+            alive = false;
+        };
+    }, [selectedFirm?.firm_nr]);
+
+    const labelForCategoryKey = useCallback((key: string) => {
+        return resolveBeautyCategoryLabel(key, beautyCategoryMasters, posServiceCategoryLabels);
+    }, [beautyCategoryMasters, posServiceCategoryLabels]);
 
     // ── Left panel state ─────────────────────────────────────────────────
     const [tab, setTab] = useState<'services' | 'packages' | 'products'>(isStandaloneProductSales ? 'products' : initialTab);
@@ -4162,7 +4184,7 @@ export function AppointmentPOS({
                                                     minHeight: 40, touchAction: 'manipulation',
                                                 }}
                                             >
-                                                {mk === 'all' ? tm('bAll') : (posServiceCategoryLabels[mk] ?? mk)}
+                                                {mk === 'all' ? tm('bAll') : labelForCategoryKey(mk)}
                                             </button>
                                         );
                                     })}
@@ -4185,7 +4207,7 @@ export function AppointmentPOS({
                                                         minHeight: 36, touchAction: 'manipulation',
                                                     }}
                                                 >
-                                                    {lk === 'all' ? tm('bAll') : (posServiceCategoryLabels[lk] ?? lk)}
+                                                    {lk === 'all' ? tm('bAll') : labelForCategoryKey(lk)}
                                                 </button>
                                             );
                                         })}
@@ -4274,7 +4296,7 @@ export function AppointmentPOS({
                                                         boxShadow: sel ? '0 4px 14px rgba(124, 58, 237, 0.12)' : '0 1px 2px rgba(15, 23, 42, 0.06)',
                                                     }}
                                                 >
-                                                    {mk === 'all' ? tm('bAll') : (posServiceCategoryLabels[mk] ?? mk)}
+                                                    {mk === 'all' ? tm('bAll') : labelForCategoryKey(mk)}
                                                 </button>
                                             );
                                         })}
@@ -4311,7 +4333,7 @@ export function AppointmentPOS({
                                                                 touchAction: 'manipulation',
                                                             }}
                                                         >
-                                                            {lk === 'all' ? tm('bAll') : (posServiceCategoryLabels[lk] ?? lk)}
+                                                            {lk === 'all' ? tm('bAll') : labelForCategoryKey(lk)}
                                                         </button>
                                                     );
                                                 })}
@@ -4356,9 +4378,7 @@ export function AppointmentPOS({
                     {/* Grid */}
                     <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 148px), 1fr))', gap: 8, alignContent: 'start' }} className="custom-scrollbar">
                         {tab === 'services' && filteredSvcs.map(svc => {
-                            const catPath = String(svc.parent_category ?? '').trim()
-                                ? `${posServiceCategoryLabels[String(svc.parent_category)] ?? svc.parent_category} › ${posServiceCategoryLabels[svc.category] ?? svc.category}`
-                                : (posServiceCategoryLabels[svc.category] ?? svc.category);
+                            const catPath = beautyServiceCategoryPathLabel(svc, beautyCategoryMasters, posServiceCategoryLabels);
                             const pathLine = `${catPath} · ${svc.duration_min}${tm('bDkSuffix')}`;
                             return (
                             <button key={svc.id} onClick={() => addService(svc)} style={{

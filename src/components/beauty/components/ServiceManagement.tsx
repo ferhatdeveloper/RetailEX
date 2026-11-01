@@ -30,10 +30,11 @@ import { useBeautyStore } from '../store/useBeautyStore';
 import { BeautyService, ServiceCategory } from '../../../types/beauty';
 import {
     beautyCategoryIsTopLevel,
-    beautyCategorySlug,
     beautyCategoryStoredValue,
     beautyServiceMainKey,
     beautyServiceSubKey,
+    createBeautyCategoryRecord,
+    resolveBeautyCategoryLabel,
 } from '../beautyServiceCategoryUtils';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -72,10 +73,14 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 function categoryDisplayLabel(key: string, masterByKey?: Map<string, string>): string {
-    const k = String(key || '').trim();
-    if (!k) return k;
-    if (masterByKey?.has(k)) return masterByKey.get(k)!;
-    return CATEGORY_LABELS[k] ?? k;
+    const fallback: Record<string, string> = { ...CATEGORY_LABELS };
+    if (masterByKey) {
+        for (const [masterKey, masterLabel] of masterByKey) {
+            const label = String(masterLabel ?? '').trim();
+            if (masterKey && label) fallback[masterKey] = label;
+        }
+    }
+    return resolveBeautyCategoryLabel(key, undefined, fallback);
 }
 
 const EMPTY_FORM: Partial<BeautyService> = {
@@ -465,7 +470,8 @@ export function ServiceManagement() {
         setCategoryModalSaving(true);
         try {
             if (categoryModalMode === 'create') {
-                const code = beautyCategorySlug(name);
+                const record = createBeautyCategoryRecord(name);
+                const code = record.code;
                 let parentId: string | null = null;
                 let parentKey = '';
                 if (categoryCreateTarget === 'sub') {
@@ -477,12 +483,13 @@ export function ServiceManagement() {
                     }
                     if (!parentMaster) {
                         const parentName = categoryDisplayLabel(parentKey, masterLabelByKey) || parentKey;
+                        const parentRecord = createBeautyCategoryRecord(parentName);
                         const parentCode = /^[a-z0-9_]+$/.test(parentKey)
                             ? parentKey
-                            : beautyCategorySlug(parentName);
+                            : parentRecord.code;
                         parentMaster = (await categoryAPI.create({
                             code: parentCode,
-                            name: parentName,
+                            name: parentRecord.name,
                         })) ?? undefined;
                     }
                     if (!parentMaster?.id) {
@@ -493,8 +500,8 @@ export function ServiceManagement() {
                     parentKey = beautyCategoryStoredValue(parentMaster);
                 }
                 const created = await categoryAPI.create({
-                    code,
-                    name,
+                    code: record.code,
+                    name: record.name,
                     parent_id: parentId,
                 });
                 if (!created) {
@@ -534,8 +541,9 @@ export function ServiceManagement() {
                 const oldKey = categoryModalKey;
                 const master = findMasterCategory(oldKey);
                 let keepKey = oldKey;
+                const record = createBeautyCategoryRecord(name);
                 if (master?.id) {
-                    const updated = await categoryAPI.update(master.id, { name, code: master.code || beautyCategorySlug(name) });
+                    const updated = await categoryAPI.update(master.id, { name: record.name, code: master.code || record.code });
                     if (!updated) {
                         toast.error(tm('error') || 'Kategori güncellenemedi');
                         throw new Error('update failed');
@@ -544,14 +552,14 @@ export function ServiceManagement() {
                 } else {
                     // Master kaydı yoksa (yalnızca hizmet string’i) oluştur + hizmetleri yeni anahtara taşı
                     const created = await categoryAPI.create({
-                        code: beautyCategorySlug(name),
-                        name,
+                        code: record.code,
+                        name: record.name,
                     });
                     if (!created) {
                         toast.error(tm('error') || 'Kategori güncellenemedi');
                         throw new Error('update failed');
                     }
-                    keepKey = beautyCategoryStoredValue(created) || beautyCategorySlug(name);
+                    keepKey = beautyCategoryStoredValue(created) || record.code;
                 }
                 const toRename = services.filter(
                     s =>

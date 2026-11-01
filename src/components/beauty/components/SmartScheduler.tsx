@@ -15,6 +15,7 @@ import {
     type BeautyFollowUpReminder,
 } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
+import { categoryAPI } from '../../../services/api/masterData';
 import { resolveAppointmentProductLabels } from '../../../utils/beautyAppointmentProducts';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
@@ -152,6 +153,22 @@ export function SmartScheduler() {
     const { isMobile } = useResponsive();
     const clinicSpec = useClinicErpSpecialtyOptional()?.specialty ?? 'beauty_default';
     const isDentalMode = clinicSpec === 'dental';
+    const [beautyCategoryMasters, setBeautyCategoryMasters] = useState<Array<{ code?: string | null; name?: string | null }>>([]);
+    useEffect(() => {
+        let alive = true;
+        categoryAPI.getAll()
+            .then((rows) => {
+                if (!alive) return;
+                setBeautyCategoryMasters(rows.map((row) => ({ code: row.code, name: row.name })));
+            })
+            .catch(() => {
+                if (!alive) return;
+                setBeautyCategoryMasters([]);
+            });
+        return () => {
+            alive = false;
+        };
+    }, []);
     const serviceCategoryLabels = useMemo((): Record<string, string> => {
         const base: Record<string, string> = {
             laser: tm('bCatLaser'),
@@ -167,21 +184,34 @@ export function SmartScheduler() {
             spa: tm('bCatSpa'),
             physical_therapy: tm('bClinicSpec_physiotherapy'),
         };
-        if (!isDentalMode) return base;
-        return {
-            ...base,
-            diagnostic: tm('bCatDentalDiagnostic'),
-            endodontics: tm('bCatDentalEndo'),
-            periodontics: tm('bCatDentalPerio'),
-            surgery: tm('bCatDentalSurgery'),
-            prosthodontics: tm('bCatDentalProstho'),
-            orthodontics: tm('bCatDentalOrtho'),
-            pedodontics: tm('bCatDentalPedo'),
-            preventive: tm('bCatDentalPreventive'),
-            implant: tm('bCatDentalImplant'),
-            restorative: tm('bCatDentalRestorative'),
-        };
-    }, [tm, isDentalMode]);
+        const labels: Record<string, string> = isDentalMode
+            ? {
+                ...base,
+                diagnostic: tm('bCatDentalDiagnostic'),
+                endodontics: tm('bCatDentalEndo'),
+                periodontics: tm('bCatDentalPerio'),
+                surgery: tm('bCatDentalSurgery'),
+                prosthodontics: tm('bCatDentalProstho'),
+                orthodontics: tm('bCatDentalOrtho'),
+                pedodontics: tm('bCatDentalPedo'),
+                preventive: tm('bCatDentalPreventive'),
+                implant: tm('bCatDentalImplant'),
+                restorative: tm('bCatDentalRestorative'),
+            }
+            : base;
+        for (const row of beautyCategoryMasters) {
+            const name = String(row.name ?? '').trim();
+            const code = String(row.code ?? '').trim();
+            if (!name) continue;
+            if (code) {
+                labels[code] = name;
+                const folded = code.toLocaleLowerCase('tr-TR');
+                if (folded !== code) labels[folded] = name;
+            }
+            labels[name] = name;
+        }
+        return labels;
+    }, [tm, isDentalMode, beautyCategoryMasters]);
 
     const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
         scheduled:   { label: tm('bAppointmentScheduled'), color: '#6366f1', bg: '#eef2ff' },
