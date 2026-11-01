@@ -253,16 +253,22 @@ export function RoleForm(props: RoleFormProps = {}) {
 
   if (loading) {
     return (
-      <div className={`flex h-full items-center justify-center ${shell}`}>
+      <div className={`flex h-full min-h-0 items-center justify-center ${shell}`}>
         <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className={`h-full flex flex-col overflow-hidden ${shell}`}>
-      {/* Flat header */}
-      <div className={`shrink-0 border-b px-4 py-3 flex items-center justify-between gap-3 ${panel}`}>
+    <div
+      data-testid="role-form-page"
+      className={`flex h-full min-h-0 flex-col overflow-hidden ${shell}`}
+    >
+      {/* Üst çubuk sabit; kaydırma yalnızca alttaki gövdede */}
+      <div
+        data-testid="role-form-header"
+        className={`shrink-0 border-b px-4 py-3 flex items-center justify-between gap-3 ${panel}`}
+      >
         <div className="flex items-center gap-3 min-w-0">
           <button
             type="button"
@@ -309,10 +315,18 @@ export function RoleForm(props: RoleFormProps = {}) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+      {/*
+        Gövde tek kaydırma alanı. Dar genişlikte matris grup listesinin altında;
+        overflow-hidden + shrink-0 bu zinciri kesip son grubu kırpıyordu.
+      */}
+      <div
+        data-testid="role-form-scroll"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+      >
+        <div className="flex min-h-min flex-col lg:flex-row lg:items-start">
         {/* Left: role info + module list */}
         <aside
-          className={`w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r overflow-y-auto ${panel}`}
+          className={`w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r ${panel}`}
         >
           <div className="p-4 space-y-5">
             <div className="space-y-2">
@@ -432,8 +446,8 @@ export function RoleForm(props: RoleFormProps = {}) {
           </div>
         </aside>
 
-        {/* Right: flat matrix for active module only */}
-        <main className={`flex-1 min-h-0 overflow-y-auto p-4 ${shell}`}>
+        {/* Right: flat matrix for active module only — aynı kaydırma gövdesinde */}
+        <main data-testid="role-form-matrix" className={`min-w-0 flex-1 p-4 ${shell}`}>
           {activeGroup && (
             <div className="max-w-5xl mx-auto space-y-3">
               <div
@@ -550,6 +564,7 @@ export function RoleForm(props: RoleFormProps = {}) {
             </div>
           )}
         </main>
+        </div>
       </div>
     </div>
   );
