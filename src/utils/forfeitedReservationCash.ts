@@ -30,7 +30,13 @@ export interface ForfeitedAppointmentInput {
 
 export type ForfeitedPeriodMode = 'monthly-days' | 'yearly-months';
 
-const APPOINTMENT_NOTE = /Randevu No\s+([0-9a-f-]{8,})/i;
+/**
+ * Peşinatın randevu kimliği.
+ * `rex_appt` kayıt sırasında yazılan bağdır.
+ * Etiket arayüz diline göre değişir; tutar eşlemesi yoktur.
+ */
+const REX_APPT_NOTE = /rex_appt\s*[:=]\s*([0-9a-f-]{8,})/i;
+const APPOINTMENT_NOTE = /(?:randevu\s+no|appointment\s+no|رقم\s+الموعد|ژمارەی\s+ژماون)\s+([0-9a-f-]{8,})/iu;
 const EPS = 0.004;
 
 function norm(value: unknown): string {
@@ -43,8 +49,11 @@ export function isCancelledAppointmentStatus(status: unknown): boolean {
 }
 
 export function appointmentIdFromAvansNotes(notes: unknown): string {
-  const match = String(notes ?? '').match(APPOINTMENT_NOTE);
-  return match ? match[1] : '';
+  const text = String(notes ?? '');
+  const linked = text.match(REX_APPT_NOTE);
+  if (linked?.[1]) return linked[1];
+  const labeled = text.match(APPOINTMENT_NOTE);
+  return labeled?.[1] ? labeled[1] : '';
 }
 
 function positiveAmount(value: unknown): number {

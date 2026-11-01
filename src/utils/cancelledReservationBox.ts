@@ -11,6 +11,7 @@
  * - Gelmedi. İptal değildir.
  *
  * Aynı randevunun peşinatı avans ve depozito kanallarında bir kez durur.
+ * Bağ randevu kimliğidir (`rex_appt` veya randevu etiketi). Tutar eşlemesi yoktur.
  * Günlük satış detayında kapanmış randevunun avans satırı görünmez.
  * Peşinat hizmet cirosundadır; rezervasyon kutusuna ve nete ikinci kez girmez.
  * Açık peşinat ve iptal fişinin avans satırı listede kalır.
