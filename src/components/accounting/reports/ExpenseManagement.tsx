@@ -26,7 +26,10 @@ import {
 } from '../../../utils/expenseCategoryLabel';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
+import { formatMoneyWithCode, getGlobalCurrency } from '../../../utils/currency';
 import { expenseAPI, ExpenseSaveError, parseExpenseAmount, type Expense } from '../../../services/api/expenses';
+import { postExpenseToRegister } from '../../../utils/cashFxPosting';
+import { resolveCashFxHatwanQuote } from '../../../services/marketRatesService';
 import {
   EXPENSE_ATTACHMENT_ACCEPT,
   readExpenseAttachmentDataUrl,
@@ -117,6 +120,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     store_id: '',
     cost_center_id: '',
     cash_register_id: '',
+    amount_currency: '',
     expense_date: new Date().toISOString().split('T')[0],
     notes: '',
   });
@@ -236,7 +240,16 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
 
   useEffect(() => {
     if (!showExpenseModal || editingExpense || !kasalar.length) return;
-    setFormData(prev => prev.cash_register_id ? prev : { ...prev, cash_register_id: kasalar[0].id });
+    setFormData(prev => {
+      if (prev.cash_register_id) return prev;
+      const first = kasalar[0];
+      const cur = String(first.id_doviz_kodu || '').trim().toUpperCase();
+      return {
+        ...prev,
+        cash_register_id: first.id,
+        amount_currency: prev.amount_currency || cur,
+      };
+    });
   }, [showExpenseModal, editingExpense, kasalar]);
 
   const loadExpenses = useCallback(async () => {
@@ -297,6 +310,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       store_id: '',
       cost_center_id: '',
       cash_register_id: kasalar[0]?.id || '',
+      amount_currency: String(kasalar[0]?.id_doviz_kodu || '').trim().toUpperCase(),
       expense_date: new Date().toISOString().split('T')[0],
       notes: '',
     });
@@ -323,6 +337,11 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       store_id: expense.store_id,
       cost_center_id: expense.cost_center_id || '',
       cash_register_id: expense.cash_register_id || '',
+      amount_currency: String(
+        expense.currency_code
+        || kasalar.find((kasa) => kasa.id === expense.cash_register_id)?.id_doviz_kodu
+        || 'IQD',
+      ).trim().toUpperCase(),
       expense_date: expense.expense_date,
       notes: expense.notes || '',
     });
@@ -372,6 +391,73 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     }
   }, [filterDateFrom, filterDateTo]);
 
+  const selectedKasa = useMemo(
+    () => kasalar.find((kasa) => kasa.id === formData.cash_register_id) || null,
+    [kasalar, formData.cash_register_id],
+  );
+  const registerCurrency = String(selectedKasa?.id_doviz_kodu || '').trim().toUpperCase();
+  const entryCurrency = String(formData.amount_currency || registerCurrency || '').trim().toUpperCase();
+  const bookCurrency = getGlobalCurrency();
+  const [enteredToRegisterRate, setEnteredToRegisterRate] = useState<number | null>(null);
+  const [registerToBaseRate, setRegisterToBaseRate] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setEnteredToRegisterRate(null);
+    setRegisterToBaseRate(null);
+    if (!registerCurrency) return undefined;
+    const asOf = String(formData.expense_date || new Date().toISOString()).slice(0, 10);
+    void (async () => {
+      try {
+        if (entryCurrency && entryCurrency !== registerCurrency) {
+          const quote = await resolveCashFxHatwanQuote(entryCurrency, registerCurrency, asOf, 'Satış');
+          if (!cancelled) {
+            setEnteredToRegisterRate(quote && quote.documentToLedger > 0 ? quote.documentToLedger : null);
+          }
+        }
+        if (bookCurrency && registerCurrency !== bookCurrency) {
+          const quote = await resolveCashFxHatwanQuote(registerCurrency, bookCurrency, asOf, 'Satış');
+          if (!cancelled) {
+            setRegisterToBaseRate(quote && quote.documentToLedger > 0 ? quote.documentToLedger : null);
+          }
+        }
+      } catch {
+        /* önizleme; kayıt sunucuda aynı kuru yeniden okur */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entryCurrency, registerCurrency, bookCurrency, formData.expense_date]);
+
+  const expenseFxPreview = useMemo(() => {
+    const amount = parseExpenseAmount(formData.amount);
+    if (!(amount > 0) || !registerCurrency) return null;
+    return postExpenseToRegister({
+      enteredAmount: amount,
+      enteredCurrency: entryCurrency || registerCurrency,
+      registerCurrency,
+      baseCurrency: bookCurrency,
+      enteredToRegisterRate: entryCurrency && entryCurrency !== registerCurrency ? enteredToRegisterRate : null,
+      registerToBaseRate: registerCurrency !== bookCurrency ? registerToBaseRate : null,
+    });
+  }, [
+    formData.amount,
+    entryCurrency,
+    registerCurrency,
+    bookCurrency,
+    enteredToRegisterRate,
+    registerToBaseRate,
+  ]);
+
+  const entryCurrencyChoices = useMemo(() => {
+    const codes = new Set<string>();
+    if (registerCurrency) codes.add(registerCurrency);
+    if (entryCurrency) codes.add(entryCurrency);
+    ['IQD', 'USD', 'EUR'].forEach((code) => codes.add(code));
+    return [...codes];
+  }, [registerCurrency, entryCurrency]);
+
   const handleSaveExpense = async () => {
     if (savingExpense) return;
     try {
@@ -386,6 +472,21 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       const parsedAmount = parseExpenseAmount(formData.amount);
       if (!formData.amount.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
         alert(tm('pleaseEnterValidAmount'));
+        return;
+      }
+      const payIsCash = formData.payment_method === 'cash' || formData.payment_method === 'nakit';
+      if (payIsCash && !formData.cash_register_id) {
+        alert(tm('noCashRegisterFound'));
+        return;
+      }
+      if (
+        payIsCash
+        && registerCurrency
+        && entryCurrency
+        && entryCurrency !== registerCurrency
+        && !expenseFxPreview?.converted
+      ) {
+        alert(tm('expenseFxUnavailable'));
         return;
       }
       let documentUrl = formData.document_url;
@@ -406,6 +507,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
         store_id: formData.store_id || undefined,
         cost_center_id: formData.cost_center_id || undefined,
         cash_register_id: formData.cash_register_id || undefined,
+        amount_currency: entryCurrency || undefined,
         expense_date: formData.expense_date,
         notes: formData.notes,
         ...(editingExpense ? {} : { created_by: currentLoginUserId() || '' }),
@@ -529,11 +631,15 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     }),
     columnHelper.accessor('amount', {
       header: tm('amount').toUpperCase(),
-      cell: info => (
-        <span className="font-medium text-red-600">
-          {formatCurrency(parseExpenseAmount(info.getValue()))}
-        </span>
-      ),
+      cell: info => {
+        const code = String(info.row.original.currency_code || '').trim().toUpperCase();
+        const amount = parseExpenseAmount(info.getValue());
+        return (
+          <span className="font-medium text-red-600">
+            {code ? formatCurrency(amount, code) : formatCurrency(amount)}
+          </span>
+        );
+      },
       size: 120
     }),
     columnHelper.accessor('payment_method', {
@@ -935,7 +1041,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
 
               <div className="sm:col-span-2" data-expense-field="amount">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  {tm('amount')} (IQD) *
+                  {entryCurrency ? `${tm('amount')} (${entryCurrency}) *` : `${tm('amount')} *`}
                 </label>
                 <input
                   type="text"
@@ -945,6 +1051,38 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   placeholder="45.000"
                   className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
                 />
+                <div className="relative mt-1.5">
+                  <select
+                    aria-label={tm('currency')}
+                    value={entryCurrency}
+                    onChange={(e) => setFormData({ ...formData, amount_currency: e.target.value })}
+                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2 pr-10 text-sm font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                  >
+                    {!entryCurrency ? <option value="">{tm('currency')}</option> : null}
+                    {entryCurrencyChoices.map((code) => (
+                      <option key={code} value={code}>{code}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                </div>
+                {expenseFxPreview?.converted ? (
+                  <p className="mt-1.5 text-[11px] font-medium text-slate-600">
+                    {tm('expenseEnteredCashAmount').replace('{currency}', expenseFxPreview.enteredCurrency)}
+                    {': '}
+                    {formatMoneyWithCode(expenseFxPreview.enteredAmount, expenseFxPreview.enteredCurrency)}
+                    {' · '}
+                    {tm('expenseRegisterCashAmount').replace('{currency}', expenseFxPreview.registerCurrency)}
+                    {': '}
+                    {formatMoneyWithCode(expenseFxPreview.registerAmount, expenseFxPreview.registerCurrency)}
+                  </p>
+                ) : null}
+                {expenseFxPreview && registerCurrency && bookCurrency && registerCurrency !== bookCurrency && expenseFxPreview.baseAmount != null ? (
+                  <p className="mt-1 text-[11px] font-medium text-slate-500">
+                    {tm('fxBaseEquivalent')}
+                    {': '}
+                    {formatMoneyWithCode(expenseFxPreview.baseAmount, bookCurrency)}
+                  </p>
+                ) : null}
               </div>
 
               <div className="sm:col-span-2" data-expense-field="paymentMethod">
@@ -1013,12 +1151,27 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                 <div className="relative">
                   <select
                     value={formData.cash_register_id}
-                    onChange={(e) => setFormData({ ...formData, cash_register_id: e.target.value })}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const next = kasalar.find((kasa) => kasa.id === id);
+                      const nextCur = String(next?.id_doviz_kodu || '').trim().toUpperCase();
+                      setFormData((prev) => {
+                        const prevEntry = String(prev.amount_currency || registerCurrency || '').trim().toUpperCase();
+                        const followRegister = !editingExpense && (!prevEntry || prevEntry === registerCurrency);
+                        return {
+                          ...prev,
+                          cash_register_id: id,
+                          amount_currency: followRegister ? (nextCur || prevEntry) : prevEntry,
+                        };
+                      });
+                    }}
                     className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 pr-10 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
                   >
                     {kasalar.length === 0 && <option value="">{tm('noCashRegisterFound')}</option>}
                     {kasalar.map(kasa => (
-                      <option key={kasa.id} value={kasa.id}>{kasa.kasa_kodu} - {kasa.kasa_adi}</option>
+                      <option key={kasa.id} value={kasa.id}>
+                        {kasa.kasa_kodu} - {kasa.kasa_adi}{kasa.id_doviz_kodu ? ` (${kasa.id_doviz_kodu})` : ''}
+                      </option>
                     ))}
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />

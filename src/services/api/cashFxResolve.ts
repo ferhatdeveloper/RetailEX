@@ -6,8 +6,10 @@
 import { ERP_SETTINGS, postgres } from '../postgres';
 import { getGlobalCurrency } from '../../utils/currency';
 import {
+  cashRegisterMovement,
   normalizeFxCurrency,
   postCashAgainstAccount,
+  postExpenseToRegister,
   type CashFxPosting,
 } from '../../utils/cashFxPosting';
 import { resolveCashFxHatwanQuote } from '../marketRatesService';
@@ -98,4 +100,77 @@ export async function resolveRegisterCashFx(input: {
   });
 
   return { ...posted, baseCurrency, accountCurrency };
+}
+
+/**
+ * Girilen gider tutarını kasa para birimine çevirir.
+ * Kur: kasa fişindeki `resolveCashFxHatwanQuote` + `postExpenseToRegister`.
+ * Aynı birimde tutar olduğu gibi kalır.
+ */
+export async function convertExpenseEnteredToRegister(input: {
+  registerId: string;
+  enteredAmount: number;
+  enteredCurrency?: string | null;
+  asOfDate?: string;
+}): Promise<{ registerAmount: number; registerCurrency: string; converted: boolean }> {
+  const registerId = String(input.registerId || '').trim();
+  if (!registerId) throw new Error('Kasa seçilmedi.');
+  const registerCurrency = await readRegisterCurrency(registerId);
+  const enteredCurrency = normalizeFxCurrency(input.enteredCurrency) || registerCurrency;
+  const enteredAmount = Math.abs(Number(input.enteredAmount) || 0);
+  if (enteredCurrency === registerCurrency) {
+    return { registerAmount: enteredAmount, registerCurrency, converted: false };
+  }
+  const asOf = String(input.asOfDate || new Date().toISOString()).slice(0, 10);
+  const quote = await resolveCashFxHatwanQuote(enteredCurrency, registerCurrency, asOf, 'Satış');
+  const rate = quote && quote.documentToLedger > 0 ? quote.documentToLedger : null;
+  const books = await loadBookCurrencies();
+  const posted = postExpenseToRegister({
+    enteredAmount,
+    enteredCurrency,
+    registerCurrency,
+    baseCurrency: books.baseCurrency,
+    enteredToRegisterRate: rate,
+    registerToBaseRate: null,
+  });
+  if (!posted?.converted || !(posted.registerAmount > 0)) {
+    throw new Error('Kasa para birimine çevrilecek kur bulunamadı.');
+  }
+  return {
+    registerAmount: posted.registerAmount,
+    registerCurrency,
+    converted: true,
+  };
+}
+
+/**
+ * Giderin kasaya yazılacak tutarı ve kasa fişindeki kur.
+ * Tutar kasa birimindedir. Ana para karşılığı `resolveRegisterCashFx` ile bir kez yazılır.
+ */
+export async function resolveExpenseCashPosting(input: {
+  registerId: string;
+  enteredAmount: number;
+  enteredCurrency?: string | null;
+  asOfDate?: string;
+}): Promise<ResolvedCashFx & {
+  enteredAmount: number;
+  enteredCurrency: string;
+  converted: boolean;
+  balanceDelta: number;
+}> {
+  const converted = await convertExpenseEnteredToRegister(input);
+  const books = await loadBookCurrencies();
+  const fx = await resolveRegisterCashFx({
+    registerId: input.registerId,
+    cashAmount: converted.registerAmount,
+    asOfDate: input.asOfDate,
+    accountCurrency: books.baseCurrency,
+  });
+  return {
+    ...fx,
+    enteredAmount: Math.abs(Number(input.enteredAmount) || 0),
+    enteredCurrency: normalizeFxCurrency(input.enteredCurrency) || converted.registerCurrency,
+    converted: converted.converted,
+    balanceDelta: cashRegisterMovement(fx.cashAmount, 'out'),
+  };
 }

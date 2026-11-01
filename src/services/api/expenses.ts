@@ -3,9 +3,20 @@
  */
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
-import { createKasaIslemi, deleteKasaIslemi, ensureCashLineActorColumns } from './kasa';
-import { loadBookCurrencies, resolveRegisterCashFx } from './cashFxResolve';
-import { expenseFAmountOnUpdate } from '../../utils/cashFxPosting';
+import {
+  cashRegisterDeltasOnUpdate,
+  createKasaIslemi,
+  deleteKasaIslemi,
+  ensureCashLineActorColumns,
+  kasaIslemiPostedCash,
+} from './kasa';
+import {
+  convertExpenseEnteredToRegister,
+  loadBookCurrencies,
+  resolveExpenseCashPosting,
+} from './cashFxResolve';
+import { expenseFAmountOnUpdate, normalizeFxCurrency } from '../../utils/cashFxPosting';
+import { assertPeriodOpen } from '../periodControl';
 import { parseDecimalStringForInput } from '../../utils/numberFormatter';
 import { resolveCashLineActorWrite } from '../../utils/cashLineActor';
 import { isExpenseFicheConflict, nextExpenseFicheNo } from '../../utils/expenseFicheNo';
@@ -41,6 +52,42 @@ export function expenseCashBalanceDeltaOnDelete(cashLineAmount: number, sign: nu
   const amt = Math.abs(Number(cashLineAmount) || 0);
   const s = Number(sign) || -1;
   return -(amt * s);
+}
+
+/**
+ * Gider çıkışının kasa bakiyesine etkisi. Aynı kasada delta, kasa değişince
+ * eski çıkış geri alınır ve yeni kasa yalnızca kendi tutarı kadar azalır.
+ */
+export function expenseCashOutDeltas(
+  oldRegisterId: string | null | undefined,
+  newRegisterId: string | null | undefined,
+  oldRegisterAmount: number,
+  newRegisterAmount: number,
+): Array<{ registerId: string; delta: number }> {
+  return cashRegisterDeltasOnUpdate(
+    oldRegisterId,
+    newRegisterId,
+    kasaIslemiPostedCash(oldRegisterAmount, -1),
+    kasaIslemiPostedCash(newRegisterAmount, -1),
+  );
+}
+
+/**
+ * Eski gider satırı kasa seçmeden de yüklenir. Eksik kasa kimliği hata fırlatmaz.
+ */
+export function readExpenseCashSelection(row: {
+  amount?: unknown;
+  cash_register_id?: string | null;
+  currency_code?: string | null;
+} | null | undefined): { amount: number; cashRegisterId: string | null; currency: string | null } {
+  if (row == null) return { amount: 0, cashRegisterId: null, currency: null };
+  const id = String(row.cash_register_id ?? '').trim();
+  const currency = normalizeFxCurrency(row.currency_code);
+  return {
+    amount: parseExpenseAmount(row.amount),
+    cashRegisterId: id || null,
+    currency: currency || null,
+  };
 }
 
 function padExpenseFirmNr(): string {
@@ -109,6 +156,10 @@ export interface Expense {
   firm_nr: string;
   cash_line_id?: string;
   cash_register_id?: string;
+  /**
+   * Girilen tutarın para birimi. Kolon değildir; kayıt kasa biriminde saklanır.
+   */
+  amount_currency?: string | null;
   created_at?: string;
 }
 
@@ -212,6 +263,306 @@ async function reloadExpensePostgrestSchema(): Promise<void> {
   } catch (err) {
     console.warn('[ExpenseAPI] PostgREST şema yenileme:', err);
   }
+}
+
+type ExpenseCashLineSnap = {
+  registerId: string;
+  amount: number;
+  currency: string;
+  exchangeRate: number | null;
+};
+
+type ExpenseCashPlan = {
+  updates: Partial<Expense>;
+  deltas: Array<{ registerId: string; delta: number }>;
+  lineId: string | null;
+  linePatch: {
+    amount: number;
+    fAmount: number | null;
+    exchangeRate: number | null;
+    currencyCode: string | null;
+    registerId: string;
+    writeFx: boolean;
+  } | null;
+};
+
+async function readExpenseCashLine(cashLineId: string): Promise<ExpenseCashLineSnap | null> {
+  const id = String(cashLineId || '').trim();
+  if (!id) return null;
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./postgrestClient');
+    const rows = await postgrest.get<any[]>(
+      cashLinesPathRest(),
+      { select: 'register_id,amount,currency_code,exchange_rate', id: `eq.${id}`, limit: 1 },
+      { schema: 'public' },
+    );
+    const line = Array.isArray(rows) ? rows[0] : null;
+    if (!line) return null;
+    return {
+      registerId: String(line.register_id || '').trim(),
+      amount: Math.abs(Number(line.amount) || 0),
+      currency: normalizeFxCurrency(line.currency_code),
+      exchangeRate: line.exchange_rate != null ? Number(line.exchange_rate) : null,
+    };
+  }
+  const { rows } = await postgres.query(
+    `SELECT register_id, amount, currency_code, exchange_rate
+       FROM cash_lines
+      WHERE id = $1::text::uuid
+      LIMIT 1`,
+    [id],
+  );
+  const line = rows?.[0];
+  if (!line) return null;
+  return {
+    registerId: String(line.register_id || '').trim(),
+    amount: Math.abs(Number(line.amount) || 0),
+    currency: normalizeFxCurrency(line.currency_code),
+    exchangeRate: line.exchange_rate != null ? Number(line.exchange_rate) : null,
+  };
+}
+
+async function prepareExpenseCashPlan(
+  existing: Expense,
+  updates: Partial<Expense>,
+): Promise<ExpenseCashPlan> {
+  const next: Partial<Expense> = { ...updates };
+  delete next.amount_currency;
+
+  const cashLineId = String(existing.cash_line_id || '').trim();
+  if (!cashLineId) {
+    return { updates: next, deltas: [], lineId: null, linePatch: null };
+  }
+
+  await assertPeriodOpen(
+    ERP_SETTINGS.firmNr,
+    ERP_SETTINGS.periodNr,
+    String(next.expense_date || existing.expense_date || new Date().toISOString()),
+  );
+
+  const line = await readExpenseCashLine(cashLineId);
+  if (!line) {
+    return { updates: next, deltas: [], lineId: null, linePatch: null };
+  }
+
+  const enteredAmount = next.amount != null
+    ? Math.abs(parseExpenseAmount(next.amount))
+    : Math.abs(Number(existing.amount) || 0);
+  const enteredCurrency = normalizeFxCurrency(updates.amount_currency);
+  const requestedRegister = String(
+    (next.cash_register_id ?? existing.cash_register_id) || '',
+  ).trim();
+  const oldRegisterId = line.registerId || String(existing.cash_register_id || '').trim();
+  const newRegisterId = requestedRegister || oldRegisterId;
+  const registerChanged = Boolean(newRegisterId) && newRegisterId !== oldRegisterId;
+  const asOf = String(next.expense_date || existing.expense_date || '').slice(0, 10);
+
+  let storedAmount = enteredAmount;
+  let writeFx = false;
+  let exchangeRate: number | null = line.exchangeRate;
+  let currencyCode: string | null = line.currency || null;
+  let fAmount: number | null = null;
+  const books = await loadBookCurrencies();
+
+  if (registerChanged && newRegisterId) {
+    const fx = await resolveExpenseCashPosting({
+      registerId: newRegisterId,
+      enteredAmount,
+      enteredCurrency: enteredCurrency || undefined,
+      asOfDate: asOf,
+    });
+    storedAmount = fx.cashAmount;
+    writeFx = true;
+    exchangeRate = fx.exchangeRate;
+    currencyCode = fx.cashCurrency;
+    fAmount = fx.baseAmount;
+  } else if (
+    enteredCurrency
+    && line.currency
+    && enteredCurrency !== line.currency
+    && newRegisterId
+  ) {
+    const converted = await convertExpenseEnteredToRegister({
+      registerId: newRegisterId,
+      enteredAmount,
+      enteredCurrency,
+      asOfDate: asOf,
+    });
+    storedAmount = converted.registerAmount;
+    fAmount = expenseFAmountOnUpdate({
+      newAmount: storedAmount,
+      currency: line.currency,
+      exchangeRate: line.exchangeRate,
+      baseCurrency: books.baseCurrency,
+    });
+  } else {
+    fAmount = expenseFAmountOnUpdate({
+      newAmount: storedAmount,
+      currency: line.currency,
+      exchangeRate: line.exchangeRate,
+      baseCurrency: books.baseCurrency,
+    });
+  }
+
+  next.amount = storedAmount;
+  if (newRegisterId) next.cash_register_id = newRegisterId;
+
+  return {
+    updates: next,
+    deltas: expenseCashOutDeltas(oldRegisterId, newRegisterId, line.amount, storedAmount),
+    lineId: cashLineId,
+    linePatch: {
+      amount: storedAmount,
+      fAmount,
+      exchangeRate,
+      currencyCode,
+      registerId: newRegisterId,
+      writeFx,
+    },
+  };
+}
+
+async function applyExpenseRegisterDeltas(
+  deltas: Array<{ registerId: string; delta: number }>,
+): Promise<void> {
+  for (const step of deltas) {
+    if (!step.registerId || !Number.isFinite(step.delta) || step.delta === 0) continue;
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      const regRows = await postgrest.get<any[]>(
+        cashRegistersPathRest(),
+        { select: 'balance', id: `eq.${step.registerId}`, limit: 1 },
+        { schema: 'public' },
+      );
+      const row = Array.isArray(regRows) ? regRows[0] : null;
+      const balance = Number(row?.balance ?? 0);
+      await postgrest.patch(
+        `${cashRegistersPathRest()}?id=eq.${encodeURIComponent(step.registerId)}`,
+        { balance: balance + step.delta },
+        { schema: 'public', prefer: 'return=minimal' },
+      );
+      continue;
+    }
+    await postgres.query(
+      `UPDATE cash_registers
+          SET balance = balance + $1::text::numeric
+        WHERE id = $2::text::uuid`,
+      [step.delta, step.registerId],
+    );
+  }
+}
+
+async function applyExpenseCashLinePatch(
+  plan: ExpenseCashPlan,
+  expenseDate: string,
+  definition: string,
+): Promise<void> {
+  if (!plan.lineId || !plan.linePatch) return;
+  await applyExpenseRegisterDeltas(plan.deltas);
+  const patch = plan.linePatch;
+  const text = definition || 'Gider';
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./postgrestClient');
+    const body: Record<string, unknown> = {
+      amount: patch.amount,
+      f_amount: patch.fAmount,
+      date: expenseDate,
+      definition: text,
+    };
+    if (patch.writeFx) {
+      body.exchange_rate = patch.exchangeRate;
+      body.currency_code = patch.currencyCode;
+      body.register_id = patch.registerId;
+    }
+    await postgrest.patch(
+      `${cashLinesPathRest()}?id=eq.${encodeURIComponent(plan.lineId)}`,
+      body,
+      { schema: 'public', prefer: 'return=minimal' },
+    );
+    return;
+  }
+  if (patch.writeFx) {
+    await postgres.query(
+      `UPDATE cash_lines
+          SET amount = $1::text::numeric,
+              f_amount = $2::text::numeric,
+              date = $3::text::date,
+              definition = $4::text,
+              exchange_rate = $5::text::numeric,
+              currency_code = $6::text,
+              register_id = $7::text::uuid
+        WHERE id = $8::text::uuid`,
+      [
+        patch.amount,
+        patch.fAmount,
+        expenseDate,
+        text,
+        patch.exchangeRate,
+        patch.currencyCode,
+        patch.registerId,
+        plan.lineId,
+      ],
+    );
+    return;
+  }
+  await postgres.query(
+    `UPDATE cash_lines
+        SET amount = $1::text::numeric,
+            f_amount = $2::text::numeric,
+            date = $3::text::date,
+            definition = $4::text
+      WHERE id = $5::text::uuid`,
+    [patch.amount, patch.fAmount, expenseDate, text, plan.lineId],
+  );
+}
+
+async function mergeExpenseCashCurrency(rows: Expense[]): Promise<Expense[]> {
+  const ids = [...new Set(rows.map((row) => String(row.cash_line_id || '').trim()).filter(Boolean))];
+  if (!ids.length) return rows;
+  const byId = new Map<string, { currency_code?: string | null; exchange_rate?: number | null }>();
+  try {
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      for (let i = 0; i < ids.length; i += 80) {
+        const part = ids.slice(i, i + 80);
+        const loaded = await postgrest.get<any[]>(
+          cashLinesPathRest(),
+          {
+            select: 'id,currency_code,exchange_rate',
+            id: `in.(${part.join(',')})`,
+            limit: String(part.length),
+          },
+          { schema: 'public' },
+        );
+        for (const line of Array.isArray(loaded) ? loaded : []) {
+          byId.set(String(line.id), line);
+        }
+      }
+    } else {
+      const { rows: lines } = await postgres.query(
+        `SELECT id::text AS id, currency_code, exchange_rate
+           FROM cash_lines
+          WHERE id = ANY($1::uuid[])`,
+        [ids],
+      );
+      for (const line of lines || []) {
+        byId.set(String(line.id), line);
+      }
+    }
+  } catch (error) {
+    console.warn('[ExpenseAPI] kasa para birimi okunamadı; eski gider satırları duruyor:', error);
+    return rows;
+  }
+  if (!byId.size) return rows;
+  return rows.map((row) => {
+    const line = byId.get(String(row.cash_line_id || ''));
+    if (!line) return row;
+    return {
+      ...row,
+      currency_code: line.currency_code ?? row.currency_code ?? null,
+      exchange_rate: line.exchange_rate != null ? Number(line.exchange_rate) : row.exchange_rate ?? null,
+    };
+  });
 }
 
 function formatExpenseApiError(error: unknown): Error {
@@ -375,11 +726,11 @@ export const expenseAPI = {
           .catch(() => [] as any[]);
         const ccMap = new Map<string, string>();
         (Array.isArray(ccRows) ? ccRows : []).forEach((c) => ccMap.set(String(c.id), String(c.name || '')));
-        return list.map((e) => ({
+        return mergeExpenseCashCurrency(list.map((e) => ({
           ...e,
           amount: Number(e.amount) || 0,
           cost_center_name: e.cost_center_id ? ccMap.get(String(e.cost_center_id)) : undefined,
-        }));
+        })));
       }
 
       let sql = `
@@ -402,10 +753,10 @@ export const expenseAPI = {
       sql += ` ORDER BY e.expense_date DESC`;
 
       const { rows } = await postgres.query(sql, params);
-      return rows.map((e: Expense) => ({
+      return mergeExpenseCashCurrency(rows.map((e: Expense) => ({
         ...e,
         amount: Number(e.amount) || 0,
-      }));
+      })));
     } catch (error) {
       console.error('[ExpenseAPI] getAll failed:', error);
       return [];
@@ -438,6 +789,29 @@ export const expenseAPI = {
         created_by: actor.createdByUserId || String(expense.created_by || '').trim(),
       };
 
+      let preparedFx: Awaited<ReturnType<typeof resolveExpenseCashPosting>> | null = null;
+      if (isCashExpense) {
+        await assertPeriodOpen(
+          ERP_SETTINGS.firmNr,
+          ERP_SETTINGS.periodNr,
+          expense.expense_date || new Date().toISOString(),
+        );
+        const preferredRegisterId = String(expense.cash_register_id || '').trim();
+        if (preferredRegisterId) {
+          preparedFx = await resolveExpenseCashPosting({
+            registerId: preferredRegisterId,
+            enteredAmount: expense.amount,
+            enteredCurrency: expense.amount_currency,
+            asOfDate: expense.expense_date,
+          });
+          expense = {
+            ...expense,
+            amount: preparedFx.cashAmount,
+            cash_register_id: preferredRegisterId,
+          };
+        }
+      }
+
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const fn = padExpenseFirmNr();
         const { postgrest } = await import('./postgrestClient');
@@ -459,60 +833,49 @@ export const expenseAPI = {
         if (isCashExpense) {
           try {
             const preferredRegisterId = String(expense.cash_register_id || '').trim();
-            const kasaPath = `/rex_${fn}_cash_registers`;
-            const regList = await postgrest
-              .get<any[]>(
-                kasaPath,
-                {
-                  select: 'id,code,currency_code',
-                  is_active: 'eq.true',
-                  limit: 50,
-                  order: 'created_at.asc',
-                },
-                { schema: 'public' }
-              )
-              .catch(() => [] as any[]);
-            const regs = Array.isArray(regList) ? regList : [];
-            let kasa = preferredRegisterId
-              ? regs.find((r) => String(r.id) === preferredRegisterId)
-              : undefined;
-            if (!kasa && preferredRegisterId) {
-              const one = await postgrest
+            let kasaId = preferredRegisterId;
+            let fx = preparedFx;
+            if (!fx) {
+              if (preferredRegisterId) {
+                throw new ExpenseSaveError(
+                  'Gider kaydedildi; seçilen kasa hareketi oluşturulamadı.',
+                  true,
+                );
+              }
+              const kasaPath = `/rex_${fn}_cash_registers`;
+              const regList = await postgrest
                 .get<any[]>(
                   kasaPath,
                   {
                     select: 'id,code,currency_code',
-                    id: `eq.${preferredRegisterId}`,
                     is_active: 'eq.true',
-                    limit: 1,
+                    limit: 50,
+                    order: 'created_at.asc',
                   },
                   { schema: 'public' }
                 )
                 .catch(() => [] as any[]);
-              kasa = Array.isArray(one) ? one[0] : undefined;
-            }
-            if (!kasa) {
-              kasa =
+              const regs = Array.isArray(regList) ? regList : [];
+              const kasa =
                 regs.find((r) => String(r.code || '').toUpperCase().includes('ANA')) ||
                 regs[0];
+              if (!kasa?.id) {
+                throw new ExpenseSaveError(
+                  'Gider kaydedildi; nakit kasa hareketi oluşturulamadı (aktif kasa yok).',
+                  true
+                );
+              }
+              kasaId = String(kasa.id);
+              fx = await resolveExpenseCashPosting({
+                registerId: kasaId,
+                enteredAmount: expense.amount,
+                enteredCurrency: expense.amount_currency,
+                asOfDate: expense.expense_date,
+              });
             }
-            if (!kasa?.id) {
-              throw new ExpenseSaveError(
-                'Gider kaydedildi; nakit kasa hareketi oluşturulamadı (aktif kasa yok).',
-                true
-              );
-            }
-
-            const books = await loadBookCurrencies();
-            const fx = await resolveRegisterCashFx({
-              registerId: String(kasa.id),
-              cashAmount: expense.amount,
-              asOfDate: expense.expense_date,
-              accountCurrency: books.baseCurrency,
-            });
             const kasaIslem = await createKasaIslemi({
               firma_id: String(ERP_SETTINGS.firmNr),
-              kasa_id: kasa.id,
+              kasa_id: kasaId,
               islem_tarihi: expense.expense_date,
               tutar: fx.cashAmount,
               islem_aciklamasi: expense.description || 'Gider',
@@ -529,7 +892,7 @@ export const expenseAPI = {
 
             const linked = await postgrest.patch<any[]>(
               `${path}?id=eq.${encodeURIComponent(String(inserted.id))}&firm_nr=eq.${encodeURIComponent(firmNr)}`,
-              { cash_line_id: kasaIslem.id, cash_register_id: kasa.id },
+              { cash_line_id: kasaIslem.id, cash_register_id: kasaId, amount: fx.cashAmount },
               { schema: 'public', prefer: 'return=representation' }
             );
             inserted = (Array.isArray(linked) ? linked[0] : linked) as Expense;
@@ -579,38 +942,44 @@ export const expenseAPI = {
       if (isCashExpense) {
         try {
           const preferredRegisterId = String(expense.cash_register_id || '').trim();
-          const kasaQuery = preferredRegisterId
-            ? `SELECT id, code, currency_code
-               FROM cash_registers
-               WHERE is_active = true AND id = $1::text::uuid
-               LIMIT 1`
-            : `SELECT id, code, currency_code
-               FROM cash_registers
-               WHERE is_active = true
-               ORDER BY
-                 CASE WHEN UPPER(COALESCE(code, '')) LIKE '%ANA%' THEN 0 ELSE 1 END,
-                 created_at ASC
-               LIMIT 1`;
-          const kasaParams = preferredRegisterId ? [preferredRegisterId] : [];
-          const { rows: kasaRows } = await postgres.query(kasaQuery, kasaParams);
-          const kasa = kasaRows[0];
-          if (!kasa?.id) {
-            await postgres.query('COMMIT');
-            throw new ExpenseSaveError(
-              'Gider kaydedildi; nakit kasa hareketi oluşturulamadı (aktif kasa yok).',
-              true
+          let kasaId = preferredRegisterId;
+          let fx = preparedFx;
+          if (!fx) {
+            if (preferredRegisterId) {
+              await postgres.query('COMMIT');
+              throw new ExpenseSaveError(
+                'Gider kaydedildi; seçilen kasa hareketi oluşturulamadı.',
+                true,
+              );
+            }
+            const { rows: kasaRows } = await postgres.query(
+              `SELECT id, code, currency_code
+                 FROM cash_registers
+                WHERE is_active = true
+                ORDER BY
+                  CASE WHEN UPPER(COALESCE(code, '')) LIKE '%ANA%' THEN 0 ELSE 1 END,
+                  created_at ASC
+                LIMIT 1`,
             );
+            const kasa = kasaRows[0];
+            if (!kasa?.id) {
+              await postgres.query('COMMIT');
+              throw new ExpenseSaveError(
+                'Gider kaydedildi; nakit kasa hareketi oluşturulamadı (aktif kasa yok).',
+                true
+              );
+            }
+            kasaId = String(kasa.id);
+            fx = await resolveExpenseCashPosting({
+              registerId: kasaId,
+              enteredAmount: expense.amount,
+              enteredCurrency: expense.amount_currency,
+              asOfDate: expense.expense_date,
+            });
           }
 
           const writeActor = await ensureCashLineActorColumns();
           const actor = resolveCashLineActorWrite({ createdByUserId: expense.created_by });
-          const books = await loadBookCurrencies();
-          const fx = await resolveRegisterCashFx({
-            registerId: String(kasa.id),
-            cashAmount: expense.amount,
-            asOfDate: expense.expense_date,
-            accountCurrency: books.baseCurrency,
-          });
           const ficheNo = `EXP-${ERP_SETTINGS.firmNr}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
           const { rows: lineRows } = await postgres.query(
             `INSERT INTO cash_lines (
@@ -625,7 +994,7 @@ export const expenseAPI = {
             [
               firmNr,
               padExpensePeriodNr(),
-              kasa.id,
+              kasaId,
               ficheNo,
               expense.expense_date,
               fx.cashAmount,
@@ -645,17 +1014,19 @@ export const expenseAPI = {
 
           await postgres.query(
             `UPDATE cash_registers
-             SET balance = balance - $1::text::numeric
+             SET balance = balance + $1::text::numeric
              WHERE id = $2::text::uuid`,
-            [expense.amount, kasa.id]
+            [fx.balanceDelta, kasaId]
           );
 
           const { rows: linkedRows } = await postgres.query(
             `UPDATE ${tableName}
-             SET cash_line_id = $1::text::uuid, cash_register_id = $2::text::uuid
+             SET cash_line_id = $1::text::uuid,
+                 cash_register_id = $2::text::uuid,
+                 amount = $4::text::numeric
              WHERE id = $3::text::uuid
              RETURNING *`,
-            [cashLineId, kasa.id, insertedExpense.id]
+            [cashLineId, kasaId, insertedExpense.id, fx.cashAmount]
           );
 
           await postgres.query('COMMIT');
@@ -707,7 +1078,7 @@ export const expenseAPI = {
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
       const normalizeUpdateEntry = (key: string, value: unknown): unknown | undefined => {
-        if (['id', 'firm_nr', 'created_at', 'cost_center_name', 'entered_by_name', 'currency_code', 'exchange_rate', 'fiche_no', 'ledger_fiche_no'].includes(key) || value === undefined) return undefined;
+        if (['id', 'firm_nr', 'created_at', 'cost_center_name', 'entered_by_name', 'currency_code', 'exchange_rate', 'fiche_no', 'ledger_fiche_no', 'amount_currency'].includes(key) || value === undefined) return undefined;
         let normalizedValue = value;
         if (key === 'amount') {
           const n = Math.abs(parseExpenseAmount(value));
@@ -736,8 +1107,9 @@ export const expenseAPI = {
         const existing = Array.isArray(ex) ? ex[0] : null;
         if (!existing) return null;
 
+        const plan = await prepareExpenseCashPlan(existing, updates);
         const body: Record<string, unknown> = {};
-        Object.entries(updates).forEach(([key, value]) => {
+        Object.entries(plan.updates).forEach(([key, value]) => {
           const nv = normalizeUpdateEntry(key, value);
           if (nv !== undefined) body[key] = nv;
         });
@@ -751,49 +1123,12 @@ export const expenseAPI = {
         let updated = (Array.isArray(patched) ? patched[0] : patched) as Expense | undefined;
         if (!updated) return null;
 
-        const cashLineId = String(updated.cash_line_id || existing.cash_line_id || '').trim();
-        const cashRegisterId = String(updated.cash_register_id || existing.cash_register_id || '').trim();
-        if (cashLineId && cashRegisterId) {
-          const oldAmount = Math.abs(Number(existing.amount || 0));
-          const newAmount = Math.abs(Number(updated.amount || 0));
-          const balDelta = expenseCashBalanceDeltaOnUpdate(oldAmount, newAmount);
-          const lineRows = await postgrest.get<any[]>(
-            cashLinesPathRest(),
-            { select: 'currency_code,exchange_rate', id: `eq.${cashLineId}`, limit: 1 },
-            { schema: 'public' },
+        if (plan.linePatch) {
+          await applyExpenseCashLinePatch(
+            plan,
+            String(updated.expense_date || existing.expense_date || ''),
+            updated.description || 'Gider',
           );
-          const line = Array.isArray(lineRows) ? lineRows[0] : null;
-          const books = await loadBookCurrencies();
-          const fAmount = expenseFAmountOnUpdate({
-            newAmount,
-            currency: line?.currency_code,
-            exchangeRate: line?.exchange_rate,
-            baseCurrency: books.baseCurrency,
-          });
-          await postgrest.patch(
-            `${cashLinesPathRest()}?id=eq.${encodeURIComponent(cashLineId)}`,
-            {
-              amount: newAmount,
-              f_amount: fAmount,
-              date: updated.expense_date,
-              definition: updated.description || 'Gider',
-            },
-            { schema: 'public', prefer: 'return=minimal' }
-          );
-          if (balDelta !== 0) {
-            const regRows = await postgrest.get<any[]>(
-              cashRegistersPathRest(),
-              { select: 'balance', id: `eq.${cashRegisterId}`, limit: 1 },
-              { schema: 'public' }
-            );
-            const row = Array.isArray(regRows) ? regRows[0] : null;
-            const b = Number(row?.balance ?? 0);
-            await postgrest.patch(
-              `${cashRegistersPathRest()}?id=eq.${encodeURIComponent(cashRegisterId)}`,
-              { balance: b + balDelta },
-              { schema: 'public', prefer: 'return=minimal' }
-            );
-          }
         }
         return updated;
       }
@@ -805,11 +1140,12 @@ export const expenseAPI = {
       const existing = existingRows[0] as Expense | undefined;
       if (!existing) return null;
 
+      const plan = await prepareExpenseCashPlan(existing, updates);
       const fields: string[] = [];
       const values: any[] = [];
       let i = 1;
 
-      Object.entries(updates).forEach(([key, value]) => {
+      Object.entries(plan.updates).forEach(([key, value]) => {
         const nv = normalizeUpdateEntry(key, value);
         if (nv === undefined) return;
         fields.push(`${key} = $${i++}`);
@@ -833,43 +1169,12 @@ export const expenseAPI = {
         return null;
       }
 
-      // Bağlı cash_line: yerinde güncelle + bakiye delta (asla yeni satır oluşturma).
-      const cashLineId = String(updated.cash_line_id || existing.cash_line_id || '').trim();
-      const cashRegisterId = String(updated.cash_register_id || existing.cash_register_id || '').trim();
-      if (cashLineId && cashRegisterId) {
-        const oldAmount = Math.abs(Number(existing.amount || 0));
-        const newAmount = Math.abs(Number(updated.amount || 0));
-        const balDelta = expenseCashBalanceDeltaOnUpdate(oldAmount, newAmount);
-        const { rows: fxRows } = await postgres.query(
-          `SELECT currency_code, exchange_rate FROM cash_lines WHERE id = $1::text::uuid LIMIT 1`,
-          [cashLineId],
+      if (plan.linePatch) {
+        await applyExpenseCashLinePatch(
+          plan,
+          String(updated.expense_date || existing.expense_date || ''),
+          updated.description || 'Gider',
         );
-        const books = await loadBookCurrencies();
-        const fAmount = expenseFAmountOnUpdate({
-          newAmount,
-          currency: fxRows?.[0]?.currency_code,
-          exchangeRate: fxRows?.[0]?.exchange_rate,
-          baseCurrency: books.baseCurrency,
-        });
-
-        await postgres.query(
-          `UPDATE cash_lines
-           SET amount = $1::text::numeric,
-               f_amount = $2::text::numeric,
-               date = $3::text::date,
-               definition = $4::text
-           WHERE id = $5::text::uuid`,
-          [newAmount, fAmount, updated.expense_date, updated.description || 'Gider', cashLineId]
-        );
-
-        if (balDelta !== 0) {
-          await postgres.query(
-            `UPDATE cash_registers
-             SET balance = balance + $1::text::numeric
-             WHERE id = $2::text::uuid`,
-            [balDelta, cashRegisterId]
-          );
-        }
       }
 
       await postgres.query('COMMIT');
@@ -906,6 +1211,11 @@ export const expenseAPI = {
 
         const cashLineId = String(existing.cash_line_id || '').trim();
         if (cashLineId) {
+          await assertPeriodOpen(
+            ERP_SETTINGS.firmNr,
+            ERP_SETTINGS.periodNr,
+            existing.expense_date || new Date().toISOString(),
+          );
           try {
             // deleteKasaIslemi cash_line tutarı × sign ile bakiyeyi bir kez tersine alır
             // ve bağlı gider aynasını siler. Burada tutar ikinci kez eklenmez.
@@ -932,6 +1242,11 @@ export const expenseAPI = {
       const cashLineId = String(existing.cash_line_id || '').trim();
       let cashCleared = false;
       if (cashLineId) {
+        await assertPeriodOpen(
+          ERP_SETTINGS.firmNr,
+          ERP_SETTINGS.periodNr,
+          existing.expense_date || new Date().toISOString(),
+        );
         try {
           // Bakiye bir kez geri alınır. Ayna aynı çağrıda silinirse alttaki DELETE 0 satır döner.
           await deleteKasaIslemi(cashLineId);
@@ -955,6 +1270,8 @@ export const expenseAPI = {
       } catch {
         // ignore rollback errors
       }
+      const msg = (error as Error)?.message || String(error);
+      if (/PERIOD_CLOSED|PERIOD_BEFORE_START|PERIOD_AFTER_END/.test(msg)) throw error;
       return false;
     }
   }

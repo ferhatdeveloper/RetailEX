@@ -310,3 +310,71 @@ export function summarizeReportFx(
     splitsCurrencies,
   };
 }
+
+export type ExpenseRegisterPosting = {
+  enteredAmount: number;
+  enteredCurrency: string;
+  /** Kasaya yazılan tutar. Giriş birimi farklıysa kur bir kez uygulanır. */
+  registerAmount: number;
+  registerCurrency: string;
+  /** cash_lines.exchange_rate: 1 kasa birimi → kaç ana para. */
+  exchangeRate: number | null;
+  baseAmount: number | null;
+  /** Kasa bakiyesine eklenecek çıkış (negatif). */
+  balanceDelta: number;
+  converted: boolean;
+};
+
+/**
+ * Gider tutarını seçilen kasanın para birimine indirger.
+ * Çevrim `convertCashAmountToLedger` (kasa fişindeki belge→hedef kuru).
+ * Aynı birimde kur tutara uygulanmaz. Çapraz kur yoksa veya yer tutucu 1 ise null —
+ * yabancı sayı kasa birimi diye yazılmaz.
+ */
+export function postExpenseToRegister(input: {
+  enteredAmount: number;
+  enteredCurrency?: string | null;
+  registerCurrency: string;
+  baseCurrency: string;
+  /** 1 girilen birim → kaç kasa birimi. Aynı birimde yok sayılır. */
+  enteredToRegisterRate: number | null;
+  /** 1 kasa birimi → kaç ana para. Kasa ana para ise yok sayılır. */
+  registerToBaseRate: number | null;
+}): ExpenseRegisterPosting | null {
+  const enteredAmount = parsePositiveAmount(input.enteredAmount);
+  if (!(enteredAmount > 0)) return null;
+  const registerCurrency = normalizeFxCurrency(input.registerCurrency);
+  if (!registerCurrency) return null;
+  const enteredCurrency = normalizeFxCurrency(input.enteredCurrency) || registerCurrency;
+  const baseCurrency = normalizeFxCurrency(input.baseCurrency) || registerCurrency;
+
+  let registerAmount = enteredAmount;
+  let converted = false;
+  if (enteredCurrency !== registerCurrency) {
+    const rate = input.enteredToRegisterRate;
+    if (!isUsableDocumentRate(rate) || Math.abs(rate - 1) <= 1e-9) return null;
+    registerAmount = cleanProduct(enteredAmount, rate);
+    if (!(registerAmount > 0)) return null;
+    converted = true;
+  }
+
+  const posted = postCashAgainstAccount({
+    cashAmount: registerAmount,
+    cashCurrency: registerCurrency,
+    baseCurrency,
+    accountCurrency: baseCurrency,
+    documentToBaseRate: registerCurrency === baseCurrency ? null : input.registerToBaseRate,
+    documentToAccountRate: registerCurrency === baseCurrency ? null : input.registerToBaseRate,
+  });
+
+  return {
+    enteredAmount,
+    enteredCurrency,
+    registerAmount: posted.cashAmount,
+    registerCurrency: posted.cashCurrency,
+    exchangeRate: posted.exchangeRate,
+    baseAmount: posted.baseAmount,
+    balanceDelta: cashRegisterMovement(posted.cashAmount, 'out'),
+    converted,
+  };
+}

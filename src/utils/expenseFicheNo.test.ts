@@ -33,6 +33,12 @@ vi.mock('../services/api/kasa', () => ({
   createKasaIslemi: schemaRetryMocks.cash,
   deleteKasaIslemi: vi.fn(),
   ensureCashLineActorColumns: vi.fn(),
+  cashRegisterDeltasOnUpdate: vi.fn(() => []),
+  kasaIslemiPostedCash: vi.fn((amount: number, sign: number) => Math.abs(Number(amount) || 0) * Number(sign || 0)),
+}));
+
+vi.mock('../services/periodControl', () => ({
+  assertPeriodOpen: vi.fn(async () => {}),
 }));
 
 vi.mock('../services/api/cashFxResolve', () => ({
@@ -42,6 +48,24 @@ vi.mock('../services/api/cashFxResolve', () => ({
     cashCurrency: 'TRY',
     baseAmount: cashAmount,
     exchangeRate: 1,
+  })),
+  resolveExpenseCashPosting: vi.fn(async ({ enteredAmount }: { enteredAmount: number }) => ({
+    cashAmount: Math.abs(Number(enteredAmount) || 0),
+    cashCurrency: 'TRY',
+    baseAmount: Math.abs(Number(enteredAmount) || 0),
+    exchangeRate: 1,
+    baseCurrency: 'TRY',
+    accountCurrency: 'TRY',
+    accountAmount: Math.abs(Number(enteredAmount) || 0),
+    enteredAmount: Math.abs(Number(enteredAmount) || 0),
+    enteredCurrency: 'TRY',
+    converted: false,
+    balanceDelta: -Math.abs(Number(enteredAmount) || 0),
+  })),
+  convertExpenseEnteredToRegister: vi.fn(async ({ enteredAmount }: { enteredAmount: number }) => ({
+    registerAmount: Math.abs(Number(enteredAmount) || 0),
+    registerCurrency: 'TRY',
+    converted: false,
   })),
 }));
 
