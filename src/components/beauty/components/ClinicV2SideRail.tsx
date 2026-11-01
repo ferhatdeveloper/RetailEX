@@ -199,7 +199,11 @@ type Props = {
 
 export function ClinicV2SideRail({ activeTab, onSelect, isMobile, mobileOpen, specialty }: Props) {
     const { tm } = useLanguage();
-    const { hasPermission } = usePermission();
+    const { hasPermission, user } = usePermission();
+    const railRole = {
+        name: user?.roles?.[0]?.name ?? null,
+        id: user?.roles?.[0]?.id ?? null,
+    };
     const crmMenu = useClinicV2CrmMenu();
     const [expanded, setExpanded] = useState(readExpanded);
 
@@ -208,7 +212,7 @@ export function ClinicV2SideRail({ activeTab, onSelect, isMobile, mobileOpen, sp
             ...group,
             items: group.items.filter((item) => {
                 if (item.id === CLINIC_V2_CRM_TAB_ID && !crmMenu) return false;
-                return canAccessBeautyTab(hasPermission, item.id);
+                return canAccessBeautyTab(hasPermission, item.id, railRole);
             }),
         }))
         .filter((group) => group.items.length > 0);

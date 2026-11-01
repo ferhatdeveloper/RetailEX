@@ -202,7 +202,7 @@ export function landingRouteForCashierRole(
 
 /**
  * Girişten sonra açılacak kabuk.
- * Klinik kasiyer Market POS ve anket sekmesine düşmez.
+ * Klinik kasiyer Market POS yerine güzellik kabuğunun ana sayfasına düşer. Anket sekmesine düşmez.
  * Anket operatörü ve yönetici buradan geçmez.
  */
 export function cashierPostLoginModule(input: {

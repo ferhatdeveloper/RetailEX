@@ -22,7 +22,12 @@ import { isCashierRoleIdentity } from '../../services/rbacRolePresets';
 
 type BeautyPermCheck = (module: string, action?: string) => boolean;
 
-/** Klinik kabuğunda kasiyerin açtığı kasa ekranı (randevu + ödeme). Anket sekmesi değil. */
+type BeautyRoleHint = { name?: string | null; id?: string | null } | null | undefined;
+
+/**
+ * Güzellik okuması olmayan, kasiyer de olmayan POS kullanıcısının ürün satış sekmesi.
+ * Klinik kasiyer buraya düşmez; aqua kasiyeri klinik özetini açar.
+ */
 export const BEAUTY_CASHIER_POS_TAB = 'product_sales';
 
 /** Klinik kabuğu sekmesi → RBAC modülü (anket operatörü yalnızca surveys görür) */
@@ -36,16 +41,26 @@ function hasPosCashierPermission(hasPermission: BeautyPermCheck): boolean {
         hasPermission('pos', 'READ')
         || hasPermission('pos', 'EXECUTE')
         || hasPermission('pos', 'CREATE')
+        || hasPermission('pos.view', 'READ')
+        || hasPermission('pos.sell', 'READ')
+        || hasPermission('pos.sell', 'EXECUTE')
     );
 }
 
-export function canAccessBeautyTab(hasPermission: BeautyPermCheck, tabId: string): boolean {
+export function canAccessBeautyTab(
+    hasPermission: BeautyPermCheck,
+    tabId: string,
+    role?: BeautyRoleHint,
+): boolean {
     const module = getBeautyTabRbacModule(tabId);
     if (module === 'beauty.surveys') {
         return hasPermission('beauty.surveys', 'READ') || hasPermission('beauty.surveys', 'EXECUTE');
     }
+    if (hasPermission('beauty', 'READ')) return true;
+    // Kasiyer rolü anket yetkisi vermez; klinik menüsünün diğer sekmeleri aqua ile aynı kalır.
+    if (role && isCashierRoleIdentity(role.name, role.id)) return true;
     if (tabId === BEAUTY_CASHIER_POS_TAB && hasPosCashierPermission(hasPermission)) return true;
-    return hasPermission('beauty', 'READ');
+    return false;
 }
 
 export function hasBeautyModuleAccess(hasPermission: BeautyPermCheck): boolean {
@@ -68,11 +83,15 @@ export function getLandingTabForSpecialty(s: ClinicErpSpecialty): string {
     }
 }
 
-/** Rol / yetkiye göre ilk açılacak sekme */
+/**
+ * Rol / yetkiye göre ilk açılacak sekme.
+ * Klinik kasiyer (aqua) güzellik okusa da okumasa da uzmanlık ana sayfasını açar
+ * (varsayılan: özet / Klinik Paneli). Ürün satışı ve memnuniyet anketi değil.
+ */
 export function getLandingTabForBeautyAccess(
     hasPermission: BeautyPermCheck,
     specialty: ClinicErpSpecialty,
-    role?: { name?: string | null; id?: string | null } | null,
+    role?: BeautyRoleHint,
 ): string {
     const cashier = role ? isCashierRoleIdentity(role.name, role.id) : false;
     const fullBeauty = hasPermission('beauty', 'READ');
@@ -83,7 +102,8 @@ export function getLandingTabForBeautyAccess(
         && !posCashier
         && (hasPermission('beauty.surveys', 'READ') || hasPermission('beauty.surveys', 'EXECUTE'));
     if (surveysOnly) return 'surveys';
-    if (cashier || (posCashier && !fullBeauty)) return BEAUTY_CASHIER_POS_TAB;
+    if (cashier || fullBeauty) return getLandingTabForSpecialty(specialty);
+    if (posCashier) return BEAUTY_CASHIER_POS_TAB;
     return getLandingTabForSpecialty(specialty);
 }
 
@@ -95,7 +115,8 @@ export function nextBeautyTabWhenDenied(
     hasPermission: BeautyPermCheck,
     activeTab: string,
     visibleTabIds: readonly string[],
+    role?: BeautyRoleHint,
 ): string | null {
-    if (canAccessBeautyTab(hasPermission, activeTab)) return null;
-    return visibleTabIds.find((id) => canAccessBeautyTab(hasPermission, id)) ?? null;
+    if (canAccessBeautyTab(hasPermission, activeTab, role)) return null;
+    return visibleTabIds.find((id) => canAccessBeautyTab(hasPermission, id, role)) ?? null;
 }

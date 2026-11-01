@@ -181,7 +181,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         groups
             .map(group => ({
                 ...group,
-                items: group.items.filter(item => canAccessBeautyTab(hasPermission, item.id)),
+                items: group.items.filter(item => canAccessBeautyTab(hasPermission, item.id, beautyRoleHint)),
             }))
             .filter(group => group.items.length > 0);
 
@@ -288,7 +288,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
             }
         );
         return filterMenuGroups(groups);
-    }, [specialty, language, tm, hasPermission]);
+    }, [specialty, language, tm, hasPermission, beautyRoleHint]);
 
     const PAGE_TITLES = useMemo((): Record<string, string> => ({
         dashboard: tm('dashboard'),
@@ -369,14 +369,14 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     /** Yetkisi olmayan sekmede kalma. İzinli sekme yoksa anket sayfasına zorlama. */
     React.useEffect(() => {
         const visible = MENU_GROUPS.flatMap(g => g.items).map(item => item.id);
-        const next = nextBeautyTabWhenDenied(hasPermission, activeTab, visible);
+        const next = nextBeautyTabWhenDenied(hasPermission, activeTab, visible, beautyRoleHint);
         if (next && next !== activeTab) setActiveTab(next);
-    }, [activeTab, hasPermission, MENU_GROUPS]);
+    }, [activeTab, hasPermission, MENU_GROUPS, beautyRoleHint]);
 
     React.useEffect(() => {
         const onOpenTab = (event: Event) => {
             const tab = (event as CustomEvent<{ tab?: string }>).detail?.tab;
-            if (!tab || !canAccessBeautyTab(hasPermission, tab)) return;
+            if (!tab || !canAccessBeautyTab(hasPermission, tab, beautyRoleHint)) return;
             if (shellV2 && clinicV2TabAfterCrmMenu(tab, readClinicV2CrmMenu()) !== tab) {
                 setActiveTab('dashboard');
                 return;
@@ -385,7 +385,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         };
         window.addEventListener('retailex-beauty-open-tab', onOpenTab);
         return () => window.removeEventListener('retailex-beauty-open-tab', onOpenTab);
-    }, [hasPermission, shellV2]);
+    }, [hasPermission, shellV2, beautyRoleHint]);
 
     React.useEffect(() => {
         const prefillCallerSearch = (phone?: string) => {

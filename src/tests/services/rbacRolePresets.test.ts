@@ -117,7 +117,7 @@ describe('kasiyer hazır rolü', () => {
     expect(canAccessBeautyTab(surveyOnly, 'surveys')).toBe(true);
   });
 
-  it('kasiyer inişi anket sayfası değildir; klinik kabuğunda kasa sekmesine düşer', () => {
+  it('kasiyer inişi anket ve ürün satışı değildir; klinik kabuğunda özet açılır', () => {
     const clinic = {
       tenantModule: 'clinic',
       systemType: 'beauty',
@@ -195,16 +195,50 @@ describe('kasiyer hazır rolü', () => {
 
     const duhaPos = (module: string, action?: string) =>
       module === 'pos' && (!action || action === 'READ' || action === 'EXECUTE');
-    expect(getLandingTabForBeautyAccess(duhaPos, 'beauty_default', { name: 'cashier', id: 'cashier' }))
-      .toBe(BEAUTY_CASHIER_POS_TAB);
+    const cashierRole = { name: 'cashier', id: 'cashier' };
+    expect(getLandingTabForBeautyAccess(duhaPos, 'beauty_default', cashierRole)).toBe('dashboard');
     expect(BEAUTY_CASHIER_POS_TAB).toBe('product_sales');
-    expect(getLandingTabForBeautyAccess(duhaPos, 'beauty_default', { name: 'cashier', id: 'cashier' }))
-      .not.toBe('surveys');
-    expect(canAccessBeautyTab(duhaPos, 'surveys')).toBe(false);
+    expect(getLandingTabForBeautyAccess(duhaPos, 'beauty_default', cashierRole)).not.toBe('surveys');
+    expect(getLandingTabForBeautyAccess(duhaPos, 'beauty_default', cashierRole)).not.toBe(BEAUTY_CASHIER_POS_TAB);
+    expect(canAccessBeautyTab(duhaPos, 'surveys', cashierRole)).toBe(false);
+    expect(canAccessBeautyTab(duhaPos, 'dashboard', cashierRole)).toBe(true);
+    expect(canAccessBeautyTab(duhaPos, 'calendar', cashierRole)).toBe(true);
     expect(canAccessBeautyTab(duhaPos, BEAUTY_CASHIER_POS_TAB)).toBe(true);
-    expect(nextBeautyTabWhenDenied(duhaPos, 'dashboard', ['dashboard', 'surveys', BEAUTY_CASHIER_POS_TAB]))
-      .toBe(BEAUTY_CASHIER_POS_TAB);
-    expect(nextBeautyTabWhenDenied(duhaPos, 'surveys', ['dashboard', 'surveys'])).toBeNull();
+    expect(nextBeautyTabWhenDenied(duhaPos, 'dashboard', ['dashboard', 'surveys', BEAUTY_CASHIER_POS_TAB], cashierRole))
+      .toBeNull();
+    expect(nextBeautyTabWhenDenied(duhaPos, 'surveys', ['dashboard', 'surveys'], cashierRole)).toBe('dashboard');
+
+    const aquaHp = (module: string, action?: string) =>
+      hasPermission([role({
+        id: '00000000-0000-0000-0000-000000000003',
+        name: 'cashier',
+        permissions: [
+          { module: 'pos.view', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
+          { module: 'pos.sell', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
+          { module: 'beauty', actions: ['READ'] },
+          { module: 'beauty.surveys', actions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'] },
+        ],
+      })], module, action || 'READ');
+    expect(getLandingTabForBeautyAccess(aquaHp, 'beauty_default', cashierRole)).toBe('dashboard');
+    expect(canAccessBeautyTab(aquaHp, 'surveys', cashierRole)).toBe(true);
+    expect(canAccessBeautyTab(aquaHp, 'dashboard', cashierRole)).toBe(true);
+
+    const houseHp = (module: string, action?: string) =>
+      hasPermission([role({
+        id: '00000000-0000-0000-0000-000000000003',
+        name: 'cashier',
+        permissions: [
+          { module: 'pos.view', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
+          { module: 'pos.sell', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
+        ],
+      })], module, action || 'READ');
+    expect(getLandingTabForBeautyAccess(houseHp, 'beauty_default', cashierRole)).toBe('dashboard');
+    expect(canAccessBeautyTab(houseHp, 'surveys', cashierRole)).toBe(false);
+    expect(canAccessBeautyTab(houseHp, 'calendar', cashierRole)).toBe(true);
+    expect(permissionsIncludeSurvey([
+      { module: 'pos.view', actions: ['READ'] },
+      { module: 'pos.sell', actions: ['EXECUTE'] },
+    ])).toBe(false);
 
     const surveyOnly = (module: string, action?: string) =>
       module === SURVEY_PERMISSION_MODULE && (!action || action === 'READ' || action === 'EXECUTE');
