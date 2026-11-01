@@ -117,30 +117,87 @@ describe('kasiyer hazır rolü', () => {
     expect(canAccessBeautyTab(surveyOnly, 'surveys')).toBe(true);
   });
 
-  it('kasiyer inişi anket sayfası değildir; kasa ekranına düşer', () => {
+  it('kasiyer inişi anket sayfası değildir; klinik kabuğunda kasa sekmesine düşer', () => {
+    const clinic = {
+      tenantModule: 'clinic',
+      systemType: 'beauty',
+      enabledModules: ['beauty', 'management'],
+    };
+    const market = {
+      tenantModule: 'market',
+      systemType: 'market',
+      enabledModules: ['pos', 'management'],
+    };
+
     expect(permissionsIncludeSurvey(cashierPermissionPreset())).toBe(false);
-    expect(landingRouteForCashierRole('cashier', 'cashier', 'beauty')).toBe('pos');
-    expect(landingRouteForCashierRole('cashier', 'cashier', '')).toBe('pos');
-    expect(landingRouteForCashierRole('anket', 'anket', 'beauty')).toBe('beauty');
-    expect(landingRouteForCashierRole('admin', 'admin', '')).toBe('');
+    expect(cashierPermissionPreset().some((entry) => entry.module === SURVEY_PERMISSION_MODULE)).toBe(false);
+    expect(landingRouteForCashierRole('cashier', 'cashier', 'pos', clinic)).toBe('beauty');
+    expect(landingRouteForCashierRole('cashier', 'cashier', 'beauty', clinic)).toBe('beauty');
+    expect(landingRouteForCashierRole('cashier', 'cashier', '', clinic)).toBe('beauty');
+    expect(landingRouteForCashierRole('cashier', 'cashier', 'pos', market)).toBe('pos');
+    expect(landingRouteForCashierRole('cashier', 'cashier', 'beauty', market)).toBe('pos');
+    expect(landingRouteForCashierRole('cashier', 'cashier', '', null)).toBe('pos');
+    expect(landingRouteForCashierRole('anket', 'anket', 'beauty', clinic)).toBe('beauty');
+    expect(landingRouteForCashierRole('admin', 'admin', '', clinic)).toBe('');
 
     expect(cashierPostLoginModule({
       name: 'cashier',
       id: '00000000-0000-0000-0000-000000000003',
       landingRoute: 'pos',
+      shell: clinic,
+    })).toBe('beauty');
+    expect(cashierPostLoginModule({
+      name: 'cashier',
+      id: '00000000-0000-0000-0000-000000000003',
+      landingRoute: 'pos',
+      shell: clinic,
+    })).not.toBe('pos');
+    expect(cashierPostLoginModule({
+      name: 'Kasiyer',
+      id: 'cashier',
+      landingRoute: 'pos',
+      shell: market,
     })).toBe('pos');
-    expect(cashierPostLoginModule({ name: 'Kasiyer', id: 'cashier', landingRoute: 'beauty' })).toBe('pos');
-    expect(cashierPostLoginModule({ name: 'anket', id: 'anket', landingRoute: 'beauty' })).toBeNull();
-    expect(cashierPostLoginModule({ name: 'admin', id: 'admin', landingRoute: null })).toBeNull();
+    expect(cashierPostLoginModule({
+      name: 'Kasiyer',
+      id: 'cashier',
+      landingRoute: 'beauty',
+      shell: market,
+    })).toBe('pos');
+    expect(cashierPostLoginModule({
+      name: 'cashier',
+      id: 'cashier',
+      landingRoute: 'restaurant',
+      shell: clinic,
+    })).toBe('restaurant');
+    expect(cashierPostLoginModule({ name: 'anket', id: 'anket', landingRoute: 'beauty', shell: clinic })).toBeNull();
+    expect(cashierPostLoginModule({ name: 'admin', id: 'admin', landingRoute: null, shell: clinic })).toBeNull();
+    expect(cashierPostLoginModuleFromUser({
+      role: 'cashier',
+      roles: [{ name: 'cashier', id: 'cashier', landing_route: 'pos' }],
+    }, clinic)).toBe('beauty');
     expect(cashierPostLoginModuleFromUser({
       role: 'cashier',
       roles: [{ name: 'cashier', id: 'cashier', landingRoute: 'pos' }],
-    })).toBe('pos');
+    }, market)).toBe('pos');
+
+    localStorage.setItem('retailex_web_config', JSON.stringify({
+      tenant_module: 'clinic',
+      system_type: 'beauty',
+      enabled_modules: ['beauty', 'management'],
+    }));
+    localStorage.setItem('retailex_enabled_modules', JSON.stringify(['beauty', 'management']));
+    expect(cashierPostLoginModuleFromUser({
+      role: 'cashier',
+      roles: [{ name: 'cashier', id: 'cashier', landing_route: 'pos' }],
+    })).toBe('beauty');
+    localStorage.clear();
 
     const duhaPos = (module: string, action?: string) =>
       module === 'pos' && (!action || action === 'READ' || action === 'EXECUTE');
     expect(getLandingTabForBeautyAccess(duhaPos, 'beauty_default', { name: 'cashier', id: 'cashier' }))
       .toBe(BEAUTY_CASHIER_POS_TAB);
+    expect(BEAUTY_CASHIER_POS_TAB).toBe('product_sales');
     expect(getLandingTabForBeautyAccess(duhaPos, 'beauty_default', { name: 'cashier', id: 'cashier' }))
       .not.toBe('surveys');
     expect(canAccessBeautyTab(duhaPos, 'surveys')).toBe(false);

@@ -261,7 +261,7 @@ export function MainLayout({
   // Kullanıcı rolüne göre başlangıç modülünü belirle
   const getInitialModule = (): Module => {
     const cashierHome = cashierPostLoginModuleFromUser(currentUser);
-    if (cashierHome === 'pos') return 'pos';
+    if (cashierHome === 'beauty' || cashierHome === 'pos') return cashierHome;
 
     const rawSaved = localStorage.getItem('retailex_active_module');
     const savedModule = (rawSaved === 'backoffice' ? 'management' : rawSaved) as Module;
@@ -399,8 +399,13 @@ export function MainLayout({
       setCurrentModule('management');
       return;
     }
-    // Klinik kabuğu POS sekmesini listeden çıkarır; kasiyer inişi yine Market POS kalır.
-    if (cm === 'pos' && cashierPostLoginModuleFromUser(currentUser) === 'pos') return;
+    const cashierHome = cashierPostLoginModuleFromUser(currentUser);
+    // Klinik kasiyer kayıtlı rota pos olsa bile güzellik kabuğuna geçer.
+    if (cashierHome === 'beauty' && cm === 'pos') {
+      setCurrentModule('beauty');
+      return;
+    }
+    if (cm === 'pos' && cashierHome === 'pos') return;
     if (!MAIN_MODULE_IDS.includes(cm as Module)) {
       const orderedModules = getShellModuleDisplayOrder() as Module[];
       const nextVisible = orderedModules.find((m) => isModuleVisible(m));

@@ -216,6 +216,7 @@ export function RoleForm(props: RoleFormProps = {}) {
 
   const applyBuiltinPreset = (presetId: BuiltinRolePresetId) => {
     const permissions = builtinRolePermissionPreset(presetId);
+    const cashierLanding = landingRouteForCashierRole('Kasiyer', 'cashier', '');
     setFormData((prev) => ({
       ...prev,
       permissions,
@@ -237,12 +238,12 @@ export function RoleForm(props: RoleFormProps = {}) {
               : prev.description,
       landing_route:
         presetId === 'cashier'
-          ? 'pos'
+          ? cashierLanding
           : presetId === 'survey'
             ? 'beauty'
             : prev.landing_route,
     }));
-    if (presetId === 'cashier') setActiveCategoryTab('pos');
+    if (presetId === 'cashier') setActiveCategoryTab(groupForLanding(cashierLanding));
     if (presetId === 'survey') setActiveCategoryTab('beauty');
     if (presetId === 'admin') setActiveCategoryTab('backoffice');
   };

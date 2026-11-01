@@ -13,6 +13,7 @@ import {
 } from '../services/loginVerify';
 import { isTauriApp, safeInvoke } from '../utils/env';
 import { peekForceSetupWizard } from '../utils/setupWizardGate';
+import { cashierPostLoginModule } from '../services/rbacRolePresets';
 
 // ===== TYPES =====
 
@@ -129,6 +130,38 @@ function buildUserFromLoginRow(row: LoginVerifyRow, periodNr: string): User {
   };
 }
 
+const LOGIN_MODULES = ['restaurant', 'pos', 'management', 'wms', 'beauty', 'mobile-pos'];
+
+function moduleAfterLogin(role: {
+  name?: string | null;
+  id?: string | null;
+  landingRoute?: string | null;
+  landing_route?: string | null;
+} | null | undefined): string | null {
+  const raw = role?.landingRoute ?? role?.landing_route ?? null;
+  const landing = raw != null && String(raw).trim() !== '' ? String(raw).trim() : null;
+  return cashierPostLoginModule({
+    name: role?.name,
+    id: role?.id,
+    landingRoute: landing,
+  }) ?? landing;
+}
+
+function writeActiveModuleAfterLogin(role: {
+  name?: string | null;
+  id?: string | null;
+  landingRoute?: string | null;
+  landing_route?: string | null;
+} | null | undefined, opts?: { healClinicPos?: boolean }): void {
+  const resolved = moduleAfterLogin(role);
+  if (!resolved || !LOGIN_MODULES.includes(resolved)) return;
+  if (opts?.healClinicPos) {
+    const saved = (localStorage.getItem('retailex_active_module') || '').trim();
+    if (saved && !(saved === 'pos' && resolved === 'beauty')) return;
+  }
+  localStorage.setItem('retailex_active_module', resolved);
+}
+
 async function finalizeLoginSession(
   setUserFn: (u: User) => void,
   userWithRoles: User,
@@ -139,10 +172,7 @@ async function finalizeLoginSession(
   const { applyTerminalRuntimeFromAuth } = await import('../services/terminalRuntimeService');
   applyTerminalRuntimeFromAuth(userWithRoles);
 
-  const landingRoute = userWithRoles.roles[0]?.landingRoute ?? null;
-  if (landingRoute && ['restaurant', 'pos', 'management', 'wms', 'beauty'].includes(landingRoute)) {
-    localStorage.setItem('retailex_active_module', landingRoute);
-  }
+  writeActiveModuleAfterLogin(userWithRoles.roles[0]);
 
   const userMeta = {
     firmNr: userWithRoles.firm_nr || ERP_SETTINGS.firmNr,
@@ -230,25 +260,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(userObj);
           useAuthStore.getState().login(userObj as any);
 
-          // Son sekme kaydı yoksa rol iniş modülünü yaz (splash / MainLayout ile uyum)
+          // Son sekme yoksa rol inişini yaz. Klinik kasiyerde kayıtlı pos güzellik kabuğuna çekilir.
           try {
-            const savedMod = (localStorage.getItem('retailex_active_module') || '').trim();
-            if (!savedMod) {
-              let landing: string | null = null;
-              for (const r of resolvedRoles as { landingRoute?: string; landing_route?: string }[]) {
-                const lr = r?.landingRoute ?? r?.landing_route;
-                if (lr != null && String(lr).trim() !== '') {
-                  landing = String(lr).trim();
-                  break;
-                }
-              }
-              if (
-                landing &&
-                ['restaurant', 'pos', 'management', 'wms', 'beauty', 'mobile-pos'].includes(landing)
-              ) {
-                localStorage.setItem('retailex_active_module', landing);
-              }
-            }
+            const first = (resolvedRoles as {
+              name?: string;
+              id?: string;
+              landingRoute?: string;
+              landing_route?: string;
+            }[])[0];
+            writeActiveModuleAfterLogin(first, { healClinicPos: true });
           } catch {
             /* ignore */
           }
