@@ -133,6 +133,7 @@ describe('Klinik V2 sol şerit', () => {
         expect(screen.queryByText('Klinik operasyon')).toBeNull();
         expect(screen.queryByRole('button', { name: 'Personel' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Leads & CRM' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Hizmet reçeteleri' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'CRM' })).toBeNull();
         expect(screen.queryByText('Randevu takvimi')).toBeNull();
         expect(screen.queryByText('Randevu tahtası')).toBeNull();
@@ -156,6 +157,7 @@ describe('Klinik V2 sol şerit', () => {
         expect(screen.getByRole('button', { name: 'Randevu tahtası' })).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Memnuniyet anketleri' })).toBeTruthy();
         expect(screen.queryByRole('button', { name: 'Leads & CRM' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Hizmet reçeteleri' })).toBeNull();
         expect(screen.getByRole('button', { name: 'Giderler' })).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Raporlar' })).toBeTruthy();
         expect(screen.queryByText('Klinik operasyon')).toBeNull();
@@ -190,6 +192,7 @@ describe('Klinik V2 sol şerit', () => {
         render(<ClinicV2SideRail activeTab="dashboard" onSelect={onSelect} isMobile={false} mobileOpen={false} />);
         expect(screen.queryByRole('button', { name: 'Leads & CRM' })).toBeNull();
         expect(screen.queryByText('Klinik operasyon')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Hizmet reçeteleri' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Ayarlar' })).toBeNull();
         expect(onSelect).not.toHaveBeenCalled();
     });

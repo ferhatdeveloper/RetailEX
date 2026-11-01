@@ -35,7 +35,8 @@ export const BEAUTY_CASHIER_POS_TAB = 'product_sales';
 
 /**
  * Klinik kabuğunun operasyon menüsü (güzellik varsayılan sırası).
- * Leads & CRM (`leads`) ve Klinik operasyon (`clinic_ops`) hiçbir rolün menüsünde yoktur.
+ * Leads & CRM (`leads`), Klinik operasyon (`clinic_ops`) ve Hizmet reçeteleri
+ * (`service_recipes`) hiçbir rolün menüsünde yoktur.
  * Ekranlar durur. İniş `dashboard`. Anket satırı menüdedir, ilk sayfa değildir.
  */
 export const CLINIC_OPERATIONAL_MENU_TABS = [
@@ -45,7 +46,6 @@ export const CLINIC_OPERATIONAL_MENU_TABS = [
     'calendar',
     'services',
     'product_sales',
-    'service_recipes',
     'packages',
     'devices',
     'surveys',
@@ -55,7 +55,7 @@ export const CLINIC_OPERATIONAL_MENU_TABS = [
 ] as const;
 
 /** Klinik kabuk menüsünden her rolde gizlenen sekmeler. Yönetici de görmez. */
-export const CASHIER_EXCLUDED_CLINIC_NAV_TABS = ['leads', 'clinic_ops'] as const;
+export const CASHIER_EXCLUDED_CLINIC_NAV_TABS = ['leads', 'clinic_ops', 'service_recipes'] as const;
 
 export function isCashierExcludedClinicNavTab(tabId: string): boolean {
     return (CASHIER_EXCLUDED_CLINIC_NAV_TABS as readonly string[]).includes(tabId)
@@ -85,7 +85,7 @@ export function canAccessBeautyTab(
     role?: BeautyRoleHint,
 ): boolean {
     const cashier = role ? isCashierRoleIdentity(role.name, role.id) : false;
-    // Leads & CRM ve Klinik operasyon kasiyer, yönetici ve diğer rollerde kapalıdır.
+    // Leads & CRM, Klinik operasyon ve Hizmet reçeteleri kasiyer, yönetici ve diğer rollerde kapalıdır.
     if (isCashierExcludedClinicNavTab(tabId)) return false;
     const module = getBeautyTabRbacModule(tabId);
     if (module === 'beauty.surveys') {

@@ -270,10 +270,13 @@ describe('kasiyer hazır rolü', () => {
     expect(getLandingTabForBeautyAccess(clinicHp, 'beauty_default', cashierRole)).not.toBe(BEAUTY_CASHIER_POS_TAB);
     expect(getLandingTabForBeautyAccess(clinicHp, 'beauty_default', cashierRole)).not.toBe('leads');
     expect(getLandingTabForBeautyAccess(clinicHp, 'beauty_default', cashierRole)).not.toBe('clinic_ops');
+    expect(getLandingTabForBeautyAccess(clinicHp, 'beauty_default', cashierRole)).not.toBe('service_recipes');
     for (const tab of CLINIC_OPERATIONAL_MENU_TABS) {
       expect(canAccessBeautyTab(clinicHp, tab, cashierRole)).toBe(true);
     }
-    expect(CLINIC_OPERATIONAL_MENU_TABS).not.toEqual(expect.arrayContaining(['leads', 'clinic_ops']));
+    expect(CLINIC_OPERATIONAL_MENU_TABS).not.toEqual(
+      expect.arrayContaining(['leads', 'clinic_ops', 'service_recipes']),
+    );
     for (const tab of CASHIER_EXCLUDED_CLINIC_NAV_TABS) {
       expect(canAccessBeautyTab(clinicHp, tab, cashierRole)).toBe(false);
     }
@@ -302,11 +305,12 @@ describe('kasiyer hazır rolü', () => {
     for (const roleHint of [adminRole, { name: 'Sistem Yöneticisi', id: 'admin' }, yoneticiRole, cashierRole]) {
       expect(canAccessBeautyTab(adminAll, 'leads', roleHint)).toBe(false);
       expect(canAccessBeautyTab(adminAll, 'clinic_ops', roleHint)).toBe(false);
+      expect(canAccessBeautyTab(adminAll, 'service_recipes', roleHint)).toBe(false);
       expect(canAccessBeautyTab(adminAll, 'dashboard', roleHint)).toBe(true);
     }
   });
 
-  it('klinik menüsünde Leads & CRM ve Klinik operasyon kasiyer ve yöneticide yoktur', () => {
+  it('klinik menüsünde Leads, Klinik operasyon ve Hizmet reçeteleri kasiyer ve yöneticide yoktur', () => {
     const cashierRole = { name: 'Kasiyer', id: 'cashier' };
     const adminRole = { name: 'admin', id: 'admin' };
     const clinicHp = (module: string, action?: string) =>
@@ -323,16 +327,25 @@ describe('kasiyer hazır rolü', () => {
       })], module, action || 'READ');
 
     expect(clinicCashierPermissionPreset().map((entry) => entry.module)).not.toEqual(
-      expect.arrayContaining(['leads', 'clinic_ops', 'beauty.leads', 'beauty.clinic_ops']),
+      expect.arrayContaining([
+        'leads',
+        'clinic_ops',
+        'service_recipes',
+        'beauty.leads',
+        'beauty.clinic_ops',
+        'beauty.service_recipes',
+      ]),
     );
+    expect([...CASHIER_EXCLUDED_CLINIC_NAV_TABS]).toEqual(['leads', 'clinic_ops', 'service_recipes']);
     for (const tab of CASHIER_EXCLUDED_CLINIC_NAV_TABS) {
-      expect(tab === 'leads' || tab === 'clinic_ops').toBe(true);
       expect(canAccessBeautyTab(clinicHp, tab, cashierRole)).toBe(false);
       expect(canAccessBeautyTab(adminHp, tab, adminRole)).toBe(false);
       expect(canAccessBeautyTab(adminHp, tab, { name: 'Yönetici', id: 'yonetici' })).toBe(false);
       expect(canAccessBeautyTab(() => true, tab, adminRole)).toBe(false);
     }
     expect(getLandingTabForBeautyAccess(clinicHp, 'beauty_default', cashierRole)).toBe('dashboard');
+    expect(getLandingTabForBeautyAccess(adminHp, 'beauty_default', adminRole)).toBe('dashboard');
+    expect(clinicHp('pos', 'READ')).toBe(false);
     for (const tab of ['dashboard', 'calendar', 'clients', 'services', 'staff', 'expenses', 'reports', 'surveys'] as const) {
       expect(canAccessBeautyTab(clinicHp, tab, cashierRole)).toBe(true);
     }
@@ -341,8 +354,10 @@ describe('kasiyer hazır rolü', () => {
       ...clinicCashierPermissionPreset(),
       { module: 'leads', actions: ['READ'] },
       { module: 'clinic_ops', actions: ['READ', 'UPDATE'] },
+      { module: 'service_recipes', actions: ['READ'] },
       'beauty.leads',
       'beauty.clinic_ops.READ',
+      'beauty.service_recipes',
       { module: 'beauty', actions: ['READ'] },
     ];
     const cleaned = sanitizePermissionsForRole(withNavKeys, cashierRole, clinicShell);

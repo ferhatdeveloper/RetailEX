@@ -2,7 +2,7 @@
  * Hazır rol yetki setleri.
  * Market kasiyeri: Market POS ve kasa. Memnuniyet anketi yok.
  * Klinik kasiyeri: güzellik kabuğunun operasyon menüsü (özet iniş). Anket satırı menüde durur.
- * Leads & CRM ve Klinik operasyon klinik kabuk menüsünde hiçbir rolde yoktur.
+ * Leads & CRM, Klinik operasyon ve Hizmet reçeteleri klinik kabuk menüsünde hiçbir rolde yoktur.
  * Sistem yönetimi, kullanıcı, rol, firma/dönem ve menü yönetimi kasiyerde yoktur.
  * Anket operatörü ve yönetici kendi yetkilerini korur.
  */
@@ -11,15 +11,18 @@ import type { Permission, PermissionAction } from './rbacService';
 export const SURVEY_PERMISSION_MODULE = 'beauty.surveys';
 
 /**
- * Leads & CRM ve Klinik operasyon. Yalnız bu iki menü için duran anahtarlar.
+ * Leads & CRM, Klinik operasyon ve Hizmet reçeteleri.
+ * Yalnız bu menüler için duran anahtarlar.
  * Klinik kabuk menüsünde kasiyer ve yönetici dahil herkes için kapalıdır.
  * Kasiyer yetki kaydından düşer. Yönetici yetki kaydına dokunulmaz. Ekranlar silinmez.
  */
 export const CASHIER_EXCLUDED_CLINIC_NAV_MODULE_IDS = [
   'leads',
   'clinic_ops',
+  'service_recipes',
   'beauty.leads',
   'beauty.clinic_ops',
+  'beauty.service_recipes',
 ] as const;
 
 /** Sistem yönetimi giriş anahtarları. Klinik operasyon sekmeleri bu listeye girmez. */
@@ -97,7 +100,7 @@ export function permissionEntryIsManagementEntry(entry: unknown): boolean {
   return false;
 }
 
-/** Yalnız Leads & CRM / Klinik operasyon menüsünü açmak için konmuş anahtar. */
+/** Yalnız Leads & CRM, Klinik operasyon veya Hizmet reçeteleri menüsünü açmak için konmuş anahtar. */
 export function permissionEntryIsCashierExcludedClinicNav(entry: unknown): boolean {
   const key = permissionModuleKey(entry);
   if (!key || key === '*') return false;
@@ -124,7 +127,7 @@ export function withoutCashierExcludedClinicNav<T>(permissions: readonly T[] | n
 
 /**
  * Kasiyer kaydından sistem yönetimi girişini düşürür.
- * Leads & CRM ve Klinik operasyon anahtarlarını da düşürür.
+ * Leads & CRM, Klinik operasyon ve Hizmet reçeteleri anahtarlarını da düşürür.
  * Market kasiyerinden anket satırını da düşürür. Klinik kasiyerinde anket menüde kalır.
  * Yönetici ve anket rolüne dokunmaz.
  */
@@ -162,7 +165,7 @@ export function marketCashierPermissionPreset(): Permission[] {
 
 /**
  * Klinik kasiyeri. İniş özet sekmesidir; anket menüde durur, ilk sayfa değildir.
- * Leads & CRM ve Klinik operasyon yoktur. Sistem yönetimi, kullanıcı, rol, firma ve menü yönetimi yoktur.
+ * Leads & CRM, Klinik operasyon ve Hizmet reçeteleri yoktur. Sistem yönetimi, kullanıcı, rol, firma ve menü yönetimi yoktur.
  */
 export function clinicCashierPermissionPreset(): Permission[] {
   return [

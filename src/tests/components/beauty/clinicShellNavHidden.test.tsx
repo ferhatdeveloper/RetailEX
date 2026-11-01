@@ -59,7 +59,7 @@ vi.mock('../../../components/beauty/specialty/DentalChartScreen', () => ({
     DentalChartScreen: () => <div data-testid="dental-chart-stub" />,
 }));
 
-const HIDDEN_LABELS = ['Leads & CRM', 'Klinik operasyon'] as const;
+const HIDDEN_LABELS = ['Leads & CRM', 'Klinik operasyon', 'Hizmet reçeteleri'] as const;
 
 const ROLES = [
     { name: 'cashier', id: 'cashier' },
@@ -84,7 +84,7 @@ function mountShell() {
     );
 }
 
-describe('Klinik kabuk menüsü Leads ve Klinik operasyonu her rolde gizler', () => {
+describe('Klinik kabuk menüsü Leads, Klinik operasyon ve Hizmet reçetelerini her rolde gizler', () => {
     beforeEach(() => {
         navRole.name = 'cashier';
         navRole.id = 'cashier';
@@ -98,10 +98,11 @@ describe('Klinik kabuk menüsü Leads ve Klinik operasyonu her rolde gizler', ()
         expect(indexSrc).toContain('<LeadManagement />');
         expect(indexSrc).toContain('<ClinicOperationsHub />');
         expect(indexSrc).toContain('<ClinicV2SettingsShell />');
+        expect(indexSrc).toContain('<ServiceRecipeManagement />');
         expect(roleForm).toContain('data-testid="role-form-scroll"');
     });
 
-    it.each(ROLES)('klasik menü $name rolünde bu iki etiketi göstermez ve panele düşer', (role) => {
+    it.each(ROLES)('klasik menü $name rolünde bu üç etiketi göstermez ve panele düşer', (role) => {
         navRole.name = role.name;
         navRole.id = role.id;
         localStorage.setItem('retailex_clinic_erp_specialty_001', 'beauty_default');
@@ -119,10 +120,11 @@ describe('Klinik kabuk menüsü Leads ve Klinik operasyonu her rolde gizler', ()
         expect(screen.getByTestId('dental-chart-stub')).toBeTruthy();
         expect(screen.queryByText('Leads & CRM')).toBeNull();
         expect(screen.queryByText('Klinik operasyon')).toBeNull();
+        expect(screen.queryByText('Hizmet reçeteleri')).toBeNull();
         dental.unmount();
     });
 
-    it.each(ROLES)('V2 menü $name rolünde CRM anahtarı açıkken de bu iki etiketi göstermez', (role) => {
+    it.each(ROLES)('V2 menü $name rolünde CRM anahtarı açıkken de bu üç etiketi göstermez', (role) => {
         navRole.name = role.name;
         navRole.id = role.id;
         localStorage.setItem(CLINIC_V2_STORAGE_KEY, '1');
@@ -134,6 +136,7 @@ describe('Klinik kabuk menüsü Leads ve Klinik operasyonu her rolde gizler', ()
         expectLabelsAbsent(rail);
         expect(screen.queryByRole('button', { name: 'Leads & CRM' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Klinik operasyon' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Hizmet reçeteleri' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Ayarlar' })).toBeNull();
         expect(rail.textContent).toContain('Müşteriler');
         expect(screen.getByTestId('clinic-dashboard-stub')).toBeTruthy();
