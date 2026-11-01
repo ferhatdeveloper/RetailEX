@@ -2,12 +2,24 @@
  * Hazır rol yetki setleri.
  * Market kasiyeri: Market POS ve kasa. Memnuniyet anketi yok.
  * Klinik kasiyeri: güzellik kabuğunun operasyon menüsü (özet iniş). Anket satırı menüde durur.
+ * Leads & CRM ve Klinik operasyon kasiyerde yoktur; yönetici görür.
  * Sistem yönetimi, kullanıcı, rol, firma/dönem ve menü yönetimi kasiyerde yoktur.
  * Anket operatörü ve yönetici kendi yetkilerini korur.
  */
 import type { Permission, PermissionAction } from './rbacService';
 
 export const SURVEY_PERMISSION_MODULE = 'beauty.surveys';
+
+/**
+ * Leads & CRM ve Klinik operasyon. Yalnız bu iki menü için duran anahtarlar.
+ * Klinik kasiyer kaydından düşer. Yönetici kaydına dokunulmaz. Ekranlar silinmez.
+ */
+export const CASHIER_EXCLUDED_CLINIC_NAV_MODULE_IDS = [
+  'leads',
+  'clinic_ops',
+  'beauty.leads',
+  'beauty.clinic_ops',
+] as const;
 
 /** Sistem yönetimi giriş anahtarları. Klinik operasyon sekmeleri bu listeye girmez. */
 export const MANAGEMENT_ENTRY_MODULE_IDS = [
@@ -84,6 +96,15 @@ export function permissionEntryIsManagementEntry(entry: unknown): boolean {
   return false;
 }
 
+/** Yalnız Leads & CRM / Klinik operasyon menüsünü açmak için konmuş anahtar. */
+export function permissionEntryIsCashierExcludedClinicNav(entry: unknown): boolean {
+  const key = permissionModuleKey(entry);
+  if (!key || key === '*') return false;
+  return (CASHIER_EXCLUDED_CLINIC_NAV_MODULE_IDS as readonly string[]).some(
+    (id) => key === id || key.startsWith(`${id}.`),
+  );
+}
+
 export function permissionsIncludeSurvey(permissions: readonly unknown[] | null | undefined): boolean {
   return (permissions || []).some((entry) => permissionEntryIsSurvey(entry));
 }
@@ -96,8 +117,13 @@ export function withoutManagementEntries<T>(permissions: readonly T[] | null | u
   return (permissions || []).filter((entry) => !permissionEntryIsManagementEntry(entry));
 }
 
+export function withoutCashierExcludedClinicNav<T>(permissions: readonly T[] | null | undefined): T[] {
+  return (permissions || []).filter((entry) => !permissionEntryIsCashierExcludedClinicNav(entry));
+}
+
 /**
  * Kasiyer kaydından sistem yönetimi girişini düşürür.
+ * Leads & CRM ve Klinik operasyon anahtarlarını da düşürür.
  * Market kasiyerinden anket satırını da düşürür. Klinik kasiyerinde anket menüde kalır.
  * Yönetici ve anket rolüne dokunmaz.
  */
@@ -111,7 +137,7 @@ export function sanitizePermissionsForRole<T>(
     return list;
   }
   if (isCashierRoleIdentity(role.name, role.id)) {
-    const operational = withoutManagementEntries(list);
+    const operational = withoutCashierExcludedClinicNav(withoutManagementEntries(list));
     const hint = shell === undefined ? readCashierShellHintFromStorage() : (shell ?? {});
     if (cashierShellHasClinic(hint)) return operational;
     return withoutSurveyAdministration(operational);
@@ -135,7 +161,7 @@ export function marketCashierPermissionPreset(): Permission[] {
 
 /**
  * Klinik kasiyeri. İniş özet sekmesidir; anket menüde durur, ilk sayfa değildir.
- * Sistem yönetimi, kullanıcı, rol, firma ve menü yönetimi yoktur.
+ * Leads & CRM ve Klinik operasyon yoktur. Sistem yönetimi, kullanıcı, rol, firma ve menü yönetimi yoktur.
  */
 export function clinicCashierPermissionPreset(): Permission[] {
   return [
@@ -148,7 +174,7 @@ export function clinicCashierPermissionPreset(): Permission[] {
 
 /**
  * Hazır rol → Kasiyer.
- * Klinik kabuğunda klinik operasyon seti, yalnız markette Market POS seti.
+ * Klinik kabuğunda klinik kasiyer seti, yalnız markette Market POS seti.
  */
 export function cashierPermissionPreset(shell?: CashierShellHint | null): Permission[] {
   const hint = shell === undefined ? readCashierShellHintFromStorage() : (shell ?? {});

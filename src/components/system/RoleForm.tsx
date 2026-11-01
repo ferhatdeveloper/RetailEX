@@ -8,6 +8,7 @@ import {
   cashierShellHasClinic,
   isCashierRoleIdentity,
   landingRouteForCashierRole,
+  permissionEntryIsCashierExcludedClinicNav,
   permissionEntryIsManagementEntry,
   readCashierShellHintFromStorage,
   sanitizePermissionsForRole,
@@ -253,6 +254,7 @@ export function RoleForm(props: RoleFormProps = {}) {
   const cashierModuleLocked = (moduleId: string) => {
     if (!isCashierRoleIdentity(formData.name, role?.id)) return false;
     if (permissionEntryIsManagementEntry({ module: moduleId })) return true;
+    if (permissionEntryIsCashierExcludedClinicNav({ module: moduleId })) return true;
     return moduleId === SURVEY_PERMISSION_MODULE && !cashierShellHasClinic(readCashierShellHintFromStorage());
   };
 

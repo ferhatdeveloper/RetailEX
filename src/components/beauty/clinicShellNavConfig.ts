@@ -1,5 +1,8 @@
 import type { ClinicErpSpecialty } from '../../types/beauty';
-import { isCashierRoleIdentity } from '../../services/rbacRolePresets';
+import {
+    CASHIER_EXCLUDED_CLINIC_NAV_MODULE_IDS,
+    isCashierRoleIdentity,
+} from '../../services/rbacRolePresets';
 
 /**
  * Yaygın diş pratiği yazılımları (Dentrix, Open Dental, Curve, Dental Asistanım vb.)
@@ -31,8 +34,9 @@ type BeautyRoleHint = { name?: string | null; id?: string | null } | null | unde
 export const BEAUTY_CASHIER_POS_TAB = 'product_sales';
 
 /**
- * Klinik kabuğunun operasyon menüsü (güzellik varsayılan sırası).
- * İniş `dashboard`. Anket satırı menüdedir, ilk sayfa değildir.
+ * Klinik kasiyerinin göreceği sekmeler (güzellik varsayılan sırası).
+ * Leads & CRM (`leads`) ve Klinik operasyon (`clinic_ops`) yoktur.
+ * Ekranlar durur; yönetici menüsünde kalır. İniş `dashboard`. Anket satırı menüdedir, ilk sayfa değildir.
  */
 export const CLINIC_OPERATIONAL_MENU_TABS = [
     'dashboard',
@@ -46,11 +50,17 @@ export const CLINIC_OPERATIONAL_MENU_TABS = [
     'devices',
     'surveys',
     'staff',
-    'leads',
     'expenses',
     'reports',
-    'clinic_ops',
 ] as const;
+
+/** Kasiyer sol menüsünden gizlenen klinik sekmeleri. Yönetici görür. */
+export const CASHIER_EXCLUDED_CLINIC_NAV_TABS = ['leads', 'clinic_ops'] as const;
+
+export function isCashierExcludedClinicNavTab(tabId: string): boolean {
+    return (CASHIER_EXCLUDED_CLINIC_NAV_TABS as readonly string[]).includes(tabId)
+        || (CASHIER_EXCLUDED_CLINIC_NAV_MODULE_IDS as readonly string[]).includes(tabId);
+}
 
 /** Klinik kabuğu sekmesi → RBAC modülü (anket operatörü yalnızca surveys görür) */
 export function getBeautyTabRbacModule(tabId: string): string {
@@ -74,13 +84,16 @@ export function canAccessBeautyTab(
     tabId: string,
     role?: BeautyRoleHint,
 ): boolean {
+    const cashier = role ? isCashierRoleIdentity(role.name, role.id) : false;
+    // Leads & CRM ve Klinik operasyon kasiyerde kapalıdır. Yönetici bu kuralın dışındadır.
+    if (cashier && isCashierExcludedClinicNavTab(tabId)) return false;
     const module = getBeautyTabRbacModule(tabId);
     if (module === 'beauty.surveys') {
         return hasPermission('beauty.surveys', 'READ') || hasPermission('beauty.surveys', 'EXECUTE');
     }
     if (hasPermission('beauty', 'READ')) return true;
-    // Klinik kasiyer kimliği operasyon sekmelerini açık tutar. Anket ayrı yetki ister.
-    if (role && isCashierRoleIdentity(role.name, role.id)) return true;
+    // Klinik kasiyer kimliği kalan operasyon sekmelerini açık tutar. Anket ayrı yetki ister.
+    if (cashier) return true;
     if (tabId === BEAUTY_CASHIER_POS_TAB && hasPosCashierPermission(hasPermission)) return true;
     return false;
 }
