@@ -62,6 +62,27 @@ else
   echo "Sync imajı mevcut: retailex-sync-service:latest (16 servis rebuild atlandı)"
 fi
 
+section "API gateway: Caddyfile yeniden yükle (ameerat_house)"
+# Volume içeriği değişince `up` api_gateway'i yeniden oluşturmaz. Caddy eski
+# config ile /ameerat_house için {"ok":false,"error":"not_found"} döner.
+# Frontend build'den önce yapılır; Vite OOM olsa bile rota yayınlanmış kalır.
+# guzel servisine ve postgres volume'una dokunulmaz.
+echo "postgrest_ameerat_house + api_gateway --force-recreate"
+if ! compose -f "${COMPOSE}" up -d --no-build --force-recreate postgrest_ameerat_house api_gateway; then
+  echo "UYARI: postgrest_ameerat_house veya api_gateway kalkmadı — deploy devam ediyor"
+fi
+if docker image inspect retailex-sync-service:latest >/dev/null 2>&1; then
+  compose -f "${COMPOSE}" up -d --no-build sync_ameerat_house || echo "UYARI: sync_ameerat_house kalkmadı"
+fi
+sleep 2
+if docker ps --format '{{.Names}}' | grep -qx 'retailex_api_gateway'; then
+  docker exec retailex_api_gateway caddy reload --config /etc/caddy/Caddyfile || true
+  gw_code="$(docker exec retailex_api_gateway wget -qO- --server-response \
+    "http://127.0.0.1/ameerat_house/system_settings?id=eq.1" 2>&1 | awk '/HTTP/{print $2}' | tail -1 || echo "?")"
+  echo "  gateway içi /ameerat_house/system_settings → HTTP ${gw_code}"
+  echo "  404 ve gövde not_found ise çalışan Caddyfile hâlâ eski"
+fi
+
 SYNC_STOPPED=()
 if [[ "${DOKPLOY_PAUSE_SYNC}" == "1" ]]; then
   section "RAM: sync konteynerleri geçici durduruluyor (build sonrası up -d ile döner)"

@@ -94,6 +94,11 @@ services:
     image: caddy:2.8-alpine
     container_name: retailex_api_gateway
     restart: always
+    # Bind-mount Caddyfile değişince compose konteyneri yeniden oluşturmaz.
+    # Caddy eski dosyayı bellekte tutar; /ameerat_house catch-all not_found (404) kalır.
+    # Bu değişken değişince sonraki `up` api_gateway'i yeniden başlatır ve dosyayı okur.
+    environment:
+      RETAILEX_CADDYFILE_REV: "ameerat_house-1"
     depends_on:
       - postgrest_merkez
       - postgrest_aqua_beauty
