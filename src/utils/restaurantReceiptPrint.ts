@@ -6,6 +6,7 @@ import { buildCenteredFirmHeaderHtml } from './printFirmHeader';
 import { enqueueHtmlDocumentJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
 import { IS_TAURI } from './env';
 import { getPrintString, resolvePrintLocale } from '../locales/printKeys';
+import { printReceiptDocument } from './receiptPrintDialog';
 
 /** Receipt80mm / mutfak fişi ile aynı dil kodları */
 export type KitchenReceiptLocale = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
@@ -479,61 +480,11 @@ ${orderNote?.trim() ? `<p style="margin:2px 0;font-size:13px;font-weight:500;bor
 
 /**
  * Tam HTML belgesini gizli iframe’e yükleyip sistem yazdırma diyaloğunu açar.
- * Ana uygulama penceresinde `body * { visibility:hidden }` tabanlı print ile boş önizleme oluşmasını önler
- * (Receipt80mm, WebView2, bazı Chrome sürümleri).
+ * Ana pencerede `window.print()` SPA’daki `visibility:hidden` yüzünden boş sayfa basar.
+ * Çağrı senkron iframe açar; print() load sonrası karede çalışır.
  */
-export async function printHtmlInHiddenIframe(html: string): Promise<void> {
-  const thermal = /size:\s*80mm/i.test(html);
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.cssText = thermal
-    ? 'position:fixed;left:-12000px;top:0;width:320px;height:1600px;border:0;opacity:0;pointer-events:none'
-    : 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
-  document.body.appendChild(iframe);
-  const w = iframe.contentWindow;
-  const doc = w?.document;
-  if (!doc) {
-    document.body.removeChild(iframe);
-    throw new Error('iframe document');
-  }
-  doc.open();
-  doc.write(html);
-  doc.close();
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const cleanup = () => {
-      if (settled) return;
-      settled = true;
-      try {
-        document.body.removeChild(iframe);
-      } catch {
-        /* ignore */
-      }
-      resolve();
-    };
-    const onAfterPrint = () => {
-      w?.removeEventListener('afterprint', onAfterPrint);
-      setTimeout(cleanup, 100);
-    };
-    w?.addEventListener('afterprint', onAfterPrint);
-    requestAnimationFrame(() => {
-      try {
-        w?.focus();
-        w?.print();
-      } catch (err) {
-        w?.removeEventListener('afterprint', onAfterPrint);
-        try {
-          document.body.removeChild(iframe);
-        } catch {
-          /* ignore */
-        }
-        reject(err);
-        return;
-      }
-      /* afterprint her ortamda tetiklenmez (özellikle İptal) */
-      setTimeout(cleanup, 2500);
-    });
-  });
+export function printHtmlInHiddenIframe(html: string): Promise<void> {
+  return printReceiptDocument(html);
 }
 
 /**

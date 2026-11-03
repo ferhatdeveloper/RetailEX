@@ -87,6 +87,7 @@ export function Receipt80mm({
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const silentPrintStartedRef = useRef(false);
+  const printClickLockRef = useRef(false);
 
   const receiptFirmNr = useMemo(() => {
     const f = selectedFirm;
@@ -405,20 +406,8 @@ export function Receipt80mm({
     firmTitle: selectedFirm?.title || selectedFirm?.name || '',
   });
 
-  const runPrint = async (onFinished?: () => void) => {
-    setIsPrinting(true);
-    try {
-      let fragment = getReceiptPrintFragmentHtml();
-      if (!fragment?.trim()) {
-        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-        fragment = getReceiptPrintFragmentHtml();
-      }
-      if (!fragment?.trim()) {
-        setIsPrinting(false);
-        onFinished?.();
-        return;
-      }
-      const fullHtml = `<!DOCTYPE html><html dir="${isRTL ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">${viewportMeta}<title>${t.receipt?.title || 'Fiş'} - ${sale.receiptNumber}</title><style>
+  const composeReceiptPrintDocument = (fragment: string): string =>
+    `<!DOCTYPE html><html dir="${isRTL ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">${viewportMeta}<title>${t.receipt?.title || 'Fiş'} - ${sale.receiptNumber}</title><style>
       ${documentBaseCss}
       @page { size: ${printPageSize}; margin: ${printPageMargin}; }
       body { padding: ${isThermalFormat ? '0' : '6mm'}; font-family: 'Courier New', Courier, monospace; font-size: ${isThermalFormat ? '13px' : '11px'}; font-weight: ${isThermalFormat ? '500' : '600'}; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; -webkit-font-smoothing: none; text-rendering: geometricPrecision; height: auto; min-height: 0; line-height: ${isThermalFormat ? '1.2' : '1.35'}; }
@@ -433,6 +422,21 @@ export function Receipt80mm({
       .border-t { border-top: 1px solid #000; }
       .border-dashed { border-style: dashed; }
     </style></head><body>${isThermalFormat ? `<div class="rx-slip">${fragment}</div>` : fragment}</body></html>`;
+
+  const runPrint = async (onFinished?: () => void) => {
+    setIsPrinting(true);
+    try {
+      let fragment = getReceiptPrintFragmentHtml();
+      if (!fragment?.trim()) {
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        fragment = getReceiptPrintFragmentHtml();
+      }
+      if (!fragment?.trim()) {
+        setIsPrinting(false);
+        onFinished?.();
+        return;
+      }
+      const fullHtml = composeReceiptPrintDocument(fragment);
 
       const { resolveSystemPrinterName } = await import('../../utils/resolveSystemPrinterName');
       const resolvedPrinterName = await resolveSystemPrinterName(getAccountReceiptSystemPrinterName());
@@ -490,22 +494,11 @@ export function Receipt80mm({
           console.warn('Tauri Edge/Sumatra yazdırma başarısız, WebView yazdırma penceresine geçiliyor:', e);
         }
       }
-      /* Ana pencerede window.print(): SPA print stilleri yüzünden boş önizleme — tam HTML iframe’de yazdır */
+      /* Ana pencerede window.print() boş sayfa basar; fiş belgesi iframe içinde yazdırılır. */
       try {
         await printHtmlInHiddenIframe(fullHtml);
       } catch (e) {
         console.warn('[Receipt80mm] iframe print:', e);
-        const onAfterPrint = () => {
-          window.onafterprint = null;
-          setIsPrinting(false);
-          onFinished?.();
-        };
-        if (typeof window.onafterprint !== 'undefined') {
-          window.onafterprint = onAfterPrint;
-        }
-        window.print();
-        if (typeof window.onafterprint === 'undefined') setTimeout(onAfterPrint, 1500);
-        return;
       }
       setIsPrinting(false);
       onFinished?.();
@@ -515,7 +508,34 @@ export function Receipt80mm({
     }
   };
 
-  const handlePrint = () => void runPrint();
+  /**
+   * Yazdır tıklaması: iframe bu turda açılır. Yazıcı servisi / ağ bu çağrıdan önce beklenmez;
+   * aksi halde tarayıcı print() hareketini düşürür ve diyalog gelmez.
+   */
+  const handlePrint = () => {
+    if (printClickLockRef.current) return;
+    const launch = (fragment: string) => {
+      if (printClickLockRef.current) return;
+      const fullHtml = composeReceiptPrintDocument(fragment);
+      printClickLockRef.current = true;
+      setIsPrinting(true);
+      void printHtmlInHiddenIframe(fullHtml).finally(() => {
+        printClickLockRef.current = false;
+        setIsPrinting(false);
+      });
+    };
+    const fragment = getReceiptPrintFragmentHtml();
+    if (fragment.trim()) {
+      launch(fragment);
+      return;
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const again = getReceiptPrintFragmentHtml();
+        if (again.trim()) launch(again);
+      });
+    });
+  };
 
   useEffect(() => {
     if (!printImmediately) return;
