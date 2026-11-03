@@ -46,7 +46,19 @@ export const RECEIPT_80MM_DOCUMENT_CSS = `
     -moz-osx-font-smoothing: grayscale;
     text-rendering: geometricPrecision;
   }
+  .rx-firm-header,
+  .rx-firm-logo {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    float: none;
+    text-align: center;
+  }
   .rx-firm-name {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    float: none;
     color: #000;
     font-weight: 600;
     font-size: 14px;
@@ -55,7 +67,9 @@ export const RECEIPT_80MM_DOCUMENT_CSS = `
   }
   .rx-firm-logo img {
     display: block;
-    margin: 0 auto;
+    margin-left: auto;
+    margin-right: auto;
+    float: none;
     max-height: 56px;
     max-width: 60mm;
     width: auto;
@@ -104,8 +118,13 @@ export const RECEIPT_80MM_SLIP_CSS = `
     color: #000 !important;
   }
   .rx-slip .rx-firm-logo img {
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    float: none !important;
     max-height: 56px !important;
     max-width: 60mm !important;
+    width: auto !important;
     height: auto !important;
   }
   .rx-slip > div {
@@ -152,6 +171,22 @@ export const RECEIPT_80MM_SLIP_CSS = `
     text-align: center !important;
   }
   .rx-slip .flex { display: flex !important; }
+  .rx-slip .rx-firm-header,
+  .rx-slip .rx-firm-logo,
+  .rx-slip .rx-firm-name,
+  .rx-slip [data-section="header"] {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    float: none !important;
+    text-align: center !important;
+  }
+  .rx-slip .rx-firm-logo img {
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    float: none !important;
+  }
   .rx-slip .justify-between { justify-content: space-between !important; }
   .text-center { text-align: center; }
   .text-right, .text-end { text-align: right; }

@@ -111,4 +111,33 @@ describe('80mm fiş yerleşimi', () => {
     expect(html).toContain('data-print-firm-name="1"');
     expect(html).toContain('font-weight:600');
   });
+
+  it('logo görseli blok ve yatayda otomatik kenarlı, başlık ortalı', () => {
+    const css = `${RECEIPT_80MM_DOCUMENT_CSS}\n${RECEIPT_80MM_SLIP_CSS}`;
+    const imgAt = css.indexOf('.rx-firm-logo img');
+    expect(imgAt).toBeGreaterThan(-1);
+    const imgRule = css.slice(imgAt, css.indexOf('}', imgAt));
+    expect(imgRule).toContain('display: block');
+    expect(imgRule).toContain('margin-left: auto');
+    expect(imgRule).toContain('margin-right: auto');
+    expect(imgRule).toContain('float: none');
+    expect(css).toMatch(/\.rx-firm-header[\s\S]*?text-align:\s*center/);
+    expect(RECEIPT_80MM_SLIP_CSS).toMatch(/\[data-section="header"\][\s\S]*?text-align:\s*center/);
+
+    const html = buildCenteredFirmHeaderHtml({
+      firmName: FIRM,
+      logoDataUrl: 'data:image/png;base64,AAAA',
+    });
+    const logoAt = html.indexOf('data-print-firm-logo');
+    const nameAt = html.indexOf('data-print-firm-name');
+    expect(nameAt).toBeGreaterThan(logoAt);
+    const imgTag = html.slice(html.indexOf('<img'), html.indexOf('/>', html.indexOf('<img')) + 2);
+    expect(imgTag).toContain('display:block');
+    expect(imgTag).toContain('margin-left:auto');
+    expect(imgTag).toContain('margin-right:auto');
+    expect(imgTag).toContain('float:none');
+    expect(html.slice(0, logoAt)).toContain('text-align:center');
+    expect(html).toContain('width:100%');
+    expect(html).toContain('max-height:56px');
+  });
 });

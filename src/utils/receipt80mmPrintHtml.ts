@@ -513,7 +513,7 @@ ${
 
     bodyInner = `
 <div class="rx-slip" style="width:100%;max-width:100%;box-sizing:border-box;margin:0 auto;padding:0;font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:500;color:#000;line-height:1.2;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
-  <div data-section="header" style="text-align:center;border-bottom:2px solid #000;padding-bottom:2px;margin-bottom:2px">
+  <div data-section="header" style="display:block;width:100%;max-width:100%;float:none;text-align:center;border-bottom:2px solid #000;padding-bottom:2px;margin-bottom:2px">
     ${firmHeaderHtml}
     ${beautyPhoneOnly}
   </div>
@@ -634,7 +634,7 @@ ${variantExtra}
 
     bodyInner = `
 <div class="rx-slip" style="width:100%;max-width:100%;box-sizing:border-box;margin:0 auto;padding:0;font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:500;color:#000;line-height:1.2;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
-  <div data-section="header" style="text-align:center;border-bottom:2px dashed #000;padding-bottom:2px;margin-bottom:2px">
+  <div data-section="header" style="display:block;width:100%;max-width:100%;float:none;text-align:center;border-bottom:2px dashed #000;padding-bottom:2px;margin-bottom:2px">
     ${firmHeaderHtml}
     ${addrBlock}
     ${titleLine}

@@ -73,14 +73,14 @@ export function buildCenteredFirmHeaderHtml(input: {
   const name = String(input.firmName ?? '').trim();
   const logo = printableLogoSrc(input.logoDataUrl);
   const logoHtml = logo
-    ? `<div data-print-firm-logo="1" class="rx-firm-logo" style="text-align:center"><img src=${JSON.stringify(logo)} alt="" style="display:block;margin:0 auto;max-height:56px;max-width:60mm;width:auto;height:auto;object-fit:contain" /></div>`
+    ? `<div data-print-firm-logo="1" class="rx-firm-logo" style="display:block;width:100%;max-width:100%;text-align:center;float:none"><img src=${JSON.stringify(logo)} alt="" style="display:block;margin-left:auto;margin-right:auto;float:none;max-height:56px;max-width:60mm;width:auto;height:auto;object-fit:contain" /></div>`
     : '';
-  const nameStyle = input.nameStyle?.trim() || 'text-align:center;font-weight:600;color:#000;line-height:1.15';
+  const nameStyle = input.nameStyle?.trim() || 'display:block;width:100%;float:none;text-align:center;font-weight:600;color:#000;line-height:1.15';
   const nameHtml = name
     ? `<div data-print-firm-name="1" class="center rx-firm-name" style="${nameStyle}">${escapePrintHtml(name)}</div>`
     : '';
   if (!logoHtml && !nameHtml) return '';
-  return `<div data-print-firm-header="1" class="center" style="text-align:center">${logoHtml}${nameHtml}</div>`;
+  return `<div data-print-firm-header="1" class="center rx-firm-header" style="display:block;width:100%;max-width:100%;text-align:center;float:none">${logoHtml}${nameHtml}</div>`;
 }
 
 export async function loadCenteredFirmHeader(opts?: {

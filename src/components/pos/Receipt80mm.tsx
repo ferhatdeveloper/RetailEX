@@ -1309,8 +1309,23 @@ export function Receipt80mm({
           .receipt-80mm #receipt-content [data-section="footer"] * {
             font-weight: 600 !important;
           }
+          .receipt-80mm .rx-firm-header,
+          .receipt-80mm .rx-firm-logo,
+          .receipt-80mm .rx-firm-name,
+          .receipt-80mm [data-section="header"] {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            float: none !important;
+            text-align: center !important;
+          }
           .receipt-80mm .rx-firm-logo img {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            float: none !important;
             max-height: 56px !important;
+            width: auto !important;
             height: auto !important;
           }
           .receipt-80mm #receipt-content .my-3,
