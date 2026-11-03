@@ -1,7 +1,7 @@
 {
   "name": "@retailos/scanner-service",
   "version": "1.0.0",
-  "description": "RetailOS Scanner WebSocket Service - TWAIN/WIA Tarayıcı Entegrasyonu",
+  "description": "EXFIN Scanner WebSocket Service - TWAIN/WIA Tarayıcı Entegrasyonu",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -18,7 +18,7 @@
     "websocket",
     "document-scanner"
   ],
-  "author": "RetailOS Team",
+  "author": "EXFIN",
   "license": "PROPRIETARY",
   "dependencies": {
     "ws": "^8.14.2"

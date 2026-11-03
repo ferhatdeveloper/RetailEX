@@ -180,7 +180,7 @@ export function generateThermalReceipt(
       <div class="divider"></div>
       
       <div class="center">${config.footerText || 'Teşekkür ederiz!'}</div>
-      <div class="center">www.retailos.com</div>
+      <div class="center">EXFIN</div>
     </body>
     </html>
   `;
@@ -384,7 +384,7 @@ export function generateA4Invoice(
 
       <div class="footer">
         <div>${config.footerText || 'Bizi tercih ettiğiniz için teşekkür ederiz.'}</div>
-        <div style="margin-top: 10px;">RetailOS - Professional Retail Management System</div>
+        <div style="margin-top: 10px;">EXFIN - Professional Retail Management System</div>
       </div>
     </body>
     </html>

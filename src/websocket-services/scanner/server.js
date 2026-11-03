@@ -189,7 +189,7 @@ class ScannerWebSocketServer {
       // Hoş geldin mesajı
       ws.send(JSON.stringify({
         type: 'connected',
-        message: 'RetailOS Scanner Service - Bağlantı başarılı',
+        message: 'EXFIN Scanner Service - Bağlantı başarılı',
         version: '1.0.0',
       }));
       
@@ -286,7 +286,7 @@ class ScannerWebSocketServer {
       });
       
       console.log('='.repeat(60));
-      console.log('RetailOS Scanner WebSocket Service');
+      console.log('EXFIN Scanner WebSocket Service');
       console.log('='.repeat(60));
       console.log(`WebSocket URL: ws://${CONFIG.host}:${CONFIG.port}/scan`);
       console.log(`Health Check: http://${CONFIG.host}:${CONFIG.port}/health`);

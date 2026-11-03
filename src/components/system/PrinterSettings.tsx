@@ -161,7 +161,7 @@ export function PrinterSettings() {
           width: config.width || 48,
           encoding: config.encoding || 'PC857_TURKISH'
         },
-        storeName: 'RetailOS Test',
+        storeName: 'EXFIN Test',
         storeAddress: tm('printerTestAddress'),
         storeTaxNo: '1234567890',
         invoiceNo: 'TEST-' + Date.now(),

@@ -1680,7 +1680,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
           <FileText className="w-5 h-5 text-white" />
           <div>
             <h2 className="text-base text-white">Satış Faturaları</h2>
-            <p className="text-teal-100 text-xs">RetailOS - Tedarikçi fatura yönetimi</p>
+            <p className="text-teal-100 text-xs">EXFIN - Tedarikçi fatura yönetimi</p>
           </div>
         </div>
 

@@ -141,7 +141,7 @@ function generateReceiptHTML(sale: any, companyName: string, language: string, r
       <div class="double-divider"></div>
       <div class="center" style="margin: 1mm 0; font-size: 13px; color: #000; font-weight: 600;">${labels.thanks}</div>
       <div class="barcode" style="color: #000;">* ${sale.receiptNumber} *</div>
-      <div class="center" style="font-size: 12px; margin-top: 1mm; color: #000; font-weight: 500;">RetailOS - Professional POS System</div>
+      <div class="center" style="font-size: 12px; margin-top: 1mm; color: #000; font-weight: 500;">EXFIN - Professional POS System</div>
     </body>
     </html>
   `;
@@ -173,7 +173,7 @@ function buildPosReceiptPrintData(sale: any, companyName: string, language: stri
   };
 }
 
-export async function printThermalReceipt(sale: any, companyName: string = 'RetailOS', options?: { autoPrint?: boolean, language?: string; receiptSettings?: ReceiptSettingsForPrint | null }) {
+export async function printThermalReceipt(sale: any, companyName: string = 'EXFIN', options?: { autoPrint?: boolean, language?: string; receiptSettings?: ReceiptSettingsForPrint | null }) {
   const finalLanguage = options?.language || 'tr';
   let receiptSettings = options?.receiptSettings;
   if (receiptSettings === undefined) {
@@ -272,7 +272,7 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
   };
 }
 
-export async function printReturnReceipt(returnReceipt: ReturnReceipt, companyName: string = 'RetailOS') {
+export async function printReturnReceipt(returnReceipt: ReturnReceipt, companyName: string = 'EXFIN') {
   const { loadCenteredFirmHeader } = await import('./printFirmHeader');
   const header = await loadCenteredFirmHeader({
     firm: { receiptCompanyName: companyName, title: companyName, name: companyName },

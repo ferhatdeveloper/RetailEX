@@ -220,7 +220,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification('RetailOS', options)
+    self.registration.showNotification('EXFIN', options)
   );
 });
 

@@ -16,7 +16,7 @@ export function exportInvoicesToLogoXML(invoices: PendingInvoice[], firmNo: stri
   xml += `    <PERIOD>${period}</PERIOD>\n`;
   xml += `    <DATE>${dateStr}</DATE>\n`;
   xml += `    <TIME>${timeStr}</TIME>\n`;
-  xml += `    <SOURCE>RetailOS</SOURCE>\n`;
+  xml += `    <SOURCE>EXFIN</SOURCE>\n`;
   xml += '  </HEADER>\n';
   xml += '  <TRANSACTIONS>\n';
   

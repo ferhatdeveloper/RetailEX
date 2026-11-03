@@ -242,7 +242,7 @@ export function PWAStatus() {
           <div className="flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
             <p className="text-xs text-green-700">
-              RetailOS başarıyla yüklendi! Artık çevrimdışı çalışabilir ve ana ekranınızdan hızlıca erişebilirsiniz.
+              EXFIN başarıyla yüklendi! Artık çevrimdışı çalışabilir ve ana ekranınızdan hızlıca erişebilirsiniz.
             </p>
           </div>
         </div>

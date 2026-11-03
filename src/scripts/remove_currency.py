@@ -35,7 +35,7 @@ def remove_currency_symbol(file_path):
 
 def main():
     """Main function"""
-    print("🚀 RetailOS - Removing ₺ currency symbol...")
+    print("🚀 EXFIN - Removing ₺ currency symbol...")
     print("=" * 60)
     
     total_removed = 0

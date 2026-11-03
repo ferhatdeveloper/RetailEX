@@ -193,7 +193,7 @@ export function RestPOSModule(props: RestPOSModuleProps) {
           {/* Footer */}
           <div className="bg-gray-100 px-8 py-4 border-t border-gray-200">
             <p className="text-xs text-gray-600 text-center">
-              RetailOS RestPOS Module • Gelecekteki restaurant yönetimi için hazırlanıyor
+              EXFIN RestPOS Module • Gelecekteki restaurant yönetimi için hazırlanıyor
             </p>
           </div>
         </div>

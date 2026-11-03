@@ -1,4 +1,4 @@
-# RetailOS - robots.txt
+# EXFIN - robots.txt
 User-agent: *
 Allow: /
 

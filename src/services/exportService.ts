@@ -157,7 +157,7 @@ class PDFExportStrategy implements ExportStrategy {
     </tbody>
   </table>
   <div class="footer">
-    <p>RetailOS - Mağaza Yönetim Sistemi</p>
+    <p>EXFIN - Mağaza Yönetim Sistemi</p>
     <p>© 2025 Tüm hakları saklıdır.</p>
   </div>
 </body>

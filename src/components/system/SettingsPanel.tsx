@@ -26,7 +26,7 @@ export function SettingsPanel() {
           <Settings className="w-6 h-6" />
           <h2 className="text-2xl">Sistem Ayarları</h2>
         </div>
-        <p className="text-slate-200 text-sm mt-1">RetailOS • Yapılandırma ve özelleştirme</p>
+        <p className="text-slate-200 text-sm mt-1">EXFIN • Yapılandırma ve özelleştirme</p>
       </div>
 
       <div className="p-6 space-y-6">

@@ -9,7 +9,7 @@ const path = require('path');
 // Servis oluştur
 const svc = new Service({
   name: 'RetailOS Scanner Service',
-  description: 'RetailOS için TWAIN/WIA tarayıcı entegrasyon servisi',
+  description: 'EXFIN için TWAIN/WIA tarayıcı entegrasyon servisi',
   script: path.join(__dirname, 'server.js'),
   nodeOptions: [
     '--harmony',
@@ -29,7 +29,7 @@ const svc = new Service({
 
 // Servis yüklendiğinde
 svc.on('install', function() {
-  console.log('✅ RetailOS Scanner Service başarıyla kuruldu');
+  console.log('✅ EXFIN Scanner Service başarıyla kuruldu');
   console.log('ğŸš€ Servis başlatılıyor...');
   svc.start();
 });
@@ -41,7 +41,7 @@ svc.on('start', function() {
 });
 
 // Servisi kur
-console.log('ğŸ“¦ RetailOS Scanner Service kuruluyor...');
+console.log('ğŸ“¦ EXFIN Scanner Service kuruluyor...');
 console.log('⚙️  Bu işlem yönetici izni gerektirir');
 svc.install();
 

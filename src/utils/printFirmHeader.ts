@@ -1,6 +1,6 @@
 /**
  * Yazdırma başlığı: firma logosu ve hemen altında ortalı firma adı.
- * Ürün satırı (RetailOS Mağaza Sistemi) firma adı değildir.
+ * Ürün satırı (EXFIN) firma adı değildir. Eski yer tutucular da firma adı sayılmaz.
  */
 import { isGenericFirmName } from '../services/firmNamePreserve';
 import { RECEIPT_80MM_LOGO_IMG_INLINE_STYLE } from './receipt80mmDocumentCss';
@@ -13,10 +13,20 @@ export type PrintFirmNameSource = {
 };
 
 const PRODUCT_PRINT_LINES = new Set([
+  'EXFIN',
+  'EXFIN POS Z Raporu',
+  'EXFIN - Professional POS System',
+  'EXFIN - Professional Retail Management System',
+  'EXFIN - Fiyat Değişim Fişi',
+  'EXFIN - Mağaza Yönetim Sistemi',
   'RetailOS Mağaza Sistemi',
+  'RetailOS Store System',
+  'نظام متجر RetailOS',
+  'سیستەمی فرۆشگای RetailOS',
   'RetailOS',
   'RetailOS POS Z Raporu',
   'RetailOS v1.0',
+  'RetailOS v1.0.0',
   'RetailEX',
   'RetailEX ERP',
   'RetailEX Mobile',

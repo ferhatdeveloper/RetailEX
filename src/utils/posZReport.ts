@@ -974,7 +974,7 @@ export function printPosZReport(
           : ''
       }
       <div class="divider"></div>
-      <div class="center" style="font-size:12px;color:#000;font-weight:500;">RetailOS POS Z Raporu</div>
+      <div class="center" style="font-size:12px;color:#000;font-weight:500;">EXFIN POS Z Raporu</div>
     </body>
     </html>
   `;

@@ -17,7 +17,7 @@ const wss = new WebSocket.Server({
   path: '/scan'
 });
 
-console.log('✅ RetailOS Scanner Service başlatıldı');
+console.log('✅ EXFIN Scanner Service başlatıldı');
 console.log('📡 WebSocket: ws://localhost:9999/scan');
 console.log('ğŸ–¨ï¸  Tarayıcılar algılanıyor...\n');
 

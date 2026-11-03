@@ -24,7 +24,7 @@ const colors = {
   text: '#ffffff'
 };
 
-console.log('ğŸ¨ RetailOS PWA Icon Generator');
+console.log('ğŸ¨ EXFIN PWA Icon Generator');
 console.log('================================\n');
 
 // SVG template

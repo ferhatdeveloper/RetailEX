@@ -35,7 +35,7 @@ def remove_currency_from_file(file_path):
 def main():
     """Main execution"""
     print("=" * 70)
-    print("🚀 RetailOS v1.0.0 - Currency Symbol Removal Tool")
+    print("🚀 EXFIN - Currency Symbol Removal Tool")
     print("=" * 70)
     print()
     

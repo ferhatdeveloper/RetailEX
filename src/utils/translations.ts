@@ -21,7 +21,7 @@ export const translations = {
   total: { tr: 'Toplam', en: 'Total', ar: 'المجموع', ku: 'کۆی گشتی' },
 
   // Version & Status
-  version: { tr: 'RetailOS v1.0.0', en: 'RetailOS v1.0.0', ar: 'RetailOS v1.0.0', ku: 'RetailOS v1.0.0' },
+  version: { tr: 'EXFIN', en: 'EXFIN', ar: 'EXFIN', ku: 'EXFIN' },
   systemActive: { tr: 'Aktif', en: 'Active', ar: 'نشط', ku: 'چالاک' },
 
   // Quick Stats

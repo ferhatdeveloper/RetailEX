@@ -38,7 +38,7 @@ export function PriceManagementModule({ products }: PriceManagementModuleProps) 
               </div>
               <h2 className="text-3xl">Fiyat & Kampanya Yönetimi</h2>
             </div>
-            <p className="text-amber-100 ml-13">RetailOS • Fiyat listeleri ve promosyonlar</p>
+            <p className="text-amber-100 ml-13">EXFIN • Fiyat listeleri ve promosyonlar</p>
           </div>
         </div>
       </div>

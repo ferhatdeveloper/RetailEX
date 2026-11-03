@@ -159,7 +159,7 @@ export async function printPriceChangeVoucher(
         ${new Date().toLocaleString('tr-TR')}
       </div>
       <div class="center" style="margin-top: 1mm; font-size: 12px; color: #000;">
-        RetailOS - Fiyat Değişim Fişi
+        EXFIN - Fiyat Değişim Fişi
       </div>
     </body>
     </html>

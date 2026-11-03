@@ -1,4 +1,4 @@
-﻿// RetailOS - Service Worker Registration
+﻿// EXFIN - Service Worker Registration
 // PWA kurulumu ve yönetimi
 
 // Service Worker'ı kaydet
@@ -73,7 +73,7 @@ function showUpdateNotification() {
           Yeni sürüm hazır
         </div>
         <div style="font-size: 14px; opacity: 0.9;">
-          RetailOS güncellemesi hazır. Yenilemek için tıklayın.
+          EXFIN güncellemesi hazır. Yenilemek için tıklayın.
         </div>
       </div>
       <button id="pwa-update-btn" style="
@@ -170,7 +170,7 @@ function showInstallButton() {
       </div>
       <div style="flex: 1;">
         <div style="font-weight: 600; margin-bottom: 4px;">
-          RetailOS'u Yükle
+          EXFIN'i Yükle
         </div>
         <div style="font-size: 13px; opacity: 0.9;">
           Hızlı erişim için ana ekrana ekleyin
@@ -296,7 +296,7 @@ function showInstalledNotification() {
         ✅ Kurulum Tamamlandı!
       </div>
       <div style="font-size: 14px; opacity: 0.9;">
-        RetailOS artık ana ekranınızda
+        EXFIN artık ana ekranınızda
       </div>
     </div>
   `;

@@ -621,7 +621,7 @@ export const mockCampaigns: Campaign[] = [
 // Mock loyalty program
 export const mockLoyaltyProgram: LoyaltyProgram = {
   id: 'loyalty-001',
-  name: 'RetailOS Sadakat Programı',
+  name: 'EXFIN Sadakat Programı',
   points_per_lira: 1,                                 // 1 TL = 1 puan
   points_redemption_rate: 0.1,                        // 1 puan = 0.1 TL
   tiers: [
