@@ -21,14 +21,14 @@ export function ThermalReceiptPreview({
   const { darkMode } = useTheme();
 
   return (
-    <div className={`w-[302px] mx-auto font-mono text-xs leading-tight ${darkMode ? 'bg-white text-black' : 'bg-white text-black'} shadow-xl border-4 border-gray-300 p-4`}>
+    <div className={`rx-sales-print-slip w-[302px] mx-auto font-mono text-[13px] leading-tight font-medium text-black ${darkMode ? 'bg-white' : 'bg-white'} shadow-xl border-4 border-gray-300 p-2`}>
       {/* Header */}
-      <PrintFirmBrand firmName={companyName} logoDataUrl={logoDataUrl} nameClassName="font-bold text-sm mb-1" />
-      <div className="text-center text-[9px] mb-2">
+      <PrintFirmBrand firmName={companyName} logoDataUrl={logoDataUrl} nameClassName="font-semibold text-[14px] mb-0 text-black" />
+      <div className="text-center text-[12px] text-black mb-1">
         Tel: 0850 XXX XX XX
       </div>
 
-      <div className="border-t-2 border-black my-2"></div>
+      <div className="border-t-2 border-black my-1"></div>
 
       {/* Receipt Info */}
       <div className="flex justify-between mb-1">
@@ -62,7 +62,7 @@ export function ThermalReceiptPreview({
         </div>
       )}
 
-      <div className="border-t border-dashed border-black my-2"></div>
+      <div className="border-t border-dashed border-black my-1"></div>
 
       {/* Items Header */}
       <div className="flex justify-between font-bold mb-1">
@@ -84,7 +84,7 @@ export function ThermalReceiptPreview({
               <div className="w-[60%] break-words">
                 {item.productName}
                 {variantInfo && (
-                  <div className="text-[9px] text-gray-600">{variantInfo}</div>
+                  <div className="text-[12px] text-black">{variantInfo}</div>
                 )}
               </div>
               <div className="w-[15%] text-center">{item.quantity}</div>
@@ -94,7 +94,7 @@ export function ThermalReceiptPreview({
         );
       })}
 
-      <div className="border-t border-dashed border-black my-2"></div>
+      <div className="border-t border-dashed border-black my-1"></div>
 
       {/* Totals */}
       <div className="space-y-1">
@@ -110,7 +110,7 @@ export function ThermalReceiptPreview({
               <span className="font-bold text-orange-600">-{formatNumber(sale.campaignDiscount, 2, true)}</span>
             </div>
             {sale.campaignName && (
-              <div className="text-[9px] text-gray-600 pl-2">
+              <div className="text-[12px] text-black pl-1">
                 ({sale.campaignName})
               </div>
             )}
@@ -124,19 +124,19 @@ export function ThermalReceiptPreview({
               <span>-{formatNumber(sale.discount, 2, true)}</span>
             </div>
             {sale.discountReason && (
-              <div className="text-[9px] text-gray-600 pl-2">
+              <div className="text-[12px] text-black pl-1">
                 ({sale.discountReason})
               </div>
             )}
           </>
         )}
-        <div className="flex justify-between font-bold text-sm pt-1 border-t border-black">
+        <div className="flex justify-between font-semibold text-[14px] pt-0 border-t border-black">
           <span>TOPLAM:</span>
           <span>{formatNumber(sale.total, 2, true)}</span>
         </div>
       </div>
 
-      <div className="border-t border-dashed border-black my-2"></div>
+      <div className="border-t border-dashed border-black my-1"></div>
 
       {/* Payment Info */}
       <div className="flex justify-between py-1 border-b border-dashed border-gray-400">
@@ -160,18 +160,18 @@ export function ThermalReceiptPreview({
         </>
       )}
 
-      <div className="border-t-2 border-black my-2"></div>
+      <div className="border-t-2 border-black my-1"></div>
 
       {/* Footer */}
-      <div className="text-center text-[10px] my-2">
+      <div className="text-center text-[12px] text-black font-semibold my-1">
         Bizi Tercih Ettiğiniz İçin Teşekkür Ederiz!
       </div>
 
-      <div className="text-center text-[10px] tracking-widest my-2">
+      <div className="text-center text-[12px] text-black tracking-widest my-1">
         * {sale.receiptNumber} *
       </div>
 
-      <div className="text-center text-[8px] mt-2 text-gray-500">
+      <div className="text-center text-[12px] mt-1 text-black">
         ExRetailOS - Profesyonel Satış Yönetimi
       </div>
     </div>

@@ -73,11 +73,11 @@ export function buildCenteredFirmHeaderHtml(input: {
   const name = String(input.firmName ?? '').trim();
   const logo = printableLogoSrc(input.logoDataUrl);
   const logoHtml = logo
-    ? `<div data-print-firm-logo="1" style="text-align:center"><img src=${JSON.stringify(logo)} alt="" style="display:block;margin:0 auto;max-height:14mm;max-width:60mm;width:auto;height:auto;object-fit:contain" /></div>`
+    ? `<div data-print-firm-logo="1" class="rx-firm-logo" style="text-align:center"><img src=${JSON.stringify(logo)} alt="" style="display:block;margin:0 auto;max-height:56px;max-width:60mm;width:auto;height:auto;object-fit:contain" /></div>`
     : '';
-  const nameStyle = input.nameStyle?.trim() || 'text-align:center;font-weight:700';
+  const nameStyle = input.nameStyle?.trim() || 'text-align:center;font-weight:600;color:#000;line-height:1.15';
   const nameHtml = name
-    ? `<div data-print-firm-name="1" class="center" style="${nameStyle}">${escapePrintHtml(name)}</div>`
+    ? `<div data-print-firm-name="1" class="center rx-firm-name" style="${nameStyle}">${escapePrintHtml(name)}</div>`
     : '';
   if (!logoHtml && !nameHtml) return '';
   return `<div data-print-firm-header="1" class="center" style="text-align:center">${logoHtml}${nameHtml}</div>`;

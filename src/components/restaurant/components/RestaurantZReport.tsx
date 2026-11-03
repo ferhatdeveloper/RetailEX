@@ -6,6 +6,7 @@ import { formatCurrency } from '../../../utils/currency';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { getReceiptSettings } from '../../../services/receiptSettingsService';
 import { buildCenteredFirmHeaderHtml, resolvePrintFirmName } from '../../../utils/printFirmHeader';
+import { RECEIPT_80MM_DOCUMENT_CSS } from '../../../utils/receipt80mmDocumentCss';
 
 interface ZReportData {
     date: string;
@@ -75,7 +76,6 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
     const getReceipt80mmHtml = () => {
         const d = data;
         const lines: string[] = [];
-        lines.push('');
         lines.push('      RETAILEX - Z RAPORU');
         lines.push('  ' + new Date(d.date).toLocaleDateString('tr-TR'));
         lines.push('--------------------------------');
@@ -121,7 +121,6 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
         }
         lines.push('--------------------------------');
         lines.push('     GUN SONU Z RAPORU');
-        lines.push('');
         return lines.join('\n');
     };
 
@@ -130,20 +129,17 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
         const win = window.open('', '_blank', 'width=320,height=600');
         if (!win) return;
         const brand = buildCenteredFirmHeaderHtml({ firmName, logoDataUrl });
-        const content = brand + html.split('\n').map(line => `<div class="line">${line.replace(/ /g, '&nbsp;')}</div>`).join('');
+        const content = brand + html.split('\n').filter((line) => line.trim().length > 0).map(line => `<div class="line">${line.replace(/ /g, '&nbsp;')}</div>`).join('');
         win.document.write(`
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Z-Raporu</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Courier New', Courier, monospace; font-size: 11px; line-height: 1.35; padding: 8px; background: #fff; color: #000; }
-  .receipt { width: 80mm; max-width: 80mm; min-height: 100vh; }
-  .line { white-space: pre; letter-spacing: 0.02em; }
+  ${RECEIPT_80MM_DOCUMENT_CSS}
+  * { box-sizing: border-box; }
+  .receipt { width: 72mm; max-width: 72mm; margin: 0 auto; height: auto; min-height: 0; }
+  .line { white-space: pre; letter-spacing: 0; line-height: 1.2; color: #000; }
   @media print {
-    body { padding: 0; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .receipt { width: 80mm !important; max-width: 80mm !important; }
     .no-print { display: none !important; }
-    @page { size: 80mm auto; margin: 4mm; }
   }
 </style>
 </head>

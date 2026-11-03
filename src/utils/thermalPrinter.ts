@@ -52,11 +52,11 @@ function generateReceiptHTML(sale: any, companyName: string, language: string, r
   const firmHeaderHtml = buildCenteredFirmHeaderHtml({
     firmName: displayName,
     logoDataUrl: receiptSettings?.logoDataUrl,
-    nameStyle: 'text-align:center;font-weight:700;font-size:11px',
+    nameStyle: 'text-align:center;font-weight:600;font-size:14px;color:#000;line-height:1.15',
   });
   const companyLines = [receiptSettings?.companyAddress, receiptSettings?.companyPhone].filter(Boolean);
   const companyLinesHtml = companyLines.length
-    ? `<div class="center" style="font-size: 9px; margin-bottom: 2mm;">${companyLines.join(' | ')}</div>`
+    ? `<div class="center" style="font-size: 12px; color: #000; font-weight: 500; margin-bottom: 1mm;">${companyLines.join(' | ')}</div>`
     : '';
 
   const locale = resolvePrintLocale(language);
@@ -97,18 +97,17 @@ function generateReceiptHTML(sale: any, companyName: string, language: string, r
       ${RECEIPT_80MM_VIEWPORT_FOR_HEADLESS}
       <style>
         ${RECEIPT_80MM_DOCUMENT_CSS}
-        @media print { body { margin: 0; padding: 0; } }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: ${isRTL ? 'Arial, sans-serif' : "'Courier New', monospace"}; font-size: 9px; line-height: 1.25; width: 100%; max-width: 100%; padding: 3mm; background: white; color: #000; font-weight: 500; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; }
-        .center { text-align: center; } .bold { font-weight: bold; } .large { font-size: 11px; }
-        .divider { border-top: 1px dashed #000; margin: 2mm 0; } .double-divider { border-top: 2px solid #000; margin: 2mm 0; }
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
-        .item-row td { padding: 0.5mm 1mm; vertical-align: top; word-wrap: break-word; }
-        .item-name { width: 48%; text-align: ${isRTL ? 'right' : 'left'}; font-size: 9px; word-break: break-word; }
+        * { box-sizing: border-box; }
+        body { font-family: ${isRTL ? 'Arial, sans-serif' : "'Courier New', monospace"}; background: #fff; }
+        .center { text-align: center; } .bold { font-weight: 600; } .large { font-size: 14px; font-weight: 600; }
+        .divider { border-top: 1px dashed #000; margin: 1.5mm 0; } .double-divider { border-top: 2px solid #000; margin: 1.5mm 0; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+        .item-row td { padding: 0 1mm; vertical-align: top; word-wrap: break-word; }
+        .item-name { width: 48%; text-align: ${isRTL ? 'right' : 'left'}; font-size: 13px; word-break: break-word; color: #000; }
         .item-qty { width: 12%; text-align: center; }
-        .item-price { width: 40%; text-align: ${isRTL ? 'left' : 'right'}; font-weight: bold; white-space: nowrap; min-width: 0; }
-        .info-row { display: flex; justify-content: space-between; margin: 0.5mm 0; }
-        .barcode { text-align: center; font-size: 8px; letter-spacing: 1px; margin: 2mm 0; }
+        .item-price { width: 40%; text-align: ${isRTL ? 'left' : 'right'}; font-weight: 600; white-space: nowrap; min-width: 0; }
+        .info-row { display: flex; justify-content: space-between; margin: 0; line-height: 1.2; }
+        .barcode { text-align: center; font-size: 12px; letter-spacing: 1px; margin: 1mm 0; color: #000; }
       </style>
     </head>
     <body>
@@ -140,9 +139,9 @@ function generateReceiptHTML(sale: any, companyName: string, language: string, r
       <div class="info-row"><span>${labels.paymentMethod}:</span><span class="bold">${sale.paymentMethod === 'cash' ? labels.cash : labels.card}</span></div>
       ${sale.paymentMethod === 'cash' ? `<div class="info-row"><span>${labels.change}:</span><span class="bold">${sale.change?.toFixed(2) || '0.00'}</span></div>` : ''}
       <div class="double-divider"></div>
-      <div class="center" style="margin: 3mm 0; font-size: 10px; color: #000; font-weight: 600;">${labels.thanks}</div>
+      <div class="center" style="margin: 1mm 0; font-size: 13px; color: #000; font-weight: 600;">${labels.thanks}</div>
       <div class="barcode" style="color: #000;">* ${sale.receiptNumber} *</div>
-      <div class="center" style="font-size: 8px; margin-top: 3mm; color: #000; font-weight: 500;">RetailOS - Professional POS System</div>
+      <div class="center" style="font-size: 12px; margin-top: 1mm; color: #000; font-weight: 500;">RetailOS - Professional POS System</div>
     </body>
     </html>
   `;
@@ -278,7 +277,7 @@ export async function printReturnReceipt(returnReceipt: ReturnReceipt, companyNa
   const header = await loadCenteredFirmHeader({
     firm: { receiptCompanyName: companyName, title: companyName, name: companyName },
   });
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>İade fişi</title><style>body{font-family:'Courier New',monospace;width:80mm;margin:0;padding:4mm}.center{text-align:center}</style></head><body>${header.html}<pre>${JSON.stringify(returnReceipt, null, 2)}</pre></body></html>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>İade fişi</title><style>${RECEIPT_80MM_DOCUMENT_CSS}.center{text-align:center} pre{margin:0;font-size:13px;line-height:1.2;color:#000;white-space:pre-wrap}</style></head><body>${header.html}<pre>${JSON.stringify(returnReceipt, null, 2)}</pre></body></html>`;
   try {
     if (await isWindowsPrinterServiceEnabled()) {
       await enqueuePrintJob({

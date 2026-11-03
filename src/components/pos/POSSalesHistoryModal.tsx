@@ -447,6 +447,36 @@ export function POSSalesHistoryModal({
       aria-modal="true"
       aria-label={t.salesHistory}
     >
+      <style>{`
+        @media print {
+          @page { size: 80mm auto; margin: 0; }
+          html, body { height: auto !important; min-height: 0 !important; margin: 0 !important; }
+          body * { visibility: hidden; }
+          .rx-sales-print-slip, .rx-sales-print-slip * {
+            visibility: visible;
+            color: #000 !important;
+            background: transparent !important;
+          }
+          .rx-sales-print-slip {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 72mm !important;
+            max-width: 72mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            padding: 2mm !important;
+            margin: 0 !important;
+            font-size: 13px !important;
+            line-height: 1.2 !important;
+            font-weight: 500;
+            background: #fff !important;
+            box-shadow: none !important;
+            border: 0 !important;
+          }
+          .rx-sales-print-slip .rx-firm-name { font-weight: 600 !important; font-size: 14px !important; }
+        }
+      `}</style>
       <div className={`w-full h-full flex flex-col min-h-0 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
         {/* Header */}
         <div className="p-3 border-b flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">

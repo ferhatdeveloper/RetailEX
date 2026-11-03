@@ -9,6 +9,7 @@ import { integerSharePercents } from './sharePercent';
 import { localCalendarDateKey } from './localCalendarDate';
 import { saleCollectedSplit } from './saleCollectedAmounts';
 import { isDepositSale } from './reportDepositFilter';
+import { RECEIPT_80MM_DOCUMENT_CSS } from './receipt80mmDocumentCss';
 import { buildCenteredFirmHeaderHtml, isProductPrintLine, resolvePrintFirmName } from './printFirmHeader';
 
 export interface PosPaymentBreakdown {
@@ -925,30 +926,15 @@ export function printPosZReport(
       <meta charset="UTF-8">
       <title>Z Raporu - ${escHtml(report.dateLabel)}</title>
       <style>
-        html { width: 80mm; max-width: 80mm; margin: 0; padding: 0; }
-        @media print {
-          @page { size: 80mm auto; margin: 0; }
-          html, body { width: 80mm !important; max-width: 80mm !important; margin: 0 !important; }
-        }
-        body {
-          box-sizing: border-box;
-          width: 100%;
-          max-width: 80mm;
-          font-family: 'Courier New', monospace;
-          font-size: 11px;
-          line-height: 1.3;
-          padding: 5mm;
-          margin: 0;
-          color: #000;
-        }
+        ${RECEIPT_80MM_DOCUMENT_CSS}
         .center { text-align: center; }
-        .bold { font-weight: bold; }
-        .large { font-size: 14px; }
-        .divider { border-top: 1px dashed #000; margin: 3mm 0; }
-        .row { display: flex; justify-content: space-between; margin: 1mm 0; gap: 2mm; }
+        .bold { font-weight: 600; }
+        .large { font-size: 14px; font-weight: 600; }
+        .divider { border-top: 1px dashed #000; margin: 1.5mm 0; }
+        .row { display: flex; justify-content: space-between; margin: 0; gap: 2mm; line-height: 1.2; }
         .row span:last-child { text-align: right; white-space: nowrap; }
-        .section-title { text-align: center; font-weight: 700; margin: 1mm 0 2mm; }
-        .final { border-top: 1px solid #000; padding-top: 1.2mm; margin-top: 1.2mm; font-size: 13px; font-weight: 700; }
+        .section-title { text-align: center; font-weight: 600; margin: 1mm 0; }
+        .final { border-top: 1px solid #000; padding-top: 1px; margin-top: 1px; font-size: 14px; font-weight: 600; }
       </style>
     </head>
     <body>
@@ -991,7 +977,7 @@ export function printPosZReport(
           : ''
       }
       <div class="divider"></div>
-      <div class="center" style="font-size:9px;">RetailOS POS Z Raporu</div>
+      <div class="center" style="font-size:12px;color:#000;font-weight:500;">RetailOS POS Z Raporu</div>
     </body>
     </html>
   `;

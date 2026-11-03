@@ -62,6 +62,7 @@ import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import type { Product, Customer, Campaign, User as UserType, Sale } from '../../core/types';
 import { isMainModuleVisible } from '../../utils/mainModuleVisibility';
 import { formatCurrency } from '../../utils/currency';
+import { RECEIPT_80MM_DOCUMENT_CSS } from '../../utils/receipt80mmDocumentCss';
 import './restaurant-premium.css';
 
 interface RestaurantModuleProps {
@@ -313,13 +314,15 @@ export default function RestaurantModule({
         win.document.write(`
             <html><head><title>${esc(zTitle)}</title>
             <style>
-                body{font-family:'Courier New',Courier,monospace;margin:0;padding:30px;font-size:13px;color:#000;background:#fff}
-                .ticket{max-width:400px;margin:0 auto}
-                h1{text-align:center;margin:0;font-size:22px;font-weight:900;letter-spacing:-1px}
-                hr{border:0;border-top:1px dashed #000;margin:15px 0}
-                table{width:100%;border-collapse:collapse;margin:10px 0}
-                th{text-align:left;border-bottom:1px solid #000;padding:5px 2px}
-                td{padding:5px 2px}
+                ${RECEIPT_80MM_DOCUMENT_CSS}
+                .ticket{width:72mm;max-width:72mm;margin:0 auto;height:auto;min-height:0}
+                h1{text-align:center;margin:0;font-size:14px;font-weight:600;color:#000}
+                h3,h4{margin:2px 0;font-size:13px;font-weight:600;color:#000}
+                hr{border:0;border-top:1px dashed #000;margin:2px 0}
+                table{width:100%;border-collapse:collapse;margin:2px 0}
+                th{text-align:left;border-bottom:1px solid #000;padding:1px 2px;font-size:12px;color:#000}
+                td{padding:1px 2px;font-size:13px;color:#000}
+                p{margin:0;line-height:1.2}
             </style>
             </head><body>
             <div class="ticket">
@@ -332,10 +335,10 @@ export default function RestaurantModule({
                 <h3>${esc(tm('resZPrintRefund'))}: ${fmt(d.returns?.amount || 0)}</h3>
                 <h3>${esc(tm('resZPrintComplement'))}: ${fmt(d.complements?.amount || 0)}</h3>
                 <hr/>
-                <h4 style="margin:12px 0 6px;font-size:14px">${esc(tm('resZPrintSoldProducts'))}</h4>
+                <h4>${esc(tm('resZPrintSoldProducts'))}</h4>
                 <table>
                     <thead><tr><th>${esc(tm('resZPrintColProduct'))}</th><th style="text-align:right">${esc(tm('resZPrintColQty'))}</th><th style="text-align:right">${esc(tm('resZPrintColAmount'))}</th></tr></thead>
-                    <tbody>${productRows || `<tr><td colspan="3" style="text-align:center;color:#666">${esc(tm('resZPrintNoRows'))}</td></tr>`}</tbody>
+                    <tbody>${productRows || `<tr><td colspan="3" style="text-align:center;color:#000">${esc(tm('resZPrintNoRows'))}</td></tr>`}</tbody>
                 </table>
                 <hr/>
                 <table>

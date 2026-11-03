@@ -421,7 +421,7 @@ export function Receipt80mm({
       const fullHtml = `<!DOCTYPE html><html dir="${isRTL ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">${viewportMeta}<title>${t.receipt?.title || 'Fiş'} - ${sale.receiptNumber}</title><style>
       ${documentBaseCss}
       @page { size: ${printPageSize}; margin: ${printPageMargin}; }
-      body { padding: ${isThermalFormat ? '0' : '6mm'}; font-family: 'Courier New', Courier, monospace; font-size: ${isThermalFormat ? '13px' : '11px'}; font-weight: 800; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; -webkit-font-smoothing: none; text-rendering: geometricPrecision; height: auto; min-height: 0; }
+      body { padding: ${isThermalFormat ? '0' : '6mm'}; font-family: 'Courier New', Courier, monospace; font-size: ${isThermalFormat ? '13px' : '11px'}; font-weight: ${isThermalFormat ? '500' : '600'}; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; -webkit-font-smoothing: none; text-rendering: geometricPrecision; height: auto; min-height: 0; line-height: ${isThermalFormat ? '1.2' : '1.35'}; }
       ${isThermalFormat ? RECEIPT_80MM_SLIP_CSS : '.receipt-80mm, .receipt-a5, .receipt-a4, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }'}
       ${receiptVariantCss}
       * { box-sizing: border-box; }
@@ -690,7 +690,7 @@ export function Receipt80mm({
           }}
         >
           <div
-            className={`${receiptVariantClassName} ${isThermalFormat ? 'rx-slip' : ''} mx-auto origin-top text-gray-950 antialiased ${isThermalFormat ? 'font-mono text-[14px] font-bold leading-snug print:text-[11px] print:font-bold print:leading-tight' : isA4Format ? 'font-sans text-[13px] font-semibold leading-relaxed print:text-[12px] print:leading-snug' : 'font-sans text-[12px] font-semibold leading-snug print:text-[11px] print:leading-tight'}`}
+            className={`${receiptVariantClassName} ${isThermalFormat ? 'rx-slip' : ''} mx-auto origin-top text-gray-950 antialiased ${isThermalFormat ? 'font-mono text-[13px] font-medium leading-tight print:text-[13px] print:font-medium print:leading-tight' : isA4Format ? 'font-sans text-[13px] font-semibold leading-relaxed print:text-[12px] print:leading-snug' : 'font-sans text-[12px] font-semibold leading-snug print:text-[11px] print:leading-tight'}`}
             style={{ transformOrigin: 'top center', direction: isRTL ? 'rtl' : 'ltr' }}
           >
           <div
@@ -731,7 +731,7 @@ export function Receipt80mm({
                 logoStyle={{ maxWidth: logoMaxWidth }}
               />
               {receiptSettings?.companyPhone && (
-                <div className="text-[12px] font-bold text-gray-900 mt-0.5 print:text-[10px] print:font-bold">
+                <div className="text-[12px] font-bold text-gray-900 mt-0.5 print:text-[13px] print:font-bold">
                   {receiptSettings.companyPhone}
                 </div>
               )}
@@ -805,7 +805,7 @@ export function Receipt80mm({
               const noteText = receiptNotesForDisplay(sale.notes);
               if (!noteText) return null;
               return (
-                <div className={`mb-3 text-[12px] text-gray-950 print:text-[10px] ${isRTL ? 'text-right' : 'text-left'}`}>
+                <div className={`mb-3 text-[12px] text-gray-950 print:text-[13px] ${isRTL ? 'text-right' : 'text-left'}`}>
                   <div className="font-extrabold mb-0.5">{t.receipt.noteLabel}</div>
                   <div className="font-bold whitespace-pre-wrap break-words leading-snug">{noteText}</div>
                 </div>
@@ -842,11 +842,11 @@ export function Receipt80mm({
                       <td className={`py-2 ${isRTL ? 'text-right' : 'text-left'}`} style={{ wordBreak: 'break-word' }}>
                         <div className="font-extrabold">{lineProductName(item)}</div>
                         {showLineStaff ? (
-                          <div className="text-[11px] font-bold text-gray-700 mt-0.5 print:text-[10px]">
+                          <div className="text-[11px] font-bold text-black mt-0.5 print:text-[13px]">
                             {t.receipt.staff}: {lineStaff}
                           </div>
                         ) : null}
-                        <div className="text-[11px] font-bold text-gray-700 mt-0.5 print:text-[10px]">{qtyPrice}</div>
+                        <div className="text-[11px] font-bold text-black mt-0.5 print:text-[13px]">{qtyPrice}</div>
                       </td>
                       <td className={`py-2 font-black tabular-nums whitespace-nowrap align-top ${isRTL ? 'text-left' : 'text-right'}`}>
                         {fmtMoney(receiptLineGross(item))}
@@ -926,16 +926,16 @@ export function Receipt80mm({
                 logoStyle={{ maxWidth: logoMaxWidth }}
               />
               {(receiptSettings?.companyAddress || receiptSettings?.companyPhone) && (
-                <div className="text-[12px] font-bold text-gray-900 space-y-0 leading-tight mt-0.5 print:text-[10px] print:font-bold">
+                <div className="text-[12px] font-bold text-gray-900 space-y-0 leading-tight mt-0.5 print:text-[13px] print:font-bold">
                   {receiptSettings.companyAddress && <div className="break-words">{receiptSettings.companyAddress}</div>}
                   {receiptSettings.companyPhone && <div>{receiptSettings.companyPhone}</div>}
                 </div>
               )}
               {!receiptSettings?.companyAddress && !receiptSettings?.companyPhone && (
-                <div className="text-[12px] font-bold text-gray-900 print:text-[10px] print:font-bold">{t.receipt.footer}</div>
+                <div className="text-[12px] font-bold text-gray-900 print:text-[13px] print:font-bold">{t.receipt.footer}</div>
               )}
               {selectedFirm?.title?.trim() && selectedFirm.title.trim() !== printFirmName ? (
-                <div className="text-[12px] font-bold text-gray-900 mt-0.5 print:text-[10px] print:font-bold">{selectedFirm.title.trim()}</div>
+                <div className="text-[12px] font-bold text-gray-900 mt-0.5 print:text-[13px] print:font-bold">{selectedFirm.title.trim()}</div>
               ) : null}
             </div>
 
@@ -1006,7 +1006,7 @@ export function Receipt80mm({
                 if (!noteText) return null;
                 return (
                   <div
-                    className={`mt-2 pt-2 border-t border-dashed border-gray-500 text-[12px] text-gray-950 print:text-[10px] ${isRTL ? 'text-right' : 'text-left'}`}
+                    className={`mt-2 pt-2 border-t border-dashed border-black text-[12px] text-gray-950 print:text-[13px] ${isRTL ? 'text-right' : 'text-left'}`}
                   >
                     <div className="font-extrabold mb-1 print:font-black">{t.receipt.noteLabel}</div>
                     <div className="font-bold whitespace-pre-wrap break-words leading-snug print:font-semibold">{noteText}</div>
@@ -1048,11 +1048,11 @@ export function Receipt80mm({
                           return (
                             <>
                               <div className="break-words" style={{ wordBreak: 'break-word' }}>
-                                <span className="text-[10px] font-black text-gray-600">{t.receipt.operation}: </span>
+                                <span className="text-[12px] font-medium text-black">{t.receipt.operation}: </span>
                                 <span className="font-extrabold break-words align-top">{lineProductName(item)}</span>
                               </div>
                               {si.beautyStaffName?.trim() ? (
-                                <div className="text-[11px] font-extrabold text-gray-900 mt-0.5 print:text-[10px] print:font-bold">
+                                <div className="text-[11px] font-extrabold text-gray-900 mt-0.5 print:text-[13px] print:font-bold">
                                   {t.receipt.staff}: {si.beautyStaffName.trim()}
                                 </div>
                               ) : null}
@@ -1066,11 +1066,11 @@ export function Receipt80mm({
                         );
                       })()}
                       {item.variant && (item.variant.color || item.variant.size) && (
-                        <div className="text-[11px] font-extrabold text-gray-800 print:text-[10px] print:font-bold">
+                        <div className="text-[11px] font-extrabold text-black print:text-[13px] print:font-bold">
                           {(item.variant as any).color} {(item.variant as any).size}
                         </div>
                       )}
-                      <span className="text-[11px] font-extrabold text-gray-800 block print:text-[10px] print:font-bold">
+                      <span className="text-[11px] font-extrabold text-black block print:text-[13px] print:font-bold">
                         {(() => {
                           const mult = (item as any).multiplier && (item as any).multiplier > 1 ? (item as any).multiplier : 1;
                           const unit = (item as any).unit || 'Adet';
@@ -1079,7 +1079,7 @@ export function Receipt80mm({
                         })()}
                       </span>
                     </td>
-                    <td className="py-1 text-center text-[12px] font-black tabular-nums print:text-[10px] align-top">
+                    <td className="py-1 text-center text-[12px] font-black tabular-nums print:text-[13px] align-top">
                       {item.quantity}
                     </td>
                     <td className="py-1 text-end font-black whitespace-nowrap text-[14px] tabular-nums print:text-[11px] align-top">
@@ -1117,7 +1117,7 @@ export function Receipt80mm({
                     )}
                   </div>
                   {sale.campaignName && (
-                    <div className={`text-[12px] font-bold text-gray-800 ${isRTL ? 'pr-2' : 'pl-2'} print:text-[10px] print:font-semibold`}>
+                    <div className={`text-[12px] font-medium text-black ${isRTL ? 'pr-2' : 'pl-2'} print:text-[13px] print:font-semibold`}>
                       ({sale.campaignName})
                     </div>
                   )}
@@ -1174,14 +1174,14 @@ export function Receipt80mm({
             {/* Barcode */}
             <div className="text-center my-2">
               <div className="inline-block px-2 py-1 bg-white border-2 border-gray-600">
-                <svg className="mx-auto" width="160" height="36" viewBox="0 0 160 36">
+                <svg className="mx-auto" width="160" height="22" viewBox="0 0 160 22">
                   {[...Array(20)].map((_, i) => (
                     <rect
                       key={i}
                       x={i * 8}
                       y="0"
                       width={7}
-                      height="36"
+                      height="22"
                       fill="black"
                     />
                   ))}
@@ -1283,13 +1283,54 @@ export function Receipt80mm({
             margin: ${isThermalFormat ? '0 auto' : '0'} !important;
             direction: ${isRTL ? 'rtl' : 'ltr'};
             font-size: ${isThermalFormat ? '13px' : '11px'};
-            font-weight: 800;
+            font-weight: ${isThermalFormat ? '500' : '800'};
+            line-height: ${isThermalFormat ? '1.2' : 'inherit'};
             overflow: visible;
             height: auto !important;
             min-height: 0 !important;
             page-break-after: avoid;
             break-after: avoid;
           }
+          ${isThermalFormat ? `
+          .receipt-80mm #receipt-content,
+          .receipt-80mm #receipt-content * {
+            color: #000 !important;
+            font-size: 13px !important;
+            line-height: 1.2 !important;
+            font-weight: 500;
+          }
+          .receipt-80mm #receipt-content .rx-firm-name {
+            font-size: 14px !important;
+            font-weight: 600 !important;
+          }
+          .receipt-80mm #receipt-content [data-section="totals"],
+          .receipt-80mm #receipt-content [data-section="totals"] *,
+          .receipt-80mm #receipt-content [data-section="footer"],
+          .receipt-80mm #receipt-content [data-section="footer"] * {
+            font-weight: 600 !important;
+          }
+          .receipt-80mm .rx-firm-logo img {
+            max-height: 56px !important;
+            height: auto !important;
+          }
+          .receipt-80mm #receipt-content .my-3,
+          .receipt-80mm #receipt-content .my-2,
+          .receipt-80mm #receipt-content .mb-3,
+          .receipt-80mm #receipt-content .mb-2,
+          .receipt-80mm #receipt-content .mt-2,
+          .receipt-80mm #receipt-content .mt-1 {
+            margin-top: 2px !important;
+            margin-bottom: 2px !important;
+          }
+          .receipt-80mm #receipt-content .py-2,
+          .receipt-80mm #receipt-content .py-1\\.5,
+          .receipt-80mm #receipt-content .py-1,
+          .receipt-80mm #receipt-content .pb-2,
+          .receipt-80mm #receipt-content .pt-2 {
+            padding-top: 1px !important;
+            padding-bottom: 1px !important;
+          }
+          ` : ''}
           @page { size: ${printPageSize}; margin: ${printPageMargin}; }
           ${isThermalFormat ? RECEIPT_80MM_SLIP_CSS : '.receipt-80mm, .receipt-a5, .receipt-a4 { width: 100% !important; max-width: 100% !important; transform: none !important; }'}
           #receipt-content .receipt-items-table {

@@ -13,8 +13,8 @@ type PrintFirmBrandProps = {
 export function PrintFirmBrand({
   firmName,
   logoDataUrl,
-  nameClassName = 'font-bold',
-  logoClassName = 'h-10 w-auto object-contain',
+  nameClassName = 'font-semibold',
+  logoClassName = 'max-h-14 h-auto w-auto object-contain',
   logoStyle,
 }: PrintFirmBrandProps) {
   const name = String(firmName ?? '').trim();
@@ -23,12 +23,12 @@ export function PrintFirmBrand({
   return (
     <div data-print-firm-header="1" className="text-center">
       {logo ? (
-        <div data-print-firm-logo="1" className="flex justify-center mb-1">
-          <img src={logo} alt="" className={logoClassName} style={logoStyle} />
+        <div data-print-firm-logo="1" className="rx-firm-logo flex justify-center mb-0.5">
+          <img src={logo} alt="" className={logoClassName} style={{ maxHeight: 56, ...logoStyle }} />
         </div>
       ) : null}
       {name ? (
-        <div data-print-firm-name="1" className={`text-center ${nameClassName}`}>
+        <div data-print-firm-name="1" className={`rx-firm-name text-center ${nameClassName}`}>
           {name}
         </div>
       ) : null}

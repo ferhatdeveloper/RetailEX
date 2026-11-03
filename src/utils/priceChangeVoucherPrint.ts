@@ -4,6 +4,7 @@
  */
 
 import type { PriceChangeVoucher } from '../services/api/priceChangeVouchers';
+import { RECEIPT_80MM_DOCUMENT_CSS } from './receipt80mmDocumentCss';
 import { buildCenteredFirmHeaderHtml } from './printFirmHeader';
 
 export interface PrintCompanyInfo {
@@ -34,65 +35,15 @@ export async function printPriceChangeVoucher(
       <meta charset="UTF-8">
       <title>Fiyat Değişim Fişi - ${voucher.voucher_no}</title>
       <style>
-        @media print {
-          @page {
-            size: 80mm auto;
-            margin: 0;
-          }
-          body {
-            margin: 0;
-            padding: 0;
-          }
-        }
-        
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-        
-        body {
-          font-family: 'Courier New', monospace;
-          font-size: 11px;
-          line-height: 1.3;
-          width: 80mm;
-          padding: 5mm;
-          background: white;
-        }
-        
-        .center {
-          text-align: center;
-        }
-        
-        .bold {
-          font-weight: bold;
-        }
-        
-        .large {
-          font-size: 14px;
-        }
-        
-        .divider {
-          border-top: 1px dashed #000;
-          margin: 3mm 0;
-        }
-        
-        .double-divider {
-          border-top: 2px solid #000;
-          margin: 3mm 0;
-        }
-        
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin: 2mm 0;
-        }
-        
-        .item-row td {
-          padding: 1mm 0;
-          vertical-align: top;
-          font-size: 10px;
-        }
+        ${RECEIPT_80MM_DOCUMENT_CSS}
+        * { box-sizing: border-box; }
+        .center { text-align: center; }
+        .bold { font-weight: 600; }
+        .large { font-size: 14px; font-weight: 600; }
+        .divider { border-top: 1px dashed #000; margin: 1.5mm 0; }
+        .double-divider { border-top: 2px solid #000; margin: 1.5mm 0; }
+        table { width: 100%; border-collapse: collapse; margin: 1mm 0; }
+        .item-row td { padding: 0; vertical-align: top; font-size: 13px; color: #000; }
         
         .item-name {
           width: 40%;
@@ -114,19 +65,18 @@ export async function printPriceChangeVoucher(
           text-align: right;
         }
         
-        .price-up {
-          color: #d32f2f;
-        }
-        
+        .price-up,
         .price-down {
-          color: #388e3c;
+          color: #000;
+          font-weight: 600;
         }
         
         .info-row {
           display: flex;
           justify-content: space-between;
           margin: 1mm 0;
-          font-size: 10px;
+          font-size: 13px;
+          color: #000;
         }
       </style>
     </head>
@@ -135,11 +85,11 @@ export async function printPriceChangeVoucher(
       ${buildCenteredFirmHeaderHtml({
         firmName: companyInfo.companyName,
         logoDataUrl: companyInfo.logoDataUrl,
-        nameStyle: 'text-align:center;font-weight:700;font-size:14px',
+        nameStyle: 'text-align:center;font-weight:600;font-size:14px;color:#000',
       })}
-      ${companyInfo.companyAddress ? `<div class="center" style="margin-top: 2mm; font-size: 9px;">${companyInfo.companyAddress}</div>` : ''}
-      ${companyInfo.companyPhone ? `<div class="center" style="font-size: 9px;">Tel: ${companyInfo.companyPhone}</div>` : ''}
-      ${companyInfo.companyTaxNo ? `<div class="center" style="font-size: 9px;">Vergi No: ${companyInfo.companyTaxNo}</div>` : ''}
+      ${companyInfo.companyAddress ? `<div class="center" style="margin-top: 1mm; font-size: 12px; color: #000;">${companyInfo.companyAddress}</div>` : ''}
+      ${companyInfo.companyPhone ? `<div class="center" style="font-size: 12px; color: #000;">Tel: ${companyInfo.companyPhone}</div>` : ''}
+      ${companyInfo.companyTaxNo ? `<div class="center" style="font-size: 12px; color: #000;">Vergi No: ${companyInfo.companyTaxNo}</div>` : ''}
       
       <div class="double-divider"></div>
       
@@ -166,10 +116,10 @@ export async function printPriceChangeVoucher(
       <!-- Items Header -->
       <table>
         <tr style="border-bottom: 1px dashed #000;">
-          <td class="item-name bold" style="font-size: 9px;">ÜRÜN</td>
-          <td class="item-old-price bold" style="font-size: 9px; text-align: right;">ESKİ</td>
-          <td class="item-new-price bold" style="font-size: 9px; text-align: right;">YENİ</td>
-          <td class="item-diff bold" style="font-size: 9px; text-align: right;">FARK</td>
+          <td class="item-name bold" style="font-size: 12px; color: #000;">ÜRÜN</td>
+          <td class="item-old-price bold" style="font-size: 12px; color: #000; text-align: right;">ESKİ</td>
+          <td class="item-new-price bold" style="font-size: 12px; color: #000; text-align: right;">YENİ</td>
+          <td class="item-diff bold" style="font-size: 12px; color: #000; text-align: right;">FARK</td>
         </tr>
       </table>
       
@@ -186,7 +136,7 @@ export async function printPriceChangeVoucher(
               <td class="item-diff ${diffClass}">${diffSign}${item.difference.toFixed(0)}</td>
             </tr>
             <tr>
-              <td colspan="4" style="font-size: 8px; padding-left: 2mm; color: #666;">
+              <td colspan="4" style="font-size: 12px; padding-left: 1mm; color: #000;">
                 ${item.code} | ${diffSign}${item.differencePercent.toFixed(1)}%
               </td>
             </tr>
@@ -205,10 +155,10 @@ export async function printPriceChangeVoucher(
       <div class="double-divider"></div>
       
       <!-- Footer -->
-      <div class="center" style="margin-top: 3mm; font-size: 9px; color: #666;">
+      <div class="center" style="margin-top: 1mm; font-size: 12px; color: #000;">
         ${new Date().toLocaleString('tr-TR')}
       </div>
-      <div class="center" style="margin-top: 2mm; font-size: 8px; color: #999;">
+      <div class="center" style="margin-top: 1mm; font-size: 12px; color: #000;">
         RetailOS - Fiyat Değişim Fişi
       </div>
     </body>

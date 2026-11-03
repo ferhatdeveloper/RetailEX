@@ -99,16 +99,16 @@ export function ServiceReceipt80mm({ data, onClose }: ServiceReceiptProps) {
 
                 {/* Receipt Content */}
                 <div className="flex-1 overflow-auto p-6 bg-white text-black">
-                    <div id="receipt-content" className="w-full max-w-[80mm] mx-auto font-mono text-sm">
+                    <div id="receipt-content" className="w-full max-w-[72mm] mx-auto font-mono text-[13px] leading-tight text-black font-medium">
 
                         {/* Store Header */}
-                        <div className="text-center border-b-2 border-dashed border-gray-400 pb-3 mb-3">
-                            <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-xl font-bold mb-1" />
-                            <div className="text-xs text-gray-700">{String(t.tagline)}</div>
+                        <div className="text-center border-b-2 border-dashed border-black pb-1 mb-1">
+                            <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-[14px] font-semibold mb-0 text-black" />
+                            <div className="text-[12px] text-black">{String(t.tagline)}</div>
                         </div>
 
                         {/* Info */}
-                        <div className="text-xs mb-3 space-y-1">
+                        <div className="text-[13px] mb-1 space-y-0">
                             <div className="flex justify-between">
                                 <span>{String(t.dateLabel).toUpperCase()}:</span>
                                 <span>{formatDate(data.date)}</span>
@@ -119,27 +119,27 @@ export function ServiceReceipt80mm({ data, onClose }: ServiceReceiptProps) {
                             </div>
                         </div>
 
-                        <div className="border-t-2 border-dashed border-gray-400 my-3"></div>
+                        <div className="border-t-2 border-dashed border-black my-1"></div>
 
                         {/* Transaction Details */}
-                        <div className="text-center mb-4">
-                            <div className="font-bold text-lg mb-1">
+                        <div className="text-center mb-1">
+                            <div className="font-semibold text-[14px] mb-0 text-black">
                                 {data.type === 'internal' ? String(t.balanceLoading) : String(t.serviceTopUp)}
                             </div>
-                            <div className="text-sm font-semibold text-gray-700">{data.provider.toUpperCase()}</div>
-                            <div className="text-xs mt-1">{String(t.transactionNumberLabel)}:</div>
+                            <div className="text-[13px] font-medium text-black">{data.provider.toUpperCase()}</div>
+                            <div className="text-[12px] mt-0">{String(t.transactionNumberLabel)}:</div>
                             <div className="font-mono text-base font-bold my-1">{data.target}</div>
                         </div>
 
-                        <div className="border-t-2 border-dashed border-gray-400 my-3"></div>
+                        <div className="border-t-2 border-dashed border-black my-1"></div>
 
                         {/* Amount */}
-                        <div className="text-xs space-y-1 mb-3">
-                            <div className="flex justify-between text-base font-bold">
+                        <div className="text-[13px] space-y-0 mb-1">
+                            <div className="flex justify-between text-[14px] font-semibold">
                                 <span>{String(t.amountLabel).toUpperCase()}:</span>
                                 <span>{formatNumber(data.amount, 2, true)} {data.currency}</span>
                             </div>
-                            <div className="flex justify-between text-xs mt-2 text-gray-600">
+                            <div className="flex justify-between text-[13px] mt-0 text-black">
                                 <span>{String(t.paymentMethodLabel)}:</span>
                                 <span>
                                     {data.paymentMethod === 'cash' ? String(t.paymentCash) :
@@ -149,23 +149,23 @@ export function ServiceReceipt80mm({ data, onClose }: ServiceReceiptProps) {
                             </div>
                         </div>
 
-                        <div className="border-t-2 border-dashed border-gray-400 my-3"></div>
+                        <div className="border-t-2 border-dashed border-black my-1"></div>
 
                         {/* Warning for Top-up */}
                         {data.type === 'service' && (
-                            <div className="text-xs text-center font-bold mb-3 border border-black p-2 space-y-1">
+                            <div className="text-[12px] text-center font-semibold mb-1 border border-black p-1 space-y-0 text-black">
                                 <div>{String(t.digitalProductSaleNotice)}</div>
                                 <div>{String(t.noReturnPolicyNotice)}</div>
                                 {(data as any).smsSent && (
-                                    <div className="flex items-center justify-center gap-1 text-green-600 pt-1 border-t border-dashed border-gray-400 mt-1">
-                                        <span className="text-[10px]">✔ {String(t.smsNotificationSent)}</span>
+                                    <div className="flex items-center justify-center gap-1 text-black pt-0 border-t border-dashed border-black mt-1">
+                                        <span className="text-[12px] font-medium">✔ {String(t.smsNotificationSent)}</span>
                                     </div>
                                 )}
                             </div>
                         )}
 
                         {/* Footer */}
-                        <div className="text-center text-xs text-gray-600 mt-4">
+                        <div className="text-center text-[13px] text-black font-semibold mt-1">
                             <div className="mb-1 font-bold">{String(t.thanksForChoosingUs)}</div>
                         </div>
 
@@ -181,12 +181,24 @@ export function ServiceReceipt80mm({ data, onClose }: ServiceReceiptProps) {
           #receipt-content, #receipt-content * {
             visibility: visible;
           }
+          @page { size: 80mm auto; margin: 0; }
+          html, body { height: auto !important; min-height: 0 !important; margin: 0 !important; }
           #receipt-content {
             position: absolute;
             left: 0;
             top: 0;
-            width: 80mm;
+            width: 72mm !important;
+            max-width: 72mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            padding: 2mm !important;
+            color: #000 !important;
+            font-size: 13px !important;
+            font-weight: 500;
+            line-height: 1.2 !important;
           }
+          #receipt-content, #receipt-content * { color: #000 !important; }
+          #receipt-content .rx-firm-name { font-weight: 600 !important; }
           .print\\:hidden {
             display: none !important;
           }

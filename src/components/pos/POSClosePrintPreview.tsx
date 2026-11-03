@@ -149,7 +149,7 @@ export function POSClosePrintPreview({
               <div className="p-6">
                 {printFormat === '80mm' ? (
                   /* 80mm Format */
-                  <div className="font-mono text-xs">
+                  <div className="font-mono text-[13px] leading-tight text-black font-medium">
                     <div className="text-center mb-4">
                       <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-base font-bold" />
                       <div className="text-xs">{tm('posStoreSalesSystem')}</div>
@@ -240,12 +240,12 @@ export function POSClosePrintPreview({
                                 <span>{tm('posNetTurnover')}</span>
                                 <span className="font-bold">{formatNumber(c.netRevenue, 2, false)}</span>
                               </div>
-                              <div className="flex justify-between text-gray-600 text-[10px]">
+                              <div className="flex justify-between text-black text-[13px] font-medium">
                                 <span>{tm('posCashCard')}</span>
                                 <span>{formatNumber(c.cashTotal, 2, false)} / {formatNumber(c.cardTotal, 2, false)}</span>
                               </div>
                               {c.creditTotal > 0 && (
-                                <div className="flex justify-between text-gray-600 text-[10px]">
+                                <div className="flex justify-between text-black text-[13px] font-medium">
                                   <span>{t.veresiyeLabel}</span>
                                   <span>{formatNumber(c.creditTotal, 2, false)}</span>
                                 </div>
@@ -310,7 +310,7 @@ export function POSClosePrintPreview({
 
                     <div className="text-center text-xs">
                       <div>ExRetailOS</div>
-                      <div className="text-[10px]">{tm('posStoreSalesMgmtSystem')}</div>
+                      <div className="text-[13px] text-black">{tm('posStoreSalesMgmtSystem')}</div>
                     </div>
                   </div>
                 ) : (
@@ -518,20 +518,36 @@ export function POSClosePrintPreview({
               width: 100%;
             }
             @page {
-              size: ${printFormat === '80mm' ? '80mm 297mm' : 'A4 portrait'};
-              margin: ${printFormat === '80mm' ? '5mm' : '10mm'};
+              size: ${printFormat === '80mm' ? '80mm auto' : 'A4 portrait'};
+              margin: ${printFormat === '80mm' ? '0' : '10mm'};
             }
             body {
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
               background: white !important;
             }
+            ${printFormat === '80mm' ? `
+            html, body { height: auto !important; min-height: 0 !important; }
+            #print-content {
+              width: 72mm !important;
+              max-width: 72mm !important;
+              height: auto !important;
+              min-height: 0 !important;
+              padding: 2mm !important;
+              color: #000 !important;
+              font-size: 13px !important;
+              font-weight: 500;
+              line-height: 1.2 !important;
+            }
+            #print-content, #print-content * { color: #000 !important; }
+            #print-content .rx-firm-name { font-weight: 600 !important; font-size: 14px !important; }
+            ` : ''}
           }
         `}} />
         <div id="print-content" className={printFormat === '80mm' ? 'max-w-[80mm]' : 'max-w-[210mm]'}>
           {printFormat === '80mm' ? (
             /* 80mm Print */
-            <div className="font-mono text-xs p-2">
+            <div className="font-mono text-[13px] leading-tight text-black font-medium p-1">
               <div className="text-center mb-3">
                 <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-base font-bold" />
                 <div className="text-xs">{tm('posStoreSalesSystem')}</div>
@@ -541,15 +557,15 @@ export function POSClosePrintPreview({
               </div>
 
               <div className="space-y-0.5 mb-2">
-                <div className="flex justify-between text-[10px]"><span>{t.dateLabel}:</span><span>{new Date().toLocaleDateString('tr-TR')}</span></div>
-                <div className="flex justify-between text-[10px]"><span>{t.timeLabel}:</span><span>{new Date().toLocaleTimeString('tr-TR')}</span></div>
-                <div className="flex justify-between text-[10px]"><span>{t.cashierLabel}:</span><span>{currentStaff}</span></div>
-                <div className="flex justify-between text-[10px]"><span>{t.cashRegister}:</span><span>{tm('posCashRegister1')}</span></div>
+                <div className="flex justify-between text-[13px] text-black"><span>{t.dateLabel}:</span><span>{new Date().toLocaleDateString('tr-TR')}</span></div>
+                <div className="flex justify-between text-[13px] text-black"><span>{t.timeLabel}:</span><span>{new Date().toLocaleTimeString('tr-TR')}</span></div>
+                <div className="flex justify-between text-[13px] text-black"><span>{t.cashierLabel}:</span><span>{currentStaff}</span></div>
+                <div className="flex justify-between text-[13px] text-black"><span>{t.cashRegister}:</span><span>{tm('posCashRegister1')}</span></div>
               </div>
 
               <div className="border-t border-dashed border-black my-2"></div>
-              <div className="font-bold text-[10px] mb-1">{tm('reportsSalesSummarySection')}</div>
-              <div className="space-y-0.5 mb-2 text-[10px]">
+              <div className="font-bold text-[13px] text-black mb-1">{tm('reportsSalesSummarySection')}</div>
+              <div className="space-y-0.5 mb-2 text-[13px] text-black">
                 <div className="flex justify-between"><span>{tm('posSalesCountLabel')}</span><span>{positiveSales.length}</span></div>
                 <div className="flex justify-between"><span>{tm('posGrossSalesLabel')}</span><span>{formatNumber(totalSales, 2, false)}</span></div>
                 <div className="flex justify-between"><span>{t.return}:</span><span>-{formatNumber(returnTotal, 2, false)}</span></div>
@@ -557,8 +573,8 @@ export function POSClosePrintPreview({
               </div>
 
               <div className="border-t border-dashed border-black my-2"></div>
-              <div className="font-bold text-[10px] mb-1">{tm('posPaymentMethodsCaps')}</div>
-              <div className="space-y-0.5 mb-2 text-[10px]">
+              <div className="font-bold text-[13px] text-black mb-1">{tm('posPaymentMethodsCaps')}</div>
+              <div className="space-y-0.5 mb-2 text-[13px] text-black">
                 <div className="flex justify-between"><span>{t.cashLabel} ({paymentBreakdown.cashCount}):</span><span>{formatNumber(cashTotal, 2, false)}</span></div>
                 <div className="flex justify-between"><span>{tm('posCreditCardShort')} ({paymentBreakdown.cardCount}):</span><span>{formatNumber(cardTotal, 2, false)}</span></div>
                 <div className="flex justify-between"><span>{tm('veresiye')} ({paymentBreakdown.creditCount}):</span><span>{formatNumber(creditTotal, 2, false)}</span></div>
@@ -569,8 +585,8 @@ export function POSClosePrintPreview({
               {cashierStats.length > 0 && (
                 <>
                   <div className="border-t border-dashed border-black my-2"></div>
-                  <div className="font-bold text-[10px] mb-1">{tm('posCashierTurnoverShort')}</div>
-                  <div className="space-y-1 mb-2 text-[10px]">
+                  <div className="font-bold text-[13px] text-black mb-1">{tm('posCashierTurnoverShort')}</div>
+                  <div className="space-y-1 mb-2 text-[13px] text-black">
                     {cashierStats.map((c) => (
                       <div key={c.name}>
                         <div className="flex justify-between font-bold"><span>{c.name}</span><span>{tm('posReceiptCountSuffix').replace('{count}', String(c.salesCount))}</span></div>
@@ -582,8 +598,8 @@ export function POSClosePrintPreview({
               )}
 
               <div className="border-t border-dashed border-black my-2"></div>
-              <div className="font-bold text-[10px] mb-1">{tm('posCashStatusCaps')}</div>
-              <div className="space-y-0.5 mb-2 text-[10px]">
+              <div className="font-bold text-[13px] text-black mb-1">{tm('posCashStatusCaps')}</div>
+              <div className="space-y-0.5 mb-2 text-[13px] text-black">
                 <div className="flex justify-between"><span>{tm('posOpeningShort')}</span><span>{formatNumber(openingCash, 2, false)}</span></div>
                 <div className="flex justify-between"><span>{tm('posCashSaleShort')}</span><span>{formatNumber(cashTotal, 2, false)}</span></div>
                 <div className="flex justify-between font-bold"><span>{tm('posExpectedLabel')}</span><span>{formatNumber(expectedCash, 2, false)}</span></div>
@@ -594,7 +610,7 @@ export function POSClosePrintPreview({
               {note && (
                 <>
                   <div className="border-t border-dashed border-black my-2"></div>
-                  <div className="mb-2 text-[10px]">
+                  <div className="mb-2 text-[13px] text-black">
                     <div className="font-bold mb-0.5">{tm('posNoteCaps')}</div>
                     <div>{note}</div>
                   </div>
@@ -602,7 +618,7 @@ export function POSClosePrintPreview({
               )}
 
               <div className="border-t border-dashed border-black my-2"></div>
-              <div className="text-center text-[9px]">
+              <div className="text-center text-[12px] text-black font-medium">
                 <div>ExRetailOS</div>
                 <div>{tm('posStoreSalesMgmtSystem')}</div>
               </div>

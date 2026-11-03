@@ -405,7 +405,7 @@ export function buildRestaurantKitchenTicketHtml(input: {
   const printedAtLabel =
     printedAtOverride ?? new Date().toLocaleString(kitchenDateLocale(locale));
 
-  const cellBorder = 'border:1px solid #000;padding:3px 4px;vertical-align:top';
+  const cellBorder = 'border:1px solid #000;padding:1px 2px;vertical-align:top';
   const rows = (items || []).map((it) => {
     const opt = it.options?.trim();
     const nt = it.notes?.trim();
@@ -415,21 +415,21 @@ export function buildRestaurantKitchenTicketHtml(input: {
     const detailText = detailParts.join(' · ');
     const qty = `${it.quantity}x`;
     const mainRow = `<tr>
-<td style="${cellBorder};width:16%;min-width:14mm;text-align:center;font-size:14px;font-weight:900;white-space:nowrap">${escapeHtml(qty)}</td>
-<td style="${cellBorder};font-size:14px;font-weight:900;word-break:break-word;vertical-align:top">${escapeHtml(it.name)}</td>
+<td style="${cellBorder};width:16%;min-width:14mm;text-align:center;font-size:14px;font-weight:600;white-space:nowrap">${escapeHtml(qty)}</td>
+<td style="${cellBorder};font-size:14px;font-weight:600;word-break:break-word;vertical-align:top">${escapeHtml(it.name)}</td>
 </tr>`;
     const descRow =
       detailParts.length > 0
         ? `<tr>
-<td colspan="2" style="${cellBorder};font-size:12px;font-weight:800;font-style:italic;line-height:1.35;word-break:break-word;text-align:start" role="note" aria-label="${escapeHtml(detailText)}">${escapeHtml(detailText)}</td>
+<td colspan="2" style="${cellBorder};font-size:12px;font-weight:500;line-height:1.2;word-break:break-word;text-align:start;color:#000" role="note" aria-label="${escapeHtml(detailText)}">${escapeHtml(detailText)}</td>
 </tr>`
         : '';
     return mainRow + descRow;
   }).join('');
 
   const thead = `<thead><tr>
-<th style="${cellBorder};width:16%;text-align:center;font-size:11px;font-weight:800">${escapeHtml(L.colQty)}</th>
-<th style="${cellBorder};text-align:left;font-size:11px;font-weight:800">${escapeHtml(L.colProduct)}</th>
+<th style="${cellBorder};width:16%;text-align:center;font-size:12px;font-weight:600;color:#000">${escapeHtml(L.colQty)}</th>
+<th style="${cellBorder};text-align:left;font-size:12px;font-weight:600;color:#000">${escapeHtml(L.colProduct)}</th>
 </tr></thead>`;
 
   const metaTdLabel = `${cellBorder};width:38%;font-size:12px;font-weight:800;word-break:break-word`;
@@ -451,17 +451,17 @@ export function buildRestaurantKitchenTicketHtml(input: {
   const firmHeaderHtml = buildCenteredFirmHeaderHtml({
     firmName: input.firmName,
     logoDataUrl: input.logoDataUrl,
-    nameStyle: 'text-align:center;font-weight:900;font-size:16px;margin:0 0 4px',
+    nameStyle: 'text-align:center;font-weight:600;font-size:14px;margin:0;color:#000;line-height:1.15',
   });
 
   return `<!DOCTYPE html><html lang="${locale}"><head><meta charset="utf-8">${RECEIPT_80MM_VIEWPORT_FOR_HEADLESS}<title>${escapeHtml(L.title)}</title>
 <style>
 ${RECEIPT_80MM_DOCUMENT_CSS}
   html, body { height: auto !important; min-height: 0 !important; }
-  body{font-family:'Courier New',Courier,monospace;padding:3mm 3mm 2mm 3mm;font-size:14px;line-height:1.3;box-sizing:border-box;color:#000;font-weight:800;-webkit-print-color-adjust:exact;print-color-adjust:exact;-webkit-font-smoothing:none;text-rendering:geometricPrecision;-webkit-text-stroke:0.25px #000}
+  body{font-family:'Courier New',Courier,monospace;padding:0;font-size:13px;line-height:1.2;box-sizing:border-box;color:#000;font-weight:500;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   *{color:#000 !important;box-sizing:border-box}
-  h2{text-align:center;margin:4px 0 6px 0;font-size:18px;font-weight:900;letter-spacing:0.06em}
-  hr{border:0;border-top:1.5px dashed #000;margin:6px 0}
+  h2{text-align:center;margin:1px 0 2px 0;font-size:14px;font-weight:600;letter-spacing:0}
+  hr{border:0;border-top:1px dashed #000;margin:2px 0}
   table.kitchen-lines{width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid #000;margin-bottom:4px}
   table.kitchen-lines th,table.kitchen-lines td{border:1px solid #000}
 </style>
@@ -469,11 +469,11 @@ ${RECEIPT_80MM_DOCUMENT_CSS}
 ${firmHeaderHtml}
 <h2>${escapeHtml(L.title)}</h2>
 <table class="kitchen-lines"><tbody>${metaRows}</tbody></table>
-${orderNote?.trim() ? `<p style="margin:4px 0 6px 0;font-size:13px;font-weight:800;border:1px dashed #000;padding:4px">${escapeHtml(orderNote.trim())}</p>` : ''}
+${orderNote?.trim() ? `<p style="margin:2px 0;font-size:13px;font-weight:500;border:1px dashed #000;padding:2px;color:#000">${escapeHtml(orderNote.trim())}</p>` : ''}
 <hr/>
-<table class="kitchen-lines">${thead}<tbody>${rows || `<tr><td colspan="2" style="border:1px solid #000;padding:6px;font-size:10px;text-align:center">${escapeHtml(L.empty)}</td></tr>`}</tbody></table>
+<table class="kitchen-lines">${thead}<tbody>${rows || `<tr><td colspan="2" style="border:1px solid #000;padding:2px;font-size:12px;color:#000;text-align:center">${escapeHtml(L.empty)}</td></tr>`}</tbody></table>
 <hr/>
-<p style="text-align:center;font-size:12px;font-weight:800;margin:4px 0 0 0">${escapeHtml(L.footer)}</p>
+<p style="text-align:center;font-size:12px;font-weight:600;margin:2px 0 0 0;color:#000">${escapeHtml(L.footer)}</p>
 </body></html>`;
 }
 

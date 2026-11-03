@@ -83,7 +83,7 @@ export function PaymentReceiptPreview({
   const deviceName = resolveDeviceName();
 
   return (
-    <div className={`w-full max-w-md mx-auto ${darkMode ? 'bg-white text-black' : 'bg-white text-black'} shadow-lg rounded-lg overflow-hidden`}>
+    <div className={`rx-sales-print-slip w-full max-w-md mx-auto ${darkMode ? 'bg-white text-black' : 'bg-white text-black'} shadow-lg rounded-lg overflow-hidden`}>
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 text-center">
         <PrintFirmBrand

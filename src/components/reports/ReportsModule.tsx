@@ -262,6 +262,7 @@ import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { useResponsive } from '../../hooks/useResponsive';
 import { buildReceipt80mmPrintHtml } from '../../utils/receipt80mmPrintHtml';
+import { RECEIPT_80MM_DOCUMENT_CSS } from '../../utils/receipt80mmDocumentCss';
 import { buildDayEndZReportPrintHtml } from '../../utils/dayEndZReportPrint';
 import { loadCenteredFirmHeader } from '../../utils/printFirmHeader';
 import {
@@ -6194,53 +6195,21 @@ export function ReportsModule({
     const html80 = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>${escHtml(L('reportsPrintDailyTitle'))} — ${escHtml(titleDates)}</title>
 <style>
-  /* 80 mm termal: ortada durmasın — önizleme ve yazdırmada sola yaslı tek sütun */
-  html {
-    width: 80mm;
-    max-width: 80mm;
-    margin: 0;
-    padding: 0;
-  }
-  @media print {
-    @page { size: 80mm auto; margin: 0; }
-    html, body {
-      width: 80mm !important;
-      max-width: 80mm !important;
-      margin: 0 !important;
-      padding-left: 0 !important;
-      padding-right: 0 !important;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-  }
-  body {
-    box-sizing: border-box;
-    width: 100%;
-    max-width: 80mm;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 11px;
-    line-height: 1.35;
-    padding: 4mm 3mm;
-    margin: 0;
-    color: #000;
-    text-align: left;
-    word-break: break-word;
-    overflow-wrap: anywhere;
-  }
+  ${RECEIPT_80MM_DOCUMENT_CSS}
   .center { text-align: center; }
-  .bold { font-weight: bold; }
-  .large { font-size: 13px; }
-  .small { font-size: 10px; margin-top: 1mm; }
-  .muted { color: #444; }
+  .bold { font-weight: 600; }
+  .large { font-size: 14px; font-weight: 600; }
+  .small { font-size: 12px; margin-top: 1mm; color: #000; }
+  .muted { color: #000; }
   .wrap { overflow-wrap: anywhere; word-break: break-word; }
-  .divider { border-top: 1px dashed #000; margin: 3mm 0; }
-  .divider.light { border-top: 1px dotted #666; margin: 2mm 0; }
-  .row { display: flex; justify-content: space-between; gap: 2mm; margin: 0.5mm 0; }
+  .divider { border-top: 1px dashed #000; margin: 1.5mm 0; }
+  .divider.light { border-top: 1px dashed #000; margin: 1mm 0; }
+  .row { display: flex; justify-content: space-between; gap: 2mm; margin: 0; line-height: 1.2; }
   .row span:first-child { flex: 1; min-width: 0; }
   .row span:last-child { flex-shrink: 0; text-align: right; }
-  .sub { font-size: 10px; color: #333; margin: 0.5mm 0 1mm; }
-  .sale-block { margin-top: 2mm; }
-  .section-title { margin: 3mm 0 2mm; text-align: center; font-weight: bold; font-size: 11px; }
+  .sub { font-size: 12px; color: #000; margin: 0; }
+  .sale-block { margin-top: 1mm; }
+  .section-title { margin: 1.5mm 0 1mm; text-align: center; font-weight: 600; font-size: 13px; color: #000; }
 </style></head><body>
   ${firmHeaderHtml}
   <div class="center bold large">${escHtml(L('reportsPrintDailyTitle80'))}</div>

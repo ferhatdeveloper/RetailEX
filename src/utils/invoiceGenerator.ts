@@ -1,4 +1,5 @@
 import type { Sale } from '../App';
+import { RECEIPT_80MM_DOCUMENT_CSS } from './receipt80mmDocumentCss';
 import { buildCenteredFirmHeaderHtml } from './printFirmHeader';
 
 export interface InvoiceData {
@@ -94,26 +95,15 @@ export function printInvoiceHTML(invoice: InvoiceData): string {
   <meta charset="UTF-8">
   <title>Fiş - ${invoice.receiptNumber}</title>
   <style>
-    @media print {
-      @page { margin: 0; }
-      body { margin: 0.5cm; }
-    }
-    body {
-      font-family: 'Courier New', monospace;
-      font-size: 12px;
-      line-height: 1.4;
-      max-width: 80mm;
-      margin: 0 auto;
-      padding: 10mm;
-    }
+    ${RECEIPT_80MM_DOCUMENT_CSS}
     .center { text-align: center; }
     .right { text-align: right; }
-    .bold { font-weight: bold; }
-    .line { border-top: 1px dashed #000; margin: 10px 0; }
-    .double-line { border-top: 2px solid #000; margin: 10px 0; }
+    .bold { font-weight: 600; }
+    .line { border-top: 1px dashed #000; margin: 2px 0; }
+    .double-line { border-top: 2px solid #000; margin: 2px 0; }
     table { width: 100%; border-collapse: collapse; }
-    td { padding: 2px 0; }
-    .total-row { font-size: 14px; font-weight: bold; }
+    td { padding: 1px 0; color: #000; }
+    .total-row { font-size: 14px; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -121,11 +111,11 @@ export function printInvoiceHTML(invoice: InvoiceData): string {
     ${buildCenteredFirmHeaderHtml({
       firmName: invoice.storeName,
       logoDataUrl: invoice.logoDataUrl,
-      nameStyle: 'text-align:center;font-size:16px;font-weight:700',
+      nameStyle: 'text-align:center;font-size:14px;font-weight:600;color:#000',
     })}
-    <div style="font-size: 11px;">${invoice.storeAddress}</div>
-    <div style="font-size: 11px;">Vergi No: ${invoice.storeTaxNo}</div>
-    <div style="font-size: 11px;">Tel: ${invoice.storePhone}</div>
+    <div style="font-size: 12px; color: #000;">${invoice.storeAddress}</div>
+    <div style="font-size: 12px; color: #000;">Vergi No: ${invoice.storeTaxNo}</div>
+    <div style="font-size: 12px; color: #000;">Tel: ${invoice.storePhone}</div>
   </div>
   
   <div class="line"></div>
@@ -199,11 +189,11 @@ export function printInvoiceHTML(invoice: InvoiceData): string {
   
   <div class="line"></div>
   
-  <div class="center" style="font-size: 11px; margin-top: 10px;">
+  <div class="center" style="font-size: 13px; font-weight: 600; color: #000; margin-top: 2px;">
     Bizi tercih ettiğiniz için teşekkürler!
   </div>
   
-  <div class="center" style="font-size: 10px; margin-top: 20px;">
+  <div class="center" style="font-size: 12px; color: #000; margin-top: 2px;">
     ${new Date().toLocaleString('tr-TR')}
   </div>
   
