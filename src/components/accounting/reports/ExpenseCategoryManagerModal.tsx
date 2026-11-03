@@ -208,19 +208,21 @@ export function ExpenseCategoryManagerModal({
 
   return (
     <PercentBodyModal nested onClose={onClose} size="list" ariaLabel={title}>
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
-        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
-          aria-label={tm('close')}
-        >
-          <X className="h-5 w-5" />
-        </button>
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white shrink-0 sm:px-8 sm:py-6">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold tracking-tight sm:text-xl">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 text-white hover:bg-white/25 active:scale-[0.98]"
+            aria-label={tm('close')}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
-      <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-5 py-4">
+      <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-5 py-4 sm:px-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <input
             value={draftName}
@@ -233,20 +235,20 @@ export function ExpenseCategoryManagerModal({
             }}
             placeholder={tm('expenseCategoryNewNamePlaceholder')}
             aria-label={tm('expenseCategoryNewNamePlaceholder')}
-            className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+            className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
           />
           <button
             type="button"
             onClick={() => void submitNew()}
             disabled={saving || !draftName.trim()}
-            className="shrink-0 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
+            className="shrink-0 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold uppercase tracking-wider text-white shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98]"
           >
             + {tm('add')}
           </button>
         </div>
       </div>
 
-      <PercentBodyModalScrollBody className="px-5 py-4">
+      <PercentBodyModalScrollBody className="p-5 sm:p-8">
         <DevExDataGrid
           data={categories}
           columns={columns}
@@ -262,7 +264,7 @@ export function ExpenseCategoryManagerModal({
         />
       </PercentBodyModalScrollBody>
 
-      <p className="shrink-0 border-t border-slate-200 px-5 py-3 text-xs leading-relaxed text-slate-500">
+      <p className="shrink-0 border-t border-slate-100 bg-slate-50/50 px-5 py-3 text-xs leading-relaxed text-slate-500 sm:px-8">
         {tm('expenseCategorySystemNote')}
       </p>
     </PercentBodyModal>

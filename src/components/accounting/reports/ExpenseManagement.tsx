@@ -17,7 +17,7 @@ import {
   Banknote, TrendingUp, Filter, X, Upload, ChevronDown
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
-import { PercentBodyModal } from '../../shared/PercentBodyModal';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { ExpenseCategoryManagerModal } from './ExpenseCategoryManagerModal';
 import {
   isSystemExpenseCategory,
@@ -991,27 +991,29 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       {showExpenseModal ? (
         <PercentBodyModal
           onClose={() => setShowExpenseModal(false)}
-          size="list"
-          shellClassName="!h-auto"
+          size="wide"
           ariaLabel={editingExpense ? tm('editExpense') : tm('newExpense')}
         >
-          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 shrink-0">
-            <h2 className="text-base font-semibold text-slate-900">
-              {editingExpense ? tm('editExpense') : tm('newExpense')}
-            </h2>
-            <button
-              type="button"
-              onClick={() => setShowExpenseModal(false)}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
-              aria-label={tm('close')}
-            >
-              <X className="h-5 w-5" />
-            </button>
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white shrink-0 sm:px-8 sm:py-6">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold tracking-tight sm:text-xl">
+                {editingExpense ? tm('editExpense') : tm('newExpense')}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowExpenseModal(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 text-white hover:bg-white/25 active:scale-[0.98]"
+                aria-label={tm('close')}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
-          <div className="shrink-0 overflow-y-auto overscroll-contain px-5 py-4 max-h-[min(70vh,calc(100dvh-10rem))]">
-            <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-6">
-              <div className="sm:col-span-2" data-expense-field="category">
+          <PercentBodyModalScrollBody className="p-5 sm:p-8">
+            {/* 2 sütun (dar) / 3 sütun (geniş); Kaydet footer sabit */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4 lg:grid-cols-3">
+              <div data-expense-field="category">
                 <div className="mb-1.5 flex items-center justify-between gap-2">
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     {tm('category')} *
@@ -1028,18 +1030,18 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 pr-10 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                    className="w-full min-w-0 appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-11 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">{tm('expenseCategoryPlaceholder')}</option>
                     {expenseCategorySelectOptions(formData.category).map((row) => (
                       <option key={row.value} value={row.value}>{row.label}</option>
                     ))}
                   </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
                 </div>
               </div>
 
-              <div className="sm:col-span-2" data-expense-field="amount">
+              <div data-expense-field="amount">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {entryCurrency ? `${tm('amount')} (${entryCurrency}) *` : `${tm('amount')} *`}
                 </label>
@@ -1049,21 +1051,21 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   value={formData.amount}
                   onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                   placeholder="45.000"
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
                 />
                 <div className="relative mt-1.5">
                   <select
                     aria-label={tm('currency')}
                     value={entryCurrency}
                     onChange={(e) => setFormData({ ...formData, amount_currency: e.target.value })}
-                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2 pr-10 text-sm font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                    className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 pr-11 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
                   >
                     {!entryCurrency ? <option value="">{tm('currency')}</option> : null}
                     {entryCurrencyChoices.map((code) => (
                       <option key={code} value={code}>{code}</option>
                     ))}
                   </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
                 </div>
                 {expenseFxPreview?.converted ? (
                   <p className="mt-1.5 text-[11px] font-medium text-slate-600">
@@ -1085,7 +1087,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                 ) : null}
               </div>
 
-              <div className="sm:col-span-2" data-expense-field="paymentMethod">
+              <div data-expense-field="paymentMethod">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {tm('paymentMethod')} *
                 </label>
@@ -1093,18 +1095,18 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   <select
                     value={formData.payment_method}
                     onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
-                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 pr-10 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                    className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-11 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="cash">{tm('cash')}</option>
                     <option value="bank_transfer">{tm('bankTransferEft')}</option>
                     <option value="credit_card">{tm('creditCard')}</option>
                     <option value="check">{tm('check')}</option>
                   </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
                 </div>
               </div>
 
-              <div className="sm:col-span-2" data-expense-field="date">
+              <div data-expense-field="date">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {tm('date')} *
                 </label>
@@ -1112,11 +1114,11 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   type="date"
                   value={formData.expense_date}
                   onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
-              <div className="sm:col-span-4" data-expense-field="description">
+              <div className="col-span-2 lg:col-span-2" data-expense-field="description">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {tm('description')} *
                 </label>
@@ -1125,11 +1127,11 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder={tm('expenseDescriptionPlaceholder')}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
-              <div className="sm:col-span-3" data-expense-field="ficheNo">
+              <div data-expense-field="ficheNo">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {tm('ficheNo')}
                 </label>
@@ -1140,11 +1142,11 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   value={formData.fiche_no}
                   aria-readonly="true"
                   title={tm('expenseFicheReadonly')}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-medium tabular-nums text-slate-700 outline-none"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 font-medium tabular-nums text-slate-700 outline-none"
                 />
               </div>
 
-              <div className="sm:col-span-3" data-expense-field="cashRegister">
+              <div data-expense-field="cashRegister">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {tm('costCenterCashRegister')}
                 </label>
@@ -1165,7 +1167,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                         };
                       });
                     }}
-                    className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 pr-10 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                    className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-11 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
                   >
                     {kasalar.length === 0 && <option value="">{tm('noCashRegisterFound')}</option>}
                     {kasalar.map(kasa => (
@@ -1174,11 +1176,11 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
                 </div>
               </div>
 
-              <div className="sm:col-span-3" data-expense-field="documentNo">
+              <div data-expense-field="documentNo">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {tm('documentNo')}
                 </label>
@@ -1187,11 +1189,11 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   value={formData.document_number}
                   onChange={(e) => setFormData({ ...formData, document_number: e.target.value })}
                   placeholder={tm('expenseDocumentNoPlaceholder')}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
-              <div className="sm:col-span-3" data-expense-field="notes">
+              <div className="col-span-2 lg:col-span-1" data-expense-field="notes">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {tm('notes')}
                 </label>
@@ -1200,12 +1202,12 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   placeholder={tm('additionalNotes')}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium text-slate-800 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500"
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div
-                className="sm:col-span-6"
+                className="col-span-2 lg:col-span-3"
                 data-expense-field="attachment"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
@@ -1237,7 +1239,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                     const picked = recordExpenseAttachmentFromList(e.dataTransfer.files);
                     applyExpenseAttachmentPick(picked);
                   }}
-                  className="flex w-full items-center gap-3 rounded-xl bg-slate-50 px-4 py-4 text-left"
+                  className="flex w-full items-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-left hover:border-blue-300 hover:bg-blue-50/40"
                 >
                   <Upload className="h-5 w-5 shrink-0 text-slate-400" />
                   <span className="min-w-0">
@@ -1251,13 +1253,13 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                 </button>
               </div>
             </div>
-          </div>
+          </PercentBodyModalScrollBody>
 
-          <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3 shrink-0">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/50 p-4 sm:gap-4 sm:p-6">
             <button
               type="button"
               onClick={() => setShowExpenseModal(false)}
-              className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+              className="rounded-2xl border-2 border-slate-200 px-5 py-3 text-sm font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-100 active:scale-[0.98]"
             >
               {tm('giveUp')}
             </button>
@@ -1265,7 +1267,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
               type="button"
               onClick={() => void handleSaveExpense()}
               disabled={savingExpense}
-              className="rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:pointer-events-none disabled:opacity-60"
+              className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold uppercase tracking-wider text-white shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98]"
             >
               {savingExpense ? tm('loading') : (editingExpense ? tm('update') : tm('save'))}
             </button>
