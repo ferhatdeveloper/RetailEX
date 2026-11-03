@@ -129,6 +129,7 @@ export function ReceiptStandardDocument({
                 logoDataUrl={logoSafe}
                 nameClassName={rx('company-name')}
                 logoClassName={rx('logo')}
+                logoStyle={{ maxHeight: isA5 ? 52 : 72, maxWidth: isA5 ? 52 : 72 }}
               />
               <div>
                 <div className={rx('company-meta')} style={{ textAlign: 'center' }}>

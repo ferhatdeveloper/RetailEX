@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Sale } from '../../core/types/models';
+import { moduleTranslations } from '../../locales/module-translations';
 import { buildDayEndZReportPrintHtml } from '../../utils/dayEndZReportPrint';
 import { formatPrintDateRange, formatPrintTime } from '../../utils/dateLocale';
 import { buildPosZReport } from '../../utils/posZReport';
@@ -37,7 +38,9 @@ describe('80mm fiş yerleşimi', () => {
     expect(css).toContain('font-weight: 600');
     expect(css).toContain('line-height: 1.2');
     expect(css).toContain('min-height: 0');
-    expect(css).toContain('max-height: 56px');
+    expect(css).toContain('max-height: 128px');
+    expect(css).toContain('max-width: 128px');
+    expect(css).not.toContain('56px');
     expect(css).not.toMatch(/min-height:\s*100vh/);
     expect(css).not.toMatch(/80mm\s+297mm/);
     expect(css).not.toMatch(/min-height:\s*\d{3,}mm/);
@@ -163,12 +166,14 @@ describe('80mm fiş yerleşimi', () => {
     expect(html).not.toContain('padding: 5mm');
   });
 
-  it('logo yüksekliği rulo yemesin diye 56px ile sınırlı', () => {
+  it('logo 72mm satırda okunur, 128px ile sınırlı', () => {
     const html = buildCenteredFirmHeaderHtml({
       firmName: FIRM,
       logoDataUrl: 'data:image/png;base64,AAAA',
     });
-    expect(html).toContain('max-height:56px');
+    expect(html).toContain('max-height:128px');
+    expect(html).toContain('max-width:128px');
+    expect(html).not.toContain('56px');
     expect(html).toContain('data-print-firm-name="1"');
     expect(html).toContain('font-weight:600');
   });
@@ -182,6 +187,8 @@ describe('80mm fiş yerleşimi', () => {
     expect(imgRule).toContain('margin-left: auto');
     expect(imgRule).toContain('margin-right: auto');
     expect(imgRule).toContain('float: none');
+    expect(imgRule).toContain('max-height: 128px');
+    expect(imgRule).toContain('max-width: 128px');
     expect(css).toMatch(/\.rx-firm-header[\s\S]*?text-align:\s*center/);
     expect(RECEIPT_80MM_SLIP_CSS).toMatch(/\[data-section="header"\][\s\S]*?text-align:\s*center/);
 
@@ -197,8 +204,10 @@ describe('80mm fiş yerleşimi', () => {
     expect(imgTag).toContain('margin-left:auto');
     expect(imgTag).toContain('margin-right:auto');
     expect(imgTag).toContain('float:none');
+    expect(html).toContain('direction:ltr');
     expect(html.slice(0, logoAt)).toContain('text-align:center');
     expect(html).toContain('width:100%');
-    expect(html).toContain('max-height:56px');
+    expect(html).toContain('max-height:128px');
+    expect(html).toContain('max-width:128px');
   });
 });

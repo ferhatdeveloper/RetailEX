@@ -15,7 +15,7 @@ import { resolveProductNameForReceipt } from '../../utils/receiptProductName';
 import { getAccountReceiptSystemPrinterName } from '../../utils/restaurantAccountReceiptPrinter';
 import { printHtmlInHiddenIframe } from '../../utils/restaurantReceiptPrint';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
-import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_SLIP_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from '../../utils/receipt80mmDocumentCss';
+import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_LOGO_MAX_PX, RECEIPT_80MM_SLIP_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from '../../utils/receipt80mmDocumentCss';
 import { formatPrintDateTime } from '../../utils/dateLocale';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { RECEIPT_A4_DOCUMENT_CSS } from '../../utils/receiptA4DocumentCss';
@@ -234,7 +234,6 @@ export function Receipt80mm({
       ? 'min(96vw, 820px)'
       : 'min(97vw, 1100px)';
   const previewModalHeight = isThermalFormat ? 'min(90vh, 800px)' : 'min(92vh, 920px)';
-  const logoMaxWidth = isThermalFormat ? '60mm' : resolvedPaperFormat === 'A5' ? '100mm' : '130mm';
   const receiptVariantCss = `
       .receipt-a4 #receipt-content {
         width: 100% !important;
@@ -730,7 +729,6 @@ export function Receipt80mm({
                 firmName={printFirmName}
                 logoDataUrl={receiptSettings?.logoDataUrl}
                 nameClassName="text-[1.35rem] font-black mb-0.5 text-gray-950 leading-tight print:text-lg print:font-black"
-                logoStyle={{ maxWidth: logoMaxWidth }}
               />
               {receiptSettings?.companyPhone && (
                 <div className="text-[12px] font-bold text-gray-900 mt-0.5 print:text-[13px] print:font-bold">
@@ -925,7 +923,6 @@ export function Receipt80mm({
                 firmName={printFirmName}
                 logoDataUrl={receiptSettings?.logoDataUrl}
                 nameClassName="text-[1.35rem] font-black mb-0.5 text-gray-950 leading-tight print:text-lg print:font-black"
-                logoStyle={{ maxWidth: logoMaxWidth }}
               />
               {(receiptSettings?.companyAddress || receiptSettings?.companyPhone) && (
                 <div className="text-[12px] font-bold text-gray-900 space-y-0 leading-tight mt-0.5 print:text-[13px] print:font-bold">
@@ -1326,7 +1323,8 @@ export function Receipt80mm({
             margin-left: auto !important;
             margin-right: auto !important;
             float: none !important;
-            max-height: 56px !important;
+            max-height: ${RECEIPT_80MM_LOGO_MAX_PX}px !important;
+            max-width: ${RECEIPT_80MM_LOGO_MAX_PX}px !important;
             width: auto !important;
             height: auto !important;
           }

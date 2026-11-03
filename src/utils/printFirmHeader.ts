@@ -3,6 +3,7 @@
  * Ürün satırı (RetailOS Mağaza Sistemi) firma adı değildir.
  */
 import { isGenericFirmName } from '../services/firmNamePreserve';
+import { RECEIPT_80MM_LOGO_IMG_INLINE_STYLE } from './receipt80mmDocumentCss';
 
 export type PrintFirmNameSource = {
   receiptCompanyName?: string | null;
@@ -73,7 +74,7 @@ export function buildCenteredFirmHeaderHtml(input: {
   const name = String(input.firmName ?? '').trim();
   const logo = printableLogoSrc(input.logoDataUrl);
   const logoHtml = logo
-    ? `<div data-print-firm-logo="1" class="rx-firm-logo" style="display:block;width:100%;max-width:100%;text-align:center;float:none"><img src=${JSON.stringify(logo)} alt="" style="display:block;margin-left:auto;margin-right:auto;float:none;max-height:56px;max-width:60mm;width:auto;height:auto;object-fit:contain" /></div>`
+    ? `<div data-print-firm-logo="1" class="rx-firm-logo" style="display:block;width:100%;max-width:100%;text-align:center;float:none;direction:ltr"><img src=${JSON.stringify(logo)} alt="" style="${RECEIPT_80MM_LOGO_IMG_INLINE_STYLE}" /></div>`
     : '';
   const nameStyle = input.nameStyle?.trim() || 'display:block;width:100%;float:none;text-align:center;font-weight:600;color:#000;line-height:1.15';
   const nameHtml = name

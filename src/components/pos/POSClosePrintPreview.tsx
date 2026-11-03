@@ -319,7 +319,7 @@ export function POSClosePrintPreview({
                   /* A4 Format */
                   <div>
                     <div className="text-center mb-6">
-                      <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-2xl font-bold mb-2" />
+                      <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-2xl font-bold mb-2" logoStyle={{ maxHeight: 56, maxWidth: 'none' }} />
                       <p className="text-sm text-gray-600">{tm('posStoreSalesMgmtSystem')}</p>
                       <h2 className="text-xl font-bold mt-4 border-t border-b border-gray-300 py-2">
                         {tm('posCashCloseReport')}
@@ -629,7 +629,7 @@ export function POSClosePrintPreview({
             /* A4 Print - same as preview */
             <div className="p-8">
               <div className="text-center mb-6">
-                <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-2xl font-bold mb-2" />
+                <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-2xl font-bold mb-2" logoStyle={{ maxHeight: 56, maxWidth: 'none' }} />
                 <p className="text-sm text-gray-600">{tm('posStoreSalesMgmtSystem')}</p>
                 <h2 className="text-xl font-bold mt-4 border-t border-b border-gray-300 py-2">
                   {tm('posCashCloseReport')}

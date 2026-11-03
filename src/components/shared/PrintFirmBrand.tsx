@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { RECEIPT_80MM_LOGO_MAX_PX } from '../../utils/receipt80mmDocumentCss';
 import { printableLogoSrc } from '../../utils/printFirmHeader';
 
 type PrintFirmBrandProps = {
@@ -14,7 +15,7 @@ export function PrintFirmBrand({
   firmName,
   logoDataUrl,
   nameClassName = 'font-semibold',
-  logoClassName = 'max-h-14 h-auto w-auto object-contain',
+  logoClassName = 'h-auto w-auto object-contain',
   logoStyle,
 }: PrintFirmBrandProps) {
   const name = String(firmName ?? '').trim();
@@ -30,13 +31,14 @@ export function PrintFirmBrand({
   return (
     <div data-print-firm-header="1" className="rx-firm-header text-center" style={blockCenter}>
       {logo ? (
-        <div data-print-firm-logo="1" className="rx-firm-logo mb-0.5" style={blockCenter}>
+        <div data-print-firm-logo="1" className="rx-firm-logo mb-0.5" style={{ ...blockCenter, direction: 'ltr' }}>
           <img
             src={logo}
             alt=""
             className={logoClassName}
             style={{
-              maxHeight: 56,
+              maxHeight: RECEIPT_80MM_LOGO_MAX_PX,
+              maxWidth: RECEIPT_80MM_LOGO_MAX_PX,
               ...logoStyle,
               display: 'block',
               marginLeft: 'auto',

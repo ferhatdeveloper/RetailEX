@@ -3,7 +3,15 @@
  *
  * Sayfa genişliği 80 mm, yükseklik içeriğe göre. Kenar boşluğu yok;
  * gövde dolgusu yaklaşık 2 mm. Uzun boş fiş üreten min-height yok.
+ *
+ * Logo üst sınırı tek kaynak: yaklaşık 32 mm (128 px). 36 mm'i geçmez.
  */
+export const RECEIPT_80MM_LOGO_MAX_PX = 128;
+
+/** Yazdırma HTML img style. Boşluksuz; RTL logoyu sola itmesin. */
+export const RECEIPT_80MM_LOGO_IMG_INLINE_STYLE =
+  `display:block;margin-left:auto;margin-right:auto;float:none;max-height:${RECEIPT_80MM_LOGO_MAX_PX}px;max-width:${RECEIPT_80MM_LOGO_MAX_PX}px;width:auto;height:auto;object-fit:contain`;
+
 export const RECEIPT_80MM_VIEWPORT_FOR_HEADLESS =
   '<meta name="viewport" content="width=302, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no">';
 
@@ -54,6 +62,9 @@ export const RECEIPT_80MM_DOCUMENT_CSS = `
     float: none;
     text-align: center;
   }
+  .rx-firm-logo {
+    direction: ltr;
+  }
   .rx-firm-name {
     display: block;
     width: 100%;
@@ -70,8 +81,8 @@ export const RECEIPT_80MM_DOCUMENT_CSS = `
     margin-left: auto;
     margin-right: auto;
     float: none;
-    max-height: 56px;
-    max-width: 60mm;
+    max-height: ${RECEIPT_80MM_LOGO_MAX_PX}px;
+    max-width: ${RECEIPT_80MM_LOGO_MAX_PX}px;
     width: auto;
     height: auto;
     object-fit: contain;
@@ -122,8 +133,8 @@ export const RECEIPT_80MM_SLIP_CSS = `
     margin-left: auto !important;
     margin-right: auto !important;
     float: none !important;
-    max-height: 56px !important;
-    max-width: 60mm !important;
+    max-height: ${RECEIPT_80MM_LOGO_MAX_PX}px !important;
+    max-width: ${RECEIPT_80MM_LOGO_MAX_PX}px !important;
     width: auto !important;
     height: auto !important;
   }
@@ -181,11 +192,16 @@ export const RECEIPT_80MM_SLIP_CSS = `
     float: none !important;
     text-align: center !important;
   }
+  .rx-slip .rx-firm-logo {
+    direction: ltr !important;
+  }
   .rx-slip .rx-firm-logo img {
     display: block !important;
     margin-left: auto !important;
     margin-right: auto !important;
     float: none !important;
+    max-height: ${RECEIPT_80MM_LOGO_MAX_PX}px !important;
+    max-width: ${RECEIPT_80MM_LOGO_MAX_PX}px !important;
   }
   .rx-slip .justify-between { justify-content: space-between !important; }
   .text-center { text-align: center; }
