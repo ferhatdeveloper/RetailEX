@@ -71,11 +71,10 @@ import { toast } from 'sonner';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import {
+    appointmentEditorCatalog,
     beautyPosOpeningAppointments,
     beautyPosServiceFicheNo,
-    filterBeautyPosCatalogForReceipt,
     openBeautyPosCart,
-    type BeautyPosOpeningCartLine,
 } from '../../../utils/beautyPosOpening';
 import { beautyCancelTargets } from '../../../utils/beautyAppointmentCancel';
 import {
@@ -87,6 +86,8 @@ import {
     parseReservationAmountInput,
     planNewAppointmentDeposit,
     readAppointmentDepositFicheNo,
+    shouldPostAppointmentReservation,
+    showAppointmentReservationField,
     syncAutomaticDepositCart,
     type AppointmentMoneyLine,
 } from '../../../utils/appointmentFormReservation';
@@ -150,6 +151,11 @@ interface CartLine {
      *          > specialist.commission_rate.
      */
     commission_percent_override?: number | null;
+    /**
+     * Bu satırın kayıtlı randevu id'si. Boşsa satır henüz yazılmamıştır;
+     * güncellemede yeni randevu satırı olarak eklenir.
+     */
+    appointment_id?: string;
 }
 
 /** Mevcut randevuda «Güncelle» için karşılaştırma anlığı (baseline yalnızca yükleme / kayıt sonrası yenilenir) */
@@ -164,6 +170,7 @@ interface ExistingEditSnap {
     customerId: string;
     cartSig: string;
     total: number;
+    reservation: number;
 }
 
 function isKitchenReceiptLocale(s: string): s is KitchenReceiptLocale {
@@ -567,8 +574,6 @@ export function AppointmentPOS({
 
     // ── Cart ─────────────────────────────────────────────────────────────
     const [cart, setCart] = useState<CartLine[]>([]);
-    /** Açılan fişin kalemleri. Katalog bu listeye iner; yeni randevuda filtre yok. */
-    const [openedReceiptLines, setOpenedReceiptLines] = useState<BeautyPosOpeningCartLine[] | null>(null);
     const [discount, setDiscount] = useState(0);
     // Rezervasyon tutarı (müşteriden peşin alınan tutar; toplamdan düşer)
     const [reservationAmount, setReservationAmount] = useState(0);
@@ -841,6 +846,8 @@ export function AppointmentPOS({
 
     /** Çift tıklama / üst üste tıklamada aynı randevunun iki kez oluşmasını engeller */
     const bookingSubmitRef = useRef(false);
+    /** Güncellemede yeni satırın uid → randevu id. İkinci kayıt aynı satırı çoğaltmaz. */
+    const createdLineIdsRef = useRef<Map<string, string>>(new Map());
     const checkoutSubmitRef = useRef(false);
     /** Bu ödemede cari avans zaten yazıldıysa ikinci 20.000 nakdi kesilmez. */
     const checkoutAdvanceAmountRef = useRef(0);
@@ -1025,10 +1032,19 @@ export function AppointmentPOS({
     const grossAfterDiscount = total;
     const existingIsCompleted = !!existingAppointment?.id
         && appointmentStatusMatches(existingAppointment.status, AppointmentStatus.COMPLETED);
+    const storedReservation = existingAppointment?.id ? existingDeposit : 0;
+    const showReservationAmountField = showAppointmentReservationField({
+        hasAppointment: !!existingAppointment?.id,
+        storedDeposit: storedReservation,
+        serviceTotal: grossAfterDiscount,
+    });
+    const reservationApplied = showReservationAmountField
+        ? Math.max(0, Number(reservationAmount) || 0)
+        : existingDeposit;
     const remainingAfterDeposit = appointmentRemainingAfterDeposit({
         serviceGross: subtotal,
         discountPercent: discount,
-        reservation: existingDeposit,
+        reservation: reservationApplied,
         completed: existingIsCompleted,
     });
     const totalDur = billableCart.filter(l => l.type === 'service').reduce((s, l) => s + (l.duration_min ?? 0) * l.qty, 0);
@@ -1042,13 +1058,14 @@ export function AppointmentPOS({
         return deposits.length > 0 ? [...billableCart, ...deposits] : billableCart;
     }, [cart, billableCart]);
 
-    // Yeni randevuda rezervasyon tutarı sepette tek DEPOSIT satırı olur.
-    // Kutu bu satırı açmaz; kutu yalnızca fiş keser. Mevcut randevuda
-    // sepet hidrasyonu fiyatı olduğu gibi bırakır.
+    // Rezervasyon tutarı sepette tek DEPOSIT satırı olur.
+    // Kutu bu satırı açmaz; kutu yalnızca fiş keser.
+    // Peşinatı yazılmış randevuda satır yeniden üretilmez.
     useEffect(() => {
-        if (existingAppointment?.id) return;
+        const stored = existingAppointment?.id ? existingDeposit : 0;
+        if (stored > 0.004) return;
         setCart((prev) => syncCartDepositLines(prev, reservationAmount));
-    }, [reservationAmount, existingAppointment?.id, cart]);
+    }, [reservationAmount, existingAppointment?.id, existingDeposit, cart]);
 
     useEffect(() => {
         if (existingAppointment?.id) return;
@@ -1081,9 +1098,12 @@ export function AppointmentPOS({
             const searchOk = !q || name.includes(q);
             return activeOk && mainOk && leafOk && searchOk;
         });
-        if (!openedReceiptLines) return base;
-        return filterBeautyPosCatalogForReceipt(base, openedReceiptLines);
-    }, [services, svcFilterMain, svcFilterLeaf, svcQ, openedReceiptLines]);
+        // Kayıtlı randevu da yeni randevu ile aynı kataloğu görür.
+        // Fişteki hizmet id'si listeyi daraltmaz.
+        return appointmentEditorCatalog(base, {
+            appointmentId: existingAppointment?.id,
+        });
+    }, [services, svcFilterMain, svcFilterLeaf, svcQ, existingAppointment?.id]);
 
     const serviceMainKeys = useMemo(() => {
         const set = new Set<string>();
@@ -1131,9 +1151,10 @@ export function AppointmentPOS({
                 (p.code || '').toLocaleLowerCase('tr').includes(q);
             return catOk && searchOk;
         });
-        if (!openedReceiptLines) return base;
-        return filterBeautyPosCatalogForReceipt(base, openedReceiptLines);
-    }, [retailProducts, category, svcQ, openedReceiptLines]);
+        return appointmentEditorCatalog(base, {
+            appointmentId: existingAppointment?.id,
+        });
+    }, [retailProducts, category, svcQ, existingAppointment?.id]);
 
     const mergedCustomers = useMemo(() => {
         const map = new Map<string, BeautyCustomer>();
@@ -1187,16 +1208,16 @@ export function AppointmentPOS({
     useEffect(() => {
         if (!existingAppointment?.id) {
             setHydratedAppointmentId(null);
-            setOpenedReceiptLines(null);
             setVisitStoredDeposits([]);
             setVisitSourceAmount(null);
+            createdLineIdsRef.current = new Map();
             return;
         }
         if (hydratedAppointmentId === existingAppointment.id) return;
 
-        setOpenedReceiptLines(null);
         setVisitStoredDeposits([]);
         setVisitSourceAmount(null);
+        createdLineIdsRef.current = new Map();
 
         const primary = existingAppointment;
         let cancelled = false;
@@ -1229,7 +1250,6 @@ export function AppointmentPOS({
                 appointmentStatusMatches(primary.status, AppointmentStatus.NO_SHOW)) {
                 if (!cancelled) {
                     toast.error(tm('bAppointmentCancelledCartHint'));
-                    setOpenedReceiptLines(null);
                 }
                 setHydratedAppointmentId(primary.id);
                 return;
@@ -1290,6 +1310,7 @@ export function AppointmentPOS({
                     color: svc?.color ?? (prod ? '#0d9488' : undefined),
                     duration_min: Math.max(1, Math.round(Number(apt?.duration ?? svc?.duration_min ?? 30))),
                     staff_id: line.staffId || undefined,
+                    appointment_id: line.appointmentId || undefined,
                 };
             });
 
@@ -1308,9 +1329,7 @@ export function AppointmentPOS({
 
             if (lines.length > 0) {
                 setCart(lines);
-                setOpenedReceiptLines(receiptLines);
             } else {
-                setOpenedReceiptLines(null);
                 const serviceId = String(primary.service_id ?? '').trim();
                 const mappedService = serviceId ? services.find(s => String(s.id) === serviceId) : undefined;
                 const staffId = String(primary.staff_id ?? primary.specialist_id ?? '').trim() || undefined;
@@ -1326,6 +1345,7 @@ export function AppointmentPOS({
                         color: mappedService.color,
                         duration_min: Number(primary.duration ?? mappedService.duration_min ?? 30),
                         staff_id: staffId,
+                        appointment_id: primary.id,
                     }]);
                 } else if (mappedProduct || serviceId || (primary.service_name ?? '').trim()) {
                     setCart([{
@@ -1338,6 +1358,7 @@ export function AppointmentPOS({
                         color: mappedProduct ? '#0d9488' : undefined,
                         duration_min: Number(primary.duration ?? 30),
                         staff_id: staffId,
+                        appointment_id: primary.id,
                     }]);
                 }
             }
@@ -1842,8 +1863,8 @@ export function AppointmentPOS({
         | { ok: true }
         | { ok: false; key: 'bReservationAmountRequired' | 'bReservationAmountExceedsTotal' | 'bReservationAmountInvalid' }
     >(() => {
-        // Mevcut randevuda bu alan kilitli → hata yok.
-        if (existingAppointment?.id) return { ok: true };
+        // Peşinat yazılmış randevuda kutu kapalıdır; yeni tutar istenmez.
+        if (!showReservationAmountField) return { ok: true };
         const raw = Number(reservationAmount);
         if (!Number.isFinite(raw) || raw < 0) {
             return { ok: false, key: 'bReservationAmountInvalid' };
@@ -1856,12 +1877,11 @@ export function AppointmentPOS({
             return { ok: false, key: 'bReservationAmountRequired' };
         }
         return { ok: true };
-    }, [existingAppointment?.id, reservationAmount, grossAfterDiscount]);
-    // Sepet boşken rezervasyon alanı gizlenir (yalnızca dolu sepet senaryosu).
-    const showReservationAmountField = !existingAppointment?.id && grossAfterDiscount > 0;
-    // Submit (Randevu Oluştur) için ek gating: rezervasyon validasyonu geçerli olmalı.
+    }, [showReservationAmountField, reservationAmount, grossAfterDiscount]);
+    // Submit (Randevu Oluştur / Güncelle) için ek gating: rezervasyon validasyonu geçerli olmalı.
     const canBookAptWithReservation =
         canBookApt && (reservationValidation.ok || !showReservationAmountField);
+    const reservationBlocksSave = showReservationAmountField && !reservationValidation.ok;
 
     /** Kayıt / slot için satır başı dakika; tek satırda doğrudan gerçek süre, çoklu satırda plana orantılı bölünür. */
     const lineBookingDurations = useMemo(() => {
@@ -1916,6 +1936,7 @@ export function AppointmentPOS({
                 .map((l) => `${l.type}:${l.item_id}:${String(l.staff_id ?? '').trim()}:${l.qty}:${l.unit_price}`)
                 .join('§'),
             total: Math.round(total * 100) / 100,
+            reservation: Math.round((Number(reservationAmount) || 0) * 100) / 100,
         });
         // Baseline yalnızca randevu yüklenince veya başarılı güncellemeden sonra — form alanı değişince kaymaz
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1935,8 +1956,9 @@ export function AppointmentPOS({
                 .map((l) => `${l.type}:${l.item_id}:${String(l.staff_id ?? '').trim()}:${l.qty}:${l.unit_price}`)
                 .join('§'),
             total: Math.round(total * 100) / 100,
+            reservation: Math.round((Number(reservationAmount) || 0) * 100) / 100,
         }),
-        [aptDate, aptTime, aptDevice, aptNotes, aptStatus, discount, aptActualDurationMin, totalDur, customer?.id, cart, total],
+        [aptDate, aptTime, aptDevice, aptNotes, aptStatus, discount, aptActualDurationMin, totalDur, customer?.id, cart, total, reservationAmount],
     );
 
     const existingEditDirty = useMemo(() => {
@@ -1955,7 +1977,8 @@ export function AppointmentPOS({
             b.durationMin !== c.durationMin ||
             b.customerId !== c.customerId ||
             b.cartSig !== c.cartSig ||
-            b.total !== c.total
+            b.total !== c.total ||
+            b.reservation !== c.reservation
         );
     }, [existingAppointment?.id, hydratedAppointmentId, suppressEditBaselineForCompletedVisit, editBaselineSnap, currentEditSnap]);
 
@@ -2300,20 +2323,101 @@ export function AppointmentPOS({
             openBookingBlockModal('no_specialists');
             return;
         }
+        if (reservationBlocksSave) return;
         setUpdateExistingBusy(true);
         try {
-            if (
+            const enteredReservation = Math.max(0, Number(reservationAmount) || 0);
+            const postReservation =
+                shouldPostAppointmentReservation({
+                    storedDeposit: storedReservation,
+                    enteredAmount: enteredReservation,
+                }) && reservationValidation.ok;
+            const keepVisit =
                 appointmentBookLines.length > 0 &&
                 aptStatus !== AppointmentStatus.CANCELLED &&
-                aptStatus !== AppointmentStatus.NO_SHOW
-            ) {
-                const planned = buildServiceAppointmentPayloads(aptStatus);
+                aptStatus !== AppointmentStatus.NO_SHOW;
+            const statusForLines =
+                postReservation &&
+                keepVisit &&
+                aptStatus !== AppointmentStatus.COMPLETED
+                    ? AppointmentStatus.PRE_PAID
+                    : aptStatus;
+            const existingGroup = String(existingAppointment.sale_group_id ?? '').trim();
+            const groupId = existingGroup || String(existingAppointment.id);
+            const primaryLine =
+                appointmentBookLines.find((line) => String(line.appointment_id ?? '').trim() === String(existingAppointment.id))
+                ?? appointmentBookLines[0];
+            const primaryQty = Math.max(1, Number(primaryLine?.qty ?? 1));
+            const primaryTotal = primaryLine
+                ? Number(primaryLine.unit_price ?? 0) * primaryQty
+                : total;
+            const createdIds: string[] = [];
+            if (keepVisit) {
+                const baseStart = hhmmToMin(safeTimeHHmm(aptTime)) ?? 9 * 60;
+                const perStaffOffset = new Map<string, number>();
+                const createdByUid = new Map<string, string>();
+                for (const line of appointmentBookLines) {
+                    const sid = String(line.staff_id ?? '').trim();
+                    const lineQty = Math.max(1, Number(line.qty ?? 1));
+                    const lineDur = Math.max(1, Math.round(Number(line.duration_min ?? 30) * lineQty));
+                    const offset = sid ? (perStaffOffset.get(sid) ?? 0) : 0;
+                    const startMin = baseStart + offset;
+                    if (sid) perStaffOffset.set(sid, offset + lineDur);
+                    const linkedId = String(line.appointment_id ?? '').trim() || createdLineIdsRef.current.get(line.uid) || '';
+                    if (linkedId) continue;
+                    const lineTotal = Number(line.original_unit_price ?? line.unit_price ?? 0) * lineQty;
+                    const newId = await createAppointment({
+                        customer_id: customer!.id,
+                        service_id: line.item_id,
+                        staff_id: sid || undefined,
+                        device_id: aptDevice || undefined,
+                        date: safeDateYmd(aptDate),
+                        appointment_date: safeDateYmd(aptDate),
+                        time: minToHhmm(startMin),
+                        appointment_time: minToHhmm(startMin),
+                        duration: lineDur,
+                        total_price: lineTotal,
+                        status: statusForLines,
+                        notes: aptNotes?.trim() ? aptNotes : undefined,
+                        type: 'regular',
+                        is_package_session: false,
+                        treatment_degree: receiptTreatmentDegree.trim() || null,
+                        treatment_shots: receiptTreatmentShots.trim() || null,
+                        sale_group_id: groupId,
+                        deposit_amount: 0,
+                    });
+                    createdIds.push(newId);
+                    createdByUid.set(line.uid, newId);
+                    createdLineIdsRef.current.set(line.uid, newId);
+                }
+                if (createdByUid.size > 0) {
+                    setCart((prev) => prev.map((line) => {
+                        const linked = createdByUid.get(line.uid);
+                        return linked ? { ...line, appointment_id: linked } : line;
+                    }));
+                }
+                const siblingIds = appointmentBookLines
+                    .map((line) => String(line.appointment_id ?? '').trim())
+                    .filter((id) => id.length > 0 && id !== existingAppointment.id);
+                if (siblingIds.length > 0 && (createdIds.length > 0 || postReservation)) {
+                    await Promise.all(siblingIds.map((id) => {
+                        const line = appointmentBookLines.find((row) => String(row.appointment_id ?? '').trim() === id);
+                        const qty = Math.max(1, Number(line?.qty ?? 1));
+                        const lineTotal = Number(line?.unit_price ?? 0) * qty;
+                        return updateAppointment(id, {
+                            sale_group_id: groupId,
+                            ...(line
+                                ? {
+                                    service_id: line.item_id,
+                                    staff_id: line.staff_id?.trim() || undefined,
+                                    total_price: lineTotal,
+                                    duration: Math.max(1, Math.round(Number(line.duration_min ?? 30) * qty)),
+                                }
+                                : {}),
+                        });
+                    }));
+                }
             }
-            const firstBook = appointmentBookLines[0];
-            const firstBookTotal =
-                firstBook
-                    ? Number(firstBook.unit_price ?? 0) * Math.max(1, Number(firstBook.qty ?? 1))
-                    : total;
             await updateAppointment(existingAppointment.id, {
                 appointment_date: safeDateYmd(aptDate),
                 appointment_time: safeTimeHHmm(aptTime),
@@ -2321,14 +2425,27 @@ export function AppointmentPOS({
                 time: safeTimeHHmm(aptTime),
                 device_id: aptDevice || undefined,
                 notes: aptNotes || undefined,
-                status: aptStatus,
-                total_price: firstBookTotal,
+                status: statusForLines,
+                total_price: primaryTotal,
                 duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
-                staff_id: firstBook?.staff_id?.trim() || undefined,
-                service_id: appointmentBookLines.length === 1 ? appointmentBookLines[0]?.item_id : undefined,
+                staff_id: primaryLine?.staff_id?.trim() || undefined,
+                service_id: primaryLine?.item_id,
+                ...(existingGroup || createdIds.length > 0 || postReservation
+                    ? { sale_group_id: groupId }
+                    : {}),
                 treatment_degree: receiptTreatmentDegree.trim() || null,
                 treatment_shots: receiptTreatmentShots.trim() || null,
             });
+            if (postReservation && keepVisit) {
+                const siblingIds = appointmentBookLines
+                    .map((line) => String(line.appointment_id ?? '').trim())
+                    .filter((id) => id.length > 0 && id !== existingAppointment.id);
+                await persistReservationDeposit(
+                    [existingAppointment.id, ...siblingIds, ...createdIds],
+                    { fatal: true, amount: enteredReservation },
+                );
+                setVisitStoredDeposits([enteredReservation]);
+            }
             toast.success(tm('bAppointmentUpdatedOk'));
             setExistingEditBaselineFlush((f) => f + 1);
         } catch (e: unknown) {
@@ -2744,6 +2861,7 @@ export function AppointmentPOS({
             String(existingAppointment.status ?? '') !== String(aptStatus);
         if (isExistingPaidComplete && !terminalFromCompleted) return;
         if (!existingEditDirty && !terminalFromCompleted) return;
+        if (reservationBlocksSave) return;
         if (!customer) {
             openBookingBlockModal('customer');
             return;
@@ -5440,12 +5558,10 @@ export function AppointmentPOS({
                         {/* Totals + Checkout */}
                         <div style={{ padding: '12px 14px' }}>
                             {/* Rezervasyon Tutarı (ön ödeme / kaparo)
-                                Yeni randevuda (henüz deposit alınmamış, sepet dolu):
+                                Yeni randevuda ve peşinatı olmayan kayıtlı randevuda:
                                   kullanıcı tutarı girer; 0 = sadece randevu kaydı.
-                                Mevcut randevuda (ön ödeme daha önce alınmışsa):
-                                  readonly bilgi (input kilitli).
-                                Sepet boşken (grossAfterDiscount === 0) alan gizli —
-                                  yalnızca dolu sepet senaryosu görünür. */}
+                                Peşinat daha önce alındıysa readonly bilgi.
+                                Sepet boşken alan gizli. */}
                             {showReservationAmountField && (
                                 <div style={{ marginBottom: 8 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -5708,30 +5824,39 @@ export function AppointmentPOS({
                                             bookingBusy ||
                                             !canSave ||
                                             !existingEditDirty ||
+                                            reservationBlocksSave ||
                                             (appointmentBookLines.length > 0 && !allBookLinesStaffed) ||
                                             (appointmentBookLines.length > 0 && activeSpecialists.length === 0)
                                         }
                                         onClick={tryUpdateExistingAppointment}
-                                        title={tm('bAppointmentUpdateHint')}
+                                        title={
+                                            !reservationValidation.ok && showReservationAmountField
+                                                ? tm(reservationValidation.key)
+                                                : tm('bAppointmentUpdateHint')
+                                        }
                                         style={{
                                             height: 38, borderRadius: 5, border:
                                                 existingEditDirty && canSave && !updateExistingBusy && !bookingBusy &&
+                                                !reservationBlocksSave &&
                                                 !(appointmentBookLines.length > 0 && (!allBookLinesStaffed || activeSpecialists.length === 0))
                                                     ? '2px solid #7c3aed'
                                                     : '1px solid #e5e7eb',
                                             background:
                                                 existingEditDirty && canSave && !updateExistingBusy && !bookingBusy &&
+                                                !reservationBlocksSave &&
                                                 !(appointmentBookLines.length > 0 && (!allBookLinesStaffed || activeSpecialists.length === 0))
                                                     ? '#fff'
                                                     : '#f9fafb',
                                             color:
                                                 existingEditDirty && canSave && !updateExistingBusy && !bookingBusy &&
+                                                !reservationBlocksSave &&
                                                 !(appointmentBookLines.length > 0 && (!allBookLinesStaffed || activeSpecialists.length === 0))
                                                     ? '#7c3aed'
                                                     : '#9ca3af',
                                             fontSize: 11, fontWeight: 800,
                                             cursor:
                                                 updateExistingBusy || bookingBusy || !existingEditDirty || !canSave ||
+                                                reservationBlocksSave ||
                                                 (appointmentBookLines.length > 0 && (!allBookLinesStaffed || activeSpecialists.length === 0))
                                                     ? 'not-allowed'
                                                     : 'pointer',

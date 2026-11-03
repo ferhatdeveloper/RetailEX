@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vitest';
 import { AppointmentStatus, type BeautyAppointment } from '../../types/beauty';
 import { findBeautyAppointmentsSameQueueGroup } from '../../utils/beautyQueueOrder';
 import {
+    appointmentEditorCatalog,
+    appointmentLinesPendingCreate,
     beautyPosOpeningAppointments,
     beautyPosOpeningKey,
     buildBeautyPosOpeningCarts,
@@ -446,5 +448,25 @@ describe('POS açılış sepeti — fatura, saat ve randevu', () => {
         expect(cart?.total).toBe(75_000);
         expect(cart?.prepaid).toBe(25_000);
         expect(cart?.remaining).toBe(50_000);
+    });
+
+    it('kayıtlı randevunun kataloğu mevcut hizmet id ile daralmaz', () => {
+        const catalog = [
+            { id: 'svc-lash', name: 'REFAL LASHES', category: 'EYE LASHES' },
+            { id: 'svc-hair', name: 'HAIR CUT', category: 'HAIR' },
+            { id: 'svc-colour', name: 'HAIR COLOUR', category: 'HAIR' },
+        ];
+        const receiptLines = [{ itemId: 'svc-lash', serviceName: 'REFAL LASHES' }];
+        const open = appointmentEditorCatalog(catalog, {
+            appointmentId: TORPI_ID,
+            receiptLines,
+        });
+        expect(open.map((item) => item.id)).toEqual(['svc-lash', 'svc-hair', 'svc-colour']);
+        const hair = open.filter((item) => item.category === 'HAIR');
+        expect(hair.map((item) => item.name)).toEqual(['HAIR CUT', 'HAIR COLOUR']);
+        expect(appointmentLinesPendingCreate([
+            { appointmentId: TORPI_ID, itemId: 'svc-lash', name: 'REFAL LASHES' },
+            { appointmentId: '', itemId: 'svc-hair', name: 'HAIR CUT' },
+        ]).map((line) => line.itemId)).toEqual(['svc-hair']);
     });
 });

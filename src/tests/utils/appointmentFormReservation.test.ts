@@ -9,6 +9,8 @@ import {
   planNewAppointmentDeposit,
   readAppointmentDepositFicheNo,
   resolveVisitReservationAmount,
+  shouldPostAppointmentReservation,
+  showAppointmentReservationField,
   syncAutomaticDepositCart,
 } from '../../utils/appointmentFormReservation';
 
@@ -260,5 +262,57 @@ describe('randevu formu rezervasyon', () => {
     expect(plan.depositAmount).toBe(20_000);
     expect(plan.cashIn).toBe(20_000);
     expect(plan.customerServiceDebt).toBe(0);
+  });
+
+  it('peşinatı olmayan kayıtlı randevuda rezervasyon alanı açıktır', () => {
+    expect(showAppointmentReservationField({
+      hasAppointment: true,
+      storedDeposit: 0,
+      serviceTotal: 85_000,
+    })).toBe(true);
+    expect(showAppointmentReservationField({
+      hasAppointment: false,
+      storedDeposit: 0,
+      serviceTotal: 85_000,
+    })).toBe(true);
+    expect(showAppointmentReservationField({
+      hasAppointment: true,
+      storedDeposit: 20_000,
+      serviceTotal: 85_000,
+    })).toBe(false);
+    expect(showAppointmentReservationField({
+      hasAppointment: true,
+      storedDeposit: 0,
+      serviceTotal: 0,
+    })).toBe(false);
+  });
+
+  it('kayıtlı peşinat varken ve tutar değişmeden kaydedince kasa satırı açılmaz', () => {
+    expect(shouldPostAppointmentReservation({
+      storedDeposit: 0,
+      enteredAmount: 15_000,
+    })).toBe(true);
+    expect(shouldPostAppointmentReservation({
+      storedDeposit: 0,
+      enteredAmount: 0,
+    })).toBe(false);
+    expect(shouldPostAppointmentReservation({
+      storedDeposit: 20_000,
+      enteredAmount: 20_000,
+    })).toBe(false);
+    expect(shouldPostAppointmentReservation({
+      storedDeposit: 20_000,
+      enteredAmount: 0,
+    })).toBe(false);
+    const later = planNewAppointmentDeposit({
+      lines: [{ type: 'service', name: 'REFAL LASHES', unitPrice: 85_000, qty: 1 }],
+      reservationAmount: 15_000,
+      cutReceipt: false,
+    });
+    expect(later.depositAmount).toBe(15_000);
+    expect(later.cashIn).toBe(15_000);
+    expect(later.formTotal).toBe(85_000);
+    expect(later.customerServiceDebt).toBe(0);
+    expect(later.depositByAppointment).toEqual([15_000]);
   });
 });

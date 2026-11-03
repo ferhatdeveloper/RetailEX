@@ -482,6 +482,7 @@ export function beautyPosOpeningAppointments(
 /**
  * Fiş filtresindeki katalog. Fişte olmayan hizmet kalmaz.
  * Fiş satırı yoksa katalog olduğu gibi durur; bütün liste düşmez.
+ * Randevu düzenleme ekranı bunu kullanmaz; orada `appointmentEditorCatalog`.
  */
 export function filterBeautyPosCatalogForReceipt<T extends BeautyPosCatalogItem>(
     catalog: T[],
@@ -495,4 +496,28 @@ export function filterBeautyPosCatalogForReceipt<T extends BeautyPosCatalogItem>
         const name = foldName(item.name);
         return (id.length > 0 && ids.has(id)) || (name.length > 0 && names.has(name));
     });
+}
+
+/**
+ * Randevu ekranının kataloğu.
+ * Kayıtlı randevu açıldığında liste, randevudaki hizmet id'leriyle daralmaz.
+ * Kategori, arama ve personel seçimi çağıran tarafta kalır.
+ * Sepetteki satırlar durur; katalog onları gizlemez.
+ */
+export function appointmentEditorCatalog<T>(
+    catalog: T[],
+    options?: {
+        appointmentId?: string | null;
+        receiptLines?: Array<{ itemId?: string | null; serviceName?: string | null }>;
+    },
+): T[] {
+    // Randevu id dolu olsa da fiş satırları listeyi kesmez.
+    void options?.appointmentId;
+    void options?.receiptLines;
+    return catalog;
+}
+
+/** Sepette olup henüz randevu satırı açılmamış kalemler. Kayıtlı satır tekrar yazılmaz. */
+export function appointmentLinesPendingCreate<T extends { appointmentId?: string | null }>(lines: T[]): T[] {
+    return (lines || []).filter((line) => String(line.appointmentId ?? '').trim().length === 0);
 }

@@ -155,6 +155,39 @@ export function resolveVisitReservationAmount(input: {
 }
 
 /**
+ * Rezervasyon giriş kutusu.
+ * Yeni randevuda ve peşinatı olmayan kayıtlı randevuda açıktır.
+ * Peşinat daha önce yazıldıysa kutu kapanır; tutar bilgi olarak kalır.
+ * İkinci peşinat bu kutudan yazılmaz.
+ * Hizmet tutarı yoksa kutu gizlenir.
+ */
+export function showAppointmentReservationField(input: {
+  hasAppointment: boolean;
+  storedDeposit: number;
+  serviceTotal: number;
+}): boolean {
+  if (Math.max(0, Number(input.serviceTotal) || 0) <= 0.004) return false;
+  if (!input.hasAppointment) return true;
+  return Math.max(0, Number(input.storedDeposit) || 0) <= 0.004;
+}
+
+/**
+ * Kasaya yeni peşinat yazılsın mı.
+ * Kayıtlı peşinat varsa ikinci kez yazılmaz.
+ * Kutu boşsa (0) yeniden açıp kaydetmek kasa satırı açmaz.
+ * Peşinat yokken girilen tutar bir kez yazılır. Hizmet bedeli değildir.
+ */
+export function shouldPostAppointmentReservation(input: {
+  storedDeposit: number;
+  enteredAmount: number;
+}): boolean {
+  const stored = Math.max(0, Number(input.storedDeposit) || 0);
+  const entered = Math.max(0, Number(input.enteredAmount) || 0);
+  if (stored > 0.004) return false;
+  return entered > 0.004;
+}
+
+/**
  * Rezervasyon alanı. Yeni randevuda kullanıcının yazdığı tutar kalır;
  * depozito satırı bu alanın yerine geçmez.
  */
