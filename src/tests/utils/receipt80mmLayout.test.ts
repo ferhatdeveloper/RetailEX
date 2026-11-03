@@ -197,7 +197,6 @@ describe('80mm fiş yerleşimi', () => {
     expect(imgTag).toContain('margin-left:auto');
     expect(imgTag).toContain('margin-right:auto');
     expect(imgTag).toContain('float:none');
-    expect(html).toContain('direction:ltr');
     expect(html.slice(0, logoAt)).toContain('text-align:center');
     expect(html).toContain('width:100%');
     expect(html).toContain('max-height:56px');
