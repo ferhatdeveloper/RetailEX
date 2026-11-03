@@ -25,11 +25,15 @@ import {
   uniqueExpenseCategoryCode,
 } from '../../../utils/expenseCategoryLabel';
 import { createColumnHelper } from '@tanstack/react-table';
-import { formatCurrency } from '../../../utils/formatNumber';
+import { formatCurrency, formatNumber, parseNumber } from '../../../utils/formatNumber';
 import { formatMoneyWithCode, getGlobalCurrency } from '../../../utils/currency';
 import { expenseAPI, ExpenseSaveError, parseExpenseAmount, type Expense } from '../../../services/api/expenses';
 import { postExpenseToRegister } from '../../../utils/cashFxPosting';
 import { resolveCashFxHatwanQuote } from '../../../services/marketRatesService';
+import {
+  convertCashAmountToLedger,
+  documentToLedgerFromInverse,
+} from '../../../utils/cashLineFx';
 import {
   EXPENSE_ATTACHMENT_ACCEPT,
   readExpenseAttachmentDataUrl,
@@ -398,37 +402,94 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
   const registerCurrency = String(selectedKasa?.id_doviz_kodu || '').trim().toUpperCase();
   const entryCurrency = String(formData.amount_currency || registerCurrency || '').trim().toUpperCase();
   const bookCurrency = getGlobalCurrency();
+  const needsExpenseFxUi =
+    !!entryCurrency && !!registerCurrency && entryCurrency !== registerCurrency;
+
+  /** Hatwan: 1 quote = ? pivot (örn. 1 USD = 1677,5 IQD) — tahsilat ile aynı */
+  const [displayHatwanRate, setDisplayHatwanRate] = useState('');
+  const [fxQuoteCode, setFxQuoteCode] = useState('USD');
+  const [fxPivotCode, setFxPivotCode] = useState('IQD');
+  const fxRateUserTouchedRef = useRef(false);
   const [enteredToRegisterRate, setEnteredToRegisterRate] = useState<number | null>(null);
   const [registerToBaseRate, setRegisterToBaseRate] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!showExpenseModal) {
+      fxRateUserTouchedRef.current = false;
+      setDisplayHatwanRate('');
+      setEnteredToRegisterRate(null);
+      setRegisterToBaseRate(null);
+    }
+  }, [showExpenseModal]);
+
+  useEffect(() => {
     let cancelled = false;
-    setEnteredToRegisterRate(null);
-    setRegisterToBaseRate(null);
     if (!registerCurrency) return undefined;
     const asOf = String(formData.expense_date || new Date().toISOString()).slice(0, 10);
     void (async () => {
       try {
-        if (entryCurrency && entryCurrency !== registerCurrency) {
+        if (needsExpenseFxUi && !fxRateUserTouchedRef.current) {
           const quote = await resolveCashFxHatwanQuote(entryCurrency, registerCurrency, asOf, 'Satış');
-          if (!cancelled) {
-            setEnteredToRegisterRate(quote && quote.documentToLedger > 0 ? quote.documentToLedger : null);
+          if (cancelled || fxRateUserTouchedRef.current) return;
+          if (quote && quote.documentToLedger > 0 && quote.rateInPivot > 0) {
+            setEnteredToRegisterRate(quote.documentToLedger);
+            setFxQuoteCode(quote.quoteCode);
+            setFxPivotCode(quote.pivotCode);
+            setDisplayHatwanRate(formatNumber(quote.rateInPivot));
+          } else {
+            setEnteredToRegisterRate(null);
+            setDisplayHatwanRate('');
           }
+        } else if (!needsExpenseFxUi) {
+          setEnteredToRegisterRate(null);
+          setDisplayHatwanRate('');
+          fxRateUserTouchedRef.current = false;
         }
         if (bookCurrency && registerCurrency !== bookCurrency) {
           const quote = await resolveCashFxHatwanQuote(registerCurrency, bookCurrency, asOf, 'Satış');
           if (!cancelled) {
             setRegisterToBaseRate(quote && quote.documentToLedger > 0 ? quote.documentToLedger : null);
           }
+        } else if (!cancelled) {
+          setRegisterToBaseRate(null);
         }
       } catch {
-        /* önizleme; kayıt sunucuda aynı kuru yeniden okur */
+        /* önizleme; kullanıcı elle kur girebilir */
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [entryCurrency, registerCurrency, bookCurrency, formData.expense_date]);
+  }, [needsExpenseFxUi, entryCurrency, registerCurrency, bookCurrency, formData.expense_date]);
+
+  const handleExpenseHatwanRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (!/^[0-9.,]*$/.test(val)) return;
+    fxRateUserTouchedRef.current = true;
+    setDisplayHatwanRate(val);
+    const rateInPivot = parseNumber(val);
+    if (!(rateInPivot > 0)) return;
+    // Hatwan: 1 quote = rateInPivot IQD. Girilen IQD → kasa yabancı: böl; yabancı → IQD kasa: çarp.
+    if (entryCurrency === 'IQD' && registerCurrency !== 'IQD') {
+      const docRate = documentToLedgerFromInverse(rateInPivot);
+      if (docRate != null && docRate > 0) setEnteredToRegisterRate(docRate);
+    } else if (registerCurrency === 'IQD' && entryCurrency !== 'IQD') {
+      setEnteredToRegisterRate(rateInPivot);
+    } else {
+      const docRate = documentToLedgerFromInverse(rateInPivot);
+      if (docRate != null && docRate > 0) setEnteredToRegisterRate(docRate);
+    }
+  };
+
+  const handleExpenseHatwanRateBlur = () => {
+    const n = parseNumber(displayHatwanRate);
+    if (n > 0) setDisplayHatwanRate(formatNumber(n));
+  };
+
+  const expenseAmountNum = parseExpenseAmount(formData.amount);
+  const registerDeductAmount = needsExpenseFxUi
+    ? convertCashAmountToLedger(expenseAmountNum, enteredToRegisterRate || 0)
+    : expenseAmountNum;
 
   const expenseFxPreview = useMemo(() => {
     const amount = parseExpenseAmount(formData.amount);
@@ -438,7 +499,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       enteredCurrency: entryCurrency || registerCurrency,
       registerCurrency,
       baseCurrency: bookCurrency,
-      enteredToRegisterRate: entryCurrency && entryCurrency !== registerCurrency ? enteredToRegisterRate : null,
+      enteredToRegisterRate: needsExpenseFxUi ? enteredToRegisterRate : null,
       registerToBaseRate: registerCurrency !== bookCurrency ? registerToBaseRate : null,
     });
   }, [
@@ -446,6 +507,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     entryCurrency,
     registerCurrency,
     bookCurrency,
+    needsExpenseFxUi,
     enteredToRegisterRate,
     registerToBaseRate,
   ]);
@@ -481,12 +543,10 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       }
       if (
         payIsCash
-        && registerCurrency
-        && entryCurrency
-        && entryCurrency !== registerCurrency
-        && !expenseFxPreview?.converted
+        && needsExpenseFxUi
+        && (!(enteredToRegisterRate && enteredToRegisterRate > 0) || !(registerDeductAmount > 0))
       ) {
-        alert(tm('expenseFxUnavailable'));
+        alert(tm('cashFxRateRequired'));
         return;
       }
       let documentUrl = formData.document_url;
@@ -508,6 +568,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
         cost_center_id: formData.cost_center_id || undefined,
         cash_register_id: formData.cash_register_id || undefined,
         amount_currency: entryCurrency || undefined,
+        entered_to_register_rate: needsExpenseFxUi ? enteredToRegisterRate : undefined,
         expense_date: formData.expense_date,
         notes: formData.notes,
         ...(editingExpense ? {} : { created_by: currentLoginUserId() || '' }),
@@ -1010,9 +1071,61 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
             </div>
           </div>
 
-          <PercentBodyModalScrollBody className="p-5 sm:p-8">
-            {/* 2 sütun (dar) / 3 sütun (geniş); Kaydet footer sabit */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-4 lg:grid-cols-3">
+          <PercentBodyModalScrollBody className="space-y-4 p-5 sm:p-8">
+            {/* Tahsilat ile aynı: 2 sütun + sarı Hatwan kur kutusu */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div data-expense-field="cashRegister">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  {tm('costCenterCashRegister')}
+                </label>
+                <div className="relative">
+                  <select
+                    value={formData.cash_register_id}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const next = kasalar.find((kasa) => kasa.id === id);
+                      const nextCur = String(next?.id_doviz_kodu || '').trim().toUpperCase();
+                      fxRateUserTouchedRef.current = false;
+                      setFormData((prev) => {
+                        const prevEntry = String(prev.amount_currency || registerCurrency || '').trim().toUpperCase();
+                        const followRegister = !editingExpense && (!prevEntry || prevEntry === registerCurrency);
+                        return {
+                          ...prev,
+                          cash_register_id: id,
+                          amount_currency: followRegister ? (nextCur || prevEntry) : prevEntry,
+                        };
+                      });
+                    }}
+                    className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-11 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                  >
+                    {kasalar.length === 0 && <option value="">{tm('noCashRegisterFound')}</option>}
+                    {kasalar.map(kasa => (
+                      <option key={kasa.id} value={kasa.id}>
+                        {kasa.kasa_adi} — {kasa.kasa_kodu}{kasa.id_doviz_kodu ? ` (${kasa.id_doviz_kodu})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
+                </div>
+              </div>
+
+              <div data-expense-field="date">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  {tm('date')} *
+                </label>
+                <input
+                  type="date"
+                  value={formData.expense_date}
+                  onChange={(e) => {
+                    fxRateUserTouchedRef.current = false;
+                    setFormData({ ...formData, expense_date: e.target.value });
+                  }}
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div data-expense-field="category">
                 <div className="mb-1.5 flex items-center justify-between gap-2">
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
@@ -1041,52 +1154,6 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                 </div>
               </div>
 
-              <div data-expense-field="amount">
-                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  {entryCurrency ? `${tm('amount')} (${entryCurrency}) *` : `${tm('amount')} *`}
-                </label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                  placeholder="45.000"
-                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
-                />
-                <div className="relative mt-1.5">
-                  <select
-                    aria-label={tm('currency')}
-                    value={entryCurrency}
-                    onChange={(e) => setFormData({ ...formData, amount_currency: e.target.value })}
-                    className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 pr-11 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
-                  >
-                    {!entryCurrency ? <option value="">{tm('currency')}</option> : null}
-                    {entryCurrencyChoices.map((code) => (
-                      <option key={code} value={code}>{code}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
-                </div>
-                {expenseFxPreview?.converted ? (
-                  <p className="mt-1.5 text-[11px] font-medium text-slate-600">
-                    {tm('expenseEnteredCashAmount').replace('{currency}', expenseFxPreview.enteredCurrency)}
-                    {': '}
-                    {formatMoneyWithCode(expenseFxPreview.enteredAmount, expenseFxPreview.enteredCurrency)}
-                    {' · '}
-                    {tm('expenseRegisterCashAmount').replace('{currency}', expenseFxPreview.registerCurrency)}
-                    {': '}
-                    {formatMoneyWithCode(expenseFxPreview.registerAmount, expenseFxPreview.registerCurrency)}
-                  </p>
-                ) : null}
-                {expenseFxPreview && registerCurrency && bookCurrency && registerCurrency !== bookCurrency && expenseFxPreview.baseAmount != null ? (
-                  <p className="mt-1 text-[11px] font-medium text-slate-500">
-                    {tm('fxBaseEquivalent')}
-                    {': '}
-                    {formatMoneyWithCode(expenseFxPreview.baseAmount, bookCurrency)}
-                  </p>
-                ) : null}
-              </div>
-
               <div data-expense-field="paymentMethod">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {tm('paymentMethod')} *
@@ -1105,32 +1172,101 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
                 </div>
               </div>
+            </div>
 
-              <div data-expense-field="date">
-                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  {tm('date')} *
-                </label>
-                <input
-                  type="date"
-                  value={formData.expense_date}
-                  onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
-                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="col-span-2 lg:col-span-2" data-expense-field="description">
-                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  {tm('description')} *
+            <div className="grid grid-cols-1 gap-4 pt-1 sm:grid-cols-2">
+              <div data-expense-field="amount" className="space-y-1.5">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  {tm('operationAmount')}{entryCurrency ? ` (${entryCurrency})` : ''} *
                 </label>
                 <input
                   type="text"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder={tm('expenseDescriptionPlaceholder')}
-                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                  inputMode="decimal"
+                  value={formData.amount}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (/^[0-9.,]*$/.test(val)) setFormData({ ...formData, amount: val });
+                  }}
+                  placeholder="0,00"
+                  className="w-full rounded-2xl border-2 border-blue-200 bg-blue-50 px-4 py-3 text-xl font-bold text-blue-700 outline-none focus:border-blue-500"
                 />
               </div>
+              <div data-expense-field="currency" className="space-y-1.5">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  {tm('currency')}
+                </label>
+                <div className="relative">
+                  <select
+                    aria-label={tm('currency')}
+                    value={entryCurrency}
+                    onChange={(e) => {
+                      fxRateUserTouchedRef.current = false;
+                      setFormData({ ...formData, amount_currency: e.target.value });
+                    }}
+                    className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-11 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                  >
+                    {!entryCurrency ? <option value="">{tm('currency')}</option> : null}
+                    {entryCurrencyChoices.map((code) => (
+                      <option key={code} value={code}>{code}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
+                </div>
+              </div>
+            </div>
 
+            {needsExpenseFxUi ? (
+              <div
+                className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4"
+                data-expense-field="fxPreview"
+              >
+                <p className="text-xs font-semibold text-amber-800">
+                  {tm('expenseFxCrossHint')
+                    .replace('{entry}', entryCurrency)
+                    .replace('{register}', registerCurrency)}
+                </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-medium text-slate-700">
+                      {tm('cashFxRateLabel')
+                        .replace('{quote}', fxQuoteCode)
+                        .replace('{pivot}', fxPivotCode)}
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={displayHatwanRate}
+                      onChange={handleExpenseHatwanRateChange}
+                      onBlur={handleExpenseHatwanRateBlur}
+                      className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-amber-500"
+                      placeholder="1677,5"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-medium text-slate-700">
+                      {tm('expenseFxRegisterAmount').replace('{register}', registerCurrency)}
+                    </label>
+                    <div className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-lg font-bold text-emerald-700">
+                      {registerDeductAmount > 0
+                        ? formatMoneyWithCode(registerDeductAmount, registerCurrency)
+                        : `— ${registerCurrency}`}
+                    </div>
+                  </div>
+                </div>
+                {expenseFxPreview?.converted
+                  && bookCurrency
+                  && registerCurrency !== bookCurrency
+                  && expenseFxPreview.baseAmount != null ? (
+                  <p className="text-[11px] font-medium text-amber-900/80">
+                    {tm('fxBaseEquivalent')}
+                    {': '}
+                    {formatMoneyWithCode(expenseFxPreview.baseAmount, bookCurrency)}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div data-expense-field="ficheNo">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {tm('ficheNo')}
@@ -1145,41 +1281,6 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 font-medium tabular-nums text-slate-700 outline-none"
                 />
               </div>
-
-              <div data-expense-field="cashRegister">
-                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  {tm('costCenterCashRegister')}
-                </label>
-                <div className="relative">
-                  <select
-                    value={formData.cash_register_id}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      const next = kasalar.find((kasa) => kasa.id === id);
-                      const nextCur = String(next?.id_doviz_kodu || '').trim().toUpperCase();
-                      setFormData((prev) => {
-                        const prevEntry = String(prev.amount_currency || registerCurrency || '').trim().toUpperCase();
-                        const followRegister = !editingExpense && (!prevEntry || prevEntry === registerCurrency);
-                        return {
-                          ...prev,
-                          cash_register_id: id,
-                          amount_currency: followRegister ? (nextCur || prevEntry) : prevEntry,
-                        };
-                      });
-                    }}
-                    className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-11 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
-                  >
-                    {kasalar.length === 0 && <option value="">{tm('noCashRegisterFound')}</option>}
-                    {kasalar.map(kasa => (
-                      <option key={kasa.id} value={kasa.id}>
-                        {kasa.kasa_kodu} - {kasa.kasa_adi}{kasa.id_doviz_kodu ? ` (${kasa.id_doviz_kodu})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
-                </div>
-              </div>
-
               <div data-expense-field="documentNo">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   {tm('documentNo')}
@@ -1192,66 +1293,78 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   className="w-full rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+            </div>
 
-              <div className="col-span-2 lg:col-span-1" data-expense-field="notes">
-                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  {tm('notes')}
-                </label>
-                <input
-                  type="text"
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder={tm('additionalNotes')}
-                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+            <div data-expense-field="description">
+              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                {tm('description')} *
+              </label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder={tm('expenseDescriptionPlaceholder')}
+                rows={3}
+                className="w-full resize-y rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
 
-              <div
-                className="col-span-2 lg:col-span-3"
-                data-expense-field="attachment"
+            <div data-expense-field="notes">
+              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                {tm('notes')}
+              </label>
+              <input
+                type="text"
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder={tm('additionalNotes')}
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div
+              data-expense-field="attachment"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const picked = recordExpenseAttachmentFromList(e.dataTransfer.files);
+                applyExpenseAttachmentPick(picked);
+              }}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={EXPENSE_ATTACHMENT_ACCEPT}
+                data-expense-file-input=""
+                aria-label={tm('expenseReceiptDropLabel')}
+                className="sr-only"
+                onChange={(e) => {
+                  const picked = recordExpenseAttachmentFromList(e.target.files);
+                  applyExpenseAttachmentPick(picked);
+                  e.currentTarget.value = '';
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
+                  e.stopPropagation();
                   const picked = recordExpenseAttachmentFromList(e.dataTransfer.files);
                   applyExpenseAttachmentPick(picked);
                 }}
+                className="flex w-full items-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-left hover:border-blue-300 hover:bg-blue-50/40"
               >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept={EXPENSE_ATTACHMENT_ACCEPT}
-                  data-expense-file-input=""
-                  aria-label={tm('expenseReceiptDropLabel')}
-                  className="sr-only"
-                  onChange={(e) => {
-                    const picked = recordExpenseAttachmentFromList(e.target.files);
-                    applyExpenseAttachmentPick(picked);
-                    e.currentTarget.value = '';
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const picked = recordExpenseAttachmentFromList(e.dataTransfer.files);
-                    applyExpenseAttachmentPick(picked);
-                  }}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-left hover:border-blue-300 hover:bg-blue-50/40"
-                >
-                  <Upload className="h-5 w-5 shrink-0 text-slate-400" />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium text-slate-700">{tm('expenseReceiptDropLabel')}</span>
-                    {attachment?.name ? (
-                      <span className="block truncate text-sm text-slate-900">{attachment.name}</span>
-                    ) : formData.document_url ? (
-                      <span className="block truncate text-sm text-slate-900">{tm('expenseReceiptOnFile')}</span>
-                    ) : null}
-                  </span>
-                </button>
-              </div>
+                <Upload className="h-5 w-5 shrink-0 text-slate-400" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-slate-700">{tm('expenseReceiptDropLabel')}</span>
+                  {attachment?.name ? (
+                    <span className="block truncate text-sm text-slate-900">{attachment.name}</span>
+                  ) : formData.document_url ? (
+                    <span className="block truncate text-sm text-slate-900">{tm('expenseReceiptOnFile')}</span>
+                  ) : null}
+                </span>
+              </button>
             </div>
           </PercentBodyModalScrollBody>
 

@@ -9799,6 +9799,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'لا يوجد سعر صرف للصندوق المختار. أدخل المبلغ بعملة الصندوق أو عرّف سعرًا.',
     ku: 'بۆ سندوقی هەڵبژێردراو نرخ نییە. بڕەکە بە دراوی سندوق بنووسە یان نرخ دیاری بکە.',
   },
+  expenseFxCrossHint: {
+    tr: 'Girilen {entry} — kasa {register} düşülür. Kur: Kur & Altın (Hatwan) satış.',
+    en: 'Entered {entry} — cash register {register} is deducted. Rate: FX & Gold (Hatwan) sell.',
+    ar: 'المدخل {entry} — يُخصم الصندوق {register}. السعر من العملات والذهب (بيع).',
+    ku: 'نووسراو {entry} — سندوق {register} دەبڕدرێت. نرخ: دراو و زێڕ (فرۆشتن).',
+  },
+  expenseFxRegisterAmount: {
+    tr: 'Kasadan düşülecek ({register})',
+    en: 'Deduct from cash ({register})',
+    ar: 'يُخصم من الصندوق ({register})',
+    ku: 'لە سندوق دەبڕدرێت ({register})',
+  },
   expenseCategoryManage: { tr: 'Yönet', en: 'Manage', ar: 'إدارة', ku: 'بەڕێوەبردن' },
   expenseNotesEmpty: { tr: 'Not yok', en: 'No note', ar: 'لا توجد ملاحظة', ku: 'تێبینی نییە' },
   expenseFicheReadonly: { tr: 'Otomatik fiş numarası', en: 'Automatic slip number', ar: 'رقم السند تلقائي', ku: 'ژمارەی پسوڵەی ئۆتۆماتیکی' },

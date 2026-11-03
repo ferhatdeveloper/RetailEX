@@ -112,6 +112,8 @@ export async function convertExpenseEnteredToRegister(input: {
   enteredAmount: number;
   enteredCurrency?: string | null;
   asOfDate?: string;
+  /** UI’dan gelen belge→kasa kuru (Hatwan). Yoksa satış kuru okunur. */
+  enteredToRegisterRate?: number | null;
 }): Promise<{ registerAmount: number; registerCurrency: string; converted: boolean }> {
   const registerId = String(input.registerId || '').trim();
   if (!registerId) throw new Error('Kasa seçilmedi.');
@@ -122,8 +124,13 @@ export async function convertExpenseEnteredToRegister(input: {
     return { registerAmount: enteredAmount, registerCurrency, converted: false };
   }
   const asOf = String(input.asOfDate || new Date().toISOString()).slice(0, 10);
-  const quote = await resolveCashFxHatwanQuote(enteredCurrency, registerCurrency, asOf, 'Satış');
-  const rate = quote && quote.documentToLedger > 0 ? quote.documentToLedger : null;
+  const override = Number(input.enteredToRegisterRate);
+  let rate: number | null =
+    Number.isFinite(override) && override > 0 ? override : null;
+  if (rate == null) {
+    const quote = await resolveCashFxHatwanQuote(enteredCurrency, registerCurrency, asOf, 'Satış');
+    rate = quote && quote.documentToLedger > 0 ? quote.documentToLedger : null;
+  }
   const books = await loadBookCurrencies();
   const posted = postExpenseToRegister({
     enteredAmount,
@@ -152,6 +159,7 @@ export async function resolveExpenseCashPosting(input: {
   enteredAmount: number;
   enteredCurrency?: string | null;
   asOfDate?: string;
+  enteredToRegisterRate?: number | null;
 }): Promise<ResolvedCashFx & {
   enteredAmount: number;
   enteredCurrency: string;

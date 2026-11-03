@@ -160,6 +160,10 @@ export interface Expense {
    * Girilen tutarın para birimi. Kolon değildir; kayıt kasa biriminde saklanır.
    */
   amount_currency?: string | null;
+  /**
+   * Girilen→kasa belge kuru (Hatwan). Kolon değildir; kasa satırına yazılır.
+   */
+  entered_to_register_rate?: number | null;
   created_at?: string;
 }
 
@@ -328,6 +332,8 @@ async function prepareExpenseCashPlan(
 ): Promise<ExpenseCashPlan> {
   const next: Partial<Expense> = { ...updates };
   delete next.amount_currency;
+  const enteredToRegisterRateOverride = Number(updates.entered_to_register_rate);
+  delete next.entered_to_register_rate;
 
   const cashLineId = String(existing.cash_line_id || '').trim();
   if (!cashLineId) {
@@ -364,12 +370,18 @@ async function prepareExpenseCashPlan(
   let fAmount: number | null = null;
   const books = await loadBookCurrencies();
 
+  const rateOverride =
+    Number.isFinite(enteredToRegisterRateOverride) && enteredToRegisterRateOverride > 0
+      ? enteredToRegisterRateOverride
+      : null;
+
   if (registerChanged && newRegisterId) {
     const fx = await resolveExpenseCashPosting({
       registerId: newRegisterId,
       enteredAmount,
       enteredCurrency: enteredCurrency || undefined,
       asOfDate: asOf,
+      enteredToRegisterRate: rateOverride,
     });
     storedAmount = fx.cashAmount;
     writeFx = true;
@@ -387,6 +399,7 @@ async function prepareExpenseCashPlan(
       enteredAmount,
       enteredCurrency,
       asOfDate: asOf,
+      enteredToRegisterRate: rateOverride,
     });
     storedAmount = converted.registerAmount;
     fAmount = expenseFAmountOnUpdate({
@@ -803,6 +816,7 @@ export const expenseAPI = {
             enteredAmount: expense.amount,
             enteredCurrency: expense.amount_currency,
             asOfDate: expense.expense_date,
+            enteredToRegisterRate: expense.entered_to_register_rate,
           });
           expense = {
             ...expense,
@@ -871,6 +885,7 @@ export const expenseAPI = {
                 enteredAmount: expense.amount,
                 enteredCurrency: expense.amount_currency,
                 asOfDate: expense.expense_date,
+                enteredToRegisterRate: expense.entered_to_register_rate,
               });
             }
             const kasaIslem = await createKasaIslemi({
@@ -975,6 +990,7 @@ export const expenseAPI = {
               enteredAmount: expense.amount,
               enteredCurrency: expense.amount_currency,
               asOfDate: expense.expense_date,
+              enteredToRegisterRate: expense.entered_to_register_rate,
             });
           }
 
@@ -1078,7 +1094,7 @@ export const expenseAPI = {
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
       const normalizeUpdateEntry = (key: string, value: unknown): unknown | undefined => {
-        if (['id', 'firm_nr', 'created_at', 'cost_center_name', 'entered_by_name', 'currency_code', 'exchange_rate', 'fiche_no', 'ledger_fiche_no', 'amount_currency'].includes(key) || value === undefined) return undefined;
+        if (['id', 'firm_nr', 'created_at', 'cost_center_name', 'entered_by_name', 'currency_code', 'exchange_rate', 'fiche_no', 'ledger_fiche_no', 'amount_currency', 'entered_to_register_rate'].includes(key) || value === undefined) return undefined;
         let normalizedValue = value;
         if (key === 'amount') {
           const n = Math.abs(parseExpenseAmount(value));
