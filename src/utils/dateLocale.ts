@@ -160,6 +160,40 @@ export function formatShortDate(
 }
 
 /**
+ * 80mm fiş ve Z raporu tarihi. tr / en / ar / ku aynı: `01.11.2026`.
+ * Ay adı yok; yıl 80mm satırda kesilmez.
+ */
+export function formatPrintDate(value: DateInput, opts: FormatOptions = {}): string {
+    return formatShortDate(value, undefined, opts);
+}
+
+/** Aralık `01.11.2026 - 03.11.2026`. Aynı gün tek tarih. */
+export function formatPrintDateRange(
+    from: DateInput,
+    to: DateInput,
+    opts: FormatOptions = {},
+): string {
+    const start = formatPrintDate(from, opts);
+    const end = formatPrintDate(to, opts);
+    if (start === end) return start;
+    return `${start} - ${end}`;
+}
+
+/** Fiş saati `12:11:03` — dil saati (AM/PM) yok. */
+export function formatPrintTime(value: DateInput, opts: FormatOptions = {}): string {
+    const d = calendarDate(value);
+    if (!d) return opts.fallback ?? FALLBACK_DEFAULT;
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+/** Fiş tarih + saat: `01.11.2026 12:11:03`. */
+export function formatPrintDateTime(value: DateInput, opts: FormatOptions = {}): string {
+    const d = calendarDate(value);
+    if (!d) return opts.fallback ?? FALLBACK_DEFAULT;
+    return `${formatDotDate(d)} ${formatPrintTime(d)}`;
+}
+
+/**
  * Haftanın günü kısa — gün başlığı (Pzt/Sal/Çar ...).
  * TR: `Sal`
  * EN: `Tue`

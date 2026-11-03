@@ -7,6 +7,7 @@ import {
 import { formatNumber } from './formatNumber';
 import { integerSharePercents } from './sharePercent';
 import { localCalendarDateKey } from './localCalendarDate';
+import { formatPrintDate, formatPrintTime } from './dateLocale';
 import { saleCollectedSplit } from './saleCollectedAmounts';
 import { isDepositSale } from './reportDepositFilter';
 import { RECEIPT_80MM_DOCUMENT_CSS } from './receipt80mmDocumentCss';
@@ -519,11 +520,7 @@ function summarizePosZReportFromDaySales(
 
 export function buildPosZReport(sales: Sale[], dateKey = localCalendarDateKey(new Date())): PosZReport {
   const daySales = sales.filter((s) => localCalendarDateKey(s.date) === dateKey);
-  const dateLabel = new Date(`${dateKey}T12:00:00`).toLocaleDateString('tr-TR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  const dateLabel = formatPrintDate(dateKey);
   return summarizePosZReportFromDaySales(daySales, dateLabel, dateKey);
 }
 
@@ -942,7 +939,7 @@ export function printPosZReport(
       <div class="center bold large">Z RAPORU</div>
       <div class="divider"></div>
       <div class="row"><span>Tarih:</span><span class="bold">${escHtml(report.dateLabel)}</span></div>
-      <div class="row"><span>Saat:</span><span>${new Date().toLocaleTimeString('tr-TR')}</span></div>
+      <div class="row"><span>Saat:</span><span>${formatPrintTime(new Date())}</span></div>
       ${cashier ? `<div class="row"><span>Kasiyer:</span><span>${cashier}</span></div>` : ''}
       <div class="divider"></div>
       <div class="section-title">SATIŞ ÖZETİ</div>

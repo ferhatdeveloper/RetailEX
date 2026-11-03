@@ -4,6 +4,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { Banknote } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import { formatCurrency } from '../../utils/currency';
+import { formatPrintDateTime } from '../../utils/dateLocale';
 import { PrintFirmBrand } from '../shared/PrintFirmBrand';
 
 interface PaymentReceiptPreviewProps {
@@ -43,17 +44,7 @@ export function PaymentReceiptPreview({
     }
   }, [sale.receiptNumber]);
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString('tr-TR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  };
+  const formatDate = (dateString: string) => formatPrintDateTime(dateString);
 
   const fmtMoney = (amount: number) => formatCurrency(amount);
 
@@ -91,6 +82,7 @@ export function PaymentReceiptPreview({
           logoDataUrl={logoDataUrl}
           nameClassName="text-lg font-semibold mb-1"
           logoClassName="h-12 w-auto object-contain mx-auto mb-1 bg-white rounded"
+          logoStyle={{ maxHeight: 56, maxWidth: 'none' }}
         />
         <h2 className="text-xl font-bold mb-1">Ödeme Fişi</h2>
         <div className="text-sm opacity-90">Profesyonel Satış Yönetim Sistemi</div>

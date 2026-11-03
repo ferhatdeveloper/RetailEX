@@ -12,6 +12,7 @@ import { receiptNotesForDisplay } from './receiptNotes';
 import { beautyReceiptStaffNames, isBeautyReceiptSale } from './beautyReceiptLayout';
 import { receiptLineGross, receiptSettlement } from './receiptSettlement';
 import { getPrintString, resolvePrintLocale, type SupportedPrintLocale } from '../locales/printKeys';
+import { formatPrintDateTime } from './dateLocale';
 /** Receipt80mm / POS fiş dili */
 export type Receipt80mmPrintLocale = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
 
@@ -23,19 +24,8 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function formatReceiptDate(iso: string, locale: Receipt80mmPrintLocale): string {
-  const d = new Date(iso);
-  const loc =
-    locale === 'ar'
-      ? 'ar-SA'
-      : locale === 'ku'
-        ? 'ku-IQ'
-        : locale === 'en'
-          ? 'en-GB'
-          : locale === 'uz'
-            ? 'uz-UZ'
-            : 'tr-TR';
-  return `${d.toLocaleDateString(loc)} ${d.toLocaleTimeString(loc)}`;
+function formatReceiptDate(iso: string, _locale: Receipt80mmPrintLocale): string {
+  return formatPrintDateTime(iso);
 }
 
 type RText = {

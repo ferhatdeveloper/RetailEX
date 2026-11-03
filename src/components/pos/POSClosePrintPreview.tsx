@@ -10,6 +10,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { getReceiptSettings } from '../../services/receiptSettingsService';
 import { resolvePrintFirmName } from '../../utils/printFirmHeader';
+import { formatPrintDate } from '../../utils/dateLocale';
 
 interface POSClosePrintPreviewProps {
   onClose: () => void;
@@ -87,6 +88,7 @@ export function POSClosePrintPreview({
   const returnTotal = returnSales.reduce((sum, sale) => sum + Math.abs(sale.total), 0);
   const netSales = totalSales - returnTotal;
   const zReport = buildPosZReport(sales);
+  const thermalPrintDate = formatPrintDate(new Date());
   const cashierStats = zReport.cashierStats;
   const bd = cashBreakdown ?? {
     openingCash,
@@ -161,7 +163,7 @@ export function POSClosePrintPreview({
                     <div className="space-y-1 mb-3">
                       <div className="flex justify-between">
                         <span>{t.dateLabel}:</span>
-                        <span>{new Date().toLocaleDateString('tr-TR')}</span>
+                        <span>{thermalPrintDate}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>{t.timeLabel}:</span>
@@ -317,7 +319,7 @@ export function POSClosePrintPreview({
                   /* A4 Format */
                   <div>
                     <div className="text-center mb-6">
-                      <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-2xl font-bold mb-2" />
+                      <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-2xl font-bold mb-2" logoStyle={{ maxHeight: 56, maxWidth: 'none' }} />
                       <p className="text-sm text-gray-600">{tm('posStoreSalesMgmtSystem')}</p>
                       <h2 className="text-xl font-bold mt-4 border-t border-b border-gray-300 py-2">
                         {tm('posCashCloseReport')}
@@ -557,7 +559,7 @@ export function POSClosePrintPreview({
               </div>
 
               <div className="space-y-0.5 mb-2">
-                <div className="flex justify-between text-[13px] text-black"><span>{t.dateLabel}:</span><span>{new Date().toLocaleDateString('tr-TR')}</span></div>
+                <div className="flex justify-between text-[13px] text-black"><span>{t.dateLabel}:</span><span>{thermalPrintDate}</span></div>
                 <div className="flex justify-between text-[13px] text-black"><span>{t.timeLabel}:</span><span>{new Date().toLocaleTimeString('tr-TR')}</span></div>
                 <div className="flex justify-between text-[13px] text-black"><span>{t.cashierLabel}:</span><span>{currentStaff}</span></div>
                 <div className="flex justify-between text-[13px] text-black"><span>{t.cashRegister}:</span><span>{tm('posCashRegister1')}</span></div>
@@ -627,7 +629,7 @@ export function POSClosePrintPreview({
             /* A4 Print - same as preview */
             <div className="p-8">
               <div className="text-center mb-6">
-                <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-2xl font-bold mb-2" />
+                <PrintFirmBrand firmName={firmName} logoDataUrl={logoDataUrl} nameClassName="text-2xl font-bold mb-2" logoStyle={{ maxHeight: 56, maxWidth: 'none' }} />
                 <p className="text-sm text-gray-600">{tm('posStoreSalesMgmtSystem')}</p>
                 <h2 className="text-xl font-bold mt-4 border-t border-b border-gray-300 py-2">
                   {tm('posCashCloseReport')}

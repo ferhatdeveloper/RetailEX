@@ -15,7 +15,8 @@ import { resolveProductNameForReceipt } from '../../utils/receiptProductName';
 import { getAccountReceiptSystemPrinterName } from '../../utils/restaurantAccountReceiptPrinter';
 import { printHtmlInHiddenIframe } from '../../utils/restaurantReceiptPrint';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
-import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_SLIP_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from '../../utils/receipt80mmDocumentCss';
+import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_LOGO_MAX_PX, RECEIPT_80MM_SLIP_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from '../../utils/receipt80mmDocumentCss';
+import { formatPrintDateTime } from '../../utils/dateLocale';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { RECEIPT_A4_DOCUMENT_CSS } from '../../utils/receiptA4DocumentCss';
 import { RECEIPT_A5_DOCUMENT_CSS } from '../../utils/receiptA5DocumentCss';
@@ -233,7 +234,6 @@ export function Receipt80mm({
       ? 'min(96vw, 820px)'
       : 'min(97vw, 1100px)';
   const previewModalHeight = isThermalFormat ? 'min(90vh, 800px)' : 'min(92vh, 920px)';
-  const logoMaxWidth = isThermalFormat ? '60mm' : resolvedPaperFormat === 'A5' ? '100mm' : '130mm';
   const receiptVariantCss = `
       .receipt-a4 #receipt-content {
         width: 100% !important;
@@ -577,6 +577,7 @@ export function Receipt80mm({
   };
 
   const formatDate = (date: string) => {
+    if (!isStandardFormat) return formatPrintDateTime(date);
     const d = new Date(date);
     const locale =
       selectedLang === 'ar'

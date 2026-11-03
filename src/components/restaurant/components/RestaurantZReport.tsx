@@ -7,6 +7,7 @@ import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { getReceiptSettings } from '../../../services/receiptSettingsService';
 import { buildCenteredFirmHeaderHtml, resolvePrintFirmName } from '../../../utils/printFirmHeader';
 import { RECEIPT_80MM_DOCUMENT_CSS } from '../../../utils/receipt80mmDocumentCss';
+import { formatPrintDate } from '../../../utils/dateLocale';
 
 interface ZReportData {
     date: string;
@@ -77,7 +78,7 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
         const d = data;
         const lines: string[] = [];
         lines.push('      RETAILEX - Z RAPORU');
-        lines.push('  ' + new Date(d.date).toLocaleDateString('tr-TR'));
+        lines.push('  ' + formatPrintDate(d.date));
         lines.push('--------------------------------');
         lines.push(padLine('Acilis', new Date(d.openedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })));
         lines.push(padLine('Kapanis', new Date(d.closedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })));
@@ -165,7 +166,7 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
                         </div>
                         <div>
                             <h2 className="text-lg font-bold text-slate-800">Z-Raporu</h2>
-                            <p className="text-xs text-slate-500">{new Date(data.date).toLocaleDateString('tr-TR')} — {data.staffName}</p>
+                            <p className="text-xs text-slate-500">{formatPrintDate(data.date)} — {data.staffName}</p>
                         </div>
                     </div>
                     <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-200 text-slate-500">

@@ -8,6 +8,7 @@ import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { PrintFirmBrand } from '../shared/PrintFirmBrand';
 import { getReceiptSettings } from '../../services/receiptSettingsService';
 import { resolvePrintFirmName } from '../../utils/printFirmHeader';
+import { formatPrintDateTime } from '../../utils/dateLocale';
 
 interface ServiceReceiptProps {
     data: {
@@ -25,7 +26,7 @@ interface ServiceReceiptProps {
 
 export function ServiceReceipt80mm({ data, onClose }: ServiceReceiptProps) {
     const { darkMode } = useTheme();
-    const { t, language } = useLanguage();
+    const { t } = useLanguage();
     const { selectedFirm } = useFirmaDonem();
     const [logoDataUrl, setLogoDataUrl] = useState('');
     const [receiptCompanyName, setReceiptCompanyName] = useState('');
@@ -59,17 +60,11 @@ export function ServiceReceipt80mm({ data, onClose }: ServiceReceiptProps) {
         [receiptCompanyName, selectedFirm],
     );
 
-    const localeMap: Record<string, string> = { tr: 'tr-TR', en: 'en-US', ar: 'ar-IQ', ku: 'ku' };
-    const dateLocale = localeMap[language] || 'tr-TR';
-
     const handlePrint = () => {
         window.print();
     };
 
-    const formatDate = (date: string) => {
-        const d = new Date(date);
-        return d.toLocaleDateString(dateLocale) + ' ' + d.toLocaleTimeString(dateLocale);
-    };
+    const formatDate = (date: string) => formatPrintDateTime(date);
 
     return (
         <ModalLayer className="bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">

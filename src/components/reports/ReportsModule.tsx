@@ -117,7 +117,7 @@ import { productCardUnitCost } from '../../utils/productCardUnitCost';
 import type { BeautyAppointment, BeautySale, BeautyService, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, istanbulTodayDateKey } from '../../utils/localCalendarDate';
-import { formatDateTimeShort, formatReportDateCell, formatShortDate } from '../../utils/dateLocale';
+import { formatDateTimeShort, formatPrintDateRange, formatPrintTime, formatReportDateCell, formatShortDate } from '../../utils/dateLocale';
 import {
   formatSaleWallClockDateTime,
   formatSaleWallClockTime,
@@ -450,20 +450,9 @@ function dailyCreditSplitDisplay(
   };
 }
 
-/** Rapor yazdırma / Z başlığı için yerel tarih metni (YYYY-MM-DD takvim anahtarları). */
+/** Rapor yazdırma / Z başlığı: her dilde `01.11.2026` veya `01.11.2026 - 03.11.2026`. */
 function formatReportsDateRangeTr(fromKey: string, toKey: string): string {
-  if (fromKey === toKey) {
-    return new Date(`${fromKey}T12:00:00`).toLocaleDateString('tr-TR', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  }
-  const short: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
-  const a = new Date(`${fromKey}T12:00:00`).toLocaleDateString('tr-TR', short);
-  const b = new Date(`${toKey}T12:00:00`).toLocaleDateString('tr-TR', short);
-  return `${a} – ${b}`;
+  return formatPrintDateRange(fromKey, toKey);
 }
 
 function reportHtmlTitleDateSegment(fromKey: string, toKey: string): string {
@@ -6283,7 +6272,7 @@ export function ReportsModule({
       dateCaption: tm('dateLabel'),
       dateLabel: zReport.dateLabel,
       reportTimeCaption: tm('reportsZPrintReportTime'),
-      reportTime: new Date().toLocaleTimeString(tm('localeCode')),
+      reportTime: formatPrintTime(new Date()),
       txnCaption: tm('reportsZTxnCount'),
       txnCount: String(zReport.totalSales),
       grossCaption: tm('reportsZGrossSales'),
