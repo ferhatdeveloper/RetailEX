@@ -8,13 +8,13 @@ use std::path::{Path, PathBuf};
 const ROOTS: &[(&str, &str)] = &[("mobile-i18n", "mobile/src/i18n/locales")];
 
 #[derive(Serialize)]
-struct LocaleFileDto {
+pub struct LocaleFileDto {
     file: String,
     language: String,
 }
 
 #[derive(Serialize)]
-struct LocaleRootDto {
+pub struct LocaleRootDto {
     id: String,
     relative: String,
     files: Vec<LocaleFileDto>,
@@ -22,7 +22,7 @@ struct LocaleRootDto {
 }
 
 #[derive(Serialize)]
-struct LocaleCatalogDto {
+pub struct LocaleCatalogDto {
     roots: Vec<LocaleRootDto>,
     writable: bool,
 }
