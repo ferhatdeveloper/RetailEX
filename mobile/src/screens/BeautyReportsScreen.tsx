@@ -11,7 +11,7 @@ import {
 } from '../api/beautyApi';
 import { fetchExpenses } from '../api/financeDefinitionsApi';
 import { formatMoney } from '../api/erpTables';
-import { buildClinicMirrorReports } from '../../../src/utils/clinicReportCenter';
+import { buildClinicMirrorReports } from '../clinicReports/clinicReportCenter';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
 
