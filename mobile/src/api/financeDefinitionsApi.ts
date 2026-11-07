@@ -1,11 +1,13 @@
 import { pgQuery } from './pgClient';
-import { postgrestGet } from './postgrestClient';
+import { postgrestGet, postgrestPost } from './postgrestClient';
 import { runDataTransport } from './dataTransport';
+import { createExpenseCashOut, fetchCashRegisters } from './cashApi';
 import {
   costCentersTable,
   customersTable,
   expensesTable,
   firmNr,
+  newUuid,
 } from './erpTables';
 
 export type PaymentPlanRow = {
@@ -290,6 +292,97 @@ export async function fetchExpenses(limit = 100): Promise<ExpenseRow[]> {
           params: [limit],
         },
       ]),
+  });
+}
+
+/**
+ * Gider kaydı. Nakit ödemede kasa satırı web ile aynı: GIDER_PUSULASI, sign −1.
+ * Tutar mutlak yazılır. Çoklu döviz kur çevrimi masaüstü kasa çözümleyicisindedir;
+ * burada tutar kasa para biriminde girilir.
+ */
+export async function createExpense(input: {
+  category: string;
+  description: string;
+  amount: number;
+  paymentMethod: 'cash' | 'card' | 'transfer';
+  expenseDate: string;
+}): Promise<void> {
+  const amount = Math.abs(Number(input.amount) || 0);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Geçersiz gider tutarı');
+  const table = expensesTable();
+  const fn = firmNr();
+  const id = newUuid();
+  const day = input.expenseDate.slice(0, 10);
+  const category = input.category.trim() || 'Genel';
+  const description = input.description.trim() || category;
+  const isCash = input.paymentMethod === 'cash';
+
+  let cashLineId: string | null = null;
+  let registerId: string | null = null;
+  if (isCash) {
+    const registers = await fetchCashRegisters(20);
+    const kasa =
+      registers.find((r) => String(r.code || '').toUpperCase().includes('ANA')) || registers[0];
+    if (!kasa?.id) throw new Error('Aktif kasa yok');
+    registerId = kasa.id;
+    const line = await createExpenseCashOut({
+      registerId: kasa.id,
+      amount,
+      date: day,
+      description,
+    });
+    cashLineId = line.id;
+  }
+
+  const body: Record<string, unknown> = {
+    id,
+    firm_nr: fn,
+    category,
+    description,
+    amount,
+    payment_method: input.paymentMethod,
+    expense_date: day,
+    cash_register_id: registerId,
+    cash_line_id: cashLineId,
+  };
+
+  await runDataTransport({
+    label: 'createExpense',
+    viaRest: async () => {
+      try {
+        await postgrestPost(`/${table}`, body, { schema: 'public', prefer: 'return=minimal' });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/cash_line_id|cash_register_id/i.test(msg)) {
+          const { cash_line_id: _a, cash_register_id: _b, ...slim } = body;
+          await postgrestPost(`/${table}`, slim, { schema: 'public', prefer: 'return=minimal' });
+          return;
+        }
+        throw e;
+      }
+    },
+    viaBridge: async () => {
+      try {
+        await pgQuery(
+          `INSERT INTO ${table}
+             (id, firm_nr, category, description, amount, payment_method, expense_date, cash_register_id, cash_line_id)
+           VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::date, $8::uuid, $9::uuid)`,
+          [id, fn, category, description, amount, input.paymentMethod, day, registerId, cashLineId],
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/cash_line_id|cash_register_id/i.test(msg)) {
+          await pgQuery(
+            `INSERT INTO ${table}
+               (id, firm_nr, category, description, amount, payment_method, expense_date)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::date)`,
+            [id, fn, category, description, amount, input.paymentMethod, day],
+          );
+          return;
+        }
+        throw e;
+      }
+    },
   });
 }
 

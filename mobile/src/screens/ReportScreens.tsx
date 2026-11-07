@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRoute, type RouteProp } from '@react-navigation/native';
+import { isCreditorsReportRow, isDebtorsReportRow } from '../config/cariReportSides';
 import { ScreenHeader, EmptyState, ErrorBanner, SearchBar } from '../components/ScreenChrome';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ReportViewToggle } from '../components/ReportViewToggle';
@@ -949,6 +950,8 @@ export function ReportMizanScreen() {
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
   const reportsView = usePreferencesStore((s) => s.reportsView);
+  const route = useRoute<RouteProp<MainStackParamList, 'ReportMizan'>>();
+  const side = route.params?.side;
   const [cardType, setCardType] = useState<CardFilter>('all');
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<CariBalanceRow[]>([]);
@@ -978,14 +981,20 @@ export function ReportMizanScreen() {
   }, [load]);
 
   const filtered = useMemo(() => {
+    const sided =
+      side === 'debtors'
+        ? rows.filter((r) => isDebtorsReportRow(r.cardType, r.balance))
+        : side === 'creditors'
+          ? rows.filter((r) => isCreditorsReportRow(r.cardType, r.balance))
+          : rows;
     const q = search.trim().toLocaleLowerCase('tr-TR');
-    if (!q) return rows;
-    return rows.filter(
+    if (!q) return sided;
+    return sided.filter(
       (r) =>
         r.accountName.toLocaleLowerCase('tr-TR').includes(q) ||
         r.accountCode.toLocaleLowerCase('tr-TR').includes(q),
     );
-  }, [rows, search]);
+  }, [rows, search, side]);
 
   const totals = useMemo(() => {
     let recv = 0;
@@ -1026,7 +1035,13 @@ export function ReportMizanScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
-        title="Cari Bakiye Özeti"
+        title={
+          side === 'debtors'
+            ? 'Borçlu Müşteriler'
+            : side === 'creditors'
+              ? 'Alacaklı Tedarikçiler'
+              : 'Cari Bakiye Özeti'
+        }
         subtitle={`${orgLabel} · ${filtered.length} hesap · yasal GL mizanı değil`}
       />
       <ReportViewToggle />

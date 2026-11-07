@@ -33,7 +33,7 @@ import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
 const FILTER_META: Record<
-  'all' | 'deficit' | 'surplus',
+  'all' | 'deficit' | 'surplus' | 'opening' | 'price',
   { title: string; subtitle: string; trcode?: number }
 > = {
   all: { title: 'Malzeme Yönetim Fişleri', subtitle: 'Ambar fişleri + faturalar' },
@@ -46,6 +46,16 @@ const FILTER_META: Record<
     title: 'Sayım Fazlası Fişleri',
     subtitle: 'TRCODE 26',
     trcode: STOCK_SLIP_TRCODES.SURPLUS,
+  },
+  opening: {
+    title: 'Stok Devir Fişi',
+    subtitle: 'TRCODE 14',
+    trcode: STOCK_SLIP_TRCODES.OPENING,
+  },
+  price: {
+    title: 'Fiyat Değişim Fişleri',
+    subtitle: 'TRCODE 78',
+    trcode: STOCK_SLIP_TRCODES.PRICE_CHANGE,
   },
 };
 
@@ -101,7 +111,13 @@ export function StockMovementsScreen() {
     setSaving(true);
     try {
       const id = await createStockMovement({
-        movementType: createType,
+        movementType: filter === 'price' ? 'price_change' : filter === 'opening' ? 'in' : createType,
+        trcode:
+          filter === 'opening'
+            ? STOCK_SLIP_TRCODES.OPENING
+            : filter === 'price'
+              ? STOCK_SLIP_TRCODES.PRICE_CHANGE
+              : undefined,
         description,
         documentNo: documentNo.trim() || undefined,
         items: [],
@@ -127,7 +143,7 @@ export function StockMovementsScreen() {
         title={meta.title}
         subtitle={`${rows.length} kayıt · ${meta.subtitle}`}
         right={
-          filter === 'all' ? (
+          filter === 'all' || filter === 'opening' || filter === 'price' ? (
             <HeaderIconButton accent onPress={openCreate}>
               <Plus size={18} color={palette.white} />
             </HeaderIconButton>

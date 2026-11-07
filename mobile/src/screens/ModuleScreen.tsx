@@ -11,6 +11,8 @@ import {
   menuCardStyles,
 } from '../components/MenuCardGrid';
 import { findMenuItem, resolveLiveRoute, type MenuItem } from '../config/menuConfig';
+import { isStructureOperationAllowed } from '../config/structureNavGuard';
+import { beautyCatalogKind, wmsOpsKind } from '../navigation/opsKinds';
 import { useThemeStore } from '../store/themeStore';
 import { usePreferencesStore } from '../store/preferencesStore';
 import { tMenuBadge, tMenuItem } from '../i18n/menuLabels';
@@ -47,6 +49,7 @@ export function ModuleScreen() {
   const { t } = useTranslation();
   const { colors } = useThemeStore();
   const menuViewMode = usePreferencesStore((s) => s.menuViewMode);
+  const businessProfile = usePreferencesStore((s) => s.businessProfile);
   const isCards = menuViewMode === 'cards';
   const route = useRoute<RouteProp<MainStackParamList, 'Module'>>();
   const navigation = useNavigation<StackNav>();
@@ -54,12 +57,18 @@ export function ModuleScreen() {
 
   const item = useMemo(() => findMenuItem(screenId), [screenId]);
   const title = titleParam || item?.label || screenId;
-  const children = item?.children ?? [];
+  const children = (item?.children ?? []).filter((child) =>
+    isStructureOperationAllowed(child.screen || child.id, businessProfile),
+  );
   const labelOf = useCallback((m: MenuItem) => tMenuItem(t, m.id, m.label), [t]);
 
   const relatedLive = resolveLiveRoute(screenId);
 
   useEffect(() => {
+    if (!isStructureOperationAllowed(screenId, businessProfile)) {
+      if (navigation.canGoBack()) navigation.goBack();
+      return;
+    }
     if (relatedLive === 'Module') return;
     switch (relatedLive) {
       case 'Products':
@@ -95,7 +104,14 @@ export function ModuleScreen() {
         navigation.replace('ReportStock', reportStockRouteParams(screenId));
         break;
       case 'ReportMizan':
-        navigation.replace('ReportMizan');
+        navigation.replace(
+          'ReportMizan',
+          screenId === 'cari-debtors'
+            ? { side: 'debtors' }
+            : screenId === 'cari-creditors'
+              ? { side: 'creditors' }
+              : undefined,
+        );
         break;
       case 'ReportAging':
         navigation.replace('ReportAging');
@@ -114,6 +130,36 @@ export function ModuleScreen() {
         break;
       case 'Wms':
         navigation.replace('Wms');
+        break;
+      case 'WmsOps':
+        navigation.replace('WmsOps', { kind: wmsOpsKind(screenId) });
+        break;
+      case 'BeautyCatalog':
+        navigation.replace('BeautyCatalog', { kind: beautyCatalogKind(screenId) });
+        break;
+      case 'BeautyReports':
+        navigation.replace('BeautyReports');
+        break;
+      case 'BeautySurvey':
+        navigation.replace('BeautySurvey');
+        break;
+      case 'RestaurantRecipes':
+        navigation.replace('RestaurantRecipes');
+        break;
+      case 'RestaurantHistory':
+        navigation.replace('RestaurantHistory');
+        break;
+      case 'Staff':
+        navigation.replace('Staff', {
+          initialTab:
+            screenId === 'attendance'
+              ? 'attendance'
+              : screenId === 'payroll'
+                ? 'payroll'
+                : screenId === 'performance'
+                  ? 'performance'
+                  : 'list',
+        });
         break;
       case 'StockMovements':
         navigation.replace('StockMovements', stockMovementsRouteParams(screenId));
@@ -196,7 +242,7 @@ export function ModuleScreen() {
       default:
         break;
     }
-  }, [relatedLive, navigation, screenId]);
+  }, [relatedLive, navigation, screenId, businessProfile]);
 
   const openChild = (child: MenuItem) => {
     navigateToModule(navigation, child.screen, labelOf(child));

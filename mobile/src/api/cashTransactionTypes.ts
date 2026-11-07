@@ -16,6 +16,8 @@ export const CASH_TX = {
   /** Banka dış çıkış — web banka.ts HAVALE (sign −1) */
   HAVALE: 'HAVALE',
   EFT: 'EFT',
+  /** Gider pusulası — web expenses.ts nakit gider, sign −1 */
+  GIDER_PUSULASI: 'GIDER_PUSULASI',
 } as const;
 
 export type CashTxType = (typeof CASH_TX)[keyof typeof CASH_TX];
@@ -64,6 +66,7 @@ export function cashTransactionTypeLabel(
   if (t === CASH_TX.BANKADAN_CEKILEN) return 'Bankadan çekilen';
   if (t === CASH_TX.HAVALE) return 'Havale';
   if (t === CASH_TX.EFT) return 'EFT';
+  if (t === CASH_TX.GIDER_PUSULASI) return 'Gider';
   if (t) return t.replace(/_/g, ' ');
   if (sign > 0) return 'Giriş';
   if (sign < 0) return 'Çıkış';

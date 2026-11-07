@@ -88,8 +88,8 @@ export const MENU_SECTIONS: MenuSection[] = [
         screen: 'material-movements',
         children: [
           { id: 'stockmovements', label: 'Malzeme Yönetim Fişleri', screen: 'stockmovements' },
-          // stok-devir (Stok Devir Fişi) — menüden kaldırıldı
-          // stock-price-change-slips: varsayılan kapalı (web report_menu_params); mobilde menüde yok
+          { id: 'stock-devir-slip', label: 'Stok Devir Fişi', screen: 'stock-devir-slip' },
+          { id: 'stock-price-change-slips', label: 'Fiyat Değişim Fişleri', screen: 'stock-price-change-slips' },
         ],
       },
       // inventory-count (Sayım İşlemleri) — menüden kaldırıldı; fiş türleri Malzeme Yönetim Fişleri’nde kalır
@@ -112,6 +112,7 @@ export const MENU_SECTIONS: MenuSection[] = [
       },
       { id: 'excel', label: 'Excel İşlemleri', screen: 'excel' },
       { id: 'smart-add', label: 'Akıllı malzeme ekleme', screen: 'smart-material-add' },
+      { id: 'materials-intake', label: 'Malzeme Toplama', screen: 'materials-intake' },
       { id: 'production', label: 'Üretim Reçeteleri', screen: 'production' },
       { id: 'butcher', label: 'Kasap Üretim', screen: 'butcher-production' },
     ],
@@ -239,6 +240,8 @@ export const MENU_SECTIONS: MenuSection[] = [
           { id: 'customer-extract', label: 'Cari Ekstre', screen: 'customer-extract' },
           { id: 'mizan', label: 'Cari Bakiye Özeti', screen: 'mizan' },
           { id: 'aging', label: 'Cari Yaşlandırma', screen: 'aging' },
+          { id: 'cari-debtors', label: 'Borçlu Müşteriler', screen: 'cari-debtors' },
+          { id: 'cari-creditors', label: 'Alacaklı Tedarikçiler', screen: 'cari-creditors' },
         ],
       },
       {
@@ -257,6 +260,12 @@ export const MENU_SECTIONS: MenuSection[] = [
     title: 'WMS / Depo',
     items: [
       { id: 'wms-hub', label: 'WMS Ana Panel', screen: 'wms-hub' },
+      { id: 'wms-receiving', label: 'Mal Kabul', screen: 'wms-receiving' },
+      { id: 'wms-dispatch', label: 'Sevkiyat', screen: 'wms-dispatch' },
+      { id: 'wms-bins', label: 'Lokasyon', screen: 'wms-bins' },
+      { id: 'wms-putaway', label: 'Yerleştirme', screen: 'wms-putaway' },
+      { id: 'wms-packing', label: 'Paketleme', screen: 'wms-packing' },
+      { id: 'wms-adjustment', label: 'Fire / Düzeltme', screen: 'wms-adjustment' },
       { id: 'stockcounting', label: 'Stok Sayım', screen: 'stockcounting' },
       { id: 'wave-picking', label: 'Dalga Toplama', screen: 'wave-picking' },
       { id: 'mobile-inv', label: 'Mobil Sayım', screen: 'mobile-inventory-count' },
@@ -276,6 +285,9 @@ export const MENU_SECTIONS: MenuSection[] = [
       { id: 'rest-kitchen', label: 'Mutfak Ekranı', screen: 'restaurant-kitchen' },
       { id: 'rest-reports', label: 'Restoran Raporları', screen: 'restaurant-reports' },
       { id: 'rest-settings', label: 'Restoran Ayarları', screen: 'restaurant-settings' },
+      { id: 'restaurant-recipes', label: 'Reçeteler', screen: 'restaurant-recipes' },
+      { id: 'restaurant-history', label: 'Fiş Geçmişi', screen: 'restaurant-history' },
+      { id: 'restaurant-reservations', label: 'Rezervasyon', screen: 'restaurant-reservations' },
       { id: 'rest-z-report', label: 'Z Raporu', screen: 'restaurant-reports-z' },
       { id: 'rest-void-report', label: 'İptal / İade Raporu', screen: 'restaurant-reports-void' },
       { id: 'rest-product-qty', label: 'Ürün Satış Adedi', screen: 'restaurant-reports-product' },
@@ -291,6 +303,23 @@ export const MENU_SECTIONS: MenuSection[] = [
       { id: 'beauty-specialists', label: 'Uzmanlar', screen: 'beauty-specialists' },
       { id: 'beauty-sales', label: 'Güzellik Satış POS', screen: 'beauty-sales' },
       { id: 'beauty-surveys', label: 'Memnuniyet Anketi', screen: 'beauty-surveys' },
+      { id: 'beauty-packages', label: 'Paketler', screen: 'beauty-packages' },
+      { id: 'beauty-devices', label: 'Cihazlar', screen: 'beauty-devices' },
+      { id: 'beauty-leads', label: 'Adaylar', screen: 'beauty-leads' },
+      { id: 'beauty-recipes', label: 'Hizmet Reçetesi', screen: 'beauty-recipes' },
+      { id: 'beauty-reports', label: 'Klinik Raporları', screen: 'beauty-reports' },
+      { id: 'beauty-expenses', label: 'Giderler', screen: 'beauty-expenses' },
+      { id: 'beauty-clients', label: 'Danışanlar', screen: 'beauty-clients' },
+    ],
+  },
+  {
+    id: 'human-resources',
+    title: 'İnsan Kaynakları',
+    items: [
+      { id: 'hr', label: 'Personel Yönetimi', screen: 'hr' },
+      { id: 'attendance', label: 'Puantaj', screen: 'attendance' },
+      { id: 'payroll', label: 'Maaş Özeti', screen: 'payroll' },
+      { id: 'performance', label: 'Performans Değerlendirme', screen: 'performance' },
     ],
   },
   {
@@ -338,6 +367,7 @@ export const MENU_SECTIONS: MenuSection[] = [
       { id: 'roleauth', label: 'Rol & Yetkilendirme', screen: 'roleauth' },
       { id: 'menumanagement', label: 'Menü Yönetimi', screen: 'menumanagement' },
       { id: 'generalsettings', label: 'Parametre', screen: 'generalsettings' },
+      { id: 'print-options', label: 'Yazdırma Seçenekleri', screen: 'print-options' },
       // virtual-pbx-caller-id: varsayılan kapalı (web report_menu_params); mobilde menüde yok
       { id: 'pendingpos', label: 'Kasa Cihazları', screen: 'pendingposdevices' },
       { id: 'supabase-mig', label: 'Supabase Veri Aktarımı', screen: 'supabase-migration' },
@@ -368,6 +398,12 @@ export type LiveRoute =
   | 'WmsCount'
   | 'WmsTransfer'
   | 'WmsWavePicking'
+  | 'WmsOps'
+  | 'BeautyCatalog'
+  | 'BeautyReports'
+  | 'RestaurantRecipes'
+  | 'RestaurantHistory'
+  | 'Staff'
   | 'Restaurant'
   | 'RestaurantReports'
   | 'RestaurantSettings'
@@ -422,6 +458,11 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   logaudit: 'System',
   pendingposdevices: 'System',
   'printer-settings': 'PrinterSettings',
+  'print-options': 'PrinterSettings',
+  hr: 'Staff',
+  attendance: 'Staff',
+  payroll: 'Staff',
+  performance: 'Staff',
   backuprestore: 'System',
   'supabase-migration': 'System',
   products: 'Products',
@@ -435,10 +476,12 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'special-codes': 'MaterialDefinitions',
   'group-codes': 'MaterialDefinitions',
   production: 'ProductionOps',
+  'production-recipe': 'ProductionOps',
   'butcher-production': 'ProductionOps',
   multicurrency: 'MultiCurrency',
   excel: 'ExcelOps',
   'smart-material-add': 'MaterialLabelScan',
+  'materials-intake': 'MaterialLabelScan',
   'invoice-label-designer': 'SystemExtras',
   'virtual-pbx-caller-id': 'SystemExtras',
   'service-cards': 'Products',
@@ -503,6 +546,8 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'financereports-cash': 'ReportCash',
   'financereports-bank': 'Finance',
   mizan: 'ReportMizan',
+  'cari-debtors': 'ReportMizan',
+  'cari-creditors': 'ReportMizan',
   aging: 'ReportAging',
   'cari-aging': 'ReportAging',
   yaslandirma: 'ReportAging',
@@ -524,7 +569,20 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'beauty-specialists': 'Beauty',
   'beauty-sales': 'Beauty',
   'beauty-surveys': 'BeautySurvey',
+  'beauty-packages': 'BeautyCatalog',
+  'beauty-devices': 'BeautyCatalog',
+  'beauty-leads': 'BeautyCatalog',
+  'beauty-recipes': 'BeautyCatalog',
+  'beauty-reports': 'BeautyReports',
+  'beauty-expenses': 'FinanceDefinitions',
+  'beauty-clients': 'Customers',
   'wms-hub': 'Wms',
+  'wms-receiving': 'WmsOps',
+  'wms-dispatch': 'WmsOps',
+  'wms-bins': 'WmsOps',
+  'wms-putaway': 'WmsOps',
+  'wms-packing': 'WmsOps',
+  'wms-adjustment': 'WmsOps',
   stockcounting: 'WmsCount',
   'wave-picking': 'WmsWavePicking',
   'mobile-inventory-count': 'WmsCount',
@@ -534,6 +592,7 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'stockmovements-deficit': 'StockMovements',
   'stockmovements-surplus': 'StockMovements',
   'stock-price-change-slips': 'StockMovements',
+  'stock-devir-slip': 'StockMovements',
   restaurant: 'Restaurant',
   'restaurant-tables': 'Restaurant',
   'restaurant-retail': 'Restaurant',
@@ -549,6 +608,9 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'restaurant-settings': 'RestaurantSettings',
   'restaurant-channels': 'RestaurantSettings',
   'restaurant-firm': 'RestaurantSettings',
+  'restaurant-recipes': 'RestaurantRecipes',
+  'restaurant-history': 'RestaurantHistory',
+  'restaurant-reservations': 'Restaurant',
   logistics: 'Delivery',
   'delivery-live': 'Delivery',
   couriers: 'Delivery',

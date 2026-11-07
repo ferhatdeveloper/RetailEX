@@ -80,13 +80,13 @@ export type MainStackParamList = {
   ReportStock:
     | { mode?: 'critical' | 'min-max' | 'material-value' | 'warehouse-status' | 'material-extract' }
     | undefined;
-  ReportMizan: undefined;
+  ReportMizan: { side?: 'debtors' | 'creditors' } | undefined;
   /** Cari yaşlandırma — açık vade fişleri */
   ReportAging: undefined;
   ReportCariExtract: { accountId?: string; cardType?: 'customer' | 'supplier' } | undefined;
   ReportProductSales: undefined;
   ReportCash: undefined;
-  StockMovements: { filter?: 'all' | 'deficit' | 'surplus' } | undefined;
+  StockMovements: { filter?: 'all' | 'deficit' | 'surplus' | 'opening' | 'price' } | undefined;
   StockMovementDetail: { id: string };
   Beauty:
     | {
@@ -108,6 +108,13 @@ export type MainStackParamList = {
   WmsWavePicking: undefined;
   /** WMS dalga toplama — görev yürütme */
   WmsWavePickingExecute: { waveId: string };
+  /** WMS kabul, sevkiyat, lokasyon, yerleştirme, paket, fire */
+  WmsOps: { kind: import('./opsKinds').WmsOpsKind };
+  BeautyCatalog: { kind: import('./opsKinds').BeautyCatalogKind } | undefined;
+  BeautyReports: undefined;
+  RestaurantRecipes: undefined;
+  RestaurantHistory: undefined;
+  Staff: { initialTab?: 'list' | 'attendance' | 'payroll' | 'performance' } | undefined;
   Restaurant:
     | {
         initialTab?:

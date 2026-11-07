@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Pressable,
+  ScrollView,
 } from 'react-native';
 import { ClipboardList, ArrowLeftRight, Navigation } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -90,6 +91,26 @@ export function WmsScreen() {
         </View>
         <Text style={{ color: palette.orange500, fontWeight: '800', fontSize: 11 }}>Aç →</Text>
       </Pressable>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.opsRow}>
+        {(
+          [
+            ['receiving', 'Mal kabul'],
+            ['dispatch', 'Sevkiyat'],
+            ['bins', 'Lokasyon'],
+            ['putaway', 'Yerleştirme'],
+            ['packing', 'Paketleme'],
+            ['adjustment', 'Fire'],
+          ] as const
+        ).map(([kind, label]) => (
+          <Pressable
+            key={kind}
+            onPress={() => navigation.navigate('WmsOps', { kind })}
+            style={[styles.opsChip, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+          >
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12 }}>{label}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
       <View style={styles.kpiRow}>
         {[
           { l: 'Ürün', v: String(summary.productCount) },
@@ -147,6 +168,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
   },
+  opsRow: { gap: 8, paddingHorizontal: 12, paddingTop: 8 },
+  opsChip: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
   kpiRow: { flexDirection: 'row', gap: 4, paddingHorizontal: 8, paddingTop: 8 },
   kpi: { flex: 1, borderWidth: 1, borderRadius: 8, padding: 6 },
   lbl: { fontSize: 9, color: '#6b7280', fontWeight: '600' },

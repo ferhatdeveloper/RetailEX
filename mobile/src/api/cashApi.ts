@@ -889,6 +889,41 @@ async function createSimpleCashMovementViaPostgrest(
   return { id, ficheNo };
 }
 
+/**
+ * Nakit gider — web `expenseAPI.create` kasa satırı:
+ * transaction_type GIDER_PUSULASI, sign −1, tutar mutlak.
+ */
+export async function createExpenseCashOut(input: {
+  registerId: string;
+  amount: number;
+  date?: string;
+  description?: string;
+}): Promise<{ id: string; ficheNo: string }> {
+  const amount = Math.abs(Number(input.amount) || 0);
+  if (!input.registerId) throw new Error('Kasa seçin');
+  if (amount <= 0) throw new Error('Tutar 0’dan büyük olmalı');
+  const regs = cashRegistersTable();
+  const ficheNo = nextFicheNo('KL');
+  const id = newUuid();
+  const date = (input.date || todayYmd()).slice(0, 10);
+  const desc = (input.description || '').trim() || 'Gider';
+  await insertCashLineHybrid(
+    {
+      id,
+      registerId: input.registerId,
+      ficheNo,
+      date,
+      amount,
+      sign: -1,
+      definition: desc,
+      transactionType: CASH_TX.GIDER_PUSULASI,
+    },
+    'createExpenseCashOut',
+  );
+  await bumpRegisterBalanceHybrid(regs, input.registerId, amount * -1);
+  return { id, ficheNo };
+}
+
 export async function createSimpleCashMovement(
   input: SimpleCashMovementInput,
 ): Promise<{ id: string; ficheNo: string }> {

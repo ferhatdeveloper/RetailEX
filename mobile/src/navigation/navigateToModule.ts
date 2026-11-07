@@ -1,5 +1,10 @@
+import { Alert } from 'react-native';
+import i18n from '../i18n';
 import { resolveInvoicesRouteParams } from '../api/invoiceFilters';
 import { resolveLiveRoute } from '../config/menuConfig';
+import { isStructureOperationAllowed } from '../config/structureNavGuard';
+import { usePreferencesStore } from '../store/preferencesStore';
+import { beautyCatalogKind, wmsOpsKind } from './opsKinds';
 import type { MainStackParamList } from './types';
 
 /** Tab/Stack composite — RN tip birleşimi gevşek tutulur */
@@ -56,6 +61,8 @@ export function restaurantRouteParams(screen: string): RestaurantRouteParams | u
     case 'restaurant-reports-void':
     case 'restaurant-reports-product':
       return { initialTab: 'reports' };
+    case 'restaurant-reservations':
+      return { initialTab: 'schedule' };
     default:
       return undefined;
   }
@@ -113,6 +120,10 @@ export function stockMovementsRouteParams(screen: string): StockMovementsRoutePa
       return { filter: 'deficit' };
     case 'stockmovements-surplus':
       return { filter: 'surplus' };
+    case 'stock-devir-slip':
+      return { filter: 'opening' };
+    case 'stock-price-change-slips':
+      return { filter: 'price' };
     default:
       return { filter: 'all' };
   }
@@ -210,7 +221,16 @@ export function navigateToModule(
   navigation: AnyNav,
   screen: string,
   title?: string,
-) {
+): void {
+  const profile = usePreferencesStore.getState().businessProfile;
+  if (!isStructureOperationAllowed(screen, profile)) {
+    Alert.alert(
+      i18n.t('ops.blockedTitle', { defaultValue: 'Bu yapı bu tipte yok' }),
+      i18n.t('ops.blockedBody', { defaultValue: 'Seçili işletme tipi bu işlemi açmaz.' }),
+    );
+    return;
+  }
+
   const nav = navigation as {
     navigate: (name: string, params?: Record<string, unknown>) => void;
   };
@@ -269,7 +289,14 @@ export function navigateToModule(
       nav.navigate('ReportStock', reportStockRouteParams(screen));
       return;
     case 'ReportMizan':
-      nav.navigate('ReportMizan');
+      nav.navigate(
+        'ReportMizan',
+        screen === 'cari-debtors'
+          ? { side: 'debtors' }
+          : screen === 'cari-creditors'
+            ? { side: 'creditors' }
+            : undefined,
+      );
       return;
     case 'ReportAging':
       nav.navigate('ReportAging');
@@ -294,6 +321,33 @@ export function navigateToModule(
       return;
     case 'Wms':
       nav.navigate('Wms');
+      return;
+    case 'WmsOps':
+      nav.navigate('WmsOps', { kind: wmsOpsKind(screen) });
+      return;
+    case 'BeautyCatalog':
+      nav.navigate('BeautyCatalog', { kind: beautyCatalogKind(screen) });
+      return;
+    case 'BeautyReports':
+      nav.navigate('BeautyReports');
+      return;
+    case 'RestaurantRecipes':
+      nav.navigate('RestaurantRecipes');
+      return;
+    case 'RestaurantHistory':
+      nav.navigate('RestaurantHistory');
+      return;
+    case 'Staff':
+      nav.navigate('Staff', {
+        initialTab:
+          screen === 'attendance'
+            ? 'attendance'
+            : screen === 'payroll'
+              ? 'payroll'
+              : screen === 'performance'
+                ? 'performance'
+                : 'list',
+      });
       return;
     case 'WmsCount':
       nav.navigate(
