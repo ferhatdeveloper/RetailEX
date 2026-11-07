@@ -3,7 +3,7 @@ import {
   filterFirmsByBusinessType,
   filterStructuresByBusinessType,
   type StructureNode,
-} from '../../utils/businessStructureFilter';
+} from '../../../mobile/src/config/businessStructureFilter';
 
 const catalog: StructureNode[] = [
   {
