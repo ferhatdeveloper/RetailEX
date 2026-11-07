@@ -15,6 +15,11 @@ import { GradientHeader } from '../components/GradientHeader';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
+import { usePreferencesStore, type BusinessProfile } from '../store/preferencesStore';
+import {
+  filterFirmsByBusinessType,
+  normalizeBusinessType,
+} from '../config/businessStructureFilter';
 import {
   fetchFirms,
   fetchStores,
@@ -44,6 +49,8 @@ export function OrganizationScreen({ navigation, route }: Props) {
   const login = useAuthStore((s) => s.login);
   const updateOrg = useAuthStore((s) => s.updateOrg);
   const sessionUser = useAuthStore((s) => s.user);
+  const businessProfile = usePreferencesStore((s) => s.businessProfile);
+  const setBusinessProfile = usePreferencesStore((s) => s.setBusinessProfile);
 
   const loginParams = isLoginRoute(route.params) ? route.params : null;
   const isSwitch = !loginParams;
@@ -118,11 +125,16 @@ export function OrganizationScreen({ navigation, route }: Props) {
         fetchStores(fn),
       ]);
       if (cancelled) return;
-      const firmList = f.length ? f : [{ firm_nr: fn, name: `Firma ${fn}` }];
+      const firmList = filterFirmsByBusinessType(
+        f.length ? f : [{ firm_nr: fn, name: `Firma ${fn}` }],
+        businessProfile,
+      );
       setFirms(firmList);
-      // Tek firma → otomatik seç (dropdown açmaya gerek yok)
       let activeFirm = fn;
-      if (firmList.length === 1) {
+      if (firmList.length === 0) {
+        activeFirm = '';
+        setFirmNr('');
+      } else if (firmList.length === 1) {
         activeFirm = firmList[0]!.firm_nr;
         setFirmNr(activeFirm);
       } else if (fn && firmList.some((x) => String(x.firm_nr) === String(fn))) {
@@ -133,7 +145,7 @@ export function OrganizationScreen({ navigation, route }: Props) {
       }
       let periodsForFirm = p;
       let storesForFirm = s;
-      if (activeFirm !== fn) {
+      if (activeFirm && activeFirm !== fn) {
         const [p2, s2] = await Promise.all([
           fetchPeriods(activeFirm),
           fetchStores(activeFirm),
@@ -195,7 +207,7 @@ export function OrganizationScreen({ navigation, route }: Props) {
     };
     // İlk yükleme — firma değişince aşağıdaki effect
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offlineDemo]);
+  }, [offlineDemo, businessProfile]);
 
   useEffect(() => {
     if (offlineDemo || loading || !initialFirmLoadDoneRef.current) return;
@@ -206,6 +218,11 @@ export function OrganizationScreen({ navigation, route }: Props) {
     }
     if (syncedFirmNrRef.current === firmNr) return;
     syncedFirmNrRef.current = firmNr;
+    if (!firmNr) {
+      setStores([]);
+      setPeriods([]);
+      return;
+    }
     lastOrgValidatedRef.current = false;
     let cancelled = false;
     void (async () => {
@@ -343,6 +360,58 @@ export function OrganizationScreen({ navigation, route }: Props) {
           />
 
           <View style={styles.form}>
+            <Text style={[styles.typeLabel, { color: colors.textMuted }]}>
+              {t('businessProfile')}
+            </Text>
+            <View style={styles.typeRow}>
+              {(
+                [
+                  ['market', t('businessProfileMarket')],
+                  ['restaurant', t('businessProfileRestaurant')],
+                  ['wms', t('businessProfileWms')],
+                  ['beauty', t('businessProfileBeauty')],
+                  ['clinic', t('businessProfileClinic')],
+                ] as const
+              ).map(([profile, label]) => {
+                const active = businessProfile === profile;
+                return (
+                  <Pressable
+                    key={profile}
+                    onPress={() => setBusinessProfile(profile as BusinessProfile)}
+                    style={[
+                      styles.typeChip,
+                      {
+                        backgroundColor: active
+                          ? palette.blue600
+                          : darkMode
+                            ? palette.gray700
+                            : palette.gray100,
+                        borderColor: active
+                          ? palette.blue600
+                          : darkMode
+                            ? palette.gray600
+                            : palette.gray200,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: active ? palette.white : colors.textMuted,
+                        fontSize: 11,
+                        fontWeight: '800',
+                      }}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {normalizeBusinessType(businessProfile) == null ? (
+              <Text style={[styles.typeHint, { color: colors.textSubtle }]}>
+                {t('businessStructurePrompt')}
+              </Text>
+            ) : null}
             <View style={styles.tabBar}>
               <View style={[styles.tabActive, { backgroundColor: palette.blue600 }]}>
                 <Text style={styles.tabText}>{t('firmSelection')}</Text>
@@ -407,7 +476,9 @@ export function OrganizationScreen({ navigation, route }: Props) {
                 {showFirms && (
                   <View style={[styles.dropdown, listStyle]}>
                     {firms.length === 0 ? (
-                      <Text style={{ color: colors.textMuted, padding: 12 }}>{t('noFirms')}</Text>
+                      <Text style={{ color: colors.textMuted, padding: 12 }}>
+                        {t('businessStructurePrompt')}
+                      </Text>
                     ) : (
                       firms.map((f) => (
                         <Pressable
@@ -595,6 +666,20 @@ const styles = StyleSheet.create({
   scroll: { padding: 16, paddingBottom: 40 },
   card: { borderRadius: 2, borderWidth: 1, overflow: 'hidden' },
   form: { padding: 24, gap: 16 },
+  typeLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  typeChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 2,
+  },
+  typeHint: { fontSize: 12, lineHeight: 17, fontWeight: '600' },
   tabBar: {
     flexDirection: 'row',
     padding: 4,

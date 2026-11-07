@@ -17,8 +17,19 @@ export type ReportsView = 'list' | 'chart';
 /** @deprecated reportsView kullanın */
 export type RestReportsView = ReportsView;
 
-/** Kurulum / giriş varsayılan kabuğu — backoffice menüleri her tipte açık kalır. */
-export type BusinessProfile = 'general' | 'restaurant' | 'retail' | 'beauty';
+/**
+ * Kurulum / giriş tipi.
+ * `retail` eski kayıt; okununca `market` olur.
+ * `general` dikey yapı listesini açmaz.
+ */
+export type BusinessProfile =
+  | 'general'
+  | 'restaurant'
+  | 'retail'
+  | 'market'
+  | 'wms'
+  | 'beauty'
+  | 'clinic';
 
 type PreferencesState = {
   menuViewMode: MenuViewMode;
@@ -57,7 +68,15 @@ function normalizeGridCols(v: unknown): RestMenuCatalogGridCols {
 }
 
 function normalizeBusinessProfile(v: unknown): BusinessProfile {
-  if (v === 'restaurant' || v === 'retail' || v === 'beauty' || v === 'general') {
+  if (v === 'retail') return 'market';
+  if (
+    v === 'restaurant' ||
+    v === 'market' ||
+    v === 'wms' ||
+    v === 'beauty' ||
+    v === 'clinic' ||
+    v === 'general'
+  ) {
     return v;
   }
   return 'general';

@@ -18,6 +18,7 @@ import { useConnectivityStore } from '../store/connectivityStore';
 import { flushPendingMutations } from '../offline/syncEngine';
 import { pullCatalogSnapshots } from '../offline/catalogSync';
 import { MENU_SECTIONS } from '../config/menuConfig';
+import { filterStructuresByBusinessType } from '../config/businessStructureFilter';
 import { navigateToModule } from '../navigation/navigateToModule';
 import {
   APP_LANGUAGES,
@@ -44,17 +45,29 @@ export function MoreScreen() {
   const logout = useAuthStore((s) => s.logout);
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
 
-  const hubs = [
-    { id: 'products', label: 'Ürünler', screen: 'products' },
-    { id: 'suppliers', label: 'Cari Hesaplar', screen: 'suppliers' },
-    { id: 'sales-inv', label: 'Satış Faturaları', screen: 'salesinvoice' },
-    { id: 'document-scan', label: 'Belge Tara', screen: 'document-scan' },
-    { id: 'wms-hub', label: 'WMS Ana Panel', screen: 'wms-hub' },
-    { id: 'restaurant', label: 'Restoran Ana Ekran', screen: 'restaurant' },
-    { id: 'beauty', label: 'Güzellik Ana Ekran', screen: 'beauty' },
-    { id: 'customreports', label: 'Genel Rapor', screen: 'customreports' },
-    { id: 'usermanagement', label: 'Kullanıcı Yönetimi', screen: 'usermanagement' },
-  ];
+  const businessProfile = usePreferencesStore((s) => s.businessProfile);
+  const hubs = useMemo(
+    () =>
+      filterStructuresByBusinessType(
+        [
+          { id: 'products', label: 'Ürünler', screen: 'products' },
+          { id: 'suppliers', label: 'Cari Hesaplar', screen: 'suppliers' },
+          { id: 'sales-inv', label: 'Satış Faturaları', screen: 'salesinvoice' },
+          { id: 'document-scan', label: 'Belge Tara', screen: 'document-scan' },
+          { id: 'wms-hub', label: 'WMS Ana Panel', screen: 'wms-hub' },
+          { id: 'restaurant', label: 'Restoran Ana Ekran', screen: 'restaurant' },
+          { id: 'beauty', label: 'Güzellik Ana Ekran', screen: 'beauty' },
+          { id: 'customreports', label: 'Genel Rapor', screen: 'customreports' },
+          { id: 'usermanagement', label: 'Kullanıcı Yönetimi', screen: 'usermanagement' },
+        ],
+        businessProfile,
+      ),
+    [businessProfile],
+  );
+  const menuSections = useMemo(
+    () => filterStructuresByBusinessType(MENU_SECTIONS, businessProfile),
+    [businessProfile],
+  );
 
   const viewTabItems = useMemo(
     () =>
@@ -117,7 +130,7 @@ export function MoreScreen() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
         title={t('more')}
-        subtitle={t('menu.groupsCount', { count: MENU_SECTIONS.length })}
+        subtitle={t('menu.groupsCount', { count: menuSections.length })}
         showBack={false}
       />
       <ScrollView

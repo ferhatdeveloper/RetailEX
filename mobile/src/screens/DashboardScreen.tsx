@@ -39,6 +39,7 @@ import {
   countMenuItems,
   type MenuItem,
 } from '../config/menuConfig';
+import { filterStructuresByBusinessType } from '../config/businessStructureFilter';
 import { navigateToModule } from '../navigation/navigateToModule';
 import { tryConsumeRestaurantLanding } from '../navigation/restaurantLanding';
 import { fetchDashboardStats, type DashboardStats } from '../api/dashboardApi';
@@ -62,7 +63,15 @@ export function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [statsError, setStatsError] = useState<string | null>(null);
 
-  const counts = useMemo(() => countMenuItems(), []);
+  const menuSections = useMemo(
+    () => filterStructuresByBusinessType(MENU_SECTIONS, businessProfile),
+    [businessProfile],
+  );
+  const quickAccess = useMemo(
+    () => filterStructuresByBusinessType(QUICK_ACCESS, businessProfile),
+    [businessProfile],
+  );
+  const counts = useMemo(() => countMenuItems(menuSections), [menuSections]);
   const labelOf = useCallback((item: MenuItem) => tMenuItem(t, item.id, item.label), [t]);
 
   const loadStats = useCallback(async () => {
@@ -270,7 +279,7 @@ export function DashboardScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipRow}
         >
-          {QUICK_ACCESS.map((action) => {
+          {quickAccess.map((action) => {
             const qLabel = tMenuQuick(t, action.id, action.label);
             return (
               <Pressable
@@ -293,7 +302,7 @@ export function DashboardScreen() {
         </Text>
 
         {/* Ana menü — grup başlıklı tek akış (liste varsayılan; kart = 3+ sütun) */}
-        {MENU_SECTIONS.map((section) => (
+        {menuSections.map((section) => (
           <View key={section.id} style={styles.sectionBlock}>
             <Text style={[styles.catTitle, { color: colors.text }]}>
               {tMenuSection(t, section.id, section.title)}

@@ -31,6 +31,12 @@ import {
   usePreferencesStore,
   type BusinessProfile,
 } from '../store/preferencesStore';
+import { MENU_SECTIONS } from '../config/menuConfig';
+import {
+  filterStructuresByBusinessType,
+  normalizeBusinessType,
+  structureVertical,
+} from '../config/businessStructureFilter';
 import { testBridgeConnection } from '../api/pgClient';
 import { testPostgrestConnection } from '../api/postgrestClient';
 import { ConnectivityBadge } from '../components/ConnectivityBadge';
@@ -123,6 +129,13 @@ export function ConfigScreen({ navigation }: Props) {
   const setConfig = useConfigStore((s) => s.setConfig);
   const businessProfile = usePreferencesStore((s) => s.businessProfile);
   const setBusinessProfile = usePreferencesStore((s) => s.setBusinessProfile);
+  const visibleVerticalStructures = useMemo(
+    () =>
+      filterStructuresByBusinessType(MENU_SECTIONS, businessProfile).filter(
+        (section) => structureVertical(section) !== 'shared',
+      ),
+    [businessProfile],
+  );
 
   const [draft, setDraft] = useState<DbConfig>(() => cloneConfig(stored));
   const [testing, setTesting] = useState(false);
@@ -626,11 +639,56 @@ export function ConfigScreen({ navigation }: Props) {
   const businessProfileLabel =
     businessProfile === 'restaurant'
       ? t('businessProfileRestaurant')
-      : businessProfile === 'retail'
-        ? t('businessProfileRetail')
-        : businessProfile === 'beauty'
-          ? t('businessProfileBeauty')
-          : t('businessProfileGeneral');
+      : businessProfile === 'market' || businessProfile === 'retail'
+        ? t('businessProfileMarket')
+        : businessProfile === 'wms'
+          ? t('businessProfileWms')
+          : businessProfile === 'beauty'
+            ? t('businessProfileBeauty')
+            : businessProfile === 'clinic'
+              ? t('businessProfileClinic')
+              : t('businessProfileGeneral');
+
+  const renderBusinessTypePicker = () => (
+    <>
+      <Text style={[styles.section, { color: colors.textMuted, marginTop: 0 }]}>
+        {t('businessProfile')}
+      </Text>
+      <View style={styles.profileRow}>
+        <BusinessProfileChip profile="market" label={t('businessProfileMarket')} />
+        <BusinessProfileChip profile="restaurant" label={t('businessProfileRestaurant')} />
+        <BusinessProfileChip profile="wms" label={t('businessProfileWms')} />
+        <BusinessProfileChip profile="beauty" label={t('businessProfileBeauty')} />
+        <BusinessProfileChip profile="clinic" label={t('businessProfileClinic')} />
+      </View>
+      <Text style={[styles.hint, { color: colors.textSubtle }]}>
+        {businessProfile === 'restaurant'
+          ? t('businessProfileRestaurantHint')
+          : t('businessProfileHint')}
+      </Text>
+      <Text style={[styles.section, { color: colors.textMuted }]}>
+        {t('businessStructureTitle')}
+      </Text>
+      {normalizeBusinessType(businessProfile) == null || visibleVerticalStructures.length === 0 ? (
+        <Text style={[styles.hint, { color: colors.textSubtle }]}>
+          {t('businessStructurePrompt')}
+        </Text>
+      ) : (
+        visibleVerticalStructures.map((section) => (
+          <View key={section.id} style={{ gap: 4 }}>
+            <Text style={[styles.section, { color: colors.text, marginTop: 0 }]}>
+              {section.title}
+            </Text>
+            {section.items.map((item) => (
+              <Text key={item.id} style={[styles.hint, { color: colors.textMuted }]}>
+                {item.label}
+              </Text>
+            ))}
+          </View>
+        ))
+      )}
+    </>
+  );
 
   const pendingCount = useConnectivityStore((s) => s.pendingCount);
   const syncing = useConnectivityStore((s) => s.syncing);
@@ -892,32 +950,7 @@ export function ConfigScreen({ navigation }: Props) {
               <View style={styles.form}>
                 {activeStepId === 'infra' ? (
                   <>
-                    <Text style={[styles.section, { color: colors.textMuted, marginTop: 0 }]}>
-                      {t('businessProfile')}
-                    </Text>
-                    <View style={styles.profileRow}>
-                      <BusinessProfileChip
-                        profile="restaurant"
-                        label={t('businessProfileRestaurant')}
-                      />
-                      <BusinessProfileChip
-                        profile="retail"
-                        label={t('businessProfileRetail')}
-                      />
-                      <BusinessProfileChip
-                        profile="general"
-                        label={t('businessProfileGeneral')}
-                      />
-                      <BusinessProfileChip
-                        profile="beauty"
-                        label={t('businessProfileBeauty')}
-                      />
-                    </View>
-                    <Text style={[styles.hint, { color: colors.textSubtle }]}>
-                      {businessProfile === 'restaurant'
-                        ? t('businessProfileRestaurantHint')
-                        : t('businessProfileHint')}
-                    </Text>
+                    {renderBusinessTypePicker()}
 
                     <Text style={[styles.section, { color: colors.textMuted }]}>
                       {t('dbMode')}
@@ -1233,32 +1266,7 @@ export function ConfigScreen({ navigation }: Props) {
 
                 {activeStepId === 'summary' ? (
                   <>
-                    <Text style={[styles.section, { color: colors.textMuted, marginTop: 0 }]}>
-                      {t('businessProfile')}
-                    </Text>
-                    <View style={styles.profileRow}>
-                      <BusinessProfileChip
-                        profile="restaurant"
-                        label={t('businessProfileRestaurant')}
-                      />
-                      <BusinessProfileChip
-                        profile="retail"
-                        label={t('businessProfileRetail')}
-                      />
-                      <BusinessProfileChip
-                        profile="general"
-                        label={t('businessProfileGeneral')}
-                      />
-                      <BusinessProfileChip
-                        profile="beauty"
-                        label={t('businessProfileBeauty')}
-                      />
-                    </View>
-                    <Text style={[styles.hint, { color: colors.textSubtle }]}>
-                      {businessProfile === 'restaurant'
-                        ? t('businessProfileRestaurantHint')
-                        : t('businessProfileHint')}
-                    </Text>
+                    {renderBusinessTypePicker()}
 
                     <View
                       style={[

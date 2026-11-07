@@ -583,7 +583,9 @@ export function findMenuItem(screen: string): MenuItem | undefined {
 }
 
 /** Yaprak + grup öğe sayısı (dashboard sayacı) */
-export function countMenuItems(): { sections: number; items: number; leaves: number } {
+export function countMenuItems(
+  sections: MenuSection[] = MENU_SECTIONS,
+): { sections: number; items: number; leaves: number } {
   let items = 0;
   let leaves = 0;
   const walk = (list: MenuItem[]) => {
@@ -593,6 +595,6 @@ export function countMenuItems(): { sections: number; items: number; leaves: num
       else leaves += 1;
     }
   };
-  for (const s of MENU_SECTIONS) walk(s.items);
-  return { sections: MENU_SECTIONS.length, items, leaves };
+  for (const s of sections) walk(s.items);
+  return { sections: sections.length, items, leaves };
 }

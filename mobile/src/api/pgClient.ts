@@ -300,6 +300,7 @@ export type FirmRow = {
   title?: string | null;
   ana_para_birimi?: string | null;
   raporlama_para_birimi?: string | null;
+  enabled_modules?: unknown;
 };
 
 function mapFirmRows(
@@ -310,6 +311,7 @@ function mapFirmRows(
     is_active?: boolean | null;
     ana_para_birimi?: string | null;
     raporlama_para_birimi?: string | null;
+    enabled_modules?: unknown;
   }>,
 ): FirmRow[] {
   return rows
@@ -323,13 +325,18 @@ function mapFirmRows(
         title: r.title ?? null,
         ana_para_birimi: r.ana_para_birimi ?? null,
         raporlama_para_birimi: r.raporlama_para_birimi ?? null,
+        enabled_modules: r.enabled_modules ?? null,
       };
     })
     .filter((r) => r.firm_nr);
 }
 
-/** Web Login: PostgREST `/firms` → bridge SQL `firms` (demo yok) */
-export async function fetchFirms(): Promise<FirmRow[]> {
+const FIRM_SELECT_WITH_MODULES =
+  'firm_nr,name,title,is_active,ana_para_birimi,raporlama_para_birimi,enabled_modules';
+const FIRM_SELECT_PLAIN =
+  'firm_nr,name,title,is_active,ana_para_birimi,raporlama_para_birimi';
+
+async function fetchFirmsOnce(includeModules: boolean): Promise<FirmRow[]> {
   let restErr: unknown;
   if (shouldPreferPostgrest()) {
     try {
@@ -341,11 +348,12 @@ export async function fetchFirms(): Promise<FirmRow[]> {
           is_active?: boolean | null;
           ana_para_birimi?: string | null;
           raporlama_para_birimi?: string | null;
+          enabled_modules?: unknown;
         }>
       >(
         '/firms',
         {
-          select: 'firm_nr,name,title,is_active,ana_para_birimi,raporlama_para_birimi',
+          select: includeModules ? FIRM_SELECT_WITH_MODULES : FIRM_SELECT_PLAIN,
           order: 'firm_nr.asc',
           limit: 200,
         },
@@ -353,7 +361,6 @@ export async function fetchFirms(): Promise<FirmRow[]> {
       );
       const mapped = mapFirmRows(Array.isArray(rows) ? rows : []);
       if (mapped.length > 0) return mapped;
-      // Boş liste geçerli; bridge yalnızca SQL izinliyken dene
       if (!shouldUseBridgeSql()) return [];
     } catch (err) {
       restErr = err;
@@ -372,9 +379,10 @@ export async function fetchFirms(): Promise<FirmRow[]> {
     return [];
   }
 
+  const moduleSql = includeModules ? ', enabled_modules' : '';
   const res = await pgQuery<FirmRow>(
     `SELECT firm_nr, COALESCE(name, title, firm_nr) AS name, title,
-            ana_para_birimi, raporlama_para_birimi
+            ana_para_birimi, raporlama_para_birimi${moduleSql}
      FROM firms
      WHERE COALESCE(is_active, true) = true
      ORDER BY firm_nr ASC
@@ -385,7 +393,19 @@ export async function fetchFirms(): Promise<FirmRow[]> {
     firm_nr: normalizeFirmNr(r.firm_nr) || String(r.firm_nr),
     ana_para_birimi: r.ana_para_birimi ?? null,
     raporlama_para_birimi: r.raporlama_para_birimi ?? null,
+    enabled_modules: r.enabled_modules ?? null,
   }));
+}
+
+/** Web Login: PostgREST `/firms` → bridge SQL `firms` (demo yok) */
+export async function fetchFirms(): Promise<FirmRow[]> {
+  try {
+    return await fetchFirmsOnce(true);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/enabled_modules/i.test(msg)) throw err;
+    return fetchFirmsOnce(false);
+  }
 }
 
 export type StoreRow = {
