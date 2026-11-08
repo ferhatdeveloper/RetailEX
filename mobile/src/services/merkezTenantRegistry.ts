@@ -111,6 +111,8 @@ export type ResolvedTenantConnection = {
   displayName: string;
   remoteRestUrl: string;
   databaseName: string;
+  /** tenant_registry.module */
+  module: string;
   fromRegistry: boolean;
   warning?: string;
 };
@@ -140,6 +142,7 @@ export async function resolveTenantByCode(rawCode: string): Promise<ResolvedTena
       displayName: row.display_name || row.code,
       remoteRestUrl: url,
       databaseName: row.database_name || '',
+      module: String(row.module || ''),
       fromRegistry: true,
     };
   } catch (e: unknown) {
@@ -151,6 +154,7 @@ export async function resolveTenantByCode(rawCode: string): Promise<ResolvedTena
       displayName: code,
       remoteRestUrl: guessed,
       databaseName: '',
+      module: '',
       fromRegistry: false,
       /** Kullanıcıya yumuşak not — iç hata metnini tekrarlama */
       warning: notInDirectory

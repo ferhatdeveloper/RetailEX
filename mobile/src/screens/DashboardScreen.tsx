@@ -42,6 +42,7 @@ import {
 import { filterStructuresByBusinessType } from '../config/businessStructureFilter';
 import { navigateToModule } from '../navigation/navigateToModule';
 import { tryConsumeRestaurantLanding } from '../navigation/restaurantLanding';
+import { normalizeBusinessType } from '../config/businessStructureFilter';
 import { fetchDashboardStats, type DashboardStats } from '../api/dashboardApi';
 import { formatMoney } from '../api/erpTables';
 import { ErrorBanner } from '../components/ScreenChrome';
@@ -91,12 +92,15 @@ export function DashboardScreen() {
     void loadStats();
   }, [loadStats]);
 
-  /** Restoran profili: oturumda bir kez Restoran paneline in (backoffice menüleri kalır). */
+  /** Firma tipi belli ise oturumda bir kez ilgili panele in (backoffice menüleri kalır). */
   useEffect(() => {
-    if (businessProfile !== 'restaurant') return;
+    const vertical = normalizeBusinessType(businessProfile);
+    if (vertical !== 'restaurant' && vertical !== 'beauty' && vertical !== 'wms') return;
     if (!tryConsumeRestaurantLanding()) return;
     const id = setTimeout(() => {
-      navigation.navigate('Restaurant');
+      if (vertical === 'beauty') navigation.navigate('Beauty');
+      else if (vertical === 'wms') navigation.navigate('Wms');
+      else navigation.navigate('Restaurant');
     }, 0);
     return () => clearTimeout(id);
   }, [businessProfile, navigation]);

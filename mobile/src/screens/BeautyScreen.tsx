@@ -13,7 +13,7 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ClipboardList, Plus } from 'lucide-react-native';
+import { BarChart3, ClipboardList, Plus } from 'lucide-react-native';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
 import { HeaderIconButton } from '../components/GradientHeader';
 import { SegmentTabBar } from '../components/SegmentTabBar';
@@ -41,6 +41,10 @@ import {
   type BeautySpecialist,
 } from '../api/beautyApi';
 import { fetchCustomers, type CustomerRow } from '../api/customersApi';
+import { fetchBeautyDevices, type BeautyDeviceRow } from '../api/beautyCatalogApi';
+import { isScreenFieldVisible } from '../config/systemTypeFields';
+import { useScreenFieldAllowed } from '../hooks/useScreenFieldGate';
+import { usePreferencesStore } from '../store/preferencesStore';
 import { BeautySalesPanel } from '../components/BeautySalesPanel';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
@@ -85,7 +89,19 @@ function normalizeTimeInput(raw: string): string {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+const TAB_FIELD: Record<Tab, string> = {
+  appointments: 'appointment',
+  sales: 'beauty-sales',
+  services: 'service',
+  specialists: 'specialist',
+};
+
 export function BeautyScreen({ route }: Props) {
+  const appointmentAllowed = useScreenFieldAllowed('appointment');
+  const businessProfile = usePreferencesStore((s) => s.businessProfile);
+  const showDevice = isScreenFieldVisible('device', businessProfile);
+  const showDeposit = isScreenFieldVisible('deposit', businessProfile);
+  const showClinicReports = isScreenFieldVisible('clinic-reports', businessProfile);
   const { colors, darkMode } = useThemeStore();
   const clinic = useMemo(() => clinicColorsForMode(darkMode, colors), [darkMode, colors]);
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
@@ -114,6 +130,9 @@ export function BeautyScreen({ route }: Props) {
   const [editStatus, setEditStatus] = useState('scheduled');
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [selectedSpecialistId, setSelectedSpecialistId] = useState<string | null>(null);
+  const [devices, setDevices] = useState<BeautyDeviceRow[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [depositAmount, setDepositAmount] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -123,16 +142,18 @@ export function BeautyScreen({ route }: Props) {
     setError(null);
     try {
       // TODO(beauty-mobile): tarih aralığına göre sayfalı yükleme (web loadAppointmentsInRange)
-      const [a, sal, s, sp] = await Promise.all([
+      const [a, sal, s, sp, deviceRows] = await Promise.all([
         fetchBeautyAppointments(400),
         fetchBeautySales(),
         fetchBeautyServices(),
         fetchBeautySpecialists(),
+        fetchBeautyDevices().catch(() => [] as BeautyDeviceRow[]),
       ]);
       setAppointments(a);
       setSales(sal);
       setServices(s);
       setSpecialists(sp);
+      setDevices(deviceRows);
       setSelectedServiceId((prev) => prev ?? (s[0]?.id ?? null));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -214,7 +235,15 @@ export function BeautyScreen({ route }: Props) {
     { id: 'sales', label: 'Satış', count: sales.length },
     { id: 'services', label: 'Hizmet', count: services.length },
     { id: 'specialists', label: 'Uzman', count: specialists.length },
-  ];
+  ].filter((item) => isScreenFieldVisible(TAB_FIELD[item.id], businessProfile));
+
+  useEffect(() => {
+    if (isScreenFieldVisible(TAB_FIELD[tab], businessProfile)) return;
+    const next = (['appointments', 'sales', 'services', 'specialists'] as Tab[]).find((id) =>
+      isScreenFieldVisible(TAB_FIELD[id], businessProfile),
+    );
+    if (next) setTab(next);
+  }, [tab, businessProfile]);
 
   const resetForm = (dateYmd?: string, timeHHmm?: string) => {
     setCustomerName('');
@@ -225,6 +254,8 @@ export function BeautyScreen({ route }: Props) {
     setNotes('');
     setEditStatus('scheduled');
     setSelectedSpecialistId(null);
+    setSelectedDeviceId(null);
+    setDepositAmount('');
     setFormError(null);
     if (services.length) setSelectedServiceId(services[0].id);
   };
@@ -247,6 +278,12 @@ export function BeautyScreen({ route }: Props) {
     setEditStatus(String(item.status || 'scheduled').toLowerCase());
     setSelectedServiceId(item.service_id || services[0]?.id || null);
     setSelectedSpecialistId(item.specialist_id || null);
+    setSelectedDeviceId(item.device_id || null);
+    setDepositAmount(
+      item.deposit_amount != null && Number(item.deposit_amount) > 0
+        ? String(item.deposit_amount)
+        : '',
+    );
     setFormError(null);
   };
 
@@ -274,6 +311,7 @@ export function BeautyScreen({ route }: Props) {
         );
         customerId = exact?.id ?? (hits.length === 1 ? hits[0].id : null);
       }
+      const depositNum = Math.max(0, Number(depositAmount.replace(',', '.')) || 0);
       await createBeautyAppointment({
         customerName: customerName.trim(),
         customerId,
@@ -282,6 +320,8 @@ export function BeautyScreen({ route }: Props) {
         appointmentDate: appointmentDate.trim(),
         appointmentTime: normalizeTimeInput(appointmentTime),
         notes: notes.trim() || undefined,
+        deviceId: showDevice ? selectedDeviceId : undefined,
+        depositAmount: showDeposit ? depositNum : undefined,
       });
       setCreateOpen(false);
       resetForm();
@@ -322,6 +362,7 @@ export function BeautyScreen({ route }: Props) {
         );
         clientId = exact?.id ?? (hits.length === 1 ? hits[0].id : null);
       }
+      const depositNum = Math.max(0, Number(depositAmount.replace(',', '.')) || 0);
       await updateBeautyAppointment(editAppt.id, {
         serviceId: selectedServiceId,
         specialistId: selectedSpecialistId,
@@ -331,6 +372,8 @@ export function BeautyScreen({ route }: Props) {
         status: nextStatus,
         notes: notes.trim() || null,
         customerId: clientId || undefined,
+        deviceId: showDevice ? selectedDeviceId : undefined,
+        depositAmount: showDeposit ? depositNum : undefined,
       });
       const snapshot: BeautyAppointment = {
         ...editAppt,
@@ -446,7 +489,6 @@ export function BeautyScreen({ route }: Props) {
         {selectedService?.duration_min ? (
           <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
             Süre (hizmet): {selectedService.duration_min} dk
-            {/* TODO(beauty-mobile): süre override + cihaz alanı (web AppointmentPOS) */}
           </Text>
         ) : null}
       </View>
@@ -543,6 +585,24 @@ export function BeautyScreen({ route }: Props) {
               { label: 'Fark etmez' },
             )
           : null}
+        {showDevice
+          ? renderChipRow(
+              'Cihaz',
+              devices.map((d) => ({ id: d.id, label: d.name })),
+              selectedDeviceId,
+              setSelectedDeviceId,
+              { label: 'Yok' },
+            )
+          : null}
+        {showDeposit ? (
+          <FormField
+            label="Peşinat"
+            value={depositAmount}
+            onChangeText={setDepositAmount}
+            placeholder="0"
+            keyboardType="decimal-pad"
+          />
+        ) : null}
       </View>
 
       {mode === 'edit' ? (
@@ -562,15 +622,26 @@ export function BeautyScreen({ route }: Props) {
     </>
   );
 
+  if (!appointmentAllowed) {
+    return <View style={[styles.root, { backgroundColor: colors.background }]} />;
+  }
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
         title="Güzellik Merkezi"
         subtitle="Takvim · Randevu · Satış · Hizmet · Uzman"
         right={
-          <HeaderIconButton onPress={() => navigation.navigate('BeautySurvey')}>
-            <ClipboardList size={18} color={palette.white} />
-          </HeaderIconButton>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {showClinicReports ? (
+              <HeaderIconButton onPress={() => navigation.navigate('BeautyReports')}>
+                <BarChart3 size={18} color={palette.white} />
+              </HeaderIconButton>
+            ) : null}
+            <HeaderIconButton onPress={() => navigation.navigate('BeautySurvey')}>
+              <ClipboardList size={18} color={palette.white} />
+            </HeaderIconButton>
+          </View>
         }
       />
       <SegmentTabBar

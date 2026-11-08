@@ -46,6 +46,9 @@ type PreferencesState = {
   setRestReportsView: (mode: ReportsView) => void;
   businessProfile: BusinessProfile;
   setBusinessProfile: (profile: BusinessProfile) => void;
+  /** Firma veya kiracı kaydı tipi belirlediyse seçim kapalı. */
+  businessProfileLocked: boolean;
+  setBusinessProfileLocked: (locked: boolean) => void;
 };
 
 type PersistedPreferences = {
@@ -55,6 +58,7 @@ type PersistedPreferences = {
   reportsView?: ReportsView;
   restReportsView?: ReportsView;
   businessProfile?: BusinessProfile;
+  businessProfileLocked?: boolean;
 };
 
 function normalizeReportsView(v: unknown): ReportsView {
@@ -102,6 +106,8 @@ export const usePreferencesStore = create<PreferencesState>()(
       businessProfile: 'general',
       setBusinessProfile: (profile) =>
         set({ businessProfile: normalizeBusinessProfile(profile) }),
+      businessProfileLocked: false,
+      setBusinessProfileLocked: (locked) => set({ businessProfileLocked: locked }),
     }),
     {
       name: 'retailex_mobile_preferences',
@@ -113,6 +119,7 @@ export const usePreferencesStore = create<PreferencesState>()(
         restMenuCatalogGridCols: s.restMenuCatalogGridCols,
         reportsView: s.reportsView,
         businessProfile: s.businessProfile,
+        businessProfileLocked: s.businessProfileLocked,
       }),
       migrate: (persisted, fromVersion) => {
         const prev = (persisted ?? {}) as PersistedPreferences;
@@ -124,6 +131,7 @@ export const usePreferencesStore = create<PreferencesState>()(
             restMenuCatalogGridCols: 3 as RestMenuCatalogGridCols,
             reportsView: 'list' as ReportsView,
             businessProfile: 'general' as BusinessProfile,
+            businessProfileLocked: false,
           };
         }
         const reportsView = normalizeReportsView(
@@ -135,6 +143,7 @@ export const usePreferencesStore = create<PreferencesState>()(
           restMenuCatalogGridCols: normalizeGridCols(prev.restMenuCatalogGridCols),
           reportsView,
           businessProfile: normalizeBusinessProfile(prev.businessProfile),
+          businessProfileLocked: prev.businessProfileLocked === true,
         };
       },
       merge: (persisted, current) => {
@@ -151,6 +160,7 @@ export const usePreferencesStore = create<PreferencesState>()(
           businessProfile: normalizeBusinessProfile(
             p.businessProfile ?? current.businessProfile,
           ),
+          businessProfileLocked: p.businessProfileLocked === true,
         };
       },
       onRehydrateStorage: () => (_state, error) => {

@@ -28,6 +28,7 @@ import {
 import { savePosSale } from '../api/posApi';
 import { formatMoney } from '../api/erpTables';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
+import { useScreenFieldAllowed } from '../hooks/useScreenFieldGate';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
 
@@ -44,6 +45,7 @@ type WeighLine = {
 };
 
 export function ScaleSaleScreen(_props: Props) {
+  const scaleAllowed = useScreenFieldAllowed('scale');
   const { t } = useTranslation();
   const { colors } = useThemeStore();
   const orgEpoch = useOrgEpoch();
@@ -282,6 +284,10 @@ export function ScaleSaleScreen(_props: Props) {
       ],
     );
   };
+
+  if (!scaleAllowed) {
+    return <View style={[styles.root, { backgroundColor: colors.background }]} />;
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>

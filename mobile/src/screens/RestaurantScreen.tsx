@@ -89,6 +89,9 @@ import { RestaurantTakeawayPanel } from '../components/RestaurantTakeawayPanel';
 import { RestaurantMenuCatalog } from '../components/RestaurantMenuCatalog';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
+import { usePreferencesStore } from '../store/preferencesStore';
+import { isScreenFieldVisible } from '../config/systemTypeFields';
+import { useScreenFieldAllowed } from '../hooks/useScreenFieldGate';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import { useDeviceLayout } from '../hooks/useDeviceLayout';
 import { SplitPane } from '../components/Layout/SplitPane';
@@ -223,6 +226,8 @@ function isPendingKitchenLine(item: { status?: string | null; sent_to_kitchen_at
 }
 
 export function RestaurantScreen({ navigation, route }: Props) {
+  const tableAllowed = useScreenFieldAllowed('table');
+  const businessProfile = usePreferencesStore((s) => s.businessProfile);
   const { t } = useTranslation();
   const { colors, darkMode } = useThemeStore();
   const { width } = useWindowDimensions();
@@ -1241,14 +1246,18 @@ export function RestaurantScreen({ navigation, route }: Props) {
       Icon: LayoutGrid,
       onPress: () => setTab('tables'),
     },
-    {
-      id: 'retail',
-      label: t('restaurant.tiles.retail'),
-      hint: t('restaurant.tiles.retailHint'),
-      color: '#10b981',
-      Icon: ShoppingCart,
-      onPress: () => void openRetailPos(),
-    },
+    ...(isScreenFieldVisible('pos', businessProfile)
+      ? [
+          {
+            id: 'retail',
+            label: t('restaurant.tiles.retail'),
+            hint: t('restaurant.tiles.retailHint'),
+            color: '#10b981',
+            Icon: ShoppingCart,
+            onPress: () => void openRetailPos(),
+          },
+        ]
+      : []),
     {
       id: 'kitchen',
       label: t('restaurant.tiles.kitchen'),
@@ -1344,6 +1353,10 @@ export function RestaurantScreen({ navigation, route }: Props) {
         })}
       </View>
     ) : null;
+
+  if (!tableAllowed) {
+    return <View style={[styles.root, { backgroundColor: colors.background }]} />;
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>

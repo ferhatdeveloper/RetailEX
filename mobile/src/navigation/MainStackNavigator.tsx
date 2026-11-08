@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { usePreferencesStore } from '../store/preferencesStore';
+import { normalizeBusinessType } from '../config/businessStructureFilter';
+import { useSyncFirmSystemType } from '../hooks/useSyncFirmSystemType';
 import { MainTabNavigator } from './MainTabNavigator';
 import { ProductsScreen } from '../screens/ProductsScreen';
 import { ProductDetailScreen } from '../screens/ProductDetailScreen';
@@ -69,12 +71,15 @@ import type { MainStackParamList } from './types';
 const Stack = createNativeStackNavigator<MainStackParamList>();
 
 export function MainStackNavigator() {
+  useSyncFirmSystemType();
   const businessProfile = usePreferencesStore((s) => s.businessProfile);
-  const initialRouteName = useMemo(
-    (): keyof MainStackParamList =>
-      businessProfile === 'restaurant' ? 'Restaurant' : 'Tabs',
-    [businessProfile],
-  );
+  const initialRouteName = useMemo((): keyof MainStackParamList => {
+    const vertical = normalizeBusinessType(businessProfile);
+    if (vertical === 'restaurant') return 'Restaurant';
+    if (vertical === 'beauty') return 'Beauty';
+    if (vertical === 'wms') return 'Wms';
+    return 'Tabs';
+  }, [businessProfile]);
 
   return (
     <Stack.Navigator

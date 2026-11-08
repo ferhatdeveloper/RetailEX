@@ -16,6 +16,8 @@ import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
 import { navigateToModule } from '../navigation/navigateToModule';
 import type { MainStackParamList } from '../navigation/types';
+import { isScreenFieldVisible } from '../config/systemTypeFields';
+import { usePreferencesStore } from '../store/preferencesStore';
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
@@ -164,10 +166,72 @@ const MENU_REPORTS: ReportEntry[] = [
 export function ReportsScreen() {
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+  const businessProfile = usePreferencesStore((s) => s.businessProfile);
+  const areaReports: ReportEntry[] = [
+    isScreenFieldVisible('clinic-reports', businessProfile)
+      ? {
+          id: 'clinic-reports',
+          title: 'Klinik raporları',
+          desc: 'Randevu, hizmet, uzman ve cihaz özeti',
+          kind: 'module',
+          screen: 'BeautyReports',
+          Icon: BarChart3,
+        }
+      : null,
+    isScreenFieldVisible('table', businessProfile)
+      ? {
+          id: 'restaurant-reports',
+          title: 'Restoran raporları',
+          desc: 'Masa, sipariş ve mutfak özeti',
+          kind: 'module',
+          screen: 'RestaurantReports',
+          Icon: BarChart3,
+        }
+      : null,
+    isScreenFieldVisible('warehouse', businessProfile)
+      ? {
+          id: 'warehouse',
+          title: 'Depo',
+          desc: 'Lokasyon, mal kabul ve sevkiyat',
+          kind: 'module',
+          screen: 'Wms',
+          Icon: Package,
+        }
+      : null,
+    isScreenFieldVisible('scale', businessProfile)
+      ? {
+          id: 'scale',
+          title: 'Terazi satışı',
+          desc: 'Market tartım alanı',
+          kind: 'module',
+          screen: 'ScaleSale',
+          Icon: Scale,
+        }
+      : null,
+  ].filter((row): row is ReportEntry => row != null);
 
   const open = (r: ReportEntry) => {
-    if (r.kind === 'stack') navigation.navigate(r.route);
-    else navigateToModule(navigation, r.screen, r.title);
+    if (r.kind === 'stack') {
+      navigation.navigate(r.route);
+      return;
+    }
+    if (r.screen === 'BeautyReports') {
+      navigation.navigate('BeautyReports');
+      return;
+    }
+    if (r.screen === 'RestaurantReports') {
+      navigation.navigate('RestaurantReports');
+      return;
+    }
+    if (r.screen === 'Wms') {
+      navigation.navigate('Wms');
+      return;
+    }
+    if (r.screen === 'ScaleSale') {
+      navigation.navigate('ScaleSale');
+      return;
+    }
+    navigateToModule(navigation, r.screen, r.title);
   };
 
   return (
@@ -176,6 +240,28 @@ export function ReportsScreen() {
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={[styles.sec, { color: colors.textMuted }]}>CANLI</Text>
         {LIVE_REPORTS.map((r) => {
+          const Icon = r.Icon;
+          return (
+            <Pressable
+              key={r.id}
+              onPress={() => open(r)}
+              style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+            >
+              <View style={styles.iconBox}>
+                <Icon size={22} color={palette.blue600} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.title, { color: colors.text }]}>{r.title}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{r.desc}</Text>
+              </View>
+              <BarChart3 size={16} color={colors.textSubtle} />
+            </Pressable>
+          );
+        })}
+        {areaReports.length > 0 ? (
+          <Text style={[styles.sec, { color: colors.textMuted }]}>İŞLETME ALANLARI</Text>
+        ) : null}
+        {areaReports.map((r) => {
           const Icon = r.Icon;
           return (
             <Pressable

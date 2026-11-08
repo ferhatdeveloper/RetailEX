@@ -25,6 +25,7 @@ import { SegmentTabBar } from '../components/SegmentTabBar';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { useThemeStore } from '../store/themeStore';
+import { useScreenFieldAllowed } from '../hooks/useScreenFieldGate';
 import { createManualNetworkDevice, useScaleStore } from '../store/scaleStore';
 import {
   bleDevBuildHint,
@@ -56,6 +57,7 @@ type TabId = 'sync' | 'devices' | 'scale' | 'settings' | 'log';
 type ManualKind = ScaleTransportKind | 'bluetooth-spp';
 
 export function ScaleManagementScreen(_props: Props) {
+  const scaleAllowed = useScreenFieldAllowed('scale');
   const { t } = useTranslation();
   const { colors } = useThemeStore();
   const devices = useScaleStore((s) => s.devices);
@@ -379,6 +381,10 @@ export function ScaleManagementScreen(_props: Props) {
     }
     return t('scaleUi.transportSim');
   };
+
+  if (!scaleAllowed) {
+    return <View style={[styles.root, { backgroundColor: colors.background }]} />;
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>

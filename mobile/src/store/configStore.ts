@@ -52,6 +52,8 @@ export type DbConfig = {
   merkezTenantCode: string;
   /** tenant_registry.display_name */
   merkezDisplayName: string;
+  /** tenant_registry.module — web tenant_module */
+  merkezTenantModule: string;
   local: PgEndpoint;
   remote: PgEndpoint;
   /** Kullanıcı en az bir kez Kaydet’e bastı */
@@ -174,6 +176,8 @@ type LegacyFlatConfig = Partial<{
   merkez_tenant_code: string;
   merkezDisplayName: string;
   merkez_display_name: string;
+  merkezTenantModule: string;
+  merkez_tenant_module: string;
   local: Partial<PgEndpoint>;
   remote: Partial<PgEndpoint>;
   isConfigured: boolean;
@@ -246,6 +250,7 @@ const DEFAULT_CONFIG: DbConfig = {
   postgrestAnonKey: process.env.EXPO_PUBLIC_POSTGREST_ANON_KEY ?? '',
   merkezTenantCode: envString(process.env.EXPO_PUBLIC_TENANT_CODE),
   merkezDisplayName: '',
+  merkezTenantModule: '',
   local: publicPgEndpoint('local', DEFAULT_LOCAL),
   remote: publicPgEndpoint('remote', DEFAULT_REMOTE),
   isConfigured: false,
@@ -333,6 +338,12 @@ export function migrateDbConfig(raw: LegacyFlatConfig | DbConfig | null | undefi
     postgrestAnonKey,
     merkezTenantCode,
     merkezDisplayName,
+    merkezTenantModule:
+      typeof flat.merkezTenantModule === 'string'
+        ? flat.merkezTenantModule
+        : typeof flat.merkez_tenant_module === 'string'
+          ? flat.merkez_tenant_module
+          : '',
     local,
     remote,
     isConfigured: flat.isConfigured === true,

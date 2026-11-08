@@ -74,6 +74,10 @@ export type BeautyAppointment = {
   customer_phone?: string | null;
   /** Hizmet rengi (takvim kartı sol kenar) */
   service_color?: string | null;
+  /** Cihaz — ciroya yazılmaz */
+  device_id?: string | null;
+  /** Peşinat (kasa girişi). Hizmet tutarına eklenmez. */
+  deposit_amount?: number | null;
 };
 
 export type BeautyService = {
@@ -98,6 +102,9 @@ export type CreateBeautyAppointmentInput = {
   appointmentDate: string;
   appointmentTime: string;
   notes?: string;
+  deviceId?: string | null;
+  /** Peşinat. total_price içine katılmaz. */
+  depositAmount?: number | null;
 };
 
 export type UpdateBeautyAppointmentInput = {
@@ -112,6 +119,9 @@ export type UpdateBeautyAppointmentInput = {
   /** Cari bağla / güncelle */
   customerId?: string | null;
   clearCustomer?: boolean;
+  deviceId?: string | null;
+  /** Peşinat. total_price içine katılmaz. */
+  depositAmount?: number | null;
 };
 
 export type BeautyPaymentMethod = 'cash' | 'card' | 'transfer';
@@ -425,6 +435,22 @@ export const BEAUTY_STATUSES = [
   'no_show',
 ] as const;
 
+function missingOptionalAppointmentColumn(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLocaleLowerCase('tr-TR');
+  return (
+    msg.includes('42703') ||
+    msg.includes('deposit_amount') ||
+    msg.includes('device_id') ||
+    msg.includes('does not exist')
+  );
+}
+
+function clampDeposit(raw: number | null | undefined): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, n);
+}
+
 async function tryQueries<T>(queries: { sql: string; params?: unknown[] }[]): Promise<T[]> {
   for (const q of queries) {
     try {
@@ -471,7 +497,7 @@ function parseBeautyNotesCustomer(notes: unknown): { nameFromNotes: string | nul
 
 async function fetchBeautyAppointmentsViaRest(limit = 80): Promise<BeautyAppointment[]> {
   const selectWithClient =
-    'id,client_id,service_id,specialist_id,appointment_date,appointment_time,duration,status,total_price,notes';
+    'id,client_id,service_id,specialist_id,appointment_date,appointment_time,duration,status,total_price,notes,device_id,deposit_amount';
   const selectBare =
     'id,service_id,specialist_id,appointment_date,appointment_time,status,total_price,notes';
   let list: Record<string, unknown>[] = [];
@@ -617,6 +643,8 @@ async function fetchBeautyAppointmentsViaRest(limit = 80): Promise<BeautyAppoint
       duration,
       customer_phone: cust?.phone ?? null,
       service_color: svc?.color ?? '#7c3aed',
+      device_id: a.device_id != null ? String(a.device_id) : null,
+      deposit_amount: a.deposit_amount == null ? 0 : clampDeposit(Number(a.deposit_amount)),
     };
   });
 }
@@ -630,6 +658,33 @@ async function fetchBeautyAppointmentsViaBridge(limit = 80): Promise<BeautyAppoi
   const cust = customersTable(fn);
 
   return tryQueries<BeautyAppointment>([
+    {
+      sql: `SELECT a.id,
+              a.client_id::text AS client_id,
+              COALESCE(c.name, NULLIF(TRIM(a.notes), ''), 'Müşteri') AS customer_name,
+              s.name AS service_name,
+              sp.name AS specialist_name,
+              (a.appointment_date::text || ' ' || COALESCE(a.appointment_time::text, '')) AS starts_at,
+              a.status,
+              COALESCE(a.total_price, 0)::float8 AS total_price,
+              a.notes,
+              a.service_id::text AS service_id,
+              a.specialist_id::text AS specialist_id,
+              a.appointment_date::text AS appointment_date,
+              COALESCE(to_char(a.appointment_time, 'HH24:MI'), '') AS appointment_time,
+              COALESCE(a.duration, 30)::int AS duration,
+              COALESCE(s.color, '#7c3aed') AS service_color,
+              COALESCE(NULLIF(TRIM(c.phone::text), ''), NULLIF(TRIM(c.phone2::text), '')) AS customer_phone,
+              a.device_id::text AS device_id,
+              COALESCE(a.deposit_amount, 0)::float8 AS deposit_amount
+       FROM ${appt} a
+       LEFT JOIN ${cust} c ON c.id = a.client_id
+       LEFT JOIN ${svc} s ON s.id = a.service_id
+       LEFT JOIN ${sp} sp ON sp.id = a.specialist_id
+       ORDER BY a.appointment_date DESC, a.appointment_time DESC NULLS LAST
+       LIMIT $1`,
+      params: [limit],
+    },
     {
       sql: `SELECT a.id,
               a.client_id::text AS client_id,
@@ -818,25 +873,32 @@ async function createBeautyAppointmentViaRest(input: CreateBeautyAppointmentInpu
   const duration = Math.max(1, Math.round(Number(svcRow?.duration_min) || 30));
   const timePg = normalizeTimeForPg(input.appointmentTime);
   const notes = [input.customerName.trim(), input.notes?.trim()].filter(Boolean).join(' — ');
+  const deposit = input.depositAmount === undefined ? undefined : clampDeposit(input.depositAmount);
+  const body: Record<string, unknown> = {
+    id,
+    client_id: pgUuidOrNull(input.customerId),
+    service_id: input.serviceId,
+    specialist_id: pgUuidOrNull(input.specialistId),
+    appointment_date: input.appointmentDate,
+    appointment_time: timePg,
+    duration,
+    status: 'scheduled',
+    type: 'regular',
+    notes: notes || null,
+    total_price: price,
+    booking_channel: 'mobile',
+  };
+  if (input.deviceId !== undefined) body.device_id = pgUuidOrNull(input.deviceId);
+  if (deposit !== undefined) body.deposit_amount = deposit;
 
-  await postgrestPost(
-    apptTablePath(),
-    {
-      id,
-      client_id: pgUuidOrNull(input.customerId),
-      service_id: input.serviceId,
-      specialist_id: pgUuidOrNull(input.specialistId),
-      appointment_date: input.appointmentDate,
-      appointment_time: timePg,
-      duration,
-      status: 'scheduled',
-      type: 'regular',
-      notes: notes || null,
-      total_price: price,
-      booking_channel: 'mobile',
-    },
-    { ...BEAUTY_SCHEMA, prefer: 'return=minimal' },
-  );
+  try {
+    await postgrestPost(apptTablePath(), body, { ...BEAUTY_SCHEMA, prefer: 'return=minimal' });
+  } catch (e) {
+    if (!missingOptionalAppointmentColumn(e)) throw e;
+    delete body.device_id;
+    delete body.deposit_amount;
+    await postgrestPost(apptTablePath(), body, { ...BEAUTY_SCHEMA, prefer: 'return=minimal' });
+  }
   return id;
 }
 
@@ -856,29 +918,49 @@ async function createBeautyAppointmentViaBridge(input: CreateBeautyAppointmentIn
   const duration = Math.max(1, Math.round(Number(svcRow?.duration_min) || 30));
   const timePg = normalizeTimeForPg(input.appointmentTime);
   const notes = [input.customerName.trim(), input.notes?.trim()].filter(Boolean).join(' — ');
+  const deposit = input.depositAmount === undefined ? 0 : clampDeposit(input.depositAmount);
+  const baseParams = [
+    id,
+    input.customerId || null,
+    input.serviceId,
+    input.specialistId || null,
+    input.appointmentDate,
+    timePg,
+    duration,
+    notes || null,
+    price,
+  ];
 
-  await pgQuery(
-    `INSERT INTO ${appt} (
-       id, client_id, service_id, specialist_id,
-       appointment_date, appointment_time, duration,
-       status, type, notes, total_price, booking_channel
-     ) VALUES (
-       $1::uuid, $2::uuid, $3::uuid, $4::uuid,
-       $5::date, $6::time, $7,
-       'scheduled', 'regular', $8, $9, 'mobile'
-     )`,
-    [
-      id,
-      input.customerId || null,
-      input.serviceId,
-      input.specialistId || null,
-      input.appointmentDate,
-      timePg,
-      duration,
-      notes || null,
-      price,
-    ],
-  );
+  try {
+    await pgQuery(
+      `INSERT INTO ${appt} (
+         id, client_id, service_id, specialist_id,
+         appointment_date, appointment_time, duration,
+         status, type, notes, total_price, booking_channel,
+         device_id, deposit_amount
+       ) VALUES (
+         $1::uuid, $2::uuid, $3::uuid, $4::uuid,
+         $5::date, $6::time, $7,
+         'scheduled', 'regular', $8, $9, 'mobile',
+         $10::uuid, $11
+       )`,
+      [...baseParams, input.deviceId || null, deposit],
+    );
+  } catch (e) {
+    if (!missingOptionalAppointmentColumn(e)) throw e;
+    await pgQuery(
+      `INSERT INTO ${appt} (
+         id, client_id, service_id, specialist_id,
+         appointment_date, appointment_time, duration,
+         status, type, notes, total_price, booking_channel
+       ) VALUES (
+         $1::uuid, $2::uuid, $3::uuid, $4::uuid,
+         $5::date, $6::time, $7,
+         'scheduled', 'regular', $8, $9, 'mobile'
+       )`,
+      baseParams,
+    );
+  }
 
   return id;
 }
@@ -935,14 +1017,28 @@ async function updateBeautyAppointmentViaRest(
   } else if (input.customerId !== undefined) {
     patch.client_id = input.customerId ? input.customerId : null;
   }
+  if (input.deviceId !== undefined) patch.device_id = pgUuidOrNull(input.deviceId);
+  if (input.depositAmount !== undefined) patch.deposit_amount = clampDeposit(input.depositAmount);
 
   if (Object.keys(patch).length <= 1) return;
 
-  await postgrestPatch(
-    `${apptTablePath()}?id=eq.${encodeURIComponent(id)}`,
-    patch,
-    { ...BEAUTY_SCHEMA, prefer: 'return=minimal' },
-  );
+  try {
+    await postgrestPatch(
+      `${apptTablePath()}?id=eq.${encodeURIComponent(id)}`,
+      patch,
+      { ...BEAUTY_SCHEMA, prefer: 'return=minimal' },
+    );
+  } catch (e) {
+    if (!missingOptionalAppointmentColumn(e)) throw e;
+    delete patch.device_id;
+    delete patch.deposit_amount;
+    if (Object.keys(patch).length <= 1) return;
+    await postgrestPatch(
+      `${apptTablePath()}?id=eq.${encodeURIComponent(id)}`,
+      patch,
+      { ...BEAUTY_SCHEMA, prefer: 'return=minimal' },
+    );
+  }
 }
 
 async function updateBeautyAppointmentViaBridge(
@@ -1011,10 +1107,29 @@ async function updateBeautyAppointmentViaBridge(
       sets.push('client_id = NULL');
     }
   }
+  const optionalSets: string[] = [];
+  const optionalVals: unknown[] = [];
+  if (input.deviceId !== undefined) {
+    optionalSets.push(`device_id = $${i++}::uuid`);
+    optionalVals.push(input.deviceId || null);
+  }
+  if (input.depositAmount !== undefined) {
+    optionalSets.push(`deposit_amount = $${i++}`);
+    optionalVals.push(clampDeposit(input.depositAmount));
+  }
 
-  if (sets.length <= 1) return;
-  vals.push(id);
-  await pgQuery(`UPDATE ${appt} SET ${sets.join(', ')} WHERE id = $${i}::uuid`, vals);
+  if (sets.length + optionalSets.length <= 1) return;
+  const allSets = [...sets, ...optionalSets];
+  const allVals = [...vals, ...optionalVals, id];
+  try {
+    await pgQuery(`UPDATE ${appt} SET ${allSets.join(', ')} WHERE id = $${i}::uuid`, allVals);
+  } catch (e) {
+    if (!missingOptionalAppointmentColumn(e) || optionalSets.length === 0) throw e;
+    if (sets.length <= 1) return;
+    vals.push(id);
+    const idPos = vals.length;
+    await pgQuery(`UPDATE ${appt} SET ${sets.join(', ')} WHERE id = $${idPos}::uuid`, vals);
+  }
 }
 
 export async function updateBeautyAppointmentStatus(id: string, status: string): Promise<void> {

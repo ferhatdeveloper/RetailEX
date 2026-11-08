@@ -128,6 +128,7 @@ export function ConfigScreen({ navigation }: Props) {
   const stored = useConfigStore((s) => s.config);
   const setConfig = useConfigStore((s) => s.setConfig);
   const businessProfile = usePreferencesStore((s) => s.businessProfile);
+  const businessProfileLocked = usePreferencesStore((s) => s.businessProfileLocked);
   const setBusinessProfile = usePreferencesStore((s) => s.setBusinessProfile);
   const visibleVerticalStructures = useMemo(
     () =>
@@ -273,6 +274,7 @@ export function ConfigScreen({ navigation }: Props) {
         ...draft,
         merkezTenantCode: resolved.code,
         merkezDisplayName: resolved.displayName,
+        merkezTenantModule: resolved.module,
         remoteRestUrl: resolved.remoteRestUrl,
         apiMode: draft.apiMode === 'bridge' ? 'hybrid' : (draft.apiMode ?? 'hybrid'),
         dbMode: 'online',
@@ -654,13 +656,19 @@ export function ConfigScreen({ navigation }: Props) {
       <Text style={[styles.section, { color: colors.textMuted, marginTop: 0 }]}>
         {t('businessProfile')}
       </Text>
-      <View style={styles.profileRow}>
-        <BusinessProfileChip profile="market" label={t('businessProfileMarket')} />
-        <BusinessProfileChip profile="restaurant" label={t('businessProfileRestaurant')} />
-        <BusinessProfileChip profile="wms" label={t('businessProfileWms')} />
-        <BusinessProfileChip profile="beauty" label={t('businessProfileBeauty')} />
-        <BusinessProfileChip profile="clinic" label={t('businessProfileClinic')} />
-      </View>
+      {businessProfileLocked ? (
+        <Text style={[styles.hint, { color: colors.text }]}>
+          {businessProfileLabel}. {t('businessProfileFromFirm')}
+        </Text>
+      ) : (
+        <View style={styles.profileRow}>
+          <BusinessProfileChip profile="market" label={t('businessProfileMarket')} />
+          <BusinessProfileChip profile="restaurant" label={t('businessProfileRestaurant')} />
+          <BusinessProfileChip profile="wms" label={t('businessProfileWms')} />
+          <BusinessProfileChip profile="beauty" label={t('businessProfileBeauty')} />
+          <BusinessProfileChip profile="clinic" label={t('businessProfileClinic')} />
+        </View>
+      )}
       <Text style={[styles.hint, { color: colors.textSubtle }]}>
         {businessProfile === 'restaurant'
           ? t('businessProfileRestaurantHint')

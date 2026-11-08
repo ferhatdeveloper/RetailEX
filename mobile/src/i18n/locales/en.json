@@ -36,6 +36,7 @@
   "businessStructureTitle": "Structures",
   "businessStructurePrompt": "Pick a business type to list structures. Without a type, market, restaurant, WMS and beauty structures are not listed together.",
   "businessProfileHint": "The structure list follows the selected type. Beauty hides restaurant and WMS; restaurant hides beauty.",
+  "businessProfileFromFirm": "The type comes from the firm record. Screen fields follow that type.",
   "businessProfileRestaurantHint": "Restaurant selected: after login the Restaurant panel opens. Use Main Menu for backoffice (invoices, stock, reports).",
   "configRequired": "Save connection settings first",
   "tenantCloudSection": "RetailEX cloud",

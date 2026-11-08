@@ -34,6 +34,8 @@ import { SplitPane } from '../components/Layout/SplitPane';
 import { usePrinterSettingsStore } from '../store/printerSettingsStore';
 import { printSaleReceipt } from '../services/printerService';
 import { palette } from '../theme/colors';
+import { isScreenFieldVisible } from '../config/systemTypeFields';
+import { usePreferencesStore } from '../store/preferencesStore';
 import type { MainStackParamList } from '../navigation/types';
 import {
   findInsufficientStockHitsMobile,
@@ -65,6 +67,8 @@ export function PosScreen() {
   const { t } = useTranslation();
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+  const businessProfile = usePreferencesStore((s) => s.businessProfile);
+  const showScale = isScreenFieldVisible('scale', businessProfile);
   const orgEpoch = useOrgEpoch();
   const { isLandscapeTablet } = useDeviceLayout();
   const printerSettings = usePrinterSettingsStore((s) => s.settings);
@@ -699,11 +703,13 @@ export function PosScreen() {
         subtitle={t('posUi.subtitle')}
         showBack={false}
         right={
-          <Pressable onPress={() => navigation.navigate('ScaleSale')} hitSlop={8}>
-            <Text style={{ color: palette.white, fontWeight: '800', fontSize: 12 }}>
-              {t('posUi.scale')}
-            </Text>
-          </Pressable>
+          showScale ? (
+            <Pressable onPress={() => navigation.navigate('ScaleSale')} hitSlop={8}>
+              <Text style={{ color: palette.white, fontWeight: '800', fontSize: 12 }}>
+                {t('posUi.scale')}
+              </Text>
+            </Pressable>
+          ) : undefined
         }
       />
       <BarcodeScannerModal

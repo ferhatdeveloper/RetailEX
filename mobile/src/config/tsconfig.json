@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["businessStructureFilter.ts", "structureNavGuard.ts", "cariReportSides.ts", "menuConfig.ts"]
+  "include": ["businessStructureFilter.ts", "structureNavGuard.ts", "systemTypeFields.ts", "cariReportSides.ts", "menuConfig.ts"]
 }

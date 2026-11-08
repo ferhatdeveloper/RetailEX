@@ -43,6 +43,7 @@ import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
 import type { WmsOpsKind } from '../navigation/opsKinds';
 import type { MainStackParamList } from '../navigation/types';
+import { useScreenFieldAllowed } from '../hooks/useScreenFieldGate';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'WmsOps'>;
 
@@ -57,6 +58,9 @@ const TITLES: Record<WmsOpsKind, string> = {
 
 export function WmsOpsScreen({ route }: Props) {
   const kind = route.params.kind;
+  const fieldId =
+    kind === 'bins' ? 'bin' : kind === 'receiving' ? 'receiving' : kind === 'dispatch' ? 'dispatch' : 'warehouse';
+  const opsAllowed = useScreenFieldAllowed(fieldId);
   const { t } = useTranslation();
   const { colors } = useThemeStore();
   const [rows, setRows] = useState<Array<WmsSlip | WmsBinRow | PutawayRow | PackingRow | AdjustmentRow>>([]);
@@ -150,6 +154,10 @@ export function WmsOpsScreen({ route }: Props) {
         : kind === 'adjustment'
           ? t('ops.productPh', { defaultValue: 'Ürün adı' })
           : t('ops.partyPh', { defaultValue: 'Taraf / satır adı' });
+
+  if (!opsAllowed) {
+    return <View style={[styles.root, { backgroundColor: colors.background }]} />;
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>

@@ -19,8 +19,13 @@ import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
+import { isScreenFieldVisible } from '../config/systemTypeFields';
+import { useScreenFieldAllowed } from '../hooks/useScreenFieldGate';
+import { usePreferencesStore } from '../store/preferencesStore';
 
 export function WmsScreen() {
+  const warehouseAllowed = useScreenFieldAllowed('warehouse');
+  const businessProfile = usePreferencesStore((s) => s.businessProfile);
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const orgEpoch = useOrgEpoch();
@@ -48,6 +53,25 @@ export function WmsScreen() {
     const t = setTimeout(() => void load(), search ? 280 : 0);
     return () => clearTimeout(t);
   }, [load, search]);
+
+  const opsChips = (
+    [
+      ['receiving', 'Mal kabul'],
+      ['dispatch', 'Sevkiyat'],
+      ['bins', 'Lokasyon'],
+      ['putaway', 'Yerleştirme'],
+      ['packing', 'Paketleme'],
+      ['adjustment', 'Fire'],
+    ] as const
+  ).filter(([kind]) => {
+    const field =
+      kind === 'bins' ? 'bin' : kind === 'receiving' ? 'receiving' : kind === 'dispatch' ? 'dispatch' : 'warehouse';
+    return isScreenFieldVisible(field, businessProfile);
+  });
+
+  if (!warehouseAllowed) {
+    return <View style={[styles.root, { backgroundColor: colors.background }]} />;
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -92,16 +116,7 @@ export function WmsScreen() {
         <Text style={{ color: palette.orange500, fontWeight: '800', fontSize: 11 }}>Aç →</Text>
       </Pressable>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.opsRow}>
-        {(
-          [
-            ['receiving', 'Mal kabul'],
-            ['dispatch', 'Sevkiyat'],
-            ['bins', 'Lokasyon'],
-            ['putaway', 'Yerleştirme'],
-            ['packing', 'Paketleme'],
-            ['adjustment', 'Fire'],
-          ] as const
-        ).map(([kind, label]) => (
+        {opsChips.map(([kind, label]) => (
           <Pressable
             key={kind}
             onPress={() => navigation.navigate('WmsOps', { kind })}

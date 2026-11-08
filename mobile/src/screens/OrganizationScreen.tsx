@@ -20,6 +20,8 @@ import {
   filterFirmsByBusinessType,
   normalizeBusinessType,
 } from '../config/businessStructureFilter';
+import { loginBusinessProfile } from '../config/systemTypeFields';
+import { useConfigStore } from '../store/configStore';
 import {
   fetchFirms,
   fetchStores,
@@ -51,6 +53,9 @@ export function OrganizationScreen({ navigation, route }: Props) {
   const sessionUser = useAuthStore((s) => s.user);
   const businessProfile = usePreferencesStore((s) => s.businessProfile);
   const setBusinessProfile = usePreferencesStore((s) => s.setBusinessProfile);
+  const businessProfileLocked = usePreferencesStore((s) => s.businessProfileLocked);
+  const setBusinessProfileLocked = usePreferencesStore((s) => s.setBusinessProfileLocked);
+  const tenantModule = useConfigStore((s) => s.config.merkezTenantModule);
 
   const loginParams = isLoginRoute(route.params) ? route.params : null;
   const isSwitch = !loginParams;
@@ -82,6 +87,21 @@ export function OrganizationScreen({ navigation, route }: Props) {
   storeIdRef.current = storeId;
   periodNrRef.current = periodNr;
   firmNrRef.current = firmNr;
+
+  useEffect(() => {
+    if (loading) return;
+    const firm = firms.find((row) => String(row.firm_nr) === String(firmNr));
+    const resolved = loginBusinessProfile({
+      tenantModule,
+      enabledModules: firm?.enabled_modules,
+    });
+    if (!resolved.profile) {
+      setBusinessProfileLocked(false);
+      return;
+    }
+    setBusinessProfile(resolved.profile);
+    setBusinessProfileLocked(true);
+  }, [loading, firms, firmNr, tenantModule, setBusinessProfile, setBusinessProfileLocked]);
 
   useEffect(() => {
     let cancelled = false;
@@ -363,6 +383,11 @@ export function OrganizationScreen({ navigation, route }: Props) {
             <Text style={[styles.typeLabel, { color: colors.textMuted }]}>
               {t('businessProfile')}
             </Text>
+            {businessProfileLocked ? (
+              <Text style={[styles.typeHint, { color: colors.text }]}>
+                {t('businessProfileFromFirm')}
+              </Text>
+            ) : (
             <View style={styles.typeRow}>
               {(
                 [
@@ -407,6 +432,7 @@ export function OrganizationScreen({ navigation, route }: Props) {
                 );
               })}
             </View>
+            )}
             {normalizeBusinessType(businessProfile) == null ? (
               <Text style={[styles.typeHint, { color: colors.textSubtle }]}>
                 {t('businessStructurePrompt')}
