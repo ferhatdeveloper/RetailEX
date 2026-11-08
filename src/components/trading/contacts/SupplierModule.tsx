@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../../utils/formatNumber';
 import {
   Truck, Users, X, Search, Edit, Trash2, Mail, Phone, MapPin, Wallet,
-  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock, ArrowRightLeft, Copy, GitMerge, BarChart3
+  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock, ArrowRightLeft, Copy, GitMerge, BarChart3,
+  Briefcase, HandCoins, LayoutGrid,
 } from 'lucide-react';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { CariPeriodBalanceModal } from './CariPeriodBalanceModal';
@@ -56,6 +57,7 @@ import {
 } from './supplierListColumns';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 import { cariListBalanceForDisplay, ekstreHeaderBalanceForDisplay } from '../../../utils/cariListBalance';
+import { ENABLE_BUSINESS_PARTNER } from '../../../config/featureFlags';
 
 type CariListFilter = 'all' | 'customer' | 'supplier' | 'duplicates' | 'employee' | 'partner';
 
@@ -63,6 +65,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
   const { t, tm } = useLanguage();
   const dateLocale = tm('localeCode');
   const { selectedFirm } = useFirmaDonem();
+  const resolvedInitialFilter: CariListFilter =
+    !ENABLE_BUSINESS_PARTNER && initialFilter === 'partner' ? 'all' : initialFilter;
   const mainCurrency = useMemo(
     () => String(selectedFirm?.ana_para_birimi || getAppDefaultCurrency()).trim().toUpperCase().slice(0, 10) || 'IQD',
     [selectedFirm?.ana_para_birimi]
@@ -124,7 +128,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
   const [ekstreCurrencyFilter, setEkstreCurrencyFilter] = useState<string>('ALL');
   const [exportingExcel, setExportingExcel] = useState(false);
   /** Liste filtresi: tümü / müşteri / tedarikçi / personel / ortak / mükerrer */
-  const [accountTypeFilter, setAccountTypeFilter] = useState<CariListFilter>(initialFilter);
+  const [accountTypeFilter, setAccountTypeFilter] = useState<CariListFilter>(resolvedInitialFilter);
   const [columnVisibility, setColumnVisibility] = useState(loadSupplierListColumnVisibility);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [mergeSource, setMergeSource] = useState<Party | null>(null);
@@ -335,7 +339,31 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
     );
   }, [suppliers]);
 
-  const filteredSuppliers = suppliers.filter(s => {
+  const listAccounts = useMemo(
+    () =>
+      ENABLE_BUSINESS_PARTNER
+        ? suppliers
+        : suppliers.filter((s) => s.cardType !== 'partner'),
+    [suppliers],
+  );
+
+  const filterCounts = useMemo(() => {
+    const customer = listAccounts.filter((s) => s.cardType === 'customer').length;
+    const supplier = listAccounts.filter((s) => s.cardType === 'supplier').length;
+    const employee = listAccounts.filter((s) => s.cardType === 'employee').length;
+    const partner = listAccounts.filter((s) => s.cardType === 'partner').length;
+    const duplicates = listAccounts.filter((s) => duplicateAccountKeys.has(s.id)).length;
+    return {
+      all: listAccounts.length,
+      customer,
+      supplier,
+      employee,
+      partner,
+      duplicates,
+    };
+  }, [listAccounts, duplicateAccountKeys]);
+
+  const filteredSuppliers = listAccounts.filter(s => {
     if (accountTypeFilter === 'duplicates' && !duplicateAccountKeys.has(s.id)) return false;
     if (accountTypeFilter === 'customer' && s.cardType !== 'customer') return false;
     if (accountTypeFilter === 'supplier' && s.cardType !== 'supplier') return false;
@@ -1078,7 +1106,9 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
       )
     : { side: '' as const, sideLabel: '', hint: '' };
 
-  const isPartyTab = accountTypeFilter === 'employee' || accountTypeFilter === 'partner';
+  const isPartyTab =
+    accountTypeFilter === 'employee'
+    || (ENABLE_BUSINESS_PARTNER && accountTypeFilter === 'partner');
 
   const supplierToParty = (s: Supplier): Party => ({
     id: s.id,
@@ -1111,7 +1141,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4" />
             <h2 className="text-sm font-semibold">{t.menu?.currentAccounts || 'Cari Hesap Yönetimi'}</h2>
-            <span className="text-blue-100 text-[10px] ml-2">• {suppliers.length} {tm('account')}</span>
+            <span className="text-blue-100 text-[10px] ml-2">• {listAccounts.length} {tm('account')}</span>
           </div>
           <div className="flex gap-1.5 items-center">
             <button onClick={loadSuppliers} className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
@@ -1168,52 +1198,130 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
       </div>
 
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-gray-50 p-3 gap-3">
-        <div className="bg-white px-3 py-2 border border-gray-200 rounded flex-shrink-0 space-y-2">
-          <div className="flex flex-wrap gap-1.5">
-            {(
-              [
-                { key: 'all' as const, label: tm('all') },
-                { key: 'customer' as const, label: tm('buyersLabel') },
-                { key: 'duplicates' as const, label: tm('duplicatesLabel') },
-                { key: 'supplier' as const, label: tm('sellersLabel') },
-                { key: 'employee' as const, label: tm('employeeFilterLabel') },
-                { key: 'partner' as const, label: tm('partnerFilterLabel') },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setAccountTypeFilter(tab.key)}
-                className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
-                  accountTypeFilter === tab.key
-                    ? tab.key === 'supplier'
-                      ? 'bg-orange-600 text-white'
-                      : tab.key === 'duplicates'
-                        ? 'bg-red-600 text-white'
-                        : tab.key === 'employee'
-                          ? 'bg-emerald-600 text-white'
-                          : tab.key === 'partner'
-                            ? 'bg-purple-600 text-white'
-                      : 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+        <div className="flex-shrink-0 space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div
+              role="tablist"
+              aria-label={t.menu?.currentAccounts || 'Cari Hesap'}
+              className="flex flex-wrap items-center gap-1 rounded-xl bg-slate-100/90 p-1"
+            >
+              {(
+                [
+                  {
+                    key: 'all' as const,
+                    label: tm('all'),
+                    count: filterCounts.all,
+                    Icon: LayoutGrid,
+                    active: 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200',
+                  },
+                  {
+                    key: 'customer' as const,
+                    label: tm('buyersLabel'),
+                    count: filterCounts.customer,
+                    Icon: Users,
+                    active: 'bg-blue-600 text-white shadow-sm',
+                  },
+                  {
+                    key: 'supplier' as const,
+                    label: tm('sellersLabel'),
+                    count: filterCounts.supplier,
+                    Icon: Truck,
+                    active: 'bg-orange-600 text-white shadow-sm',
+                  },
+                  {
+                    key: 'employee' as const,
+                    label: tm('employeeFilterLabel'),
+                    count: filterCounts.employee,
+                    Icon: Briefcase,
+                    active: 'bg-emerald-600 text-white shadow-sm',
+                  },
+                  ...(ENABLE_BUSINESS_PARTNER
+                    ? [{
+                        key: 'partner' as const,
+                        label: tm('partnerFilterLabel'),
+                        count: filterCounts.partner,
+                        Icon: HandCoins,
+                        active: 'bg-purple-600 text-white shadow-sm',
+                      }]
+                    : []),
+                  {
+                    key: 'duplicates' as const,
+                    label: tm('duplicatesLabel'),
+                    count: filterCounts.duplicates,
+                    Icon: Copy,
+                    active: 'bg-red-600 text-white shadow-sm',
+                  },
+                ] as Array<{
+                  key: CariListFilter;
+                  label: string;
+                  count: number;
+                  Icon: typeof Users;
+                  active: string;
+                }>
+              ).map((tab) => {
+                const selected = accountTypeFilter === tab.key;
+                const Icon = tab.Icon;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setAccountTypeFilter(tab.key)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
+                      selected
+                        ? tab.active
+                        : 'text-slate-600 hover:bg-white/80 hover:text-slate-900'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
+                    <span>{tab.label}</span>
+                    <span
+                      className={`min-w-[1.25rem] rounded-md px-1.5 py-0.5 text-center text-[10px] font-bold tabular-nums ${
+                        selected
+                          ? tab.key === 'all'
+                            ? 'bg-slate-100 text-slate-700'
+                            : 'bg-white/20 text-inherit'
+                          : 'bg-white text-slate-500 ring-1 ring-slate-200/80'
+                      }`}
+                    >
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {!isPartyTab ? (
+              <div className="relative w-full min-w-[200px] lg:max-w-sm lg:flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  placeholder={tm('searchCurrentAccountPlaceholder')}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-9 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/30"
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200/80 hover:text-slate-700"
+                    aria-label={tm('clear')}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-          {!isPartyTab && (
-          <div className="relative flex-1 min-w-[180px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder={tm('searchCurrentAccountPlaceholder')}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          )}
+          {accountTypeFilter === 'duplicates' && filterCounts.duplicates > 0 ? (
+            <p className="text-[11px] font-medium text-red-700/90">
+              {filterCounts.duplicates} {tm('duplicatesLabel').toLocaleLowerCase(dateLocale || 'tr-TR')}
+              {' — '}
+              {tm('accountStatementClickHint') || 'Ekstre için satıra tıklayın'}
+            </p>
+          ) : null}
         </div>
 
         {isPartyTab ? (

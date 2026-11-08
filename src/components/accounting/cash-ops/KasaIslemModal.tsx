@@ -28,6 +28,7 @@ import { fetchBankalar, type Banka } from '../../../services/api/banka';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { supplierAPI } from '../../../services/api/suppliers';
 import { partnerAPI } from '../../../services/api/partiesPartners';
+import { ENABLE_BUSINESS_PARTNER } from '../../../config/featureFlags';
 import { cashPaymentListBalanceForDisplay } from '../../../utils/cashPaymentListBalance';
 import { resolveCashFxHatwanQuote } from '../../../services/marketRatesService';
 import type { Invoice, PartyPartner } from '../../../core/types/models';
@@ -1075,9 +1076,8 @@ export function KasaIslemModal({
             </div>
           )}
 
-          {/* Ortak adına ödeme — CH_ODEME_PARTNER. Firma ortak adına tedarikçiye ödeme yapıyor.
-              Ortak hesabı bakiyesi düşer (ortağın firmadan alacağı azalır). */}
-          {islemTipi === 'CH_ODEME' && (
+          {/* Ortak adına ödeme — feature flag kapalıysa gizle */}
+          {ENABLE_BUSINESS_PARTNER && islemTipi === 'CH_ODEME' && (
             <div className="space-y-2 p-3 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20">
               <label className="flex items-center gap-2 text-sm font-bold text-amber-800 dark:text-amber-200 cursor-pointer select-none">
                 <input

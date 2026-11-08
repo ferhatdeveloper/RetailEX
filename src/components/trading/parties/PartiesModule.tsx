@@ -38,6 +38,7 @@ import type { Party, PartyCardType } from '../../../core/types/models';
 import { shortUuid } from './PartyMergeModal';
 import { useNestedT } from './useNestedT';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { ENABLE_BUSINESS_PARTNER } from '../../../config/featureFlags';
 
 type Tab = 'all' | PartyCardType;
 
@@ -46,7 +47,9 @@ const TABS: { value: Tab; labelKey: string; color: string }[] = [
   { value: 'customer', labelKey: 'party.cardType.customer', color: 'bg-blue-100 text-blue-700' },
   { value: 'supplier', labelKey: 'party.cardType.supplier', color: 'bg-amber-100 text-amber-700' },
   { value: 'employee', labelKey: 'party.cardType.employee', color: 'bg-emerald-100 text-emerald-700' },
-  { value: 'partner', labelKey: 'party.cardType.partner', color: 'bg-purple-100 text-purple-700' },
+  ...(ENABLE_BUSINESS_PARTNER
+    ? [{ value: 'partner' as const, labelKey: 'party.cardType.partner', color: 'bg-purple-100 text-purple-700' }]
+    : []),
 ];
 
 export function PartiesModule({
@@ -109,7 +112,7 @@ export function PartiesModule({
         await employeeAPI.ensureMonthlySalaryAccrual();
       }
       let partnerBalances = new Map<string, number>();
-      if (tab === 'partner' || tab === 'all') {
+      if (ENABLE_BUSINESS_PARTNER && (tab === 'partner' || tab === 'all')) {
         try {
           // Pay satırı yazmaz (manual mod); yalnızca ledger Σ → kart bakiyesi.
           // Eski otomatik dönem payı sync'i geri yüklemeleri eziyordu.
@@ -221,9 +224,12 @@ export function PartiesModule({
   }, [tab, items]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return items;
+    const base = ENABLE_BUSINESS_PARTNER
+      ? items
+      : items.filter((p) => p.card_type !== 'partner');
+    if (!search.trim()) return base;
     const q = search.toLowerCase();
-    return items.filter((p) =>
+    return base.filter((p) =>
       (p.name || '').toLowerCase().includes(q) ||
       (p.code || '').toLowerCase().includes(q) ||
       (p.phone || '').toLowerCase().includes(q) ||
@@ -376,7 +382,7 @@ export function PartiesModule({
               </button>
             </>
           )}
-          {tab === 'partner' && (
+          {ENABLE_BUSINESS_PARTNER && tab === 'partner' && (
             <>
               <button
                 type="button"

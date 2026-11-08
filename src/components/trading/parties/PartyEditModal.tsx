@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { partyAPI, toDateInputValue } from '../../../services/api/parties';
 import type { Party, PartyCardType } from '../../../core/types/models';
+import { ENABLE_BUSINESS_PARTNER } from '../../../config/featureFlags';
 
 export interface PartyEditModalProps {
   initial?: Party | null;
@@ -55,7 +56,9 @@ const CARD_TYPE_OPTIONS: {
   { value: 'customer', labelKey: 'party.cardType.customer', active: 'bg-blue-100 text-blue-700', icon: Users },
   { value: 'supplier', labelKey: 'party.cardType.supplier', active: 'bg-amber-100 text-amber-800', icon: Truck },
   { value: 'employee', labelKey: 'party.cardType.employee', active: 'bg-emerald-100 text-emerald-800', icon: Briefcase },
-  { value: 'partner', labelKey: 'party.cardType.partner', active: 'bg-purple-100 text-purple-800', icon: HandCoins },
+  ...(ENABLE_BUSINESS_PARTNER
+    ? [{ value: 'partner' as const, labelKey: 'party.cardType.partner', active: 'bg-purple-100 text-purple-800', icon: HandCoins }]
+    : []),
 ];
 
 const HEADER_GRAD: Record<PartyCardType, string> = {

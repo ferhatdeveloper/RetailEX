@@ -6,8 +6,8 @@ import { RetailExFlatModal, RetailExFlatFieldLabel } from '../shared/RetailExFla
 import { beautyService } from '../../services/beautyService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { normalizePhoneDigits, sendWhatsAppText } from '../../services/messaging/clinicMessaging';
-import type { ClinicMessagingPortalConfig } from '../../services/messaging/clinicMessaging';
+import { normalizePhoneDigits } from '../../services/messaging/clinicMessaging';
+import { openWhatsAppDesktopChat } from '../../utils/openWhatsAppDesktop';
 import type {
   BeautyAppointment,
   BeautyCustomerFeedback,
@@ -309,22 +309,23 @@ export function BeautyServiceReportCrmModal({
   };
 
   const handleSendWhatsApp = async () => {
-    const digits = normalizePhoneDigits(phone.trim());
+    const digits = normalizePhoneDigits(phone.trim(), '964');
     if (digits.length < 10) {
       toast.error(tm('beautyWaInvalidPhone'));
       return;
     }
-    const settings = await beautyService.getPortalSettings();
-    const cfg = settings as unknown as ClinicMessagingPortalConfig;
-    if (!cfg || (cfg.whatsapp_provider || 'NONE').toString().toUpperCase() === 'NONE') {
-      toast.error(tm('beautyWaProviderNone'));
-      return;
-    }
     setSendingWa(true);
     try {
-      const r = await sendWhatsAppText(cfg, digits, waText.trim());
-      if (!r.success) throw new Error(r.error || 'WA');
-      toast.success(tm('beautyWaSent'));
+      const opened = await openWhatsAppDesktopChat(phone.trim(), waText.trim(), {
+        defaultCountryCode: '964',
+      });
+      if (!opened.ok) {
+        toast.error(
+          opened.error === 'invalid_phone' ? tm('beautyWaInvalidPhone') : tm('beautyWaDesktopOpenFailed'),
+        );
+        return;
+      }
+      toast.success(tm('beautyWaDesktopOpened'));
       const waLine = `${tm('crmPresetWhatsappSent')}${
         waText.trim() ? ` — ${waText.trim().slice(0, 200)}${waText.length > 200 ? '…' : ''}` : ''
       }`;
