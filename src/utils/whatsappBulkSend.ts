@@ -1,10 +1,18 @@
 /** WhatsApp toplu gönderim — ban riskini azaltmak için aralıklı kuyruk işleme */
 
 import { messagingService } from '../services/messaging/messagingService';
+import { openWhatsAppDesktopChat } from './openWhatsAppDesktop';
 
 export const WHATSAPP_BULK_INTERVAL_OPTIONS_MS = [8000, 12000, 15000, 20000] as const;
 
 export const DEFAULT_WHATSAPP_BULK_INTERVAL_MS = 12000;
+
+/** Desktop link sırayla aç — kullanıcı her sohbette Gönder’e basar */
+export const WHATSAPP_BULK_DESKTOP_INTERVAL_OPTIONS_MS = [5000, 8000, 12000, 15000] as const;
+
+export const DEFAULT_WHATSAPP_BULK_DESKTOP_INTERVAL_MS = 8000;
+
+export type WhatsAppBulkDeliveryMode = 'api' | 'desktop_link';
 
 export type WhatsAppBulkPreviewItem = {
   id: string;
@@ -141,4 +149,67 @@ export async function runWhatsAppBulkCampaign(
     skipped: enq.skipped,
     errors: [...enq.errors, ...proc.errors],
   };
+}
+
+/**
+ * Sağlayıcı / QR gerekmez. Her alıcı için WhatsApp Desktop (whatsapp://) sohbetini
+ * aralıklı açar; kullanıcı uygulamada Gönder’e basar. API kuyruğuna yazılmaz.
+ */
+export async function runWhatsAppBulkDesktopLinkCampaign(
+  items: WhatsAppBulkPreviewItem[],
+  options?: {
+    intervalMs?: number;
+    onProgress?: (p: WhatsAppBulkSendProgress) => void;
+    shouldAbort?: () => boolean;
+    defaultCountryCode?: string;
+  },
+): Promise<{ opened: number; skipped: number; errors: string[] }> {
+  if (!items.length) {
+    return { opened: 0, skipped: 0, errors: [] };
+  }
+
+  const intervalMs = Math.max(3000, options?.intervalMs ?? DEFAULT_WHATSAPP_BULK_DESKTOP_INTERVAL_MS);
+  const country = options?.defaultCountryCode ?? '964';
+  const errors: string[] = [];
+  let opened = 0;
+  let skipped = 0;
+  const total = items.length;
+
+  for (let i = 0; i < items.length; i++) {
+    if (options?.shouldAbort?.()) break;
+    const item = items[i];
+    options?.onProgress?.({
+      phase: 'send',
+      done: i,
+      total,
+      currentName: item.name,
+    });
+
+    const result = await openWhatsAppDesktopChat(item.phone, item.messageText, {
+      defaultCountryCode: country,
+    });
+    let lastError: string | undefined;
+    if (result.ok) {
+      opened++;
+    } else {
+      skipped++;
+      lastError =
+        result.error === 'invalid_phone' ? 'geçersiz numara' : 'Desktop açılamadı';
+      errors.push(`${item.name}: ${lastError}`);
+    }
+
+    options?.onProgress?.({
+      phase: 'send',
+      done: i + 1,
+      total,
+      currentName: item.name,
+      lastError,
+    });
+
+    if (i < items.length - 1 && !options?.shouldAbort?.()) {
+      await sleep(intervalMs);
+    }
+  }
+
+  return { opened, skipped, errors };
 }

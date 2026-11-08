@@ -5,6 +5,7 @@ import {
   Clock,
   Languages,
   Loader2,
+  Monitor,
   Pause,
   Play,
   Wifi,
@@ -22,12 +23,16 @@ import {
   type WhatsAppMessageLang,
 } from '../../services/messaging/whatsappMessageLang';
 import {
+  DEFAULT_WHATSAPP_BULK_DESKTOP_INTERVAL_MS,
   DEFAULT_WHATSAPP_BULK_INTERVAL_MS,
+  WHATSAPP_BULK_DESKTOP_INTERVAL_OPTIONS_MS,
   WHATSAPP_BULK_INTERVAL_OPTIONS_MS,
   estimateBulkDurationSec,
+  type WhatsAppBulkDeliveryMode,
   type WhatsAppBulkPreviewItem,
   type WhatsAppBulkSendProgress,
   runWhatsAppBulkCampaign,
+  runWhatsAppBulkDesktopLinkCampaign,
 } from '../../utils/whatsappBulkSend';
 
 type BulkModalTab = 'send' | 'connection' | 'missing' | 'invalid';
@@ -79,7 +84,11 @@ export function WhatsAppBulkSendPreviewModal({
   const [localItems, setLocalItems] = useState<WhatsAppBulkPreviewItem[]>(items);
   const [selectedIds, setSelectedIds] = useState<string[]>(() => items.map((i) => i.id));
   const [rebuilding, setRebuilding] = useState(false);
+  const [deliveryMode, setDeliveryMode] = useState<WhatsAppBulkDeliveryMode>('api');
   const [intervalMs, setIntervalMs] = useState(DEFAULT_WHATSAPP_BULK_INTERVAL_MS);
+  const [desktopIntervalMs, setDesktopIntervalMs] = useState(
+    DEFAULT_WHATSAPP_BULK_DESKTOP_INTERVAL_MS,
+  );
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<WhatsAppBulkSendProgress | null>(null);
   const [scheduleMode, setScheduleMode] = useState<'now' | 'planned'>('now');
@@ -230,10 +239,15 @@ export function WhatsAppBulkSendPreviewModal({
     else setSelectedIds(localItems.map((i) => i.id));
   };
 
+  const activeIntervalMs =
+    deliveryMode === 'desktop_link' ? desktopIntervalMs : intervalMs;
+
   const estSec = useMemo(
-    () => estimateBulkDurationSec(selectedItems.length, intervalMs),
-    [selectedItems.length, intervalMs],
+    () => estimateBulkDurationSec(selectedItems.length, activeIntervalMs),
+    [selectedItems.length, activeIntervalMs],
   );
+
+  const isDesktopLinkMode = deliveryMode === 'desktop_link';
 
   const connectionBadge = useMemo(() => {
     if (waConn.provider === 'NONE') {
@@ -283,8 +297,36 @@ export function WhatsAppBulkSendPreviewModal({
     }
   };
 
+  const handleDesktopLinkSend = async () => {
+    if (!selectedItems.length || running) return;
+    setRunning(true);
+    abortRef.current = false;
+    try {
+      const result = await runWhatsAppBulkDesktopLinkCampaign(selectedItems, {
+        intervalMs: desktopIntervalMs,
+        shouldAbort: () => abortRef.current,
+        onProgress: setProgress,
+      });
+      if (result.opened > 0) {
+        toast.success(
+          tm('msgNotifyBulkDesktopOpened').replace('{n}', String(result.opened)),
+        );
+      }
+      if (result.errors.length) toast.error(result.errors.slice(0, 3).join('\n'));
+      onComplete?.({ queued: 0, sent: result.opened, errors: result.errors });
+      if (!abortRef.current && result.opened > 0) onClose();
+    } finally {
+      setRunning(false);
+      setProgress(null);
+    }
+  };
+
   const handleAutoSend = async () => {
     if (!selectedItems.length || running) return;
+    if (isDesktopLinkMode) {
+      await handleDesktopLinkSend();
+      return;
+    }
     if (scheduleMode === 'planned' && !resolvedScheduledAt) {
       toast.error(tm('msgNotifyScheduleInvalid'));
       return;
@@ -589,91 +631,153 @@ export function WhatsAppBulkSendPreviewModal({
                 {rebuilding ? <Loader2 size={14} className="animate-spin text-gray-400" /> : null}
               </label>
             </div>
+            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-emerald-100 bg-white/80 p-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+                  {tm('msgNotifyBulkDeliveryMode')}
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={running}
+                    onClick={() => setDeliveryMode('api')}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold ${
+                      deliveryMode === 'api'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                        : 'border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    <Wifi size={12} />
+                    {tm('msgNotifyBulkModeApi')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={running}
+                    onClick={() => {
+                      setDeliveryMode('desktop_link');
+                      setScheduleMode('now');
+                    }}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold ${
+                      deliveryMode === 'desktop_link'
+                        ? 'border-sky-500 bg-sky-50 text-sky-800'
+                        : 'border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    <Monitor size={12} />
+                    {tm('msgNotifyBulkModeDesktop')}
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div className="flex items-start gap-2 text-xs text-amber-900">
               <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-              <p>{tm('msgNotifyBulkSafeHint')}</p>
+              <p>
+                {isDesktopLinkMode
+                  ? tm('msgNotifyBulkDesktopHint')
+                  : tm('msgNotifyBulkSafeHint')}
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
                 <Clock size={14} className="text-gray-500" />
                 {tm('msgNotifyBulkInterval')}
-                <select
-                  value={intervalMs}
-                  disabled={running || isPlannedFuture}
-                  onChange={(e) => setIntervalMs(Number(e.target.value))}
-                  className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-bold bg-white"
-                >
-                  {WHATSAPP_BULK_INTERVAL_OPTIONS_MS.map((ms) => (
-                    <option key={ms} value={ms}>
-                      {ms / 1000}s
-                    </option>
-                  ))}
-                </select>
+                {isDesktopLinkMode ? (
+                  <select
+                    value={desktopIntervalMs}
+                    disabled={running}
+                    onChange={(e) => setDesktopIntervalMs(Number(e.target.value))}
+                    className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-bold bg-white"
+                  >
+                    {WHATSAPP_BULK_DESKTOP_INTERVAL_OPTIONS_MS.map((ms) => (
+                      <option key={ms} value={ms}>
+                        {ms / 1000}s
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    value={intervalMs}
+                    disabled={running || isPlannedFuture}
+                    onChange={(e) => setIntervalMs(Number(e.target.value))}
+                    className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-bold bg-white"
+                  >
+                    {WHATSAPP_BULK_INTERVAL_OPTIONS_MS.map((ms) => (
+                      <option key={ms} value={ms}>
+                        {ms / 1000}s
+                      </option>
+                    ))}
+                  </select>
+                )}
               </label>
               <span className="text-[11px] text-gray-500">
                 {tm('msgNotifyBulkEstDuration').replace('{sec}', String(estSec))}
               </span>
             </div>
 
-            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-emerald-100 bg-white/80 p-3">
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-                  {tm('msgNotifyScheduleTitle')}
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={running}
-                    onClick={() => setScheduleMode('now')}
-                    className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${
-                      scheduleMode === 'now'
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
-                        : 'border-gray-200 text-gray-600'
-                    }`}
-                  >
-                    {tm('msgNotifyScheduleNow')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={running}
-                    onClick={() => setScheduleMode('planned')}
-                    className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${
-                      scheduleMode === 'planned'
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
-                        : 'border-gray-200 text-gray-600'
-                    }`}
-                  >
-                    {tm('msgNotifyScheduleLater')}
-                  </button>
+            {!isDesktopLinkMode ? (
+              <div className="flex flex-wrap items-end gap-3 rounded-lg border border-emerald-100 bg-white/80 p-3">
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+                    {tm('msgNotifyScheduleTitle')}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={running}
+                      onClick={() => setScheduleMode('now')}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${
+                        scheduleMode === 'now'
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                          : 'border-gray-200 text-gray-600'
+                      }`}
+                    >
+                      {tm('msgNotifyScheduleNow')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={running}
+                      onClick={() => setScheduleMode('planned')}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${
+                        scheduleMode === 'planned'
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                          : 'border-gray-200 text-gray-600'
+                      }`}
+                    >
+                      {tm('msgNotifyScheduleLater')}
+                    </button>
+                  </div>
                 </div>
+                {scheduleMode === 'planned' ? (
+                  <div className="flex flex-col gap-1 min-w-[12rem]">
+                    <label className="text-[10px] font-bold text-gray-500">
+                      {tm('msgNotifyScheduleWhen')}
+                    </label>
+                    <input
+                      type="datetime-local"
+                      disabled={running}
+                      value={scheduleLocal}
+                      onChange={(e) => setScheduleLocal(e.target.value)}
+                      className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-semibold bg-white"
+                    />
+                  </div>
+                ) : null}
+                {isPlannedFuture ? (
+                  <p className="text-[11px] text-emerald-800 max-w-sm">
+                    {tm('msgNotifyScheduleHint')}
+                  </p>
+                ) : null}
               </div>
-              {scheduleMode === 'planned' ? (
-                <div className="flex flex-col gap-1 min-w-[12rem]">
-                  <label className="text-[10px] font-bold text-gray-500">
-                    {tm('msgNotifyScheduleWhen')}
-                  </label>
-                  <input
-                    type="datetime-local"
-                    disabled={running}
-                    value={scheduleLocal}
-                    onChange={(e) => setScheduleLocal(e.target.value)}
-                    className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-semibold bg-white"
-                  />
-                </div>
-              ) : null}
-              {isPlannedFuture ? (
-                <p className="text-[11px] text-emerald-800 max-w-sm">
-                  {tm('msgNotifyScheduleHint')}
-                </p>
-              ) : null}
-            </div>
+            ) : null}
             {running && progress ? (
               <div className="space-y-1">
                 <div className="flex justify-between text-[11px] font-semibold text-gray-600">
                   <span>
-                    {progress.phase === 'enqueue'
-                      ? tm('msgNotifyBulkPhaseEnqueue')
-                      : tm('msgNotifyBulkPhaseSend')}
+                    {isDesktopLinkMode
+                      ? tm('msgNotifyBulkPhaseDesktop')
+                      : progress.phase === 'enqueue'
+                        ? tm('msgNotifyBulkPhaseEnqueue')
+                        : tm('msgNotifyBulkPhaseSend')}
                     {progress.currentName ? ` · ${progress.currentName}` : ''}
                   </span>
                   <span>
@@ -682,7 +786,9 @@ export function WhatsAppBulkSendPreviewModal({
                 </div>
                 <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
                   <div
-                    className="h-full bg-emerald-500 transition-all duration-300"
+                    className={`h-full transition-all duration-300 ${
+                      isDesktopLinkMode ? 'bg-sky-500' : 'bg-emerald-500'
+                    }`}
                     style={{ width: `${progressPct}%` }}
                   />
                 </div>
@@ -771,31 +877,43 @@ export function WhatsAppBulkSendPreviewModal({
               </button>
             ) : (
               <>
-                <button
-                  type="button"
-                  disabled={!selectedItems.length || rebuilding}
-                  onClick={() => void handleEnqueueOnly()}
-                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white text-gray-700 font-bold px-4 py-2.5 text-sm disabled:opacity-50"
-                >
-                  {isPlannedFuture ? tm('msgNotifySchedulePlanButton') : tm('msgNotifyBulkQueueOnly')}
-                </button>
+                {!isDesktopLinkMode ? (
+                  <button
+                    type="button"
+                    disabled={!selectedItems.length || rebuilding}
+                    onClick={() => void handleEnqueueOnly()}
+                    className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white text-gray-700 font-bold px-4 py-2.5 text-sm disabled:opacity-50"
+                  >
+                    {isPlannedFuture
+                      ? tm('msgNotifySchedulePlanButton')
+                      : tm('msgNotifyBulkQueueOnly')}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   disabled={!selectedItems.length || rebuilding}
                   onClick={() => void handleAutoSend()}
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 text-sm disabled:opacity-50"
+                  className={`inline-flex items-center gap-2 rounded-xl text-white font-bold px-4 py-2.5 text-sm disabled:opacity-50 ${
+                    isDesktopLinkMode
+                      ? 'bg-sky-600 hover:bg-sky-700'
+                      : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
                 >
-                  <Play size={16} />
-                  {isPlannedFuture
-                    ? tm('msgNotifySchedulePlanButton')
-                    : tm('msgNotifyBulkAutoSend')}
+                  {isDesktopLinkMode ? <Monitor size={16} /> : <Play size={16} />}
+                  {isDesktopLinkMode
+                    ? tm('msgNotifyBulkDesktopStart')
+                    : isPlannedFuture
+                      ? tm('msgNotifySchedulePlanButton')
+                      : tm('msgNotifyBulkAutoSend')}
                 </button>
               </>
             )}
             {running && (
               <span className="inline-flex items-center gap-2 text-sm text-gray-500 ml-2">
                 <Loader2 size={16} className="animate-spin" />
-                {tm('msgNotifyBulkSending')}
+                {isDesktopLinkMode
+                  ? tm('msgNotifyBulkDesktopOpening')
+                  : tm('msgNotifyBulkSending')}
               </span>
             )}
           </>
