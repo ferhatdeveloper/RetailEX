@@ -70,10 +70,15 @@ describe('Yönetime geç ikonu', () => {
         const beauty = readFileSync(resolve('src/components/beauty/index.tsx'), 'utf8');
         expect(beauty).toContain('<ClinicShellLanguageCluster');
         expect(beauty).toContain('onRequestManagementAccess');
-        expect(beauty).toContain("hasPermission('management', 'READ')");
+        expect(beauty).toContain('clinic-classic-go-to-management');
+        expect(beauty).toContain('onGoToManagement=');
         expect(beauty).toContain('<ClinicV2SideRail');
         expect(beauty).toContain('MENU_GROUPS.map');
         expect(beauty).not.toContain("setCurrentModule('management')");
+
+        const v2Rail = readFileSync(resolve('src/components/beauty/components/ClinicV2SideRail.tsx'), 'utf8');
+        expect(v2Rail).toContain('clinic-v2-go-to-management');
+        expect(v2Rail).toContain('onGoToManagement');
 
         const shell = readFileSync(resolve('src/components/system/MainLayout.tsx'), 'utf8');
         const buttons = shell.match(/<GoToManagementIconButton/g) ?? [];

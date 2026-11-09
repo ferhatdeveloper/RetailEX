@@ -2,9 +2,10 @@ import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
     Activity, Apple, Baby, Banknote, BarChart3, Box, Calendar, ChevronLeft, ChevronRight,
-    ClipboardList, Inbox, Layers, LayoutDashboard, Megaphone, Package, Scissors, Settings2, Share2, Smile, Users,
+    ClipboardList, Inbox, Layers, LayoutDashboard, LayoutGrid, Megaphone, Package, Scissors, Settings2, Share2, Smile, Users,
 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { GO_TO_MANAGEMENT_I18N_KEY } from '../../shared/GoToManagementIconButton';
 import { canAccessBeautyTab } from '../clinicShellNavConfig';
 import { CLINIC_V2_CRM_TAB_ID, useClinicV2CrmMenu } from '../clinicShellV2';
 import { SHARE_OPEN_SLOTS_LABEL_KEY, SHARE_OPEN_SLOTS_TAB_ID } from '../share-slots/shareSlotsStory';
@@ -195,10 +196,19 @@ type Props = {
     isMobile: boolean;
     mobileOpen: boolean;
     specialty?: ClinicErpSpecialty;
+    /** ClinicERP dışına — RetailEX ERP Yönetim modülü */
+    onGoToManagement?: () => void;
 };
 
-export function ClinicV2SideRail({ activeTab, onSelect, isMobile, mobileOpen, specialty }: Props) {
-    const { tm } = useLanguage();
+export function ClinicV2SideRail({
+    activeTab,
+    onSelect,
+    isMobile,
+    mobileOpen,
+    specialty,
+    onGoToManagement,
+}: Props) {
+    const { tm, t } = useLanguage();
     const { hasPermission, user } = usePermission();
     const railRole = {
         name: user?.roles?.[0]?.name ?? null,
@@ -206,6 +216,7 @@ export function ClinicV2SideRail({ activeTab, onSelect, isMobile, mobileOpen, sp
     };
     const crmMenu = useClinicV2CrmMenu();
     const [expanded, setExpanded] = useState(readExpanded);
+    const goToManagementLabel = tm(GO_TO_MANAGEMENT_I18N_KEY);
 
     const groups = clinicV2RailGroups(specialty)
         .map((group) => ({
@@ -326,6 +337,49 @@ export function ClinicV2SideRail({ activeTab, onSelect, isMobile, mobileOpen, sp
                     );
                 })}
             </nav>
+            {onGoToManagement ? (
+                <div
+                    style={{
+                        flexShrink: 0,
+                        paddingTop: 8,
+                        marginTop: 4,
+                        borderTop: '1px solid #e5e7eb',
+                    }}
+                >
+                    <button
+                        type="button"
+                        data-testid="clinic-v2-go-to-management"
+                        title={goToManagementLabel}
+                        aria-label={goToManagementLabel}
+                        onClick={onGoToManagement}
+                        className="flex w-full items-center"
+                        style={{
+                            gap: expanded ? 8 : 2,
+                            minHeight: expanded ? 40 : 52,
+                            flexDirection: expanded ? 'row' : 'column',
+                            justifyContent: expanded ? 'flex-start' : 'center',
+                            borderRadius: 10,
+                            border: '1px solid #c4b5fd',
+                            background: '#f5f3ff',
+                            color: '#5b21b6',
+                            cursor: 'pointer',
+                            padding: expanded ? '8px 10px' : '6px 2px',
+                        }}
+                    >
+                        <LayoutGrid size={18} color="#7c3aed" aria-hidden />
+                        <span
+                            style={{
+                                fontSize: expanded ? 13 : 10,
+                                fontWeight: 800,
+                                lineHeight: 1.15,
+                                textAlign: expanded ? 'left' : 'center',
+                            }}
+                        >
+                            {expanded ? goToManagementLabel : t.management}
+                        </span>
+                    </button>
+                </div>
+            ) : null}
         </aside>
     );
 }

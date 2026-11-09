@@ -1,8 +1,7 @@
 import React, { useMemo } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { usePreferencesStore } from '../store/preferencesStore';
-import { normalizeBusinessType } from '../config/businessStructureFilter';
-import { useSyncFirmSystemType } from '../hooks/useSyncFirmSystemType';
+import { useThemeStore } from '../store/themeStore';
 import { MainTabNavigator } from './MainTabNavigator';
 import { ProductsScreen } from '../screens/ProductsScreen';
 import { ProductDetailScreen } from '../screens/ProductDetailScreen';
@@ -34,12 +33,6 @@ import { WmsTransferScreen } from '../screens/WmsTransferScreen';
 import { WmsTransferSlipScreen } from '../screens/WmsTransferSlipScreen';
 import { WavePickingScreen } from '../screens/WavePickingScreen';
 import { WavePickingExecuteScreen } from '../screens/WavePickingExecuteScreen';
-import { WmsOpsScreen } from '../screens/WmsOpsScreen';
-import { BeautyCatalogScreen } from '../screens/BeautyCatalogScreen';
-import { BeautyReportsScreen } from '../screens/BeautyReportsScreen';
-import { RestaurantRecipesScreen } from '../screens/RestaurantRecipesScreen';
-import { RestaurantHistoryScreen } from '../screens/RestaurantHistoryScreen';
-import { StaffScreen } from '../screens/StaffScreen';
 import { RestaurantScreen } from '../screens/RestaurantScreen';
 import { RestaurantReportsScreen } from '../screens/RestaurantReportsScreen';
 import { RestaurantSettingsScreen } from '../screens/RestaurantSettingsScreen';
@@ -71,21 +64,22 @@ import type { MainStackParamList } from './types';
 const Stack = createNativeStackNavigator<MainStackParamList>();
 
 export function MainStackNavigator() {
-  useSyncFirmSystemType();
   const businessProfile = usePreferencesStore((s) => s.businessProfile);
-  const initialRouteName = useMemo((): keyof MainStackParamList => {
-    const vertical = normalizeBusinessType(businessProfile);
-    if (vertical === 'restaurant') return 'Restaurant';
-    if (vertical === 'beauty') return 'Beauty';
-    if (vertical === 'wms') return 'Wms';
-    return 'Tabs';
-  }, [businessProfile]);
+  const colors = useThemeStore((s) => s.colors);
+  const initialRouteName = useMemo(
+    (): keyof MainStackParamList =>
+      businessProfile === 'restaurant' ? 'Restaurant' : 'Tabs',
+    [businessProfile],
+  );
 
   return (
     <Stack.Navigator
       key={initialRouteName}
       initialRouteName={initialRouteName}
-      screenOptions={{ headerShown: false }}
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.background },
+      }}
     >
       <Stack.Screen name="Tabs" component={MainTabNavigator} />
       <Stack.Screen name="Products" component={ProductsScreen} />
@@ -140,12 +134,6 @@ export function MainStackNavigator() {
       <Stack.Screen name="WmsTransferSlip" component={WmsTransferSlipScreen} />
       <Stack.Screen name="WmsWavePicking" component={WavePickingScreen} />
       <Stack.Screen name="WmsWavePickingExecute" component={WavePickingExecuteScreen} />
-      <Stack.Screen name="WmsOps" component={WmsOpsScreen} />
-      <Stack.Screen name="BeautyCatalog" component={BeautyCatalogScreen} />
-      <Stack.Screen name="BeautyReports" component={BeautyReportsScreen} />
-      <Stack.Screen name="RestaurantRecipes" component={RestaurantRecipesScreen} />
-      <Stack.Screen name="RestaurantHistory" component={RestaurantHistoryScreen} />
-      <Stack.Screen name="Staff" component={StaffScreen} />
       <Stack.Screen name="Restaurant" component={RestaurantScreen} />
       <Stack.Screen name="RestaurantReports" component={RestaurantReportsScreen} />
       <Stack.Screen name="RestaurantSettings" component={RestaurantSettingsScreen} />

@@ -22,6 +22,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "app.retailex.mobile",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
@@ -45,12 +46,23 @@
       "usesCleartextTraffic": true,
       "versionCode": 1309,
       "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "BLUETOOTH",
-        "BLUETOOTH_ADMIN",
-        "BLUETOOTH_SCAN",
-        "BLUETOOTH_CONNECT"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.READ_CALL_LOG",
+        "android.permission.READ_CONTACTS",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
       ]
     },
     "web": {
@@ -72,10 +84,19 @@
           "preview": "npm run mobile:eas:preview",
           "production": "npm run mobile:eas:production"
         }
+      },
+      "eas": {
+        "projectId": "1c0bb17f-d0dd-4ca6-9c10-ec4c2a7f8b98"
       }
     },
     "plugins": [
       "./plugins/withCallerIdAndroid",
+      [
+        "./plugins/withIosMinDeploymentTarget",
+        {
+          "deploymentTarget": "16.4"
+        }
+      ],
       "expo-secure-store",
       [
         "expo-camera",
@@ -123,7 +144,16 @@
           "isAccessMediaLocationEnabled": false
         }
       ],
-      "expo-sharing"
-    ]
+      "expo-sharing",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.4"
+          }
+        }
+      ]
+    ],
+    "owner": "ferhatnas"
   }
 }

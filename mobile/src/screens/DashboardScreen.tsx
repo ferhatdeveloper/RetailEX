@@ -263,11 +263,14 @@ export function DashboardScreen() {
           <View
             style={[
               styles.kpiAlertBanner,
-              { backgroundColor: palette.red100, borderColor: palette.red500 },
+              {
+                backgroundColor: colors.errorBg,
+                borderColor: colors.errorBorder,
+              },
             ]}
           >
-            <AlertTriangle size={16} color={palette.red500} />
-            <Text style={{ color: palette.red500, fontSize: 11, flex: 1 }}>
+            <AlertTriangle size={16} color={colors.errorText} />
+            <Text style={{ color: colors.errorText, fontSize: 11, flex: 1 }}>
               {t('dashboardCriticalStockBanner', { count: stats.criticalAlerts })}
             </Text>
           </View>

@@ -495,6 +495,14 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     isMobile={isMobile}
                     mobileOpen={mobileNavOpen}
                     specialty={specialty}
+                    onGoToManagement={
+                        onRequestManagementAccess
+                            ? () => {
+                                onRequestManagementAccess();
+                                if (isMobile) setMobileNavOpen(false);
+                            }
+                            : undefined
+                    }
                     onSelect={(tabId) => {
                         setActiveTab(tabId);
                         if (isMobile) setMobileNavOpen(false);
@@ -619,42 +627,49 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     ))}
                 </nav>
 
-                {onRequestManagementAccess && hasPermission('management', 'READ') && (
-                    <div style={{ padding: '0 0 10px', flexShrink: 0 }}>
+                {onRequestManagementAccess && (
+                    <div
+                        style={{
+                            padding: showNavText ? '8px 10px 10px' : '8px 6px 10px',
+                            flexShrink: 0,
+                            borderTop: `1px solid ${shell.sidebarLine}`,
+                        }}
+                    >
                         <button
                             type="button"
+                            data-testid="clinic-classic-go-to-management"
                             onClick={() => {
                                 onRequestManagementAccess();
                                 if (isMobile) setMobileNavOpen(false);
                             }}
-                            title={!showNavText ? t.management : undefined}
+                            title={tm('goToManagement')}
+                            aria-label={tm('goToManagement')}
                             style={{
                                 display: 'flex', alignItems: 'center',
-                                width: '100%', padding: !showNavText ? '7px 0' : '7px 12px',
-                                marginBottom: 1,
+                                width: '100%', padding: !showNavText ? '10px 0' : '10px 12px',
                                 justifyContent: !showNavText ? 'center' : 'flex-start',
                                 gap: 9,
-                                background: 'transparent',
-                                borderTop: 'none',
-                                borderRight: 'none',
-                                borderBottom: 'none',
-                                borderLeft: '2px solid transparent',
-                                color: shell.item,
-                                fontSize: menuPx(13), fontWeight: 600,
+                                background: shell.accent,
+                                border: `1px solid ${shell.accentEdge}`,
+                                borderRadius: 8,
+                                color: shell.onAccent,
+                                fontSize: menuPx(13), fontWeight: 800,
                                 cursor: 'pointer', outline: 'none',
-                                transition: 'background 0.12s, color 0.12s',
+                                transition: 'filter 0.12s',
                             }}
                             onMouseEnter={e => {
-                                e.currentTarget.style.background = shell.focusRing;
-                                e.currentTarget.style.color = shell.itemHover;
+                                e.currentTarget.style.filter = 'brightness(1.08)';
                             }}
                             onMouseLeave={e => {
-                                e.currentTarget.style.background = 'transparent';
-                                e.currentTarget.style.color = shell.item;
+                                e.currentTarget.style.filter = 'none';
                             }}
                         >
-                            <LayoutGrid size={15} style={{ flexShrink: 0, opacity: 0.7 }} />
-                            {showNavText && <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.management}</span>}
+                            <LayoutGrid size={15} style={{ flexShrink: 0 }} />
+                            {showNavText && (
+                                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {tm('goToManagement')}
+                                </span>
+                            )}
                         </button>
                     </div>
                 )}
@@ -767,11 +782,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
 
                         <ClinicShellLanguageCluster
                             onOpenLanguage={() => setShowLanguageModal(true)}
-                            onGoToManagement={
-                                onRequestManagementAccess && hasPermission('management', 'READ')
-                                    ? onRequestManagementAccess
-                                    : undefined
-                            }
+                            onGoToManagement={onRequestManagementAccess}
                         />
                     </div>
                 </header>

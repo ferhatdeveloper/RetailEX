@@ -20,7 +20,7 @@ export function PrimaryButton({
   variant = 'primary',
   style,
 }: Props) {
-  const { darkMode } = useThemeStore();
+  const { colors } = useThemeStore();
   const isPrimary = variant === 'primary';
   const isDanger = variant === 'danger';
 
@@ -30,24 +30,26 @@ export function PrimaryButton({
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.base,
-        isPrimary && { backgroundColor: pressed ? palette.blue700 : palette.blue600 },
-        isDanger && { backgroundColor: pressed ? '#dc2626' : palette.red500 },
+        isPrimary && {
+          backgroundColor: pressed ? colors.primaryPressed : colors.primary,
+        },
+        isDanger && { backgroundColor: pressed ? palette.red600 : colors.danger },
         variant === 'ghost' && {
           backgroundColor: 'transparent',
           borderWidth: 2,
-          borderColor: darkMode ? palette.gray700 : palette.gray200,
+          borderColor: colors.cardBorder,
         },
         (disabled || loading) && { opacity: 0.5 },
         style,
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'ghost' ? palette.blue600 : palette.white} />
+        <ActivityIndicator color={variant === 'ghost' ? colors.primary : palette.white} />
       ) : (
         <Text
           style={[
             styles.label,
-            variant === 'ghost' && { color: darkMode ? palette.gray300 : palette.gray600 },
+            variant === 'ghost' && { color: colors.textMuted },
           ]}
         >
           {label}

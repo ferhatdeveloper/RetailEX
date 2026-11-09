@@ -1,0 +1,55 @@
+---
+description: RetailEX iOS IPA — yalnızca yerel Mac derleme + Transporter; Expo bulut EAS Build yasak
+alwaysApply: true
+---
+
+# iOS App Store / TestFlight — yerel derleme + Transporter
+
+RetailEX **iOS store / TestFlight IPA** üretimi **yalnızca bu Mac’te** yapılır. **Expo bulut EAS Build** (`eas build` sunucuya gönderilen, `expo.dev` kuyruk/worker) **yasaktır**.
+
+Android CI (GitHub Actions APK) bu kuralın dışındadır.
+
+## Zorunlu akış
+
+1. **Sürüm:** kök `package.json` → `"version"`; `node scripts/sync-mobile-version.mjs` → `mobile/app.json` `version` + `ios.buildNumber`.
+2. **409 Redundant Binary:** Aynı `version` + `buildNumber` ASC’de varsa **yeniden yükleme yok** — önce `buildNumber` artır (veya sürüm bump + sync).
+3. **Yerel IPA:** `npm run mobile:ios:local`  
+   (`scripts/ios-local-build-transporter.mjs` → sync + `eas build --platform ios --profile production --local` **veya** eşdeğer `expo prebuild` + `xcodebuild` archive/export).
+4. **Yükleme:** Apple **Transporter** (`open -a Transporter path/to.ipa`) ve/veya `xcrun altool --upload-app` / `eas submit -p ios` (ASC API key, `eas.json` → `submit.production.ios.ascAppId`).
+5. Finder’da IPA göster (`open -R`); TestFlight: App Store Connect → RetailEX (`ascAppId` `6800660986`).
+
+```bash
+# Tipik (kök)
+node scripts/sync-mobile-version.mjs
+npm run mobile:ios:local
+# IPA → build/ios/transporter/RetailEX-iOS-{version}-{buildNumber}.ipa
+open -a Transporter build/ios/transporter/*.ipa
+```
+
+## `eas.json` / kimlik
+
+- Bundle: `app.retailex.mobile`
+- Submit: `submit.production.ios.ascAppId` + yerel `./secrets/AuthKey_*.p8` (gitignore; commit yok)
+- Distribution sertifikası / profil: EAS Credentials veya Keychain — **derleme bu Mac’te** çalışır
+
+## Asla yapma
+
+- `eas build --platform ios` **buluta** (`--local` olmadan) App Store / TestFlight IPA için
+- Aynı `buildNumber` ile Transporter’da tekrar Deliver (409 Redundant Binary)
+- Capacitor / kök `android/` / WebView SPA’yı iOS release sanmak
+- Feature branch / PR — yalnızca `main` (`git-main-only-workflow.mdc`)
+
+## Yerel Mac notları
+
+- Komut: `npm run mobile:ios:local` (`scripts/ios-local-build-transporter.mjs`)
+- `fastlane` PATH’te olmalı (örn. `~/.gem/ruby/4.0.0/bin`)
+- iOS min: `expo-build-properties` + `plugins/withIosMinDeploymentTarget` → **16.4** (Xcode 27 Pod resource target’ları için)
+- Bulut EAS iOS production, `eas-mobile-build.mjs` tarafından reddedilir (`--local` zorunlu)
+
+## Ajan checklist
+
+- [ ] Bulut EAS iOS Build tetiklenmedi mi?
+- [ ] `buildNumber` ASC’deki son yüklemeden büyük mü?
+- [ ] IPA bu Mac’te üretildi mi?
+- [ ] Transporter / altool / `eas submit` ile yüklendi mi?
+- [ ] `open -R` + TestFlight linki verildi mi?

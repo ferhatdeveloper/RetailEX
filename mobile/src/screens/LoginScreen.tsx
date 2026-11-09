@@ -140,7 +140,7 @@ export function LoginScreen({ navigation }: Props) {
               styles.card,
               {
                 backgroundColor: colors.card,
-                borderColor: darkMode ? palette.gray700 : 'transparent',
+                borderColor: darkMode ? colors.cardBorder : 'transparent',
               },
             ]}
           >
@@ -225,20 +225,39 @@ export function LoginScreen({ navigation }: Props) {
               </View>
 
               {error ? (
-                <View style={styles.errorBox}>
-                  <Text style={styles.errorText}>{error}</Text>
+                <View
+                  style={[
+                    styles.errorBox,
+                    {
+                      backgroundColor: colors.errorBg,
+                      borderColor: colors.errorBorder,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.errorText, { color: colors.errorText }]}>{error}</Text>
                 </View>
               ) : null}
 
               {config.apiMode === 'postgrest' && !String(config.remoteRestUrl || '').trim() ? (
-                <Pressable onPress={openConfig} style={styles.postgrestWarnBox}>
-                  <Text style={styles.postgrestWarnTitle}>
+                <Pressable
+                  onPress={openConfig}
+                  style={[
+                    styles.postgrestWarnBox,
+                    {
+                      backgroundColor: colors.warningBg,
+                      borderColor: colors.warningBorder,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.postgrestWarnTitle, { color: colors.warningText }]}>
                     {t('apiModePostgrestWarningTitle')}
                   </Text>
-                  <Text style={styles.postgrestWarnBody}>
+                  <Text style={[styles.postgrestWarnBody, { color: colors.warningTextMuted }]}>
                     {t('apiModePostgrestWarning')}
                   </Text>
-                  <Text style={styles.postgrestWarnLink}>{t('configTitle')}</Text>
+                  <Text style={[styles.postgrestWarnLink, { color: colors.primary }]}>
+                    {t('configTitle')}
+                  </Text>
                 </Pressable>
               ) : null}
 
@@ -358,38 +377,32 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   errorBox: {
-    backgroundColor: palette.red100,
     padding: 12,
     borderRadius: 2,
+    borderWidth: 1,
   },
   errorText: {
-    color: palette.red500,
     fontSize: 12,
     fontWeight: '700',
   },
   postgrestWarnBox: {
-    backgroundColor: 'rgba(254,243,199,0.95)',
     borderWidth: 2,
-    borderColor: palette.amber600,
     padding: 12,
     borderRadius: 4,
     gap: 4,
   },
   postgrestWarnTitle: {
-    color: '#92400e',
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   postgrestWarnBody: {
-    color: '#78350f',
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '600',
   },
   postgrestWarnLink: {
-    color: palette.blue500,
     fontSize: 11,
     fontWeight: '800',
     marginTop: 4,

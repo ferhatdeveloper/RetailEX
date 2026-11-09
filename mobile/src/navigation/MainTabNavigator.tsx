@@ -18,8 +18,6 @@ import { MoreScreen } from '../screens/MoreScreen';
 import type { MainTabParamList } from './types';
 import { useThemeStore } from '../store/themeStore';
 import { palette } from '../theme/colors';
-import { isScreenFieldVisible } from '../config/systemTypeFields';
-import { usePreferencesStore } from '../store/preferencesStore';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -29,9 +27,7 @@ const ICON_SIZE = 22;
 
 export function MainTabNavigator() {
   const { t } = useTranslation();
-  const { colors, darkMode } = useThemeStore();
-  const businessProfile = usePreferencesStore((s) => s.businessProfile);
-  const showPos = isScreenFieldVisible('pos', businessProfile);
+  const { colors } = useThemeStore();
   const insets = useSafeAreaInsets();
   /** Home indicator / gesture bar; en az 8px nefes boşluğu */
   const tabBottom = Math.max(insets.bottom, Platform.OS === 'android' ? 8 : 4);
@@ -48,7 +44,7 @@ export function MainTabNavigator() {
         tabBarAllowFontScaling: false,
         tabBarStyle: {
           backgroundColor: colors.tabBar,
-          borderTopColor: darkMode ? palette.gray700 : palette.gray200,
+          borderTopColor: colors.divider,
           borderTopWidth: StyleSheet.hairlineWidth,
           height: TAB_CONTENT_HEIGHT + tabBottom,
           paddingBottom: tabBottom,
@@ -85,8 +81,6 @@ export function MainTabNavigator() {
         options={{
           title: t('pos'),
           tabBarIcon: ({ color }) => <ShoppingCart size={ICON_SIZE} color={color} />,
-          tabBarButton: showPos ? undefined : () => null,
-          tabBarItemStyle: showPos ? undefined : { display: 'none', width: 0 },
         }}
       />
       <Tab.Screen

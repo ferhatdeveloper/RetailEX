@@ -289,7 +289,11 @@ export function CashCollectionScreen({ route }: Props) {
                 <View
                   style={[
                     styles.rowIcon,
-                    { backgroundColor: isTahsilat ? '#dcfce7' : '#ffedd5' },
+                    {
+                      backgroundColor: isTahsilat
+                        ? colors.successMutedBg
+                        : colors.warningMutedBg,
+                    },
                   ]}
                 >
                   {isTahsilat ? (

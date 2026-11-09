@@ -38,13 +38,23 @@
       "android": {
         "buildType": "app-bundle"
       },
-      "ios": {}
+      "ios": {
+        "autoIncrement": true
+      },
+      "distribution": "store",
+      "autoIncrement": true
     }
   },
   "submit": {
     "production": {
       "android": {
         "track": "internal"
+      },
+      "ios": {
+        "ascAppId": "6800660986",
+        "ascApiKeyPath": "./secrets/AuthKey_99R4ZNAY3L.p8",
+        "ascApiKeyId": "99R4ZNAY3L",
+        "ascApiKeyIssuerId": "17205ca6-06e5-4420-80d8-47e38df03cee"
       }
     }
   }

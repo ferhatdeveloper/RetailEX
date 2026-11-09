@@ -13,7 +13,7 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { BarChart3, ClipboardList, Plus } from 'lucide-react-native';
+import { BarChart3, ClipboardList, LayoutGrid, Plus } from 'lucide-react-native';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
 import { HeaderIconButton } from '../components/GradientHeader';
 import { SegmentTabBar } from '../components/SegmentTabBar';
@@ -633,6 +633,9 @@ export function BeautyScreen({ route }: Props) {
         subtitle="Takvim · Randevu · Satış · Hizmet · Uzman"
         right={
           <View style={{ flexDirection: 'row', gap: 8 }}>
+            <HeaderIconButton onPress={() => navigation.navigate('Tabs', { screen: 'Dashboard' })}>
+              <LayoutGrid size={18} color={palette.white} />
+            </HeaderIconButton>
             {showClinicReports ? (
               <HeaderIconButton onPress={() => navigation.navigate('BeautyReports')}>
                 <BarChart3 size={18} color={palette.white} />

@@ -17,8 +17,6 @@ import { useBeautyStore } from '../store/useBeautyStore';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
 import type { BeautyCustomer } from '../../../types/beauty';
-import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
-import { ERP_SETTINGS } from '../../../services/postgres';
 import { beautyService } from '../../../services/beautyService';
 import { toast } from 'sonner';
 import {
@@ -63,55 +61,21 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const [isEdit, setIsEdit] = useState(false);
     const [saving, setSaving] = useState(false);
     const [phoneDupMatches, setPhoneDupMatches] = useState<PhoneMatchCustomer[] | null>(null);
-    const [currentAccountCustomers, setCurrentAccountCustomers] = useState<BeautyCustomer[]>([]);
     const [selectedCustomers, setSelectedCustomers] = useState<BeautyCustomer[]>([]);
     const [printTargets, setPrintTargets] = useState<BeautyCustomer[] | null>(null);
 
+    // Liste bakiyesi göstermiyor — cari repair + fetchCurrentAccounts açılışı
+    // (sales/cash onbinlerce satır) kaldırıldı; yalnızca müşteri + randevu agregatı.
     useEffect(() => {
-        void (async () => {
-            try {
-                const { repairCariLedgerConsistency } = await import(
-                    '../../../services/api/accountLedgerRepair'
-                );
-                await repairCariLedgerConsistency().catch(() => {
-                    /* sessiz — liste yine defter bakiyesi ile güncellenir */
-                });
-                await loadCustomers();
-                const accounts = await fetchCurrentAccounts(ERP_SETTINGS.firmNr, 'MUSTERI');
-                setCurrentAccountCustomers(
-                    accounts
-                        .filter(a => a.tip === 'MUSTERI' || a.tip === 'HER_IKISI')
-                        .map(a => ({
-                            id: a.id,
-                            code: a.kod,
-                            name: a.unvan,
-                            phone: a.telefon,
-                            email: a.email,
-                            address: a.adres,
-                            is_active: a.aktif,
-                            balance: a.bakiye,
-                            created_at: a.created_at,
-                        } as BeautyCustomer))
-                );
-            } catch (e) {
-                logger.error('ClientCRM', 'fetchCurrentAccounts failed', e);
-            }
-        })();
+        void loadCustomers().catch(e => {
+            logger.error('ClientCRM', 'loadCustomers failed', e);
+        });
     }, [loadCustomers]);
 
-    const mergedCustomers = useMemo(() => {
-        const map = new Map<string, BeautyCustomer>();
-        for (const c of customers) map.set(c.id, c);
-        for (const c of currentAccountCustomers) {
-            const existing = map.get(c.id);
-            if (existing) {
-                map.set(c.id, { ...existing, balance: c.balance });
-            } else {
-                map.set(c.id, c);
-            }
-        }
-        return sortByFileIdAsc(Array.from(map.values()));
-    }, [customers, currentAccountCustomers]);
+    const mergedCustomers = useMemo(
+        () => sortByFileIdAsc(customers),
+        [customers],
+    );
 
     const fileIdRangeOptions = useMemo(() => {
         let max = 0;

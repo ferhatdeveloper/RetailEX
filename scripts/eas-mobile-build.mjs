@@ -28,6 +28,7 @@ const profile = arg('--profile', 'preview');
 const platform = arg('--platform', 'android');
 const dryRun = args.includes('--dry-run');
 const skipSync = args.includes('--skip-sync');
+const local = args.includes('--local');
 
 const VALID = ['debug', 'preview', 'production'];
 if (!VALID.includes(profile)) {
@@ -37,6 +38,15 @@ if (!VALID.includes(profile)) {
 
 if (!['android', 'ios', 'all'].includes(platform)) {
   console.error(`[eas-mobile] Geçersiz platform: ${platform}. İzin: android | ios | all`);
+  process.exit(1);
+}
+
+// RetailEX iOS store IPA: bulut EAS yasak — retailex-ios-local-transporter.mdc
+if ((platform === 'ios' || platform === 'all') && profile === 'production' && !local) {
+  console.error(
+    '[eas-mobile] iOS production bulut EAS Build yasak. Kullanın: npm run mobile:ios:local',
+  );
+  console.error('[eas-mobile] (veya: node scripts/eas-mobile-build.mjs --profile production --platform ios --local)');
   process.exit(1);
 }
 
@@ -67,6 +77,7 @@ if (!process.env.EXPO_TOKEN && !process.stdin.isTTY) {
 }
 
 const easArgs = ['build', '--platform', platform, '--profile', profile, '--non-interactive'];
+if (local) easArgs.push('--local');
 
 if (dryRun) {
   console.log(`[eas-mobile] dry-run: cd mobile && npx eas-cli@latest ${easArgs.join(' ')}`);

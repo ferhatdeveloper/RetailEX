@@ -110,10 +110,20 @@ export function EmptyState({ message }: { message: string }) {
 }
 
 export function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const { colors } = useThemeStore();
   return (
-    <Pressable onPress={onRetry} style={styles.err}>
-      <Text style={styles.errText}>{message}</Text>
-      {onRetry ? <Text style={styles.retry}>Yenile</Text> : null}
+    <Pressable
+      onPress={onRetry}
+      style={[
+        styles.err,
+        {
+          backgroundColor: colors.errorBg,
+          borderColor: colors.errorBorder,
+        },
+      ]}
+    >
+      <Text style={[styles.errText, { color: colors.errorText }]}>{message}</Text>
+      {onRetry ? <Text style={[styles.retry, { color: colors.primary }]}>Yenile</Text> : null}
     </Pressable>
   );
 }
@@ -152,10 +162,10 @@ const styles = StyleSheet.create({
   err: {
     margin: 12,
     padding: 12,
-    backgroundColor: palette.red100,
     borderRadius: 8,
+    borderWidth: 1,
     gap: 4,
   },
-  errText: { color: palette.red500, fontSize: 12 },
-  retry: { color: palette.blue600, fontWeight: '700', fontSize: 12 },
+  errText: { fontSize: 12 },
+  retry: { fontWeight: '700', fontSize: 12 },
 });

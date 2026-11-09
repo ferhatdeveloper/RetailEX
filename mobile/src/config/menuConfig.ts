@@ -21,8 +21,8 @@ export type MenuSection = {
 export const QUICK_ACCESS: { id: string; label: string; screen: string; gradient: [string, string] }[] = [
   { id: 'newsale', label: 'Satış (POS)', screen: 'pos', gradient: ['#3b82f6', '#2563eb'] },
   { id: 'products', label: 'Ürünler', screen: 'products', gradient: ['#4ade80', '#22c55e'] },
-  { id: 'customers', label: 'Cariler', screen: 'suppliers', gradient: ['#c084fc', '#a855f7'] },
-  { id: 'invoices', label: 'Faturalar', screen: 'salesinvoice', gradient: ['#ec4899', '#db2777'] },
+  { id: 'customers', label: 'Cariler', screen: 'suppliers', gradient: ['#0ea5e9', '#0284c7'] },
+  { id: 'invoices', label: 'Faturalar', screen: 'salesinvoice', gradient: ['#2563eb', '#1e40af'] },
   { id: 'reports', label: 'Raporlar', screen: 'customreports', gradient: ['#6366f1', '#4f46e5'] },
   { id: 'stock', label: 'Stok / WMS', screen: 'wms-hub', gradient: ['#16a34a', '#15803d'] },
 ];

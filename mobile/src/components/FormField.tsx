@@ -28,7 +28,7 @@ export function FormField({
   style,
   ...rest
 }: Props) {
-  const { colors, darkMode } = useThemeStore();
+  const { colors } = useThemeStore();
 
   return (
     <View style={[styles.wrap, containerStyle]}>
@@ -41,7 +41,7 @@ export function FormField({
       <View style={styles.row}>
         {leftIcon ? <View style={styles.leftIcon}>{leftIcon}</View> : null}
         <TextInput
-          placeholderTextColor={darkMode ? 'rgba(255,255,255,0.2)' : palette.gray400}
+          placeholderTextColor={colors.textSubtle}
           style={[
             styles.input,
             {

@@ -53,13 +53,19 @@ export function RootNavigator() {
       card: colors.card,
       text: colors.text,
       border: colors.cardBorder,
-      primary: palette.blue600,
+      primary: colors.primary,
+      notification: colors.danger,
     },
   };
 
   return (
     <NavigationContainer ref={navigationRef} theme={navTheme}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      >
         {user ? (
           <Stack.Screen name="Main" component={MainStackNavigator} />
         ) : (

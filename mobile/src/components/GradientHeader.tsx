@@ -11,6 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradientFallback } from './LinearGradientFallback';
 import { palette } from '../theme/colors';
+import { useThemeStore } from '../store/themeStore';
 
 type Props = {
   title?: string;
@@ -21,8 +22,8 @@ type Props = {
   compact?: boolean;
   /**
    * Status bar / notch üst boşluğu.
-   * Edge-to-edge app bar’larda true (varsayılan).
-   * Kart içi header’larda false — üst güvenli alanı ekran SafeAreaView sağlar.
+   * Edge-to-edge app bar’larda true (varsayılan) — mavi header üzerinde light ikon.
+   * Kart içi header’larda false — üst güvenli alanı ekran SafeAreaView + App StatusBar.
    */
   safeTop?: boolean;
 };
@@ -38,11 +39,12 @@ export function GradientHeader({
   safeTop = true,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { colors } = useThemeStore();
   const paddingTop = (safeTop ? insets.top : 0) + (compact ? 12 : 16);
 
   return (
     <LinearGradientFallback
-      colors={[palette.blue600, palette.indigo600, palette.blue700]}
+      colors={[colors.headerFrom, colors.headerVia, colors.headerTo]}
       style={[styles.header, compact && styles.compact, { paddingTop }, style]}
     >
       {safeTop ? <StatusBar style="light" /> : null}
