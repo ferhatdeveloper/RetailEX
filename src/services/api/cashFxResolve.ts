@@ -63,9 +63,21 @@ async function readRegisterCurrency(registerId: string): Promise<string> {
   return code;
 }
 
+function pickUsableRate(
+  override: number | null | undefined,
+  quoteRate: number | null | undefined,
+): number | null {
+  const o = Number(override);
+  if (Number.isFinite(o) && o > 0) return o;
+  const q = Number(quoteRate);
+  if (Number.isFinite(q) && q > 0) return q;
+  return null;
+}
+
 /**
  * Seçilen kasanın para biriminde tutar.
  * Ana para ve hesap tutarı tahsilat kurundan (`documentToLedger`) gelir.
+ * Kasa ≠ ana para (veya ≠ hesap) iken kur yoksa kayıt yapılmaz — TALEP-1.
  */
 export async function resolveRegisterCashFx(input: {
   registerId: string;
@@ -73,6 +85,10 @@ export async function resolveRegisterCashFx(input: {
   asOfDate?: string;
   /** Boşsa yerel para (system default), o da yoksa ana para. */
   accountCurrency?: string;
+  /** UI override: 1 kasa birimi → kaç ana para. */
+  documentToBaseRate?: number | null;
+  /** UI override: 1 kasa birimi → kaç hesap birimi. */
+  documentToAccountRate?: number | null;
 }): Promise<ResolvedCashFx> {
   const cashCurrency = await readRegisterCurrency(input.registerId);
   const books = await loadBookCurrencies();
@@ -89,15 +105,39 @@ export async function resolveRegisterCashFx(input: {
       : resolveCashFxHatwanQuote(cashCurrency, accountCurrency, asOf, 'Satış'),
   ]);
 
+  const documentToBaseRate = pickUsableRate(
+    input.documentToBaseRate,
+    baseQuote?.documentToLedger,
+  );
+  const documentToAccountRate = pickUsableRate(
+    input.documentToAccountRate,
+    accountQuote?.documentToLedger,
+  );
+
   const posted = postCashAgainstAccount({
     cashAmount: input.cashAmount,
     cashCurrency,
     baseCurrency,
     accountCurrency,
-    documentToBaseRate: baseQuote && baseQuote.documentToLedger > 0 ? baseQuote.documentToLedger : null,
-    documentToAccountRate:
-      accountQuote && accountQuote.documentToLedger > 0 ? accountQuote.documentToLedger : null,
+    documentToBaseRate,
+    documentToAccountRate,
   });
+
+  if (cashCurrency && baseCurrency && cashCurrency !== baseCurrency && posted.baseAmount == null) {
+    throw new Error(
+      `Ana para karşılığı için kur gerekli (${cashCurrency} → ${baseCurrency}).`,
+    );
+  }
+  if (
+    cashCurrency
+    && accountCurrency
+    && cashCurrency !== accountCurrency
+    && posted.accountAmount == null
+  ) {
+    throw new Error(
+      `Hesap para birimi karşılığı için kur gerekli (${cashCurrency} → ${accountCurrency}).`,
+    );
+  }
 
   return { ...posted, baseCurrency, accountCurrency };
 }
@@ -160,6 +200,8 @@ export async function resolveExpenseCashPosting(input: {
   enteredCurrency?: string | null;
   asOfDate?: string;
   enteredToRegisterRate?: number | null;
+  /** UI: 1 kasa birimi → kaç ana para (IQD kasa / USD defter). */
+  registerToBaseRate?: number | null;
 }): Promise<ResolvedCashFx & {
   enteredAmount: number;
   enteredCurrency: string;
@@ -173,6 +215,8 @@ export async function resolveExpenseCashPosting(input: {
     cashAmount: converted.registerAmount,
     asOfDate: input.asOfDate,
     accountCurrency: books.baseCurrency,
+    documentToBaseRate: input.registerToBaseRate,
+    documentToAccountRate: input.registerToBaseRate,
   });
   return {
     ...fx,

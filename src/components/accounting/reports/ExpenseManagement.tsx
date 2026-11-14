@@ -404,6 +404,10 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
   const bookCurrency = getGlobalCurrency();
   const needsExpenseFxUi =
     !!entryCurrency && !!registerCurrency && entryCurrency !== registerCurrency;
+  /** Kasa ≠ ana para: IQD kasa / USD defter — baz karşılık zorunlu (TALEP-1). */
+  const needsRegisterToBaseFxUi =
+    !!registerCurrency && !!bookCurrency && registerCurrency !== bookCurrency;
+  const needsAnyExpenseFxUi = needsExpenseFxUi || needsRegisterToBaseFxUi;
 
   /** Hatwan: 1 quote = ? pivot (örn. 1 USD = 1677,5 IQD) — tahsilat ile aynı */
   const [displayHatwanRate, setDisplayHatwanRate] = useState('');
@@ -549,6 +553,15 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
         alert(tm('cashFxRateRequired'));
         return;
       }
+      if (
+        payIsCash
+        && needsRegisterToBaseFxUi
+        && (!(registerToBaseRate && registerToBaseRate > 0)
+          || expenseFxPreview?.baseAmount == null)
+      ) {
+        alert(tm('cashFxRateRequired'));
+        return;
+      }
       let documentUrl = formData.document_url;
       if (attachment?.file && !documentUrl) {
         try {
@@ -569,6 +582,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
         cash_register_id: formData.cash_register_id || undefined,
         amount_currency: entryCurrency || undefined,
         entered_to_register_rate: needsExpenseFxUi ? enteredToRegisterRate : undefined,
+        register_to_base_rate: needsRegisterToBaseFxUi ? registerToBaseRate : undefined,
         expense_date: formData.expense_date,
         notes: formData.notes,
         ...(editingExpense ? {} : { created_by: currentLoginUserId() || '' }),
@@ -1215,52 +1229,106 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
               </div>
             </div>
 
-            {needsExpenseFxUi ? (
+            {needsAnyExpenseFxUi ? (
               <div
                 className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4"
                 data-expense-field="fxPreview"
               >
-                <p className="text-xs font-semibold text-amber-800">
-                  {tm('expenseFxCrossHint')
-                    .replace('{entry}', entryCurrency)
-                    .replace('{register}', registerCurrency)}
-                </p>
+                {needsExpenseFxUi ? (
+                  <p className="text-xs font-semibold text-amber-800">
+                    {tm('expenseFxCrossHint')
+                      .replace('{entry}', entryCurrency)
+                      .replace('{register}', registerCurrency)}
+                  </p>
+                ) : (
+                  <p className="text-xs font-semibold text-amber-800">
+                    {(tm('expenseFxRegisterToBaseHint') || '{register} → {base} kur zorunlu')
+                      .replace('{register}', registerCurrency)
+                      .replace('{base}', bookCurrency)}
+                  </p>
+                )}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label className="block text-sm font-medium text-slate-700">
-                      {tm('cashFxRateLabel')
-                        .replace('{quote}', fxQuoteCode)
-                        .replace('{pivot}', fxPivotCode)}
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={displayHatwanRate}
-                      onChange={handleExpenseHatwanRateChange}
-                      onBlur={handleExpenseHatwanRateBlur}
-                      className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-amber-500"
-                      placeholder="1677,5"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="block text-sm font-medium text-slate-700">
-                      {tm('expenseFxRegisterAmount').replace('{register}', registerCurrency)}
-                    </label>
-                    <div className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-lg font-bold text-emerald-700">
-                      {registerDeductAmount > 0
-                        ? formatMoneyWithCode(registerDeductAmount, registerCurrency)
-                        : `— ${registerCurrency}`}
+                  {needsExpenseFxUi ? (
+                    <>
+                      <div className="space-y-1.5">
+                        <label className="block text-sm font-medium text-slate-700">
+                          {tm('cashFxRateLabel')
+                            .replace('{quote}', fxQuoteCode)
+                            .replace('{pivot}', fxPivotCode)}
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={displayHatwanRate}
+                          onChange={handleExpenseHatwanRateChange}
+                          onBlur={handleExpenseHatwanRateBlur}
+                          className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-amber-500"
+                          placeholder="1677,5"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-sm font-medium text-slate-700">
+                          {tm('expenseFxRegisterAmount').replace('{register}', registerCurrency)}
+                        </label>
+                        <div className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-lg font-bold text-emerald-700">
+                          {registerDeductAmount > 0
+                            ? formatMoneyWithCode(registerDeductAmount, registerCurrency)
+                            : `— ${registerCurrency}`}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className="block text-sm font-medium text-slate-700">
+                        {tm('cashFxRateLabel')
+                          .replace('{quote}', registerCurrency === 'IQD' ? bookCurrency : registerCurrency)
+                          .replace('{pivot}', registerCurrency === 'IQD' ? registerCurrency : bookCurrency)}
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={
+                          registerToBaseRate && registerToBaseRate > 0
+                            ? formatNumber(
+                              registerCurrency === 'IQD'
+                                ? 1 / registerToBaseRate
+                                : registerToBaseRate,
+                            )
+                            : ''
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!/^[0-9.,]*$/.test(val)) return;
+                          const rateInPivot = parseNumber(val);
+                          if (!(rateInPivot > 0)) {
+                            setRegisterToBaseRate(null);
+                            return;
+                          }
+                          // Hatwan gösterimi: 1 USD = N IQD → documentToLedger = 1/N (IQD→USD)
+                          if (registerCurrency === 'IQD' && bookCurrency !== 'IQD') {
+                            setRegisterToBaseRate(1 / rateInPivot);
+                          } else {
+                            setRegisterToBaseRate(rateInPivot);
+                          }
+                        }}
+                        className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-amber-500"
+                        placeholder="1677,5"
+                      />
                     </div>
-                  </div>
+                  )}
                 </div>
-                {expenseFxPreview?.converted
-                  && bookCurrency
-                  && registerCurrency !== bookCurrency
-                  && expenseFxPreview.baseAmount != null ? (
+                {bookCurrency
+                  && expenseFxPreview?.baseAmount != null ? (
                   <p className="text-[11px] font-medium text-amber-900/80">
                     {tm('fxBaseEquivalent')}
                     {': '}
                     {formatMoneyWithCode(expenseFxPreview.baseAmount, bookCurrency)}
+                  </p>
+                ) : needsRegisterToBaseFxUi ? (
+                  <p className="text-[11px] font-medium text-amber-900/80">
+                    {tm('fxBaseEquivalent')}
+                    {': — '}
+                    {bookCurrency}
                   </p>
                 ) : null}
               </div>

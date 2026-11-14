@@ -22,6 +22,9 @@ import { formatFxBase, formatFxOriginal, fxTotalsLabel, PartyLedgerDipFooter } f
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { getFirmLedgerCurrency } from '../../../utils/currency';
 import { getAppDefaultCurrency } from '../../../services/postgres';
+import { resolveCashFxHatwanQuote } from '../../../services/marketRatesService';
+import { documentToLedgerFromInverse } from '../../../utils/cashLineFx';
+import { formatNumber, parseNumber } from '../../../utils/formatNumber';
 
 export interface EmployeePayrollModalProps {
   employee: Party;
@@ -85,6 +88,8 @@ export function EmployeePayrollModal({
   const [registerId, setRegisterId] = useState('');
   const [definition, setDefinition] = useState('');
   const [registers, setRegisters] = useState<Kasa[]>([]);
+  const [documentToBaseRate, setDocumentToBaseRate] = useState<number | null>(null);
+  const [payrollHatwanDisplay, setPayrollHatwanDisplay] = useState('');
   const [loading, setLoading] = useState(false);
   const [recent, setRecent] = useState<PartyLedgerMovement[]>([]);
   const [ledgerOpening, setLedgerOpening] = useState(0);
@@ -210,6 +215,49 @@ export function EmployeePayrollModal({
     }
   };
 
+  const selectedRegister = useMemo(
+    () => registers.find((r) => r.id === registerId) || null,
+    [registers, registerId],
+  );
+  const registerCurrency = String(selectedRegister?.id_doviz_kodu || '').trim().toUpperCase();
+  const needsPayrollFx =
+    action !== 'reconcile'
+    && !!registerId
+    && !!registerCurrency
+    && !!baseCurrency
+    && registerCurrency !== baseCurrency;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!needsPayrollFx || !registerCurrency || !baseCurrency) {
+      setDocumentToBaseRate(null);
+      setPayrollHatwanDisplay('');
+      return undefined;
+    }
+    const asOf = (txnDate || new Date().toISOString()).slice(0, 10);
+    void (async () => {
+      try {
+        const quote = await resolveCashFxHatwanQuote(registerCurrency, baseCurrency, asOf, 'Satış');
+        if (cancelled) return;
+        if (quote && quote.documentToLedger > 0 && quote.rateInPivot > 0) {
+          setDocumentToBaseRate(quote.documentToLedger);
+          setPayrollHatwanDisplay(formatNumber(quote.rateInPivot));
+        } else {
+          setDocumentToBaseRate(null);
+          setPayrollHatwanDisplay('');
+        }
+      } catch {
+        if (!cancelled) {
+          setDocumentToBaseRate(null);
+          setPayrollHatwanDisplay('');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [needsPayrollFx, registerCurrency, baseCurrency, txnDate]);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -220,6 +268,10 @@ export function EmployeePayrollModal({
     }
     if (action !== 'reconcile' && !registerId) {
       setError(t('party.payroll.registerRequired'));
+      return;
+    }
+    if (needsPayrollFx && (!(documentToBaseRate && documentToBaseRate > 0))) {
+      setError(tm('cashFxRateRequired'));
       return;
     }
     setLoading(true);
@@ -233,6 +285,7 @@ export function EmployeePayrollModal({
           definition: definition || undefined,
           date: txnDate || undefined,
           isBackDated,
+          documentToBaseRate: needsPayrollFx ? documentToBaseRate : undefined,
         });
       } else if (action === 'advance') {
         result = await employeeAPI.payAdvance({
@@ -240,6 +293,7 @@ export function EmployeePayrollModal({
           amount: amt,
           registerId,
           definition: definition || undefined,
+          documentToBaseRate: needsPayrollFx ? documentToBaseRate : undefined,
         });
       } else {
         result = await employeeAPI.reconcileAdvance({
@@ -385,6 +439,44 @@ export function EmployeePayrollModal({
                 <div />
               )}
             </div>
+
+            {needsPayrollFx ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 space-y-2">
+                <p className="text-xs font-semibold text-amber-800">
+                  {(tm('expenseFxRegisterToBaseHint') || '{register} → {base} kur zorunlu')
+                    .replace('{register}', registerCurrency)
+                    .replace('{base}', baseCurrency)}
+                </p>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  {tm('cashFxRateLabel')
+                    .replace('{quote}', registerCurrency === 'IQD' ? baseCurrency : registerCurrency)
+                    .replace('{pivot}', registerCurrency === 'IQD' ? registerCurrency : baseCurrency)}
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={payrollHatwanDisplay}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!/^[0-9.,]*$/.test(val)) return;
+                    setPayrollHatwanDisplay(val);
+                    const rateInPivot = parseNumber(val);
+                    if (!(rateInPivot > 0)) {
+                      setDocumentToBaseRate(null);
+                      return;
+                    }
+                    if (registerCurrency === 'IQD' && baseCurrency !== 'IQD') {
+                      const doc = documentToLedgerFromInverse(rateInPivot);
+                      setDocumentToBaseRate(doc);
+                    } else {
+                      setDocumentToBaseRate(rateInPivot);
+                    }
+                  }}
+                  className="w-full px-4 py-3 border border-amber-300 rounded-2xl focus:ring-2 focus:ring-amber-500 outline-none text-slate-800 font-semibold bg-white"
+                  placeholder="1677,5"
+                />
+              </div>
+            ) : null}
 
             {/* Bonus / Ceza artık kendi tab'larında — Form'da yalnızca maaş/avans/mahsup */}
 

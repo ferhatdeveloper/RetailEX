@@ -428,6 +428,8 @@ export const employeeAPI = {
      */
     date?: string;
     isBackDated?: boolean;
+    /** UI: 1 kasa birimi → kaç ana para (kasa ≠ defter). */
+    documentToBaseRate?: number | null;
   }): Promise<PayrollWriteResult> {
     if (!input.employeeId) throw new Error('Personel seçilmedi.');
     if (!(input.amount > 0)) throw new Error('Maaş tutarı pozitif olmalı.');
@@ -456,6 +458,7 @@ export const employeeAPI = {
       registerId: input.registerId,
       cashAmount: grossPaid,
       asOfDate: txnDate,
+      documentToBaseRate: input.documentToBaseRate,
     });
 
     const cih = await createKasaIslemi({
@@ -638,6 +641,8 @@ export const employeeAPI = {
     amount: number;
     registerId: string;
     definition?: string;
+    /** UI: 1 kasa birimi → kaç ana para (kasa ≠ defter). */
+    documentToBaseRate?: number | null;
   }): Promise<PayrollWriteResult> {
     if (!input.employeeId) throw new Error('Personel seçilmedi.');
     if (!(input.amount > 0)) throw new Error('Avans tutarı pozitif olmalı.');
@@ -648,6 +653,7 @@ export const employeeAPI = {
     const fx = await resolveRegisterCashFx({
       registerId: input.registerId,
       cashAmount: input.amount,
+      documentToBaseRate: input.documentToBaseRate,
     });
     const cih = await createKasaIslemi({
       firma_id: normalizeFirmTableNr(ERP_SETTINGS.firmNr),

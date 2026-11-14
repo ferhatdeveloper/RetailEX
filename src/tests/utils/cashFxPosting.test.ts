@@ -73,7 +73,7 @@ describe('maaş kısmi ödeme — kasa birimi ve USD karşılığı', () => {
 });
 
 describe('kur yokken IQD tutar USD yazılmaz', () => {
-  it('çapraz kur boşsa exchange_rate ve ana para karşılığı null', () => {
+  it('saf hesapta çapraz kur boşsa exchange_rate ve ana para karşılığı null (eski satır okuma)', () => {
     const row = postCashAgainstAccount({
       cashAmount: 300_000,
       cashCurrency: 'IQD',
@@ -93,6 +93,19 @@ describe('kur yokken IQD tutar USD yazılmaz', () => {
       baseCurrency: 'USD',
       exchangeRate: 1,
     })).toBeNull();
+  });
+
+  it('kur verilince IQD kasa ana para karşılığı dolar (yeni yazım)', () => {
+    const row = postCashAgainstAccount({
+      cashAmount: 68_000,
+      cashCurrency: 'IQD',
+      baseCurrency: 'USD',
+      accountCurrency: 'IQD',
+      documentToBaseRate: 1 / 1500,
+      documentToAccountRate: null,
+    });
+    expect(row.exchangeRate).toBeCloseTo(1 / 1500, 9);
+    expect(row.baseAmount).toBeCloseTo(68_000 / 1500, 5);
   });
 });
 

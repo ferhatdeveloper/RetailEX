@@ -7,6 +7,14 @@ import { toast } from 'sonner';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { getFirmLedgerCurrency } from '../../utils/currency';
+import { expenseAPI } from '../../services/api/expenses';
+import { fetchKasaIslemleri } from '../../services/api/kasa';
+import {
+  buildProfitLossOperatingExpenses,
+  profitLossNetProfit,
+  type ProfitLossOpExRow,
+} from '../../utils/profitLossOperatingExpenses';
 import {
   buildProfitCostCtes,
   INVOICE_LINE_SCALE_JOIN,
@@ -104,10 +112,12 @@ export function ProfitLossReport() {
   const [reportType, setReportType] = useState<'product' | 'category' | 'daily' | 'monthly'>('product');
   const [lineKind, setLineKind] = useState<LineKindFilter>('all');
   const [salesData, setSalesData] = useState<SalesData[]>([]);
+  const [opExRows, setOpExRows] = useState<ProfitLossOpExRow[]>([]);
+  const [totalOpEx, setTotalOpEx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [movementTarget, setMovementTarget] = useState<ProductMovementTarget | null>(null);
 
-  const reportCurrency = getAppDefaultCurrency();
+  const reportCurrency = getFirmLedgerCurrency(selectedFirma, getAppDefaultCurrency());
   const panelClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const labelClass = darkMode ? 'text-gray-400' : 'text-slate-500';
   const inputClass = darkMode
@@ -127,6 +137,8 @@ export function ProfitLossReport() {
     const dateTo = toSqlDateInputString(endDate);
     if (!selectedFirma || !selectedDonem || !dateFrom || !dateTo) {
       setSalesData([]);
+      setOpExRows([]);
+      setTotalOpEx(0);
       return;
     }
 
@@ -274,10 +286,35 @@ export function ProfitLossReport() {
       });
 
       setSalesData(mapped);
+
+      try {
+        const [expenseRows, cashLines] = await Promise.all([
+          expenseAPI.getAll({ startDate: dateFrom, endDate: dateTo }),
+          fetchKasaIslemleri({
+            baslangic_tarihi: dateFrom,
+            bitis_tarihi: `${dateTo}T23:59:59`,
+          }).catch(() => []),
+        ]);
+        const bookCurrency = getFirmLedgerCurrency(selectedFirma, getAppDefaultCurrency());
+        const opEx = buildProfitLossOperatingExpenses({
+          expenses: Array.isArray(expenseRows) ? expenseRows : [],
+          cashLines: Array.isArray(cashLines) ? cashLines : [],
+          baseCurrency: bookCurrency,
+          translate: tm,
+        });
+        setOpExRows(opEx.rows);
+        setTotalOpEx(opEx.totalOpEx);
+      } catch (opExErr) {
+        console.warn('[ProfitLossReport] OpEx yüklenemedi', opExErr);
+        setOpExRows([]);
+        setTotalOpEx(0);
+      }
     } catch (err: any) {
       console.error('[ProfitLossReport] loadData failed:', err);
       toast.error(err?.message || tm('reportsPlLoadError'));
       setSalesData([]);
+      setOpExRows([]);
+      setTotalOpEx(0);
     } finally {
       setLoading(false);
     }
@@ -292,6 +329,7 @@ export function ProfitLossReport() {
   const totalRevenue = salesData.reduce((sum, item) => sum + item.revenue, 0);
   const totalCost = salesData.reduce((sum, item) => sum + item.cost, 0);
   const totalProfit = salesData.reduce((sum, item) => sum + item.profit, 0);
+  const netProfit = profitLossNetProfit(totalProfit, totalOpEx);
   const averageMargin = productGrossProfitMarginPct(totalRevenue, totalProfit);
   const productCost = salesData
     .filter((item) => item.lineKind === 'product')
@@ -577,6 +615,81 @@ export function ProfitLossReport() {
           },
         ]}
       />
+
+      <ReportKpiStrip
+        columns={3}
+        itemClassName={darkMode ? 'border-gray-700 bg-gray-800 shadow-none' : 'shadow-none'}
+        items={[
+          {
+            key: 'opex',
+            label: tm('reportsPlTotalOpEx'),
+            value: `${formatNumber(totalOpEx, 2, false)} ${reportCurrency}`,
+            valueClassName: 'text-rose-600 dark:text-rose-400',
+            hint: tm('reportsPlOpExNote'),
+          },
+          {
+            key: 'net',
+            label: tm('reportsPlNetProfit'),
+            value: `${formatNumber(netProfit, 2, false)} ${reportCurrency}`,
+            valueClassName:
+              netProfit >= 0
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-red-600 dark:text-red-400',
+            hint: tm('reportsPlNetProfitHint'),
+          },
+          {
+            key: 'stmt',
+            label: tm('reportsPlIncomeStatement'),
+            value: `${formatNumber(totalProfit, 2, false)} − ${formatNumber(totalOpEx, 2, false)}`,
+            valueClassName: darkMode ? 'text-gray-200' : 'text-slate-700',
+          },
+        ]}
+      />
+
+      <div className={`rounded-lg border ${panelClass}`}>
+        <div
+          className={`px-3 py-2 border-b flex items-center justify-between gap-2 ${
+            darkMode ? 'border-gray-700' : 'border-gray-200'
+          }`}
+        >
+          <h3 className={`text-sm font-semibold truncate ${darkMode ? 'text-gray-100' : 'text-slate-800'}`}>
+            {tm('reportsPlOperatingExpenses')}
+          </h3>
+          {loading ? <Loader2 className={`w-4 h-4 shrink-0 animate-spin ${mutedClass}`} /> : null}
+        </div>
+        <div className="p-1.5">
+          {opExRows.length === 0 && !loading ? (
+            <div className={`p-4 text-center text-sm ${mutedClass}`}>
+              {tm('reportsPlNoOpEx')}
+            </div>
+          ) : (
+            <ReportColumnTable
+              data={opExRows}
+              columns={[
+                {
+                  key: 'categoryLabel',
+                  header: tm('reportsPlColCategory'),
+                  size: 280,
+                  cell: (row: ProfitLossOpExRow) => row.categoryLabel,
+                },
+                {
+                  key: 'amount',
+                  header: tm('reportsPlTotalOpEx'),
+                  size: 160,
+                  align: 'right' as const,
+                  type: 'number',
+                  footerSum: true,
+                  footerFormat: (n: number) => `${formatNumber(n, 2, false)} ${reportCurrency}`,
+                  cell: (row: ProfitLossOpExRow) =>
+                    `${formatNumber(row.amount, 2, false)} ${reportCurrency}`,
+                },
+              ]}
+              height={260}
+              footerLabel={tm('reportsTotalUpper')}
+            />
+          )}
+        </div>
+      </div>
 
       <div className={`rounded-lg border ${panelClass}`}>
         <div
