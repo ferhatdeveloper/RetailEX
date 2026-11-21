@@ -36,9 +36,13 @@ Write-Host "[postgrest] Indiriliyor: $ZipUrl"
 Invoke-WebRequest -Uri $ZipUrl -OutFile $zipPath -UseBasicParsing
 
 $extract = Join-Path $env:TEMP "retailex-postgrest-extract-$(Get-Random)"
-New-Item -ItemType Directory -Force -Path $extract | Out-Null
+# PS 7+ Expand-Archive -Force → ExtractToDirectory(3 args); bazı runner .NET sürümlerinde yok
+if (Test-Path -LiteralPath $extract) {
+    Remove-Item -LiteralPath $extract -Recurse -Force
+}
 try {
-    Expand-Archive -LiteralPath $zipPath -DestinationPath $extract -Force
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $extract)
     $exe = Get-ChildItem -Path $extract -Filter 'postgrest.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $exe) {
         throw 'postgrest.exe arsivde bulunamadi.'

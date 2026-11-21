@@ -33,7 +33,9 @@ Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
 if (Test-Path -LiteralPath $unz) {
     Remove-Item -LiteralPath $unz -Recurse -Force
 }
-Expand-Archive -Path $zip -DestinationPath $unz -Force
+# PS 7+ Expand-Archive -Force → ExtractToDirectory(3 args); bazı runner .NET sürümlerinde yok
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $unz)
 $exe = Get-ChildItem -Path $unz -Filter 'postgrest.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $exe) {
     throw 'postgrest.exe arsivde bulunamadi.'
