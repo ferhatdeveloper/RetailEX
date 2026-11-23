@@ -148,6 +148,12 @@ import { buildErpServiceBreakdownGroups, type ErpServiceBreakdownLine } from '..
 } from '../../utils/analysisSaleLine';
 import { summarizeRankNet } from '../../utils/analysisRankNet';
 import {
+  analysisRankPresetRange,
+  analysisRankQueryWindow,
+  filterSalesForAnalysisRange,
+} from '../../utils/analysisRankDateRange';
+import { AnalysisRankDateFilter } from './AnalysisRankDateFilter';
+import {
   summarizePurchasePromotionReport,
   type PurchasePromotionReportLine,
 } from '../../utils/purchasePromotionReport';
@@ -1361,6 +1367,16 @@ export function ReportsModule({
   const movementTo = zReportActive ? zReportRange.to : selectedDateTo;
   const reportDateInputMin = '1990-01-01';
   const reportDateInputMax = '2100-12-31';
+  const [categoryRankRange, setCategoryRankRange] = useState<ReportDateRangeValue>(() => ({
+    preset: 'today',
+    monthOffset: 0,
+    ...analysisRankPresetRange('today'),
+  }));
+  const [topRankRange, setTopRankRange] = useState<ReportDateRangeValue>(() => ({
+    preset: 'today',
+    monthOffset: 0,
+    ...analysisRankPresetRange('today'),
+  }));
   /** Günlük/Z raporu: seçili tarih aralığı — bellekteki son N satış değil, DB sorgusu */
   const [reportRangeSales, setReportRangeSales] = useState<Sale[]>([]);
   const [loadingReportRangeSales, setLoadingReportRangeSales] = useState(false);
@@ -1480,6 +1496,11 @@ export function ReportsModule({
   }, [businessType, selectedTab]);
 
   const [restOrders, setRestOrders] = useState<any[]>([]);
+  const [rankRangeSales, setRankRangeSales] = useState<Sale[]>([]);
+  const [rankRestOrders, setRankRestOrders] = useState<any[]>([]);
+  const [loadingRankRange, setLoadingRankRange] = useState(false);
+  const [rankLoadedKey, setRankLoadedKey] = useState('');
+  const rankTicketRef = useRef(0);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [detailedSalesSearch, setDetailedSalesSearch] = useState('');
 
@@ -1532,6 +1553,66 @@ export function ReportsModule({
       setLoadingReportRangeSales(false);
     }
   }, [ledgerFrom, ledgerTo, rememberDepositRefs]);
+
+  const loadRankRangeSales = useCallback(async (from: string, to: string): Promise<Sale[]> => {
+    const { salesAPI } = await import('../../services/api/sales');
+    const rows = await salesAPI.getForDailyReport(from, to);
+    const erpRows = Array.isArray(rows) ? rows : [];
+    let merged = erpRows;
+    try {
+      const beautyRows = await beautyService.getSalesInRange(from, to);
+      const extras = (Array.isArray(beautyRows) ? beautyRows : [])
+        .map((row) => beautyPeriodFicheToSale(row))
+        .filter((row): row is Sale => row != null);
+      merged = mergeUnmirroredPeriodFiches(erpRows, extras);
+    } catch (beautyErr) {
+      console.warn('[ReportsModule] Güzellik fişleri seçili aralığa eklenemedi:', beautyErr);
+    }
+    return assembleDailySalesDetailRows(filterSalesForAnalysisRange(merged, from, to));
+  }, []);
+
+  const loadActiveRankReport = useCallback(async (
+    tab: 'category-analysis' | 'top-products',
+    from: string,
+    to: string,
+  ) => {
+    const ticket = ++rankTicketRef.current;
+    const key = `${tab}|${businessType}|${from}|${to}|${selectedFirm?.firm_nr ?? ''}`;
+    setLoadingRankRange(true);
+    try {
+      if (businessType === 'restaurant') {
+        if (!selectedFirm) {
+          if (ticket !== rankTicketRef.current) return;
+          setRankRestOrders([]);
+          setRankLoadedKey(key);
+          return;
+        }
+        const queryWindow = analysisRankQueryWindow(from, to);
+        const data = await RestaurantService.getOrderHistory({
+          fromDate: queryWindow.fromDate,
+          toDate: queryWindow.toDate,
+          status: 'closed',
+          dateField: 'closed_at',
+        });
+        if (ticket !== rankTicketRef.current) return;
+        setRankRestOrders(Array.isArray(data) ? data : []);
+        setRankLoadedKey(key);
+        return;
+      }
+      const sales = await loadRankRangeSales(from, to);
+      if (ticket !== rankTicketRef.current) return;
+      setRankRangeSales(sales);
+      setRankLoadedKey(key);
+    } catch (err) {
+      console.error('[ReportsModule] Kategori / çok satan aralığı yüklenemedi:', err);
+      if (ticket !== rankTicketRef.current) return;
+      if (businessType === 'restaurant') setRankRestOrders([]);
+      else setRankRangeSales([]);
+      setRankLoadedKey(key);
+    } finally {
+      if (ticket === rankTicketRef.current) setLoadingRankRange(false);
+    }
+  }, [businessType, loadRankRangeSales, selectedFirm?.firm_nr, selectedFirm?.id]);
 
   const loadComparisonSales = useCallback(async () => {
     try {
@@ -2326,6 +2407,27 @@ export function ReportsModule({
     void loadCatalogSales();
   }, [loadReportRangeSales, loadCatalogSales, selectedFirm?.firm_nr]);
 
+  const activeRankFrom = selectedTab === 'top-products'
+    ? topRankRange.from
+    : selectedTab === 'category-analysis'
+      ? categoryRankRange.from
+      : '';
+  const activeRankTo = selectedTab === 'top-products'
+    ? topRankRange.to
+    : selectedTab === 'category-analysis'
+      ? categoryRankRange.to
+      : '';
+  const rankRequestKey = `${selectedTab}|${businessType}|${activeRankFrom}|${activeRankTo}|${selectedFirm?.firm_nr ?? ''}`;
+  const rankViewReady =
+    (selectedTab === 'category-analysis' || selectedTab === 'top-products')
+    && !loadingRankRange
+    && rankLoadedKey === rankRequestKey;
+
+  useEffect(() => {
+    if (selectedTab !== 'category-analysis' && selectedTab !== 'top-products') return;
+    void loadActiveRankReport(selectedTab, activeRankFrom, activeRankTo);
+  }, [selectedTab, activeRankFrom, activeRankTo, loadActiveRankReport]);
+
   const refreshAllReportsData = useCallback(async () => {
     setRefreshingReports(true);
     try {
@@ -2339,6 +2441,10 @@ export function ReportsModule({
       ];
       if (businessType === 'restaurant') {
         tasks.push(loadRestOrdersForSelectedDate());
+      }
+      if (selectedTab === 'category-analysis' || selectedTab === 'top-products') {
+        const range = selectedTab === 'top-products' ? topRankRange : categoryRankRange;
+        tasks.push(loadActiveRankReport(selectedTab, range.from, range.to));
       }
       tasks.push(loadComparisonSales());
       if (businessType !== 'restaurant') {
@@ -2392,7 +2498,9 @@ export function ReportsModule({
     }
   }, [
     businessType,
+    categoryRankRange,
     expiringDays,
+    loadActiveRankReport,
     loadAnalysisRangeSales,
     loadCashExpenses,
     loadCatalogSales,
@@ -2406,6 +2514,7 @@ export function ReportsModule({
     selectedFirm?.id,
     selectedTab,
     tm,
+    topRankRange,
   ]);
 
   // Fetch Restaurant Orders (günlük rapor + iptal sonrası tazeleme)
@@ -4587,8 +4696,9 @@ export function ReportsModule({
 
   // En Çok Satanlar + Kategori Performansı. İade satırı artı gelse de bir kez düşülür.
   // Peşinat ciroya yazılmaz. Stok katalogdan okunur, bu hesap stoku değiştirmez.
-  const erpAnalysisRank = () => {
-    if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod)) {
+  const erpAnalysisRank = (salesSource?: Sale[]) => {
+    const periodSales = salesSource === undefined ? erpSalesForReportPeriod : salesSource;
+    if (!periodSales || !Array.isArray(periodSales)) {
       return summarizeRankNet([], { categoryOf: () => '—' });
     }
     const catalog = catalogProducts?.length ? catalogProducts : products || [];
@@ -4611,7 +4721,7 @@ export function ReportsModule({
           String(p.code ?? '').trim().toLowerCase() === lower,
       );
     };
-    return summarizeRankNet(erpSalesForReportPeriod, {
+    return summarizeRankNet(periodSales, {
       categoryOf: (line) =>
         resolveAnalysisSaleCategory(
           {
@@ -4639,7 +4749,7 @@ export function ReportsModule({
   };
 
   // Product sales analysis
-  const getProductSales = () => {
+  const getProductSales = (source?: { sales?: Sale[]; orders?: any[] }) => {
     if (businessType === 'restaurant') {
       const productMap = new Map<string, {
         product: any;
@@ -4648,7 +4758,8 @@ export function ReportsModule({
         discount: number;
       }>();
 
-      restOrders.forEach(order => {
+      const orderList = source?.orders ?? restOrders;
+      orderList.forEach(order => {
         (order.items || []).forEach((item: any) => {
           if (item?.is_void === true) return;
           const pid = item.product_id != null && String(item.product_id).trim() !== '' ? String(item.product_id) : '';
@@ -4671,7 +4782,7 @@ export function ReportsModule({
       return Array.from(productMap.values()).sort((a, b) => b.revenue - a.revenue);
     }
 
-    return erpAnalysisRank().products
+    return erpAnalysisRank(source?.sales).products
       .flatMap((row) => {
         const product = products.find((p) => p.id === row.productId);
         if (!product) return [];
@@ -5063,8 +5174,9 @@ export function ReportsModule({
   const cashierPerformance = getCashierPerformance();
 
   // Top Products Report (En Çok Satan Ürünler) — yalnızca gerçek satış/kalem verisi; sahte örnek yok
-  const getTopProducts = (limit: number = 20) => {
-    return productSales
+  const getTopProducts = (limit: number = 20, source?: ReturnType<typeof getProductSales>) => {
+    const list = source ? [...source] : productSales;
+    return list
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, limit)
       .map((item, index) => {
@@ -5096,7 +5208,7 @@ export function ReportsModule({
     items?: CategoryAnalysisItem[];
   };
 
-  const getCategoryAnalysis = (): CategoryAnalysis[] => {
+  const getCategoryAnalysis = (source?: { sales?: Sale[]; orders?: any[] }): CategoryAnalysis[] => {
     if (businessType === 'restaurant') {
       const categoryMap = new Map<string, {
         name: string;
@@ -5108,7 +5220,8 @@ export function ReportsModule({
         items?: CategoryAnalysisItem[];
       }>();
 
-      restOrders.forEach(order => {
+      const orderList = source?.orders ?? restOrders;
+      orderList.forEach(order => {
         (order.items || []).forEach((item: any) => {
           const categoryName = item.category_name || 'Diğer';
           const existing = categoryMap.get(categoryName);
@@ -5152,7 +5265,7 @@ export function ReportsModule({
         .sort((a, b) => b.totalRevenue - a.totalRevenue);
     }
 
-    return erpAnalysisRank().categories;
+    return erpAnalysisRank(source?.sales).categories;
   };
 
   // Hourly Analysis — seçili güne göre (restoranda günlük birleşik satır saatleri)
@@ -8285,7 +8398,10 @@ export function ReportsModule({
             })()}
 
             {selectedTab === 'top-products' && (() => {
-              const topProductsAll = getTopProducts(20);
+              const rankSource = businessType === 'restaurant'
+                ? { orders: rankRestOrders }
+                : { sales: rankRangeSales };
+              const topProductsAll = rankViewReady ? getTopProducts(20, getProductSales(rankSource)) : [];
               const rows = topProductsAll.map((p) => ({
                 id: p.id,
                 rank: p.rank,
@@ -8298,14 +8414,17 @@ export function ReportsModule({
               }));
               return (
                 <div className="space-y-4">
+                  <AnalysisRankDateFilter value={topRankRange} onChange={setTopRankRange} tm={tm} />
                   <div className="bg-white rounded-lg border p-4">
                     <h3 className="text-lg mb-4 flex items-center gap-2">
                       <Award className="w-5 h-5 text-yellow-600" />
                       {tm('enCokSatanlar')} (TOP 20)
                     </h3>
-                    {topProductsAll.length === 0 ? (
+                    {!rankViewReady ? (
+                      <p className="text-sm text-slate-500 py-8 text-center">{tm('reportsLoadingShort')}</p>
+                    ) : topProductsAll.length === 0 ? (
                       <p className="text-sm text-slate-500 py-8 text-center">
-                        Seçili güne ait satış kalemi yok. Tarihi değiştirin veya restoran modunda kapalı siparişlerin yüklendiğinden emin olun.
+                        Seçili tarih aralığında satış kalemi yok. Tarihi değiştirin veya restoran modunda kapalı siparişlerin yüklendiğinden emin olun.
                       </p>
                     ) : (
                       <ReportColumnTable
@@ -8393,14 +8512,22 @@ export function ReportsModule({
             })()}
 
             {selectedTab === 'category-analysis' && (() => {
-              const categories = getCategoryAnalysis();
+              const rankSource = businessType === 'restaurant'
+                ? { orders: rankRestOrders }
+                : { sales: rankRangeSales };
+              const categories = rankViewReady ? getCategoryAnalysis(rankSource) : [];
               const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7300'];
               return (
                 <div className="space-y-4">
+                  <AnalysisRankDateFilter value={categoryRankRange} onChange={setCategoryRankRange} tm={tm} />
                   <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
                     {tm('reportsCategoryByDateHint')}
                   </p>
-                  {categories.length === 0 ? (
+                  {!rankViewReady ? (
+                    <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
+                      {tm('reportsLoadingShort')}
+                    </div>
+                  ) : categories.length === 0 ? (
                     <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
                       {tm('reportsCategoryNoSalesEmpty')}
                     </div>

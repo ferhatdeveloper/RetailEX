@@ -28,6 +28,7 @@ import type { BeautyProductReturnLine } from '../utils/beautyProductSalesNet';
 import {
     isCommissionDepositFlag,
     mapCommissionReportLine,
+    singleCommissionKindRate,
     type CommissionReportLine,
 } from '../utils/commissionReportLines';
 import { useSaleStore } from '../store/useSaleStore';
@@ -8652,6 +8653,12 @@ export const beautyService = {
             service_commission: number;
             product_commission: number;
             total_commission: number;
+            /** Satırlardaki tek hizmet oranı. Karışıksa veya satır yoksa null. */
+            service_rate: number | null;
+            /** Satırlardaki tek ürün oranı. Karışıksa veya satır yoksa null. */
+            product_rate: number | null;
+            service_line_count: number;
+            product_line_count: number;
         }>;
         totals: {
             service_revenue: number;
@@ -8693,6 +8700,7 @@ export const beautyService = {
             };
         }
 
+        const lineRateSql = `CASE WHEN ABS(COALESCE(si.total, 0)) <= 0.000000001 THEN 0 ELSE ROUND(((COALESCE(si.commission_amount, 0) / si.total) * 100)::numeric, 2) END`;
         const [staffRowsRes, historyRowsRes] = await Promise.all([
             postgres.query(
             `
@@ -8760,7 +8768,13 @@ export const beautyService = {
                 COALESCE(sp.name, u.full_name, u.username, '—') AS name,
                 COALESCE(SUM(CASE WHEN si.item_type = 'service' THEN si.commission_amount ELSE 0 END), 0)::float AS service_commission,
                 COALESCE(SUM(CASE WHEN si.item_type = 'product' THEN si.commission_amount ELSE 0 END), 0)::float AS product_commission,
-                COALESCE(SUM(si.commission_amount), 0)::float AS total_commission
+                COALESCE(SUM(si.commission_amount), 0)::float AS total_commission,
+                MIN(CASE WHEN si.item_type = 'service' THEN ${lineRateSql} END)::float AS service_rate_min,
+                MAX(CASE WHEN si.item_type = 'service' THEN ${lineRateSql} END)::float AS service_rate_max,
+                COUNT(CASE WHEN si.item_type = 'service' THEN 1 END)::int AS service_line_count,
+                MIN(CASE WHEN si.item_type = 'product' THEN ${lineRateSql} END)::float AS product_rate_min,
+                MAX(CASE WHEN si.item_type = 'product' THEN ${lineRateSql} END)::float AS product_rate_max,
+                COUNT(CASE WHEN si.item_type = 'product' THEN 1 END)::int AS product_line_count
             FROM ${it} si
             JOIN ${st} s ON s.id = si.sale_id
             LEFT JOIN ${spt} sp ON si.staff_id = sp.id
@@ -8837,6 +8851,10 @@ export const beautyService = {
             service_commission: Number(r.service_commission) || 0,
             product_commission: Number(r.product_commission) || 0,
             total_commission: Number(r.total_commission) || 0,
+            service_rate: singleCommissionKindRate(r.service_rate_min, r.service_rate_max, r.service_line_count),
+            product_rate: singleCommissionKindRate(r.product_rate_min, r.product_rate_max, r.product_line_count),
+            service_line_count: Number(r.service_line_count) || 0,
+            product_line_count: Number(r.product_line_count) || 0,
         }));
 
         // Tüm aktif personeli (uzman/kullanıcı) listede göster; cirosu olmayanlar 0 satır.

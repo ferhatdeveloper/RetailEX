@@ -986,6 +986,91 @@ describe('beautyService.getCommissionReport — prim raporu', () => {
         expect(res.history_rows[0].total_commission).toBe(5000);
     });
 
+    it('tarihsel satırın prim oranı satırdaki orandır; prim tutarı değişmez', async () => {
+        queryMock.mockImplementation(async (sql: string) => {
+            const compact = String(sql).replace(/\s+/g, ' ');
+            if (compact.includes('AS service_revenue')) {
+                return ok([
+                    {
+                        specialist_id: 'spc-1',
+                        name: 'Zahra',
+                        service_revenue: 875000,
+                        service_commission: 87500,
+                        product_revenue: 0,
+                        product_commission: 0,
+                        total_revenue: 875000,
+                        total_commission: 87500,
+                        total_transactions: 3,
+                        total_deposit: 0,
+                        total_outstanding: 0,
+                    },
+                ]);
+            }
+            if (compact.includes('AS date_ymd')) {
+                return ok([
+                    {
+                        date_ymd: '2026-11-22',
+                        specialist_id: 'spc-1',
+                        name: 'Zahra',
+                        service_commission: 87500,
+                        product_commission: 0,
+                        total_commission: 87500,
+                        service_rate_min: 10,
+                        service_rate_max: 10,
+                        service_line_count: 3,
+                        product_rate_min: null,
+                        product_rate_max: null,
+                        product_line_count: 0,
+                    },
+                    {
+                        date_ymd: '2026-11-21',
+                        specialist_id: 'spc-2',
+                        name: 'Dunya',
+                        service_commission: 3000,
+                        product_commission: 500,
+                        total_commission: 3500,
+                        service_rate_min: 10,
+                        service_rate_max: 20,
+                        service_line_count: 2,
+                        product_rate_min: 5,
+                        product_rate_max: 5,
+                        product_line_count: 1,
+                    },
+                ]);
+            }
+            return ok([]);
+        });
+
+        const res = await beautyService.getCommissionReport('2026-11-01', '2026-11-23');
+        const historySql = String(queryMock.mock.calls.find((call) => String(call[0]).includes('AS date_ymd'))?.[0] ?? '');
+        expect(historySql).toContain(
+            "COALESCE(SUM(CASE WHEN si.item_type = 'service' THEN si.commission_amount ELSE 0 END), 0)::float AS service_commission",
+        );
+        expect(historySql).toContain(
+            "COALESCE(SUM(CASE WHEN si.item_type = 'product' THEN si.commission_amount ELSE 0 END), 0)::float AS product_commission",
+        );
+        expect(historySql).toContain('COALESCE(SUM(si.commission_amount), 0)::float AS total_commission');
+        expect(res.history_rows[0]).toMatchObject({
+            service_commission: 87500,
+            product_commission: 0,
+            total_commission: 87500,
+            service_rate: 10,
+            product_rate: null,
+        });
+        expect(res.history_rows[1]).toMatchObject({
+            service_commission: 3000,
+            product_commission: 500,
+            total_commission: 3500,
+            service_rate: null,
+            product_rate: 5,
+            service_line_count: 2,
+            product_line_count: 1,
+        });
+        expect(res.history_rows[0].total_commission).not.toBe(87500 + 10);
+        expect(res.totals.service_commission).toBe(87500);
+        expect(res.totals.total_commission).toBe(87500);
+    });
+
     it('peşinat kapalıyken randevu tablosuna gitmez ve depozito sıfır kalır', async () => {
         queryMock.mockImplementation(async () => ok([]));
         const res = await beautyService.getCommissionReport('2026-10-01', '2026-10-24');

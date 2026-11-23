@@ -300,4 +300,60 @@ describe('Prim raporu tarihsel döküm ve pasta', () => {
     expect(admin).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByTestId('commission-history-2026-10-26-id-zahra')).toBeTruthy();
   });
+
+  it('satırdaki prim oranı mevcut orandır ve para kolonları aynı kalır', async () => {
+    vi.mocked(beautyService.getCommissionReport).mockResolvedValue({
+      rows: staffRows,
+      history_rows: [
+        {
+          date_ymd: '2026-10-26',
+          specialist_id: 'id-zahra',
+          name: 'ZAHRA',
+          service_commission: 7_500,
+          product_commission: 0,
+          total_commission: 7_500,
+          service_rate: 10,
+          product_rate: null,
+        },
+        {
+          date_ymd: '2026-10-25',
+          specialist_id: 'id-admin',
+          name: 'System Administrator',
+          service_commission: 2_000,
+          product_commission: 500,
+          total_commission: 2_500,
+          service_rate: 20,
+          product_rate: 5,
+        },
+      ],
+      totals: {
+        service_revenue: 36_000,
+        service_commission: 7_500,
+        product_revenue: 4_000,
+        product_commission: 0,
+        total_revenue: 40_000,
+        total_commission: 7_500,
+        total_transactions: 2,
+        total_deposit: 80_000,
+        total_outstanding: 65_000,
+      },
+    });
+
+    renderReport();
+
+    expect(await screen.findByTestId('commission-rate-2026-10-26-id-zahra')).toHaveTextContent('10%');
+    expect(screen.getByTestId('commission-rate-2026-10-25-id-admin')).toHaveTextContent('Hizmet 20% · Ürün 5%');
+    expect(screen.getByTestId('commission-kpi-service')).toHaveTextContent('7.500');
+    expect(screen.getByTestId('commission-kpi-product')).toHaveTextContent('0');
+    expect(screen.getByTestId('commission-kpi-total')).toHaveTextContent('7.500');
+    expect(screen.getByText('Prim oranı')).toBeTruthy();
+    expect(screen.queryByText('15%')).toBeNull();
+    expect(screen.queryByText('12.5%')).toBeNull();
+    expect(screen.queryByText('30%')).toBeNull();
+    const zahraName = screen.getByTestId('commission-history-2026-10-26-id-zahra');
+    const zahraRow = zahraName.closest('tr') ?? zahraName.parentElement?.parentElement;
+    expect(zahraRow?.textContent || '').toContain('7.500');
+    expect(zahraRow?.textContent || '').toContain('10%');
+    expect(zahraRow?.textContent || '').not.toContain('8.250');
+  });
 });

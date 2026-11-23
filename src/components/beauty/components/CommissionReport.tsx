@@ -7,6 +7,7 @@ import { formatLocalYmd } from '../../../utils/dateLocal';
 import { formatReportDateCell } from '../../../utils/dateLocale';
 import {
     filterCommissionLinesForHistory,
+    formatHistoryCommissionRate,
     type CommissionReportLine,
 } from '../../../utils/commissionReportLines';
 import { ReportYmdDatePicker } from '../../shared/ReportDateRangePresets';
@@ -172,6 +173,33 @@ export function CommissionReport() {
                 footerSum: true,
                 footerFormat: (n) => fmt(n),
                 cell: (r) => <span className="font-black text-gray-900">{fmt(r.total_commission)}</span>,
+            },
+            {
+                key: 'commission_rate',
+                header: tm('bCommissionLineRate'),
+                type: 'text',
+                align: 'right',
+                size: 160,
+                accessor: (r) => formatHistoryCommissionRate({
+                    serviceRate: r.service_rate,
+                    productRate: r.product_rate,
+                    serviceLineCount: r.service_line_count,
+                    productLineCount: r.product_line_count,
+                    serviceLabel: tm('bCommissionLineKindService'),
+                    productLabel: tm('bCommissionLineKindProduct'),
+                }),
+                cell: (r) => (
+                    <span data-testid={`commission-rate-${r.date_ymd}-${r.specialist_id}`}>
+                        {formatHistoryCommissionRate({
+                            serviceRate: r.service_rate,
+                            productRate: r.product_rate,
+                            serviceLineCount: r.service_line_count,
+                            productLineCount: r.product_line_count,
+                            serviceLabel: tm('bCommissionLineKindService'),
+                            productLabel: tm('bCommissionLineKindProduct'),
+                        })}
+                    </span>
+                ),
             },
         ],
         [tm],

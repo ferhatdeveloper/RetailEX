@@ -179,3 +179,60 @@ export function filterCommissionLinesForHistory(
     return lineDay === day && lineId === id;
   });
 }
+
+/**
+ * Bir tarih+uzman satırında hizmet veya ürün için tek prim oranı.
+ * Satırlar aynı oranı taşımıyorsa ortalama üretilmez.
+ */
+export function singleCommissionKindRate(min: unknown, max: unknown, lineCount: unknown): number | null {
+  const count = Number(lineCount);
+  if (!Number.isFinite(count) || count <= 0) return null;
+  const leftRaw = Number(min);
+  const rightRaw = Number(max);
+  if (!Number.isFinite(leftRaw) || !Number.isFinite(rightRaw)) return null;
+  const left = Number(leftRaw.toFixed(2));
+  const right = Number(rightRaw.toFixed(2));
+  if (left !== right) return null;
+  return left;
+}
+
+/** Mevcut satır oranını yüzde işaretiyle yazar. Örnek: 10 → `10%`. */
+export function formatCommissionRatePercent(rate: number): string {
+  const rounded = Number(Number(rate).toFixed(2));
+  if (!Number.isFinite(rounded)) return '';
+  const text = Number.isInteger(rounded)
+    ? String(rounded)
+    : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  return `${text}%`;
+}
+
+/**
+ * Tarihsel döküm hücresi.
+ * Tek oran varsa `10%`. Hizmet ve ürün ayrıysa ikisi birden. Toplam satırı bu fonksiyonu çağırmaz.
+ */
+export function formatHistoryCommissionRate(input: {
+  serviceRate: number | null;
+  productRate: number | null;
+  serviceLabel: string;
+  productLabel: string;
+  serviceLineCount?: number;
+  productLineCount?: number;
+}): string {
+  const serviceLines = input.serviceLineCount ?? (input.serviceRate == null ? 0 : 1);
+  const productLines = input.productLineCount ?? (input.productRate == null ? 0 : 1);
+  const serviceText = serviceLines > 0 && input.serviceRate != null
+    ? formatCommissionRatePercent(input.serviceRate)
+    : '';
+  const productText = productLines > 0 && input.productRate != null
+    ? formatCommissionRatePercent(input.productRate)
+    : '';
+  if (!serviceText && !productText) return '';
+  if (serviceText && !productText) {
+    return productLines > 0 ? `${input.serviceLabel} ${serviceText}` : serviceText;
+  }
+  if (!serviceText && productText) {
+    return serviceLines > 0 ? `${input.productLabel} ${productText}` : productText;
+  }
+  if (serviceText === productText) return serviceText;
+  return `${input.serviceLabel} ${serviceText} · ${input.productLabel} ${productText}`;
+}
