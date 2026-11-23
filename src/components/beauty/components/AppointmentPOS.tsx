@@ -3159,6 +3159,11 @@ export function AppointmentPOS({
                     status: AppointmentStatus.COMPLETED,
                 });
                 setAptStatus(AppointmentStatus.COMPLETED);
+                try {
+                    await beautyService.completeLinkedReservationsForGreen(existingAppointment.id);
+                } catch (linkErr: unknown) {
+                    logger.warn('AppointmentPOS', 'bağlı rezervasyon yeşil durumu yazılamadı', linkErr);
+                }
                 clearCart();
                 void generateNewReceiptNumber();
                 setShowPay(false);
@@ -3646,6 +3651,25 @@ export function AppointmentPOS({
             setCompletedPaymentData(paymentData);
             setReceiptPrintImmediately(paymentData.showReceiptPreview === false);
             setShowReceiptModal(true);
+
+            if (
+                finalAptStatus === AppointmentStatus.COMPLETED
+                && !isPesinatliPrePayment
+                && remainingNow <= 0.004
+            ) {
+                const greenAnchors = [...new Set(
+                    [existingAppointment?.id, ...createdAppointmentIds]
+                        .map((id) => String(id ?? '').trim())
+                        .filter(Boolean),
+                )];
+                for (const anchorId of greenAnchors) {
+                    try {
+                        await beautyService.completeLinkedReservationsForGreen(anchorId);
+                    } catch (linkErr: unknown) {
+                        logger.warn('AppointmentPOS', 'bağlı rezervasyon yeşil durumu yazılamadı', linkErr);
+                    }
+                }
+            }
 
             clearCart();
             void generateNewReceiptNumber();

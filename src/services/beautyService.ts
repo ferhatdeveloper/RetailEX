@@ -17,6 +17,7 @@ import {
     resolveBeautyAppointmentId,
 } from '../utils/appointmentInsertConflict';
 import { appointmentIdsClosedByServiceSale } from '../utils/beautyPosCheckoutStatus';
+import { completeLinkedReservationsForGreen as syncLinkedReservationGreenStatus } from './beautyReservationStatusSync';
 import { postgres, ERP_SETTINGS } from './postgres';
 import {
     beautyInvoicePrefix,
@@ -3299,6 +3300,14 @@ export const beautyService = {
             );
             return [];
         }
+    },
+
+    /**
+     * Tam ödenmiş ziyaretin bağlı rezervasyonlarını yeşil duruma alır.
+     * Satış fişindeki tek randevu kimliği yetmez. Kasa ve stok yazılmaz.
+     */
+    async completeLinkedReservationsForGreen(anchorId: string): Promise<string[]> {
+        return syncLinkedReservationGreenStatus(anchorId);
     },
 
     async listFollowUpReminderActionsInRange(

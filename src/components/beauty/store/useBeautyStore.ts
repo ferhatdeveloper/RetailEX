@@ -37,15 +37,14 @@ async function closeAppointmentsWithPostedServiceSale(
             const status = String(appointments[index]?.status ?? '').trim().toLowerCase();
             return !TERMINAL_APPOINTMENT_STATUS.has(status);
         });
-    if (openIds.length === 0) return appointments;
     let closedIds: string[] = [];
-    try {
-        closedIds = await beautyService.appointmentIdsWithPostedServiceSale(openIds);
-    } catch (error) {
-        logger.warn('BeautyStore', 'hizmet fişi okunamadı', error);
-        return appointments;
+    if (openIds.length > 0) {
+        try {
+            closedIds = await beautyService.appointmentIdsWithPostedServiceSale(openIds);
+        } catch (error) {
+            logger.warn('BeautyStore', 'hizmet fişi okunamadı', error);
+        }
     }
-    if (closedIds.length === 0) return appointments;
     const healed = new Set<string>();
     await Promise.all(closedIds.map(async (id) => {
         try {
@@ -55,6 +54,42 @@ async function closeAppointmentsWithPostedServiceSale(
             logger.warn('BeautyStore', 'hizmet fişi kapanışı yazılamadı', error);
         }
     }));
+    const linkAnchors = new Set(closedIds);
+    for (const row of appointments) {
+        const status = String(row.status ?? '').trim().toLowerCase();
+        const id = String(row.id ?? '').trim();
+        if (!id) continue;
+        if (status === 'completed' || status === 'closed' || healed.has(id)) linkAnchors.add(id);
+    }
+    for (const id of linkAnchors) {
+        const anchor = appointments.find((row) => String(row.id ?? '').trim() === id);
+        if (!anchor) continue;
+        const group = String(anchor.sale_group_id ?? '').trim();
+        const customer = String(anchor.customer_id ?? anchor.client_id ?? '').trim();
+        const date = String(anchor.appointment_date ?? anchor.date ?? '').slice(0, 10);
+        const time = String(anchor.appointment_time ?? anchor.time ?? '').slice(0, 5);
+        const service = String(anchor.service_id ?? '').trim();
+        const hasOpenLink = appointments.some((row) => {
+            const rowId = String(row.id ?? '').trim();
+            if (!rowId || rowId === id) return false;
+            const rowStatus = String(row.status ?? '').trim().toLowerCase();
+            if (TERMINAL_APPOINTMENT_STATUS.has(rowStatus) || healed.has(rowId)) return false;
+            const rowGroup = String(row.sale_group_id ?? '').trim();
+            if (group && rowGroup === group) return true;
+            const rowCustomer = String(row.customer_id ?? row.client_id ?? '').trim();
+            const rowDate = String(row.appointment_date ?? row.date ?? '').slice(0, 10);
+            const rowTime = String(row.appointment_time ?? row.time ?? '').slice(0, 5);
+            const rowService = String(row.service_id ?? '').trim();
+            return Boolean(customer && customer === rowCustomer && date && date === rowDate && time && time === rowTime && service && service === rowService);
+        });
+        if (!hasOpenLink && !closedIds.includes(id)) continue;
+        try {
+            const linked = await beautyService.completeLinkedReservationsForGreen(id);
+            for (const rowId of linked) healed.add(rowId);
+        } catch (error) {
+            logger.warn('BeautyStore', 'bağlı rezervasyon durumu yazılamadı', error);
+        }
+    }
     if (healed.size === 0) return appointments;
     return appointments.map((row) => (
         healed.has(String(row.id ?? '').trim())
