@@ -140,4 +140,91 @@ describe('ödenmiş tamamlanmış rezervasyon yeşil olur', () => {
       remainingAmount: 0,
     })).toBe(true);
   });
+
+  it('fiş başka hizmetlere yazılsa da aynı gün sıfır tutarlı satır yeşil olur', () => {
+    const paidAnchor: ReservationGreenRow = {
+      ...anchor,
+      id: 'mezo-row',
+      status: 'completed',
+      appointmentTime: '05:00:00',
+      serviceId: 'svc-mezo',
+      totalPrice: 375000,
+    };
+    expect(linkedReservationIdsForGreenStatus({
+      fullyPaid: true,
+      visitCompleted: true,
+      anchor: paidAnchor,
+      paidServiceIds: ['svc-salamun', 'svc-powder', 'svc-radies'],
+      reservations: [
+        paidAnchor,
+        {
+          id: 'dermapen-row',
+          status: 'scheduled',
+          saleGroupId: 'grp-1',
+          customerId: 'cust-1',
+          appointmentDate: '2026-12-01',
+          appointmentTime: '05:05:00',
+          serviceId: 'svc-dermapen',
+          totalPrice: 0,
+          depositAmount: 0,
+        },
+        {
+          id: 'priced-other-service',
+          status: 'in_progress',
+          saleGroupId: 'grp-1',
+          customerId: 'cust-1',
+          appointmentDate: '2026-12-01',
+          appointmentTime: '16:00:00',
+          serviceId: 'svc-unpaid',
+          totalPrice: 80000,
+          depositAmount: 0,
+        },
+      ],
+    })).toEqual(['dermapen-row']);
+  });
+
+  it('tahsilat başka randevu kimliğine yazılsa da fişteki ayrı satır yeşil olur', () => {
+    const paidAnchor: ReservationGreenRow = {
+      ...anchor,
+      id: 'radies-row',
+      status: 'in_progress',
+      serviceId: 'svc-radies',
+      totalPrice: 500000,
+      saleGroupId: 'grp-radies',
+    };
+    expect(greenStatusAfterPayment({
+      fullyPaid: true,
+      visitCompleted: true,
+      currentStatus: 'in_progress',
+    })).toBe(GREEN_RESERVATION_STATUS);
+    expect(linkedReservationIdsForGreenStatus({
+      fullyPaid: true,
+      visitCompleted: true,
+      anchor: paidAnchor,
+      paidServiceIds: ['svc-radies', 'svc-full'],
+      reservations: [
+        paidAnchor,
+        {
+          id: 'full-separate',
+          status: 'scheduled',
+          saleGroupId: 'grp-full',
+          customerId: 'cust-1',
+          appointmentDate: '2026-12-01',
+          appointmentTime: '04:15:00',
+          serviceId: 'svc-full',
+          totalPrice: 100000,
+        },
+        {
+          id: 'next-day-full',
+          status: 'confirmed',
+          saleGroupId: 'grp-full',
+          customerId: 'cust-1',
+          appointmentDate: '2026-12-02',
+          appointmentTime: '04:15:00',
+          serviceId: 'svc-full',
+          totalPrice: 100000,
+        },
+      ],
+    })).toEqual(['radies-row', 'full-separate']);
+  });
 });

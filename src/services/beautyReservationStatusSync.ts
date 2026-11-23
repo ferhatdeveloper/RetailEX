@@ -32,6 +32,7 @@ function rowFromDb(row: Record<string, unknown>): ReservationGreenRow {
     appointmentTime: asText(row.appointment_time),
     serviceId: asText(row.service_id),
     depositAmount: Number(row.deposit_amount) || 0,
+    totalPrice: row.total_price == null || row.total_price === '' ? undefined : Number(row.total_price),
   };
 }
 
@@ -77,7 +78,8 @@ async function loadPostgresContext(anchorId: string): Promise<{
             appointment_time::text AS appointment_time,
             service_id::text AS service_id,
             coalesce(sale_group_id, '') AS sale_group_id,
-            coalesce(deposit_amount, 0) AS deposit_amount
+            coalesce(deposit_amount, 0) AS deposit_amount,
+            total_price
        FROM ${aptTable}
       WHERE id = $1::uuid`,
     [anchorId],
@@ -147,6 +149,15 @@ async function loadPostgresContext(anchorId: string): Promise<{
       AND service_id = $${base}::uuid
     )`;
   }
+  if (customerId && appointmentDate && paidServiceIds.length > 0) {
+    params.push(customerId, appointmentDate, paidServiceIds);
+    const base = params.length;
+    where += ` OR (
+      client_id = $${base - 2}::uuid
+      AND appointment_date = $${base - 1}::date
+      AND service_id = ANY($${base}::uuid[])
+    )`;
+  }
   const { rows: reservationRows } = await postgres.query(
     `SELECT id::text AS id,
             status,
@@ -155,7 +166,8 @@ async function loadPostgresContext(anchorId: string): Promise<{
             appointment_time::text AS appointment_time,
             service_id::text AS service_id,
             coalesce(sale_group_id, '') AS sale_group_id,
-            coalesce(deposit_amount, 0) AS deposit_amount
+            coalesce(deposit_amount, 0) AS deposit_amount,
+            total_price
        FROM ${aptTable}
       WHERE ${where}`,
     params,
@@ -182,7 +194,7 @@ async function loadPostgrestContext(anchorId: string): Promise<{
   const itemsPath = `/rex_${fn}_${pn}_beauty_sale_items`;
   const schema = { schema: 'beauty' as const };
   const anchors = await postgrest.get<Array<Record<string, unknown>>>(aptPath, {
-    select: 'id,status,client_id,appointment_date,appointment_time,service_id,sale_group_id,deposit_amount',
+    select: 'id,status,client_id,appointment_date,appointment_time,service_id,sale_group_id,deposit_amount,total_price',
     id: `eq.${anchorId}`,
     limit: 1,
   }, schema);
@@ -231,8 +243,11 @@ async function loadPostgrestContext(anchorId: string): Promise<{
   if (customerId && serviceId && appointmentDate && appointmentTime) {
     filters.push(`and(client_id.eq.${customerId},appointment_date.eq.${appointmentDate},service_id.eq.${serviceId},appointment_time.eq.${appointmentTime})`);
   }
+  if (customerId && appointmentDate && paidServiceIds.length > 0) {
+    filters.push(`and(client_id.eq.${customerId},appointment_date.eq.${appointmentDate},service_id.in.(${paidServiceIds.join(',')}))`);
+  }
   const reservations = await postgrest.get<Array<Record<string, unknown>>>(aptPath, {
-    select: 'id,status,client_id,appointment_date,appointment_time,service_id,sale_group_id,deposit_amount',
+    select: 'id,status,client_id,appointment_date,appointment_time,service_id,sale_group_id,deposit_amount,total_price',
     or: `(${filters.join(',')})`,
     limit: 200,
   }, schema);

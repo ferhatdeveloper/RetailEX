@@ -27,6 +27,8 @@ export interface ReservationGreenRow {
   appointmentTime?: string | null;
   serviceId?: string | null;
   depositAmount?: number | null;
+  /** Randevu brüt tutarı. Yoksa sıfır bakiye sayılmaz. */
+  totalPrice?: number | null;
 }
 
 export interface ServiceSalePaymentRow {
@@ -102,11 +104,29 @@ function depositReservation(row: ReservationGreenRow): boolean {
   return money(row.depositAmount) > 0.004;
 }
 
+function sameCustomerAndDay(anchor: ReservationGreenRow, row: ReservationGreenRow): boolean {
+  const anchorCustomer = text(anchor.customerId);
+  const anchorDate = dateKey(anchor.appointmentDate);
+  return anchorCustomer.length > 0
+    && anchorCustomer === text(row.customerId)
+    && anchorDate.length > 0
+    && anchorDate === dateKey(row.appointmentDate);
+}
+
+/** Fişte olmayan, tahsil edilecek tutarı kalmamış aynı gün refakat satırı. */
+function zeroBalanceCompanion(row: ReservationGreenRow): boolean {
+  if (typeof row.totalPrice !== 'number' || !Number.isFinite(row.totalPrice)) return false;
+  if (Math.abs(row.totalPrice) > 0.004) return false;
+  return Math.abs(money(row.depositAmount)) <= 0.004;
+}
+
 /**
  * Tahsilatı kapanmış ziyaretin bağlı rezervasyonları.
  * Satış fişi tek randevu id'sine yazılsa da aynı grup, aynı saat dilimi
- * ve peşinat satırı yeşil duruma gelir. Gelecek tarih engel değildir.
- * Gruptaki ödenmemiş başka hizmet yeşil olmaz.
+ * ve peşinat satırı yeşil duruma gelir. Gelecek tarih peşinatı engellemez.
+ * Aynı gün, aynı grupta tutarı sıfır olan ayrı satır da yeşil olur.
+ * Fişteki hizmet başka grupta ve başka saatte duran satıra da yazılır.
+ * Gruptaki ücretli ve fişte olmayan başka hizmet yeşil olmaz.
  */
 export function linkedReservationIdsForGreenStatus(input: {
   fullyPaid: boolean;
@@ -120,9 +140,10 @@ export function linkedReservationIdsForGreenStatus(input: {
   if (!anchorId) return [];
   const group = text(input.anchor.saleGroupId);
   const anchorService = text(input.anchor.serviceId);
-  const paidServices = new Set(
+  const saleServiceIds = new Set(
     (input.paidServiceIds ?? []).map((id) => text(id)).filter((id) => id.length > 0),
   );
+  const paidServices = new Set(saleServiceIds);
   if (anchorService) paidServices.add(anchorService);
   const anchorCustomer = text(input.anchor.customerId);
   const anchorDate = dateKey(input.anchor.appointmentDate);
@@ -141,6 +162,8 @@ export function linkedReservationIdsForGreenStatus(input: {
     const serviceId = text(row.serviceId);
     const sameGroup = group.length > 0 && text(row.saleGroupId) === group;
     const serviceOnSale = serviceId.length > 0 && paidServices.has(serviceId);
+    const serviceOnTicket = serviceId.length > 0 && saleServiceIds.has(serviceId);
+    const sameDay = sameCustomerAndDay(input.anchor, row);
     const sameSlot =
       id !== anchorId
       && anchorCustomer.length > 0
@@ -154,7 +177,9 @@ export function linkedReservationIdsForGreenStatus(input: {
     const linked =
       id === anchorId
       || sameSlot
-      || (sameGroup && (serviceOnSale || depositReservation(row)));
+      || (sameGroup && (serviceOnSale || depositReservation(row)))
+      || (sameGroup && sameDay && zeroBalanceCompanion(row))
+      || (serviceOnTicket && sameDay);
     if (!linked) continue;
     seen.add(id);
     ids.push(id);
