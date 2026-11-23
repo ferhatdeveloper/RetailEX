@@ -152,7 +152,19 @@ import {
   analysisRankQueryWindow,
   filterSalesForAnalysisRange,
 } from '../../utils/analysisRankDateRange';
-import { AnalysisRankDateFilter } from './AnalysisRankDateFilter';
+import { AnalysisRankDateFilter, type AnalysisRankFilterLabels } from './AnalysisRankDateFilter';
+
+/** Kategori Analizi ve En Çok Satanlar — aynı ekranda görünen aralık etiketleri. */
+function analysisRankFilterLabels(tm: (key: string) => string): AnalysisRankFilterLabels {
+  return {
+    from: tm('dateFrom') || 'Başlangıç',
+    to: tm('dateTo') || 'Bitiş',
+    today: tm('bCallBoardToday') || 'Bugün',
+    week: tm('bCallBoardWeek') || 'Bu hafta',
+    month: tm('bCallBoardMonth') || 'Bu ay',
+    lastMonth: tm('reportDatePresetLastMonth') || 'Geçen ay',
+  };
+}
 import {
   summarizePurchasePromotionReport,
   type PurchasePromotionReportLine,
@@ -8413,8 +8425,13 @@ export function ReportsModule({
                 stock: p.stock,
               }));
               return (
-                <div className="space-y-4">
-                  <AnalysisRankDateFilter value={topRankRange} onChange={setTopRankRange} tm={tm} />
+                <div className="space-y-4" data-testid="top-products-screen">
+                  <AnalysisRankDateFilter
+                    value={topRankRange}
+                    onChange={setTopRankRange}
+                    tm={tm}
+                    labels={analysisRankFilterLabels(tm)}
+                  />
                   <div className="bg-white rounded-lg border p-4">
                     <h3 className="text-lg mb-4 flex items-center gap-2">
                       <Award className="w-5 h-5 text-yellow-600" />
@@ -8423,7 +8440,7 @@ export function ReportsModule({
                     {!rankViewReady ? (
                       <p className="text-sm text-slate-500 py-8 text-center">{tm('reportsLoadingShort')}</p>
                     ) : topProductsAll.length === 0 ? (
-                      <p className="text-sm text-slate-500 py-8 text-center">
+                      <p className="text-sm text-slate-500 py-8 text-center" data-testid="top-products-empty">
                         Seçili tarih aralığında satış kalemi yok. Tarihi değiştirin veya restoran modunda kapalı siparişlerin yüklendiğinden emin olun.
                       </p>
                     ) : (
@@ -8518,18 +8535,23 @@ export function ReportsModule({
               const categories = rankViewReady ? getCategoryAnalysis(rankSource) : [];
               const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7300'];
               return (
-                <div className="space-y-4">
-                  <AnalysisRankDateFilter value={categoryRankRange} onChange={setCategoryRankRange} tm={tm} />
-                  <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
-                    {tm('reportsCategoryByDateHint')}
+                <div className="space-y-4" data-testid="category-analysis-screen">
+                  <AnalysisRankDateFilter
+                    value={categoryRankRange}
+                    onChange={setCategoryRankRange}
+                    tm={tm}
+                    labels={analysisRankFilterLabels(tm)}
+                  />
+                  <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2" data-testid="category-analysis-range-hint">
+                    {tm('reportsCategoryByDateHint') || 'Kategori dağılımı, seçili başlangıç ve bitiş tarihine göre hesaplanır.'}
                   </p>
                   {!rankViewReady ? (
                     <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
                       {tm('reportsLoadingShort')}
                     </div>
                   ) : categories.length === 0 ? (
-                    <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
-                      {tm('reportsCategoryNoSalesEmpty')}
+                    <div className="bg-white rounded-lg border p-12 text-center text-slate-500" data-testid="category-analysis-empty">
+                      {tm('reportsCategoryNoSalesEmpty') || 'Seçili tarih aralığında kategori satışı bulunamadı (veya ürün-kategori eşlemesi yok).'}
                     </div>
                   ) : (
                   <div className="grid grid-cols-2 gap-4">

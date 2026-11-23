@@ -14,15 +14,32 @@ const PRESETS: Array<{ id: AnalysisRankPreset; labelKey: string }> = [
   { id: 'lastMonth', labelKey: 'reportDatePresetLastMonth' },
 ];
 
+export type AnalysisRankFilterLabels = {
+  from?: string;
+  to?: string;
+  today?: string;
+  week?: string;
+  month?: string;
+  lastMonth?: string;
+};
+
+function shownLabel(translated: string, key: string, fallback?: string): string {
+  const text = String(translated ?? '').trim();
+  if (text && text !== key) return text;
+  return fallback || key;
+}
+
 /** Kategori Analizi ve En Çok Satanlar tarih aralığı. Seçim anında raporu çalıştırır. */
 export function AnalysisRankDateFilter({
   value,
   onChange,
   tm,
+  labels,
 }: {
   value: ReportDateRangeValue;
   onChange: (next: ReportDateRangeValue) => void;
   tm: (key: string) => string;
+  labels?: AnalysisRankFilterLabels;
 }) {
   const applyPreset = (preset: AnalysisRankPreset) => {
     const span = analysisRankPresetRange(preset);
@@ -56,16 +73,20 @@ export function AnalysisRankDateFilter({
                 : 'px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
             }
           >
-            {tm(labelKey)}
+            {shownLabel(tm(labelKey), labelKey, labels?.[id])}
           </button>
         ))}
       </div>
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-semibold text-slate-500">{tm('dateFrom')}</span>
+        <span className="text-xs font-semibold text-slate-500">
+          {shownLabel(tm('dateFrom'), 'dateFrom', labels?.from)}
+        </span>
         <ReportYmdDatePicker value={value.from} onChange={applyFrom} className="min-w-[9.5rem]" />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-semibold text-slate-500">{tm('dateTo')}</span>
+        <span className="text-xs font-semibold text-slate-500">
+          {shownLabel(tm('dateTo'), 'dateTo', labels?.to)}
+        </span>
         <ReportYmdDatePicker value={value.to} onChange={applyTo} className="min-w-[9.5rem]" />
       </label>
     </div>

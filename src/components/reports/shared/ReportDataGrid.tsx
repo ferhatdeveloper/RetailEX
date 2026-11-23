@@ -51,6 +51,8 @@ export type ReportGridColumn<T> = {
   filterKind?: 'date' | 'text' | 'number';
   /** number | currency → sağ hiza + dar genişlik (DevEx ortak kural) */
   type?: 'text' | 'number' | 'currency' | 'date';
+  /** DevEx `meta.defaultVisible`. Kayıtlı gizleme bu kolonu kapatamaz. */
+  defaultVisible?: boolean;
 };
 
 /** Kolon başlığında huni filtresi üreten factory — Malzeme listesi ile aynı FilterMenu. */
@@ -89,6 +91,7 @@ export function buildReportGridColumns<T>(cols: ReportGridColumn<T>[]): ColumnDe
           : {}),
         ...(align ? { align } : {}),
         ...(resolvedType ? { type: resolvedType } : {}),
+        ...(c.defaultVisible ? { defaultVisible: true as const } : {}),
       },
       cell: (info) => {
         const row = info.row.original as T;
@@ -143,6 +146,8 @@ export type ReportColumnTableCol<T> = {
   cell?: (row: T) => ReactNode;
   /** Excel ve filtre ham `row[key]` yerine bu değeri okur. Ekran hücresi `cell` ile kalır. */
   accessor?: (row: T) => unknown;
+  /** Açılışta görünür. Kolonlar menüsü ve eski sütun kaydı bu kolonu gizleyemez. */
+  defaultVisible?: boolean;
   footerSum?: boolean;
   /**
    * 12.10.2026 — Dip toplam (grand total) için özel değer çıkarıcı.
@@ -227,6 +232,7 @@ export function ReportColumnTable<T extends object>({
           type: c.type === 'currency' ? 'currency' : c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : undefined,
           cell: c.cell,
           accessor: c.accessor,
+          defaultVisible: c.defaultVisible,
         })),
       ),
     [columns],
